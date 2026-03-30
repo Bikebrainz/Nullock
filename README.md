@@ -10,31 +10,13 @@ Warning: Nullock is currently in the early stages of development
 *** NOTE: Vibe Coded work will NOT be accepted! ***
 
 # Graphical User Interface (GUI) Plan
-<div style="display: flex; flex-wrap: wrap; justify-content: center;">
-  <div style="flex: 1; min-width: 300px; margin: 10px;">
-    <img src="/Images/nullock_dashboard.jpeg" alt="Dashboard" style="width: 100%;"/>
-  </div>
-  <div style="flex: 1; min-width: 300px; margin: 10px;">
-    <img src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept" style="width: 100%;"/>
-  </div>
+<img src="/Images/nullock_dashboard.jpeg" alt="Dashboard" style="width: 400px; height: 300px; margin: 10px; display: inline-block;" />
+<img src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept" style="width: 400px; height: 300px; margin: 10px; display: inline-block;" />
 
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History" style="width: 100%;"/>
-  </div>
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_repeater_main.jpeg" alt="Repeater" style="width: 100%;"/>
-  </div>
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub" style="width: 100%;"/>
-  </div>
+<img src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
+<img src="/Images/nullock_repeater_main.jpeg" alt="Repeater" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
+<img src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
 
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_intruder_main.jpeg" alt="Intruder" style="width: 100%;"/>
-  </div>
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub" style="width: 100%;"/>
-  </div>
-  <div style="flex: 1; min-width: 200px; margin: 10px;">
-    <img src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub" style="width: 100%;"/>
-  </div>
-</div>
+<img src="/Images/nullock_intruder_main.jpeg" alt="Intruder" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
+<img src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
+<img src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub" style="width: 300px; height: 200px; margin: 10px; display: inline-block;" />
