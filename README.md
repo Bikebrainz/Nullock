@@ -12,9 +12,7 @@ Warning: Nullock is currently in the early stages of development
 # Graphical User Interface (GUI) Plan
 ![Dashboard](/Images/nullock_dashboard.jpeg)
 ![Proxy Intercept](/Images/nullock_intercept.jpeg)
-![Proxy HTTP History](/Images/nullock_http_history.jpeg)
-![Repeater](/Images/nullock_repeater_main.jpeg)
-![Repeater Hub](/Images/nullock_repeater_repeater_hub.jpeg)
-![Intruder](/Images/nullock_intruder_main.jpeg)
-![Intruder Resource Hub](/Images/nullock_intruder_resource_hub.jpeg)
-![Intruder Payload Hub](/Images/nullock_intruder_payload_hub.jpeg)
+
+![Proxy HTTP History](/Images/nullock_http_history.jpeg) ![Repeater](/Images/nullock_repeater_main.jpeg) ![Repeater Hub](/Images/nullock_repeater_repeater_hub.jpeg)
+
+![Intruder](/Images/nullock_intruder_main.jpeg) ![Intruder Resource Hub](/Images/nullock_intruder_resource_hub.jpeg) ![Intruder Payload Hub](/Images/nullock_intruder_payload_hub.jpeg)
