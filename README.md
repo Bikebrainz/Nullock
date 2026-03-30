@@ -21,3 +21,7 @@ Warning: Nullock is currently in the early stages of development
 
 <img align="right" src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub" width=390>
 <img align="left" src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub" width=390>
+
+# Tech Stack
+* GUI: JavaFX
+* Proxy Core: Netty
