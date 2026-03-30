@@ -10,14 +10,14 @@ Warning: Nullock is currently in the early stages of development
 *** NOTE: Vibe Coded work will NOT be accepted! ***
 
 # Graphical User Interface (GUI) Plan
-<img align="right" src="/Images/nullock_dashboard.jpeg" alt="Dashboard">
-<img align="right" src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept">
+<img align="right" src="/Images/nullock_dashboard.jpeg" alt="Dashboard" width=325>
+<img align="left" src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept" width=325>
 
-<img align="right" src="/Images/nullock_repeater_main.jpeg" alt="Repeater">
-<img align="right" src="/Images/nullock_intruder_main.jpeg" alt="Intruder">
+<img align="right" src="/Images/nullock_repeater_main.jpeg" alt="Repeater" width=325>
+<img align="left" src="/Images/nullock_intruder_main.jpeg" alt="Intruder" width=325>
 
-<img align="right" src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History">
-<img align="right" src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub">
+<img align="right" src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History" width=325>
+<img align="left" src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub" width=325>
 
-<img align="right" src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub">
-<img align="right" src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub">
+<img align="right" src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub" width=325>
+<img align="left" src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub" width=325>
