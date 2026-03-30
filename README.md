@@ -10,10 +10,10 @@ Warning: Nullock is currently in the early stages of development
 *** NOTE: Vibe Coded work will NOT be accepted! ***
 
 # Graphical User Interface (GUI) Plan
-<img align="right" src="/Images/nullock_dashboard.jpeg" alt="Dashboard" width="275" />
-<img align="right" src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept" width="275" />
-<img align="right" src="/Images/nullock_repeater_main.jpeg" alt="Repeater" width="275" />
-<img align="right" src="/Images/nullock_intruder_main.jpeg" alt="Intruder" width="275" />
+<img align="right" src="/Images/nullock_dashboard.jpeg/100/100" alt="Dashboard" width="325" />
+<img align="right" src="/Images/nullock_intercept.jpeg/100/100" alt="Proxy Intercept" width="325" />
+<img align="right" src="/Images/nullock_repeater_main.jpeg/100/100" alt="Repeater" width="325" />
+<img align="right" src="/Images/nullock_intruder_main.jpeg/100/100" alt="Intruder" width="325" />
 
 <img src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History" width="175" />
 <img src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub" width="175" />
