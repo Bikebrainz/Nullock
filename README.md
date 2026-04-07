@@ -39,7 +39,7 @@
     <li>
       <a href="#about-the-project">About The Project</a>
       <ul>
-        <li><a href="#built-with">Built With</a></li>
+        <li><a href="#built-with">Tech Stack</a></li>
       </ul>
     </li>
     <li>
@@ -70,13 +70,11 @@ Project description placeholder text.
 
 More diagrams and drawings can be found [here](./Images/).
 
-### Built With
+### Tech Stack
 
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
-* ![JavaFX](https://img.shields.io/badge/javafx-%23FF0000.svg?style=for-the-badge&logo=javafx&logoColor=white)
-* ![Netty](https://netty.io/images/logo.png)
-* ![Java](https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white)
+<img src="https://raw.githubusercontent.com/jmnote/z-icons/master/svg/java.svg" alt="Java" width="75" height="75" />
+<img src="https://img.shields.io/badge/JavaFX-4CAF50?style=for-the-badge&logo=java&logoColor=white" alt="JavaFX" width="75" height="75" />
+<img src="https://img.shields.io/badge/Netty-4CAF50?style=for-the-badge&logo=java&logoColor=white" alt="Netty" width="75" height="75" />
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
