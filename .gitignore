@@ -1,2 +1,2 @@
-/lib/*.so
-/lib/*.jar
+*.so
+*.jar
