@@ -62,7 +62,7 @@
 
 ## About The Project
 
-#![Nullock][dashboard-screenshot]
+![Nullock][dashboard-screenshot]
 
 Project description placeholder text.
 
