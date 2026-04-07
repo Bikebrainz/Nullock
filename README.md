@@ -72,9 +72,9 @@ More diagrams and drawings can be found [here](./Images/).
 
 ### Tech Stack
 
+<img src="https://ph.pinterest.com/pin/javafx-logo--296393219208229877/" alt="JavaFX" width="75" height="75" />
+<img src="https://netty.io/images/logo.png" alt="Netty" width="75" height="75" />
 <img src="https://raw.githubusercontent.com/jmnote/z-icons/master/svg/java.svg" alt="Java" width="75" height="75" />
-<img src="https://img.shields.io/badge/JavaFX-4CAF50?style=for-the-badge&logo=java&logoColor=white" alt="JavaFX" width="75" height="75" />
-<img src="https://img.shields.io/badge/Netty-4CAF50?style=for-the-badge&logo=java&logoColor=white" alt="Netty" width="75" height="75" />
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
