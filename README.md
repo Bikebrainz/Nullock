@@ -72,7 +72,7 @@ More diagrams and drawings can be found [here](./Images/).
 
 ### Tech Stack
 
-<img src="https://ph.pinterest.com/pin/javafx-logo--296393219208229877/" alt="JavaFX" width="75" height="75" />
+<img src="https://4.bp.blogspot.com/_crVRzfI94Bs/S8WI147NyRI/AAAAAAAAACw/nuDQdliHrho/s320/JavaFX.png" alt="JavaFX" width="75" height="75" />
 <img src="https://netty.io/images/logo.png" alt="Netty" width="75" height="75" />
 <img src="https://raw.githubusercontent.com/jmnote/z-icons/master/svg/java.svg" alt="Java" width="75" height="75" />
 
