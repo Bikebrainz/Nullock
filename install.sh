@@ -12,9 +12,6 @@ arch="$(uname -m)"
 # create a temporary directory for the JavaFX SDK files
 mkdir -p ./JavaFX
 
-# create a directory for all the library files
-mkdir -p ./lib
-
 case "$arch" in
   x86_64|amd64)
     echo "fetching the JavaFX SDK"
