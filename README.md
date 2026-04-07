@@ -1,27 +1,18 @@
-# Nullock
-Nullock is a fast and modern FOSS MITM HTTP proxy written in Java that fills the gap between expensive, closed-source tools like BurpSuite Pro and legacy FOSS alternatives like OWASP ZAP. Designed for Bug Bounty Hunters and The Cybersecurity, Nullock offers a simple, fast, and ultra-modern, GUI while still providing users with a familiar Burp-like tool set. Written in honor of the NullSec Security Framework, Nullock gets its name combining "NullSec" and "Sherlock," reflecting the investigative nature of MITM proxies.
+## Getting Started
 
-Feel feel to create a Fork of the repo, choose an issue or come up with a new feature, and submit your fix or feature in the form of a pull request. You can also create an extension for Nullock by using the extensions API. All contributions and extensions are appreciated.
+Welcome to the VS Code Java world. Here is a guideline to help you get started to write Java code in Visual Studio Code.
 
-Documentation for the extensions API can be found here: <placeholder>
+## Folder Structure
 
-Warning: Nullock is currently in the early stages of development
+The workspace contains two folders by default, where:
 
-*** NOTE: Vibe Coded work will NOT be accepted! ***
+- `src`: the folder to maintain sources
+- `lib`: the folder to maintain dependencies
 
-# Graphical User Interface (GUI) Plan
-<img align="right" src="/Images/nullock_dashboard.jpeg" alt="Dashboard" width=390>
-<img align="left" src="/Images/nullock_intercept.jpeg" alt="Proxy Intercept" width=390>
+Meanwhile, the compiled output files will be generated in the `bin` folder by default.
 
-<img align="right" src="/Images/nullock_repeater_main.jpeg" alt="Repeater" width=390>
-<img align="left" src="/Images/nullock_intruder_main.jpeg" alt="Intruder" width=390>
+> If you want to customize the folder structure, open `.vscode/settings.json` and update the related settings there.
 
-<img align="right" src="/Images/nullock_http_history.jpeg" alt="Proxy HTTP History" width=390>
-<img align="left" src="/Images/nullock_repeater_repeater_hub.jpeg" alt="Repeater Hub" width=390>
+## Dependency Management
 
-<img align="right" src="/Images/nullock_intruder_resource_hub.jpeg" alt="Intruder Resource Hub" width=390>
-<img align="left" src="/Images/nullock_intruder_payload_hub.jpeg" alt="Intruder Payload Hub" width=390>
-
-# Tech Stack
-* GUI: JavaFX with Gradle
-* Proxy Core: Netty
+The `JAVA PROJECTS` view allows you to manage your dependencies. More details can be found [here](https://github.com/microsoft/vscode-java-dependency#manage-dependencies).
