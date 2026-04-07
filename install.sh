@@ -15,11 +15,13 @@ mkdir -p ./JavaFX
 case "$arch" in
   x86_64|amd64)
     echo "fetching the JavaFX SDK"
-    wget -O ~/JavaFX/zipped_up_shit.zip 'https://download2.gluonhq.com/openjfx/21.0.10/openjfx-21.0.10_linux-x64_bin-sdk.zip'
+    wget -q -O ~/JavaFX/zipped_up_shit.zip 'https://download2.gluonhq.com/openjfx/21.0.10/openjfx-21.0.10_linux-x64_bin-sdk.zip'
     
     echo "unpacking the JavaFX SDK files into ./lib"
-    unzip ~/JavaFX/zipped_up_shit.zip -d ~/JavaFX -y 
-    mv ~/javafx-sdk-21.0.10/lib/* ./lib/ 
+    unzip -q ~/JavaFX/zipped_up_shit.zip -d ~/JavaFX/
+    
+    mv -n ~/JavaFX/javafx-sdk*/lib/*.jar ./lib/
+    mv -n ~/JavaFX/javafx-sdk*/lib/*.so ./lib/ 
 esac
 
-rm -rf ./JavaFX
+rm -rf ~/JavaFX
