@@ -1,12 +1,13 @@
 <a id="readme-top"></a>
 
 <div align="center">
-    [![Contributors][contributors-shield]][contributors-url]
-    [![Forks][forks-shield]][forks-url]
-    [![Stargazers][stars-shield]][stars-url]
-    [![Issues][issues-shield]][issues-url]
-    [![Unlicense License][license-shield]][license-url]
+  <img src="https://img.shields.io/github/contributors/gratonic/Nullock.svg?style=for-the-badge" alt="Contributors" />
+  <img src="https://img.shields.io/github/forks/gratonic/Nullock.svg?style=for-the-badge" alt="Forks" />
+  <img src="https://img.shields.io/github/stars/gratonic/Nullock.svg?style=for-the-badge" alt="Stargazers" />
+  <img src="https://img.shields.io/github/issues/gratonic/Nullock.svg?style=for-the-badge" alt="Issues" />
+  <img src="https://img.shields.io/github/license/gratonic/Nullock.svg?style=for-the-badge" alt="MIT License" />
 </div>
+
 
 
 <!-- PROJECT BANNER -->
@@ -218,14 +219,4 @@ Project Link: [https://github.com/gratonic/nullock](https://github.com/gratonic/
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/gratonic/Nullock.svg?style=for-the-badge
-[contributors-url]:https://github.com/gratonic/Nullock/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/gratonic/Nullock.svg?style=for-the-badge
-[forks-url]: https://github.com/gratonic/Nullock/network/members
-[stars-shield]: https://img.shields.io/github/stars/gratonic/Nullock.svg?style=for-the-badge
-[stars-url]: https://github.com/gratonic/Nullock/stargazers
-[issues-shield]: https://img.shields.io/github/issues/gratonic/Nullock.svg?style=for-the-badge
-[issues-url]: https://github.com/gratonic/Nullock/issues
-[license-shield]: https://img.shields.io/github/license/gratonic/Nullock.svg?style=for-the-badge
-[license-url]: https://github.com/gratonic/Nullock/blob/master/LICENSE.txt
 [dashboard-screenshot]: ./Images/Diagrams/nullock_dashboard.png
