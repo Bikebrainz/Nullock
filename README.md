@@ -71,9 +71,11 @@ Nullock is a free and open source Man In The Middle HTTP Proxy written in Java t
 
 If you are interested in contributing, writing a theme, or writing an extensions please follow the instructions below and/or read the documentation. All contributions, themes, and extensions are appreciated.
 
+More diagrams and drawings can be found [here](./Images/).
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-More diagrams and drawings can be found [here](./Images/).
+
 
 ### Tech Stack
 
