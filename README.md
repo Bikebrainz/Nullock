@@ -1,17 +1,19 @@
 <a id="readme-top"></a>
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![Unlicense License][license-shield]][license-url]
 
+<div align="center">
+    [![Contributors][contributors-shield]][contributors-url]
+    [![Forks][forks-shield]][forks-url]
+    [![Stargazers][stars-shield]][stars-url]
+    [![Issues][issues-shield]][issues-url]
+    [![Unlicense License][license-shield]][license-url]
+</div>
 
 
 <!-- PROJECT BANNER -->
 <br />
 <div align="center">
   <a href="https://github.com/gratonic/Nullock">
-    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="400" height="300">
+    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="100" height="100">
   </a>
 
   <h3 align="center">Nullock</h3>
@@ -188,6 +190,7 @@ Don't forget to give the project a star! Thanks again!
 ### Top contributors:
 
 <a href="https://github.com/gratonic/Nullock/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=gratonic/Nullock"/>
 </a>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -204,7 +207,10 @@ Distributed under the MIT License. See `LICENSE.md` for more information.
 
 ## Contact
 
-Gratonic - gratonic@proton.me
+Feel free to email me or chat with me in the [NullSec Discord](https://discord.gg/3QJBBkt8gW)
+
+Email: gratonic@proton.me
+Discord: gratonic
 
 Project Link: [https://github.com/gratonic/nullock](https://github.com/gratonic/nullock)
 
