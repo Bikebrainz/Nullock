@@ -181,7 +181,7 @@ Contributions are what make the open source community such an amazing place to l
 
 If you have a suggestion that would make this tool better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement". 
 
-If you have an extension for the tool and would like it advertised in the README please open an issue with the tag extension.
+If you have an extension for Nullock and would like it promoted in the README please open an issue with the tag extension.
 
 1. Fork the Project
 2. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
