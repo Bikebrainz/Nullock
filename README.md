@@ -14,7 +14,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/gratonic/Nullock">
-    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="600" height="400">
+    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="800" height="500">
   </a>
 
   <h3 align="center">Nullock</h3>
