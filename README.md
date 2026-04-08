@@ -11,13 +11,13 @@
 <br />
 <div align="center">
   <a href="https://github.com/gratonic/Nullock">
-    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="100" height="100">
+    <img src="./Images/Other/nullock_banner.jpeg" alt="Nullock Banner" width="400" height="300">
   </a>
 
   <h3 align="center">Nullock</h3>
 
   <p align="center">
-    An awesome README template to jumpstart your projects!
+    A FOSS MITM HTTP Proxy
     <br />
     <a href="https://github.com/gratonic/Nullock"><strong>Explore the docs »</strong></a>
     <br />
@@ -64,7 +64,9 @@
 
 ![Nullock][dashboard-screenshot]
 
-Project description placeholder text.
+Nullock is a free and open source Man In The Middle HTTP Proxy written in Java that aims to fill the gap between expensive, closed-source tools like Burpsuite Pro and legacy FOSS alternatives like OWASP Zap. Designed with Bug Bounty Hunters and The Web Hacking Community in mind, Nullock aims to provide users with a simple, fast, and modern GUI with a familiar Burpsuite-Like tool set. Written in honor of [NullSec](https://discord.gg/3QJBBkt8gW) and Sherlock, it gets its name by combining the two to get [Nullock](https://discord.gg/3QJBBkt8gW), reflecting the investigative nature of MITM Proxies.
+
+If you are interested in contributing, writing a theme, or writing an extensions please follow the instructions below and/or read the documentation. All contributions, themes, and extensions are appreciated.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -148,13 +150,19 @@ Please refer to the <placeholder> for information on how to use The Extensions A
 
 ## Roadmap
 
-- [x] Add Changelog
-- [x] Add back to top links
-- [ ] Add Additional Templates w/ Examples
-- [ ] Add "components" document to easily copy & paste sections of the readme
-- [ ] Multi-language Support
-    - [ ] Chinese
+- [ ] Write the GUI
+- [ ] Write the Proxy Core
+- [ ] Add core functionality to the GUI
+- [ ] Write the Extensions API
+- [ ] Write the Themes API
+- [ ] Add Multi-Language Support
+    - [x] English
     - [ ] Spanish
+    - [ ] German
+    - [ ] Ukrainian
+    - [ ] Russian
+    - [ ] Chinese
+    - [ ] Japanese
 
 See the [open issues](https://github.com/gratonic/Nullock/issues) for a full list of proposed features (and known issues).
 
@@ -180,7 +188,6 @@ Don't forget to give the project a star! Thanks again!
 ### Top contributors:
 
 <a href="https://github.com/gratonic/Nullock/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=gratonic/Nullock" alt="contrib.rocks image" />
 </a>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
