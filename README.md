@@ -67,7 +67,7 @@
 
 ![Nullock][dashboard-screenshot]
 
-Nullock is a free and open source Man In The Middle HTTP Proxy written in Java that aims to fill the gap between expensive, closed-source tools like Burpsuite Pro and legacy FOSS alternatives like OWASP Zap. Designed with Bug Bounty Hunters and The Web Hacking Community in mind, Nullock aims to provide users with a simple, fast, and modern GUI with a familiar Burpsuite-Like tool set. Written in honor of [NullSec](https://discord.gg/3QJBBkt8gW) and Sherlock, it gets its name by combining the two to get [Nullock](https://discord.gg/3QJBBkt8gW), reflecting the investigative nature of MITM Proxies.
+Nullock is a free and open source Man In The Middle HTTP Proxy written in Java that aims to fill the gap between expensive, closed-source tools like Burpsuite Pro and legacy FOSS alternatives like OWASP Zap. Designed with Bug Bounty Hunters and The Web Hacking Community in mind, Nullock aims to provide users with a simple and fast alternative with retro GUI and a familiar Burpsuite-Like tool set. Written in honor of [NullSec](https://discord.gg/3QJBBkt8gW) and Sherlock, it gets its name by combining the two to get [Nullock](https://discord.gg/3QJBBkt8gW), reflecting the investigative nature of MITM Proxies.
 
 If you are interested in contributing, writing a theme, or writing an extensions please follow the instructions below and/or read the documentation. All contributions, themes, and extensions are appreciated.
 
