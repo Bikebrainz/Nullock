@@ -2,6 +2,8 @@
 add_library(Proxy STATIC
     proxy_server.cpp
     proxy_server.hpp
+    cert_authority.cpp
+    cert_authority.hpp
 )
 
 # Link Qt libraries

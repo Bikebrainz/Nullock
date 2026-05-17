@@ -10,6 +10,7 @@ Requirements:
 - CMake 3.24+
 - Qt6 (Core, Gui, Qml, Quick, Network)
 - A C++20 compiler (MSVC 2022 / GCC 13+ / Clang 16+)
+- OpenSSL CLI (for MITM cert generation; on Windows install via `winget install ShiningLight.OpenSSL.Light`). `CertAuthority` looks for `openssl.exe` at the standard `C:\Program Files\OpenSSL-Win64\bin\` location and falls back to PATH.
 
 Configure and build (point CMAKE_PREFIX_PATH at your Qt install):
 
@@ -42,6 +43,7 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 | Area | File | State | Notes |
 |---|---|---|---|
 | Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS pass-through, verified end-to-end | no MITM/decryption yet |
+| Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter ready | not wired into the proxy yet — next step |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |
 | Database | `Src/Core/Database/database_manager.*` | empty | SQLite for project save/load |
@@ -62,7 +64,7 @@ In rough order of dependency:
 - [x] **HTTPS via CONNECT tunneling** — pass-through, no decryption. Browsers can route HTTPS through the proxy and traffic flows; each tunnel is logged with host + port.
 - [x] **Proxy model + QML binding** — `ProxyModel` (`QAbstractListModel`) fed by `responseReceived` signal. `app.qml` renders an HTTP History table with #, Host, Method, URL, Status, MIME, Params, TLS, IP, Time columns.
 - [x] **Click-to-inspect** — selecting a row opens a side-by-side Request / Response detail pane in a resizable split view, showing the full request line, headers, and (textual) body up to 64 KB; binary bodies show a placeholder.
-- [ ] **HTTPS MITM with on-the-fly cert generation** — generate per-host certs from a local CA so we can decrypt and inspect TLS traffic.
+- [~] **HTTPS MITM with on-the-fly cert generation** — _in progress._ `CertAuthority` shipped: generates a persistent Nullock Local Root CA at first launch (`%APPDATA%/Nullock/Nullock/ca/ca.pem`) and can mint per-host leaf certs signed by it (via OpenSSL CLI; results cached in memory). Next step: replace the blind CONNECT tunnel in `runTunnel` with a server-side TLS handshake using the leaf cert, then re-encrypt to the real upstream.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Scope filter** — glob-based in/out lists between proxy and storage.
 - [ ] **Database manager** — SQLite for project persistence ("Load Project File" in the dashboard).

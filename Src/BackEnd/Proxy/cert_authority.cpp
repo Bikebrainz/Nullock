@@ -1,0 +1,146 @@
+#include "cert_authority.hpp"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QMutexLocker>
+#include <QProcess>
+#include <QStandardPaths>
+
+namespace Nullock::Proxy {
+
+namespace {
+
+constexpr int kStartTimeoutMs = 5'000;
+constexpr int kRunTimeoutMs   = 30'000;
+
+QString sanitize(const QString &host) {
+    QString out;
+    out.reserve(host.size());
+    for (QChar c : host) {
+        const bool ok = c.isLetterOrNumber() || c == '-' || c == '.' || c == '_';
+        out.append(ok ? c : QChar('_'));
+    }
+    return out;
+}
+
+} // namespace
+
+CertAuthority::CertAuthority(QString caDir, QObject *parent)
+    : QObject(parent),
+      m_caDir(caDir.isEmpty() ? defaultCaDir() : caDir),
+      m_opensslExe(findOpensslExe()) {
+    QDir().mkpath(m_caDir);
+    m_caCertPath = m_caDir + "/ca.pem";
+    m_caKeyPath  = m_caDir + "/ca.key";
+}
+
+QString CertAuthority::defaultCaDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/ca";
+}
+
+QString CertAuthority::findOpensslExe() {
+    static const QStringList candidates = {
+        QStringLiteral("C:/Program Files/OpenSSL-Win64/bin/openssl.exe"),
+        QStringLiteral("C:/Program Files (x86)/OpenSSL-Win64/bin/openssl.exe"),
+    };
+    for (const QString &c : candidates)
+        if (QFileInfo::exists(c)) return c;
+
+    QProcess p;
+    p.start(QStringLiteral("openssl"), { QStringLiteral("version") });
+    if (p.waitForStarted(1500) && p.waitForFinished(2000) && p.exitCode() == 0)
+        return QStringLiteral("openssl");
+    return {};
+}
+
+bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
+    if (m_opensslExe.isEmpty()) return false;
+    QProcess p;
+    p.setProgram(m_opensslExe);
+    p.setArguments(args);
+    p.start();
+    if (!p.waitForStarted(kStartTimeoutMs)) return false;
+    if (!p.waitForFinished(kRunTimeoutMs)) {
+        p.kill();
+        return false;
+    }
+    if (stderrOut) *stderrOut = p.readAllStandardError();
+    return p.exitCode() == 0;
+}
+
+bool CertAuthority::ensureCa() {
+    if (m_opensslExe.isEmpty()) return false;
+    if (QFileInfo::exists(m_caCertPath) && QFileInfo::exists(m_caKeyPath))
+        return true;
+
+    if (!runOpenssl({ "genrsa", "-out", m_caKeyPath, "2048" }))
+        return false;
+
+    return runOpenssl({
+        "req", "-x509", "-new", "-nodes",
+        "-key", m_caKeyPath,
+        "-out", m_caCertPath,
+        "-days", "3650",
+        "-subj", "/CN=Nullock Local Root CA/O=Nullock",
+    });
+}
+
+LeafCert CertAuthority::leafCertFor(const QString &host) {
+    QMutexLocker lock(&m_mutex);
+
+    if (auto it = m_cache.find(host); it != m_cache.end())
+        return it.value();
+
+    if (!ensureCa()) return {};
+
+    const QString safe     = sanitize(host);
+    const QString keyPath  = m_caDir + "/_leaf_" + safe + ".key";
+    const QString csrPath  = m_caDir + "/_leaf_" + safe + ".csr";
+    const QString certPath = m_caDir + "/_leaf_" + safe + ".pem";
+
+    auto cleanup = [&] {
+        QFile::remove(keyPath);
+        QFile::remove(csrPath);
+        QFile::remove(certPath);
+    };
+
+    if (!runOpenssl({
+            "req", "-new", "-nodes",
+            "-newkey", "rsa:2048",
+            "-keyout", keyPath,
+            "-out", csrPath,
+            "-subj", "/CN=" + host,
+            "-addext", "subjectAltName=DNS:" + host,
+        })) {
+        cleanup();
+        return {};
+    }
+
+    if (!runOpenssl({
+            "x509", "-req",
+            "-in", csrPath,
+            "-CA", m_caCertPath,
+            "-CAkey", m_caKeyPath,
+            "-CAcreateserial",
+            "-days", "365",
+            "-out", certPath,
+            "-copy_extensions", "copyall",
+        })) {
+        cleanup();
+        return {};
+    }
+
+    LeafCert result;
+    QFile keyFile(keyPath);
+    if (keyFile.open(QFile::ReadOnly)) result.keyPem = keyFile.readAll();
+    QFile certFile(certPath);
+    if (certFile.open(QFile::ReadOnly)) result.certPem = certFile.readAll();
+
+    cleanup();
+
+    if (result.valid()) m_cache.insert(host, result);
+    return result;
+}
+
+} // namespace Nullock::Proxy
