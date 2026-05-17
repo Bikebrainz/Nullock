@@ -347,6 +347,7 @@ bool ProxyServer::start(const QHostAddress &address, quint16 port) {
         return false;
     }
     emit started(m_server->serverPort());
+    emit runningChanged();
     return true;
 }
 
@@ -354,6 +355,7 @@ void ProxyServer::stop() {
     if (!m_server->isListening()) return;
     m_server->close();
     emit stopped();
+    emit runningChanged();
 }
 
 bool ProxyServer::isRunning() const { return m_server->isListening(); }

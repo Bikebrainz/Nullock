@@ -29,9 +29,10 @@ cmake --build Build
 | Manager API | `Src/Core/APIs/ManagerAPI/*` | empty | central facade |
 | App controller | `Src/Core/AppController/*` | empty | C++ ↔ QML wiring |
 | Nullem | `Src/Core/Nullem/*` | empty | purpose unclear, needs decision |
-| Proxy model | `Src/FrontEnd/GUI/Models/Proxy/*` | empty | feeds HTTP History table |
+| Proxy model | `Src/FrontEnd/GUI/Models/Proxy/*` | working | `QAbstractListModel` populated from `responseReceived`; exposed to QML as `proxyModel` |
 | Other GUI models | `Src/FrontEnd/GUI/Models/*` | empty | one per hub |
-| QML hubs | `Src/FrontEnd/GUI/**/*.qml` | stub rectangles | mockups designed but not built |
+| Main window | `Src/App/app.qml` | live HTTP History | header + scrolling list + status bar (listening port, request count, clear button) |
+| Other QML hubs | `Src/FrontEnd/GUI/**/*.qml` | stub rectangles | mockups designed but not built |
 | Themes | `Src/FrontEnd/GUI/Themes/*` | empty | retro orange/teal palette planned |
 
 ## Roadmap
@@ -39,7 +40,7 @@ cmake --build Build
 In rough order of dependency:
 
 - [x] **HTTPS via CONNECT tunneling** — pass-through, no decryption. Browsers can route HTTPS through the proxy and traffic flows; each tunnel is logged with host + port.
-- [ ] **Proxy model + QML binding** — wire `requestReceived` / `responseReceived` signals into a `QAbstractListModel` so the GUI HTTP History table updates live. (Picking this next gives visible payoff — the GUI finally does something.)
+- [x] **Proxy model + QML binding** — `ProxyModel` (`QAbstractListModel`) fed by `responseReceived` signal. `app.qml` renders an HTTP History table with #, Host, Method, URL, Status, MIME, Params, TLS, IP, Time columns.
 - [ ] **HTTPS MITM with on-the-fly cert generation** — generate per-host certs from a local CA so we can decrypt and inspect TLS traffic.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Scope filter** — glob-based in/out lists between proxy and storage.

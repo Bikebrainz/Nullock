@@ -37,19 +37,22 @@ struct HttpResponse {
 
 class ProxyServer : public QObject {
     Q_OBJECT
+    Q_PROPERTY(bool isRunning READ isRunning NOTIFY runningChanged)
+    Q_PROPERTY(quint16 listeningPort READ listeningPort NOTIFY runningChanged)
 public:
     explicit ProxyServer(QObject *parent = nullptr);
     ~ProxyServer() override;
 
-    bool start(const QHostAddress &address = QHostAddress::LocalHost,
-               quint16 port = 8080);
-    void stop();
+    Q_INVOKABLE bool start(const QHostAddress &address = QHostAddress::LocalHost,
+                           quint16 port = 8080);
+    Q_INVOKABLE void stop();
     bool isRunning() const;
     quint16 listeningPort() const;
 
 signals:
     void started(quint16 port);
     void stopped();
+    void runningChanged();
     void requestReceived(const Nullock::Proxy::HttpRequest &request);
     void responseReceived(const Nullock::Proxy::HttpRequest &request,
                           const Nullock::Proxy::HttpResponse &response);
