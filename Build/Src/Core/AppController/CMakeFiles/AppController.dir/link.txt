@@ -1,2 +1,0 @@
-/usr/bin/ar qc libAppController.a CMakeFiles/AppController.dir/AppController_autogen/mocs_compilation.cpp.o CMakeFiles/AppController.dir/app_controller.cpp.o
-/usr/bin/ranlib libAppController.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libCache.a CMakeFiles/Cache.dir/Cache_autogen/mocs_compilation.cpp.o CMakeFiles/Cache.dir/cache_handler.cpp.o
-/usr/bin/ranlib libCache.a

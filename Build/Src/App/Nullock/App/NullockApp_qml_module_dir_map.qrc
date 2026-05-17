@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/">
-    <file alias="/Nullock/App">/home/gratonic/Desktop/Programming/Nullock/Build/Src/App/Nullock/App</file>
-
-  </qresource>
-</RCC>

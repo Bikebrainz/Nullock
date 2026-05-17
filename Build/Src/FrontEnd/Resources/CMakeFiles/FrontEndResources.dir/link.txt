@@ -1,2 +1,0 @@
-/usr/bin/ar qc libFrontEndResources.a CMakeFiles/FrontEndResources.dir/FrontEndResources_autogen/mocs_compilation.cpp.o CMakeFiles/FrontEndResources.dir/qrc_resources.cpp.o
-/usr/bin/ranlib libFrontEndResources.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libProxy.a CMakeFiles/Proxy.dir/Proxy_autogen/mocs_compilation.cpp.o CMakeFiles/Proxy.dir/proxy_server.cpp.o
-/usr/bin/ranlib libProxy.a

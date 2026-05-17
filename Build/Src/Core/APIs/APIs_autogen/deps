@@ -1,7 +1,0 @@
-APIs_autogen/timestamp: \
-	/home/gratonic/Desktop/Programming/Nullock/Src/Core/APIs/CMakeLists.txt \
-	/home/gratonic/Desktop/Programming/Nullock/Src/Core/APIs/ExtensionsAPI/extensions_api.cpp \
-	/home/gratonic/Desktop/Programming/Nullock/Src/Core/APIs/ExtensionsAPI/extensions_api.hpp \
-	/home/gratonic/Desktop/Programming/Nullock/Src/Core/APIs/ManagerAPI/manager_api.cpp \
-	/home/gratonic/Desktop/Programming/Nullock/Src/Core/APIs/ManagerAPI/manager_api.hpp \
-	/usr/bin/cmake

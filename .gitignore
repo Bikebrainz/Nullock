@@ -1,1 +1,26 @@
- 
+# CMake build output
+Build/
+build/
+cmake-build-*/
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Qt
+*.qmlc
+*.jsc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
