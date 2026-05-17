@@ -1,0 +1,2 @@
+/usr/bin/ar qc libNetworking.a CMakeFiles/Networking.dir/Networking_autogen/mocs_compilation.cpp.o CMakeFiles/Networking.dir/networking.cpp.o
+/usr/bin/ranlib libNetworking.a

@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/APIs.dir/link.d -shared -Wl,-soname,libAPIs.so.1 -o libAPIs.so.1.0.0 CMakeFiles/APIs.dir/APIs_autogen/mocs_compilation.cpp.o CMakeFiles/APIs.dir/ExtensionsAPI/extensions_api.cpp.o CMakeFiles/APIs.dir/ManagerAPI/manager_api.cpp.o  /usr/lib64/libQt6Network.so.6.10.3 /usr/lib64/libQt6Core.so.6.10.3

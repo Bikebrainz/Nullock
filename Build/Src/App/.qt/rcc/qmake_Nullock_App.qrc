@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/Nullock/App">
+    <file alias="qmldir">/home/gratonic/Desktop/Programming/Nullock/Build/Src/App/Nullock/App/qmldir</file>
+  </qresource>
+</RCC>
+

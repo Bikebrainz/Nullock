@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/Nullock/App/">
+    <file alias="app.qml">/home/gratonic/Desktop/Programming/Nullock/Src/App/app.qml</file>
+  </qresource>
+</RCC>
+

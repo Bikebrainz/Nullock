@@ -1,0 +1,15 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                    ],
+                    "filePath": "/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/DevicesHub/Components/devices.qml"
+                }
+            ],
+            "moduleId": "Nullock.FrontEnd(FrontEndGUI)"
+        }
+    ]
+}

@@ -1,0 +1,5 @@
+module Nullock.App
+typeinfo NullockApp.qmltypes
+prefer :/Nullock/App/
+depends QtQuick
+

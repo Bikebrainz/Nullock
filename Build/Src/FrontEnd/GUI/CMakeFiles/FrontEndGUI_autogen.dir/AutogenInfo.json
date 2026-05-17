@@ -1,0 +1,253 @@
+{
+	"BUILD_DIR" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUI_autogen",
+	"CMAKE_BINARY_DIR" : "/home/gratonic/Desktop/Programming/Nullock/Build",
+	"CMAKE_CURRENT_BINARY_DIR" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI",
+	"CMAKE_CURRENT_SOURCE_DIR" : "/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI",
+	"CMAKE_EXECUTABLE" : "/usr/bin/cmake",
+	"CMAKE_LIST_FILES" : 
+	[
+		"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/CMakeLists.txt",
+		"/usr/lib64/cmake/Qt6Core/Qt6CoreConfigureFileTemplate.in",
+		"/usr/lib64/cmake/Qt6Qml/Qt6QmlPluginTemplate.cpp.in",
+		"/usr/lib64/cmake/Qt6Qml/Qt6QmlModuleDirMappingTemplate.qrc.in",
+		"/usr/lib64/cmake/Qt6Core/Qt6CoreConfigureFileTemplate.in",
+		"/usr/lib64/cmake/Qt6Qml/Qt6qmldirTemplate.cmake.in",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUIPlugin_FrontEndGUIPlugin_in.cpp"
+	],
+	"CMAKE_SOURCE_DIR" : "/home/gratonic/Desktop/Programming/Nullock",
+	"CROSS_CONFIG" : false,
+	"DEP_FILE" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUI_autogen/deps",
+	"DEP_FILE_RULE_NAME" : "FrontEndGUI_autogen/timestamp",
+	"HEADERS" : 
+	[
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/DevicesHub/devices_hub_model.hpp",
+			"MU",
+			"MFGGBZODEE/moc_devices_hub_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/ExtensionsHub/extensions_hub_model.hpp",
+			"MU",
+			"7EFUE3RUUM/moc_extensions_hub_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/IntruderHub/intruder_hub_model.hpp",
+			"MU",
+			"YSAYHBMKD4/moc_intruder_hub_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Overview/overview_model.hpp",
+			"MU",
+			"NHFT4TO7JK/moc_overview_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp",
+			"MU",
+			"V5UQSY4DXY/moc_proxy_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/RepeaterHub/repeater_hub_model.hpp",
+			"MU",
+			"7GPQW26X62/moc_repeater_hub_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Workspace/workspace_model.hpp",
+			"MU",
+			"JCIIAWFGIN/moc_workspace_model.cpp",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Themes/themes_manager.hpp",
+			"MU",
+			"VG6DJWGMHH/moc_themes_manager.cpp",
+			null
+		]
+	],
+	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
+	"INCLUDE_DIR" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUI_autogen/include",
+	"MOC_COMPILATION_FILE" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUI_autogen/mocs_compilation.cpp",
+	"MOC_DEFINITIONS" : 
+	[
+		"FrontEndGUI_EXPORTS",
+		"QT_CORE_LIB",
+		"QT_GUI_LIB",
+		"QT_NETWORK_LIB",
+		"QT_NO_DEBUG",
+		"QT_OPENGL_LIB",
+		"QT_QMLINTEGRATION_LIB",
+		"QT_QML_LIB",
+		"QT_QUICK_LIB"
+	],
+	"MOC_DEPEND_FILTERS" : 
+	[
+		[
+			"Q_PLUGIN_METADATA",
+			"[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\([^\\)]*FILE[ \t]*\"([^\"]+)\""
+		]
+	],
+	"MOC_INCLUDES" : 
+	[
+		"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI",
+		"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models",
+		"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Themes",
+		"/usr/include/qt6/QtQml",
+		"/usr/include/qt6",
+		"/usr/include/qt6/QtCore",
+		"/usr/lib64/qt6/mkspecs/linux-g++",
+		"/usr/include/qt6/QtQmlIntegration",
+		"/usr/include/qt6/QtNetwork",
+		"/usr/include/qt6/QtGui",
+		"/usr/include/qt6/QtQuick",
+		"/usr/include/qt6/QtOpenGL",
+		"/usr/include",
+		"/usr/include/c++/15",
+		"/usr/include/c++/15/x86_64-redhat-linux",
+		"/usr/include/c++/15/backward",
+		"/usr/lib/gcc/x86_64-redhat-linux/15/include",
+		"/usr/local/include"
+	],
+	"MOC_MACRO_NAMES" : 
+	[
+		"Q_OBJECT",
+		"Q_GADGET",
+		"Q_NAMESPACE",
+		"Q_NAMESPACE_EXPORT",
+		"Q_GADGET_EXPORT",
+		"Q_ENUM_NS"
+	],
+	"MOC_OPTIONS" : [ "--output-json" ],
+	"MOC_PATH_PREFIX" : false,
+	"MOC_PREDEFS_CMD" : 
+	[
+		"/usr/bin/c++",
+		"-std=gnu++20",
+		"-w",
+		"-dM",
+		"-E",
+		"/usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp"
+	],
+	"MOC_PREDEFS_FILE" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUI_autogen/moc_predefs.h",
+	"MOC_RELAXED_MODE" : false,
+	"MOC_SKIP" : 
+	[
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.qt/rcc/qrc_FrontEndGUI_raw_qml_0.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.qt/rcc/qrc_qmake_Nullock_FrontEnd.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/Components/devices_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/Components/devices_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/devices_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/Components/extensions_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/Components/extensions_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/extensions_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/Components/intruder_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/Components/intruder_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/intruder_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/Components/scope_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/Components/sitemap_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/overview_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/Components/http_history_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/Components/intercept_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/proxy_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/Components/repeater_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/Components/repeater_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/repeater_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/notes_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/report_generator_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/settings_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/themes_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/workspace_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_qmlcache_loader.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/frontendgui_qmltyperegistrations.cpp"
+	],
+	"MULTI_CONFIG" : false,
+	"PARALLEL" : 8,
+	"PARSE_CACHE_FILE" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/CMakeFiles/FrontEndGUI_autogen.dir/ParseCache.txt",
+	"QT_MOC_EXECUTABLE" : "/usr/lib64/qt6/libexec/moc",
+	"QT_UIC_EXECUTABLE" : "",
+	"QT_VERSION_MAJOR" : 6,
+	"QT_VERSION_MINOR" : 10,
+	"SETTINGS_FILE" : "/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/CMakeFiles/FrontEndGUI_autogen.dir/AutogenUsed.txt",
+	"SOURCES" : 
+	[
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/DevicesHub/devices_hub_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/ExtensionsHub/extensions_hub_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/IntruderHub/intruder_hub_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Overview/overview_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/RepeaterHub/repeater_hub_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Workspace/workspace_model.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Themes/themes_manager.cpp",
+			"MU",
+			null
+		]
+	],
+	"UIC_OPTIONS" : [],
+	"UIC_SEARCH_PATHS" : [],
+	"UIC_SKIP" : 
+	[
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.qt/rcc/qrc_FrontEndGUI_raw_qml_0.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.qt/rcc/qrc_qmake_Nullock_FrontEnd.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/Components/devices_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/Components/devices_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_DevicesHub/devices_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/Components/extensions_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/Components/extensions_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_ExtensionsHub/extensions_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/Components/intruder_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/Components/intruder_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_IntruderHub/intruder_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/Components/scope_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/Components/sitemap_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Overview/overview_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/Components/http_history_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/Components/intercept_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Proxy/proxy_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/Components/repeater_console_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/Components/repeater_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_RepeaterHub/repeater_hub_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/notes_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/report_generator_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/settings_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/Components/themes_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_Workspace/workspace_qml.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/.rcc/qmlcache/FrontEndGUI_qmlcache_loader.cpp",
+		"/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/frontendgui_qmltyperegistrations.cpp"
+	],
+	"UIC_UI_FILES" : [],
+	"USE_BETTER_GRAPH" : true,
+	"VERBOSITY" : 0
+}

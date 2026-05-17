@@ -1,0 +1,5 @@
+Database_autogen/timestamp: \
+	/home/gratonic/Desktop/Programming/Nullock/Src/Core/Database/CMakeLists.txt \
+	/home/gratonic/Desktop/Programming/Nullock/Src/Core/Database/database_manager.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/Core/Database/database_manager.hpp \
+	/usr/bin/cmake

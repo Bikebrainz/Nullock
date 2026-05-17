@@ -1,0 +1,8 @@
+module Nullock.FrontEnd
+linktarget FrontEndGUIPlugin
+optional plugin FrontEndGUIPlugin
+classname FrontEndGUIPlugin
+typeinfo FrontEndGUI.qmltypes
+prefer :/Nullock/FrontEnd/
+depends QtQuick
+

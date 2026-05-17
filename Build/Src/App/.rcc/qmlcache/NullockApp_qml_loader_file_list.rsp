@@ -1,0 +1,5 @@
+--resource
+/home/gratonic/Desktop/Programming/Nullock/Build/Src/App/.qt/rcc/qmake_Nullock_App.qrc
+--resource
+/home/gratonic/Desktop/Programming/Nullock/Build/Src/App/.qt/rcc/NullockApp_raw_qml_0.qrc
+/Nullock/App/app.qml

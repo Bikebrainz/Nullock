@@ -1,0 +1,2 @@
+/usr/bin/ar qc libNullem.a CMakeFiles/Nullem.dir/Nullem_autogen/mocs_compilation.cpp.o CMakeFiles/Nullem.dir/nullem.cpp.o
+/usr/bin/ranlib libNullem.a

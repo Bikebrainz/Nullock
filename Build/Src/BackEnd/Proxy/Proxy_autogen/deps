@@ -1,0 +1,5 @@
+Proxy_autogen/timestamp: \
+	/home/gratonic/Desktop/Programming/Nullock/Src/BackEnd/Proxy/CMakeLists.txt \
+	/home/gratonic/Desktop/Programming/Nullock/Src/BackEnd/Proxy/proxy_server.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/BackEnd/Proxy/proxy_server.hpp \
+	/usr/bin/cmake

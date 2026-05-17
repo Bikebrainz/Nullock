@@ -1,0 +1,24 @@
+FrontEndGUI_autogen/timestamp: \
+	/home/gratonic/Desktop/Programming/Nullock/Build/Src/FrontEnd/GUI/FrontEndGUIPlugin_FrontEndGUIPlugin_in.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/CMakeLists.txt \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/DevicesHub/devices_hub_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/DevicesHub/devices_hub_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/ExtensionsHub/extensions_hub_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/ExtensionsHub/extensions_hub_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/IntruderHub/intruder_hub_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/IntruderHub/intruder_hub_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Overview/overview_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Overview/overview_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/RepeaterHub/repeater_hub_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/RepeaterHub/repeater_hub_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Workspace/workspace_model.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Models/Workspace/workspace_model.hpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Themes/themes_manager.cpp \
+	/home/gratonic/Desktop/Programming/Nullock/Src/FrontEnd/GUI/Themes/themes_manager.hpp \
+	/usr/lib64/cmake/Qt6Core/Qt6CoreConfigureFileTemplate.in \
+	/usr/lib64/cmake/Qt6Qml/Qt6QmlModuleDirMappingTemplate.qrc.in \
+	/usr/lib64/cmake/Qt6Qml/Qt6QmlPluginTemplate.cpp.in \
+	/usr/lib64/cmake/Qt6Qml/Qt6qmldirTemplate.cmake.in \
+	/usr/bin/cmake
