@@ -11,17 +11,37 @@ Requirements:
 - Qt6 (Core, Gui, Qml, Quick, Network)
 - A C++20 compiler (MSVC 2022 / GCC 13+ / Clang 16+)
 
+Configure and build (point CMAKE_PREFIX_PATH at your Qt install):
+
 ```
-cmake -S . -B Build -DCMAKE_PREFIX_PATH="<path to Qt6>"
-cmake --build Build
-./Build/Src/App/NullockApp
+cmake -S . -B Build -G "Visual Studio 17 2022" -A x64 ^
+    -DCMAKE_PREFIX_PATH="C:/Qt/6.7.3/msvc2019_64"
+cmake --build Build --config Release --target NullockApp
 ```
+
+On Windows the QML module library needs to live alongside the exe before
+running, and Qt's runtime needs to be deployed too:
+
+```
+copy Build\Src\FrontEnd\GUI\Release\FrontEndGUI.dll Build\Src\App\Release\
+"<Qt>/bin/windeployqt.exe" --release --qmldir Src\App ^
+    Build\Src\App\Release\NullockApp.exe
+```
+
+Run from the project root so the relative QML path resolves:
+
+```
+Build\Src\App\Release\NullockApp.exe
+```
+
+Verified on Windows 11 with MSVC 2022 Community + Qt 6.7.3 (`win64_msvc2019_64`),
+proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 
 ## Module status
 
 | Area | File | State | Notes |
 |---|---|---|---|
-| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS pass-through | no MITM/decryption yet |
+| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS pass-through, verified end-to-end | no MITM/decryption yet |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |
 | Database | `Src/Core/Database/database_manager.*` | empty | SQLite for project save/load |

@@ -1,5 +1,7 @@
-# Create single shared library for all APIs
-add_library(APIs SHARED
+# APIs is STATIC for now because the source files are stubs and MSVC will
+# not emit an import .lib for a SHARED target with zero exported symbols
+# (LNK1104). Revisit when ExtensionsAPI / ManagerAPI grow real exports.
+add_library(APIs STATIC
     ExtensionsAPI/extensions_api.cpp
     ExtensionsAPI/extensions_api.hpp
     ManagerAPI/manager_api.cpp
@@ -15,10 +17,4 @@ target_link_libraries(APIs PRIVATE
 # Include directories
 target_include_directories(APIs PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# Set library properties
-set_target_properties(APIs PROPERTIES
-    VERSION 1.0.0
-    SOVERSION 1
 )

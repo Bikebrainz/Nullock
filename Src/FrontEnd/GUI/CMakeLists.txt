@@ -5,6 +5,7 @@ qt_add_qml_module(FrontEndGUI
     PLUGIN_TARGET FrontEndGUIPlugin
     CLASS_NAME FrontEndGUIPlugin
     SOURCES
+    frontend_gui_export.hpp
     Models/DevicesHub/devices_hub_model.cpp
     Models/DevicesHub/devices_hub_model.hpp
     Models/ExtensionsHub/extensions_hub_model.cpp
@@ -58,7 +59,13 @@ target_link_libraries(FrontEndGUI PRIVATE
 
 # Include directories
 target_include_directories(FrontEndGUI PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/Models
     ${CMAKE_CURRENT_SOURCE_DIR}/Themes
 )
+
+# Mark classes that the App needs to link against (e.g. ProxyModel used
+# via setContextProperty) with FRONTEND_GUI_EXPORT in their headers. This
+# define switches that macro to Q_DECL_EXPORT while we build the DLL.
+target_compile_definitions(FrontEndGUI PRIVATE FRONTEND_GUI_LIBRARY)
 

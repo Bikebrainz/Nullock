@@ -1,5 +1,6 @@
 #pragma once
 
+#include "frontend_gui_export.hpp"
 #include "proxy_server.hpp"
 
 #include <QAbstractListModel>
@@ -7,7 +8,7 @@
 
 namespace Nullock::FrontEnd {
 
-class ProxyModel : public QAbstractListModel {
+class FRONTEND_GUI_EXPORT ProxyModel : public QAbstractListModel {
     Q_OBJECT
 public:
     enum Roles {
