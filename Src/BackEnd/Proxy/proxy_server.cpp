@@ -147,6 +147,12 @@ public:
         HttpRequest req;
         req.timestamp = QDateTime::currentDateTime();
         if (!readRequest(req)) { fail("malformed request"); return; }
+
+        if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) {
+            runTunnel(req);
+            return;
+        }
+
         rewriteHostPort(req);
         emit m_server->requestReceived(req);
 
@@ -174,6 +180,52 @@ public:
         m_client->disconnectFromHost();
     }
 
+    void runTunnel(HttpRequest &req) {
+        const int colon = req.target.indexOf(':');
+        if (colon <= 0) { fail("malformed CONNECT target"); return; }
+        const QString host = req.target.left(colon);
+        const quint16 port = req.target.mid(colon + 1).toUShort();
+
+        m_upstream = new QTcpSocket(this);
+        connect(m_upstream, &QTcpSocket::disconnected, this, &QObject::deleteLater);
+
+        m_upstream->connectToHost(host, port);
+        if (!m_upstream->waitForConnected(kReadTimeoutMs)) {
+            m_client->write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+            m_client->waitForBytesWritten(kReadTimeoutMs);
+            fail("tunnel connect failed: " + m_upstream->errorString());
+            return;
+        }
+
+        req.host = host;
+        req.port = port;
+        req.path = "(tunnel)";
+        emit m_server->requestReceived(req);
+
+        HttpResponse resp;
+        resp.httpVersion = "HTTP/1.1";
+        resp.statusCode = 200;
+        resp.reasonPhrase = "Connection Established";
+        resp.peerAddress = m_upstream->peerAddress().toString();
+        resp.wasTls = true;
+        emit m_server->responseReceived(req, resp);
+
+        m_client->write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (!m_client->waitForBytesWritten(kReadTimeoutMs)) {
+            fail("tunnel ack write failed");
+            return;
+        }
+
+        QTcpSocket *client = m_client;
+        QTcpSocket *up = m_upstream;
+        connect(client, &QTcpSocket::readyRead, this, [client, up]() {
+            up->write(client->readAll());
+        });
+        connect(up, &QTcpSocket::readyRead, this, [client, up]() {
+            client->write(up->readAll());
+        });
+    }
+
 private:
     bool readRequest(HttpRequest &req) {
         QByteArray buf;
@@ -192,7 +244,7 @@ private:
         req.httpVersion = QString::fromLatin1(parts[2]);
         req.headers = parseHeaders(headerBlock);
 
-        if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) return false;
+        if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) return true;
 
         const QString cl = findHeader(req.headers, "Content-Length");
         if (!cl.isEmpty()) {
@@ -275,6 +327,7 @@ private:
     }
 
     QTcpSocket *m_client;
+    QTcpSocket *m_upstream = nullptr;
     ProxyServer *m_server;
 };
 
