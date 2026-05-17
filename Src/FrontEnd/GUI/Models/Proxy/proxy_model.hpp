@@ -31,6 +31,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     Q_INVOKABLE void clear();
+    Q_INVOKABLE QString requestRawAt(int row) const;
+    Q_INVOKABLE QString responseRawAt(int row) const;
+    Q_INVOKABLE QString summaryAt(int row) const;
 
 public slots:
     void addResponse(const Nullock::Proxy::HttpRequest &request,

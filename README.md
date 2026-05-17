@@ -51,7 +51,7 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 | Nullem | `Src/Core/Nullem/*` | empty | purpose unclear, needs decision |
 | Proxy model | `Src/FrontEnd/GUI/Models/Proxy/*` | working | `QAbstractListModel` populated from `responseReceived`; exposed to QML as `proxyModel` |
 | Other GUI models | `Src/FrontEnd/GUI/Models/*` | empty | one per hub |
-| Main window | `Src/App/app.qml` | live HTTP History | header + scrolling list + status bar (listening port, request count, clear button) |
+| Main window | `Src/App/app.qml` | live HTTP History + click-to-inspect | row click opens a side-by-side Request / Response detail pane with full headers and body |
 | Other QML hubs | `Src/FrontEnd/GUI/**/*.qml` | stub rectangles | mockups designed but not built |
 | Themes | `Src/FrontEnd/GUI/Themes/*` | empty | retro orange/teal palette planned |
 
@@ -61,6 +61,7 @@ In rough order of dependency:
 
 - [x] **HTTPS via CONNECT tunneling** — pass-through, no decryption. Browsers can route HTTPS through the proxy and traffic flows; each tunnel is logged with host + port.
 - [x] **Proxy model + QML binding** — `ProxyModel` (`QAbstractListModel`) fed by `responseReceived` signal. `app.qml` renders an HTTP History table with #, Host, Method, URL, Status, MIME, Params, TLS, IP, Time columns.
+- [x] **Click-to-inspect** — selecting a row opens a side-by-side Request / Response detail pane in a resizable split view, showing the full request line, headers, and (textual) body up to 64 KB; binary bodies show a placeholder.
 - [ ] **HTTPS MITM with on-the-fly cert generation** — generate per-host certs from a local CA so we can decrypt and inspect TLS traffic.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Scope filter** — glob-based in/out lists between proxy and storage.

@@ -61,6 +61,81 @@ void ProxyModel::addResponse(const Nullock::Proxy::HttpRequest &request,
     endInsertRows();
 }
 
+namespace {
+
+constexpr int kMaxBodyPreviewBytes = 64 * 1024;
+
+bool looksTextual(const QString &contentType) {
+    if (contentType.startsWith("text/", Qt::CaseInsensitive)) return true;
+    if (contentType.contains("json", Qt::CaseInsensitive)) return true;
+    if (contentType.contains("javascript", Qt::CaseInsensitive)) return true;
+    if (contentType.contains("xml", Qt::CaseInsensitive)) return true;
+    if (contentType.contains("html", Qt::CaseInsensitive)) return true;
+    if (contentType.contains("x-www-form-urlencoded", Qt::CaseInsensitive)) return true;
+    return contentType.isEmpty();
+}
+
+QString renderBody(const QByteArray &body,
+                   const QList<QPair<QString, QString>> &headers,
+                   const QString &headerName) {
+    if (body.isEmpty()) return {};
+    QString contentType;
+    for (const auto &h : headers) {
+        if (h.first.compare(headerName, Qt::CaseInsensitive) == 0) {
+            contentType = h.second;
+            break;
+        }
+    }
+    if (!looksTextual(contentType))
+        return QString("[binary %1 bytes, %2]").arg(body.size()).arg(contentType.isEmpty() ? "no content-type" : contentType);
+
+    const QByteArray slice = body.left(kMaxBodyPreviewBytes);
+    QString out = QString::fromUtf8(slice);
+    if (body.size() > kMaxBodyPreviewBytes)
+        out += QString("\n\n[truncated; %1 more bytes]").arg(body.size() - kMaxBodyPreviewBytes);
+    return out;
+}
+
+} // namespace
+
+QString ProxyModel::requestRawAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return {};
+    const Nullock::Proxy::HttpRequest &req = m_entries[row].request;
+    QString out;
+    out += QString("%1 %2 %3\n").arg(req.method, req.path, req.httpVersion);
+    for (const auto &h : req.headers)
+        out += QString("%1: %2\n").arg(h.first, h.second);
+    out += "\n";
+    out += renderBody(req.body, req.headers, "Content-Type");
+    return out;
+}
+
+QString ProxyModel::responseRawAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return {};
+    const Nullock::Proxy::HttpResponse &resp = m_entries[row].response;
+    QString out;
+    out += QString("%1 %2 %3\n").arg(resp.httpVersion).arg(resp.statusCode).arg(resp.reasonPhrase);
+    for (const auto &h : resp.headers)
+        out += QString("%1: %2\n").arg(h.first, h.second);
+    out += "\n";
+    out += renderBody(resp.body, resp.headers, "Content-Type");
+    return out;
+}
+
+QString ProxyModel::summaryAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return {};
+    const Entry &e = m_entries[row];
+    return QString("#%1  %2  %3://%4:%5%6  →  %7 %8")
+        .arg(e.id)
+        .arg(e.request.method)
+        .arg(e.response.wasTls ? "https" : "http")
+        .arg(e.request.host)
+        .arg(e.request.port)
+        .arg(e.request.path)
+        .arg(e.response.statusCode)
+        .arg(e.response.reasonPhrase);
+}
+
 int ProxyModel::countParams(const Nullock::Proxy::HttpRequest &request) {
     int count = 0;
     const int q = request.path.indexOf('?');
