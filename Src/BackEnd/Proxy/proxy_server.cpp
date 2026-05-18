@@ -278,20 +278,8 @@ public:
             return;
         }
 
-        // 3. Read the decrypted HTTP request the client just wrote.
-        HttpRequest innerReq;
-        innerReq.timestamp = QDateTime::currentDateTime();
-        if (!readRequestFrom(sslClient, innerReq)) {
-            fail("mitm: malformed inner request");
-            return;
-        }
-        innerReq.host = host;
-        innerReq.port = port;
-        if (innerReq.path.isEmpty() || !innerReq.path.startsWith('/'))
-            innerReq.path = "/" + innerReq.path;
-        emit m_server->requestReceived(innerReq);
-
-        // 4. Open a real TLS connection upstream and forward the request.
+        // 3. Open ONE upstream TLS connection and reuse it for every request
+        //    the client sends inside this tunnel (HTTP/1.1 keep-alive).
         auto *upstream = new QSslSocket(this);
         m_upstream = upstream;
         connect(upstream, &QSslSocket::disconnected, this, &QObject::deleteLater);
@@ -300,25 +288,64 @@ public:
             fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
             return;
         }
-        upstream->write(serializeRequestForOrigin(innerReq));
-        if (!upstream->waitForBytesWritten(kReadTimeoutMs)) {
-            fail("mitm: upstream write failed");
-            return;
+
+        // 4. Loop: read a request, forward, read response, send back.
+        //    Stop when either side closes or asks for Connection: close.
+        while (sslClient->state() == QAbstractSocket::ConnectedState
+               && upstream->state() == QAbstractSocket::ConnectedState) {
+
+            HttpRequest req;
+            req.timestamp = QDateTime::currentDateTime();
+            if (!readRequestFrom(sslClient, req)) {
+                // Empty read on a keep-alive connection is a clean close,
+                // not a protocol error worth surfacing.
+                break;
+            }
+            req.host = host;
+            req.port = port;
+            if (req.path.isEmpty() || !req.path.startsWith('/'))
+                req.path = "/" + req.path;
+            emit m_server->requestReceived(req);
+
+            upstream->write(serializeRequestForOrigin(req));
+            if (!upstream->waitForBytesWritten(kReadTimeoutMs)) {
+                fail("mitm: upstream write failed");
+                return;
+            }
+
+            HttpResponse resp;
+            resp.peerAddress = upstream->peerAddress().toString();
+            resp.wasTls = true;
+            if (!readResponse(upstream, resp)) {
+                fail("mitm: malformed upstream response");
+                return;
+            }
+            emit m_server->responseReceived(req, resp);
+
+            sslClient->write(serializeResponse(resp));
+            if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+                fail("mitm: response write to client failed");
+                return;
+            }
+
+            // Honor explicit Connection: close from either party. HTTP/1.0
+            // defaults to close; HTTP/1.1 defaults to keep-alive.
+            const QString reqConn  = findHeader(req.headers,  "Connection");
+            const QString respConn = findHeader(resp.headers, "Connection");
+            const bool reqWantsClose  = reqConn.compare("close",  Qt::CaseInsensitive) == 0;
+            const bool respWantsClose = respConn.compare("close", Qt::CaseInsensitive) == 0;
+            const bool http10 = req.httpVersion.compare("HTTP/1.0", Qt::CaseInsensitive) == 0
+                             || resp.httpVersion.compare("HTTP/1.0", Qt::CaseInsensitive) == 0;
+            const bool http10KeepAlive =
+                reqConn.compare("keep-alive", Qt::CaseInsensitive) == 0
+             && respConn.compare("keep-alive", Qt::CaseInsensitive) == 0;
+            if (reqWantsClose || respWantsClose || (http10 && !http10KeepAlive))
+                break;
         }
 
-        // 5. Read upstream response, emit it for the GUI, encrypt back to client.
-        HttpResponse innerResp;
-        innerResp.peerAddress = upstream->peerAddress().toString();
-        innerResp.wasTls = true;
-        if (!readResponse(upstream, innerResp)) {
-            fail("mitm: malformed upstream response");
-            return;
-        }
-        emit m_server->responseReceived(innerReq, innerResp);
-
-        sslClient->write(serializeResponse(innerResp));
-        sslClient->waitForBytesWritten(kReadTimeoutMs);
         sslClient->disconnectFromHost();
+        if (upstream->state() == QAbstractSocket::ConnectedState)
+            upstream->disconnectFromHost();
     }
 
 private:
