@@ -16,6 +16,7 @@ int main(int argc, char *argv[]) {
     certAuthority.ensureCa();
 
     Nullock::Proxy::ProxyServer proxy;
+    proxy.setCertAuthority(&certAuthority);
     Nullock::FrontEnd::ProxyModel model;
 
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,

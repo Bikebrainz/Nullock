@@ -42,8 +42,8 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 
 | Area | File | State | Notes |
 |---|---|---|---|
-| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS pass-through, verified end-to-end | no MITM/decryption yet |
-| Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter ready | not wired into the proxy yet — next step |
+| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, verified end-to-end | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
+| Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter wired into the tunnel | falls back to blind-pipe if OpenSSL is unavailable |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |
 | Database | `Src/Core/Database/database_manager.*` | empty | SQLite for project save/load |
@@ -64,7 +64,7 @@ In rough order of dependency:
 - [x] **HTTPS via CONNECT tunneling** — pass-through, no decryption. Browsers can route HTTPS through the proxy and traffic flows; each tunnel is logged with host + port.
 - [x] **Proxy model + QML binding** — `ProxyModel` (`QAbstractListModel`) fed by `responseReceived` signal. `app.qml` renders an HTTP History table with #, Host, Method, URL, Status, MIME, Params, TLS, IP, Time columns.
 - [x] **Click-to-inspect** — selecting a row opens a side-by-side Request / Response detail pane in a resizable split view, showing the full request line, headers, and (textual) body up to 64 KB; binary bodies show a placeholder.
-- [~] **HTTPS MITM with on-the-fly cert generation** — _in progress._ `CertAuthority` shipped: generates a persistent Nullock Local Root CA at first launch (`%APPDATA%/Nullock/Nullock/ca/ca.pem`) and can mint per-host leaf certs signed by it (via OpenSSL CLI; results cached in memory). Next step: replace the blind CONNECT tunnel in `runTunnel` with a server-side TLS handshake using the leaf cert, then re-encrypt to the real upstream.
+- [x] **HTTPS MITM with on-the-fly cert generation** — `runTunnel` now upgrades the client socket to `QSslSocket` after the CONNECT, presents a forged leaf cert signed by the local Nullock CA, opens a real TLS connection to the upstream host, and shuttles decrypted HTTP between the two halves. Verified end-to-end with `curl -k --proxy http://127.0.0.1:8080 https://httpbin.org/ip`. To make this work in a real browser without warnings, install `%APPDATA%/Nullock/Nullock/ca/ca.pem` as a trusted root authority. Falls back to blind-pipe tunneling when OpenSSL is unavailable.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Scope filter** — glob-based in/out lists between proxy and storage.
 - [ ] **Database manager** — SQLite for project persistence ("Load Project File" in the dashboard).

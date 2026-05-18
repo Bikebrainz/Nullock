@@ -98,12 +98,31 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
     const QString keyPath  = m_caDir + "/_leaf_" + safe + ".key";
     const QString csrPath  = m_caDir + "/_leaf_" + safe + ".csr";
     const QString certPath = m_caDir + "/_leaf_" + safe + ".pem";
+    const QString extPath  = m_caDir + "/_leaf_" + safe + ".ext";
 
     auto cleanup = [&] {
         QFile::remove(keyPath);
         QFile::remove(csrPath);
         QFile::remove(certPath);
+        QFile::remove(extPath);
     };
+
+    // Write a minimal SAN extension file. Bypasses OpenSSL's default
+    // openssl.cnf, which on some installs fails with "unknown extension
+    // name HOME" when -copy_extensions is used.
+    {
+        QFile extFile(extPath);
+        if (!extFile.open(QFile::WriteOnly | QFile::Truncate)) {
+            cleanup();
+            return {};
+        }
+        const QString contents = QStringLiteral(
+            "subjectAltName = DNS:%1\n"
+            "basicConstraints = critical, CA:FALSE\n"
+            "keyUsage = critical, digitalSignature, keyEncipherment\n"
+            "extendedKeyUsage = serverAuth\n").arg(host);
+        extFile.write(contents.toUtf8());
+    }
 
     if (!runOpenssl({
             "req", "-new", "-nodes",
@@ -111,7 +130,6 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
             "-keyout", keyPath,
             "-out", csrPath,
             "-subj", "/CN=" + host,
-            "-addext", "subjectAltName=DNS:" + host,
         })) {
         cleanup();
         return {};
@@ -125,7 +143,7 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
             "-CAcreateserial",
             "-days", "365",
             "-out", certPath,
-            "-copy_extensions", "copyall",
+            "-extfile", extPath,
         })) {
         cleanup();
         return {};

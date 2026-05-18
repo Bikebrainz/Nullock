@@ -13,6 +13,8 @@ class QTcpSocket;
 
 namespace Nullock::Proxy {
 
+class CertAuthority;
+
 struct HttpRequest {
     QString method;
     QString target;
@@ -49,6 +51,9 @@ public:
     bool isRunning() const;
     quint16 listeningPort() const;
 
+    void setCertAuthority(CertAuthority *ca);
+    CertAuthority *certAuthority() const;
+
 signals:
     void started(quint16 port);
     void stopped();
@@ -63,6 +68,7 @@ private slots:
 
 private:
     QTcpServer *m_server;
+    CertAuthority *m_ca = nullptr;
 };
 
 } // namespace Nullock::Proxy

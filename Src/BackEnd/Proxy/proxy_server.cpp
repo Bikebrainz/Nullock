@@ -1,5 +1,11 @@
 #include "proxy_server.hpp"
 
+#include "cert_authority.hpp"
+
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QSslKey>
+#include <QSslSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUrl>
@@ -186,6 +192,24 @@ public:
         const QString host = req.target.left(colon);
         const quint16 port = req.target.mid(colon + 1).toUShort();
 
+        // Decide: full MITM (decrypt + re-encrypt) if we have a usable CA
+        // and the client socket is actually QSslSocket-capable; otherwise
+        // fall back to blind TCP tunneling so HTTPS still flows opaquely.
+        QSslSocket *sslClient = qobject_cast<QSslSocket *>(m_client);
+        CertAuthority *ca = m_server->certAuthority();
+        LeafCert leaf;
+        if (sslClient && ca && ca->hasOpenssl()) {
+            leaf = ca->leafCertFor(host);
+        }
+
+        if (leaf.valid()) {
+            runMitmTunnel(req, sslClient, host, port, leaf);
+        } else {
+            runBlindTunnel(req, host, port);
+        }
+    }
+
+    void runBlindTunnel(HttpRequest &req, const QString &host, quint16 port) {
         m_upstream = new QTcpSocket(this);
         connect(m_upstream, &QTcpSocket::disconnected, this, &QObject::deleteLater);
 
@@ -226,10 +250,85 @@ public:
         });
     }
 
+    void runMitmTunnel(HttpRequest &connectReq, QSslSocket *sslClient,
+                       const QString &host, quint16 port, const LeafCert &leaf) {
+        // 1. Ack the CONNECT before starting our server-side TLS.
+        sslClient->write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+            fail("mitm ack write failed");
+            return;
+        }
+
+        // 2. Configure the client socket to present our forged leaf as the
+        //    server cert, then start the server-side TLS handshake.
+        QSslCertificate cert(leaf.certPem, QSsl::Pem);
+        QSslKey key(leaf.keyPem, QSsl::Rsa, QSsl::Pem);
+        if (cert.isNull() || key.isNull()) {
+            fail("mitm: leaf cert/key failed to parse");
+            return;
+        }
+        QSslConfiguration cfg = sslClient->sslConfiguration();
+        cfg.setLocalCertificate(cert);
+        cfg.setPrivateKey(key);
+        cfg.setPeerVerifyMode(QSslSocket::VerifyNone);
+        sslClient->setSslConfiguration(cfg);
+        sslClient->startServerEncryption();
+        if (!sslClient->waitForEncrypted(kReadTimeoutMs)) {
+            fail("mitm: client TLS handshake failed: " + sslClient->errorString());
+            return;
+        }
+
+        // 3. Read the decrypted HTTP request the client just wrote.
+        HttpRequest innerReq;
+        innerReq.timestamp = QDateTime::currentDateTime();
+        if (!readRequestFrom(sslClient, innerReq)) {
+            fail("mitm: malformed inner request");
+            return;
+        }
+        innerReq.host = host;
+        innerReq.port = port;
+        if (innerReq.path.isEmpty() || !innerReq.path.startsWith('/'))
+            innerReq.path = "/" + innerReq.path;
+        emit m_server->requestReceived(innerReq);
+
+        // 4. Open a real TLS connection upstream and forward the request.
+        auto *upstream = new QSslSocket(this);
+        m_upstream = upstream;
+        connect(upstream, &QSslSocket::disconnected, this, &QObject::deleteLater);
+        upstream->connectToHostEncrypted(host, port);
+        if (!upstream->waitForEncrypted(kReadTimeoutMs)) {
+            fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
+            return;
+        }
+        upstream->write(serializeRequestForOrigin(innerReq));
+        if (!upstream->waitForBytesWritten(kReadTimeoutMs)) {
+            fail("mitm: upstream write failed");
+            return;
+        }
+
+        // 5. Read upstream response, emit it for the GUI, encrypt back to client.
+        HttpResponse innerResp;
+        innerResp.peerAddress = upstream->peerAddress().toString();
+        innerResp.wasTls = true;
+        if (!readResponse(upstream, innerResp)) {
+            fail("mitm: malformed upstream response");
+            return;
+        }
+        emit m_server->responseReceived(innerReq, innerResp);
+
+        sslClient->write(serializeResponse(innerResp));
+        sslClient->waitForBytesWritten(kReadTimeoutMs);
+        sslClient->disconnectFromHost();
+    }
+
 private:
     bool readRequest(HttpRequest &req) {
+        return readRequestFrom(m_client, req);
+    }
+
+    bool readRequestFrom(QTcpSocket *socket, HttpRequest &req) {
         QByteArray buf;
-        if (!readHeaderBlock(m_client, buf)) return false;
+        if (!readHeaderBlock(socket, buf)) return false;
         const int sep = buf.indexOf("\r\n\r\n");
         const QByteArray headerBlock = buf.left(sep);
         QByteArray rest = buf.mid(sep + 4);
@@ -243,6 +342,7 @@ private:
         req.target = QString::fromLatin1(parts[1]);
         req.httpVersion = QString::fromLatin1(parts[2]);
         req.headers = parseHeaders(headerBlock);
+        req.path = req.target;
 
         if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) return true;
 
@@ -252,7 +352,7 @@ private:
             req.body = rest;
             if (req.body.size() < n) {
                 QByteArray extra;
-                if (!readExact(m_client, n - req.body.size(), extra)) return false;
+                if (!readExact(socket, n - req.body.size(), extra)) return false;
                 req.body.append(extra);
             } else {
                 req.body = req.body.left(n);
@@ -331,12 +431,31 @@ private:
     ProxyServer *m_server;
 };
 
+// Hand out QSslSocket instances (in unencrypted mode) for every incoming
+// connection so the CONNECT handler can later call startServerEncryption()
+// without having to rewrap an existing QTcpSocket.
+class SslReadyTcpServer : public QTcpServer {
+public:
+    using QTcpServer::QTcpServer;
+protected:
+    void incomingConnection(qintptr handle) override {
+        auto *socket = new QSslSocket(this);
+        if (socket->setSocketDescriptor(handle))
+            addPendingConnection(socket);
+        else
+            socket->deleteLater();
+    }
+};
+
 } // namespace
 
 ProxyServer::ProxyServer(QObject *parent)
-    : QObject(parent), m_server(new QTcpServer(this)) {
+    : QObject(parent), m_server(new SslReadyTcpServer(this)) {
     connect(m_server, &QTcpServer::newConnection, this, &ProxyServer::onNewConnection);
 }
+
+void ProxyServer::setCertAuthority(CertAuthority *ca) { m_ca = ca; }
+CertAuthority *ProxyServer::certAuthority() const { return m_ca; }
 
 ProxyServer::~ProxyServer() = default;
 
