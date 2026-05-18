@@ -95,6 +95,26 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
     if (!ensureCa()) return {};
 
     const QString safe     = sanitize(host);
+    const QString leavesDir   = m_caDir + "/leaves";
+    const QString persistCert = leavesDir + "/" + safe + ".pem";
+    const QString persistKey  = leavesDir + "/" + safe + ".key";
+
+    // If we minted this host before and the files are still on disk, reuse
+    // them. Avoids ~100 ms of openssl forks on every restart.
+    if (QFileInfo::exists(persistCert) && QFileInfo::exists(persistKey)) {
+        LeafCert cached;
+        QFile certFile(persistCert);
+        if (certFile.open(QFile::ReadOnly)) cached.certPem = certFile.readAll();
+        QFile keyFile(persistKey);
+        if (keyFile.open(QFile::ReadOnly)) cached.keyPem = keyFile.readAll();
+        if (cached.valid()) {
+            m_cache.insert(host, cached);
+            return cached;
+        }
+    }
+
+    QDir().mkpath(leavesDir);
+
     const QString keyPath  = m_caDir + "/_leaf_" + safe + ".key";
     const QString csrPath  = m_caDir + "/_leaf_" + safe + ".csr";
     const QString certPath = m_caDir + "/_leaf_" + safe + ".pem";
@@ -157,7 +177,19 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
 
     cleanup();
 
-    if (result.valid()) m_cache.insert(host, result);
+    if (result.valid()) {
+        // Persist to leaves/ so subsequent runs (or subsequent connections
+        // after the in-memory cache is cleared) skip the openssl forks.
+        QFile out;
+        out.setFileName(persistCert);
+        if (out.open(QFile::WriteOnly | QFile::Truncate)) out.write(result.certPem);
+        out.close();
+        out.setFileName(persistKey);
+        if (out.open(QFile::WriteOnly | QFile::Truncate)) out.write(result.keyPem);
+        out.close();
+
+        m_cache.insert(host, result);
+    }
     return result;
 }
 
