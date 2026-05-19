@@ -8,6 +8,7 @@
 #include <QSslSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QThread>
 #include <QUrl>
 
 namespace Nullock::Proxy {
@@ -143,10 +144,12 @@ QByteArray serializeRequestForOrigin(const HttpRequest &req) {
 
 class Connection : public QObject {
 public:
+    // No QObject parent: the Connection lives on a worker thread and
+    // owning it from main-thread server would cross thread boundaries.
+    // Lifetime is bound to its QThread's run() stack frame instead.
     Connection(QTcpSocket *client, ProxyServer *server)
-        : QObject(server), m_client(client), m_server(server) {
+        : QObject(nullptr), m_client(client), m_server(server) {
         m_client->setParent(this);
-        connect(m_client, &QTcpSocket::disconnected, this, &QObject::deleteLater);
     }
 
     void run() {
@@ -509,8 +512,24 @@ quint16 ProxyServer::listeningPort() const { return m_server->serverPort(); }
 
 void ProxyServer::onNewConnection() {
     while (QTcpSocket *client = m_server->nextPendingConnection()) {
-        auto *conn = new Connection(client, this);
-        conn->run();
+        // Hand each connection off to its own QThread so blocking I/O
+        // (waitForReadyRead, waitForEncrypted, waitForBytesWritten) on
+        // one connection doesn't stall every other one. Browsers open
+        // 6-12 parallel sockets per page; without this, every resource
+        // serializes through a single thread and the proxy is unusable.
+        client->setParent(nullptr);
+
+        ProxyServer *self = this;
+        auto *thread = QThread::create([self, client]() {
+            Connection conn(client, self);
+            conn.run();
+            // conn goes out of scope here; its destructor deletes the
+            // client socket (parent ownership). The QThread then exits.
+        });
+
+        client->moveToThread(thread);
+        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+        thread->start();
     }
 }
 
