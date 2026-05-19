@@ -2,6 +2,7 @@
 
 #include "cert_authority.hpp"
 
+#include <QEventLoop>
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QSslKey>
@@ -331,6 +332,18 @@ public:
             }
             emit m_server->responseReceived(req, resp);
 
+            // Protocol switch (WebSocket etc.): forward the 101 headers plus
+            // any already-buffered upgrade bytes, then bridge raw frames in
+            // both directions until either side closes. Subsequent traffic
+            // on this tunnel is no longer HTTP and we shouldn't try to parse
+            // it as such.
+            if (resp.statusCode == 101) {
+                sslClient->write(serializeUpgradeResponse(resp));
+                sslClient->waitForBytesWritten(kReadTimeoutMs);
+                runRawRelay(sslClient, upstream);
+                return;
+            }
+
             sslClient->write(serializeResponse(resp));
             if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
                 fail("mitm: response write to client failed");
@@ -414,6 +427,17 @@ private:
         resp.reasonPhrase = QString::fromLatin1(statusLine.mid(sp2 + 1));
         resp.headers = parseHeaders(headerBlock);
 
+        // 1xx and 204/304 have no body. 101 in particular signals a protocol
+        // switch (typically WebSocket); the bytes after the empty line are
+        // not HTTP framed, they belong to whatever protocol the upgrade
+        // negotiated. Hand any leftover buffer back via resp.body so the
+        // caller can flush it to the client before relaying frames.
+        if (resp.statusCode == 101 || resp.statusCode == 204
+            || resp.statusCode == 304 || (resp.statusCode >= 100 && resp.statusCode < 200)) {
+            resp.body = rest;
+            return true;
+        }
+
         const QString te = findHeader(resp.headers, "Transfer-Encoding");
         const QString cl = findHeader(resp.headers, "Content-Length");
 
@@ -455,6 +479,42 @@ private:
         out += "\r\n";
         out += resp.body;
         return out;
+    }
+
+    // Serialize a protocol-switching response (101 Switching Protocols and
+    // friends): preserve the original headers verbatim and tack on any
+    // already-buffered post-header bytes from upstream so the client sees
+    // the start of the new protocol stream without us re-framing it.
+    QByteArray serializeUpgradeResponse(const HttpResponse &resp) {
+        QByteArray out;
+        out += resp.httpVersion.toLatin1() + " "
+             + QByteArray::number(resp.statusCode) + " "
+             + resp.reasonPhrase.toLatin1() + "\r\n";
+        for (const auto &h : resp.headers)
+            out += h.first.toLatin1() + ": " + h.second.toLatin1() + "\r\n";
+        out += "\r\n";
+        out += resp.body;
+        return out;
+    }
+
+    // After a 101 Switching Protocols handshake the framing is no longer
+    // HTTP. Bridge raw bytes between client and upstream in both directions
+    // and exit when either side closes. Uses a local QEventLoop because
+    // QThread::create lambdas don't run an event loop by default.
+    void runRawRelay(QTcpSocket *client, QTcpSocket *upstream) {
+        QEventLoop loop;
+        auto quit = [&loop] { loop.quit(); };
+        connect(client,   &QTcpSocket::disconnected, &loop, quit);
+        connect(upstream, &QTcpSocket::disconnected, &loop, quit);
+        connect(client, &QTcpSocket::readyRead, this, [client, upstream] {
+            upstream->write(client->readAll());
+        });
+        connect(upstream, &QTcpSocket::readyRead, this, [client, upstream] {
+            client->write(upstream->readAll());
+        });
+        if (client->state() == QAbstractSocket::ConnectedState
+            && upstream->state() == QAbstractSocket::ConnectedState)
+            loop.exec();
     }
 
     void fail(const QString &msg) {
