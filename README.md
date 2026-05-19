@@ -42,7 +42,7 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 
 | Area | File | State | Notes |
 |---|---|---|---|
-| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, verified end-to-end | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
+| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, HTTP/1.1 keep-alive, thread-per-connection, per-host MITM bypass | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
 | Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter wired into the tunnel; per-host leaves persisted to `ca/leaves/` so restarts reuse them | falls back to blind-pipe if OpenSSL is unavailable |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |

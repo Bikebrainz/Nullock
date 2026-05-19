@@ -4,8 +4,10 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QList>
+#include <QMutex>
 #include <QObject>
 #include <QPair>
+#include <QSet>
 #include <QString>
 
 class QTcpServer;
@@ -54,6 +56,12 @@ public:
     void setCertAuthority(CertAuthority *ca);
     CertAuthority *certAuthority() const;
 
+    // Hosts where we tried to MITM but the client (or upstream) refused our
+    // forged certificate — typically apps that do cert pinning. Future
+    // CONNECTs to these hosts skip the MITM and use a blind tunnel instead.
+    bool isMitmBlocked(const QString &host) const;
+    void markMitmBlocked(const QString &host);
+
 signals:
     void started(quint16 port);
     void stopped();
@@ -69,6 +77,8 @@ private slots:
 private:
     QTcpServer *m_server;
     CertAuthority *m_ca = nullptr;
+    mutable QMutex m_blockMutex;
+    QSet<QString> m_mitmBlocked;
 };
 
 } // namespace Nullock::Proxy

@@ -195,13 +195,15 @@ public:
         const QString host = req.target.left(colon);
         const quint16 port = req.target.mid(colon + 1).toUShort();
 
-        // Decide: full MITM (decrypt + re-encrypt) if we have a usable CA
-        // and the client socket is actually QSslSocket-capable; otherwise
+        // Decide: full MITM (decrypt + re-encrypt) if we have a usable CA,
+        // the client socket is QSslSocket-capable, AND this host hasn't
+        // previously rejected our forged cert (cert-pinned apps). Otherwise
         // fall back to blind TCP tunneling so HTTPS still flows opaquely.
         QSslSocket *sslClient = qobject_cast<QSslSocket *>(m_client);
         CertAuthority *ca = m_server->certAuthority();
         LeafCert leaf;
-        if (sslClient && ca && ca->hasOpenssl()) {
+        const bool blocked = m_server->isMitmBlocked(host);
+        if (sslClient && ca && ca->hasOpenssl() && !blocked) {
             leaf = ca->leafCertFor(host);
         }
 
@@ -277,7 +279,11 @@ public:
         sslClient->setSslConfiguration(cfg);
         sslClient->startServerEncryption();
         if (!sslClient->waitForEncrypted(kReadTimeoutMs)) {
-            fail("mitm: client TLS handshake failed: " + sslClient->errorString());
+            // Client refused our forged cert -- usually cert pinning.
+            // Add host to the bypass list so the next CONNECT to it skips
+            // MITM and falls through to a blind tunnel.
+            m_server->markMitmBlocked(host);
+            fail("mitm: client TLS handshake failed (host blocked for future MITM): " + sslClient->errorString());
             return;
         }
 
@@ -486,6 +492,15 @@ ProxyServer::ProxyServer(QObject *parent)
 
 void ProxyServer::setCertAuthority(CertAuthority *ca) { m_ca = ca; }
 CertAuthority *ProxyServer::certAuthority() const { return m_ca; }
+
+bool ProxyServer::isMitmBlocked(const QString &host) const {
+    QMutexLocker lock(&m_blockMutex);
+    return m_mitmBlocked.contains(host);
+}
+void ProxyServer::markMitmBlocked(const QString &host) {
+    QMutexLocker lock(&m_blockMutex);
+    m_mitmBlocked.insert(host);
+}
 
 ProxyServer::~ProxyServer() = default;
 
