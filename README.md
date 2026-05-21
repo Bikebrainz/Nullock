@@ -65,9 +65,9 @@ In rough order of dependency:
 - [x] **Proxy model + QML binding** — `ProxyModel` (`QAbstractListModel`) fed by `responseReceived` signal. `app.qml` renders an HTTP History table with #, Host, Method, URL, Status, MIME, Params, TLS, IP, Time columns.
 - [x] **Click-to-inspect** — selecting a row opens a side-by-side Request / Response detail pane in a resizable split view, showing the full request line, headers, and (textual) body up to 64 KB; binary bodies show a placeholder.
 - [x] **HTTPS MITM with on-the-fly cert generation** — `runTunnel` now upgrades the client socket to `QSslSocket` after the CONNECT, presents a forged leaf cert signed by the local Nullock CA, opens a real TLS connection to the upstream host, and shuttles decrypted HTTP between the two halves. Verified end-to-end with `curl -k --proxy http://127.0.0.1:8080 https://httpbin.org/ip`. To make this work in a real browser without warnings, install `%APPDATA%/Nullock/Nullock/ca/ca.pem` as a trusted root authority. Falls back to blind-pipe tunneling when OpenSSL is unavailable.
-- [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
-- [ ] **Scope filter** — glob-based in/out lists between proxy and storage.
 - [x] **Project persistence (no SQL)** — `ProjectStore` reads/writes a project directory: `project.json` for scope + notes, `history.ndjson` for an append-only stream of round-trips. The default project lives at `%APPDATA%/Nullock/Nullock/projects/default/`. On startup the existing history streams into the model; new traffic auto-appends with `flush()` per line so a crash loses at most one in-flight entry.
+- [x] **Scope filter** — glob-based `inScope` / `outOfScope` lists on the project drive the proxy. Out-of-scope hosts still get proxied (browser doesn't break) but skip MITM and never reach the model or `history.ndjson`. Wildcards: `*.example.com`, `*`, etc. Out-of-scope wins over in-scope.
+- [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Repeater backend** — `Networking` module to fire arbitrary requests.
 - [ ] **Intruder fuzzer**.
 - [ ] **Extensions API** — plugin loader and lifecycle.

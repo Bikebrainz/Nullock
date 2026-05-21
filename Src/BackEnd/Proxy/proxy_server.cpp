@@ -164,7 +164,8 @@ public:
         }
 
         rewriteHostPort(req);
-        emit m_server->requestReceived(req);
+        const bool inScope = m_server->isInScope(req.host);
+        if (inScope) emit m_server->requestReceived(req);
 
         QTcpSocket upstream;
         upstream.connectToHost(req.host, req.port);
@@ -183,7 +184,7 @@ public:
         resp.peerAddress = upstream.peerAddress().toString();
         resp.wasTls = false;
         if (!readResponse(&upstream, resp)) { fail("malformed response"); return; }
-        emit m_server->responseReceived(req, resp);
+        if (inScope) emit m_server->responseReceived(req, resp);
 
         m_client->write(serializeResponse(resp));
         m_client->waitForBytesWritten(kReadTimeoutMs);
@@ -196,26 +197,28 @@ public:
         const QString host = req.target.left(colon);
         const quint16 port = req.target.mid(colon + 1).toUShort();
 
-        // Decide: full MITM (decrypt + re-encrypt) if we have a usable CA,
-        // the client socket is QSslSocket-capable, AND this host hasn't
-        // previously rejected our forged cert (cert-pinned apps). Otherwise
-        // fall back to blind TCP tunneling so HTTPS still flows opaquely.
+        // Out-of-scope hosts: never MITM, never log. Just keep their TLS
+        // opaque so the user's regular browsing doesn't break, but their
+        // bank login doesn't end up in the project history either.
+        const bool inScope = m_server->isInScope(host);
+
         QSslSocket *sslClient = qobject_cast<QSslSocket *>(m_client);
         CertAuthority *ca = m_server->certAuthority();
         LeafCert leaf;
         const bool blocked = m_server->isMitmBlocked(host);
-        if (sslClient && ca && ca->hasOpenssl() && !blocked) {
+        if (inScope && sslClient && ca && ca->hasOpenssl() && !blocked) {
             leaf = ca->leafCertFor(host);
         }
 
         if (leaf.valid()) {
             runMitmTunnel(req, sslClient, host, port, leaf);
         } else {
-            runBlindTunnel(req, host, port);
+            runBlindTunnel(req, host, port, /*emitSignals=*/inScope);
         }
     }
 
-    void runBlindTunnel(HttpRequest &req, const QString &host, quint16 port) {
+    void runBlindTunnel(HttpRequest &req, const QString &host, quint16 port,
+                        bool emitSignals = true) {
         m_upstream = new QTcpSocket(this);
         connect(m_upstream, &QTcpSocket::disconnected, this, &QObject::deleteLater);
 
@@ -230,7 +233,7 @@ public:
         req.host = host;
         req.port = port;
         req.path = "(tunnel)";
-        emit m_server->requestReceived(req);
+        if (emitSignals) emit m_server->requestReceived(req);
 
         HttpResponse resp;
         resp.httpVersion = "HTTP/1.1";
@@ -238,7 +241,7 @@ public:
         resp.reasonPhrase = "Connection Established";
         resp.peerAddress = m_upstream->peerAddress().toString();
         resp.wasTls = true;
-        emit m_server->responseReceived(req, resp);
+        if (emitSignals) emit m_server->responseReceived(req, resp);
 
         m_client->write("HTTP/1.1 200 Connection Established\r\n\r\n");
         if (!m_client->waitForBytesWritten(kReadTimeoutMs)) {
@@ -560,6 +563,34 @@ bool ProxyServer::isMitmBlocked(const QString &host) const {
 void ProxyServer::markMitmBlocked(const QString &host) {
     QMutexLocker lock(&m_blockMutex);
     m_mitmBlocked.insert(host);
+}
+
+void ProxyServer::setScope(const QStringList &inScope, const QStringList &outOfScope) {
+    auto compile = [](const QStringList &globs) {
+        QList<QRegularExpression> out;
+        for (const QString &g : globs) {
+            // Glob -> anchored regex with * mapped to .*, everything else literal.
+            QString pattern = QRegularExpression::escape(g);
+            pattern.replace("\\*", ".*");
+            out.append(QRegularExpression("^" + pattern + "$",
+                                          QRegularExpression::CaseInsensitiveOption));
+        }
+        return out;
+    };
+    QMutexLocker lock(&m_scopeMutex);
+    m_inScope    = compile(inScope);
+    m_outOfScope = compile(outOfScope);
+}
+
+bool ProxyServer::isInScope(const QString &host) const {
+    QMutexLocker lock(&m_scopeMutex);
+    // Out-of-scope wins.
+    for (const auto &rx : m_outOfScope)
+        if (rx.match(host).hasMatch()) return false;
+    if (m_inScope.isEmpty()) return true;
+    for (const auto &rx : m_inScope)
+        if (rx.match(host).hasMatch()) return true;
+    return false;
 }
 
 ProxyServer::~ProxyServer() = default;

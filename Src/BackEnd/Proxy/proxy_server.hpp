@@ -7,8 +7,10 @@
 #include <QMutex>
 #include <QObject>
 #include <QPair>
+#include <QRegularExpression>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 
 class QTcpServer;
 class QTcpSocket;
@@ -62,6 +64,14 @@ public:
     bool isMitmBlocked(const QString &host) const;
     void markMitmBlocked(const QString &host);
 
+    // Scope filter. Out-of-scope hosts are still proxied (so the browser
+    // works), but they're never MITM'd and never reach the GUI history.
+    // Globs use shell-style * wildcards, e.g. "*.example.com".
+    // If inScope is empty, everything is treated as in-scope subject to the
+    // outOfScope exclusion list.
+    void setScope(const QStringList &inScope, const QStringList &outOfScope);
+    bool isInScope(const QString &host) const;
+
 signals:
     void started(quint16 port);
     void stopped();
@@ -79,6 +89,9 @@ private:
     CertAuthority *m_ca = nullptr;
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
+    mutable QMutex m_scopeMutex;
+    QList<QRegularExpression> m_inScope;
+    QList<QRegularExpression> m_outOfScope;
 };
 
 } // namespace Nullock::Proxy

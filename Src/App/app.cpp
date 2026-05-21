@@ -28,6 +28,11 @@ int main(int argc, char *argv[]) {
 
     projectStore.open(projectStore.defaultProjectDir());
 
+    // Apply the project's scope to the proxy. Out-of-scope hosts skip the
+    // MITM path and never touch the live model or history.ndjson.
+    proxy.setScope(projectStore.metadata().inScope,
+                   projectStore.metadata().outOfScope);
+
     // New traffic feeds both the live model and the on-disk history.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
