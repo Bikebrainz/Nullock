@@ -184,6 +184,50 @@ bool ProjectStore::saveMetadata() {
 void ProjectStore::setMetadata(const ProjectMeta &meta) {
     m_meta = meta;
     saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::setInScope(const QStringList &globs) {
+    m_meta.inScope = globs;
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::setOutOfScope(const QStringList &globs) {
+    m_meta.outOfScope = globs;
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::setNotes(const QString &notes) {
+    m_meta.notes = notes;
+    saveMetadata();
+}
+
+void ProjectStore::addInScope(const QString &glob) {
+    if (glob.isEmpty() || m_meta.inScope.contains(glob)) return;
+    m_meta.inScope.append(glob);
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::removeInScope(const QString &glob) {
+    if (!m_meta.inScope.removeOne(glob)) return;
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::addOutOfScope(const QString &glob) {
+    if (glob.isEmpty() || m_meta.outOfScope.contains(glob)) return;
+    m_meta.outOfScope.append(glob);
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::removeOutOfScope(const QString &glob) {
+    if (!m_meta.outOfScope.removeOne(glob)) return;
+    saveMetadata();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
 }
 
 void ProjectStore::streamExistingHistory() {

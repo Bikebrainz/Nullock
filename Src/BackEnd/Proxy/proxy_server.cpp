@@ -3,6 +3,7 @@
 #include "cert_authority.hpp"
 
 #include <QEventLoop>
+#include <QFile>
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QSslKey>
@@ -561,8 +562,53 @@ bool ProxyServer::isMitmBlocked(const QString &host) const {
     return m_mitmBlocked.contains(host);
 }
 void ProxyServer::markMitmBlocked(const QString &host) {
+    QString pathToWrite;
+    QStringList snapshot;
+    {
+        QMutexLocker lock(&m_blockMutex);
+        if (m_mitmBlocked.contains(host)) return;
+        m_mitmBlocked.insert(host);
+        pathToWrite = m_blocklistPath;
+        snapshot = QStringList(m_mitmBlocked.constBegin(), m_mitmBlocked.constEnd());
+    }
+    if (!pathToWrite.isEmpty()) {
+        QFile f(pathToWrite);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            snapshot.sort();
+            f.write(snapshot.join('\n').toUtf8());
+            f.write("\n");
+        }
+    }
+}
+
+QStringList ProxyServer::blockedHosts() const {
     QMutexLocker lock(&m_blockMutex);
-    m_mitmBlocked.insert(host);
+    QStringList out(m_mitmBlocked.constBegin(), m_mitmBlocked.constEnd());
+    out.sort();
+    return out;
+}
+
+void ProxyServer::clearMitmBlocked() {
+    QString pathToWrite;
+    {
+        QMutexLocker lock(&m_blockMutex);
+        m_mitmBlocked.clear();
+        pathToWrite = m_blocklistPath;
+    }
+    if (!pathToWrite.isEmpty())
+        QFile::remove(pathToWrite);
+}
+
+void ProxyServer::setBlocklistPath(const QString &path) {
+    QMutexLocker lock(&m_blockMutex);
+    m_blocklistPath = path;
+    m_mitmBlocked.clear();
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    while (!f.atEnd()) {
+        const QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (!line.isEmpty()) m_mitmBlocked.insert(line);
+    }
 }
 
 void ProxyServer::setScope(const QStringList &inScope, const QStringList &outOfScope) {

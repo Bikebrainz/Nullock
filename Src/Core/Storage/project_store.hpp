@@ -32,6 +32,20 @@ public:
     Q_INVOKABLE bool saveMetadata();
     Q_INVOKABLE QString defaultProjectDir() const;
 
+    Q_INVOKABLE QStringList inScope() const   { return m_meta.inScope; }
+    Q_INVOKABLE QStringList outOfScope() const { return m_meta.outOfScope; }
+    Q_INVOKABLE QString notes() const { return m_meta.notes; }
+
+    // Mutate scope from the GUI. Each setter persists to project.json and
+    // fires scopeChanged so the proxy can re-apply the rules live.
+    Q_INVOKABLE void setInScope(const QStringList &globs);
+    Q_INVOKABLE void setOutOfScope(const QStringList &globs);
+    Q_INVOKABLE void setNotes(const QString &notes);
+    Q_INVOKABLE void addInScope(const QString &glob);
+    Q_INVOKABLE void removeInScope(const QString &glob);
+    Q_INVOKABLE void addOutOfScope(const QString &glob);
+    Q_INVOKABLE void removeOutOfScope(const QString &glob);
+
     bool isOpen() const { return m_history.isOpen(); }
     QString currentPath() const { return m_dir; }
     const ProjectMeta &metadata() const { return m_meta; }
@@ -49,6 +63,7 @@ signals:
     void entryLoaded(const Nullock::Proxy::HttpRequest &request,
                      const Nullock::Proxy::HttpResponse &response);
     void errorOccurred(const QString &message);
+    void scopeChanged(const QStringList &inScope, const QStringList &outOfScope);
 
 private:
     bool ensureMetadata();

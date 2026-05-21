@@ -18,6 +18,10 @@ int main(int argc, char *argv[]) {
 
     Nullock::Proxy::ProxyServer proxy;
     proxy.setCertAuthority(&certAuthority);
+    // Persist the MITM bypass list next to the CA. Cert-pinned hosts stay
+    // on the list across app restarts so we never re-fail their handshake.
+    proxy.setBlocklistPath(certAuthority.caDir() + "/mitm_blocked.txt");
+
     Nullock::FrontEnd::ProxyModel model;
     Nullock::Core::ProjectStore projectStore;
 
@@ -28,10 +32,12 @@ int main(int argc, char *argv[]) {
 
     projectStore.open(projectStore.defaultProjectDir());
 
-    // Apply the project's scope to the proxy. Out-of-scope hosts skip the
-    // MITM path and never touch the live model or history.ndjson.
+    // Initial scope from the project file, plus live updates when the user
+    // edits scope from the GUI (or any Q_INVOKABLE caller).
     proxy.setScope(projectStore.metadata().inScope,
                    projectStore.metadata().outOfScope);
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::scopeChanged,
+                     &proxy, &Nullock::Proxy::ProxyServer::setScope);
 
     // New traffic feeds both the live model and the on-disk history.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,

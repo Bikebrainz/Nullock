@@ -63,6 +63,13 @@ public:
     // CONNECTs to these hosts skip the MITM and use a blind tunnel instead.
     bool isMitmBlocked(const QString &host) const;
     void markMitmBlocked(const QString &host);
+    Q_INVOKABLE QStringList blockedHosts() const;
+    Q_INVOKABLE void clearMitmBlocked();
+
+    // Set a file path where the blocked-host list is persisted. The file is
+    // loaded immediately and rewritten on every mark/clear. Plain text, one
+    // host per line.
+    void setBlocklistPath(const QString &path);
 
     // Scope filter. Out-of-scope hosts are still proxied (so the browser
     // works), but they're never MITM'd and never reach the GUI history.
@@ -89,6 +96,7 @@ private:
     CertAuthority *m_ca = nullptr;
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
+    QString m_blocklistPath;
     mutable QMutex m_scopeMutex;
     QList<QRegularExpression> m_inScope;
     QList<QRegularExpression> m_outOfScope;
