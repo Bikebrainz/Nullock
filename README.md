@@ -46,7 +46,7 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 | Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter wired into the tunnel; per-host leaves persisted to `ca/leaves/` so restarts reuse them | falls back to blind-pipe if OpenSSL is unavailable |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |
-| Database | `Src/Core/Database/database_manager.*` | empty | SQLite for project save/load |
+| Storage | `Src/Core/Storage/project_store.*` | working | filesystem-backed project store: per-project directory with `project.json` (scope/notes/metadata) + `history.ndjson` (append-only round-trip log). Auto-streams history into the model on open and auto-appends new traffic. |
 | Extensions API | `Src/Core/APIs/ExtensionsAPI/*` | empty | plugin loader |
 | Manager API | `Src/Core/APIs/ManagerAPI/*` | empty | central facade |
 | App controller | `Src/Core/AppController/*` | empty | C++ ↔ QML wiring |
@@ -67,7 +67,7 @@ In rough order of dependency:
 - [x] **HTTPS MITM with on-the-fly cert generation** — `runTunnel` now upgrades the client socket to `QSslSocket` after the CONNECT, presents a forged leaf cert signed by the local Nullock CA, opens a real TLS connection to the upstream host, and shuttles decrypted HTTP between the two halves. Verified end-to-end with `curl -k --proxy http://127.0.0.1:8080 https://httpbin.org/ip`. To make this work in a real browser without warnings, install `%APPDATA%/Nullock/Nullock/ca/ca.pem` as a trusted root authority. Falls back to blind-pipe tunneling when OpenSSL is unavailable.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
 - [ ] **Scope filter** — glob-based in/out lists between proxy and storage.
-- [ ] **Database manager** — SQLite for project persistence ("Load Project File" in the dashboard).
+- [x] **Project persistence (no SQL)** — `ProjectStore` reads/writes a project directory: `project.json` for scope + notes, `history.ndjson` for an append-only stream of round-trips. The default project lives at `%APPDATA%/Nullock/Nullock/projects/default/`. On startup the existing history streams into the model; new traffic auto-appends with `flush()` per line so a crash loses at most one in-flight entry.
 - [ ] **Repeater backend** — `Networking` module to fire arbitrary requests.
 - [ ] **Intruder fuzzer**.
 - [ ] **Extensions API** — plugin loader and lifecycle.

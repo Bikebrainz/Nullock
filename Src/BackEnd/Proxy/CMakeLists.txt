@@ -6,8 +6,9 @@ add_library(Proxy STATIC
     cert_authority.hpp
 )
 
-# Link Qt libraries
-target_link_libraries(Proxy PRIVATE
+# Qt6::Network is PUBLIC because proxy_server.hpp uses QHostAddress in its
+# public API, so anyone who links Proxy needs the Network includes too.
+target_link_libraries(Proxy PUBLIC
     Qt6::Core
     Qt6::Network
 )

@@ -15,7 +15,7 @@ qt_add_qml_module(NullockApp
 target_link_libraries(NullockApp PRIVATE
     AppController
     APIs
-    Database
+    Storage
     Networking
     Nullem
     Utils

@@ -1,7 +1,7 @@
 # Add Core submodules
 add_subdirectory(AppController)
 add_subdirectory(APIs)
-add_subdirectory(Database)
+add_subdirectory(Storage)
 add_subdirectory(Networking)
 add_subdirectory(Nullem)
 add_subdirectory(Utils)
@@ -10,7 +10,7 @@ add_subdirectory(Utils)
 set(CORE_LIBRARIES
     AppController
     APIs
-    Database
+    Storage
     Networking
     Nullem
     Utils
