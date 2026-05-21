@@ -167,6 +167,7 @@ public:
         rewriteHostPort(req);
         const bool inScope = m_server->isInScope(req.host);
         if (inScope) emit m_server->requestReceived(req);
+        else         m_server->noteFiltered();
 
         QTcpSocket upstream;
         upstream.connectToHost(req.host, req.port);
@@ -202,6 +203,7 @@ public:
         // opaque so the user's regular browsing doesn't break, but their
         // bank login doesn't end up in the project history either.
         const bool inScope = m_server->isInScope(host);
+        if (!inScope) m_server->noteFiltered();
 
         QSslSocket *sslClient = qobject_cast<QSslSocket *>(m_client);
         CertAuthority *ca = m_server->certAuthority();
@@ -637,6 +639,11 @@ bool ProxyServer::isInScope(const QString &host) const {
     for (const auto &rx : m_inScope)
         if (rx.match(host).hasMatch()) return true;
     return false;
+}
+
+void ProxyServer::noteFiltered() {
+    m_filteredCount.fetchAndAddOrdered(1);
+    emit filteredCountChanged();
 }
 
 ProxyServer::~ProxyServer() = default;

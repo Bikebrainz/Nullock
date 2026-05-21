@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QAtomicInt>
 #include <QByteArray>
 #include <QDateTime>
 #include <QHostAddress>
@@ -45,6 +46,7 @@ class ProxyServer : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY runningChanged)
     Q_PROPERTY(quint16 listeningPort READ listeningPort NOTIFY runningChanged)
+    Q_PROPERTY(int filteredCount READ filteredCount NOTIFY filteredCountChanged)
 public:
     explicit ProxyServer(QObject *parent = nullptr);
     ~ProxyServer() override;
@@ -65,6 +67,12 @@ public:
     void markMitmBlocked(const QString &host);
     Q_INVOKABLE QStringList blockedHosts() const;
     Q_INVOKABLE void clearMitmBlocked();
+
+    // How many round-trips the scope filter has dropped from the history
+    // since startup. Exposed so the status bar can surface "you're not
+    // seeing nothing, you're seeing N filtered out".
+    Q_INVOKABLE int filteredCount() const { return m_filteredCount.loadAcquire(); }
+    void noteFiltered();
 
     // Set a file path where the blocked-host list is persisted. The file is
     // loaded immediately and rewritten on every mark/clear. Plain text, one
@@ -87,6 +95,7 @@ signals:
     void responseReceived(const Nullock::Proxy::HttpRequest &request,
                           const Nullock::Proxy::HttpResponse &response);
     void errorOccurred(const QString &message);
+    void filteredCountChanged();
 
 private slots:
     void onNewConnection();
@@ -100,6 +109,7 @@ private:
     mutable QMutex m_scopeMutex;
     QList<QRegularExpression> m_inScope;
     QList<QRegularExpression> m_outOfScope;
+    QAtomicInt m_filteredCount {0};
 };
 
 } // namespace Nullock::Proxy

@@ -209,6 +209,12 @@ ApplicationWindow {
                     color: proxyServer.isRunning ? root.text : "#ff5050"
                 }
                 Cell { text: history.count + " requests"; color: root.accent }
+                Cell {
+                    text: proxyServer.filteredCount > 0
+                          ? (proxyServer.filteredCount + " filtered")
+                          : ""
+                    color: "#a0a0a0"
+                }
                 Item { Layout.fillWidth: true }
                 Cell {
                     text: "clear"
