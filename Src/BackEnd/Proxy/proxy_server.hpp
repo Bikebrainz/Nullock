@@ -18,6 +18,8 @@ class QTcpSocket;
 
 namespace Nullock::Proxy {
 
+class InterceptController;
+
 class CertAuthority;
 
 struct HttpRequest {
@@ -59,6 +61,9 @@ public:
 
     void setCertAuthority(CertAuthority *ca);
     CertAuthority *certAuthority() const;
+
+    void setInterceptController(InterceptController *ic);
+    InterceptController *interceptController() const;
 
     // Hosts where we tried to MITM but the client (or upstream) refused our
     // forged certificate — typically apps that do cert pinning. Future
@@ -103,6 +108,7 @@ private slots:
 private:
     QTcpServer *m_server;
     CertAuthority *m_ca = nullptr;
+    InterceptController *m_intercept = nullptr;
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;

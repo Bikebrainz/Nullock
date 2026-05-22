@@ -1,6 +1,7 @@
 #include "proxy_server.hpp"
 
 #include "cert_authority.hpp"
+#include "intercept.hpp"
 
 #include <QEventLoop>
 #include <QFile>
@@ -176,7 +177,16 @@ public:
             return;
         }
 
-        upstream.write(serializeRequestForOrigin(req));
+        QByteArray outBytes = serializeRequestForOrigin(req);
+        if (auto *ic = m_server->interceptController(); ic && inScope) {
+            const InterceptResult ir = ic->pend(outBytes, req.host, req.port, /*tls=*/false);
+            if (ir.dropped) {
+                m_client->disconnectFromHost();
+                return;
+            }
+            outBytes = ir.bytes;
+        }
+        upstream.write(outBytes);
         if (!upstream.waitForBytesWritten(kReadTimeoutMs)) {
             fail("upstream write failed");
             return;
@@ -338,7 +348,16 @@ public:
                 req.path = "/" + req.path;
             emit m_server->requestReceived(req);
 
-            upstream->write(serializeRequestForOrigin(req));
+            QByteArray outBytes = serializeRequestForOrigin(req);
+            if (auto *ic = m_server->interceptController()) {
+                const InterceptResult ir = ic->pend(outBytes, host, port, /*tls=*/true);
+                if (ir.dropped) {
+                    sslClient->disconnectFromHost();
+                    return;
+                }
+                outBytes = ir.bytes;
+            }
+            upstream->write(outBytes);
             if (!upstream->waitForBytesWritten(kReadTimeoutMs)) {
                 fail("mitm: upstream write failed");
                 return;
@@ -573,6 +592,9 @@ ProxyServer::ProxyServer(QObject *parent)
 
 void ProxyServer::setCertAuthority(CertAuthority *ca) { m_ca = ca; }
 CertAuthority *ProxyServer::certAuthority() const { return m_ca; }
+
+void ProxyServer::setInterceptController(InterceptController *ic) { m_intercept = ic; }
+InterceptController *ProxyServer::interceptController() const { return m_intercept; }
 
 bool ProxyServer::isMitmBlocked(const QString &host) const {
     QMutexLocker lock(&m_blockMutex);

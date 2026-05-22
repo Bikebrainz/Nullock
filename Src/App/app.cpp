@@ -1,5 +1,6 @@
 #include "Proxy/proxy_model.hpp"
 #include "cert_authority.hpp"
+#include "intercept.hpp"
 #include "project_store.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
@@ -50,12 +51,16 @@ int main(int argc, char *argv[]) {
 
     Nullock::Core::Repeater repeater(&model);
 
+    Nullock::Proxy::InterceptController intercept;
+    proxy.setInterceptController(&intercept);
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("proxyModel", &model);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);
     engine.rootContext()->setContextProperty("repeater", &repeater);
+    engine.rootContext()->setContextProperty("intercept", &intercept);
 
     // run from project root so this relative path resolves to Nullock/Src/App/app.qml
     const QUrl url(QStringLiteral("./Src/App/app.qml"));

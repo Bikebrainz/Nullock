@@ -550,14 +550,137 @@ ApplicationWindow {
                 }
             }
 
-            // ── Tab 3: Intercept (placeholder until backend ships) ─────────────
+            // ── Tab 3: Intercept ──────────────────────────────────────────────
             Item {
-                Text {
-                    anchors.centerIn: parent
-                    text: "Intercept coming online…"
-                    color: root.dim
-                    font.family: "Consolas"
-                    font.pixelSize: 14
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    // Toggle + queue counter
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        color: root.pane
+                        border.color: root.line
+                        border.width: 1
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 12
+                            AccentButton {
+                                label: intercept.enabled ? "Intercept ON" : "Intercept OFF"
+                                onClicked: intercept.enabled = !intercept.enabled
+                            }
+                            Cell {
+                                text: intercept.enabled
+                                      ? ("queue: " + intercept.queueDepth)
+                                      : "pass-through (toggle to pause)"
+                                color: intercept.enabled ? root.text : root.dim
+                            }
+                            Item { Layout.fillWidth: true }
+                            AccentButton {
+                                label: "Forward all"
+                                visible: intercept.queueDepth > 0
+                                onClicked: intercept.forwardAll()
+                            }
+                        }
+                    }
+
+                    // Current pending request — editable
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: root.pane
+                        border.color: root.line
+                        border.width: 1
+                        visible: intercept.current !== null
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 4
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: intercept.current
+                                      ? ("#" + intercept.current.id
+                                         + "  " + (intercept.current.tls ? "https" : "http")
+                                         + "://" + intercept.current.host
+                                         + ":"  + intercept.current.port)
+                                      : ""
+                                color: root.accent
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
+
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                TextArea {
+                                    id: interceptArea
+                                    wrapMode: TextArea.NoWrap
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    color: root.text
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    text: intercept.current ? intercept.current.text : ""
+                                }
+                            }
+
+                            // Reset the editable area whenever the current
+                            // pending changes -- the user-edit binding break
+                            // means we can't rely on the original binding to
+                            // refresh.
+                            Connections {
+                                target: intercept
+                                function onCurrentChanged() {
+                                    interceptArea.text = intercept.current
+                                                         ? intercept.current.text
+                                                         : ""
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                AccentButton {
+                                    label: "Forward →"
+                                    onClicked: intercept.forward(interceptArea.text)
+                                }
+                                AccentButton {
+                                    label: "Drop ✕"
+                                    onClicked: intercept.drop()
+                                }
+                                Item { Layout.fillWidth: true }
+                                Cell {
+                                    text: intercept.queueDepth > 1
+                                          ? ((intercept.queueDepth - 1) + " more waiting")
+                                          : ""
+                                    color: root.dim
+                                }
+                            }
+                        }
+                    }
+
+                    // Idle state when no current pending
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        visible: intercept.current === null
+                        Text {
+                            anchors.centerIn: parent
+                            text: intercept.enabled
+                                  ? "Waiting for the next request to land…"
+                                  : "Intercept is off — traffic flows through normally."
+                            color: root.dim
+                            font.family: "Consolas"
+                            font.pixelSize: 13
+                        }
+                    }
                 }
             }
         }
@@ -592,6 +715,14 @@ ApplicationWindow {
                              ? (" / " + projectStore.outOfScopeList.length + " out")
                              : "")
                     color: root.dim
+                }
+                Cell {
+                    text: intercept.enabled
+                          ? ("INTERCEPT" + (intercept.queueDepth > 0
+                                            ? " (" + intercept.queueDepth + ")"
+                                            : ""))
+                          : ""
+                    color: "#ff5050"
                 }
                 Item { Layout.fillWidth: true }
                 Cell {

@@ -4,6 +4,8 @@ add_library(Proxy STATIC
     proxy_server.hpp
     cert_authority.cpp
     cert_authority.hpp
+    intercept.cpp
+    intercept.hpp
 )
 
 # Qt6::Network is PUBLIC because proxy_server.hpp uses QHostAddress in its

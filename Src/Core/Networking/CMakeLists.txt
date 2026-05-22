@@ -21,6 +21,7 @@ target_link_libraries(Networking PUBLIC
 # Linking the QML module DLL here caused STATUS_ENTRYPOINT_NOT_FOUND on
 # Windows; just inherit the include path directly.
 target_include_directories(Networking PRIVATE
+    ${CMAKE_SOURCE_DIR}/Src/FrontEnd/GUI
     ${CMAKE_SOURCE_DIR}/Src/FrontEnd/GUI/Models
 )
 
