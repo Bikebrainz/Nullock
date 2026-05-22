@@ -34,6 +34,9 @@ public:
     Q_INVOKABLE QString requestRawAt(int row) const;
     Q_INVOKABLE QString responseRawAt(int row) const;
     Q_INVOKABLE QString summaryAt(int row) const;
+    Q_INVOKABLE QString hostAt(int row) const;
+    Q_INVOKABLE int     portAt(int row) const;
+    Q_INVOKABLE bool    tlsAt(int row) const;
 
 public slots:
     void addResponse(const Nullock::Proxy::HttpRequest &request,

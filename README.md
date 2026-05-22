@@ -69,7 +69,7 @@ In rough order of dependency:
 - [x] **Scope filter** — glob-based `inScope` / `outOfScope` lists on the project drive the proxy. Out-of-scope hosts still get proxied (browser doesn't break) but skip MITM and never reach the model or `history.ndjson`. Wildcards: `*.example.com`, `*`, etc. Out-of-scope wins over in-scope. `ProjectStore` exposes `addInScope` / `removeInScope` / `setInScope` (and the out variants) as `Q_INVOKABLE` so the GUI can edit live; changes auto-save to `project.json` and re-apply to the running proxy via the `scopeChanged` signal.
 - [x] **Persistent MITM bypass list** — `ProxyServer` writes the auto-collected list of cert-pinned hosts to `ca/mitm_blocked.txt` and reloads it on startup so a host that failed once stays bypassed without re-attempting (and re-failing) the TLS handshake. `blockedHosts()` and `clearMitmBlocked()` are Q_INVOKABLE for a future GUI panel.
 - [ ] **Intercept mode** — pause requests in-flight, expose Forward / Drop signals to the GUI.
-- [ ] **Repeater backend** — `Networking` module to fire arbitrary requests.
+- [x] **Repeater** — `Networking::HttpClient` opens a raw TCP or TLS connection, writes the request bytes verbatim, parses the response (Content-Length, chunked, or until-close). `Repeater` controller holds editable target host/port/TLS and the raw request/response text, exposed to QML as `repeater`. The Proxy History detail pane has a "Send to Repeater" button that calls `repeater.loadFromHistory(row)` and switches to the Repeater tab; the user can then edit and re-send.
 - [ ] **Intruder fuzzer**.
 - [ ] **Extensions API** — plugin loader and lifecycle.
 - [ ] **Themes manager** — JSON-driven theme switching.

@@ -136,6 +136,21 @@ QString ProxyModel::summaryAt(int row) const {
         .arg(e.response.reasonPhrase);
 }
 
+QString ProxyModel::hostAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return {};
+    return m_entries[row].request.host;
+}
+
+int ProxyModel::portAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return 0;
+    return m_entries[row].request.port;
+}
+
+bool ProxyModel::tlsAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return false;
+    return m_entries[row].response.wasTls;
+}
+
 int ProxyModel::countParams(const Nullock::Proxy::HttpRequest &request) {
     int count = 0;
     const int q = request.path.indexOf('?');

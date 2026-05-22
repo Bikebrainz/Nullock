@@ -2,6 +2,7 @@
 #include "cert_authority.hpp"
 #include "project_store.hpp"
 #include "proxy_server.hpp"
+#include "repeater.hpp"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
@@ -47,11 +48,14 @@ int main(int argc, char *argv[]) {
 
     proxy.start();
 
+    Nullock::Core::Repeater repeater(&model);
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("proxyModel", &model);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);
+    engine.rootContext()->setContextProperty("repeater", &repeater);
 
     // run from project root so this relative path resolves to Nullock/Src/App/app.qml
     const QUrl url(QStringLiteral("./Src/App/app.qml"));

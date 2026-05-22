@@ -442,14 +442,111 @@ ApplicationWindow {
                 }
             }
 
-            // ── Tab 2: Repeater (placeholder until backend ships) ──────────────
+            // ── Tab 2: Repeater ───────────────────────────────────────────────
             Item {
-                Text {
-                    anchors.centerIn: parent
-                    text: "Repeater coming online…"
-                    color: root.dim
-                    font.family: "Consolas"
-                    font.pixelSize: 14
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    // Target row
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        color: root.pane
+                        border.color: root.line
+                        border.width: 1
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 8
+                            HeaderCell { text: "Target" }
+                            TextField {
+                                Layout.preferredWidth: 280
+                                placeholderText: "host"
+                                text: repeater.host
+                                color: root.text
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                onEditingFinished: repeater.host = text
+                            }
+                            HeaderCell { text: ":" }
+                            TextField {
+                                Layout.preferredWidth: 80
+                                text: "" + repeater.port
+                                color: root.text
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                onEditingFinished: repeater.port = parseInt(text) || 0
+                            }
+                            AccentButton {
+                                label: repeater.useTls ? "TLS on" : "TLS off"
+                                onClicked: repeater.useTls = !repeater.useTls
+                            }
+                            Item { Layout.fillWidth: true }
+                            Cell { text: repeater.statusLine; color: root.accent; Layout.preferredWidth: 200 }
+                            AccentButton {
+                                label: repeater.busy ? "..." : "Send"
+                                onClicked: repeater.send()
+                            }
+                            AccentButton {
+                                label: "Clear"
+                                onClicked: repeater.clear()
+                            }
+                        }
+                    }
+
+                    // Request / Response side-by-side
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 6
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 2
+                            HeaderCell { text: "Request (editable)" }
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                TextArea {
+                                    wrapMode: TextArea.NoWrap
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    color: root.text
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    text: repeater.requestText
+                                    onEditingFinished: repeater.requestText = text
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 2
+                            HeaderCell { text: "Response" }
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                TextArea {
+                                    readOnly: true
+                                    wrapMode: TextArea.NoWrap
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    color: root.text
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    text: repeater.responseText
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
