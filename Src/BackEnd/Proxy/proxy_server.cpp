@@ -299,8 +299,23 @@ public:
         auto *upstream = new QSslSocket(this);
         m_upstream = upstream;
         connect(upstream, &QSslSocket::disconnected, this, &QObject::deleteLater);
+
+        // Tell the upstream we only speak HTTP/1.1 via ALPN. Without this,
+        // Qt advertises http/1.1 + h2 and a modern server (most of them now)
+        // will pick h2 -- which our parser doesn't understand, so the next
+        // bytes look like garbage and the connection dies. Forcing http/1.1
+        // makes servers transparently downgrade. The handful of h2-only
+        // origins will fail handshake; they get auto-marked MITM-blocked
+        // and fall back to blind-pipe on next attempt.
+        QSslConfiguration upstreamCfg = upstream->sslConfiguration();
+        upstreamCfg.setAllowedNextProtocols({ QByteArrayLiteral("http/1.1") });
+        upstream->setSslConfiguration(upstreamCfg);
+
         upstream->connectToHostEncrypted(host, port);
         if (!upstream->waitForEncrypted(kReadTimeoutMs)) {
+            // h2-only origins land here. Mark blocked so future CONNECTs
+            // skip the MITM dance and pass through opaquely.
+            m_server->markMitmBlocked(host);
             fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
             return;
         }

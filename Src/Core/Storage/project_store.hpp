@@ -23,6 +23,8 @@ class ProjectStore : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool isOpen READ isOpen NOTIFY openedChanged)
     Q_PROPERTY(QString currentPath READ currentPath NOTIFY openedChanged)
+    Q_PROPERTY(QStringList inScopeList READ inScope NOTIFY scopeChanged)
+    Q_PROPERTY(QStringList outOfScopeList READ outOfScope NOTIFY scopeChanged)
 public:
     explicit ProjectStore(QObject *parent = nullptr);
     ~ProjectStore() override;
