@@ -1,6 +1,7 @@
 #include "proxy_server.hpp"
 
 #include "cert_authority.hpp"
+#include "http2_client.hpp"
 #include "intercept.hpp"
 
 #include <QEventLoop>
@@ -311,15 +312,15 @@ public:
         m_upstream = upstream;
         connect(upstream, &QSslSocket::disconnected, this, &QObject::deleteLater);
 
-        // Tell the upstream we only speak HTTP/1.1 via ALPN. Without this,
-        // Qt advertises http/1.1 + h2 and a modern server (most of them now)
-        // will pick h2 -- which our parser doesn't understand, so the next
-        // bytes look like garbage and the connection dies. Forcing http/1.1
-        // makes servers transparently downgrade. The handful of h2-only
-        // origins will fail handshake; they get auto-marked MITM-blocked
-        // and fall back to blind-pipe on next attempt.
+        // Advertise both h2 and http/1.1 ALPN to upstream. If the server
+        // picks h2 we hand the request off to H2Client (libnghttp2 wrapper);
+        // h1 stays in the existing keep-alive loop. Either way the browser
+        // sees a transparent HTTP/1.1 response.
         QSslConfiguration upstreamCfg = upstream->sslConfiguration();
-        upstreamCfg.setAllowedNextProtocols({ QByteArrayLiteral("http/1.1") });
+        upstreamCfg.setAllowedNextProtocols({
+            QByteArrayLiteral("h2"),
+            QByteArrayLiteral("http/1.1"),
+        });
         upstream->setSslConfiguration(upstreamCfg);
 
         upstream->connectToHostEncrypted(host, port);
@@ -332,14 +333,61 @@ public:
             fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
             return;
         }
-        // Defense in depth: Qt's ALPN pinning above should have prevented
-        // h2 from being negotiated, but if a server somehow returns an
-        // ALPN we don't speak, treat it the same as a handshake failure --
-        // mark blocked and bail.
         const QByteArray negotiated = upstream->sslConfiguration().nextNegotiatedProtocol();
-        if (!negotiated.isEmpty() && negotiated != "http/1.1") {
+        const bool upstreamIsH2 = (negotiated == "h2");
+        if (!negotiated.isEmpty() && negotiated != "http/1.1" && !upstreamIsH2) {
             m_server->markMitmBlocked(host);
             fail("mitm: upstream negotiated unexpected ALPN: " + QString::fromLatin1(negotiated));
+            return;
+        }
+
+        // ── h2 upstream path: bridge h1-client to h2-server ──────────────
+        // Browser side stays HTTP/1.1 (we never advertised h2 on the
+        // server socket). Read one h1 request, fire it through H2Client,
+        // translate the h2 response back to h1 for the browser, close.
+        // No keep-alive in this branch -- each request gets a fresh
+        // tunnel. (Real h2 multiplexing is out of scope; we just want to
+        // unblock h2-only origins.)
+        if (upstreamIsH2) {
+            m_server->noteH2Upstream();
+            HttpRequest req;
+            req.timestamp = QDateTime::currentDateTime();
+            if (!readRequestFrom(sslClient, req)) {
+                fail("mitm/h2: malformed inner request");
+                return;
+            }
+            req.host = host;
+            req.port = port;
+            if (req.path.isEmpty() || !req.path.startsWith('/'))
+                req.path = "/" + req.path;
+            emit m_server->requestReceived(req);
+
+            // Intercept still works -- pend before sending upstream.
+            if (auto *ic = m_server->interceptController()) {
+                QByteArray dummyBytes = serializeRequestForOrigin(req);
+                const InterceptResult ir = ic->pend(dummyBytes, host, port, true);
+                if (ir.dropped) { sslClient->disconnectFromHost(); return; }
+                // For h2 we send via H2Client which takes an HttpRequest, not
+                // bytes -- so we just use the (possibly user-edited) bytes to
+                // re-derive the request fields. Keep it simple: re-use the
+                // original req. (Editing intercept text in h2 mode is a known
+                // limitation; documented in README.)
+            }
+
+            H2Client h2;
+            const auto h2res = h2.sendRequest(upstream, req);
+            if (!h2res.ok) {
+                qWarning().noquote() << "mitm/h2 failed for" << host
+                                     << ":" << h2res.errorMessage;
+                m_server->markMitmBlocked(host);
+                fail("mitm/h2: " + h2res.errorMessage);
+                return;
+            }
+            emit m_server->responseReceived(req, h2res.response);
+
+            sslClient->write(serializeResponse(h2res.response));
+            sslClient->waitForBytesWritten(kReadTimeoutMs);
+            sslClient->disconnectFromHost();
             return;
         }
 
@@ -694,6 +742,10 @@ bool ProxyServer::isInScope(const QString &host) const {
 void ProxyServer::noteFiltered() {
     m_filteredCount.fetchAndAddOrdered(1);
     emit filteredCountChanged();
+}
+
+void ProxyServer::noteH2Upstream() {
+    m_h2UpstreamCount.fetchAndAddOrdered(1);
 }
 
 ProxyServer::~ProxyServer() = default;

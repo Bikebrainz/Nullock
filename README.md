@@ -11,6 +11,7 @@ Requirements:
 - Qt6 (Core, Gui, Qml, Quick, Network)
 - A C++20 compiler (MSVC 2022 / GCC 13+ / Clang 16+)
 - OpenSSL CLI (for MITM cert generation; on Windows install via `winget install ShiningLight.OpenSSL.Light`). `CertAuthority` looks for `openssl.exe` at the standard `C:\Program Files\OpenSSL-Win64\bin\` location and falls back to PATH.
+- libnghttp2 (for HTTP/2 upstream support). Easiest via vcpkg: `vcpkg install nghttp2:x64-windows`. The Proxy CMakeLists picks up `NULLOCK_NGHTTP2_ROOT` (defaults to `D:/vcpkg/installed/x64-windows`); set it via `cmake -DNULLOCK_NGHTTP2_ROOT=...` if your vcpkg lives elsewhere. `nghttp2.dll` must be deployed alongside the exe.
 
 Configure and build (point CMAKE_PREFIX_PATH at your Qt install):
 
@@ -52,7 +53,8 @@ PASS  proxy listening on 127.0.0.1:8080
 PASS  intercept blocks and forward completes the request
 PASS  intercept drop breaks the connection
 PASS  repeater send returns a 200 with a real body
-smoke test: 4 passed, 0 failed
+PASS  HTTPS MITM end-to-end (h2 upstream, counter 0 -> 1)
+smoke test: 5 passed, 0 failed
 ```
 
 Verified on Windows 11 with MSVC 2022 Community + Qt 6.7.3 (`win64_msvc2019_64`),
@@ -62,7 +64,8 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 
 | Area | File | State | Notes |
 |---|---|---|---|
-| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, HTTP/1.1 keep-alive, thread-per-connection, per-host MITM bypass, WebSocket relay after 101 | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
+| Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, HTTP/1.1 keep-alive, **HTTP/2 upstream via libnghttp2**, thread-per-connection, per-host MITM bypass, WebSocket relay after 101 | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
+| HTTP/2 client | `Src/BackEnd/Proxy/http2_client.*` | nghttp2-backed h2 client that takes an established `QSslSocket` (ALPN=h2) and runs one request synchronously, translating the response into our `HttpResponse` so the browser still sees HTTP/1.1 | single stream per CONNECT; no h2 multiplexing or server push |
 | Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter wired into the tunnel; per-host leaves persisted to `ca/leaves/` so restarts reuse them | falls back to blind-pipe if OpenSSL is unavailable |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |

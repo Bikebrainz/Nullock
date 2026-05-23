@@ -79,6 +79,12 @@ public:
     Q_INVOKABLE int filteredCount() const { return m_filteredCount.loadAcquire(); }
     void noteFiltered();
 
+    // How many round-trips have actually gone through the HTTP/2 upstream
+    // path (i.e. upstream ALPN came back as "h2" and H2Client handled the
+    // request). Useful for verifying the h2 bridge is exercised in tests.
+    Q_INVOKABLE int h2UpstreamCount() const { return m_h2UpstreamCount.loadAcquire(); }
+    void noteH2Upstream();
+
     // Set a file path where the blocked-host list is persisted. The file is
     // loaded immediately and rewritten on every mark/clear. Plain text, one
     // host per line.
@@ -116,6 +122,7 @@ private:
     QList<QRegularExpression> m_inScope;
     QList<QRegularExpression> m_outOfScope;
     QAtomicInt m_filteredCount {0};
+    QAtomicInt m_h2UpstreamCount {0};
 };
 
 } // namespace Nullock::Proxy

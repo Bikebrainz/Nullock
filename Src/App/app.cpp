@@ -166,6 +166,26 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  .arg(repeater.statusLine())
                  .arg(QString::fromUtf8(repeater.responseText().toUtf8().left(80))));
 
+    // -- 5. HTTPS MITM completes via either h1 or h2 upstream ----------------
+    //  httpbin.org typically negotiates h2 these days, but the test passes
+    //  as long as we got a real 200 back -- the h2 counter is recorded so
+    //  we can tell which path actually fired.
+    const int h2Before = proxy.h2UpstreamCount();
+    const auto h2Curl = runCurl({
+        "-sk", "--max-time", "20",
+        "--proxy", "http://127.0.0.1:8080",
+        "https://httpbin.org/uuid" }, 20000);
+    const int h2After = proxy.h2UpstreamCount();
+    const bool gotJson = h2Curl.stdoutBytes.contains("\"uuid\"");
+    if (h2Curl.exitCode == 0 && gotJson) {
+        const QString viaPath = (h2After > h2Before) ? "h2 upstream" : "h1 upstream";
+        pass(QString("HTTPS MITM end-to-end (%1, counter %2 -> %3)")
+                 .arg(viaPath).arg(h2Before).arg(h2After));
+    } else {
+        fail(QString("HTTPS MITM failed: curl exit=%1 gotJson=%2 (h2 counter %3 -> %4)")
+                 .arg(h2Curl.exitCode).arg(gotJson).arg(h2Before).arg(h2After));
+    }
+
     out << Qt::endl << "smoke test: " << passed << " passed, "
         << failed << " failed" << Qt::endl;
     return failed == 0 ? 0 : 1;
@@ -219,7 +239,13 @@ int main(int argc, char *argv[]) {
     Nullock::Proxy::InterceptController intercept;
     proxy.setInterceptController(&intercept);
 
-    if (smokeTest) return runSmokeTest(proxy, intercept, repeater);
+    if (smokeTest) {
+        // Smoke test exercises HTTPS via the h2 path -- if a previous run
+        // marked one of the test hosts as MITM-blocked we'd blind-pipe and
+        // never count an h2 round-trip. Reset for a clean run.
+        proxy.clearMitmBlocked();
+        return runSmokeTest(proxy, intercept, repeater);
+    }
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("proxyModel", &model);
