@@ -18,8 +18,9 @@ namespace Nullock::Proxy {
 
 namespace {
 
-constexpr int kReadTimeoutMs = 15'000;
-constexpr int kMaxHeaderBytes = 64 * 1024;
+constexpr int kReadTimeoutMs      = 15'000;
+constexpr int kHandshakeTimeoutMs = 3'000;  // short so h2-only hosts bypass fast
+constexpr int kMaxHeaderBytes     = 64 * 1024;
 
 bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
     while (!out.contains("\r\n\r\n")) {
@@ -322,11 +323,23 @@ public:
         upstream->setSslConfiguration(upstreamCfg);
 
         upstream->connectToHostEncrypted(host, port);
-        if (!upstream->waitForEncrypted(kReadTimeoutMs)) {
-            // h2-only origins land here. Mark blocked so future CONNECTs
-            // skip the MITM dance and pass through opaquely.
+        if (!upstream->waitForEncrypted(kHandshakeTimeoutMs)) {
+            // h2-only origins land here (handshake gets refused because we
+            // only offered http/1.1 ALPN). Mark blocked so future CONNECTs
+            // skip the MITM dance and pass through opaquely. Short timeout
+            // means the user sees ~3s on first hit, not 15s.
             m_server->markMitmBlocked(host);
             fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
+            return;
+        }
+        // Defense in depth: Qt's ALPN pinning above should have prevented
+        // h2 from being negotiated, but if a server somehow returns an
+        // ALPN we don't speak, treat it the same as a handshake failure --
+        // mark blocked and bail.
+        const QByteArray negotiated = upstream->sslConfiguration().nextNegotiatedProtocol();
+        if (!negotiated.isEmpty() && negotiated != "http/1.1") {
+            m_server->markMitmBlocked(host);
+            fail("mitm: upstream negotiated unexpected ALPN: " + QString::fromLatin1(negotiated));
             return;
         }
 

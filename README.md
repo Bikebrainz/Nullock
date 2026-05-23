@@ -35,6 +35,26 @@ Run from the project root so the relative QML path resolves:
 Build\Src\App\Release\NullockApp.exe
 ```
 
+## Smoke test
+
+A self-test that exercises the proxy, intercept, and repeater end-to-end
+without GUI interaction lives behind a flag:
+
+```
+Build\Src\App\Release\NullockApp.exe --smoke-test
+```
+
+Exits 0 on pass, 1 on fail. Output (captured via redirected stdout since
+the app is a Windows GUI subsystem):
+
+```
+PASS  proxy listening on 127.0.0.1:8080
+PASS  intercept blocks and forward completes the request
+PASS  intercept drop breaks the connection
+PASS  repeater send returns a 200 with a real body
+smoke test: 4 passed, 0 failed
+```
+
 Verified on Windows 11 with MSVC 2022 Community + Qt 6.7.3 (`win64_msvc2019_64`),
 proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 
