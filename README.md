@@ -69,6 +69,7 @@ proxy round-trips real HTTP and HTTPS traffic via `127.0.0.1:8080`.
 |---|---|---|---|
 | Proxy core | `Src/BackEnd/Proxy/proxy_server.*` | plain HTTP + HTTPS MITM, HTTP/1.1 keep-alive, **HTTP/2 upstream via libnghttp2**, thread-per-connection, per-host MITM bypass, WebSocket relay after 101 | TLS 1.3, AES-256-GCM-SHA384 negotiated against real hosts |
 | HTTP/2 client | `Src/BackEnd/Proxy/http2_client.*` | nghttp2-backed h2 client that takes an established `QSslSocket` (ALPN=h2) and runs one request synchronously, translating the response into our `HttpResponse` so the browser still sees HTTP/1.1 | single stream per CONNECT; no h2 multiplexing or server push |
+| WebSocket | `Src/BackEnd/Proxy/websocket.*` | RFC 6455 frame parser used by `runWebSocketRelay`; after a 101 upgrade each direction's bytes are parsed (masked client frames + unmasked server frames) and every complete frame lands in HTTP History as a synthetic `WS↑` / `WS↓` entry showing opcode, size, and payload | no compression (permessage-deflate); 16 MiB per-frame sanity cap |
 | Cert authority | `Src/BackEnd/Proxy/cert_authority.*` | generates root CA on first run; leaf cert minter wired into the tunnel; per-host leaves persisted to `ca/leaves/` so restarts reuse them | falls back to blind-pipe if OpenSSL is unavailable |
 | Cache | `Src/BackEnd/Cache/cache_handler.*` | empty | response cache, design TBD |
 | Networking | `Src/Core/Networking/networking.*` | empty | outbound HTTP for Repeater |

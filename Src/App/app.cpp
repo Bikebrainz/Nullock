@@ -2,6 +2,7 @@
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
 #include "Themes/themes_manager.hpp"
+#include "websocket.hpp"
 #include "cert_authority.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
@@ -246,6 +247,40 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
         fail(QString("intruder: running=%1 done=%2/%3 statuses=[%4,%5,%6,%7]")
                  .arg(intruder.running()).arg(intruder.completedCount()).arg(intruder.totalCount())
                  .arg(statusAt(0)).arg(statusAt(1)).arg(statusAt(2)).arg(statusAt(3)));
+    }
+
+    // -- 9. WebSocket frame parser correctness --------------------------------
+    //  Doesn't need network. Build two known-good frames (unmasked text
+    //  "Hello" and masked binary 4 bytes), feed them concatenated through
+    //  one parser, and verify both come out intact.
+    {
+        Nullock::Proxy::WsFrameParser parser;
+        // Unmasked text frame "Hello": FIN=1 opcode=1, len=5
+        QByteArray frame1 = QByteArray::fromHex("810548656c6c6f");
+        // Masked binary frame {0xde,0xad,0xbe,0xef}: FIN=1 opcode=2 MASK=1 len=4 mask=11223344
+        QByteArray maskKey = QByteArray::fromHex("11223344");
+        QByteArray plain   = QByteArray::fromHex("deadbeef");
+        QByteArray masked;
+        for (int i = 0; i < plain.size(); ++i)
+            masked.append(static_cast<char>(
+                static_cast<quint8>(plain[i]) ^ static_cast<quint8>(maskKey[i & 3])));
+        QByteArray frame2 = QByteArray::fromHex("8284") + maskKey + masked;
+
+        const auto frames = parser.feed(frame1 + frame2);
+        bool ok = frames.size() == 2
+               && frames[0].opcode == 0x1
+               && frames[0].payload == QByteArrayLiteral("Hello")
+               && frames[0].fin
+               && frames[1].opcode == 0x2
+               && frames[1].payload == plain
+               && frames[1].fin;
+        if (ok)
+            pass("websocket frame parser decodes masked + unmasked");
+        else
+            fail(QString("ws parser: got %1 frames, first=[%2] second=[%3]")
+                     .arg(frames.size())
+                     .arg(QString::fromLatin1(frames.value(0).payload))
+                     .arg(QString::fromLatin1(frames.value(1).payload.toHex())));
     }
 
     // -- 8. HAR export of the history collected so far -----------------------

@@ -3,9 +3,12 @@
 #include "cert_authority.hpp"
 #include "http2_client.hpp"
 #include "intercept.hpp"
+#include "websocket.hpp"
 
 #include <QEventLoop>
 #include <QFile>
+
+#include <memory>
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QSslKey>
@@ -441,7 +444,11 @@ public:
             if (resp.statusCode == 101) {
                 sslClient->write(serializeUpgradeResponse(resp));
                 sslClient->waitForBytesWritten(kReadTimeoutMs);
-                runRawRelay(sslClient, upstream);
+                const QString upgrade = findHeader(req.headers, "Upgrade");
+                if (upgrade.compare("websocket", Qt::CaseInsensitive) == 0)
+                    runWebSocketRelay(sslClient, upstream, host, port);
+                else
+                    runRawRelay(sslClient, upstream);
                 return;
             }
 
@@ -613,6 +620,70 @@ private:
         connect(upstream, &QTcpSocket::readyRead, this, [client, upstream] {
             client->write(upstream->readAll());
         });
+        if (client->state() == QAbstractSocket::ConnectedState
+            && upstream->state() == QAbstractSocket::ConnectedState)
+            loop.exec();
+    }
+
+    // Same shape as runRawRelay but parses each direction's bytes as
+    // RFC 6455 WebSocket frames before forwarding them unchanged. Every
+    // complete frame surfaces as a synthetic entry in the HTTP History
+    // so the user actually sees the messages flowing through.
+    void runWebSocketRelay(QTcpSocket *client, QTcpSocket *upstream,
+                           const QString &host, quint16 port) {
+        auto clientParser = std::make_shared<WsFrameParser>();
+        auto upstreamParser = std::make_shared<WsFrameParser>();
+        QString hostCopy = host;
+        quint16 portCopy = port;
+        auto *server = m_server;
+
+        auto emitFrame = [server, hostCopy, portCopy](bool fromClient, const WsFrame &f) {
+            HttpRequest req;
+            req.timestamp = QDateTime::currentDateTime();
+            req.method = fromClient ? QStringLiteral("WS↑") : QStringLiteral("WS↓");
+            req.host = hostCopy;
+            req.port = portCopy;
+            req.path = QString("(%1, %2 B%3)")
+                           .arg(QString::fromLatin1(wsOpcodeLabel(f.opcode)))
+                           .arg(f.payload.size())
+                           .arg(f.fin ? "" : ", continued");
+            req.body = f.payload;
+            HttpResponse resp;
+            resp.httpVersion  = "WS";
+            resp.statusCode   = 101;
+            resp.reasonPhrase = QString::fromLatin1(wsOpcodeLabel(f.opcode));
+            resp.wasTls       = true;
+            resp.body         = f.payload;
+            // Carry the content-type-ish info via a header so the inspector
+            // body renderer treats text frames as text.
+            QString mime = (f.opcode == 0x1)
+                ? QStringLiteral("text/plain")
+                : QStringLiteral("application/octet-stream");
+            resp.headers.append({ QStringLiteral("Content-Type"), mime });
+            emit server->requestReceived(req);
+            emit server->responseReceived(req, resp);
+        };
+
+        QEventLoop loop;
+        auto quit = [&loop] { loop.quit(); };
+        connect(client,   &QTcpSocket::disconnected, &loop, quit);
+        connect(upstream, &QTcpSocket::disconnected, &loop, quit);
+
+        connect(client, &QTcpSocket::readyRead, this,
+            [client, upstream, clientParser, emitFrame] {
+                const QByteArray bytes = client->readAll();
+                upstream->write(bytes);
+                for (const WsFrame &f : clientParser->feed(bytes))
+                    emitFrame(true, f);
+            });
+        connect(upstream, &QTcpSocket::readyRead, this,
+            [client, upstream, upstreamParser, emitFrame] {
+                const QByteArray bytes = upstream->readAll();
+                client->write(bytes);
+                for (const WsFrame &f : upstreamParser->feed(bytes))
+                    emitFrame(false, f);
+            });
+
         if (client->state() == QAbstractSocket::ConnectedState
             && upstream->state() == QAbstractSocket::ConnectedState)
             loop.exec();
