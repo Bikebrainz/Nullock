@@ -25,6 +25,7 @@ target_link_libraries(NullockApp PRIVATE
 target_link_libraries(NullockApp PRIVATE
     Cache
     Proxy
+    Control
 )
 
 # Link FrontEnd QML module

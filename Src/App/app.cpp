@@ -3,7 +3,10 @@
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
 #include "Themes/themes_manager.hpp"
+#include "control_server.hpp"
 #include "websocket.hpp"
+
+#include <QDesktopServices>
 #include "cert_authority.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
@@ -472,6 +475,32 @@ int main(int argc, char *argv[]) {
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
         return runSmokeTest(proxy, intercept, repeater, intruder, projectStore, extensions);
+    }
+
+    // Stand up the HTTP control server that hosts the React UI and exposes
+    // /api/* against all the wired backend objects. The UI is what the user
+    // actually interacts with -- the QML window is a legacy headless host.
+    Nullock::Control::Wiring wiring;
+    wiring.proxy        = &proxy;
+    wiring.ca           = &certAuthority;
+    wiring.intercept    = &intercept;
+    wiring.history      = &model;
+    wiring.historyView  = &filteredModel;
+    wiring.siteMap      = &siteMap;
+    wiring.themes       = &themes;
+    wiring.projectStore = &projectStore;
+    wiring.repeater     = &repeater;
+    wiring.intruder     = &intruder;
+    wiring.extensions   = &extensions;
+    wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
+    // dev-run path: project root has ui-v2/. For installed binaries we'd
+    // bundle this into a Qt resource; not done yet.
+
+    Nullock::Control::ControlServer controlServer(wiring);
+    if (controlServer.start()) {
+        const QString url = QString("http://127.0.0.1:%1/")
+                                .arg(controlServer.listeningPort());
+        QDesktopServices::openUrl(QUrl(url));
     }
 
     QQmlApplicationEngine engine;
