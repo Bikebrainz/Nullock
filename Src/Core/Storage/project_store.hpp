@@ -40,6 +40,13 @@ public:
     // Returns the absolute output path on success, empty string on failure.
     Q_INVOKABLE QString exportHar(const QString &outPath = {});
 
+    // Read a HAR file and replay each entry through the entryLoaded signal
+    // (so anything wired to it -- ProxyModel, etc -- picks it up) plus
+    // append to our own history.ndjson. Returns number of entries imported,
+    // or -1 on error. Accepts either a path or raw JSON bytes.
+    Q_INVOKABLE int importHar(const QString &harPath);
+    int importHarBytes(const QByteArray &harJson);
+
     Q_INVOKABLE QStringList inScope() const   { return m_meta.inScope; }
     Q_INVOKABLE QStringList outOfScope() const { return m_meta.outOfScope; }
     Q_INVOKABLE QString notes() const { return m_meta.notes; }

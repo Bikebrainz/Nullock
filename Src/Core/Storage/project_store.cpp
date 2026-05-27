@@ -415,4 +415,82 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
     return outPath;
 }
 
+namespace {
+
+Nullock::Proxy::HttpRequest harEntryToRequest(const QJsonObject &entry) {
+    Nullock::Proxy::HttpRequest req;
+    const QJsonObject r = entry.value("request").toObject();
+    req.method      = r.value("method").toString();
+    req.httpVersion = r.value("httpVersion").toString();
+    if (req.httpVersion.isEmpty()) req.httpVersion = QStringLiteral("HTTP/1.1");
+
+    // Parse the URL out into host / port / path.
+    const QUrl url(r.value("url").toString());
+    req.host = url.host();
+    req.port = static_cast<quint16>(url.port(url.scheme() == "https" ? 443 : 80));
+    req.path = url.path(QUrl::FullyEncoded);
+    if (url.hasQuery()) req.path += "?" + url.query(QUrl::FullyEncoded);
+    if (req.path.isEmpty()) req.path = "/";
+    req.target = r.value("url").toString();
+    for (const QJsonValue &h : r.value("headers").toArray()) {
+        const QJsonObject ho = h.toObject();
+        req.headers.append({ ho.value("name").toString(), ho.value("value").toString() });
+    }
+    const QString postText = r.value("postData").toObject().value("text").toString();
+    if (!postText.isEmpty()) req.body = postText.toUtf8();
+    req.timestamp = QDateTime::fromString(entry.value("startedDateTime").toString(), Qt::ISODateWithMs);
+    if (!req.timestamp.isValid()) req.timestamp = QDateTime::currentDateTime();
+    return req;
+}
+
+Nullock::Proxy::HttpResponse harEntryToResponse(const QJsonObject &entry) {
+    Nullock::Proxy::HttpResponse resp;
+    const QJsonObject r = entry.value("response").toObject();
+    resp.httpVersion  = r.value("httpVersion").toString();
+    if (resp.httpVersion.isEmpty()) resp.httpVersion = QStringLiteral("HTTP/1.1");
+    resp.statusCode   = r.value("status").toInt();
+    resp.reasonPhrase = r.value("statusText").toString();
+    for (const QJsonValue &h : r.value("headers").toArray()) {
+        const QJsonObject ho = h.toObject();
+        resp.headers.append({ ho.value("name").toString(), ho.value("value").toString() });
+    }
+    const QString contentText = r.value("content").toObject().value("text").toString();
+    if (!contentText.isEmpty()) resp.body = contentText.toUtf8();
+    resp.peerAddress = entry.value("serverIPAddress").toString();
+    const QUrl url(entry.value("request").toObject().value("url").toString());
+    resp.wasTls = (url.scheme() == "https");
+    return resp;
+}
+
+} // namespace
+
+int ProjectStore::importHarBytes(const QByteArray &harJson) {
+    const QJsonDocument doc = QJsonDocument::fromJson(harJson);
+    if (!doc.isObject()) return -1;
+    const QJsonObject log = doc.object().value("log").toObject();
+    const QJsonArray entries = log.value("entries").toArray();
+
+    int imported = 0;
+    for (const QJsonValue &v : entries) {
+        const QJsonObject entry = v.toObject();
+        const auto req  = harEntryToRequest(entry);
+        const auto resp = harEntryToResponse(entry);
+        emit entryLoaded(req, resp);
+        // Mirror into our own history.ndjson so subsequent restarts /
+        // exports see the imported entries too.
+        appendEntry(req, resp);
+        ++imported;
+    }
+    return imported;
+}
+
+int ProjectStore::importHar(const QString &harPath) {
+    QFile f(harPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        emit errorOccurred("importHar: cannot open " + harPath);
+        return -1;
+    }
+    return importHarBytes(f.readAll());
+}
+
 } // namespace Nullock::Core

@@ -61,16 +61,22 @@ public:
 private slots:
     void onNewConnection();
 
+private slots:
+    void bumpSeq();  // any backend change -> mutating snapshot fingerprint
+
 private:
     void handle(QTcpSocket *socket);
     QByteArray buildSnapshot() const;
+    quint64    snapshotSeq() const { return m_seq; }
     QByteArray buildHistoryRow(int id, bool wantRequest) const;
     QByteArray staticResponse(const QString &path) const;
     QByteArray apiResponse(const QString &method, const QString &path,
-                           const QByteArray &body) const;
+                           const QByteArray &body,
+                           const QString &query) const;
 
     Wiring     m_wiring;
     QTcpServer *m_server = nullptr;
+    quint64    m_seq = 1;
 };
 
 } // namespace Nullock::Control

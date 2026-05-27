@@ -115,6 +115,8 @@
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },
     exportHar()             { return post("/api/har/export").then(r => r.json()); },
+    importHarPath(path)     { return post("/api/har/import", { path }).then(r => r.json()); },
+    importHar(harObject)    { return post("/api/har/import", { har: harObject }).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
@@ -128,25 +130,25 @@
              101:"Switching Protocols"})[s] || "";
   };
 
-  // Live updates: fetch snapshot every 500ms, dispatch event so the React
-  // app can React.useSyncExternalStore against it. For now we just mutate
-  // NL.* in place and the app re-reads on the next render cycle (caller
-  // polls window.NL.rows via a state effect, see app.jsx).
-  let lastBody = text || "";
+  // Live updates: poll snapshot every 250 ms. The server bumps a `seq`
+  // counter on every backend change; if seq hasn't moved it returns
+  // 304 and we don't even parse JSON. Net cost when idle: ~1 KB/s.
+  NL._seq = NL._seq || 0;
   setInterval(function () {
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open("GET", "/api/snapshot", true);
+      xhr.open("GET", "/api/snapshot?since=" + NL._seq, true);
       xhr.onload = function () {
-        if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText !== lastBody) {
-          lastBody = xhr.responseText;
-          try {
-            applySnapshot(JSON.parse(xhr.responseText));
-            window.dispatchEvent(new CustomEvent("nl-update"));
-          } catch (e) { /* skip bad payload */ }
-        }
+        if (xhr.status === 304) return;        // nothing changed, snooze
+        if (xhr.status < 200 || xhr.status >= 300) return;
+        try {
+          const snap = JSON.parse(xhr.responseText);
+          NL._seq = snap.seq || (NL._seq + 1);
+          applySnapshot(snap);
+          window.dispatchEvent(new CustomEvent("nl-update"));
+        } catch (e) { /* malformed payload, ignore */ }
       };
       xhr.send();
-    } catch (e) { /* network blip, try again next tick */ }
-  }, 500);
+    } catch (e) { /* network blip; retry next tick */ }
+  }, 250);
 })();

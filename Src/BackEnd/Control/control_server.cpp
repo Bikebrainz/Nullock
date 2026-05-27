@@ -27,6 +27,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUrl>
+#include <QUrlQuery>
 
 namespace Nullock::Control {
 
@@ -97,7 +98,44 @@ QJsonArray headersToJson(const QList<QPair<QString, QString>> &headers) {
 ControlServer::ControlServer(const Wiring &w, QObject *parent)
     : QObject(parent), m_wiring(w), m_server(new QTcpServer(this)) {
     connect(m_server, &QTcpServer::newConnection, this, &ControlServer::onNewConnection);
+
+    // Bump the snapshot fingerprint whenever any backend object reports a
+    // change. The /api/snapshot endpoint accepts ?since=<seq> -- if seq
+    // hasn't changed, we return 304 with no body, saving the JSON build.
+    auto bump = [this]() { ++m_seq; };
+    if (m_wiring.history) {
+        connect(m_wiring.history, &QAbstractItemModel::rowsInserted, this, bump);
+        connect(m_wiring.history, &QAbstractItemModel::modelReset,   this, bump);
+        connect(m_wiring.history, &QAbstractItemModel::dataChanged,  this, bump);
+    }
+    if (m_wiring.intruder) {
+        connect(m_wiring.intruder, &QAbstractItemModel::rowsInserted, this, bump);
+        connect(m_wiring.intruder, &QAbstractItemModel::modelReset,   this, bump);
+        connect(m_wiring.intruder, &QAbstractItemModel::dataChanged,  this, bump);
+    }
+    if (m_wiring.proxy) {
+        connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::runningChanged,       this, bump);
+        connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::filteredCountChanged, this, bump);
+    }
+    if (m_wiring.intercept) {
+        connect(m_wiring.intercept, &Nullock::Proxy::InterceptController::currentChanged, this, bump);
+        connect(m_wiring.intercept, &Nullock::Proxy::InterceptController::enabledChanged, this, bump);
+    }
+    if (m_wiring.projectStore) {
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::scopeChanged, this, bump);
+    }
+    if (m_wiring.themes) {
+        connect(m_wiring.themes, &Nullock::FrontEnd::ThemesManager::themeChanged,  this, bump);
+        connect(m_wiring.themes, &Nullock::FrontEnd::ThemesManager::themesChanged, this, bump);
+    }
+    if (m_wiring.repeater) {
+        connect(m_wiring.repeater, &Nullock::Core::Repeater::responseChanged, this, bump);
+        connect(m_wiring.repeater, &Nullock::Core::Repeater::busyChanged,     this, bump);
+        connect(m_wiring.repeater, &Nullock::Core::Repeater::targetChanged,   this, bump);
+    }
 }
+
+void ControlServer::bumpSeq() { ++m_seq; }
 
 bool ControlServer::start(const QHostAddress &address, quint16 port) {
     if (m_server->isListening()) return true;
@@ -174,11 +212,12 @@ void ControlServer::handle(QTcpSocket *socket) {
 
     // Route.
     const QUrl url(QStringLiteral("http://x") + target);
-    const QString path = url.path();
+    const QString path  = url.path();
+    const QString query = url.query();
 
     QByteArray response;
     if (path.startsWith("/api/")) {
-        response = apiResponse(method, path, body);
+        response = apiResponse(method, path, body, query);
     } else {
         const QString rel = (path == "/" || path.isEmpty())
                               ? QStringLiteral("Nullock.html")
@@ -205,6 +244,7 @@ QByteArray ControlServer::staticResponse(const QString &path) const {
 
 QByteArray ControlServer::buildSnapshot() const {
     QJsonObject root;
+    root["seq"] = static_cast<qint64>(m_seq);
 
     // bootInfo
     QJsonObject bootInfo;
@@ -383,8 +423,19 @@ QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
 }
 
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
-                                       const QByteArray &body) const {
+                                       const QByteArray &body,
+                                       const QString &query) const {
     if (path == "/api/snapshot") {
+        // ?since=<seq> -> 304 if seq hasn't moved. Saves us building 13 KB
+        // of JSON twice a second when nothing has happened.
+        if (!query.isEmpty()) {
+            const QUrlQuery q(query);   // raw query string; no leading '?'
+            const QString since = q.queryItemValue("since");
+            bool ok = false;
+            const quint64 sinceSeq = since.toULongLong(&ok);
+            if (ok && sinceSeq == m_seq)
+                return httpResponse(304, "application/json", "{}", "Not Modified");
+        }
         return httpResponse(200, "application/json; charset=utf-8", buildSnapshot());
     }
 
@@ -552,6 +603,24 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QString out;
         if (m_wiring.projectStore) out = m_wiring.projectStore->exportHar(QString());
         return okJson({{ "path", out }});
+    }
+    if (path == "/api/har/import") {
+        int n = -1;
+        if (m_wiring.projectStore) {
+            const QString p = bodyJson.value("path").toString();
+            if (!p.isEmpty()) {
+                n = m_wiring.projectStore->importHar(p);
+            } else if (bodyJson.contains("har")) {
+                // Caller posted the raw HAR object instead of a path.
+                const QByteArray bytes =
+                    QJsonDocument(bodyJson.value("har").toObject()).toJson(QJsonDocument::Compact);
+                n = m_wiring.projectStore->importHarBytes(bytes);
+            }
+        }
+        return okJson({
+            { "imported", n },
+            { "ok", n >= 0 },
+        });
     }
 
     if (path == "/api/clear-history") {

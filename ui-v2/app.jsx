@@ -295,8 +295,36 @@ function SettingsTab() {
         <Row label="Scope (out)" value={String((scope.out || []).length) + " globs"} />
         <Row label="Themes dir" value={b.themesDir || (window.NL ? NL.themesDir : "")} copyable />
         <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="(none)" />
-        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
           <Btn label="Export HAR" onClick={() => NL.actions.exportHar()} />
+          <label style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "4px 10px",
+            fontSize: "11px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>
+            Import HAR
+            <input
+              type="file"
+              accept=".har,application/json"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                try {
+                  const text = await f.text();
+                  const har = JSON.parse(text);
+                  const res = await NL.actions.importHar(har);
+                  alert("Imported " + (res && res.imported >= 0 ? res.imported : 0)
+                      + " entries from " + f.name);
+                } catch (err) {
+                  alert("HAR import failed: " + err);
+                }
+                e.target.value = "";
+              }}
+            />
+          </label>
           <Btn label="Clear history" onClick={() => NL.actions.clearHistory()} danger />
         </div>
       </Card>
