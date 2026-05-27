@@ -4,6 +4,8 @@ add_library(Networking STATIC
     networking.hpp
     repeater.cpp
     repeater.hpp
+    intruder.cpp
+    intruder.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
@@ -12,6 +14,7 @@ add_library(Networking STATIC
 target_link_libraries(Networking PUBLIC
     Qt6::Core
     Qt6::Network
+    Qt6::Concurrent
     Proxy
 )
 

@@ -1,6 +1,7 @@
 #include "Proxy/proxy_model.hpp"
 #include "cert_authority.hpp"
 #include "intercept.hpp"
+#include "intruder.hpp"
 #include "project_store.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
@@ -64,7 +65,8 @@ void waitMs(int ms) {
 
 int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  Nullock::Proxy::InterceptController &intercept,
-                 Nullock::Core::Repeater            &repeater) {
+                 Nullock::Core::Repeater            &repeater,
+                 Nullock::Core::Intruder            &intruder) {
     QTextStream out(stdout);
     int passed = 0, failed = 0;
     auto pass = [&](const QString &m) { out << "PASS  " << m << Qt::endl; ++passed; };
@@ -191,6 +193,52 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  .arg(h2Curl.exitCode).arg(gotJson).arg(h2Before).arg(h2After));
     }
 
+    // -- 7. Intruder fires N variants and collects results -------------------
+    //  Done before #6 because both hit httpbin and we want to keep the
+    //  network state simple. Uses plain HTTP so we test the Intruder
+    //  pipeline without depending on h2.
+    intruder.setHost("httpbin.org");
+    intruder.setPort(80);
+    intruder.setUseTls(false);
+    intruder.setRequestTemplate(
+        "GET /status/§200§ HTTP/1.1\r\n"
+        "Host: httpbin.org\r\n"
+        "Connection: close\r\n\r\n");
+    intruder.setPayloads("200\n404\n418\n500");
+    intruder.start();
+
+    // Spin a 30-second event loop waiting for Intruder to finish.
+    {
+        QEventLoop loop;
+        QTimer ticker;
+        ticker.start(200);
+        QObject::connect(&ticker, &QTimer::timeout, [&]() {
+            if (!intruder.running()) loop.quit();
+        });
+        QTimer timeout;
+        timeout.setSingleShot(true);
+        QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timeout.start(30000);
+        loop.exec();
+    }
+
+    if (!intruder.running() && intruder.totalCount() == 4
+        && intruder.completedCount() == 4
+        && intruder.data(intruder.index(0), Nullock::Core::Intruder::StatusRole).toInt() == 200
+        && intruder.data(intruder.index(1), Nullock::Core::Intruder::StatusRole).toInt() == 404
+        && intruder.data(intruder.index(2), Nullock::Core::Intruder::StatusRole).toInt() == 418
+        && intruder.data(intruder.index(3), Nullock::Core::Intruder::StatusRole).toInt() == 500) {
+        pass("intruder fires variants and records the expected statuses");
+    } else {
+        const auto statusAt = [&](int row) {
+            return intruder.data(intruder.index(row),
+                                 Nullock::Core::Intruder::StatusRole).toInt();
+        };
+        fail(QString("intruder: running=%1 done=%2/%3 statuses=[%4,%5,%6,%7]")
+                 .arg(intruder.running()).arg(intruder.completedCount()).arg(intruder.totalCount())
+                 .arg(statusAt(0)).arg(statusAt(1)).arg(statusAt(2)).arg(statusAt(3)));
+    }
+
     // -- 6. POST a body via HTTPS -- exercises the h2 data-provider path -----
     //  httpbin /post echoes the request body back inside its JSON response,
     //  so we can verify the body actually made it across.
@@ -259,6 +307,7 @@ int main(int argc, char *argv[]) {
     proxy.start();
 
     Nullock::Core::Repeater repeater(&model);
+    Nullock::Core::Intruder intruder(&model);
 
     Nullock::Proxy::InterceptController intercept;
     proxy.setInterceptController(&intercept);
@@ -268,7 +317,7 @@ int main(int argc, char *argv[]) {
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
-        return runSmokeTest(proxy, intercept, repeater);
+        return runSmokeTest(proxy, intercept, repeater, intruder);
     }
 
     QQmlApplicationEngine engine;
@@ -278,6 +327,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("projectStore", &projectStore);
     engine.rootContext()->setContextProperty("repeater", &repeater);
     engine.rootContext()->setContextProperty("intercept", &intercept);
+    engine.rootContext()->setContextProperty("intruder", &intruder);
 
     // run from project root so this relative path resolves to Nullock/Src/App/app.qml
     const QUrl url(QStringLiteral("./Src/App/app.qml"));

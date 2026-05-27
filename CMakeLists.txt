@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Qml
     Quick
     Network
+    Concurrent
 )
 
 # Add source subdirectory

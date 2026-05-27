@@ -111,6 +111,7 @@ ApplicationWindow {
                 TabHeader { label: "Scope";     active: root.currentTab === 1; onClicked: root.currentTab = 1 }
                 TabHeader { label: "Repeater";  active: root.currentTab === 2; onClicked: root.currentTab = 2 }
                 TabHeader { label: "Intercept"; active: root.currentTab === 3; onClicked: root.currentTab = 3 }
+                TabHeader { label: "Intruder";  active: root.currentTab === 4; onClicked: root.currentTab = 4 }
                 Item { Layout.fillWidth: true }
             }
         }
@@ -679,6 +680,185 @@ ApplicationWindow {
                             color: root.dim
                             font.family: "Consolas"
                             font.pixelSize: 13
+                        }
+                    }
+                }
+            }
+
+            // ── Tab 4: Intruder ───────────────────────────────────────────────
+            Item {
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    // Target row
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 32
+                        color: root.pane
+                        border.color: root.line
+                        border.width: 1
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 8
+                            HeaderCell { text: "Target" }
+                            TextField {
+                                Layout.preferredWidth: 240
+                                placeholderText: "host"
+                                text: intruder.host
+                                color: root.text
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                onEditingFinished: intruder.host = text
+                            }
+                            HeaderCell { text: ":" }
+                            TextField {
+                                Layout.preferredWidth: 70
+                                text: "" + intruder.port
+                                color: root.text
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                onEditingFinished: intruder.port = parseInt(text) || 0
+                            }
+                            AccentButton {
+                                label: intruder.useTls ? "TLS on" : "TLS off"
+                                onClicked: intruder.useTls = !intruder.useTls
+                            }
+                            Item { Layout.fillWidth: true }
+                            Cell {
+                                text: intruder.running
+                                      ? ("running " + intruder.completedCount + " / " + intruder.totalCount)
+                                      : (intruder.totalCount > 0
+                                         ? ("done " + intruder.completedCount + " / " + intruder.totalCount)
+                                         : "idle")
+                                color: intruder.running ? root.accent : root.dim
+                                Layout.preferredWidth: 180
+                            }
+                            AccentButton {
+                                label: intruder.running ? "Stop" : "Start"
+                                onClicked: intruder.running ? intruder.stop() : intruder.start()
+                            }
+                            AccentButton {
+                                label: "Clear"
+                                onClicked: intruder.clear()
+                            }
+                        }
+                    }
+
+                    // Template + payloads side by side
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 220
+                        spacing: 6
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 2
+                            HeaderCell { text: "Request template (mark insertion point with §payload§)" }
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                TextArea {
+                                    wrapMode: TextArea.NoWrap
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    color: root.text
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    text: intruder.requestTemplate
+                                    onEditingFinished: intruder.requestTemplate = text
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.preferredWidth: 320
+                            Layout.fillHeight: true
+                            spacing: 2
+                            HeaderCell { text: "Payloads (one per line)" }
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                TextArea {
+                                    wrapMode: TextArea.NoWrap
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    color: root.text
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    text: intruder.payloads
+                                    onEditingFinished: intruder.payloads = text
+                                }
+                            }
+                        }
+                    }
+
+                    // Results table
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: root.pane
+                        border.color: root.line
+                        border.width: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 0
+
+                            Rectangle {
+                                color: "#000000"
+                                Layout.fillWidth: true
+                                height: 24
+                                RowLayout {
+                                    anchors.fill: parent
+                                    spacing: 0
+                                    HeaderCell { text: "#";       Layout.preferredWidth: 50 }
+                                    HeaderCell { text: "Payload"; Layout.fillWidth: true; Layout.minimumWidth: 200 }
+                                    HeaderCell { text: "Status";  Layout.preferredWidth: 70 }
+                                    HeaderCell { text: "Length";  Layout.preferredWidth: 90 }
+                                    HeaderCell { text: "Time ms"; Layout.preferredWidth: 80 }
+                                    HeaderCell { text: "Error";   Layout.preferredWidth: 220 }
+                                }
+                            }
+
+                            ListView {
+                                id: intruderResults
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                model: intruder
+                                clip: true
+                                ScrollBar.vertical: ScrollBar {}
+
+                                delegate: Rectangle {
+                                    width: intruderResults.width
+                                    height: 22
+                                    color: (index % 2 === 0) ? root.rowEven : root.rowAlt
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        spacing: 0
+                                        Cell { text: rowId;                                    Layout.preferredWidth: 50 }
+                                        Cell { text: payload;                                  Layout.fillWidth: true; Layout.minimumWidth: 200 }
+                                        Cell {
+                                            text: complete ? (statusCode || "—") : "…"
+                                            Layout.preferredWidth: 70
+                                            color: complete && statusCode >= 400 ? "#ff8080" : root.text
+                                        }
+                                        Cell { text: complete ? responseSize : "";             Layout.preferredWidth: 90 }
+                                        Cell { text: complete ? elapsedMs : "";                Layout.preferredWidth: 80 }
+                                        Cell {
+                                            text: errorMessage
+                                            Layout.preferredWidth: 220
+                                            color: "#ff8080"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

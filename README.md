@@ -49,12 +49,14 @@ Exits 0 on pass, 1 on fail. Output (captured via redirected stdout since
 the app is a Windows GUI subsystem):
 
 ```
-PASS  proxy listening on 127.0.0.1:8080
+PASS  proxy listening on 127.0.0.1:8888
 PASS  intercept blocks and forward completes the request
 PASS  intercept drop breaks the connection
 PASS  repeater send returns a 200 with a real body
 PASS  HTTPS MITM end-to-end (h2 upstream, counter 0 -> 1)
-smoke test: 5 passed, 0 failed
+PASS  intruder fires variants and records the expected statuses
+PASS  HTTPS POST body round-trips (h2 data-provider)
+smoke test: 7 passed, 0 failed
 ```
 
 Verified on Windows 11 with MSVC 2022 Community + Qt 6.7.3 (`win64_msvc2019_64`),
@@ -93,7 +95,7 @@ In rough order of dependency:
 - [x] **Persistent MITM bypass list** — `ProxyServer` writes the auto-collected list of cert-pinned hosts to `ca/mitm_blocked.txt` and reloads it on startup so a host that failed once stays bypassed without re-attempting (and re-failing) the TLS handshake. `blockedHosts()` and `clearMitmBlocked()` are Q_INVOKABLE for a future GUI panel.
 - [x] **Intercept mode** — toggle on the Intercept tab. When enabled, the proxy worker thread blocks before forwarding a request to upstream; the request lands in the GUI as the "current pending" PendingRequest with its serialized text editable in a TextArea. Forward (with edits) or Drop wakes the worker via a QSemaphore. Multiple in-flight requests queue up — the depth is shown in the status bar's red INTERCEPT (N) indicator. Toggling intercept off forwards everything in the queue at once so traffic doesn't stall.
 - [x] **Repeater** — `Networking::HttpClient` opens a raw TCP or TLS connection, writes the request bytes verbatim, parses the response (Content-Length, chunked, or until-close). `Repeater` controller holds editable target host/port/TLS and the raw request/response text, exposed to QML as `repeater`. The Proxy History detail pane has a "Send to Repeater" button that calls `repeater.loadFromHistory(row)` and switches to the Repeater tab; the user can then edit and re-send.
-- [ ] **Intruder fuzzer**.
+- [x] **Intruder fuzzer** — Burp-style Sniper mode. Take a request template with one `§marker§` insertion point, a newline-separated payload list, and fire one request per payload through `HttpClient` on a background thread (`QtConcurrent::run`). `Intruder` is a `QAbstractListModel` so the results table populates live: id, payload, status, response size, elapsed ms, error. Start / Stop / Clear from the GUI; per-row coloring (red for 4xx/5xx). Verified by the smoke test: payloads `200 404 418 500` substituted into `/status/§200§` return statuses `[200,404,418,500]` from httpbin.
 - [ ] **Extensions API** — plugin loader and lifecycle.
 - [ ] **Themes manager** — JSON-driven theme switching.
 
