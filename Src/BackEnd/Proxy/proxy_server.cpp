@@ -752,13 +752,27 @@ ProxyServer::~ProxyServer() = default;
 
 bool ProxyServer::start(const QHostAddress &address, quint16 port) {
     if (m_server->isListening()) return true;
-    if (!m_server->listen(address, port)) {
-        emit errorOccurred(m_server->errorString());
-        return false;
+
+    // Windows occasionally puts 8080 into its dynamic protected-port range
+    // (returns WSAEACCES "The address is protected"). Try the requested
+    // port first, then walk a small fallback list of common alternatives
+    // before giving up.
+    const QList<quint16> tries = {
+        port, quint16(port + 1), 8888, 8081, 8090, 9090,
+    };
+    QString lastError;
+    for (quint16 p : tries) {
+        if (m_server->listen(address, p)) {
+            emit started(m_server->serverPort());
+            emit runningChanged();
+            return true;
+        }
+        lastError = m_server->errorString();
+        qWarning().noquote() << "proxy: listen failed on" << address.toString()
+                             << ":" << p << "--" << lastError;
     }
-    emit started(m_server->serverPort());
-    emit runningChanged();
-    return true;
+    emit errorOccurred(lastError);
+    return false;
 }
 
 void ProxyServer::stop() {

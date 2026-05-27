@@ -124,6 +124,34 @@ int onStreamClose(nghttp2_session *, int32_t streamId, uint32_t errCode, void *u
     return 0;
 }
 
+// Streams req.body into DATA frames. nghttp2 calls this repeatedly with a
+// buffer to fill until we set NGHTTP2_DATA_FLAG_EOF.
+struct BodyCursor {
+    const QByteArray *body = nullptr;
+    qsizetype offset = 0;
+};
+
+ssize_t bodyRead(nghttp2_session *, int32_t /*streamId*/,
+                 uint8_t *buf, size_t length,
+                 uint32_t *data_flags,
+                 nghttp2_data_source *source, void * /*user_data*/) {
+    auto *cursor = static_cast<BodyCursor *>(source->ptr);
+    if (!cursor || !cursor->body) {
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        return 0;
+    }
+    const qsizetype remaining = cursor->body->size() - cursor->offset;
+    const qsizetype toCopy = qMin(static_cast<qsizetype>(length), remaining);
+    if (toCopy > 0) {
+        std::memcpy(buf, cursor->body->constData() + cursor->offset,
+                    static_cast<size_t>(toCopy));
+        cursor->offset += toCopy;
+    }
+    if (cursor->offset >= cursor->body->size())
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+    return static_cast<ssize_t>(toCopy);
+}
+
 } // namespace
 
 H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req) {
@@ -211,8 +239,18 @@ H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req)
         pushHeader(nameStorage.back(), valueStorage.back());
     }
 
+    BodyCursor cursor;
+    nghttp2_data_provider dp;
+    nghttp2_data_provider *dpPtr = nullptr;
+    if (!req.body.isEmpty()) {
+        cursor.body = &req.body;
+        dp.source.ptr = &cursor;
+        dp.read_callback = bodyRead;
+        dpPtr = &dp;
+    }
+
     state.streamId = nghttp2_submit_request(session, nullptr, nvs.data(),
-                                            nvs.size(), nullptr, nullptr);
+                                            nvs.size(), dpPtr, nullptr);
     if (state.streamId < 0) {
         nghttp2_session_del(session);
         nghttp2_session_callbacks_del(cbs);

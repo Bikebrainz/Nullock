@@ -76,13 +76,18 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
     else
         fail("proxy not listening");
 
+    // All curl invocations below point at whatever port the proxy actually
+    // grabbed, not a hard-coded 8080 -- Windows protected-port quirks mean
+    // start() may have walked to a fallback.
+    const QString proxyUrl = QString("http://127.0.0.1:%1").arg(proxy.listeningPort());
+
     // -- 2. intercept blocks + forward completes the request ------------------
     intercept.setEnabled(true);
 
     QProcess curl;
     curl.setProgram("C:/Windows/System32/curl.exe");
     curl.setArguments({ "-s", "--max-time", "20",
-                        "--proxy", "http://127.0.0.1:8080",
+                        "--proxy", proxyUrl,
                         "http://httpbin.org/uuid" });
 
     QEventLoop curlLoop;
@@ -123,7 +128,7 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
     QProcess curl2;
     curl2.setProgram("C:/Windows/System32/curl.exe");
     curl2.setArguments({ "-s", "--max-time", "20",
-                         "--proxy", "http://127.0.0.1:8080",
+                         "--proxy", proxyUrl,
                          "http://httpbin.org/uuid" });
 
     QEventLoop curl2Loop;
@@ -173,7 +178,7 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
     const int h2Before = proxy.h2UpstreamCount();
     const auto h2Curl = runCurl({
         "-sk", "--max-time", "20",
-        "--proxy", "http://127.0.0.1:8080",
+        "--proxy", proxyUrl,
         "https://httpbin.org/uuid" }, 20000);
     const int h2After = proxy.h2UpstreamCount();
     const bool gotJson = h2Curl.stdoutBytes.contains("\"uuid\"");
@@ -185,6 +190,25 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
         fail(QString("HTTPS MITM failed: curl exit=%1 gotJson=%2 (h2 counter %3 -> %4)")
                  .arg(h2Curl.exitCode).arg(gotJson).arg(h2Before).arg(h2After));
     }
+
+    // -- 6. POST a body via HTTPS -- exercises the h2 data-provider path -----
+    //  httpbin /post echoes the request body back inside its JSON response,
+    //  so we can verify the body actually made it across.
+    const auto postCurl = runCurl({
+        "-sk", "--max-time", "20",
+        "--proxy", proxyUrl,
+        "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "--data", "{\"smoke\":\"nullock\",\"value\":42}",
+        "https://httpbin.org/post" }, 20000);
+    const bool postEchoed = postCurl.stdoutBytes.contains("\"smoke\"")
+                         && postCurl.stdoutBytes.contains("\"nullock\"");
+    if (postCurl.exitCode == 0 && postEchoed)
+        pass("HTTPS POST body round-trips (h2 data-provider)");
+    else
+        fail(QString("HTTPS POST failed: curl exit=%1 echoed=%2 bodyPreview=%3")
+                 .arg(postCurl.exitCode).arg(postEchoed)
+                 .arg(QString::fromUtf8(postCurl.stdoutBytes.left(120))));
 
     out << Qt::endl << "smoke test: " << passed << " passed, "
         << failed << " failed" << Qt::endl;
