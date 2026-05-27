@@ -207,6 +207,20 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
   const req = NL.requestRawAt(row.id - 1);
   const resp = NL.responseRawAt(row.id - 1);
 
+  const reqRef  = React.useRef(null);
+  const respRef = React.useRef(null);
+  const [overlay, setOverlay] = React.useState(null); // { title, body } | null
+
+  // Pull either the user's text selection or the entire textarea contents.
+  // Clicking a codec button with no selection runs it against the whole
+  // pane -- handy for "decode this whole base64 body".
+  const grabFrom = (ref) => {
+    const el = ref.current;
+    if (!el) return "";
+    const sel = el.value.substring(el.selectionStart, el.selectionEnd);
+    return sel || el.value;
+  };
+
   return (
     <div className="pane" style={{ height: "100%" }}>
       <div className="pane-head">
@@ -232,7 +246,11 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
               </button>
             ))}
           </div>
-          <textarea className="txt readonly" value={renderView(req, reqTab)} readOnly />
+          <CodecBar onRun={(name) => {
+            const input = grabFrom(reqRef);
+            setOverlay({ title: "REQ · " + name, body: runCodec(name, input) });
+          }} />
+          <textarea ref={reqRef} className="txt readonly" value={renderView(req, reqTab)} readOnly />
         </div>
         <div style={{ display:"flex", flexDirection:"column", minHeight: 0 }}>
           <div className="detail-tabs">
@@ -242,11 +260,160 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
               </button>
             ))}
           </div>
-          <textarea className="txt readonly" value={renderView(resp, respTab)} readOnly />
+          <CodecBar onRun={(name) => {
+            const input = grabFrom(respRef);
+            setOverlay({ title: "RES · " + name, body: runCodec(name, input) });
+          }} />
+          <textarea ref={respRef} className="txt readonly" value={renderView(resp, respTab)} readOnly />
         </div>
+      </div>
+      {overlay && (
+        <CodecOverlay title={overlay.title} body={overlay.body}
+                      onClose={() => setOverlay(null)} />
+      )}
+    </div>
+  );
+}
+
+// Compact codec toolbar shown above each detail textarea. Operates on
+// the current selection (or whole pane if nothing selected) and pops
+// the result in an overlay so the raw view stays untouched.
+function CodecBar({ onRun }) {
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--line)", padding: "2px 6px",
+    fontSize: "10.5px", fontFamily: "var(--ff-mono)",
+    cursor: "pointer", letterSpacing: "0.04em",
+  };
+  const tools = [
+    "url-decode", "url-encode",
+    "b64-decode", "b64-encode",
+    "jwt-decode",
+    "hex-decode", "hex-encode",
+    "html-decode",
+  ];
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 6px",
+      borderBottom: "1px solid var(--line-soft)",
+      background: "var(--pane)",
+    }}>
+      <span style={{ color: "var(--dim)", fontSize: "10px", alignSelf: "center", paddingRight: 4 }}>codec ▸</span>
+      {tools.map(t => (
+        <button key={t} style={btn} onClick={() => onRun(t)} title={"Run " + t + " on selection (or whole pane)"}>
+          {t}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Read-only result overlay for codec output. ESC or click outside closes.
+function CodecOverlay({ title, body, onClose }) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const copy = () => { try { navigator.clipboard?.writeText(body); } catch {} };
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(80vw, 900px)", maxHeight: "80vh",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>{title}</span>
+          <button onClick={copy} style={{
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "2px 8px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+          }}>COPY</button>
+          <button onClick={onClose} style={{
+            background: "transparent", color: "var(--dim)",
+            border: "1px solid var(--line)", padding: "2px 8px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+          }}>CLOSE</button>
+        </div>
+        <textarea readOnly value={body}
+                  style={{
+                    flex: 1, minHeight: 240, padding: 10,
+                    background: "var(--bg-deep)", color: "var(--text)",
+                    border: "none", outline: "none", resize: "none",
+                    fontFamily: "var(--ff-mono)", fontSize: "12px",
+                    whiteSpace: "pre", overflow: "auto",
+                  }} />
       </div>
     </div>
   );
+}
+
+// Codec dispatch. Errors are caught and surfaced as text so the user
+// can see "this isn't base64" or "not a JWT" instead of an empty overlay.
+function runCodec(name, input) {
+  if (!input) return "(nothing to decode)";
+  try {
+    switch (name) {
+      case "url-decode":  return decodeURIComponent(input);
+      case "url-encode":  return encodeURIComponent(input);
+      case "b64-decode": {
+        // Support both standard and URL-safe base64; tolerate missing padding.
+        let s = input.replace(/-/g, "+").replace(/_/g, "/");
+        while (s.length % 4) s += "=";
+        const bin = atob(s);
+        // Try UTF-8 first; if it's binary, fall through to a hex dump.
+        try { return decodeURIComponent(escape(bin)); } catch { return toHexDump(bin); }
+      }
+      case "b64-encode":  return btoa(unescape(encodeURIComponent(input)));
+      case "jwt-decode": {
+        const parts = input.trim().split(".");
+        if (parts.length !== 3) throw new Error("not a JWT (need 3 dot-separated segments)");
+        const decodePart = (p) => {
+          let s = p.replace(/-/g, "+").replace(/_/g, "/");
+          while (s.length % 4) s += "=";
+          const txt = decodeURIComponent(escape(atob(s)));
+          try { return JSON.stringify(JSON.parse(txt), null, 2); }
+          catch { return txt; }
+        };
+        return "// header\n"   + decodePart(parts[0])
+             + "\n\n// payload\n" + decodePart(parts[1])
+             + "\n\n// signature (raw)\n" + parts[2];
+      }
+      case "hex-encode":
+        return Array.from(new TextEncoder().encode(input))
+          .map(b => b.toString(16).padStart(2, "0")).join(" ");
+      case "hex-decode": {
+        const cleaned = input.replace(/[^0-9a-fA-F]/g, "");
+        if (cleaned.length % 2) throw new Error("odd number of hex digits");
+        const bytes = new Uint8Array(cleaned.length / 2);
+        for (let i = 0; i < bytes.length; i++)
+          bytes[i] = parseInt(cleaned.substr(i * 2, 2), 16);
+        try { return new TextDecoder("utf-8", { fatal: false }).decode(bytes); }
+        catch { return toHexDump(String.fromCharCode(...bytes)); }
+      }
+      case "html-decode": {
+        const ta = document.createElement("textarea");
+        ta.innerHTML = input;
+        return ta.value;
+      }
+    }
+    return input;
+  } catch (e) {
+    return "// codec error: " + (e && e.message ? e.message : String(e))
+         + "\n\n// input (first 200 chars):\n" + input.slice(0, 200);
+  }
 }
 
 // Split a raw HTTP message into {firstLine, headers, body} and render
