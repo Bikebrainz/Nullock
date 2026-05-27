@@ -230,6 +230,19 @@ QByteArray ControlServer::buildSnapshot() const {
     root["themes"] = themes;
     root["currentTheme"] = m_wiring.themes ? m_wiring.themes->currentTheme() : QString();
 
+    // Colors of the current theme (CSS-style keys without the "--" prefix)
+    // plus a flag so the UI can disable "Save" on built-ins (forks happen
+    // automatically server-side but the UI may want to surface the rename).
+    if (m_wiring.themes) {
+        QJsonObject colors;
+        const QVariantMap cur = m_wiring.themes->currentColors();
+        for (auto it = cur.constBegin(); it != cur.constEnd(); ++it)
+            colors.insert(it.key(), it.value().toString());
+        root["themeColors"]    = colors;
+        root["themeIsBuiltin"] = m_wiring.themes->isBuiltin(m_wiring.themes->currentTheme());
+        root["themesDir"]      = m_wiring.themes->themesDir();
+    }
+
     // scope
     QJsonObject scope;
     QJsonArray inArr;
@@ -496,6 +509,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/theme") {
         if (m_wiring.themes)
             m_wiring.themes->setCurrentTheme(bodyJson.value("name").toString());
+        return okJson();
+    }
+
+    if (path == "/api/theme/save-as") {
+        if (!m_wiring.themes) return okJson({{ "ok", false }});
+        const QString name = bodyJson.value("name").toString();
+        const QJsonObject colors = bodyJson.value("colors").toObject();
+        QVariantMap colorMap;
+        for (auto it = colors.constBegin(); it != colors.constEnd(); ++it)
+            colorMap.insert(it.key(), it.value().toString());
+        const bool ok = m_wiring.themes->saveTheme(name, colorMap);
+        return okJson({
+            { "saved", ok },
+            { "current", m_wiring.themes->currentTheme() },
+        });
+    }
+
+    if (path == "/api/theme/reload") {
+        if (m_wiring.themes) m_wiring.themes->reload();
         return okJson();
     }
 

@@ -42,6 +42,21 @@
                                             results: [], running: false };
     NL.currentTheme       = snap.currentTheme || "cyber";
     NL.interceptEnabled   = snap.interceptEnabled === true;
+    NL.themeColors        = snap.themeColors || {};
+    NL.themeIsBuiltin     = snap.themeIsBuiltin === true;
+    NL.themesDir          = snap.themesDir || "";
+
+    // Push the backend theme's colors into the document as inline CSS
+    // variables. The CSS file already supplies defaults via
+    // [data-theme=…]; these inline values override per-key so the user can
+    // tweak a single color without authoring a full theme. Keys are stored
+    // without the "--" prefix.
+    if (document && document.documentElement && NL._lastColors !== JSON.stringify(NL.themeColors)) {
+      NL._lastColors = JSON.stringify(NL.themeColors);
+      Object.entries(NL.themeColors).forEach(([k, v]) => {
+        if (v) document.documentElement.style.setProperty("--" + k, v);
+      });
+    }
   }
 
   // Initial sync load so React renders with real data immediately.
@@ -97,6 +112,8 @@
     intruderStop()          { return post("/api/intruder/stop"); },
     intruderClear()         { return post("/api/intruder/clear"); },
     setTheme(name)          { return post("/api/theme", { name }); },
+    saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
+    reloadThemes()          { return post("/api/theme/reload"); },
     exportHar()             { return post("/api/har/export").then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },

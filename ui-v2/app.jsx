@@ -181,6 +181,104 @@ const ACCENT_PRESETS = {
   red:       "oklch(0.74 0.20 25)",
 };
 
+// Color edit + Save As panel. Reads the current theme's color map from
+// the backend snapshot, applies local edits as inline CSS variables for
+// live preview, and posts a full set to /api/theme/save-as on save.
+function ColorsEditor() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const base = (window.NL && NL.themeColors) ? NL.themeColors : {};
+  const [edits, setEdits] = React.useState({});
+  const [saveName, setSaveName] = React.useState("");
+  const [savedMsg, setSavedMsg] = React.useState("");
+
+  // Apply any edits as inline CSS vars so the user sees the change instantly.
+  React.useEffect(() => {
+    const root = document.documentElement;
+    Object.entries(edits).forEach(([k, v]) => {
+      if (v) root.style.setProperty("--" + k, v);
+    });
+  }, [edits]);
+
+  const merged = { ...base, ...edits };
+  const keys = Object.keys(merged).sort();
+  const isBuiltin = window.NL && NL.themeIsBuiltin;
+
+  const onChange = (k, v) => setEdits(e => ({ ...e, [k]: v }));
+  const onReset = () => {
+    // Clear local edits and put the backend's authoritative values back.
+    setEdits({});
+    const root = document.documentElement;
+    Object.entries(base).forEach(([k, v]) => root.style.setProperty("--" + k, v));
+  };
+  const onSave = async () => {
+    const name = saveName.trim() || (window.NL ? (NL.currentTheme || "custom") : "custom");
+    const colors = { ...merged };
+    const res = await NL.actions.saveTheme(name, colors);
+    if (res && res.saved) {
+      setEdits({});
+      setSaveName("");
+      setSavedMsg("Saved as “" + (res.current || name) + "”");
+      setTimeout(() => setSavedMsg(""), 2500);
+    } else {
+      setSavedMsg("Save failed");
+      setTimeout(() => setSavedMsg(""), 2500);
+    }
+  };
+
+  return (
+    <TweakSection title={"Colors" + (isBuiltin ? " (forks on save)" : "")}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: "4px 10px", alignItems: "center" }}>
+        {keys.map(k => (
+          <React.Fragment key={k}>
+            <div style={{ fontSize: "11px", color: "var(--dim)" }}>--{k}</div>
+            <input
+              type="color"
+              value={merged[k] || "#000000"}
+              onChange={e => onChange(k, e.target.value)}
+              style={{ width: 36, height: 22, border: "1px solid var(--line)", background: "transparent", padding: 0 }}
+            />
+            <input
+              type="text"
+              value={merged[k] || ""}
+              onChange={e => onChange(k, e.target.value)}
+              style={{
+                width: 84, fontFamily: "var(--ff-mono)", fontSize: "11px",
+                background: "transparent", color: "var(--text)",
+                border: "1px solid var(--line)", padding: "2px 6px",
+              }}
+              spellCheck={false}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{ marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          type="text"
+          placeholder={isBuiltin ? "save as… (built-in forks)" : "save as… (leave blank to overwrite)"}
+          value={saveName}
+          onChange={e => setSaveName(e.target.value)}
+          style={{
+            flex: 1, fontFamily: "var(--ff-mono)", fontSize: "11px",
+            background: "transparent", color: "var(--text)",
+            border: "1px solid var(--line)", padding: "4px 6px",
+          }}
+        />
+        <TweakButton label="SAVE"  onClick={onSave} />
+        <TweakButton label="RESET" onClick={onReset} />
+      </div>
+      {savedMsg && (
+        <div style={{ marginTop: 4, fontSize: "11px", color: "var(--ok)" }}>{savedMsg}</div>
+      )}
+    </TweakSection>
+  );
+}
+
 function App() {
   const [tab, setTab] = React.useState("proxy");
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -346,9 +444,13 @@ function App() {
           <TweakSection title="Theme">
             <TweakSelect
               label="Palette"
-              value={tweaks.theme}
-              options={NL.themes.map(t => ({ value: t, label: t.toUpperCase() }))}
-              onChange={v => setTweak("theme", v)}
+              value={NL.currentTheme || tweaks.theme}
+              options={(NL.themes && NL.themes.length ? NL.themes : ["cyber"])
+                .map(t => ({ value: t, label: t.toUpperCase() }))}
+              onChange={v => {
+                setTweak("theme", v);
+                act("setTheme", v);  // <- tell backend, ThemesManager picks up
+              }}
             />
             <TweakColor
               label="Accent override"
@@ -357,6 +459,9 @@ function App() {
               onChange={(hex, idx) => setTweak("accent", Object.keys(ACCENT_PRESETS)[idx])}
             />
           </TweakSection>
+
+          <ColorsEditor />
+
           <TweakSection title="Layout">
             <TweakRadio
               label="Density"

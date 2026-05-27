@@ -53,7 +53,64 @@ QColor ThemesManager::color(const QString &key, const char *fallbackHex) const {
     return QColor(fallbackHex);
 }
 
+QVariantMap ThemesManager::currentColors() const {
+    QVariantMap out;
+    const auto it = m_themes.constFind(m_current);
+    if (it == m_themes.constEnd()) return out;
+    for (auto cit = it.value().colors.constBegin();
+         cit != it.value().colors.constEnd(); ++cit) {
+        out.insert(cit.key(), cit.value().name(QColor::HexRgb));
+    }
+    return out;
+}
+
+bool ThemesManager::isBuiltin(const QString &name) const {
+    return m_builtinNames.contains(name);
+}
+
+bool ThemesManager::saveTheme(const QString &name, const QVariantMap &colors) {
+    if (name.trimmed().isEmpty()) return false;
+
+    // Built-in names are reserved: forking writes "<name>-custom.json" so
+    // the user can keep iterating without nuking the shipped theme.
+    QString outName = name;
+    if (m_builtinNames.contains(outName)) outName = outName + "-custom";
+
+    const QString dir = themesDir();
+    QDir().mkpath(dir);
+
+    QJsonObject obj;
+    obj["name"] = outName;
+    QJsonObject jcolors;
+    Theme stored;
+    stored.name = outName;
+    for (auto it = colors.constBegin(); it != colors.constEnd(); ++it) {
+        const QString key = it.key();
+        const QString hex = it.value().toString();
+        const QColor c(hex);
+        if (!c.isValid()) continue;
+        jcolors.insert(key, hex);
+        stored.colors.insert(key, c);
+    }
+    obj["colors"] = jcolors;
+
+    QFile f(dir + "/" + outName + ".json");
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    f.close();
+
+    m_themes.insert(outName, stored);
+    m_current = outName;
+    emit themesChanged();
+    emit themeChanged();
+    return true;
+}
+
 void ThemesManager::loadBuiltins() {
+    auto registerBuiltin = [this](const Theme &t) {
+        m_themes.insert(t.name, t);
+        m_builtinNames.insert(t.name);
+    };
     Theme retro;
     retro.name = "retro";
     retro.colors = {
@@ -67,7 +124,7 @@ void ThemesManager::loadBuiltins() {
         { "line",      QColor("#222222") },
         { "bg",        QColor("#0a0a0a") },
     };
-    m_themes.insert(retro.name, retro);
+    registerBuiltin(retro);
 
     Theme mono;
     mono.name = "mono";
@@ -82,7 +139,7 @@ void ThemesManager::loadBuiltins() {
         { "line",      QColor("#262626") },
         { "bg",        QColor("#080808") },
     };
-    m_themes.insert(mono.name, mono);
+    registerBuiltin(mono);
 
     Theme amber;
     amber.name = "amber";
@@ -97,7 +154,7 @@ void ThemesManager::loadBuiltins() {
         { "line",      QColor("#2a1800") },
         { "bg",        QColor("#0a0500") },
     };
-    m_themes.insert(amber.name, amber);
+    registerBuiltin(amber);
 
     // cyber + ice are also defined in ui-v2/styles.css; their authoritative
     // colors live in the CSS (the React UI swaps on [data-theme=…]) so the
@@ -116,7 +173,7 @@ void ThemesManager::loadBuiltins() {
         { "line",      QColor("#262f3f") },
         { "bg",        QColor("#0d1422") },
     };
-    m_themes.insert(cyber.name, cyber);
+    registerBuiltin(cyber);
 
     Theme ice;
     ice.name = "ice";
@@ -131,7 +188,7 @@ void ThemesManager::loadBuiltins() {
         { "line",      QColor("#252f3d") },
         { "bg",        QColor("#0c1219") },
     };
-    m_themes.insert(ice.name, ice);
+    registerBuiltin(ice);
 }
 
 void ThemesManager::loadUserThemes() {

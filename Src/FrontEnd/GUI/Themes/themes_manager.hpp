@@ -5,8 +5,10 @@
 #include <QColor>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 
 namespace Nullock::FrontEnd {
 
@@ -62,6 +64,22 @@ public:
     Q_INVOKABLE QString themesDir() const;
     Q_INVOKABLE bool reload();
 
+    // Snapshot of every color in the current theme (CSS-side variable name
+    // without the "--" prefix, e.g. "accent" / "bg-deep" / "row-sel").
+    // Used by the control server to ship the active palette into the React
+    // UI so it can render edit controls and apply live overrides.
+    Q_INVOKABLE QVariantMap currentColors() const;
+
+    // Save a (theme name, colors map) pair as a user JSON file under
+    // themesDir() and switch to it. Built-in themes can't be overwritten
+    // -- save attempts to "retro" / "mono" / etc. silently fork into
+    // "<name>-custom" (or whatever the caller passed) so the originals
+    // stay pristine. The returned bool is just the file-write result.
+    Q_INVOKABLE bool saveTheme(const QString &name, const QVariantMap &colors);
+
+    // Was this theme loaded from the built-in table, or from a user JSON?
+    Q_INVOKABLE bool isBuiltin(const QString &name) const;
+
 signals:
     void themeChanged();
     void themesChanged();
@@ -78,6 +96,7 @@ private:
 
     QHash<QString, Theme> m_themes;
     QString m_current;
+    QSet<QString> m_builtinNames; // populated by loadBuiltins
 };
 
 } // namespace Nullock::FrontEnd
