@@ -10,7 +10,7 @@
 
 namespace Nullock::FrontEnd {
 
-ThemesManager::ThemesManager(QObject *parent) : QObject(parent), m_current("retro") {
+ThemesManager::ThemesManager(QObject *parent) : QObject(parent), m_current("cyber") {
     loadBuiltins();
     loadUserThemes();
 }
@@ -98,6 +98,40 @@ void ThemesManager::loadBuiltins() {
         { "bg",        QColor("#0a0500") },
     };
     m_themes.insert(amber.name, amber);
+
+    // cyber + ice are also defined in ui-v2/styles.css; their authoritative
+    // colors live in the CSS (the React UI swaps on [data-theme=…]) so the
+    // values here only matter for the QML legacy host. Approximate RGB
+    // conversions of the oklch() values from styles.css.
+    Theme cyber;
+    cyber.name = "cyber";
+    cyber.colors = {
+        { "accent",    QColor("#3df0a9") },
+        { "text",      QColor("#e9ecf2") },
+        { "dim",       QColor("#7d8390") },
+        { "rowAlt",    QColor("#181f2c") },
+        { "rowEven",   QColor("#141a26") },
+        { "rowSelect", QColor("#2d3f3d") },
+        { "pane",      QColor("#161e2a") },
+        { "line",      QColor("#262f3f") },
+        { "bg",        QColor("#0d1422") },
+    };
+    m_themes.insert(cyber.name, cyber);
+
+    Theme ice;
+    ice.name = "ice";
+    ice.colors = {
+        { "accent",    QColor("#7dc8ec") },
+        { "text",      QColor("#e7eef5") },
+        { "dim",       QColor("#7a8694") },
+        { "rowAlt",    QColor("#161e2a") },
+        { "rowEven",   QColor("#121a26") },
+        { "rowSelect", QColor("#2c4055") },
+        { "pane",      QColor("#161f2c") },
+        { "line",      QColor("#252f3d") },
+        { "bg",        QColor("#0c1219") },
+    };
+    m_themes.insert(ice.name, ice);
 }
 
 void ThemesManager::loadUserThemes() {
