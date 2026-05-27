@@ -8,16 +8,37 @@ const TABS = [
   { id: "intruder",  label: "INTRUDER" },
 ];
 
+// fire-and-forget side-effect helper; safe before NL.actions exists.
+const act = (fn, ...args) => { if (window.NL && NL.actions && NL.actions[fn]) NL.actions[fn](...args); };
+
 function reducer(state, action) {
   switch (action.type) {
     case "set":
       return { ...state, ...action.payload };
     case "switch-tab":
       return { ...state, tab: action.tab };
+
+    // Snapshot poll arrived from real-data.js -- merge fresh server state
+    // into the slices that aren't already a live React-owned local copy.
+    case "nl-snapshot": {
+      if (!window.NL) return state;
+      return {
+        ...state,
+        rows: NL.rows || state.rows,
+        scope: NL.scope || state.scope,
+        intercepted: NL.intercepted || state.intercepted,
+        intercept: NL.interceptEnabled !== undefined ? NL.interceptEnabled : state.intercept,
+        repeater: NL.repeater ? { ...state.repeater, ...NL.repeater } : state.repeater,
+        intruder: NL.intruder ? { ...state.intruder, ...NL.intruder } : state.intruder,
+        proxyOn: NL.bootInfo && NL.bootInfo.proxyOn !== undefined ? NL.bootInfo.proxyOn : state.proxyOn,
+      };
+    }
+
     case "send-to-repeater": {
       if (!action.row) return state;
       const row = action.row;
       const req = NL.requestRawAt(row.id - 1);
+      act("repeaterSet", { host: row.host, port: row.tls ? 443 : 80, tls: row.tls, request: req });
       return {
         ...state,
         tab: "repeater",
@@ -36,11 +57,11 @@ function reducer(state, action) {
       if (!action.row) return state;
       const row = action.row;
       const req = NL.requestRawAt(row.id - 1);
-      // mark a value to fuzz: replace path after last "=" with §marker§
       let tmpl = req;
       if (req.includes("=")) {
         tmpl = req.replace(/(=)([^&\s\n]*)$/m, "$1§payload§");
       }
+      act("intruderSet", { host: row.host, port: row.tls ? 443 : 80, tls: row.tls, template: tmpl });
       return {
         ...state,
         tab: "intruder",
@@ -53,54 +74,82 @@ function reducer(state, action) {
         },
       };
     }
+
     case "repeater-set":
+      act("repeaterSet", action.payload);
       return { ...state, repeater: { ...state.repeater, ...action.payload } };
+    case "repeater-send":
+      act("repeaterSend");
+      return { ...state, repeater: { ...state.repeater, statusLine: "sending…" } };
     case "repeater-clear":
+      act("repeaterClear");
       return { ...state, repeater: { ...state.repeater, request: "", response: "", statusLine: "—" } };
+
     case "intruder-set":
+      act("intruderSet", action.payload);
       return { ...state, intruder: { ...state.intruder, ...action.payload } };
     case "intruder-clear":
+      act("intruderClear");
       return { ...state, intruder: { ...state.intruder, running: false, results: state.intruder.payloads.map(() => ({ status: null, size: 0, ms: 0, err: "" })) } };
     case "intruder-start":
+      // make sure the backend has the latest template + payloads before kick-off
+      act("intruderSet", {
+        host: state.intruder.host,
+        port: state.intruder.port,
+        tls: state.intruder.tls,
+        template: state.intruder.template,
+        payloads: state.intruder.payloads,
+      });
+      act("intruderStart");
       return { ...state, intruder: { ...state.intruder, running: true } };
     case "intruder-stop":
+      act("intruderStop");
       return { ...state, intruder: { ...state.intruder, running: false } };
-    case "intruder-tick": {
-      // advance one pending row
-      const results = [...state.intruder.results];
-      const next = results.findIndex(r => r.status === null);
-      if (next === -1) return { ...state, intruder: { ...state.intruder, running: false } };
-      const payload = state.intruder.payloads[next];
-      // fake outcome:
-      const hit = /admin|operator|correct|root|password/i.test(payload) && Math.random() < 0.18;
-      const errored = Math.random() < 0.05;
-      results[next] = errored
-        ? { status: 0, size: 0, ms: 1200 + Math.floor(Math.random() * 1500), err: "timeout" }
-        : { status: hit ? 200 : 401, size: hit ? 312 : 124, ms: 60 + Math.floor(Math.random() * 110), err: "" };
-      return { ...state, intruder: { ...state.intruder, results } };
-    }
+    case "intruder-tick":
+      // No-op when bound to real data; results come from the snapshot poll.
+      return state;
+
     case "intercept-toggle":
+      act("toggleIntercept");
       return { ...state, intercept: !state.intercept };
-    case "intercept-forward":
+    case "intercept-forward": {
+      const current = state.intercepted[0];
+      act("interceptForward", current ? current.text : "");
       return { ...state, intercepted: state.intercepted.slice(1) };
+    }
     case "intercept-drop":
+      act("interceptDrop");
       return { ...state, intercepted: state.intercepted.slice(1) };
     case "intercept-forward-all":
+      act("interceptForwardAll");
       return { ...state, intercepted: [] };
+
     case "scope-add-in":
       if (state.scope.in.includes(action.value)) return state;
+      act("scopeAddIn", action.value);
       return { ...state, scope: { ...state.scope, in: [...state.scope.in, action.value] } };
-    case "scope-remove-in":
+    case "scope-remove-in": {
+      const glob = state.scope.in[action.index];
+      act("scopeRemoveIn", glob);
       return { ...state, scope: { ...state.scope, in: state.scope.in.filter((_, i) => i !== action.index) } };
+    }
     case "scope-add-out":
       if (state.scope.out.includes(action.value)) return state;
+      act("scopeAddOut", action.value);
       return { ...state, scope: { ...state.scope, out: [...state.scope.out, action.value] } };
-    case "scope-remove-out":
+    case "scope-remove-out": {
+      const glob = state.scope.out[action.index];
+      act("scopeRemoveOut", glob);
       return { ...state, scope: { ...state.scope, out: state.scope.out.filter((_, i) => i !== action.index) } };
+    }
+
     case "clear-history":
+      act("clearHistory");
       return { ...state, rows: [], selectedRowId: null };
     case "toggle-power":
+      act("toggleProxy");
       return { ...state, proxyOn: !state.proxyOn };
+
     default:
       return state;
   }
@@ -159,7 +208,18 @@ function App() {
 
   const [state, dispatch] = React.useReducer(reducer, initialState);
 
-  // intruder ticking
+  // Live-sync: real-data.js fires 'nl-update' whenever the snapshot poll
+  // brings in a fresh payload from the control server. Push it into the
+  // reducer so the table, sitemap, repeater state, etc. stay current
+  // without the user having to refresh.
+  React.useEffect(() => {
+    const onUpdate = () => dispatch({ type: "nl-snapshot" });
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  // intruder ticking (kept as no-op for real-data mode; the snapshot
+  // brings in completed rows directly)
   React.useEffect(() => {
     if (!state.intruder.running) return;
     const id = setInterval(() => dispatch({ type: "intruder-tick" }), 240);
@@ -263,7 +323,15 @@ function App() {
         intercept={state.intercept}
         queue={state.intercepted.length}
         har={NL.bootInfo.harPath}
-        onExport={() => alert("Mock: HAR exported to\n" + NL.bootInfo.harPath)}
+        onExport={() => {
+          act("exportHar");
+          // Real path is set by the backend; surface the project's
+          // exports/ dir so the user can find it.
+          const dir = (window.NL && NL.bootInfo && NL.bootInfo.projectDir)
+                        ? NL.bootInfo.projectDir + "\\exports\\"
+                        : "<project>/exports/";
+          alert("HAR export written to:\n" + dir);
+        }}
         onClear={() => dispatch({ type: "clear-history" })}
         onTogglePower={() => dispatch({ type: "toggle-power" })}
       />

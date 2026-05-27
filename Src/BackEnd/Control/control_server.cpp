@@ -101,9 +101,10 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
 
 bool ControlServer::start(const QHostAddress &address, quint16 port) {
     if (m_server->isListening()) return true;
-    // Same protected-port quirk as the main proxy -- walk a small range.
+    // 9000/9001 are MinIO defaults so we skip them. 9090 is Prometheus.
+    // Pick high-obscure-ports that no common service squats on.
     const QList<quint16> tries = {
-        port, quint16(port + 1), 9090, 9100, 9200, 17777,
+        port, 17777, 27777, 37777, 47777, 57777,
     };
     for (quint16 p : tries) {
         if (m_server->listen(address, p)) return true;
@@ -353,9 +354,6 @@ QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
 
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
                                        const QByteArray &body) const {
-    Q_UNUSED(method)
-    Q_UNUSED(body)
-
     if (path == "/api/snapshot") {
         return httpResponse(200, "application/json; charset=utf-8", buildSnapshot());
     }
@@ -377,6 +375,152 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
     }
 
+    // --- write actions; POST only (we accept any method for laziness) -------
+    auto okJson = [](const QJsonObject &extra = {}) {
+        QJsonObject o = extra;
+        o["ok"] = true;
+        return httpJson(200, o);
+    };
+    const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
+
+    if (path == "/api/proxy/toggle") {
+        if (m_wiring.proxy) {
+            if (m_wiring.proxy->isRunning()) m_wiring.proxy->stop();
+            else                             m_wiring.proxy->start();
+        }
+        return okJson({{ "isRunning", m_wiring.proxy && m_wiring.proxy->isRunning() }});
+    }
+    if (path == "/api/intercept/toggle") {
+        if (m_wiring.intercept)
+            m_wiring.intercept->setEnabled(!m_wiring.intercept->enabled());
+        return okJson({{ "enabled", m_wiring.intercept && m_wiring.intercept->enabled() }});
+    }
+    if (path == "/api/intercept/forward") {
+        if (m_wiring.intercept) {
+            const QString text = bodyJson.value("text").toString();
+            m_wiring.intercept->forward(text);
+        }
+        return okJson();
+    }
+    if (path == "/api/intercept/drop") {
+        if (m_wiring.intercept) m_wiring.intercept->drop();
+        return okJson();
+    }
+    if (path == "/api/intercept/forwardAll") {
+        if (m_wiring.intercept) m_wiring.intercept->forwardAll();
+        return okJson();
+    }
+
+    if (path == "/api/scope/in/add") {
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->addInScope(bodyJson.value("glob").toString());
+        return okJson();
+    }
+    if (path == "/api/scope/in/remove") {
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->removeInScope(bodyJson.value("glob").toString());
+        return okJson();
+    }
+    if (path == "/api/scope/out/add") {
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->addOutOfScope(bodyJson.value("glob").toString());
+        return okJson();
+    }
+    if (path == "/api/scope/out/remove") {
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->removeOutOfScope(bodyJson.value("glob").toString());
+        return okJson();
+    }
+    if (path == "/api/scope/notes") {
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->setNotes(bodyJson.value("notes").toString());
+        return okJson();
+    }
+
+    if (path == "/api/repeater/set") {
+        if (m_wiring.repeater) {
+            if (bodyJson.contains("host"))    m_wiring.repeater->setHost(bodyJson.value("host").toString());
+            if (bodyJson.contains("port"))    m_wiring.repeater->setPort(bodyJson.value("port").toInt());
+            if (bodyJson.contains("tls"))     m_wiring.repeater->setUseTls(bodyJson.value("tls").toBool());
+            if (bodyJson.contains("request")) m_wiring.repeater->setRequestText(bodyJson.value("request").toString());
+        }
+        return okJson();
+    }
+    if (path == "/api/repeater/send") {
+        // Defer: Repeater::send blocks on network. Run it via singleShot so
+        // the HTTP response returns immediately and the UI's snapshot poll
+        // picks up the result when it's ready.
+        if (m_wiring.repeater) {
+            QMetaObject::invokeMethod(m_wiring.repeater, "send", Qt::QueuedConnection);
+        }
+        return okJson();
+    }
+    if (path == "/api/repeater/clear") {
+        if (m_wiring.repeater) m_wiring.repeater->clear();
+        return okJson();
+    }
+
+    if (path == "/api/intruder/set") {
+        if (m_wiring.intruder) {
+            if (bodyJson.contains("host"))     m_wiring.intruder->setHost(bodyJson.value("host").toString());
+            if (bodyJson.contains("port"))     m_wiring.intruder->setPort(bodyJson.value("port").toInt());
+            if (bodyJson.contains("tls"))      m_wiring.intruder->setUseTls(bodyJson.value("tls").toBool());
+            if (bodyJson.contains("template")) m_wiring.intruder->setRequestTemplate(bodyJson.value("template").toString());
+            if (bodyJson.contains("payloads")) {
+                // payloads can be an array of strings or a newline-joined string
+                const QJsonValue p = bodyJson.value("payloads");
+                if (p.isArray()) {
+                    QStringList parts;
+                    for (const QJsonValue &v : p.toArray()) parts.append(v.toString());
+                    m_wiring.intruder->setPayloads(parts.join('\n'));
+                } else {
+                    m_wiring.intruder->setPayloads(p.toString());
+                }
+            }
+        }
+        return okJson();
+    }
+    if (path == "/api/intruder/start") {
+        if (m_wiring.intruder) m_wiring.intruder->start();
+        return okJson();
+    }
+    if (path == "/api/intruder/stop") {
+        if (m_wiring.intruder) m_wiring.intruder->stop();
+        return okJson();
+    }
+    if (path == "/api/intruder/clear") {
+        if (m_wiring.intruder) m_wiring.intruder->clear();
+        return okJson();
+    }
+
+    if (path == "/api/theme") {
+        if (m_wiring.themes)
+            m_wiring.themes->setCurrentTheme(bodyJson.value("name").toString());
+        return okJson();
+    }
+
+    if (path == "/api/har/export") {
+        QString out;
+        if (m_wiring.projectStore) out = m_wiring.projectStore->exportHar(QString());
+        return okJson({{ "path", out }});
+    }
+
+    if (path == "/api/clear-history") {
+        if (m_wiring.history) m_wiring.history->clear();
+        return okJson();
+    }
+
+    if (path == "/api/mitm/clear-blocked") {
+        if (m_wiring.proxy) m_wiring.proxy->clearMitmBlocked();
+        return okJson();
+    }
+
+    if (path == "/api/extensions/reload") {
+        if (m_wiring.extensions) m_wiring.extensions->reload();
+        return okJson({{ "loaded", m_wiring.extensions ? m_wiring.extensions->loadedCount() : 0 }});
+    }
+
+    (void)method;
     return httpResponse(404, "text/plain", "Not found: " + path.toUtf8());
 }
 

@@ -68,6 +68,41 @@
     NL._cache.resp[r.id] = t;
     return t;
   };
+  // POST helpers wired to the control server's action endpoints. Fire and
+  // forget -- the snapshot poll picks up resulting state changes within
+  // ~500 ms. Callers can chain .then() if they want to refresh sooner.
+  function post(path, payload) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+  }
+  NL.actions = {
+    toggleProxy()           { return post("/api/proxy/toggle"); },
+    toggleIntercept()       { return post("/api/intercept/toggle"); },
+    interceptForward(text)  { return post("/api/intercept/forward", { text }); },
+    interceptDrop()         { return post("/api/intercept/drop"); },
+    interceptForwardAll()   { return post("/api/intercept/forwardAll"); },
+    scopeAddIn(glob)        { return post("/api/scope/in/add",     { glob }); },
+    scopeRemoveIn(glob)     { return post("/api/scope/in/remove",  { glob }); },
+    scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob }); },
+    scopeRemoveOut(glob)    { return post("/api/scope/out/remove", { glob }); },
+    scopeSetNotes(notes)    { return post("/api/scope/notes",      { notes }); },
+    repeaterSet(payload)    { return post("/api/repeater/set",     payload); },
+    repeaterSend()          { return post("/api/repeater/send"); },
+    repeaterClear()         { return post("/api/repeater/clear"); },
+    intruderSet(payload)    { return post("/api/intruder/set",     payload); },
+    intruderStart()         { return post("/api/intruder/start"); },
+    intruderStop()          { return post("/api/intruder/stop"); },
+    intruderClear()         { return post("/api/intruder/clear"); },
+    setTheme(name)          { return post("/api/theme", { name }); },
+    exportHar()             { return post("/api/har/export").then(r => r.json()); },
+    clearHistory()          { return post("/api/clear-history"); },
+    clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
+    reloadExtensions()      { return post("/api/extensions/reload"); },
+  };
+
   NL.statusText = function (s) {
     return ({200:"OK",201:"Created",204:"No Content",301:"Moved Permanently",
              302:"Found",304:"Not Modified",401:"Unauthorized",403:"Forbidden",

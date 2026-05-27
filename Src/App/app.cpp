@@ -497,9 +497,12 @@ int main(int argc, char *argv[]) {
     // bundle this into a Qt resource; not done yet.
 
     Nullock::Control::ControlServer controlServer(wiring);
-    if (controlServer.start()) {
+    // 17777 by default; MinIO owns 9000/9001 on this box and that's a
+    // common collision so we steer well clear by default.
+    if (controlServer.start(QHostAddress::LocalHost, 17777)) {
         const QString url = QString("http://127.0.0.1:%1/")
                                 .arg(controlServer.listeningPort());
+        qInfo().noquote() << "Nullock UI:" << url;
         QDesktopServices::openUrl(QUrl(url));
     }
 
