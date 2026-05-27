@@ -8,16 +8,16 @@ ApplicationWindow {
     width: 1480
     height: 900
     title: "Nullock"
-    color: "#0a0a0a"
+    color: themes.colorBg
 
-    readonly property color accent:    "#ff8c1a"
-    readonly property color text:      "#80f0c0"
-    readonly property color dim:       "#5a5a5a"
-    readonly property color rowAlt:    "#141414"
-    readonly property color rowEven:   "#1c1c1c"
-    readonly property color rowSelect: "#3a2010"
-    readonly property color pane:      "#0f0f0f"
-    readonly property color line:      "#222"
+    readonly property color accent:    themes.colorAccent
+    readonly property color text:      themes.colorText
+    readonly property color dim:       themes.colorDim
+    readonly property color rowAlt:    themes.colorRowAlt
+    readonly property color rowEven:   themes.colorRowEven
+    readonly property color rowSelect: themes.colorRowSelect
+    readonly property color pane:      themes.colorPane
+    readonly property color line:      themes.colorLine
 
     component Cell : Text {
         color: root.text
@@ -113,6 +113,15 @@ ApplicationWindow {
                 TabHeader { label: "Intercept"; active: root.currentTab === 3; onClicked: root.currentTab = 3 }
                 TabHeader { label: "Intruder";  active: root.currentTab === 4; onClicked: root.currentTab = 4 }
                 Item { Layout.fillWidth: true }
+                Cell { text: "theme:"; color: root.dim }
+                AccentButton {
+                    label: themes.currentTheme
+                    onClicked: {
+                        const list = themes.availableThemes
+                        const cur = list.indexOf(themes.currentTheme)
+                        themes.currentTheme = list[(cur + 1) % list.length]
+                    }
+                }
             }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: root.line }

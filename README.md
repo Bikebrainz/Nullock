@@ -103,7 +103,7 @@ In rough order of dependency:
 - [x] **HAR export** — `ProjectStore::exportHar()` re-reads `history.ndjson` and writes [HTTP Archive 1.2](https://w3c.github.io/web-performance/specs/HAR/Overview.html). Output goes under `<project>/exports/history_<timestamp>.har`. "Export HAR" button in the status bar; status line shows the resulting path. Smoke-tested: round-trip parse confirms `log.version == "1.2"`, `creator.name == "Nullock"`, every entry has a non-empty `request.url` and a non-zero `response.status`. Opens cleanly in Chrome DevTools, Burp, Charles, Insomnia.
 - [x] **Basic QuickControls style** — `QQuickStyle::setStyle("Basic")` set at app startup so `Rectangle { background }` customizations on `TextField` / `TextArea` work without spamming "background customization not supported" warnings on every launch (was ~9 per startup).
 - [ ] **Extensions API** — plugin loader and lifecycle.
-- [ ] **Themes manager** — JSON-driven theme switching.
+- [x] **Themes manager** — `ThemesManager` exposes nine Q_PROPERTY colors (`colorAccent`, `colorText`, etc.) that QML binds to. Three built-in themes (`retro`, `mono`, `amber`) plus any user `.json` files dropped under `%APPDATA%/Nullock/Nullock/themes/`. Switcher button in the title bar cycles available themes; switching is live (every Rectangle/Text binding re-evaluates via the `themeChanged` signal). JSON format: `{"name":"…", "colors": {"accent":"#…", …}}`.
 
 ## License
 

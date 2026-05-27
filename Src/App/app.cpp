@@ -1,6 +1,7 @@
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
+#include "Themes/themes_manager.hpp"
 #include "cert_authority.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
@@ -330,6 +331,7 @@ int main(int argc, char *argv[]) {
     Nullock::FrontEnd::ProxyFilterModel filteredModel;
     filteredModel.setSourceModel(&model);
     Nullock::FrontEnd::SiteMapModel siteMap(&model);
+    Nullock::FrontEnd::ThemesManager themes;
     Nullock::Core::ProjectStore projectStore;
 
     // Wire the model BEFORE we open the store so streamed history lands in
@@ -372,6 +374,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("proxyModel", &model);
     engine.rootContext()->setContextProperty("historyView", &filteredModel);
     engine.rootContext()->setContextProperty("siteMap", &siteMap);
+    engine.rootContext()->setContextProperty("themes", &themes);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);

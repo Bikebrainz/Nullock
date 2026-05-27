@@ -1,0 +1,127 @@
+#include "themes_manager.hpp"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QStandardPaths>
+
+namespace Nullock::FrontEnd {
+
+ThemesManager::ThemesManager(QObject *parent) : QObject(parent), m_current("retro") {
+    loadBuiltins();
+    loadUserThemes();
+}
+
+QStringList ThemesManager::availableThemes() const {
+    QStringList names = m_themes.keys();
+    names.sort();
+    return names;
+}
+
+void ThemesManager::setCurrentTheme(const QString &name) {
+    if (name == m_current) return;
+    if (!m_themes.contains(name)) return;
+    m_current = name;
+    emit themeChanged();
+}
+
+QString ThemesManager::themesDir() const {
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+           + "/themes";
+}
+
+bool ThemesManager::reload() {
+    const QString prev = m_current;
+    m_themes.clear();
+    loadBuiltins();
+    loadUserThemes();
+    if (!m_themes.contains(prev)) m_current = "retro";
+    emit themesChanged();
+    emit themeChanged();
+    return true;
+}
+
+QColor ThemesManager::color(const QString &key, const char *fallbackHex) const {
+    const auto it = m_themes.constFind(m_current);
+    if (it != m_themes.constEnd()) {
+        const auto cit = it.value().colors.constFind(key);
+        if (cit != it.value().colors.constEnd()) return cit.value();
+    }
+    return QColor(fallbackHex);
+}
+
+void ThemesManager::loadBuiltins() {
+    Theme retro;
+    retro.name = "retro";
+    retro.colors = {
+        { "accent",    QColor("#ff8c1a") },
+        { "text",      QColor("#80f0c0") },
+        { "dim",       QColor("#5a5a5a") },
+        { "rowAlt",    QColor("#141414") },
+        { "rowEven",   QColor("#1c1c1c") },
+        { "rowSelect", QColor("#3a2010") },
+        { "pane",      QColor("#0f0f0f") },
+        { "line",      QColor("#222222") },
+        { "bg",        QColor("#0a0a0a") },
+    };
+    m_themes.insert(retro.name, retro);
+
+    Theme mono;
+    mono.name = "mono";
+    mono.colors = {
+        { "accent",    QColor("#e0e0e0") },
+        { "text",      QColor("#bdbdbd") },
+        { "dim",       QColor("#666666") },
+        { "rowAlt",    QColor("#141414") },
+        { "rowEven",   QColor("#1c1c1c") },
+        { "rowSelect", QColor("#2a2a2a") },
+        { "pane",      QColor("#0e0e0e") },
+        { "line",      QColor("#262626") },
+        { "bg",        QColor("#080808") },
+    };
+    m_themes.insert(mono.name, mono);
+
+    Theme amber;
+    amber.name = "amber";
+    amber.colors = {
+        { "accent",    QColor("#ffb000") },
+        { "text",      QColor("#ffcc66") },
+        { "dim",       QColor("#7a5500") },
+        { "rowAlt",    QColor("#1a1000") },
+        { "rowEven",   QColor("#231400") },
+        { "rowSelect", QColor("#4a2a00") },
+        { "pane",      QColor("#100a00") },
+        { "line",      QColor("#2a1800") },
+        { "bg",        QColor("#0a0500") },
+    };
+    m_themes.insert(amber.name, amber);
+}
+
+void ThemesManager::loadUserThemes() {
+    const QString dir = themesDir();
+    QDir().mkpath(dir);
+    QDir d(dir);
+    for (const QFileInfo &fi : d.entryInfoList({ "*.json" }, QDir::Files)) {
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+        if (!doc.isObject()) continue;
+        const QJsonObject root = doc.object();
+        const QString name = root.value("name").toString();
+        if (name.isEmpty()) continue;
+
+        Theme t;
+        t.name = name;
+        const QJsonObject colors = root.value("colors").toObject();
+        for (auto it = colors.constBegin(); it != colors.constEnd(); ++it) {
+            const QColor c(it.value().toString());
+            if (c.isValid()) t.colors.insert(it.key(), c);
+        }
+        m_themes.insert(name, t);
+    }
+}
+
+} // namespace Nullock::FrontEnd
