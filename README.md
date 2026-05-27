@@ -105,6 +105,7 @@ In rough order of dependency:
 - [x] **Basic QuickControls style** — `QQuickStyle::setStyle("Basic")` set at app startup so `Rectangle { background }` customizations on `TextField` / `TextArea` work without spamming "background customization not supported" warnings on every launch (was ~9 per startup).
 - [ ] **Extensions API** — plugin loader and lifecycle.
 - [x] **Themes manager** — `ThemesManager` exposes nine Q_PROPERTY colors (`colorAccent`, `colorText`, etc.) that QML binds to. Three built-in themes (`retro`, `mono`, `amber`) plus any user `.json` files dropped under `%APPDATA%/Nullock/Nullock/themes/`. Switcher button in the title bar cycles available themes; switching is live (every Rectangle/Text binding re-evaluates via the `themeChanged` signal). JSON format: `{"name":"…", "colors": {"accent":"#…", …}}`.
+- [x] **Extensions API** — drop `.js` files in `%APPDATA%/Nullock/Nullock/extensions/` and they run in a shared `QJSEngine` at startup (and on `extensions.reload()`). Global `nullock` object exposes `log(msg)` and `onResponse(fn)`. Each completed request fires every registered `onResponse(entry)` with a snapshot of method/host/port/path/scheme/url/status/headers/responseSize/bodyPreview. Read-only inspection for v1; mutation hooks are a future iteration. Smoke-tested: a counter extension is written to disk, the engine reloads, a real request through the proxy triggers the hook, and the log captures the expected line.
 
 ## License
 

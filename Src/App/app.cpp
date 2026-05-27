@@ -1,3 +1,4 @@
+#include "ExtensionsAPI/extensions_api.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
@@ -11,6 +12,7 @@
 #include "repeater.hpp"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QEventLoop>
 #include <QFile>
 #include <QGuiApplication>
@@ -76,7 +78,8 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  Nullock::Proxy::InterceptController &intercept,
                  Nullock::Core::Repeater            &repeater,
                  Nullock::Core::Intruder            &intruder,
-                 Nullock::Core::ProjectStore        &projectStore) {
+                 Nullock::Core::ProjectStore        &projectStore,
+                 Nullock::Core::ExtensionsApi       &extensions) {
     QTextStream out(stdout);
     int passed = 0, failed = 0;
     auto pass = [&](const QString &m) { out << "PASS  " << m << Qt::endl; ++passed; };
@@ -283,6 +286,64 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                      .arg(QString::fromLatin1(frames.value(1).payload.toHex())));
     }
 
+    // -- 10. JS extension sees a response via the nullock.onResponse hook ----
+    //  Write a tiny extension that logs each response, then reload the
+    //  extension engine, then fire one request and confirm the log grew.
+    {
+        const QString extDir = extensions.extensionsDir();
+        QDir().mkpath(extDir);
+        const QString extPath = extDir + "/_smoke_counter.js";
+        QFile ext(extPath);
+        bool wroteExt = ext.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        if (wroteExt) {
+            ext.write("nullock.log('counter ext loaded');\n");
+            ext.write("var hits = 0;\n");
+            ext.write("nullock.onResponse(function(e) {\n");
+            ext.write("    hits++;\n");
+            ext.write("    nullock.log('hit#' + hits + ' ' + e.method + ' ' + e.url + ' -> ' + e.status);\n");
+            ext.write("});\n");
+            ext.close();
+        }
+
+        const int logBefore = extensions.logLineCount();
+        extensions.reload();
+        const QStringList loaded = extensions.loadedScripts();
+
+        // Fire one HTTP request through the proxy.
+        const auto extCurl = runCurl({
+            "-s", "--max-time", "15",
+            "--proxy", proxyUrl,
+            "http://httpbin.org/uuid" }, 15000);
+
+        // Wait briefly for the queued signal to reach the extension.
+        waitMs(300);
+
+        const QStringList recent = extensions.recentLog(50);
+        bool sawLoad = false;
+        bool sawHit  = false;
+        for (const QString &line : recent) {
+            if (line.contains("counter ext loaded")) sawLoad = true;
+            if (line.contains("hit#") && line.contains("/uuid")) sawHit = true;
+        }
+
+        // Clean up the test extension so it doesn't permanently live in
+        // the user's extensions dir.
+        QFile::remove(extPath);
+
+        if (extCurl.exitCode == 0 && loaded.contains("_smoke_counter.js")
+            && sawLoad && sawHit
+            && extensions.logLineCount() > logBefore) {
+            pass(QString("extensions loaded (%1) and onResponse hook fired")
+                     .arg(loaded.join(", ")));
+        } else {
+            fail(QString("extensions: curlExit=%1 wrote=%2 loaded=[%3] sawLoad=%4 sawHit=%5")
+                     .arg(extCurl.exitCode)
+                     .arg(wroteExt)
+                     .arg(loaded.join(", "))
+                     .arg(sawLoad).arg(sawHit));
+        }
+    }
+
     // -- 8. HAR export of the history collected so far -----------------------
     //  Sanity: a freshly-exported HAR is valid JSON, has the right shape,
     //  and the entries.length matches what we've actually accumulated.
@@ -367,6 +428,7 @@ int main(int argc, char *argv[]) {
     filteredModel.setSourceModel(&model);
     Nullock::FrontEnd::SiteMapModel siteMap(&model);
     Nullock::FrontEnd::ThemesManager themes;
+    Nullock::Core::ExtensionsApi extensions;
     Nullock::Core::ProjectStore projectStore;
 
     // Wire the model BEFORE we open the store so streamed history lands in
@@ -388,6 +450,8 @@ int main(int argc, char *argv[]) {
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &projectStore, &Nullock::Core::ProjectStore::appendEntry);
+    QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                     &extensions, &Nullock::Core::ExtensionsApi::onResponseReceived);
 
     proxy.start();
 
@@ -402,7 +466,7 @@ int main(int argc, char *argv[]) {
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
-        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore);
+        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore, extensions);
     }
 
     QQmlApplicationEngine engine;
@@ -410,6 +474,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("historyView", &filteredModel);
     engine.rootContext()->setContextProperty("siteMap", &siteMap);
     engine.rootContext()->setContextProperty("themes", &themes);
+    engine.rootContext()->setContextProperty("extensions", &extensions);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);
