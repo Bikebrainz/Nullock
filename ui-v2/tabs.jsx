@@ -97,27 +97,90 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
 
 // ===================== REPEATER =====================
 function RepeaterTab({ rep, dispatch }) {
-  const [busy, setBusy] = React.useState(false);
+  // Real backend handles the send. We only show a spinner-y label while
+  // the snapshot reports busy=true, then flip back to the response.
+  const send = () => dispatch({ type: "repeater-send" });
+  const busy = rep && rep.busy;
 
-  const send = () => {
-    setBusy(true);
-    setTimeout(() => {
-      setBusy(false);
-      // small visual change: bump response timestamp
-      const ms = 60 + Math.floor(Math.random() * 180);
-      dispatch({ type: "repeater-set", payload: {
-        statusLine: `HTTP/2 200 OK · 248 B · ${ms} ms`,
-      }});
-    }, 450);
+  // Live tab strip pulled from the snapshot. Fall back to a single fake
+  // entry if the backend hasn't reported tabs yet (older builds).
+  const tabs = (window.NL && NL.repeater && NL.repeater.tabs)
+                  ? NL.repeater.tabs : [];
+  const active = (window.NL && NL.repeater && typeof NL.repeater.activeTab === "number")
+                  ? NL.repeater.activeTab : 0;
+
+  const onRename = (i) => {
+    const cur = tabs[i] ? tabs[i].name : "";
+    const next = prompt("Rename tab", cur);
+    if (next !== null && next !== cur) NL.actions.repeaterTabRename(i, next);
   };
 
   return (
-    <div className="tab-body" style={{ gridTemplateRows: "auto auto 1fr" }}>
+    <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
       <div className="pane-head">
         <span className="ph-corner">▸</span>
         <span>REPEATER · one-shot request editor</span>
-        <span className="ph-count">target locked</span>
+        <span className="ph-count">{tabs.length} tab{tabs.length === 1 ? "" : "s"}</span>
       </div>
+
+      {/* Tab strip */}
+      <div style={{
+        display: "flex", alignItems: "stretch", gap: 2,
+        padding: "4px 8px", borderBottom: "1px solid var(--line)",
+        overflowX: "auto", background: "var(--pane)",
+      }}>
+        {tabs.map((t, i) => {
+          const isActive = i === active;
+          return (
+            <div key={i}
+                 onClick={() => NL.actions.repeaterTabActivate(i)}
+                 onDoubleClick={() => onRename(i)}
+                 title={(t.host || "") + " · double-click to rename"}
+                 style={{
+                   display: "flex", alignItems: "center", gap: 6,
+                   padding: "4px 8px", cursor: "pointer",
+                   background: isActive ? "var(--bg-deep)" : "transparent",
+                   color: isActive ? "var(--accent)" : "var(--text-2)",
+                   borderTop:    "1px solid " + (isActive ? "var(--accent)" : "var(--line)"),
+                   borderLeft:   "1px solid " + (isActive ? "var(--accent)" : "var(--line)"),
+                   borderRight:  "1px solid " + (isActive ? "var(--accent)" : "var(--line)"),
+                   borderBottom: "1px solid " + (isActive ? "var(--bg-deep)" : "var(--line)"),
+                   fontSize: "11px", fontFamily: "var(--ff-mono)",
+                   whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden",
+                   textOverflow: "ellipsis", marginBottom: -1,
+                 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {t.name || ("tab " + (i + 1))}
+              </span>
+              {t.statusLine && (
+                <span style={{ color: "var(--dim)", fontSize: "10px" }}>
+                  ·{t.statusLine.split(" ").slice(0, 2).join(" ")}
+                </span>
+              )}
+              <span style={{
+                color: "var(--dim)", padding: "0 2px",
+                opacity: 0.6,
+              }} onClick={(e) => { e.stopPropagation(); NL.actions.repeaterTabClose(i); }}
+                 title="close">×</span>
+            </div>
+          );
+        })}
+        <button onClick={() => NL.actions.repeaterTabAdd("")}
+                title="New tab"
+                style={{
+                  background: "transparent", color: "var(--accent)",
+                  border: "1px dashed var(--line)", padding: "0 10px",
+                  fontFamily: "var(--ff-mono)", cursor: "pointer", fontSize: "12px",
+                }}>+ NEW</button>
+        <button onClick={() => NL.actions.repeaterTabDuplicate(active)}
+                title="Duplicate current tab"
+                style={{
+                  background: "transparent", color: "var(--text-2)",
+                  border: "1px dashed var(--line)", padding: "0 8px",
+                  fontFamily: "var(--ff-mono)", cursor: "pointer", fontSize: "11px",
+                }}>DUP</button>
+      </div>
+
       <div className="target-row">
         <span className="arrow">▶</span>
         <div className="fld" style={{ flex: "0 0 80px" }}>

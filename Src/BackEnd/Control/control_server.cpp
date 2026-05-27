@@ -133,6 +133,7 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.repeater, &Nullock::Core::Repeater::responseChanged, this, bump);
         connect(m_wiring.repeater, &Nullock::Core::Repeater::busyChanged,     this, bump);
         connect(m_wiring.repeater, &Nullock::Core::Repeater::targetChanged,   this, bump);
+        connect(m_wiring.repeater, &Nullock::Core::Repeater::tabsChanged,     this, bump);
     }
 }
 
@@ -399,6 +400,18 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["response"]   = m_wiring.repeater->responseText();
         repeater["statusLine"] = m_wiring.repeater->statusLine();
         repeater["busy"]       = m_wiring.repeater->busy();
+        repeater["activeTab"]  = m_wiring.repeater->activeTab();
+        QJsonArray tabs;
+        for (const auto &t : m_wiring.repeater->tabs()) {
+            QJsonObject to;
+            to["name"]       = t.name;
+            to["host"]       = t.host;
+            to["port"]       = t.port;
+            to["tls"]        = t.useTls;
+            to["statusLine"] = t.statusLine;
+            tabs.append(to);
+        }
+        repeater["tabs"] = tabs;
     }
     root["repeater"] = repeater;
 
@@ -630,6 +643,40 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/repeater/clear") {
         if (m_wiring.repeater) m_wiring.repeater->clear();
         return okJson();
+    }
+    if (path == "/api/repeater/tab/add") {
+        int idx = -1;
+        if (m_wiring.repeater)
+            idx = m_wiring.repeater->addTab(bodyJson.value("name").toString());
+        return okJson({{ "index", idx }});
+    }
+    if (path == "/api/repeater/tab/addFromHistory") {
+        int idx = -1;
+        if (m_wiring.repeater)
+            idx = m_wiring.repeater->addTabFromHistory(bodyJson.value("row").toInt(-1));
+        return okJson({{ "index", idx }});
+    }
+    if (path == "/api/repeater/tab/close") {
+        bool ok = m_wiring.repeater
+               && m_wiring.repeater->closeTab(bodyJson.value("index").toInt(-1));
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/repeater/tab/activate") {
+        bool ok = m_wiring.repeater
+               && m_wiring.repeater->setActiveTab(bodyJson.value("index").toInt(-1));
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/repeater/tab/rename") {
+        bool ok = m_wiring.repeater
+               && m_wiring.repeater->renameTab(bodyJson.value("index").toInt(-1),
+                                                bodyJson.value("name").toString());
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/repeater/tab/duplicate") {
+        int idx = -1;
+        if (m_wiring.repeater)
+            idx = m_wiring.repeater->duplicateTab(bodyJson.value("index").toInt(-1));
+        return okJson({{ "index", idx }});
     }
 
     if (path == "/api/intruder/set") {

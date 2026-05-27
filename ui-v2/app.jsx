@@ -40,7 +40,10 @@ function reducer(state, action) {
       if (!action.row) return state;
       const row = action.row;
       const req = NL.requestRawAt(row.id - 1);
-      act("repeaterSet", { host: row.host, port: row.tls ? 443 : 80, tls: row.tls, request: req });
+      // Spawn a *new* tab on the backend so we don't trample whatever the
+      // user has open. The snapshot poll will fill in the populated tab
+      // shortly; show the row's content optimistically in the meantime.
+      act("repeaterTabAddFromHistory", row.id - 1);
       return {
         ...state,
         tab: "repeater",
@@ -50,7 +53,7 @@ function reducer(state, action) {
           port: row.tls ? 443 : 80,
           tls: row.tls,
           request: req,
-          response: state.repeater.response,
+          response: "",
           statusLine: "ready · loaded from #" + row.id.toString().padStart(3,"0"),
         },
       };
