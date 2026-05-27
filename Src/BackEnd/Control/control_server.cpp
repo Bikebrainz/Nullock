@@ -123,6 +123,7 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
     }
     if (m_wiring.projectStore) {
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::scopeChanged, this, bump);
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::rulesChanged, this, bump);
     }
     if (m_wiring.themes) {
         connect(m_wiring.themes, &Nullock::FrontEnd::ThemesManager::themeChanged,  this, bump);
@@ -312,6 +313,25 @@ QByteArray ControlServer::buildSnapshot() const {
     scope["in"]  = inArr;
     scope["out"] = outArr;
     root["scope"] = scope;
+
+    // match & replace rules
+    QJsonArray rulesArr;
+    if (m_wiring.projectStore) {
+        for (const auto &r : m_wiring.projectStore->rules()) {
+            QJsonObject ro;
+            ro["enabled"]         = r.enabled;
+            ro["name"]            = r.name;
+            ro["hostGlob"]        = r.hostGlob;
+            ro["section"]         = static_cast<int>(r.section);
+            ro["find"]            = r.find;
+            ro["replace"]         = r.replace;
+            ro["caseInsensitive"] = r.caseInsensitive;
+            ro["comment"]         = r.comment;
+            rulesArr.append(ro);
+        }
+    }
+    root["rules"] = rulesArr;
+    if (m_wiring.proxy) root["rulesHit"] = m_wiring.proxy->rulesHit();
 
     // history rows (match the mock shape so React renders without changes)
     QJsonArray rows;
@@ -542,6 +562,51 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.projectStore)
             m_wiring.projectStore->setNotes(bodyJson.value("notes").toString());
         return okJson();
+    }
+
+    // Match & replace rules. Body shape mirrors the snapshot:
+    //   { enabled, name, hostGlob, section, find, replace,
+    //     caseInsensitive, comment }
+    // /api/rules/update and /toggle/remove additionally take "index".
+    auto ruleFromJson = [](const QJsonObject &o) {
+        Nullock::Proxy::MatchReplaceRule r;
+        r.enabled         = o.value("enabled").toBool(true);
+        r.name            = o.value("name").toString();
+        r.hostGlob        = o.value("hostGlob").toString();
+        r.section         = static_cast<Nullock::Proxy::MatchReplaceRule::Section>(
+                                o.value("section").toInt(1));
+        r.find            = o.value("find").toString();
+        r.replace         = o.value("replace").toString();
+        r.caseInsensitive = o.value("caseInsensitive").toBool(true);
+        r.comment         = o.value("comment").toString();
+        return r;
+    };
+    if (path == "/api/rules/add") {
+        int idx = -1;
+        if (m_wiring.projectStore) idx = m_wiring.projectStore->addRule(ruleFromJson(bodyJson));
+        return okJson({{ "index", idx }});
+    }
+    if (path == "/api/rules/update") {
+        const int idx = bodyJson.value("index").toInt(-1);
+        bool ok = m_wiring.projectStore
+                && m_wiring.projectStore->updateRule(idx, ruleFromJson(bodyJson));
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/rules/remove") {
+        const int idx = bodyJson.value("index").toInt(-1);
+        bool ok = m_wiring.projectStore && m_wiring.projectStore->removeRule(idx);
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/rules/toggle") {
+        const int idx = bodyJson.value("index").toInt(-1);
+        bool ok = m_wiring.projectStore && m_wiring.projectStore->toggleRule(idx);
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/rules/move") {
+        const int from = bodyJson.value("from").toInt(-1);
+        const int to   = bodyJson.value("to").toInt(-1);
+        bool ok = m_wiring.projectStore && m_wiring.projectStore->moveRule(from, to);
+        return okJson({{ "ok", ok }});
     }
 
     if (path == "/api/repeater/set") {

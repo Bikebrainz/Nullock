@@ -48,6 +48,29 @@ struct HttpResponse {
     bool wasTls = false;
 };
 
+// Match & replace rule. A list of these is applied to every in-scope
+// round-trip after extensions run but before bytes go to the wire. Each
+// rule targets a section of the request or response (URL, header set,
+// body, status line) and rewrites it with a regex find+replace.
+struct MatchReplaceRule {
+    enum Section {
+        ReqUrl = 0,    // operates on request.path/target
+        ReqHeader = 1, // operates on each header as "Key: Value"
+        ReqBody = 2,   // operates on request body (decoded text)
+        RespHeader = 3,
+        RespBody = 4,
+        RespStatus = 5, // operates on "HTTP/1.1 200 OK"-style line
+    };
+    bool        enabled    = true;
+    QString     name;        // user-facing label
+    QString     hostGlob;    // empty = all hosts; "*.example.com" style
+    Section     section     = ReqHeader;
+    QString     find;        // regex
+    QString     replace;     // replacement (supports backrefs \1 etc)
+    bool        caseInsensitive = true;
+    QString     comment;
+};
+
 class ProxyServer : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool isRunning READ isRunning NOTIFY runningChanged)
@@ -105,6 +128,15 @@ public:
     void setScope(const QStringList &inScope, const QStringList &outOfScope);
     bool isInScope(const QString &host) const;
 
+    // Match & replace rules: applied after extensions, before bytes go on
+    // the wire. Set() replaces the whole list atomically; project store
+    // owns the persisted copy and re-fires this on every edit.
+    void setRules(const QList<MatchReplaceRule> &rules);
+    QList<MatchReplaceRule> rules() const;
+    int  rulesHit() const { return m_rulesHit.loadAcquire(); }
+    void applyRequestRules(HttpRequest &req) const;
+    void applyResponseRules(const HttpRequest &req, HttpResponse &resp) const;
+
 signals:
     void started(quint16 port);
     void stopped();
@@ -131,6 +163,9 @@ private:
     QList<QRegularExpression> m_outOfScope;
     QAtomicInt m_filteredCount {0};
     QAtomicInt m_h2UpstreamCount {0};
+    mutable QMutex m_rulesMutex;
+    QList<MatchReplaceRule> m_rules;
+    mutable QAtomicInt m_rulesHit {0};
 };
 
 } // namespace Nullock::Proxy

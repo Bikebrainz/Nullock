@@ -17,6 +17,7 @@ struct ProjectMeta {
     QString   notes;
     QDateTime created;
     QDateTime updated;
+    QList<Nullock::Proxy::MatchReplaceRule> rules;
 };
 
 class ProjectStore : public QObject {
@@ -61,6 +62,16 @@ public:
     Q_INVOKABLE void addOutOfScope(const QString &glob);
     Q_INVOKABLE void removeOutOfScope(const QString &glob);
 
+    // Match & replace rules. The id is a 1-based row number stable for the
+    // session (regenerated on load). Rules are persisted in project.json.
+    QList<Nullock::Proxy::MatchReplaceRule> rules() const { return m_meta.rules; }
+    void  setRules(const QList<Nullock::Proxy::MatchReplaceRule> &rules);
+    int   addRule(const Nullock::Proxy::MatchReplaceRule &rule);
+    bool  updateRule(int index, const Nullock::Proxy::MatchReplaceRule &rule);
+    bool  removeRule(int index);
+    bool  toggleRule(int index);
+    bool  moveRule(int from, int to);
+
     bool isOpen() const { return m_history.isOpen(); }
     QString currentPath() const { return m_dir; }
     const ProjectMeta &metadata() const { return m_meta; }
@@ -79,6 +90,7 @@ signals:
                      const Nullock::Proxy::HttpResponse &response);
     void errorOccurred(const QString &message);
     void scopeChanged(const QStringList &inScope, const QStringList &outOfScope);
+    void rulesChanged(const QList<Nullock::Proxy::MatchReplaceRule> &rules);
 
 private:
     bool ensureMetadata();

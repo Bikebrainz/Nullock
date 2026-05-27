@@ -3,6 +3,7 @@
 const TABS = [
   { id: "proxy",     label: "PROXY" },
   { id: "scope",     label: "SCOPE" },
+  { id: "rules",     label: "RULES" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -396,6 +397,214 @@ function SettingsTab() {
   );
 }
 
+// Section enum mirrors Nullock::Proxy::MatchReplaceRule::Section.
+const SECTION_LABEL = [
+  "Request URL",      // 0 = ReqUrl
+  "Request header",   // 1 = ReqHeader
+  "Request body",     // 2 = ReqBody
+  "Response header",  // 3 = RespHeader
+  "Response body",    // 4 = RespBody
+  "Response status",  // 5 = RespStatus
+];
+
+// Match & replace tab: list/add/edit/toggle rules that mutate requests
+// or responses on the fly. Each rule has a section (URL / headers / body
+// / status), an optional host glob, a regex find and a replace string.
+// Disabled rules stay in the list but are skipped at runtime.
+function RulesTab() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const rules    = (window.NL && NL.rules) ? NL.rules : [];
+  const rulesHit = (window.NL && NL.rulesHit) || 0;
+  const [draft, setDraft] = React.useState({
+    enabled: true, name: "", hostGlob: "", section: 1,
+    find: "", replace: "", caseInsensitive: true, comment: "",
+  });
+  const [editingIndex, setEditingIndex] = React.useState(-1);
+
+  const setDraftK = (k, v) => setDraft(d => ({ ...d, [k]: v }));
+
+  const reset = () => {
+    setDraft({
+      enabled: true, name: "", hostGlob: "", section: 1,
+      find: "", replace: "", caseInsensitive: true, comment: "",
+    });
+    setEditingIndex(-1);
+  };
+
+  const submit = async () => {
+    if (!draft.find) return;
+    if (editingIndex >= 0) await NL.actions.ruleUpdate(editingIndex, draft);
+    else                   await NL.actions.ruleAdd(draft);
+    reset();
+  };
+
+  const startEdit = (i) => {
+    setDraft({ ...rules[i] });
+    setEditingIndex(i);
+  };
+
+  const Btn = ({ label, onClick, danger, primary, disabled }) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)"
+             : primary ? "var(--bg)"
+             : danger ? "var(--err)"
+             : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)"
+                              : danger ? "var(--err)"
+                              : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}
+    >{label}</button>
+  );
+
+  const inputStyle = {
+    background: "var(--bg-deep)", color: "var(--text)",
+    border: "1px solid var(--line)", padding: "4px 6px",
+    fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+
+  return (
+    <div style={{ padding: 14, overflow: "auto", height: "100%",
+                  display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* HEADER */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Match &amp; Replace</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {rules.length} rule{rules.length === 1 ? "" : "s"} · {rulesHit} substitution{rulesHit === 1 ? "" : "s"} since boot
+        </span>
+      </div>
+
+      {/* RULE EDITOR */}
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 12, borderRadius: 4, display: "grid",
+        gridTemplateColumns: "120px 1fr 120px 1fr", gap: 8,
+        alignItems: "center",
+      }}>
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Name</label>
+        <input style={inputStyle} value={draft.name}
+               placeholder="csrf strip"
+               onChange={e => setDraftK("name", e.target.value)} />
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Host glob</label>
+        <input style={inputStyle} value={draft.hostGlob}
+               placeholder="*.example.com (blank = all)"
+               onChange={e => setDraftK("hostGlob", e.target.value)} />
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Section</label>
+        <select style={inputStyle} value={draft.section}
+                onChange={e => setDraftK("section", parseInt(e.target.value, 10))}>
+          {SECTION_LABEL.map((l, i) => <option key={i} value={i}>{l}</option>)}
+        </select>
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Flags</label>
+        <label style={{ fontSize: "11px", color: "var(--text)", display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={draft.caseInsensitive}
+                 onChange={e => setDraftK("caseInsensitive", e.target.checked)} />
+          case-insensitive
+          <span style={{ width: 18 }} />
+          <input type="checkbox" checked={draft.enabled}
+                 onChange={e => setDraftK("enabled", e.target.checked)} />
+          enabled
+        </label>
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Find (regex)</label>
+        <input style={inputStyle} value={draft.find}
+               placeholder='X-CSRF-Token: .*'
+               onChange={e => setDraftK("find", e.target.value)} />
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Replace</label>
+        <input style={inputStyle} value={draft.replace}
+               placeholder='X-CSRF-Token: AAAA'
+               onChange={e => setDraftK("replace", e.target.value)} />
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Comment</label>
+        <input style={{ ...inputStyle, gridColumn: "2 / span 3" }}
+               value={draft.comment}
+               placeholder="why this rule exists (optional)"
+               onChange={e => setDraftK("comment", e.target.value)} />
+
+        <div style={{ gridColumn: "1 / span 4", display: "flex", gap: 6, marginTop: 4 }}>
+          <Btn label={editingIndex >= 0 ? "Update rule" : "Add rule"}
+               primary onClick={submit} disabled={!draft.find} />
+          {editingIndex >= 0 && <Btn label="Cancel" onClick={reset} />}
+          <span style={{ flex: 1 }} />
+          <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+            Regex uses Qt's PCRE-flavored engine. Use \1, \2 for backreferences.
+          </span>
+        </div>
+      </div>
+
+      {/* RULE LIST */}
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 140px",
+          gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)",
+          fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}>
+          <span>#</span><span>on</span><span>Name</span><span>Host</span>
+          <span>Section</span><span>Find</span><span>Replace</span><span></span>
+        </div>
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {rules.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+              No rules yet. Add one above &mdash; for example,<br/>
+              Find: <code>User-Agent: .*</code> Replace: <code>User-Agent: Nullock/1.0</code>
+            </div>
+          )}
+          {rules.map((r, i) => (
+            <div key={i} style={{
+              display: "grid",
+              gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 140px",
+              gap: 6, padding: "6px 10px", alignItems: "center",
+              fontSize: "12px", fontFamily: "var(--ff-mono)",
+              borderBottom: "1px solid var(--line-soft)",
+              opacity: r.enabled ? 1 : 0.45,
+              background: i === editingIndex ? "var(--accent-faint, rgba(255,255,255,0.04))" : "transparent",
+            }}>
+              <span style={{ color: "var(--dim)" }}>{i + 1}</span>
+              <input type="checkbox" checked={r.enabled}
+                     onChange={() => NL.actions.ruleToggle(i)} />
+              <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.name || <span style={{ color: "var(--dim)" }}>(unnamed)</span>}
+              </span>
+              <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.hostGlob || <span style={{ color: "var(--dim)" }}>*</span>}
+              </span>
+              <span style={{ color: "var(--accent)" }}>{SECTION_LABEL[r.section] || "?"}</span>
+              <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={r.find}>{r.find}</span>
+              <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={r.replace}>{r.replace}</span>
+              <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                <Btn label="Edit" onClick={() => startEdit(i)} />
+                <Btn label="Del"  onClick={() => { if (confirm("Delete rule \"" + (r.name || "(unnamed)") + "\"?")) NL.actions.ruleRemove(i); }} danger />
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Color edit + Save As panel. Reads the current theme's color map from
 // the backend snapshot, applies local edits as inline CSS variables for
 // live preview, and posts a full set to /api/theme/save-as on save.
@@ -632,6 +841,9 @@ function App() {
         )}
         {tab === "intruder" && (
           <IntruderTab intruder={state.intruder} dispatch={dispatch} />
+        )}
+        {tab === "rules" && (
+          <RulesTab />
         )}
         {tab === "settings" && (
           <SettingsTab />

@@ -31,6 +31,8 @@
     NL.bootInfo    = snap.bootInfo    || {};
     NL.themes      = snap.themes      || [];
     NL.scope       = snap.scope       || { in: [], out: [], notes: "" };
+    NL.rules       = snap.rules       || [];
+    NL.rulesHit    = snap.rulesHit    || 0;
     NL.rows        = snap.rows        || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
@@ -120,6 +122,11 @@
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
+    ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
+    ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
+    ruleRemove(index)       { return post("/api/rules/remove", { index }); },
+    ruleToggle(index)       { return post("/api/rules/toggle", { index }); },
+    ruleMove(from, to)      { return post("/api/rules/move",   { from, to }); },
   };
 
   NL.statusText = function (s) {

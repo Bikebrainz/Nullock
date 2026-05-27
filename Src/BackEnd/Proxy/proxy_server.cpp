@@ -182,6 +182,7 @@ public:
         // of scope.
         if (auto *ext = m_server->extensions())
             req = ext->applyRequestMutation(req);
+        m_server->applyRequestRules(req);
 
         QTcpSocket upstream;
         upstream.connectToHost(req.host, req.port);
@@ -211,6 +212,7 @@ public:
         if (!readResponse(&upstream, resp)) { fail("malformed response"); return; }
         if (auto *ext = m_server->extensions())
             resp = ext->applyResponseMutation(req, resp);
+        m_server->applyResponseRules(req, resp);
         if (inScope) emit m_server->responseReceived(req, resp);
 
         m_client->write(serializeResponse(resp));
@@ -377,6 +379,7 @@ public:
 
             if (auto *ext = m_server->extensions())
                 req = ext->applyRequestMutation(req);
+            m_server->applyRequestRules(req);
 
             // Intercept still works -- pend before sending upstream.
             if (auto *ic = m_server->interceptController()) {
@@ -402,6 +405,7 @@ public:
             HttpResponse h2resp = h2res.response;
             if (auto *ext = m_server->extensions())
                 h2resp = ext->applyResponseMutation(req, h2resp);
+            m_server->applyResponseRules(req, h2resp);
             emit m_server->responseReceived(req, h2resp);
 
             sslClient->write(serializeResponse(h2resp));
@@ -430,6 +434,7 @@ public:
 
             if (auto *ext = m_server->extensions())
                 req = ext->applyRequestMutation(req);
+            m_server->applyRequestRules(req);
 
             QByteArray outBytes = serializeRequestForOrigin(req);
             if (auto *ic = m_server->interceptController()) {
@@ -455,6 +460,7 @@ public:
             }
             if (auto *ext = m_server->extensions())
                 resp = ext->applyResponseMutation(req, resp);
+            m_server->applyResponseRules(req, resp);
             emit m_server->responseReceived(req, resp);
 
             // Protocol switch (WebSocket etc.): forward the 101 headers plus
@@ -837,6 +843,133 @@ bool ProxyServer::isInScope(const QString &host) const {
 void ProxyServer::noteFiltered() {
     m_filteredCount.fetchAndAddOrdered(1);
     emit filteredCountChanged();
+}
+
+void ProxyServer::setRules(const QList<MatchReplaceRule> &rules) {
+    QMutexLocker lock(&m_rulesMutex);
+    m_rules = rules;
+}
+
+QList<MatchReplaceRule> ProxyServer::rules() const {
+    QMutexLocker lock(&m_rulesMutex);
+    return m_rules;
+}
+
+namespace {
+
+bool hostMatches(const QString &host, const QString &glob) {
+    if (glob.isEmpty()) return true;
+    QString pattern = QRegularExpression::escape(glob);
+    pattern.replace("\\*", ".*");
+    QRegularExpression rx("^" + pattern + "$",
+                          QRegularExpression::CaseInsensitiveOption);
+    return rx.match(host).hasMatch();
+}
+
+// Run a single regex find/replace against `s`. Returns true if at least
+// one substitution happened (so the caller can count hits / update CL).
+bool applyOne(QString &s, const MatchReplaceRule &r) {
+    QRegularExpression::PatternOptions opts = QRegularExpression::NoPatternOption;
+    if (r.caseInsensitive) opts |= QRegularExpression::CaseInsensitiveOption;
+    QRegularExpression rx(r.find, opts);
+    if (!rx.isValid()) return false;
+    const QString before = s;
+    s.replace(rx, r.replace);
+    return s != before;
+}
+
+// Keep Content-Length honest after body mutations. If a header named
+// Content-Length exists, rewrite it; otherwise leave alone (chunked
+// bodies will end up wrong anyway -- a known limitation surfaced via
+// the rules-hit counter).
+void fixContentLength(QList<QPair<QString, QString>> &headers, int newSize) {
+    for (auto &h : headers) {
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) {
+            h.second = QString::number(newSize);
+            return;
+        }
+    }
+}
+
+} // namespace
+
+void ProxyServer::applyRequestRules(HttpRequest &req) const {
+    QList<MatchReplaceRule> rs;
+    { QMutexLocker lock(&m_rulesMutex); rs = m_rules; }
+    if (rs.isEmpty()) return;
+
+    bool bodyChanged = false;
+    for (const auto &r : rs) {
+        if (!r.enabled) continue;
+        if (!hostMatches(req.host, r.hostGlob)) continue;
+
+        if (r.section == MatchReplaceRule::ReqUrl) {
+            QString p = req.path;   if (applyOne(p, r)) { req.path = p; m_rulesHit.fetchAndAddOrdered(1); }
+            QString t = req.target; if (applyOne(t, r)) { req.target = t; m_rulesHit.fetchAndAddOrdered(1); }
+        } else if (r.section == MatchReplaceRule::ReqHeader) {
+            for (auto &h : req.headers) {
+                QString combined = h.first + ": " + h.second;
+                if (applyOne(combined, r)) {
+                    const int c = combined.indexOf(": ");
+                    if (c > 0) { h.first = combined.left(c); h.second = combined.mid(c + 2); }
+                    else       { h.first = combined; h.second.clear(); }
+                    m_rulesHit.fetchAndAddOrdered(1);
+                }
+            }
+        } else if (r.section == MatchReplaceRule::ReqBody) {
+            QString body = QString::fromUtf8(req.body);
+            if (applyOne(body, r)) {
+                req.body = body.toUtf8();
+                bodyChanged = true;
+                m_rulesHit.fetchAndAddOrdered(1);
+            }
+        }
+    }
+    if (bodyChanged) fixContentLength(req.headers, req.body.size());
+}
+
+void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp) const {
+    QList<MatchReplaceRule> rs;
+    { QMutexLocker lock(&m_rulesMutex); rs = m_rules; }
+    if (rs.isEmpty()) return;
+
+    bool bodyChanged = false;
+    for (const auto &r : rs) {
+        if (!r.enabled) continue;
+        if (!hostMatches(req.host, r.hostGlob)) continue;
+
+        if (r.section == MatchReplaceRule::RespStatus) {
+            QString line = resp.httpVersion + " " + QString::number(resp.statusCode)
+                         + " " + resp.reasonPhrase;
+            if (applyOne(line, r)) {
+                const QStringList parts = line.split(' ', Qt::KeepEmptyParts);
+                if (parts.size() >= 2) {
+                    resp.httpVersion  = parts[0];
+                    resp.statusCode   = parts[1].toInt();
+                    resp.reasonPhrase = parts.mid(2).join(' ');
+                }
+                m_rulesHit.fetchAndAddOrdered(1);
+            }
+        } else if (r.section == MatchReplaceRule::RespHeader) {
+            for (auto &h : resp.headers) {
+                QString combined = h.first + ": " + h.second;
+                if (applyOne(combined, r)) {
+                    const int c = combined.indexOf(": ");
+                    if (c > 0) { h.first = combined.left(c); h.second = combined.mid(c + 2); }
+                    else       { h.first = combined; h.second.clear(); }
+                    m_rulesHit.fetchAndAddOrdered(1);
+                }
+            }
+        } else if (r.section == MatchReplaceRule::RespBody) {
+            QString body = QString::fromUtf8(resp.body);
+            if (applyOne(body, r)) {
+                resp.body = body.toUtf8();
+                bodyChanged = true;
+                m_rulesHit.fetchAndAddOrdered(1);
+            }
+        }
+    }
+    if (bodyChanged) fixContentLength(resp.headers, resp.body.size());
 }
 
 void ProxyServer::noteH2Upstream() {

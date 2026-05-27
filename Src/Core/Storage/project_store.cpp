@@ -151,6 +151,21 @@ bool ProjectStore::ensureMetadata() {
         m_meta.outOfScope.clear();
         for (const QJsonValue &v : o.value("outOfScope").toArray())
             m_meta.outOfScope.append(v.toString());
+        m_meta.rules.clear();
+        for (const QJsonValue &v : o.value("rules").toArray()) {
+            const QJsonObject r = v.toObject();
+            Nullock::Proxy::MatchReplaceRule rule;
+            rule.enabled         = r.value("enabled").toBool(true);
+            rule.name            = r.value("name").toString();
+            rule.hostGlob        = r.value("hostGlob").toString();
+            rule.section         = static_cast<Nullock::Proxy::MatchReplaceRule::Section>(
+                                      r.value("section").toInt(1));
+            rule.find            = r.value("find").toString();
+            rule.replace         = r.value("replace").toString();
+            rule.caseInsensitive = r.value("caseInsensitive").toBool(true);
+            rule.comment         = r.value("comment").toString();
+            m_meta.rules.append(rule);
+        }
         return true;
     }
 
@@ -174,6 +189,20 @@ bool ProjectStore::saveMetadata() {
     QJsonArray outS; for (const QString &s : m_meta.outOfScope) outS.append(s);
     o["inScope"]    = inS;
     o["outOfScope"] = outS;
+    QJsonArray rulesArr;
+    for (const auto &r : m_meta.rules) {
+        QJsonObject ro;
+        ro["enabled"]         = r.enabled;
+        ro["name"]            = r.name;
+        ro["hostGlob"]        = r.hostGlob;
+        ro["section"]         = static_cast<int>(r.section);
+        ro["find"]            = r.find;
+        ro["replace"]         = r.replace;
+        ro["caseInsensitive"] = r.caseInsensitive;
+        ro["comment"]         = r.comment;
+        rulesArr.append(ro);
+    }
+    o["rules"] = rulesArr;
 
     QFile f(m_dir + "/project.json");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -228,6 +257,53 @@ void ProjectStore::removeOutOfScope(const QString &glob) {
     if (!m_meta.outOfScope.removeOne(glob)) return;
     saveMetadata();
     emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+}
+
+void ProjectStore::setRules(const QList<Nullock::Proxy::MatchReplaceRule> &rules) {
+    m_meta.rules = rules;
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+}
+
+int ProjectStore::addRule(const Nullock::Proxy::MatchReplaceRule &rule) {
+    m_meta.rules.append(rule);
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+    return m_meta.rules.size() - 1;
+}
+
+bool ProjectStore::updateRule(int index, const Nullock::Proxy::MatchReplaceRule &rule) {
+    if (index < 0 || index >= m_meta.rules.size()) return false;
+    m_meta.rules[index] = rule;
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+    return true;
+}
+
+bool ProjectStore::removeRule(int index) {
+    if (index < 0 || index >= m_meta.rules.size()) return false;
+    m_meta.rules.removeAt(index);
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+    return true;
+}
+
+bool ProjectStore::toggleRule(int index) {
+    if (index < 0 || index >= m_meta.rules.size()) return false;
+    m_meta.rules[index].enabled = !m_meta.rules[index].enabled;
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+    return true;
+}
+
+bool ProjectStore::moveRule(int from, int to) {
+    if (from < 0 || from >= m_meta.rules.size()) return false;
+    if (to   < 0 || to   >= m_meta.rules.size()) return false;
+    if (from == to) return true;
+    m_meta.rules.move(from, to);
+    saveMetadata();
+    emit rulesChanged(m_meta.rules);
+    return true;
 }
 
 void ProjectStore::streamExistingHistory() {

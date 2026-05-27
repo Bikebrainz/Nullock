@@ -452,6 +452,11 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::scopeChanged,
                      &proxy, &Nullock::Proxy::ProxyServer::setScope);
 
+    // Match & replace rules: load from project, push live updates.
+    proxy.setRules(projectStore.rules());
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::rulesChanged,
+                     &proxy, &Nullock::Proxy::ProxyServer::setRules);
+
     // New traffic feeds both the live model and the on-disk history.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
