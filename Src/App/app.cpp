@@ -1,3 +1,4 @@
+#include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
 #include "cert_authority.hpp"
 #include "intercept.hpp"
@@ -282,6 +283,8 @@ int main(int argc, char *argv[]) {
     proxy.setBlocklistPath(certAuthority.caDir() + "/mitm_blocked.txt");
 
     Nullock::FrontEnd::ProxyModel model;
+    Nullock::FrontEnd::ProxyFilterModel filteredModel;
+    filteredModel.setSourceModel(&model);
     Nullock::Core::ProjectStore projectStore;
 
     // Wire the model BEFORE we open the store so streamed history lands in
@@ -322,6 +325,7 @@ int main(int argc, char *argv[]) {
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("proxyModel", &model);
+    engine.rootContext()->setContextProperty("historyView", &filteredModel);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);

@@ -133,8 +133,76 @@ ApplicationWindow {
 
                     ColumnLayout {
                         SplitView.fillHeight: true
-                        SplitView.minimumHeight: 120
+                        SplitView.minimumHeight: 160
                         spacing: 0
+
+                        // Filter bar: host substring + status family + method
+                        Rectangle {
+                            color: root.pane
+                            Layout.fillWidth: true
+                            height: 30
+                            border.color: root.line
+                            border.width: 1
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 6
+                                spacing: 6
+                                HeaderCell { text: "filter:" }
+                                TextField {
+                                    Layout.preferredWidth: 220
+                                    placeholderText: "host contains…"
+                                    text: historyView.hostSubstring
+                                    color: root.text
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    onTextEdited: historyView.hostSubstring = text
+                                }
+                                AccentButton {
+                                    label: "all"
+                                    onClicked: historyView.statusClass = "all"
+                                }
+                                AccentButton {
+                                    label: "2xx"
+                                    onClicked: historyView.statusClass = "2xx"
+                                }
+                                AccentButton {
+                                    label: "3xx"
+                                    onClicked: historyView.statusClass = "3xx"
+                                }
+                                AccentButton {
+                                    label: "4xx"
+                                    onClicked: historyView.statusClass = "4xx"
+                                }
+                                AccentButton {
+                                    label: "5xx"
+                                    onClicked: historyView.statusClass = "5xx"
+                                }
+                                TextField {
+                                    Layout.preferredWidth: 90
+                                    placeholderText: "method"
+                                    text: historyView.methodFilter
+                                    color: root.text
+                                    font.family: "Consolas"
+                                    font.pixelSize: 12
+                                    background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                    onTextEdited: historyView.methodFilter = text
+                                }
+                                Cell {
+                                    text: "active: " + historyView.statusClass
+                                          + (historyView.hiddenCount > 0
+                                             ? ("  (" + historyView.hiddenCount + " hidden)")
+                                             : "")
+                                    color: root.dim
+                                    Layout.fillWidth: true
+                                }
+                                AccentButton {
+                                    label: "reset"
+                                    onClicked: historyView.clearFilters()
+                                }
+                            }
+                        }
 
                         Rectangle {
                             color: "#000000"
@@ -160,7 +228,7 @@ ApplicationWindow {
                             id: history
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            model: proxyModel
+                            model: historyView
                             clip: true
                             currentIndex: -1
                             highlightFollowsCurrentItem: false
@@ -211,7 +279,7 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: history.currentIndex >= 0
-                                    ? proxyModel.summaryAt(history.currentIndex)
+                                    ? proxyModel.summaryAt(historyView.sourceRow(history.currentIndex))
                                     : "select a row to inspect"
                                 color: history.currentIndex >= 0 ? root.accent : root.dim
                                 font.family: "Consolas"
@@ -240,7 +308,7 @@ ApplicationWindow {
                                             color: root.text
                                             background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
                                             text: history.currentIndex >= 0
-                                                ? proxyModel.requestRawAt(history.currentIndex)
+                                                ? proxyModel.requestRawAt(historyView.sourceRow(history.currentIndex))
                                                 : ""
                                         }
                                     }
@@ -257,7 +325,7 @@ ApplicationWindow {
                                             label: "Send to Repeater"
                                             visible: history.currentIndex >= 0 && typeof repeater !== "undefined"
                                             onClicked: {
-                                                repeater.loadFromHistory(history.currentIndex)
+                                                repeater.loadFromHistory(historyView.sourceRow(history.currentIndex))
                                                 root.currentTab = 2
                                             }
                                         }
@@ -273,7 +341,7 @@ ApplicationWindow {
                                             color: root.text
                                             background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
                                             text: history.currentIndex >= 0
-                                                ? proxyModel.responseRawAt(history.currentIndex)
+                                                ? proxyModel.responseRawAt(historyView.sourceRow(history.currentIndex))
                                                 : ""
                                         }
                                     }
@@ -285,12 +353,81 @@ ApplicationWindow {
             }
 
             // ── Tab 1: Scope ───────────────────────────────────────────────────
-            RowLayout {
-                spacing: 12
+            ColumnLayout {
+                spacing: 8
                 Layout.margins: 12
 
-                // In-scope column
+                // Root CA helper: tells the user where ca.pem lives and gives
+                // them buttons to install it without grepping for the path.
                 Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 64
+                    color: root.pane
+                    border.color: root.line
+                    border.width: 1
+
+                    // Hidden TextEdit used as a clipboard channel for the
+                    // "Copy path" button. selectAll() + copy() works without
+                    // bringing QGuiApplication::clipboard() into C++.
+                    TextEdit {
+                        id: caClipboardHelper
+                        visible: false
+                        readOnly: true
+                        text: certAuthority.caCertPath
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: "Root CA"
+                                color: root.accent
+                                font.family: "Consolas"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                            Text {
+                                text: certAuthority.caCertPath
+                                color: root.text
+                                font.family: "Consolas"
+                                font.pixelSize: 11
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: "Install this in your browser's trust store so MITM works without warnings."
+                                color: root.dim
+                                font.family: "Consolas"
+                                font.pixelSize: 10
+                            }
+                        }
+
+                        AccentButton {
+                            label: "Copy path"
+                            onClicked: {
+                                caClipboardHelper.selectAll()
+                                caClipboardHelper.copy()
+                            }
+                        }
+                        AccentButton {
+                            label: "Open folder"
+                            onClicked: Qt.openUrlExternally("file:///" + certAuthority.caDir)
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 12
+
+                    // In-scope column
+                    Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: root.pane
@@ -441,6 +578,7 @@ ApplicationWindow {
                         }
                     }
                 }
+                }  // close inner RowLayout
             }
 
             // ── Tab 2: Repeater ───────────────────────────────────────────────
