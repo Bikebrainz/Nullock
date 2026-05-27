@@ -39,6 +39,7 @@ target_link_libraries(NullockApp PRIVATE
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
+    Qt6::QuickControls2
 )
 
 # Set executable properties based on platform

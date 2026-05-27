@@ -18,6 +18,8 @@ qt_add_qml_module(FrontEndGUI
     Models/Proxy/proxy_model.hpp
     Models/Proxy/proxy_filter_model.cpp
     Models/Proxy/proxy_filter_model.hpp
+    Models/Proxy/site_map_model.cpp
+    Models/Proxy/site_map_model.hpp
     Models/RepeaterHub/repeater_hub_model.cpp
     Models/RepeaterHub/repeater_hub_model.hpp
     Models/Workspace/workspace_model.cpp

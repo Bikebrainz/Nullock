@@ -123,6 +123,69 @@ ApplicationWindow {
             currentIndex: root.currentTab
 
             // ── Tab 0: Proxy (HTTP history + click-to-inspect) ─────────────────
+            SplitView {
+                orientation: Qt.Horizontal
+
+                // Left: Site Map -- unique hosts seen so far with counts.
+                // Clicking a row pre-fills the history filter to just that
+                // host. Resizable via the split bar.
+                Rectangle {
+                    SplitView.preferredWidth: 240
+                    SplitView.minimumWidth: 120
+                    color: root.pane
+                    border.color: root.line
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 0
+
+                        Rectangle {
+                            color: "#000000"
+                            Layout.fillWidth: true
+                            height: 24
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: 0
+                                HeaderCell { text: "Site Map (" + siteMap.rowCount() + ")"; Layout.fillWidth: true }
+                            }
+                        }
+
+                        ListView {
+                            id: siteMapList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: siteMap
+                            clip: true
+                            ScrollBar.vertical: ScrollBar {}
+                            delegate: Rectangle {
+                                width: siteMapList.width
+                                height: 22
+                                color: historyView.hostSubstring === host
+                                    ? root.rowSelect
+                                    : ((index % 2 === 0) ? root.rowEven : root.rowAlt)
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (historyView.hostSubstring === host)
+                                            historyView.hostSubstring = ""
+                                        else
+                                            historyView.hostSubstring = host
+                                    }
+                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    spacing: 0
+                                    Cell { text: tls ? "🔒" : "  "; Layout.preferredWidth: 24; horizontalAlignment: Text.AlignHCenter }
+                                    Cell { text: host;             Layout.fillWidth: true }
+                                    Cell { text: count;            Layout.preferredWidth: 36; horizontalAlignment: Text.AlignRight; color: root.dim }
+                                    Item { width: 6 }
+                                }
+                            }
+                        }
+                    }
+                }
+
             ColumnLayout {
                 spacing: 0
                 SplitView {
@@ -351,6 +414,7 @@ ApplicationWindow {
                     }
                 }
             }
+            }  // close outer horizontal SplitView (Site Map + main content)
 
             // ── Tab 1: Scope ───────────────────────────────────────────────────
             ColumnLayout {

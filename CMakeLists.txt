@@ -16,6 +16,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Gui
     Qml
     Quick
+    QuickControls2
     Network
     Concurrent
 )

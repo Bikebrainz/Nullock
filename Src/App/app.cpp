@@ -1,5 +1,6 @@
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
+#include "Proxy/site_map_model.hpp"
 #include "cert_authority.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
@@ -13,6 +14,7 @@
 #include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle>
 #include <QTextStream>
 #include <QTimer>
 
@@ -269,6 +271,10 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
 int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("Nullock");
     QCoreApplication::setApplicationName("Nullock");
+    // Basic style honors Rectangle backgrounds on TextField/TextArea/etc.
+    // Native (Windows) style refuses to be customized and floods stderr
+    // with "background customization not supported" warnings every launch.
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
     QGuiApplication app(argc, argv);
 
     const bool smokeTest = app.arguments().contains("--smoke-test");
@@ -285,6 +291,7 @@ int main(int argc, char *argv[]) {
     Nullock::FrontEnd::ProxyModel model;
     Nullock::FrontEnd::ProxyFilterModel filteredModel;
     filteredModel.setSourceModel(&model);
+    Nullock::FrontEnd::SiteMapModel siteMap(&model);
     Nullock::Core::ProjectStore projectStore;
 
     // Wire the model BEFORE we open the store so streamed history lands in
@@ -326,6 +333,7 @@ int main(int argc, char *argv[]) {
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("proxyModel", &model);
     engine.rootContext()->setContextProperty("historyView", &filteredModel);
+    engine.rootContext()->setContextProperty("siteMap", &siteMap);
     engine.rootContext()->setContextProperty("proxyServer", &proxy);
     engine.rootContext()->setContextProperty("certAuthority", &certAuthority);
     engine.rootContext()->setContextProperty("projectStore", &projectStore);
