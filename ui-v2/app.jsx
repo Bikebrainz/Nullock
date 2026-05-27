@@ -6,6 +6,7 @@ const TABS = [
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
+  { id: "settings",  label: "SETTINGS" },
 ];
 
 // fire-and-forget side-effect helper; safe before NL.actions exists.
@@ -180,6 +181,151 @@ const ACCENT_PRESETS = {
   amber:     "oklch(0.83 0.18 75)",
   red:       "oklch(0.74 0.20 25)",
 };
+
+// Settings tab: diagnostics + housekeeping panel that pulls everything
+// out of NL.bootInfo and surfaces the housekeeping actions in one place.
+function SettingsTab() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const b = (window.NL && NL.bootInfo) || {};
+  const scope = (window.NL && NL.scope) || { in: [], out: [], notes: "" };
+  const rowCount = (window.NL && NL.rows) ? NL.rows.length : 0;
+  const blocked = b.mitmBlocked || [];
+  const extLog = b.extensionsLog || [];
+  const scripts = b.extensionScripts || [];
+
+  const copy = (text) => { try { navigator.clipboard?.writeText(text); } catch {} };
+
+  const Card = ({ title, children, action }) => (
+    <div style={{
+      background: "var(--pane)", border: "1px solid var(--line)",
+      padding: "12px 14px", borderRadius: 4, display: "flex",
+      flexDirection: "column", gap: 6,
+    }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+        letterSpacing: "0.06em", fontWeight: 600,
+      }}>
+        <span>{title}</span>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+
+  const Row = ({ label, value, copyable, hint }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "12px" }}>
+      <span style={{ minWidth: 110, color: "var(--dim)" }}>{label}</span>
+      <span style={{ flex: 1, fontFamily: "var(--ff-mono)", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {value || (hint ? <span style={{ color: "var(--dim)" }}>{hint}</span> : "—")}
+      </span>
+      {copyable && value && (
+        <button
+          onClick={() => copy(value)}
+          style={{
+            background: "transparent", color: "var(--dim)", fontSize: "10px",
+            border: "1px solid var(--line)", padding: "2px 6px", cursor: "pointer",
+            fontFamily: "var(--ff-mono)",
+          }}
+        >COPY</button>
+      )}
+    </div>
+  );
+
+  const Btn = ({ label, onClick, danger }) => (
+    <button
+      onClick={onClick}
+      style={{
+        background: "transparent",
+        color: danger ? "var(--err)" : "var(--accent)",
+        border: "1px solid " + (danger ? "var(--err)" : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px",
+        fontFamily: "var(--ff-mono)", cursor: "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}
+    >{label}</button>
+  );
+
+  return (
+    <div style={{
+      padding: 14, overflow: "auto", height: "100%",
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))",
+      gap: 12, alignContent: "start",
+    }}>
+      <Card title="Proxy">
+        <Row label="Status" value={b.proxyOn ? "LISTENING" : "STOPPED"} />
+        <Row label="Bind" value={"127.0.0.1:" + (b.port || "—")} copyable />
+        <Row label="Control UI" value={"127.0.0.1:" + (b.controlPort || "—")} copyable />
+        <Row label="HTTP/2 hops" value={String(b.h2UpstreamCount || 0)} />
+        <Row label="Filtered" value={String(b.filteredCount || 0)} />
+        <Row label="Captured" value={String(rowCount)} />
+        <Row label="MITM bypass" value={blocked.length ? blocked.join(", ") : ""} hint="empty" />
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <Btn label={b.proxyOn ? "Stop proxy" : "Start proxy"} onClick={() => NL.actions.toggleProxy()} />
+          <Btn label="Clear blocklist" onClick={() => NL.actions.clearMitmBlocked()} />
+        </div>
+      </Card>
+
+      <Card title="CA & TLS">
+        <Row label="OpenSSL" value={b.hasOpenssl ? "found" : "missing"} />
+        <Row label="CA cert" value={b.caPath} copyable />
+        <Row label="CA dir"  value={b.caDir} copyable />
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <Btn label="Open CA folder" onClick={() => Qt && Qt.openUrlExternally
+              ? Qt.openUrlExternally("file:///" + (b.caDir || ""))
+              : window.open("file:///" + (b.caDir || ""), "_blank")} />
+          <Btn label="Copy CA path" onClick={() => copy(b.caPath || "")} />
+        </div>
+        <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 4 }}>
+          Install the CA in your browser's trust store so HTTPS MITM works without warnings.
+        </div>
+      </Card>
+
+      <Card title="Project">
+        <Row label="Name" value={b.project} hint="default" />
+        <Row label="Path" value={b.projectDir} copyable />
+        <Row label="Scope (in)"  value={String((scope.in || []).length) + " globs"} />
+        <Row label="Scope (out)" value={String((scope.out || []).length) + " globs"} />
+        <Row label="Themes dir" value={b.themesDir || (window.NL ? NL.themesDir : "")} copyable />
+        <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="(none)" />
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <Btn label="Export HAR" onClick={() => NL.actions.exportHar()} />
+          <Btn label="Clear history" onClick={() => NL.actions.clearHistory()} danger />
+        </div>
+      </Card>
+
+      <Card
+        title={"Extensions (" + scripts.length + ")"}
+        action={<Btn label="Reload" onClick={() => NL.actions.reloadExtensions()} />}
+      >
+        <Row label="Folder" value={b.extensionsDir} copyable />
+        <Row label="Loaded" value={scripts.length ? scripts.join(", ") : ""} hint="none yet" />
+        <div style={{
+          marginTop: 6, padding: 8, background: "var(--bg-deep)",
+          border: "1px solid var(--line-soft)", borderRadius: 3,
+          fontFamily: "var(--ff-mono)", fontSize: "10.5px",
+          maxHeight: 160, overflow: "auto",
+        }}>
+          {extLog.length === 0
+            ? <span style={{ color: "var(--dim)" }}>(extension log is empty)</span>
+            : extLog.slice(-30).map((line, i) => (
+                <div key={i} style={{ color: line.includes("[ext]") ? "var(--text-2)" : "var(--dim)" }}>
+                  {line}
+                </div>
+              ))
+          }
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 // Color edit + Save As panel. Reads the current theme's color map from
 // the backend snapshot, applies local edits as inline CSS variables for
@@ -410,6 +556,9 @@ function App() {
         )}
         {tab === "intruder" && (
           <IntruderTab intruder={state.intruder} dispatch={dispatch} />
+        )}
+        {tab === "settings" && (
+          <SettingsTab />
         )}
       </div>
       <StatusBar

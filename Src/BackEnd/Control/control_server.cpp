@@ -220,6 +220,23 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["proxyOn"]         = m_wiring.proxy ? m_wiring.proxy->isRunning() : false;
     bootInfo["h2UpstreamCount"] = m_wiring.proxy ? m_wiring.proxy->h2UpstreamCount() : 0;
     bootInfo["filteredCount"]   = m_wiring.proxy ? m_wiring.proxy->filteredCount() : 0;
+    if (m_wiring.proxy) {
+        QJsonArray blocked;
+        for (const QString &h : m_wiring.proxy->blockedHosts()) blocked.append(h);
+        bootInfo["mitmBlocked"]     = blocked;
+        bootInfo["controlPort"]     = static_cast<int>(this->listeningPort());
+    }
+    if (m_wiring.extensions) {
+        QJsonArray extLog;
+        for (const QString &line : m_wiring.extensions->recentLog(40))
+            extLog.append(line);
+        bootInfo["extensionsLog"]     = extLog;
+        QJsonArray scripts;
+        for (const QString &s : m_wiring.extensions->loadedScripts())
+            scripts.append(s);
+        bootInfo["extensionScripts"]  = scripts;
+        bootInfo["extensionsDir"]     = m_wiring.extensions->extensionsDir();
+    }
     root["bootInfo"] = bootInfo;
 
     // themes
