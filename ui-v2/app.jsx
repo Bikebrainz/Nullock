@@ -515,17 +515,24 @@ function App() {
     }
   }, [tweaks]);
 
-  // chrome props
+  // chrome props -- same filter logic as the table so the "N filtered"
+  // counter in the status bar matches what the table actually shows.
   const filtered = state.rows.filter(r => {
     const tableHostFilter = state.selectedHost || state.hostFilter;
     if (tableHostFilter && !r.host.includes(tableHostFilter)) return false;
     if (state.statusClass !== "all" && (Math.floor(r.status / 100) + "xx") !== state.statusClass) return false;
     if (state.methodFilter !== "ALL" && r.method !== state.methodFilter) return false;
-    if (state.search && !r.url.toLowerCase().includes(state.search.toLowerCase())) return false;
+    if (state.search) {
+      const s = state.search.toLowerCase();
+      const blob = [r.url, r.path, r.host, r.method, r.mime,
+                    String(r.status || ""), String(r.params || ""), r.ip || ""]
+                    .join(" ").toLowerCase();
+      if (!blob.includes(s)) return false;
+    }
     return true;
   }).length;
   const hidden = state.rows.length - filtered;
-  const h2Count = Math.floor(state.rows.length * 0.32);
+  const h2Count = (window.NL && NL.bootInfo && NL.bootInfo.h2UpstreamCount) || 0;
 
   const tabsWithDots = TABS.map(t => ({
     ...t,

@@ -24,7 +24,15 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     if (hostFilter && !r.host.includes(hostFilter)) return false;
     if (search) {
       const s = search.toLowerCase();
-      if (!r.url.toLowerCase().includes(s) && !r.path.toLowerCase().includes(s)) return false;
+      // Search across every column we display so the box behaves the way
+      // people expect: typing "401" matches status, "json" matches mime,
+      // "POST" matches method, etc.
+      const blob = [
+        r.url, r.path, r.host, r.method, r.mime,
+        String(r.status || ""), String(r.params || ""),
+        r.ip || "",
+      ].join(" ").toLowerCase();
+      if (!blob.includes(s)) return false;
     }
     if (statusClass !== "all") {
       const sc = Math.floor(r.status / 100) + "xx";
@@ -224,21 +232,61 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
               </button>
             ))}
           </div>
-          <textarea className="txt readonly" value={req} readOnly />
+          <textarea className="txt readonly" value={renderView(req, reqTab)} readOnly />
         </div>
         <div style={{ display:"flex", flexDirection:"column", minHeight: 0 }}>
           <div className="detail-tabs">
-            {["raw", "headers", "body", "preview"].map(t => (
+            {["raw", "headers", "body", "preview", "hex"].map(t => (
               <button key={t} className={respTab === t ? "on" : ""} onClick={() => setRespTab(t)}>
                 RES · {t}
               </button>
             ))}
           </div>
-          <textarea className="txt readonly" value={resp} readOnly />
+          <textarea className="txt readonly" value={renderView(resp, respTab)} readOnly />
         </div>
       </div>
     </div>
   );
+}
+
+// Split a raw HTTP message into {firstLine, headers, body} and render
+// according to the selected view tab. 'raw' = original, 'headers' =
+// status/request line + header block, 'body' = body only, 'preview' =
+// pretty-print JSON or just the body, 'hex' = canonical hex dump.
+function renderView(raw, view) {
+  if (!raw || view === "raw") return raw || "";
+  const splitIdx = raw.indexOf("\n\n");
+  const headers = splitIdx >= 0 ? raw.slice(0, splitIdx) : raw;
+  const body    = splitIdx >= 0 ? raw.slice(splitIdx + 2) : "";
+
+  if (view === "headers") return headers;
+  if (view === "body")    return body || "(no body)";
+  if (view === "preview") {
+    // Try JSON pretty-print first; fall back to body as-is.
+    const t = (body || "").trim();
+    if (t.startsWith("{") || t.startsWith("[")) {
+      try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) {}
+    }
+    return body || "(no body)";
+  }
+  if (view === "hex") return toHexDump(body);
+  return raw;
+}
+
+function toHexDump(s) {
+  if (!s) return "";
+  // Treat input as UTF-8 bytes for the dump.
+  const bytes = new TextEncoder().encode(s);
+  const lines = [];
+  for (let i = 0; i < bytes.length; i += 16) {
+    const chunk = bytes.slice(i, i + 16);
+    const offset = i.toString(16).padStart(8, "0");
+    const hex = Array.from(chunk).map(b => b.toString(16).padStart(2, "0")).join(" ").padEnd(48, " ");
+    const ascii = Array.from(chunk).map(b => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : ".").join("");
+    lines.push(`${offset}  ${hex}  ${ascii}`);
+    if (i > 64 * 1024) { lines.push("... [truncated at 64 KiB]"); break; }
+  }
+  return lines.join("\n");
 }
 
 function ProxyTab({ state, dispatch, showSitemap }) {
