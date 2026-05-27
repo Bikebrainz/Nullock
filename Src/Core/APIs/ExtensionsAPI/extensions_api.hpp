@@ -44,10 +44,28 @@ public:
     Q_INVOKABLE QStringList recentLog(int max = 50) const;
     Q_INVOKABLE bool reload();
 
+    // Apply onRequest mutation handlers and return the (possibly modified)
+    // request. Thread-safe: if called from a non-main thread it routes via
+    // BlockingQueuedConnection so the JS engine still runs on its owner
+    // thread.
+    Nullock::Proxy::HttpRequest applyRequestMutation(
+        const Nullock::Proxy::HttpRequest &req);
+
+    Nullock::Proxy::HttpResponse applyResponseMutation(
+        const Nullock::Proxy::HttpRequest &req,
+        const Nullock::Proxy::HttpResponse &resp);
+
 public slots:
     // Wire to ProxyServer::responseReceived.
     void onResponseReceived(const Nullock::Proxy::HttpRequest &request,
                             const Nullock::Proxy::HttpResponse &response);
+
+    // Internal: called via BlockingQueuedConnection by applyRequestMutation /
+    // applyResponseMutation. Must execute on the engine's own thread.
+    Nullock::Proxy::HttpRequest doMutateRequest(Nullock::Proxy::HttpRequest req);
+    Nullock::Proxy::HttpResponse doMutateResponse(
+        Nullock::Proxy::HttpRequest req,
+        Nullock::Proxy::HttpResponse resp);
 
 signals:
     void loadedChanged();
@@ -62,6 +80,7 @@ private:
     QJSEngine            m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
     QList<QJSValue>      m_onResponseHandlers;
+    QList<QJSValue>      m_onRequestHandlers;
     QStringList          m_loadedScripts;
     QStringList          m_logLines;
 };
@@ -77,6 +96,11 @@ public:
 
     // Exposed to JS as nullock.onResponse(function(entry) { ... })
     Q_INVOKABLE void onResponse(const QJSValue &callback);
+
+    // Exposed to JS as nullock.onRequest(function(entry) { return modified; })
+    // Returning a modified entry (with new headers/body/method/path) actually
+    // changes what gets forwarded upstream.
+    Q_INVOKABLE void onRequest(const QJSValue &callback);
 
 private:
     ExtensionsApi *m_owner;

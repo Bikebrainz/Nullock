@@ -301,6 +301,8 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
             ext.write("nullock.onResponse(function(e) {\n");
             ext.write("    hits++;\n");
             ext.write("    nullock.log('hit#' + hits + ' ' + e.method + ' ' + e.url + ' -> ' + e.status);\n");
+            ext.write("    e.headers.push(['X-Nullock-Smoke', 'ok']);\n");
+            ext.write("    return e;\n");
             ext.write("});\n");
             ext.close();
         }
@@ -309,9 +311,10 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
         extensions.reload();
         const QStringList loaded = extensions.loadedScripts();
 
-        // Fire one HTTP request through the proxy.
+        // Fire one HTTP request through the proxy. -i so curl prints
+        // headers (including our injected X-Nullock-Smoke).
         const auto extCurl = runCurl({
-            "-s", "--max-time", "15",
+            "-si", "--max-time", "15",
             "--proxy", proxyUrl,
             "http://httpbin.org/uuid" }, 15000);
 
@@ -325,22 +328,23 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
             if (line.contains("counter ext loaded")) sawLoad = true;
             if (line.contains("hit#") && line.contains("/uuid")) sawHit = true;
         }
+        const bool sawInjectedHeader = extCurl.stdoutBytes
+                                           .contains("X-Nullock-Smoke: ok");
 
         // Clean up the test extension so it doesn't permanently live in
         // the user's extensions dir.
         QFile::remove(extPath);
 
         if (extCurl.exitCode == 0 && loaded.contains("_smoke_counter.js")
-            && sawLoad && sawHit
+            && sawLoad && sawHit && sawInjectedHeader
             && extensions.logLineCount() > logBefore) {
-            pass(QString("extensions loaded (%1) and onResponse hook fired")
-                     .arg(loaded.join(", ")));
+            pass("extensions: onResponse fires and mutates the response headers");
         } else {
-            fail(QString("extensions: curlExit=%1 wrote=%2 loaded=[%3] sawLoad=%4 sawHit=%5")
+            fail(QString("extensions: curlExit=%1 wrote=%2 loaded=[%3] sawLoad=%4 sawHit=%5 injected=%6")
                      .arg(extCurl.exitCode)
                      .arg(wroteExt)
                      .arg(loaded.join(", "))
-                     .arg(sawLoad).arg(sawHit));
+                     .arg(sawLoad).arg(sawHit).arg(sawInjectedHeader));
         }
     }
 
@@ -460,6 +464,7 @@ int main(int argc, char *argv[]) {
 
     Nullock::Proxy::InterceptController intercept;
     proxy.setInterceptController(&intercept);
+    proxy.setExtensions(&extensions);
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run

@@ -1,6 +1,7 @@
 #include "proxy_server.hpp"
 
 #include "cert_authority.hpp"
+#include "extensions_api.hpp"
 #include "http2_client.hpp"
 #include "intercept.hpp"
 #include "websocket.hpp"
@@ -175,6 +176,13 @@ public:
         if (inScope) emit m_server->requestReceived(req);
         else         m_server->noteFiltered();
 
+        // Let JS extensions rewrite headers / body / method / path before
+        // we serialize. Mutations apply even to filtered hosts so a
+        // plugin can do things like global header injection regardless
+        // of scope.
+        if (auto *ext = m_server->extensions())
+            req = ext->applyRequestMutation(req);
+
         QTcpSocket upstream;
         upstream.connectToHost(req.host, req.port);
         if (!upstream.waitForConnected(kReadTimeoutMs)) {
@@ -201,6 +209,8 @@ public:
         resp.peerAddress = upstream.peerAddress().toString();
         resp.wasTls = false;
         if (!readResponse(&upstream, resp)) { fail("malformed response"); return; }
+        if (auto *ext = m_server->extensions())
+            resp = ext->applyResponseMutation(req, resp);
         if (inScope) emit m_server->responseReceived(req, resp);
 
         m_client->write(serializeResponse(resp));
@@ -365,6 +375,9 @@ public:
                 req.path = "/" + req.path;
             emit m_server->requestReceived(req);
 
+            if (auto *ext = m_server->extensions())
+                req = ext->applyRequestMutation(req);
+
             // Intercept still works -- pend before sending upstream.
             if (auto *ic = m_server->interceptController()) {
                 QByteArray dummyBytes = serializeRequestForOrigin(req);
@@ -386,9 +399,12 @@ public:
                 fail("mitm/h2: " + h2res.errorMessage);
                 return;
             }
-            emit m_server->responseReceived(req, h2res.response);
+            HttpResponse h2resp = h2res.response;
+            if (auto *ext = m_server->extensions())
+                h2resp = ext->applyResponseMutation(req, h2resp);
+            emit m_server->responseReceived(req, h2resp);
 
-            sslClient->write(serializeResponse(h2res.response));
+            sslClient->write(serializeResponse(h2resp));
             sslClient->waitForBytesWritten(kReadTimeoutMs);
             sslClient->disconnectFromHost();
             return;
@@ -412,6 +428,9 @@ public:
                 req.path = "/" + req.path;
             emit m_server->requestReceived(req);
 
+            if (auto *ext = m_server->extensions())
+                req = ext->applyRequestMutation(req);
+
             QByteArray outBytes = serializeRequestForOrigin(req);
             if (auto *ic = m_server->interceptController()) {
                 const InterceptResult ir = ic->pend(outBytes, host, port, /*tls=*/true);
@@ -434,6 +453,8 @@ public:
                 fail("mitm: malformed upstream response");
                 return;
             }
+            if (auto *ext = m_server->extensions())
+                resp = ext->applyResponseMutation(req, resp);
             emit m_server->responseReceived(req, resp);
 
             // Protocol switch (WebSocket etc.): forward the 101 headers plus
@@ -727,6 +748,9 @@ CertAuthority *ProxyServer::certAuthority() const { return m_ca; }
 
 void ProxyServer::setInterceptController(InterceptController *ic) { m_intercept = ic; }
 InterceptController *ProxyServer::interceptController() const { return m_intercept; }
+
+void ProxyServer::setExtensions(Nullock::Core::ExtensionsApi *ext) { m_extensions = ext; }
+Nullock::Core::ExtensionsApi *ProxyServer::extensions() const { return m_extensions; }
 
 bool ProxyServer::isMitmBlocked(const QString &host) const {
     QMutexLocker lock(&m_blockMutex);
