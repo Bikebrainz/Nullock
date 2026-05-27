@@ -1108,6 +1108,25 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 Cell {
+                    id: harStatus
+                    property string lastPath: ""
+                    text: lastPath.length > 0 ? ("HAR → " + lastPath) : ""
+                    color: root.dim
+                    elide: Text.ElideMiddle
+                    Layout.preferredWidth: 360
+                }
+                Cell {
+                    text: "export HAR"
+                    color: root.accent
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            const p = projectStore.exportHar("")
+                            harStatus.lastPath = p
+                        }
+                    }
+                }
+                Cell {
                     text: "clear"
                     color: root.accent
                     MouseArea {

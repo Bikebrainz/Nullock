@@ -10,7 +10,11 @@
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QFile>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -69,7 +73,8 @@ void waitMs(int ms) {
 int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  Nullock::Proxy::InterceptController &intercept,
                  Nullock::Core::Repeater            &repeater,
-                 Nullock::Core::Intruder            &intruder) {
+                 Nullock::Core::Intruder            &intruder,
+                 Nullock::Core::ProjectStore        &projectStore) {
     QTextStream out(stdout);
     int passed = 0, failed = 0;
     auto pass = [&](const QString &m) { out << "PASS  " << m << Qt::endl; ++passed; };
@@ -242,6 +247,39 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  .arg(statusAt(0)).arg(statusAt(1)).arg(statusAt(2)).arg(statusAt(3)));
     }
 
+    // -- 8. HAR export of the history collected so far -----------------------
+    //  Sanity: a freshly-exported HAR is valid JSON, has the right shape,
+    //  and the entries.length matches what we've actually accumulated.
+    const QString harPath = projectStore.exportHar(QString());
+    QFile harFile(harPath);
+    bool harOk = false;
+    int harEntries = 0;
+    if (!harPath.isEmpty() && harFile.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(harFile.readAll());
+        if (doc.isObject()) {
+            const QJsonObject log = doc.object().value("log").toObject();
+            const QJsonArray  entries = log.value("entries").toArray();
+            harEntries = entries.size();
+            const QString version = log.value("version").toString();
+            const QString creator = log.value("creator").toObject().value("name").toString();
+            // First entry sanity: must have request.url and response.status.
+            bool entriesValid = !entries.isEmpty();
+            for (const QJsonValue &v : entries) {
+                const QJsonObject e = v.toObject();
+                if (e.value("request").toObject().value("url").toString().isEmpty()
+                    || e.value("response").toObject().value("status").toInt() == 0) {
+                    entriesValid = false;
+                    break;
+                }
+            }
+            harOk = (version == "1.2") && (creator == "Nullock") && entriesValid;
+        }
+    }
+    if (harOk)
+        pass(QString("HAR export at %1 (%2 entries)").arg(harPath).arg(harEntries));
+    else
+        fail(QString("HAR export failed: path=%1 entries=%2").arg(harPath).arg(harEntries));
+
     // -- 6. POST a body via HTTPS -- exercises the h2 data-provider path -----
     //  httpbin /post echoes the request body back inside its JSON response,
     //  so we can verify the body actually made it across.
@@ -327,7 +365,7 @@ int main(int argc, char *argv[]) {
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
-        return runSmokeTest(proxy, intercept, repeater, intruder);
+        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore);
     }
 
     QQmlApplicationEngine engine;

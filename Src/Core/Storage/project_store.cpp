@@ -271,4 +271,148 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
     m_history.flush();
 }
 
+namespace {
+
+QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers) {
+    QJsonArray arr;
+    for (const auto &kv : headers) {
+        QJsonObject h;
+        h["name"]  = kv.first;
+        h["value"] = kv.second;
+        arr.append(h);
+    }
+    return arr;
+}
+
+QJsonArray harQueryString(const QString &path) {
+    QJsonArray arr;
+    const int q = path.indexOf('?');
+    if (q < 0 || q + 1 >= path.size()) return arr;
+    const QString query = path.mid(q + 1);
+    for (const QString &pair : query.split('&', Qt::SkipEmptyParts)) {
+        const int eq = pair.indexOf('=');
+        QJsonObject p;
+        if (eq >= 0) {
+            p["name"]  = pair.left(eq);
+            p["value"] = pair.mid(eq + 1);
+        } else {
+            p["name"]  = pair;
+            p["value"] = "";
+        }
+        arr.append(p);
+    }
+    return arr;
+}
+
+QString findContentType(const QList<QPair<QString, QString>> &headers) {
+    for (const auto &kv : headers)
+        if (kv.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
+            return kv.second;
+    return {};
+}
+
+QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls) {
+    QJsonObject o;
+    o["method"]      = r.method;
+    o["url"]         = (wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
+                       + r.host
+                       + ((r.port == 80 || r.port == 443) ? QString() : QString(":%1").arg(r.port))
+                       + r.path;
+    o["httpVersion"] = r.httpVersion;
+    o["headers"]     = harHeaders(r.headers);
+    o["queryString"] = harQueryString(r.path);
+    o["cookies"]     = QJsonArray();
+    if (!r.body.isEmpty()) {
+        QJsonObject post;
+        post["mimeType"] = findContentType(r.headers);
+        post["text"]     = QString::fromUtf8(r.body);
+        o["postData"]    = post;
+    }
+    o["headersSize"] = -1;
+    o["bodySize"]    = r.body.size();
+    return o;
+}
+
+QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r) {
+    QJsonObject content;
+    content["size"]     = r.body.size();
+    content["mimeType"] = findContentType(r.headers);
+    content["text"]     = QString::fromUtf8(r.body);
+    QJsonObject o;
+    o["status"]      = r.statusCode;
+    o["statusText"]  = r.reasonPhrase;
+    o["httpVersion"] = r.httpVersion;
+    o["headers"]     = harHeaders(r.headers);
+    o["cookies"]     = QJsonArray();
+    o["content"]     = content;
+    o["redirectURL"] = "";
+    o["headersSize"] = -1;
+    o["bodySize"]    = r.body.size();
+    return o;
+}
+
+} // namespace
+
+QString ProjectStore::exportHar(const QString &outPathIn) {
+    if (m_dir.isEmpty()) {
+        emit errorOccurred("exportHar: no project open");
+        return {};
+    }
+
+    QString outPath = outPathIn;
+    if (outPath.isEmpty()) {
+        const QString exportDir = m_dir + "/exports";
+        QDir().mkpath(exportDir);
+        const QString stamp = QDateTime::currentDateTimeUtc()
+                                  .toString("yyyyMMdd-HHmmss");
+        outPath = exportDir + "/history_" + stamp + ".har";
+    }
+
+    QFile in(m_dir + "/history.ndjson");
+    QJsonArray entries;
+    if (in.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!in.atEnd()) {
+            const QByteArray line = in.readLine().trimmed();
+            if (line.isEmpty()) continue;
+            const QJsonDocument doc = QJsonDocument::fromJson(line);
+            if (!doc.isObject()) continue;
+            const QJsonObject src = doc.object();
+            const auto req  = requestFromJson(src.value("request").toObject());
+            const auto resp = responseFromJson(src.value("response").toObject());
+
+            QJsonObject entry;
+            entry["startedDateTime"] = src.value("ts").toString();
+            entry["time"]            = 0;
+            entry["request"]         = harRequest(req, resp.wasTls);
+            entry["response"]        = harResponse(resp);
+            entry["cache"]           = QJsonObject();
+            QJsonObject timings;
+            timings["send"]    = -1;
+            timings["wait"]    = -1;
+            timings["receive"] = -1;
+            entry["timings"]   = timings;
+            entry["serverIPAddress"] = resp.peerAddress;
+            entries.append(entry);
+        }
+    }
+
+    QJsonObject log;
+    log["version"] = "1.2";
+    QJsonObject creator;
+    creator["name"]    = "Nullock";
+    creator["version"] = "0.1";
+    log["creator"] = creator;
+    log["entries"] = entries;
+    QJsonObject root;
+    root["log"] = log;
+
+    QFile out(outPath);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        emit errorOccurred("exportHar: could not open " + outPath + " -- " + out.errorString());
+        return {};
+    }
+    out.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return outPath;
+}
+
 } // namespace Nullock::Core

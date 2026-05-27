@@ -34,6 +34,12 @@ public:
     Q_INVOKABLE bool saveMetadata();
     Q_INVOKABLE QString defaultProjectDir() const;
 
+    // Re-reads history.ndjson and writes it back as HTTP Archive 1.2
+    // (https://w3c.github.io/web-performance/specs/HAR/Overview.html).
+    // If outPath is empty, defaults to <project>/exports/history_<ts>.har.
+    // Returns the absolute output path on success, empty string on failure.
+    Q_INVOKABLE QString exportHar(const QString &outPath = {});
+
     Q_INVOKABLE QStringList inScope() const   { return m_meta.inScope; }
     Q_INVOKABLE QStringList outOfScope() const { return m_meta.outOfScope; }
     Q_INVOKABLE QString notes() const { return m_meta.notes; }

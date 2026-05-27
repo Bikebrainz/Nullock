@@ -55,8 +55,9 @@ PASS  intercept drop breaks the connection
 PASS  repeater send returns a 200 with a real body
 PASS  HTTPS MITM end-to-end (h2 upstream, counter 0 -> 1)
 PASS  intruder fires variants and records the expected statuses
+PASS  HAR export at <project>/exports/history_<ts>.har (N entries)
 PASS  HTTPS POST body round-trips (h2 data-provider)
-smoke test: 7 passed, 0 failed
+smoke test: 8 passed, 0 failed
 ```
 
 Verified on Windows 11 with MSVC 2022 Community + Qt 6.7.3 (`win64_msvc2019_64`),
@@ -99,6 +100,7 @@ In rough order of dependency:
 - [x] **History filter** — `ProxyFilterModel` (`QSortFilterProxyModel`) sits between the raw `ProxyModel` and the QML ListView. Filter by host substring, status family (`all`/`2xx`/`3xx`/`4xx`/`5xx`), and method. Click-to-inspect and "Send to Repeater" map filtered indices back to source rows via `sourceRow(int)`. Hidden-count is surfaced in the filter bar.
 - [x] **CA cert install helper** — panel at the top of the Scope tab showing the root CA path with "Copy path" (clipboard via a hidden TextEdit) and "Open folder" (`Qt.openUrlExternally(file:///…)`) buttons. Removes the "grep your filesystem" step before installing the cert in a browser.
 - [x] **Site Map** — `SiteMapModel` aggregates unique hosts from `ProxyModel` (with TLS flag + request count). New left panel on the Proxy tab lists hosts; clicking a host sets the history filter to that host (click again to clear). Stays in sync via `rowsInserted` / `modelReset`.
+- [x] **HAR export** — `ProjectStore::exportHar()` re-reads `history.ndjson` and writes [HTTP Archive 1.2](https://w3c.github.io/web-performance/specs/HAR/Overview.html). Output goes under `<project>/exports/history_<timestamp>.har`. "Export HAR" button in the status bar; status line shows the resulting path. Smoke-tested: round-trip parse confirms `log.version == "1.2"`, `creator.name == "Nullock"`, every entry has a non-empty `request.url` and a non-zero `response.status`. Opens cleanly in Chrome DevTools, Burp, Charles, Insomnia.
 - [x] **Basic QuickControls style** — `QQuickStyle::setStyle("Basic")` set at app startup so `Rectangle { background }` customizations on `TextField` / `TextArea` work without spamming "background customization not supported" warnings on every launch (was ~9 per startup).
 - [ ] **Extensions API** — plugin loader and lifecycle.
 - [ ] **Themes manager** — JSON-driven theme switching.
