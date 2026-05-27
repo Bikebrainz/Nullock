@@ -425,6 +425,32 @@ QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
                                        const QByteArray &body,
                                        const QString &query) const {
+    // GET /api/pac -- proxy auto-config file. Drop the URL into a browser's
+    // "Automatic proxy configuration" field and everything routes through
+    // our listener with no manual host/port juggling.
+    if (path == "/api/pac" || path == "/proxy.pac") {
+        const quint16 pport = m_wiring.proxy ? m_wiring.proxy->listeningPort() : 8888;
+        QByteArray pac;
+        pac += "// Nullock proxy auto-config -- generated " +
+               QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8() + "\n";
+        pac += "function FindProxyForURL(url, host) {\n";
+        pac += "    // Local traffic stays direct so the control UI keeps working.\n";
+        pac += "    if (isPlainHostName(host)\n";
+        pac += "        || shExpMatch(host, \"localhost\")\n";
+        pac += "        || shExpMatch(host, \"127.*\")\n";
+        pac += "        || shExpMatch(host, \"10.*\")\n";
+        pac += "        || shExpMatch(host, \"192.168.*\")\n";
+        pac += "        || shExpMatch(host, \"172.16.*\") || shExpMatch(host, \"172.17.*\")\n";
+        pac += "        || shExpMatch(host, \"172.18.*\") || shExpMatch(host, \"172.19.*\")\n";
+        pac += "        || shExpMatch(host, \"172.2?.*\")  || shExpMatch(host, \"172.30.*\")\n";
+        pac += "        || shExpMatch(host, \"172.31.*\")) {\n";
+        pac += "        return \"DIRECT\";\n";
+        pac += "    }\n";
+        pac += "    return \"PROXY 127.0.0.1:" + QByteArray::number(pport) + "\";\n";
+        pac += "}\n";
+        return httpResponse(200, "application/x-ns-proxy-autoconfig; charset=utf-8", pac);
+    }
+
     if (path == "/api/snapshot") {
         // ?since=<seq> -> 304 if seq hasn't moved. Saves us building 13 KB
         // of JSON twice a second when nothing has happened.

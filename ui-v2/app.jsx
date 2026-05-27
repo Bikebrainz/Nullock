@@ -351,6 +351,47 @@ function SettingsTab() {
           }
         </div>
       </Card>
+
+      {(() => {
+        // Browser setup card. The proxy may be bound on a different port
+        // than the default 8080 if it was taken; pull the live value out
+        // of bootInfo so the snippets always match reality.
+        const host       = "127.0.0.1";
+        const proxyPort  = b.port || 8888;
+        const ctrlPort   = b.controlPort || 17777;
+        const proxyAddr  = host + ":" + proxyPort;
+        const pacUrl     = "http://" + host + ":" + ctrlPort + "/api/pac";
+        const curlCmd    = "curl -x http://" + proxyAddr + " --cacert \""
+                         + (b.caPath || "<ca-cert-path>") + "\" https://example.com";
+        const psCmd      = "$env:HTTPS_PROXY = \"http://" + proxyAddr + "\"; "
+                         + "$env:HTTP_PROXY = \"http://" + proxyAddr + "\"";
+        const ffSetting  = "network.proxy.autoconfig_url = " + pacUrl;
+        return (
+          <Card title="Browser setup">
+            <Row label="HTTP proxy" value={proxyAddr} copyable />
+            <Row label="PAC URL"    value={pacUrl}    copyable />
+            <div style={{ height: 4 }} />
+            <div style={{ fontSize: "10.5px", color: "var(--dim)" }}>Quick snippets</div>
+            <Row label="curl" value={curlCmd} copyable />
+            <Row label="PowerShell" value={psCmd} copyable />
+            <Row label="Firefox about:config" value={ffSetting} copyable />
+            <div style={{
+              marginTop: 6, padding: 8, background: "var(--bg-deep)",
+              border: "1px solid var(--line-soft)", borderRadius: 3,
+              fontSize: "10.5px", color: "var(--dim)", lineHeight: 1.5,
+            }}>
+              <div><b style={{ color: "var(--text-2)" }}>Chrome / Edge:</b> Settings &rarr; System &rarr; Open your computer's proxy settings &rarr; paste the PAC URL into "Automatic proxy setup". Or launch with <code style={{ color: "var(--text)" }}>--proxy-server={proxyAddr}</code>.</div>
+              <div style={{ marginTop: 4 }}><b style={{ color: "var(--text-2)" }}>Firefox:</b> Settings &rarr; Network Settings &rarr; "Automatic proxy configuration URL" &rarr; paste PAC URL.</div>
+              <div style={{ marginTop: 4 }}><b style={{ color: "var(--text-2)" }}>Don't forget:</b> import the CA cert (see "CA &amp; TLS" card) so HTTPS interception works without warnings.</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+              <Btn label="Open PAC" onClick={() => window.open(pacUrl, "_blank")} />
+              <Btn label="Copy PAC URL" onClick={() => copy(pacUrl)} />
+              <Btn label="Copy proxy" onClick={() => copy(proxyAddr)} />
+            </div>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
