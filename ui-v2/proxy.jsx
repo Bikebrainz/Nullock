@@ -189,6 +189,11 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
   const [view, setView] = React.useState("split"); // split | req | resp
   const [reqTab, setReqTab] = React.useState("raw"); // raw|headers|body
   const [respTab, setRespTab] = React.useState("raw");
+  // The "marked for diff" row id is stashed on window so it survives row
+  // selection. Only one mark at a time -- the second row triggers the diff.
+  const [diffMark, setDiffMark] = React.useState(window.__nl_diff_mark || null);
+  React.useEffect(() => { window.__nl_diff_mark = diffMark; }, [diffMark]);
+  const [diffOpen, setDiffOpen] = React.useState(null); // {idA, idB}
 
   if (!row) {
     return (
@@ -236,6 +241,26 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        {diffMark === null && (
+          <button onClick={() => setDiffMark(row.id)}
+                  title="Mark this row as the left-hand side of a diff">
+            ⊟ MARK
+          </button>
+        )}
+        {diffMark !== null && diffMark === row.id && (
+          <button onClick={() => setDiffMark(null)}
+                  title="Clear diff mark"
+                  style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+            ⊟ MARKED
+          </button>
+        )}
+        {diffMark !== null && diffMark !== row.id && (
+          <button onClick={() => setDiffOpen({ idA: diffMark, idB: row.id })}
+                  title={"Diff with row #" + String(diffMark).padStart(3, "0")}
+                  style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+            ⊟ DIFF vs #{String(diffMark).padStart(3, "0")}
+          </button>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
         <div style={{ display:"flex", flexDirection:"column", borderRight: "1px solid var(--line)", minHeight: 0 }}>
@@ -271,6 +296,178 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
         <CodecOverlay title={overlay.title} body={overlay.body}
                       onClose={() => setOverlay(null)} />
       )}
+      {diffOpen && (
+        <DiffOverlay
+          idA={diffOpen.idA}
+          idB={diffOpen.idB}
+          onClose={() => setDiffOpen(null)}
+          onClearMark={() => { setDiffMark(null); setDiffOpen(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================== DIFF =================================
+
+// Naive line-level LCS diff. Returns an array of { tag, a, b } rows where
+// tag is "eq" / "del" / "add". Quadratic in line count; fine for the
+// few-hundred-line HTTP messages we're comparing.
+function diffLines(aText, bText) {
+  const A = aText.split("\n");
+  const B = bText.split("\n");
+  const n = A.length, m = B.length;
+  // LCS length table
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      if (A[i] === B[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+      else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { out.push({ tag: "eq",  a: A[i], b: B[j] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ tag: "del", a: A[i], b: "" }); i++; }
+    else                                    { out.push({ tag: "add", a: "",    b: B[j] }); j++; }
+  }
+  while (i < n) { out.push({ tag: "del", a: A[i++], b: "" }); }
+  while (j < m) { out.push({ tag: "add", a: "",    b: B[j++] }); }
+  return out;
+}
+
+// Stats helper -- count add/del lines.
+function diffStats(rows) {
+  let adds = 0, dels = 0, same = 0;
+  for (const r of rows) {
+    if (r.tag === "add") adds++;
+    else if (r.tag === "del") dels++;
+    else same++;
+  }
+  return { adds, dels, same };
+}
+
+function DiffOverlay({ idA, idB, onClose, onClearMark }) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const [side, setSide] = React.useState("response"); // request | response
+
+  const rowA = (window.NL.rows || []).find(r => r.id === idA);
+  const rowB = (window.NL.rows || []).find(r => r.id === idB);
+  const reqA  = idA != null ? (NL.requestRawAt(idA - 1)  || "") : "";
+  const reqB  = idB != null ? (NL.requestRawAt(idB - 1)  || "") : "";
+  const respA = idA != null ? (NL.responseRawAt(idA - 1) || "") : "";
+  const respB = idB != null ? (NL.responseRawAt(idB - 1) || "") : "";
+  const rows  = React.useMemo(
+    () => side === "request" ? diffLines(reqA, reqB) : diffLines(respA, respB),
+    [side, reqA, reqB, respA, respB]
+  );
+  const stats = diffStats(rows);
+
+  const tabBtn = (k, label) => (
+    <button onClick={() => setSide(k)}
+            style={{
+              background: side === k ? "var(--bg-deep)" : "transparent",
+              color: side === k ? "var(--accent)" : "var(--text-2)",
+              border: "1px solid " + (side === k ? "var(--accent)" : "var(--line)"),
+              padding: "3px 12px", fontSize: "11px",
+              fontFamily: "var(--ff-mono)", cursor: "pointer",
+              letterSpacing: "0.04em", textTransform: "uppercase",
+            }}>{label}</button>
+  );
+
+  const renderCell = (text, tag, kind) => {
+    let bg = "transparent", color = "var(--text)";
+    if (kind === "a" && tag === "del") { bg = "rgba(255, 80, 80, 0.12)"; color = "var(--err, #f88)"; }
+    if (kind === "b" && tag === "add") { bg = "rgba(80, 220, 120, 0.12)"; color = "#8ee5a0"; }
+    if (text === "" && (tag === "del" || tag === "add")
+        && ((kind === "b" && tag === "del") || (kind === "a" && tag === "add"))) {
+      bg = "rgba(255,255,255,0.02)";
+      text = "";
+    }
+    return (
+      <div style={{
+        whiteSpace: "pre", overflow: "hidden", textOverflow: "ellipsis",
+        background: bg, color, padding: "0 8px", minHeight: 16,
+        borderBottom: "1px solid var(--line-soft)",
+        fontFamily: "var(--ff-mono)", fontSize: "11px",
+      }}>{text || " "}</div>
+    );
+  };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+           display: "grid", placeItems: "center", zIndex: 60,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(95vw, 1400px)", height: "85vh",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span>DIFF</span>
+          <span style={{ color: "var(--text-2)" }}>
+            #{String(idA).padStart(3, "0")} {rowA ? "· " + rowA.method + " " + (rowA.url || "") : ""}
+            &nbsp;↔&nbsp;
+            #{String(idB).padStart(3, "0")} {rowB ? "· " + rowB.method + " " + (rowB.url || "") : ""}
+          </span>
+          <span style={{ flex: 1 }} />
+          {tabBtn("request",  "REQUEST")}
+          {tabBtn("response", "RESPONSE")}
+          <span style={{ color: "var(--dim)", marginLeft: 8 }}>
+            +<span style={{ color: "#8ee5a0" }}>{stats.adds}</span>{" "}
+            -<span style={{ color: "var(--err,#f88)" }}>{stats.dels}</span>{" "}
+            <span style={{ color: "var(--dim)" }}>={stats.same}</span>
+          </span>
+          <button onClick={onClearMark} title="Clear mark"
+                  style={{
+                    background: "transparent", color: "var(--dim)",
+                    border: "1px solid var(--line)", padding: "2px 8px",
+                    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                  }}>CLEAR MARK</button>
+          <button onClick={onClose} style={{
+            background: "transparent", color: "var(--dim)",
+            border: "1px solid var(--line)", padding: "2px 8px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+          }}>CLOSE</button>
+        </div>
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr",
+          flex: 1, minHeight: 0, overflow: "auto",
+          background: "var(--bg-deep)",
+        }}>
+          <div style={{ borderRight: "1px solid var(--line)" }}>
+            <div style={{
+              padding: "4px 8px", color: "var(--dim)", fontSize: "10px",
+              borderBottom: "1px solid var(--line)", background: "var(--pane)",
+              textTransform: "uppercase", letterSpacing: "0.06em",
+            }}>#{String(idA).padStart(3,"0")} · A</div>
+            {rows.map((r, i) => <div key={i}>{renderCell(r.a, r.tag, "a")}</div>)}
+          </div>
+          <div>
+            <div style={{
+              padding: "4px 8px", color: "var(--dim)", fontSize: "10px",
+              borderBottom: "1px solid var(--line)", background: "var(--pane)",
+              textTransform: "uppercase", letterSpacing: "0.06em",
+            }}>#{String(idB).padStart(3,"0")} · B</div>
+            {rows.map((r, i) => <div key={i}>{renderCell(r.b, r.tag, "b")}</div>)}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
