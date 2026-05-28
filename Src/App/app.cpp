@@ -83,7 +83,9 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  Nullock::Core::Repeater            &repeater,
                  Nullock::Core::Intruder            &intruder,
                  Nullock::Core::ProjectStore        &projectStore,
-                 Nullock::Core::ExtensionsApi       &extensions) {
+                 Nullock::Core::ExtensionsApi       &extensions,
+                 Nullock::Core::PassiveScanner     &scanner,
+                 Nullock::FrontEnd::ProxyModel     &model) {
     QTextStream out(stdout);
     int passed = 0, failed = 0;
     auto pass = [&](const QString &m) { out << "PASS  " << m << Qt::endl; ++passed; };
@@ -404,6 +406,95 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                  .arg(postCurl.exitCode).arg(postEchoed)
                  .arg(QString::fromUtf8(postCurl.stdoutBytes.left(120))));
 
+    // -- 9. Match & Replace rule applies on the wire -------------------------
+    //  Add a rule that rewrites User-Agent, fire a request through the
+    //  proxy, then verify the *captured* request in our own history has
+    //  the rewritten value -- proves the mutation pipeline reached the
+    //  byte serializer before the round-trip got logged.
+    {
+        Nullock::Proxy::MatchReplaceRule r;
+        r.enabled  = true;
+        r.name     = "smoke-ua-rule";
+        r.section  = Nullock::Proxy::MatchReplaceRule::ReqHeader;
+        r.find     = "^User-Agent: .*$";
+        r.replace  = "User-Agent: Nullock-Smoke";
+        proxy.setRules({ r });
+
+        const int hitsBefore = proxy.rulesHit();
+        const int rowsBefore = model.rowCount();
+        runCurl({ "-s", "--max-time", "10",
+                  "--proxy", proxyUrl,
+                  "-H", "User-Agent: original",
+                  "http://httpbin.org/headers" }, 10000);
+        waitMs(500);
+        const int hitsAfter = proxy.rulesHit();
+        const int rowsAfter = model.rowCount();
+        bool rewrote = false;
+        if (rowsAfter > rowsBefore) {
+            const QString reqText = model.requestRawAt(rowsAfter - 1);
+            rewrote = reqText.contains("User-Agent: Nullock-Smoke");
+        }
+        if (hitsAfter > hitsBefore && rewrote)
+            pass(QString("Match & Replace: header rewrite fired (rulesHit %1 -> %2)")
+                     .arg(hitsBefore).arg(hitsAfter));
+        else
+            fail(QString("Match & Replace: hits %1->%2, rewrote=%3")
+                     .arg(hitsBefore).arg(hitsAfter).arg(rewrote));
+        proxy.setRules({});  // restore clean state for downstream tests
+    }
+
+    // -- 10. Passive scanner observes a leaky response ----------------------
+    //  httpbin /response-headers lets us craft a response with Set-Cookie
+    //  + no security headers; the scanner should latch onto a handful of
+    //  obvious findings.
+    {
+        const int findingsBefore = scanner.count();
+        runCurl({ "-s", "--max-time", "10",
+                  "--proxy", proxyUrl,
+                  "http://httpbin.org/cookies/set?session=x" }, 10000);
+        waitMs(800);
+        const int findingsAfter = scanner.count();
+        if (findingsAfter > findingsBefore)
+            pass(QString("Passive scanner: latched on real traffic (count %1 -> %2)")
+                     .arg(findingsBefore).arg(findingsAfter));
+        else
+            fail(QString("Passive scanner: didn't fire (count stuck at %1)")
+                     .arg(findingsBefore));
+    }
+
+    // -- 11. Repeater multi-tab: add/activate/close roundtrip ---------------
+    //  Doesn't hit the network; verifies the tab list arithmetic is sane.
+    {
+        const int before = repeater.tabCount();
+        const int newIdx = repeater.addTab("smoke-tab");
+        const bool added = (repeater.tabCount() == before + 1) && (repeater.activeTab() == newIdx);
+        const bool renamed = repeater.renameTab(newIdx, "renamed");
+        const bool closed = repeater.closeTab(newIdx);
+        if (added && renamed && closed && repeater.tabCount() == before)
+            pass("Repeater multi-tab: add / rename / close roundtrip");
+        else
+            fail(QString("Repeater tabs: added=%1 renamed=%2 closed=%3 finalCount=%4 (expected %5)")
+                     .arg(added).arg(renamed).arg(closed)
+                     .arg(repeater.tabCount()).arg(before));
+    }
+
+    // -- 12. Project switcher: open a temp project, switch back -------------
+    //  Default project must still be reachable after the round-trip.
+    {
+        const QString prev = projectStore.metadata().name;
+        const QString tmpName = QString("smoke-tmp-%1")
+                                    .arg(QDateTime::currentMSecsSinceEpoch());
+        const bool created = projectStore.createProject(tmpName);
+        const QString midName = projectStore.metadata().name;
+        const bool back = projectStore.openByName(prev);
+        const QString endName = projectStore.metadata().name;
+        if (created && midName == tmpName && back && endName == prev)
+            pass("Project switcher: create temp + switch back keeps state");
+        else
+            fail(QString("Project switcher: created=%1 mid=%2 back=%3 end=%4 (expected %5)")
+                     .arg(created).arg(midName).arg(back).arg(endName).arg(prev));
+    }
+
     out << Qt::endl << "smoke test: " << passed << " passed, "
         << failed << " failed" << Qt::endl;
     return failed == 0 ? 0 : 1;
@@ -503,7 +594,8 @@ int main(int argc, char *argv[]) {
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
-        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore, extensions);
+        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore, extensions,
+                            scanner, model);
     }
 
     // Stand up the HTTP control server that hosts the React UI and exposes
