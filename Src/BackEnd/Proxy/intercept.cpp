@@ -33,8 +33,14 @@ void InterceptController::forward(const QString &editedText) {
     p->m_text = editedText;
     p->decision.storeRelease(0);
     p->done.release();
-    QMutexLocker lk(&m_queueMutex);
-    promoteNextLocked();
+    {
+        QMutexLocker lk(&m_queueMutex);
+        promoteNextLocked();
+    }
+    // Emit AFTER releasing the lock. QML rebinds synchronously on signal
+    // emit and reads back queueDepth() which re-acquires m_queueMutex --
+    // a recursive lock attempt that deadlocks the main thread.
+    emit currentChanged();
 }
 
 void InterceptController::drop() {
@@ -46,8 +52,11 @@ void InterceptController::drop() {
     if (!p) return;
     p->decision.storeRelease(1);
     p->done.release();
-    QMutexLocker lk(&m_queueMutex);
-    promoteNextLocked();
+    {
+        QMutexLocker lk(&m_queueMutex);
+        promoteNextLocked();
+    }
+    emit currentChanged();
 }
 
 void InterceptController::forwardAll() { releaseAllAsForward(); }
@@ -70,14 +79,22 @@ void InterceptController::releaseAllAsForward() {
 }
 
 void InterceptController::promoteNextLocked() {
+    // Caller already holds m_queueMutex. Do NOT emit currentChanged here:
+    // QML's intercept.queueDepth binding evaluates synchronously on the
+    // signal and re-acquires the same mutex -> deadlock. Callers emit
+    // currentChanged after releasing the lock.
     m_current = m_queue.isEmpty() ? nullptr : m_queue.dequeue();
-    emit currentChanged();
 }
 
 void InterceptController::addPendingOnMain(PendingRequest *p) {
-    QMutexLocker lk(&m_queueMutex);
-    if (!m_current) m_current = p;
-    else            m_queue.enqueue(p);
+    {
+        QMutexLocker lk(&m_queueMutex);
+        if (!m_current) m_current = p;
+        else            m_queue.enqueue(p);
+    }
+    // Emit outside the lock -- same recursive-lock deadlock story as
+    // forward() / drop(). Without this fix, a single intercepted
+    // request freezes the whole control server.
     emit currentChanged();
 }
 
