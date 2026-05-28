@@ -19,20 +19,23 @@ function MethodCell({ m }) {
   return <span className={cls}>{m}</span>;
 }
 
-function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search }) {
+function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits }) {
   const filtered = React.useMemo(() => rows.filter(r => {
     if (hostFilter && !r.host.includes(hostFilter)) return false;
     if (search) {
       const s = search.toLowerCase();
       // Search across every column we display so the box behaves the way
       // people expect: typing "401" matches status, "json" matches mime,
-      // "POST" matches method, etc.
+      // "POST" matches method, etc. When deep search is on, also keep
+      // rows whose request/response *bodies* matched on the server.
       const blob = [
         r.url, r.path, r.host, r.method, r.mime,
         String(r.status || ""), String(r.params || ""),
         r.ip || "",
       ].join(" ").toLowerCase();
-      if (!blob.includes(s)) return false;
+      const localHit = blob.includes(s);
+      const deepHit  = deepHits ? deepHits.has(r.id) : false;
+      if (!localHit && !deepHit) return false;
     }
     if (statusClass !== "all") {
       const sc = Math.floor(r.status / 100) + "xx";
@@ -40,7 +43,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     }
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     return true;
-  }), [rows, hostFilter, statusClass, methodFilter, search]);
+  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits]);
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
@@ -100,7 +103,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -133,11 +136,25 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
       <div className="fld" style={{ flex: 1 }}>
         <span className="pre">/</span>
         <input
-          placeholder="search url or path…"
+          placeholder={deepSearch ? "regex search (body too)…" : "search url or path…"}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {search && <span style={{ cursor:"pointer", color:"var(--dim)" }} onClick={() => setSearch("")}>×</span>}
       </div>
+      <button
+        onClick={() => setDeepSearch && setDeepSearch(!deepSearch)}
+        title="Also search through request and response bodies (regex)"
+        style={{
+          background: deepSearch ? "var(--accent)" : "transparent",
+          color: deepSearch ? "var(--bg)" : "var(--accent)",
+          border: "1px solid var(--accent)", padding: "3px 10px",
+          fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+          height: 22,
+        }}>
+        DEEP{deepSearch && deepCount !== null ? " · " + deepCount : ""}
+      </button>
       {selectedHost && (
         <div className="chip accent" style={{ height: 22 }}>
           ◉ {selectedHost}
@@ -657,6 +674,30 @@ function ProxyTab({ state, dispatch, showSitemap }) {
   const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost } = state;
   const sitemapEntries = NL.sitemap;
 
+  // Deep search: when enabled, the search box query is also run against
+  // request and response bodies via /api/search. We debounce by 250ms so
+  // typing doesn't fire a scan on every keystroke. deepHits is a Set of
+  // row ids -- if it's non-null and the row id isn't in it, the row hides.
+  const [deepSearch, setDeepSearch] = React.useState(false);
+  const [deepHits, setDeepHits]     = React.useState(null);  // null = no body filter
+  const [deepCount, setDeepCount]   = React.useState(null);  // last hit count
+  React.useEffect(() => {
+    if (!deepSearch || !search) { setDeepHits(null); setDeepCount(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await NL.actions.search(search, "both", 500);
+        if (cancelled) return;
+        const ids = new Set((res.hits || []).map(h => h.id));
+        setDeepHits(ids);
+        setDeepCount(res.count || 0);
+      } catch (e) {
+        if (!cancelled) { setDeepHits(new Set()); setDeepCount(0); }
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [deepSearch, search]);
+
   // visibleHost feeds the table filter as hostFilter, but when sitemap selects a host we want exact match
   const tableHostFilter = selectedHost || hostFilter;
   const selectedRow = rows.find(r => r.id === selectedRowId) || null;
@@ -702,11 +743,14 @@ function ProxyTab({ state, dispatch, showSitemap }) {
           search={search}
           setSearch={v => dispatch({ type: "set", payload: { search: v }})}
           hidden={hidden}
-          onClearFilters={() => dispatch({ type: "set", payload: {
+          onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); dispatch({ type: "set", payload: {
             hostFilter: "", statusClass: "all", methodFilter: "ALL", search: "", selectedHost: null
-          }})}
+          }}); }}
           selectedHost={selectedHost}
           onSelectHost={h => dispatch({ type: "set", payload: { selectedHost: h }})}
+          deepSearch={deepSearch}
+          setDeepSearch={setDeepSearch}
+          deepCount={deepCount}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -717,6 +761,7 @@ function ProxyTab({ state, dispatch, showSitemap }) {
             statusClass={statusClass}
             methodFilter={methodFilter}
             search={search}
+            deepHits={deepSearch ? deepHits : null}
           />
         </div>
         <DetailPane

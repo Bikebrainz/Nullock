@@ -484,6 +484,78 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpResponse(200, "application/x-ns-proxy-autoconfig; charset=utf-8", pac);
     }
 
+    // GET /api/search?q=<regex>&where=req|resp|both&limit=N
+    // Scans every history row's request and/or response text for the
+    // pattern and returns a list of { id, where, excerpt }. Bodies are
+    // pulled from ProxyModel's cache which is already memoized, so
+    // calling this is cheap even for hundreds of rows.
+    if (path == "/api/search") {
+        QJsonArray hits;
+        if (m_wiring.history) {
+            const QUrlQuery q(query);
+            const QString pattern = q.queryItemValue("q");
+            QString where = q.queryItemValue("where");
+            if (where.isEmpty()) where = "both";
+            const int limit = q.queryItemValue("limit").toInt() > 0
+                                ? q.queryItemValue("limit").toInt() : 200;
+            if (!pattern.isEmpty()) {
+                const QRegularExpression rx(pattern,
+                    QRegularExpression::CaseInsensitiveOption
+                  | QRegularExpression::MultilineOption);
+                if (rx.isValid()) {
+                    const int n = m_wiring.history->rowCount();
+                    auto scan = [&](int row, const QString &text,
+                                    const QString &whereLabel) {
+                        if (hits.size() >= limit) return;
+                        auto it = rx.globalMatch(text);
+                        if (!it.hasNext()) return;
+                        // Pull at most 3 line-excerpts per hit so the
+                        // response stays small.
+                        QStringList excerpts;
+                        int count = 0;
+                        while (it.hasNext() && count < 3) {
+                            const auto m = it.next();
+                            // Grab the line containing the match.
+                            const int start = m.capturedStart();
+                            int ls = text.lastIndexOf('\n', start - 1) + 1;
+                            int le = text.indexOf('\n', start);
+                            if (le < 0) le = text.size();
+                            QString line = text.mid(ls, le - ls).trimmed();
+                            if (line.size() > 240) line = line.left(237) + "...";
+                            excerpts.append(line);
+                            ++count;
+                        }
+                        QJsonObject hit;
+                        const QModelIndex idx = m_wiring.history->index(row, 0);
+                        const int id = m_wiring.history->data(idx,
+                            Nullock::FrontEnd::ProxyModel::IdRole).toInt();
+                        hit["id"]       = id;
+                        hit["where"]    = whereLabel;
+                        hit["excerpts"] = QJsonArray::fromStringList(excerpts);
+                        hits.append(hit);
+                    };
+                    for (int row = 0; row < n && hits.size() < limit; ++row) {
+                        if (where == "req" || where == "both") {
+                            const QString t = m_wiring.history->requestRawAt(row);
+                            if (!t.isEmpty()) scan(row, t, "req");
+                        }
+                        if (hits.size() >= limit) break;
+                        if (where == "resp" || where == "both") {
+                            const QString t = m_wiring.history->responseRawAt(row);
+                            if (!t.isEmpty()) scan(row, t, "resp");
+                        }
+                    }
+                } else {
+                    return httpJson(400, QJsonObject{{ "error", "invalid regex" }});
+                }
+            }
+        }
+        QJsonObject root;
+        root["hits"]  = hits;
+        root["count"] = hits.size();
+        return httpJson(200, root);
+    }
+
     if (path == "/api/snapshot") {
         // ?since=<seq> -> 304 if seq hasn't moved. Saves us building 13 KB
         // of JSON twice a second when nothing has happened.

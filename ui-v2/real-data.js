@@ -115,6 +115,13 @@
     repeaterTabActivate(index)      { return post("/api/repeater/tab/activate", { index }); },
     repeaterTabRename(index, name)  { return post("/api/repeater/tab/rename",   { index, name }); },
     repeaterTabDuplicate(index)     { return post("/api/repeater/tab/duplicate",{ index }); },
+    // GET search; returns { hits: [{id, where, excerpts:[...]}], count }
+    search(q, where = "both", limit = 200) {
+      const url = "/api/search?q=" + encodeURIComponent(q || "")
+                + "&where=" + encodeURIComponent(where)
+                + "&limit=" + encodeURIComponent(limit);
+      return fetch(url).then(r => r.json());
+    },
     intruderSet(payload)    { return post("/api/intruder/set",     payload); },
     intruderStart()         { return post("/api/intruder/start"); },
     intruderStop()          { return post("/api/intruder/stop"); },
