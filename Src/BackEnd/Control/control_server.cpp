@@ -4,6 +4,7 @@
 #include "extensions_api.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
+#include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "project_store.hpp"
 #include "Proxy/proxy_filter_model.hpp"
@@ -15,6 +16,7 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QtConcurrent/QtConcurrent>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -627,6 +629,62 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             bool ok = false;
             const int id = parts[0].toInt(&ok);
             if (ok) {
+                if (parts[1] == "replay") {
+                    // Re-fire the captured request through the same mutation
+                    // pipeline as live traffic. HttpClient::send() blocks
+                    // with waitFor* calls that would re-enter the control
+                    // server's main-thread event loop if we ran it inline
+                    // here -- crashed the app on first try. So we hand the
+                    // whole replay off to a worker; the new row arrives in
+                    // the snapshot poll ~250ms later.
+                    if (!m_wiring.history || !m_wiring.proxy)
+                        return httpJson(404, QJsonObject{{ "error", "no history" }});
+                    const int row = id - 1;
+                    auto *src = m_wiring.history->requestAt(row);
+                    auto *srcResp = m_wiring.history->responseAt(row);
+                    if (!src) return httpJson(404, QJsonObject{{ "error", "row not found" }});
+
+                    Nullock::Proxy::HttpRequest req = *src;
+                    const bool useTls = srcResp ? srcResp->wasTls : false;
+                    Wiring w = m_wiring;
+                    (void)QtConcurrent::run([w, req, useTls]() {
+                        Nullock::Proxy::HttpRequest r = req;
+                        if (w.extensions) r = w.extensions->applyRequestMutation(r);
+                        if (w.proxy)      w.proxy->applyRequestRules(r);
+
+                        const QByteArray bytes =
+                            Nullock::Proxy::serializeRequestForOrigin(r);
+
+                        Nullock::Core::HttpClient client;
+                        const auto result = client.send(r.host,
+                                                        static_cast<quint16>(r.port),
+                                                        useTls, bytes);
+                        Nullock::Proxy::HttpResponse resp;
+                        if (result.ok) {
+                            resp = result.parsed;
+                            resp.wasTls = useTls;
+                        } else {
+                            resp.httpVersion  = "HTTP/1.1";
+                            resp.statusCode   = 0;
+                            resp.reasonPhrase = "replay error: " + result.errorMessage;
+                            resp.wasTls       = useTls;
+                        }
+                        if (w.extensions) resp = w.extensions->applyResponseMutation(r, resp);
+                        if (w.proxy)      w.proxy->applyResponseRules(r, resp);
+
+                        // Hop back to the main thread to mutate the model,
+                        // feed the scanner, and append to project history.
+                        if (w.proxy) {
+                            QMetaObject::invokeMethod(w.proxy, [w, r, resp]() {
+                                if (w.history)      w.history->addResponse(r, resp);
+                                if (w.scanner)      w.scanner->onResponseReceived(r, resp);
+                                if (w.projectStore) w.projectStore->appendEntry(r, resp);
+                            }, Qt::QueuedConnection);
+                        }
+                    });
+                    return httpJson(200, QJsonObject{{ "ok", true },
+                                                     { "queued", true }});
+                }
                 const bool wantReq = (parts[1] == "request");
                 const QByteArray text = buildHistoryRow(id, wantReq);
                 if (text.isEmpty())

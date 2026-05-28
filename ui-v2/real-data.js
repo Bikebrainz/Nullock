@@ -142,6 +142,13 @@
     projectList()           { return fetch("/api/project/list").then(r => r.json()); },
     projectOpen(name)       { return post("/api/project/open",   { name }).then(r => r.json()); },
     projectCreate(name)     { return post("/api/project/create", { name }).then(r => r.json()); },
+    replayRow(rowId) {
+      // POST /api/history/<id>/replay -- re-fires the captured request
+      // through the proxy's mutation pipeline. New round-trip lands as
+      // a new history row.
+      return fetch("/api/history/" + rowId + "/replay", { method: "POST" })
+        .then(r => r.json());
+    },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
     ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },

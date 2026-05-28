@@ -151,6 +151,16 @@ bool ProxyModel::tlsAt(int row) const {
     return m_entries[row].response.wasTls;
 }
 
+const Nullock::Proxy::HttpRequest *ProxyModel::requestAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return nullptr;
+    return &m_entries[row].request;
+}
+
+const Nullock::Proxy::HttpResponse *ProxyModel::responseAt(int row) const {
+    if (row < 0 || row >= m_entries.size()) return nullptr;
+    return &m_entries[row].response;
+}
+
 int ProxyModel::countParams(const Nullock::Proxy::HttpRequest &request) {
     int count = 0;
     const int q = request.path.indexOf('?');

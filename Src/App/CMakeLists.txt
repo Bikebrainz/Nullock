@@ -52,4 +52,30 @@ elseif(WIN32)
     set_target_properties(NullockApp PROPERTIES
         WIN32_EXECUTABLE ON
     )
+
+    # FrontEndGUI is a SHARED lib on Windows. The Qt-exported export macro
+    # lives in its dll, so it has to sit next to NullockApp.exe at runtime.
+    # Without this, post-rebuild runs blow up with STATUS_ENTRYPOINT_NOT_FOUND
+    # because windeployqt won't pull our own DLLs across.
+    add_custom_command(TARGET NullockApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:FrontEndGUI>
+            $<TARGET_FILE_DIR:NullockApp>
+        COMMENT "copying FrontEndGUI.dll next to NullockApp.exe"
+    )
+
+    # Qt6Concurrent isn't directly referenced by anything in NullockApp.cpp,
+    # so windeployqt scans the import table and misses it -- even though
+    # Networking and Control both pull QtConcurrent::run via static libs.
+    # Manually deploy it.
+    add_custom_command(TARGET NullockApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:Qt6::Concurrent>
+            $<TARGET_FILE_DIR:NullockApp>
+        COMMENT "deploying Qt6Concurrent.dll"
+    )
+
+    # Need Qt::Concurrent linked into NullockApp so the post-build copy
+    # has a Qt6::Concurrent target to reference.
+    target_link_libraries(NullockApp PRIVATE Qt6::Concurrent)
 endif()

@@ -37,6 +37,11 @@ public:
     Q_INVOKABLE QString hostAt(int row) const;
     Q_INVOKABLE int     portAt(int row) const;
     Q_INVOKABLE bool    tlsAt(int row) const;
+    // Direct access to the stored structs -- used by the control server's
+    // /replay endpoint so we don't have to re-parse raw bytes back into
+    // header pairs.
+    const Nullock::Proxy::HttpRequest  *requestAt(int row) const;
+    const Nullock::Proxy::HttpResponse *responseAt(int row) const;
 
 public slots:
     void addResponse(const Nullock::Proxy::HttpRequest &request,

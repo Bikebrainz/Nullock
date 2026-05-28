@@ -138,19 +138,6 @@ void rewriteHostPort(HttpRequest &req) {
     req.path = req.target;
 }
 
-QByteArray serializeRequestForOrigin(const HttpRequest &req) {
-    QByteArray out;
-    out += req.method.toLatin1() + " " + req.path.toLatin1() + " "
-         + req.httpVersion.toLatin1() + "\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Proxy-Connection", Qt::CaseInsensitive) == 0) continue;
-        out += h.first.toLatin1() + ": " + h.second.toLatin1() + "\r\n";
-    }
-    out += "\r\n";
-    out += req.body;
-    return out;
-}
-
 class Connection : public QObject {
 public:
     // No QObject parent: the Connection lives on a worker thread and
@@ -743,6 +730,21 @@ protected:
 };
 
 } // namespace
+
+// Pulled out of the anon namespace so other TUs (control server, replay)
+// can serialize the same way the proxy does.
+QByteArray serializeRequestForOrigin(const HttpRequest &req) {
+    QByteArray out;
+    out += req.method.toLatin1() + " " + req.path.toLatin1() + " "
+         + req.httpVersion.toLatin1() + "\r\n";
+    for (const auto &h : req.headers) {
+        if (h.first.compare("Proxy-Connection", Qt::CaseInsensitive) == 0) continue;
+        out += h.first.toLatin1() + ": " + h.second.toLatin1() + "\r\n";
+    }
+    out += "\r\n";
+    out += req.body;
+    return out;
+}
 
 ProxyServer::ProxyServer(QObject *parent)
     : QObject(parent), m_server(new SslReadyTcpServer(this)) {

@@ -258,6 +258,14 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        <button onClick={async () => {
+          try {
+            const r = await NL.actions.replayRow(row.id);
+            if (!r.ok) alert("Replay failed: " + (r.error || "unknown"));
+          } catch (e) {
+            alert("Replay error: " + e);
+          }
+        }} title="Replay through proxy (mutations apply, lands as new row)">↻ REPLAY</button>
         {diffMark === null && (
           <button onClick={() => setDiffMark(row.id)}
                   title="Mark this row as the left-hand side of a diff">

@@ -48,6 +48,11 @@ struct HttpResponse {
     bool wasTls = false;
 };
 
+// Serialize an HttpRequest back into HTTP/1.1 wire bytes (request-line +
+// headers + body) suitable for writing to an origin connection. Used by
+// the proxy itself and by external replay paths in the control server.
+QByteArray serializeRequestForOrigin(const HttpRequest &req);
+
 // Match & replace rule. A list of these is applied to every in-scope
 // round-trip after extensions run but before bytes go to the wire. Each
 // rule targets a section of the request or response (URL, header set,
