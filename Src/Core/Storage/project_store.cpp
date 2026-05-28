@@ -93,11 +93,53 @@ ProjectStore::ProjectStore(QObject *parent) : QObject(parent) {}
 ProjectStore::~ProjectStore() { close(); }
 
 QString ProjectStore::defaultProjectDir() const {
+    return projectsRoot() + "/default";
+}
+
+QString ProjectStore::projectsRoot() const {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-           + "/projects/default";
+           + "/projects";
+}
+
+QStringList ProjectStore::listProjects() const {
+    QDir root(projectsRoot());
+    if (!root.exists()) return {};
+    QStringList names;
+    for (const QFileInfo &fi : root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot,
+                                                  QDir::Name)) {
+        names.append(fi.fileName());
+    }
+    return names;
+}
+
+bool ProjectStore::openByName(const QString &name) {
+    if (name.isEmpty() || name.contains('/') || name.contains('\\')
+        || name.contains("..")) return false;
+    const QString dir = projectsRoot() + "/" + name;
+    if (!QFileInfo::exists(dir)) return false;  // use createProject() for new
+    return open(dir);
+}
+
+bool ProjectStore::createProject(const QString &name) {
+    if (name.isEmpty() || name.contains('/') || name.contains('\\')
+        || name.contains("..")) return false;
+    const QString dir = projectsRoot() + "/" + name;
+    if (QFileInfo::exists(dir)) {
+        // already exists -- just open it instead of failing.
+        return open(dir);
+    }
+    if (!QDir().mkpath(dir)) {
+        emit errorOccurred("could not create project dir: " + dir);
+        return false;
+    }
+    return open(dir);
 }
 
 bool ProjectStore::open(const QString &projectDir) {
+    // Tell downstream consumers (ProxyModel, scanner, etc.) to drop their
+    // copy of the previous project's state BEFORE close() wipes m_dir.
+    emit historyShouldClear();
+
     close();
 
     m_dir = projectDir;
@@ -120,7 +162,12 @@ bool ProjectStore::open(const QString &projectDir) {
         return false;
     }
 
+    // Tell downstream consumers (ProxyServer) to refresh their copy of
+    // scope and rules with whatever this project specifies. Without this,
+    // switching projects would carry the previous project's settings.
     emit openedChanged();
+    emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
+    emit rulesChanged(m_meta.rules);
     return true;
 }
 

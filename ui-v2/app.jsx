@@ -197,6 +197,17 @@ function SettingsTab() {
     return () => window.removeEventListener("nl-update", onUpdate);
   }, []);
 
+  // Project switcher state (lives here so hooks ordering is stable).
+  const [projects, setProjects]   = React.useState([]);
+  const [newProject, setNewProject] = React.useState("");
+  const refreshProjects = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.projectList();
+      setProjects(r.projects || []);
+    } catch {}
+  }, []);
+  React.useEffect(() => { refreshProjects(); }, [refreshProjects]);
+
   const b = (window.NL && NL.bootInfo) || {};
   const scope = (window.NL && NL.scope) || { in: [], out: [], notes: "" };
   const rowCount = (window.NL && NL.rows) ? NL.rows.length : 0;
@@ -290,6 +301,84 @@ function SettingsTab() {
         </div>
         <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 4 }}>
           Install the CA in your browser's trust store so HTTPS MITM works without warnings.
+        </div>
+      </Card>
+
+      <Card title="Projects" action={<Btn label="Refresh" onClick={refreshProjects} />}>
+        <div style={{ fontSize: "10.5px", color: "var(--dim)", marginBottom: 4 }}>
+          Each project keeps its own scope, rules, and history.ndjson.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 200, overflow: "auto" }}>
+          {projects.length === 0 && (
+            <span style={{ color: "var(--dim)", fontSize: "11px" }}>(none yet)</span>
+          )}
+          {projects.map(name => {
+            const isActive = name === b.project;
+            return (
+              <div key={name}
+                   onClick={async () => {
+                     if (isActive) return;
+                     await NL.actions.projectOpen(name);
+                     await refreshProjects();
+                   }}
+                   style={{
+                     display: "flex", alignItems: "center", gap: 8,
+                     padding: "4px 6px",
+                     background: isActive ? "var(--bg-deep)" : "transparent",
+                     color:      isActive ? "var(--accent)" : "var(--text)",
+                     border: "1px solid " + (isActive ? "var(--accent)" : "var(--line-soft)"),
+                     cursor: isActive ? "default" : "pointer",
+                     fontFamily: "var(--ff-mono)", fontSize: "12px",
+                   }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: 4,
+                  background: isActive ? "var(--accent)" : "transparent",
+                  border: "1px solid var(--accent)",
+                }} />
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+                {isActive && (
+                  <span style={{ color: "var(--dim)", fontSize: "10px",
+                                 textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    active
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <input
+            placeholder="new project name…"
+            value={newProject}
+            onChange={e => setNewProject(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key !== "Enter") return;
+              const n = newProject.trim();
+              if (!n) return;
+              const r = await NL.actions.projectCreate(n);
+              if (r && r.ok === false) {
+                alert("Could not create project (name may contain invalid chars).");
+                return;
+              }
+              setNewProject("");
+              await refreshProjects();
+            }}
+            style={{
+              flex: 1, background: "var(--bg-deep)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 6px",
+              fontSize: "12px", fontFamily: "var(--ff-mono)",
+            }} />
+          <Btn label="Create" onClick={async () => {
+            const n = newProject.trim();
+            if (!n) return;
+            const r = await NL.actions.projectCreate(n);
+            if (r && r.ok === false) {
+              alert("Could not create project (name may contain invalid chars).");
+              return;
+            }
+            setNewProject("");
+            await refreshProjects();
+          }} />
         </div>
       </Card>
 

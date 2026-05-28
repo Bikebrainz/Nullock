@@ -443,6 +443,10 @@ int main(int argc, char *argv[]) {
     // the table immediately.
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::entryLoaded,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
+    // Project switches: drop the model so the new project's streamed
+    // history doesn't pile on top of the old one.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &model, &Nullock::FrontEnd::ProxyModel::clear);
 
     projectStore.open(projectStore.defaultProjectDir());
 

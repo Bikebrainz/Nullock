@@ -887,6 +887,29 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
 
+    // ---- project management ------------------------------------------
+    if (path == "/api/project/list") {
+        if (!m_wiring.projectStore) return httpJson(200, QJsonObject{});
+        QJsonArray names;
+        for (const QString &n : m_wiring.projectStore->listProjects())
+            names.append(n);
+        return httpJson(200, QJsonObject{
+            { "root",     m_wiring.projectStore->projectsRoot() },
+            { "current",  m_wiring.projectStore->metadata().name },
+            { "projects", names },
+        });
+    }
+    if (path == "/api/project/open") {
+        bool ok = m_wiring.projectStore
+               && m_wiring.projectStore->openByName(bodyJson.value("name").toString());
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/project/create") {
+        bool ok = m_wiring.projectStore
+               && m_wiring.projectStore->createProject(bodyJson.value("name").toString());
+        return okJson({{ "ok", ok }});
+    }
+
     (void)method;
     return httpResponse(404, "text/plain", "Not found: " + path.toUtf8());
 }

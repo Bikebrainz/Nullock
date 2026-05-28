@@ -35,6 +35,15 @@ public:
     Q_INVOKABLE bool saveMetadata();
     Q_INVOKABLE QString defaultProjectDir() const;
 
+    // Project management. Projects live as sibling dirs under
+    //   <AppData>/projects/<name>
+    // listProjects() returns names (not full paths); openByName/createProject
+    // resolve under that root.
+    Q_INVOKABLE QString projectsRoot() const;
+    Q_INVOKABLE QStringList listProjects() const;
+    Q_INVOKABLE bool openByName(const QString &name);
+    Q_INVOKABLE bool createProject(const QString &name);
+
     // Re-reads history.ndjson and writes it back as HTTP Archive 1.2
     // (https://w3c.github.io/web-performance/specs/HAR/Overview.html).
     // If outPath is empty, defaults to <project>/exports/history_<ts>.har.
@@ -91,6 +100,10 @@ signals:
     void errorOccurred(const QString &message);
     void scopeChanged(const QStringList &inScope, const QStringList &outOfScope);
     void rulesChanged(const QList<Nullock::Proxy::MatchReplaceRule> &rules);
+    // Emitted right before open() begins replacing history. Wire to
+    // ProxyModel::clear and any other downstream caches that should
+    // discard the previous project's state.
+    void historyShouldClear();
 
 private:
     bool ensureMetadata();
