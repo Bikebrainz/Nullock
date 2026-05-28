@@ -4,6 +4,7 @@
 #include "extensions_api.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
+#include "passive_scanner.hpp"
 #include "project_store.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
@@ -134,6 +135,10 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.repeater, &Nullock::Core::Repeater::busyChanged,     this, bump);
         connect(m_wiring.repeater, &Nullock::Core::Repeater::targetChanged,   this, bump);
         connect(m_wiring.repeater, &Nullock::Core::Repeater::tabsChanged,     this, bump);
+    }
+    if (m_wiring.scanner) {
+        connect(m_wiring.scanner, &Nullock::Core::PassiveScanner::findingsChanged,
+                this, bump);
     }
 }
 
@@ -333,6 +338,28 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     root["rules"] = rulesArr;
     if (m_wiring.proxy) root["rulesHit"] = m_wiring.proxy->rulesHit();
+
+    // passive scanner findings (newest first, capped at 200 in snapshot
+    // so a noisy run doesn't bloat every poll). full list is available
+    // via /api/findings.
+    QJsonArray findingsArr;
+    if (m_wiring.scanner) {
+        for (const auto &f : m_wiring.scanner->findings(200)) {
+            QJsonObject fo;
+            fo["id"]       = f.id;
+            fo["rowId"]    = f.rowId;
+            fo["ts"]       = f.ts.toString(Qt::ISODate);
+            fo["severity"] = f.severity;
+            fo["kind"]     = f.kind;
+            fo["summary"]  = f.summary;
+            fo["evidence"] = f.evidence;
+            fo["host"]     = f.host;
+            fo["url"]      = f.url;
+            findingsArr.append(fo);
+        }
+        root["findingsCount"] = m_wiring.scanner->count();
+    }
+    root["findings"] = findingsArr;
 
     // history rows (match the mock shape so React renders without changes)
     QJsonArray rows;
@@ -846,6 +873,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/extensions/reload") {
         if (m_wiring.extensions) m_wiring.extensions->reload();
         return okJson({{ "loaded", m_wiring.extensions ? m_wiring.extensions->loadedCount() : 0 }});
+    }
+
+    if (path == "/api/findings/clear") {
+        if (m_wiring.scanner) m_wiring.scanner->clear();
+        return okJson();
     }
 
     (void)method;

@@ -28,12 +28,14 @@
 
   function applySnapshot(snap) {
     if (!snap) return;
-    NL.bootInfo    = snap.bootInfo    || {};
-    NL.themes      = snap.themes      || [];
-    NL.scope       = snap.scope       || { in: [], out: [], notes: "" };
-    NL.rules       = snap.rules       || [];
-    NL.rulesHit    = snap.rulesHit    || 0;
-    NL.rows        = snap.rows        || [];
+    NL.bootInfo      = snap.bootInfo      || {};
+    NL.themes        = snap.themes        || [];
+    NL.scope         = snap.scope         || { in: [], out: [], notes: "" };
+    NL.rules         = snap.rules         || [];
+    NL.rulesHit      = snap.rulesHit      || 0;
+    NL.findings      = snap.findings      || [];
+    NL.findingsCount = snap.findingsCount || 0;
+    NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
     NL.repeater    = snap.repeater    || { host: "", port: 443, tls: true,
@@ -135,6 +137,7 @@
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
+    clearFindings()         { return post("/api/findings/clear"); },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
     ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },

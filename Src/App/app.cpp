@@ -10,6 +10,7 @@
 #include "cert_authority.hpp"
 #include "intercept.hpp"
 #include "intruder.hpp"
+#include "passive_scanner.hpp"
 #include "project_store.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
@@ -458,12 +459,31 @@ int main(int argc, char *argv[]) {
                      &proxy, &Nullock::Proxy::ProxyServer::setRules);
 
     // New traffic feeds both the live model and the on-disk history.
+    // Order matters: the model has to add the row BEFORE the scanner so
+    // the scanner's per-response rowId counter stays aligned with the
+    // history table's row indices.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &projectStore, &Nullock::Core::ProjectStore::appendEntry);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &extensions, &Nullock::Core::ExtensionsApi::onResponseReceived);
+
+    // Passive scanner watches every response and emits Findings. Sync
+    // the scanner's row counter with the model so finding rowIds match
+    // real ProxyModel row ids even after replayed history populated the
+    // table (otherwise findings would point at the wrong row).
+    Nullock::Core::PassiveScanner scanner;
+    scanner.setNextRowId(model.rowCount() + 1);
+    QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                     &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
+    // ProxyModel::clear() resets its own next-id to 1; mirror that on the
+    // scanner so the next batch of findings still references real rows.
+    QObject::connect(&model, &QAbstractItemModel::modelReset,
+                     &scanner, [&scanner]() {
+        scanner.setNextRowId(1);
+        scanner.clear();
+    });
 
     proxy.start();
 
@@ -497,6 +517,7 @@ int main(int argc, char *argv[]) {
     wiring.repeater     = &repeater;
     wiring.intruder     = &intruder;
     wiring.extensions   = &extensions;
+    wiring.scanner      = &scanner;
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd
     // bundle this into a Qt resource; not done yet.

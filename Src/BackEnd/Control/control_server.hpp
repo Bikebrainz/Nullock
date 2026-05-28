@@ -23,6 +23,7 @@ class ProjectStore;
 class Repeater;
 class Intruder;
 class ExtensionsApi;
+class PassiveScanner;
 }
 
 namespace Nullock::Control {
@@ -41,6 +42,7 @@ struct Wiring {
     Nullock::Core::Repeater            *repeater     = nullptr;
     Nullock::Core::Intruder            *intruder     = nullptr;
     Nullock::Core::ExtensionsApi       *extensions   = nullptr;
+    Nullock::Core::PassiveScanner      *scanner      = nullptr;
     QString                              uiDir;       // path to ui-v2/
 };
 

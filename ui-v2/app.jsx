@@ -4,6 +4,7 @@ const TABS = [
   { id: "proxy",     label: "PROXY" },
   { id: "scope",     label: "SCOPE" },
   { id: "rules",     label: "RULES" },
+  { id: "issues",    label: "ISSUES" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -608,6 +609,164 @@ function RulesTab() {
   );
 }
 
+// Passive scanner findings list. Each row is a single issue -- click to
+// jump to the originating request in the Proxy tab. Group counts at the
+// top, filter chips below, scrolling list.
+const SEVERITY_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
+const SEVERITY_COLOR = {
+  high:   "var(--err, #f88)",
+  medium: "#f0c060",
+  low:    "var(--accent)",
+  info:   "var(--dim)",
+};
+
+function IssuesTab({ dispatch }) {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const findings = (window.NL && NL.findings) ? NL.findings : [];
+  const total    = (window.NL && NL.findingsCount) || findings.length;
+  const [sevFilter,  setSevFilter]  = React.useState("all");
+  const [kindFilter, setKindFilter] = React.useState("all");
+
+  // Aggregate counts per severity and per kind for the filter chips.
+  const sevCounts  = { high: 0, medium: 0, low: 0, info: 0 };
+  const kindCounts = {};
+  for (const f of findings) {
+    sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1;
+    kindCounts[f.kind]    = (kindCounts[f.kind]    || 0) + 1;
+  }
+
+  const visible = findings.filter(f =>
+    (sevFilter  === "all" || f.severity === sevFilter)
+    && (kindFilter === "all" || f.kind     === kindFilter)
+  ).sort((a, b) => {
+    const sa = SEVERITY_ORDER[a.severity] ?? 4;
+    const sb = SEVERITY_ORDER[b.severity] ?? 4;
+    if (sa !== sb) return sa - sb;
+    return b.id - a.id;  // newest first within same severity
+  });
+
+  const jumpToRow = (rowId) => {
+    dispatch({ type: "set", payload: { tab: "proxy", selectedRowId: rowId }});
+  };
+
+  const Chip = ({ label, active, onClick, color, count }) => (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? (color || "var(--accent)") : "transparent",
+        color:      active ? "var(--bg)" : (color || "var(--text-2)"),
+        border: "1px solid " + (color || "var(--line)"),
+        padding: "3px 10px", fontSize: "10.5px",
+        fontFamily: "var(--ff-mono)", cursor: "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+        marginRight: 4, marginBottom: 4,
+      }}
+    >{label}{count !== undefined ? " · " + count : ""}</button>
+  );
+
+  return (
+    <div style={{
+      padding: 14, display: "flex", flexDirection: "column",
+      gap: 10, height: "100%", minHeight: 0,
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Findings</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {total} total · showing {visible.length}
+        </span>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={() => { if (confirm("Clear all findings?")) NL.actions.clearFindings(); }}
+          style={{
+            background: "transparent", color: "var(--err, #f88)",
+            border: "1px solid var(--err, #f88)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Clear all</button>
+      </div>
+
+      <div>
+        <Chip label="all" active={sevFilter === "all"} onClick={() => setSevFilter("all")} />
+        {["high", "medium", "low", "info"].map(s => (
+          <Chip key={s} label={s} count={sevCounts[s]}
+                color={SEVERITY_COLOR[s]}
+                active={sevFilter === s}
+                onClick={() => setSevFilter(s)} />
+        ))}
+      </div>
+      <div>
+        <Chip label="any kind" active={kindFilter === "all"} onClick={() => setKindFilter("all")} />
+        {Object.entries(kindCounts).sort((a, b) => b[1] - a[1]).map(([k, c]) => (
+          <Chip key={k} label={k} count={c}
+                active={kindFilter === k}
+                onClick={() => setKindFilter(k)} />
+        ))}
+      </div>
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4, flex: 1, minHeight: 0, overflow: "auto",
+      }}>
+        {visible.length === 0 && (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+            no findings yet — proxy some traffic and check back
+          </div>
+        )}
+        {visible.map(f => (
+          <div key={f.id}
+               onClick={() => jumpToRow(f.rowId)}
+               style={{
+                 display: "grid",
+                 gridTemplateColumns: "70px 60px 180px 1fr",
+                 gap: 8, padding: "6px 12px",
+                 borderBottom: "1px solid var(--line-soft)",
+                 alignItems: "baseline",
+                 cursor: "pointer", fontSize: "12px",
+                 fontFamily: "var(--ff-mono)",
+               }}
+               title={"Click to jump to row #" + String(f.rowId).padStart(3, "0")}>
+            <span style={{
+              color: SEVERITY_COLOR[f.severity],
+              fontWeight: 600,
+              textTransform: "uppercase", letterSpacing: "0.05em",
+              fontSize: "10.5px",
+            }}>{f.severity}</span>
+            <span style={{ color: "var(--dim)" }}>
+              #{String(f.rowId).padStart(3, "0")}
+            </span>
+            <span style={{ color: "var(--accent)", overflow: "hidden",
+                           textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {f.kind}
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <span style={{ color: "var(--text)" }}>{f.summary}</span>
+              <span style={{
+                color: "var(--text-2)", fontSize: "10.5px",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>{f.host} · {f.url}</span>
+              {f.evidence && (
+                <span style={{
+                  color: "var(--dim)", fontSize: "10px",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>↳ {f.evidence}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Color edit + Save As panel. Reads the current theme's color map from
 // the backend snapshot, applies local edits as inline CSS variables for
 // live preview, and posts a full set to /api/theme/save-as on save.
@@ -847,6 +1006,9 @@ function App() {
         )}
         {tab === "rules" && (
           <RulesTab />
+        )}
+        {tab === "issues" && (
+          <IssuesTab dispatch={dispatch} />
         )}
         {tab === "settings" && (
           <SettingsTab />
