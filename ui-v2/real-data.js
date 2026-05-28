@@ -128,6 +128,7 @@
     intruderStart()         { return post("/api/intruder/start"); },
     intruderStop()          { return post("/api/intruder/stop"); },
     intruderClear()         { return post("/api/intruder/clear"); },
+    intruderResend(row)     { return post("/api/intruder/resend", { row }); },
     setTheme(name)          { return post("/api/theme", { name }); },
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },

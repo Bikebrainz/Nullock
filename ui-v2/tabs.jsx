@@ -564,7 +564,7 @@ function IntruderTab({ intruder, dispatch }) {
                 <col />
               </colgroup>
               <thead>
-                <tr><th>#</th><th>Payload</th><th>Status</th><th>Size</th><th>Time</th><th>Error</th></tr>
+                <tr><th>#</th><th>Payload</th><th>Status</th><th>Size</th><th>Time</th><th>Error</th><th></th></tr>
               </thead>
               <tbody>
                 {intruder.payloads.map((p, i) => {
@@ -579,6 +579,17 @@ function IntruderTab({ intruder, dispatch }) {
                       <td>{pending ? "—" : (r.size + " B")}</td>
                       <td>{pending ? "—" : (r.ms + " ms")}</td>
                       <td style={{ color: r.err ? "var(--err)" : "var(--dim)" }}>{r.err || (pending ? "queued" : "")}</td>
+                      <td>
+                        {!intruder.running && !pending && (
+                          <button onClick={() => NL.actions.intruderResend(i)}
+                                  title={"Resend row " + (i + 1)}
+                                  style={{
+                                    background: "transparent", color: "var(--accent)",
+                                    border: "1px solid var(--line)", padding: "1px 6px",
+                                    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                                  }}>↻</button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

@@ -615,9 +615,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // --- write actions; POST only (we accept any method for laziness) -------
+    // `extra` may override "ok" (e.g. an endpoint reporting a failed
+    // operation). Default is { "ok": true }.
     auto okJson = [](const QJsonObject &extra = {}) {
         QJsonObject o = extra;
-        o["ok"] = true;
+        if (!o.contains("ok")) o["ok"] = true;
         return httpJson(200, o);
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
@@ -809,6 +811,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/intruder/clear") {
         if (m_wiring.intruder) m_wiring.intruder->clear();
         return okJson();
+    }
+    if (path == "/api/intruder/resend") {
+        bool ok = m_wiring.intruder
+               && m_wiring.intruder->resend(bodyJson.value("row").toInt(-1));
+        return okJson({{ "ok", ok }});
     }
 
     if (path == "/api/theme") {

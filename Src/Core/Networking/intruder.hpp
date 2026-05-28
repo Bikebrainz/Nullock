@@ -92,6 +92,10 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
+    // Re-fires a single result row with its existing payload against the
+    // current template/target. Quietly no-ops if the row index is out of
+    // range or if a full attack is already running.
+    Q_INVOKABLE bool resend(int row);
 
 signals:
     void targetChanged();

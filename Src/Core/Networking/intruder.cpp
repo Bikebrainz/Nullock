@@ -198,4 +198,62 @@ void Intruder::attackFinished(int /*row*/) {
     emit progressChanged();
 }
 
+bool Intruder::resend(int row) {
+    if (m_running) return false;
+    if (row < 0 || row >= m_attacks.size()) return false;
+    if (m_host.isEmpty() || m_template.isEmpty()) return false;
+
+    // Reset the target row so the UI shows it as pending again.
+    auto *a = m_attacks[row];
+    const QString payload = a->m_payload;
+    a->m_statusCode   = 0;
+    a->m_responseSize = 0;
+    a->m_elapsedMs    = 0;
+    a->m_errorMessage.clear();
+    a->m_complete     = false;
+    emit a->changed();
+    const QModelIndex idx = index(row);
+    emit dataChanged(idx, idx);
+
+    const QString templateCopy = m_template;
+    const QString hostCopy = m_host;
+    const int     portCopy = m_port;
+    const bool    tlsCopy  = m_useTls;
+    const QRegularExpression rx = markerRegex();
+
+    (void)QtConcurrent::run([this, row, payload, templateCopy,
+                             hostCopy, portCopy, tlsCopy, rx]() {
+        HttpClient client;
+        QString req = templateCopy;
+        req.replace(rx, payload);
+        req.replace("\r\n", "\n");
+        req.replace("\n", "\r\n");
+        if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";
+
+        QElapsedTimer t; t.start();
+        const auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
+                                        tlsCopy, req.toUtf8());
+        const qint64 elapsedMs = t.elapsed();
+        const int statusCode = result.ok ? result.parsed.statusCode : 0;
+        const int size       = result.parsed.body.size();
+        const QString errMsg = result.ok ? QString() : result.errorMessage;
+
+        QMetaObject::invokeMethod(this, [this, row, statusCode, size, elapsedMs, errMsg]() {
+            if (row < 0 || row >= m_attacks.size()) return;
+            auto *a = m_attacks[row];
+            a->m_statusCode   = statusCode;
+            a->m_responseSize = size;
+            a->m_elapsedMs    = static_cast<int>(elapsedMs);
+            a->m_errorMessage = errMsg;
+            a->m_complete     = true;
+            emit a->changed();
+            const QModelIndex idx = index(row);
+            emit dataChanged(idx, idx);
+            // resend doesn't bump completedCount -- the row was already
+            // completed once, so progress stays at N/N.
+        }, Qt::QueuedConnection);
+    });
+    return true;
+}
+
 } // namespace Nullock::Core
