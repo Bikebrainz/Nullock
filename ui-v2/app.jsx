@@ -293,7 +293,14 @@ function SettingsTab() {
         <Row label="OpenSSL" value={b.hasOpenssl ? "found" : "missing"} />
         <Row label="CA cert" value={b.caPath} copyable />
         <Row label="CA dir"  value={b.caDir} copyable />
-        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <Row label="Download" value={"http://127.0.0.1:" + (b.controlPort || 17777) + "/ca.pem"} copyable />
+        <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+          <Btn label="Download .crt" onClick={() => {
+            const url = "/ca.crt";
+            const a = document.createElement("a");
+            a.href = url; a.download = "nullock-ca.crt";
+            document.body.appendChild(a); a.click(); a.remove();
+          }} />
           <Btn label="Open CA folder" onClick={() => Qt && Qt.openUrlExternally
               ? Qt.openUrlExternally("file:///" + (b.caDir || ""))
               : window.open("file:///" + (b.caDir || ""), "_blank")} />
@@ -301,6 +308,7 @@ function SettingsTab() {
         </div>
         <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 4 }}>
           Install the CA in your browser's trust store so HTTPS MITM works without warnings.
+          The download URL only works from this machine right now; for a phone, copy the .crt to it via AirDrop / USB / email.
         </div>
       </Card>
 

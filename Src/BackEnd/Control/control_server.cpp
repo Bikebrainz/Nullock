@@ -225,6 +225,28 @@ void ControlServer::handle(QTcpSocket *socket) {
     QByteArray response;
     if (path.startsWith("/api/")) {
         response = apiResponse(method, path, body, query);
+    } else if (path == "/ca.pem" || path == "/ca.crt") {
+        // CA cert download. /ca.crt is an alias that triggers the system
+        // "install profile" prompt on iOS/Android when opened directly.
+        // PEM-formatted; iOS/Android both accept PEM under .crt mime.
+        if (!m_wiring.ca || m_wiring.ca->caCertPath().isEmpty()) {
+            response = httpResponse(404, "text/plain", "CA not initialized");
+        } else {
+            QFile f(m_wiring.ca->caCertPath());
+            if (!f.open(QIODevice::ReadOnly)) {
+                response = httpResponse(500, "text/plain", "could not read CA");
+            } else {
+                QByteArray hdr;
+                hdr += "HTTP/1.1 200 OK\r\n";
+                hdr += "Content-Type: application/x-x509-ca-cert\r\n";
+                hdr += "Content-Disposition: attachment; filename=\"nullock-ca.crt\"\r\n";
+                hdr += "Access-Control-Allow-Origin: *\r\n";
+                hdr += "Connection: close\r\n";
+                const QByteArray body = f.readAll();
+                hdr += "Content-Length: " + QByteArray::number(body.size()) + "\r\n\r\n";
+                response = hdr + body;
+            }
+        }
     } else {
         const QString rel = (path == "/" || path.isEmpty())
                               ? QStringLiteral("Nullock.html")
