@@ -60,6 +60,34 @@ void PassiveScanner::clear() {
     emit findingsChanged();
 }
 
+void PassiveScanner::reportFinding(int rowId,
+                                   const QString &severity,
+                                   const QString &kind,
+                                   const QString &summary,
+                                   const QString &evidence,
+                                   const QString &host,
+                                   const QString &url) {
+    Finding f;
+    {
+        QMutexLocker lock(&m_mutex);
+        f.id    = m_nextId++;
+        f.rowId = rowId;
+    }
+    f.ts       = QDateTime::currentDateTime();
+    f.severity = severity;
+    f.kind     = kind;
+    f.summary  = summary;
+    f.evidence = evidence;
+    f.host     = host;
+    f.url      = url;
+    {
+        QMutexLocker lock(&m_mutex);
+        m_findings.append(f);
+        if (m_findings.size() > 1000) m_findings.removeFirst();
+    }
+    emit findingsChanged();
+}
+
 QString PassiveScanner::headerOf(const QList<QPair<QString, QString>> &headers,
                                  const QString &name) const {
     for (const auto &h : headers)

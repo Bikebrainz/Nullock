@@ -266,6 +266,15 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
             alert("Replay error: " + e);
           }
         }} title="Replay through proxy (mutations apply, lands as new row)">↻ REPLAY</button>
+        <button onClick={async () => {
+          try {
+            const r = await NL.actions.probeRow(row.id);
+            if (r.skipped) alert("Probe skipped: " + r.skipped);
+            else if (r.ok) alert("Probe queued against " + r.params + " param(s). Watch the Issues tab for hits.");
+          } catch (e) {
+            alert("Probe error: " + e);
+          }
+        }} title="Light reflected-XSS probe against this row's query params">⚡ PROBE</button>
         {diffMark === null && (
           <button onClick={() => setDiffMark(row.id)}
                   title="Mark this row as the left-hand side of a diff">

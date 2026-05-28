@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
+#include <QRandomGenerator>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -629,6 +630,96 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             bool ok = false;
             const int id = parts[0].toInt(&ok);
             if (ok) {
+                if (parts[1] == "probe") {
+                    // Light active scan: walk the query params, substitute
+                    // each value with a unique canary that contains HTML
+                    // metacharacters, replay, scan the response body for
+                    // the canary verbatim. If it reflects unencoded -> a
+                    // candidate XSS sink. Emits Findings via the scanner's
+                    // public reportFinding hook. Fire-and-forget; new
+                    // findings show up in the next snapshot poll.
+                    if (!m_wiring.history) return httpJson(404, QJsonObject{{ "error", "no history" }});
+                    const int rowIndex = id - 1;
+                    auto *src = m_wiring.history->requestAt(rowIndex);
+                    auto *srcResp = m_wiring.history->responseAt(rowIndex);
+                    if (!src) return httpJson(404, QJsonObject{{ "error", "row not found" }});
+
+                    const Nullock::Proxy::HttpRequest base = *src;
+                    const bool useTls = srcResp ? srcResp->wasTls : false;
+
+                    const int qmark = base.path.indexOf('?');
+                    if (qmark < 0)
+                        return httpJson(200, QJsonObject{{ "ok", true },
+                                                          { "skipped", "no query params" }});
+                    const QString prefix = base.path.left(qmark + 1);
+                    const QStringList params =
+                        base.path.mid(qmark + 1).split('&', Qt::SkipEmptyParts);
+                    if (params.isEmpty())
+                        return httpJson(200, QJsonObject{{ "ok", true },
+                                                          { "skipped", "no params" }});
+
+                    Wiring w = m_wiring;
+                    const int rowId = id;  // 1-based -- same as snapshot id
+                    (void)QtConcurrent::run([w, base, useTls, prefix, params, rowId]() {
+                        Nullock::Core::HttpClient client;
+                        for (int i = 0; i < params.size(); ++i) {
+                            const QString p = params[i];
+                            const int eq = p.indexOf('=');
+                            if (eq <= 0) continue;
+                            const QString key = p.left(eq);
+
+                            // Unique canary per param to disambiguate hits.
+                            // The "<x...>" shape makes the test meaningful:
+                            // if it survives unescaped in the body, the
+                            // server is plumbing user input straight into
+                            // HTML.
+                            const QString tag = QString("%1").arg(
+                                QRandomGenerator::global()->generate(),
+                                8, 16, QChar('0'));
+                            const QString canary = "NL<x" + tag + ">";
+
+                            QStringList rewritten;
+                            for (int j = 0; j < params.size(); ++j) {
+                                if (j == i) rewritten.append(key + "=" + canary);
+                                else        rewritten.append(params[j]);
+                            }
+                            Nullock::Proxy::HttpRequest r = base;
+                            r.path = prefix + rewritten.join('&');
+                            r.target = r.path;
+                            if (w.extensions) r = w.extensions->applyRequestMutation(r);
+                            if (w.proxy)      w.proxy->applyRequestRules(r);
+
+                            const QByteArray bytes =
+                                Nullock::Proxy::serializeRequestForOrigin(r);
+                            const auto result = client.send(r.host,
+                                static_cast<quint16>(r.port), useTls, bytes);
+                            if (!result.ok) continue;
+
+                            const QString bodyStr = QString::fromUtf8(result.parsed.body);
+                            if (!bodyStr.contains(canary)) continue;
+
+                            // Hit. Report via the scanner on the main thread.
+                            if (!w.scanner) continue;
+                            const QString proto = useTls ? "https" : "http";
+                            const QString port  = (base.port == 80 || base.port == 443)
+                                                  ? QString() : ":" + QString::number(base.port);
+                            const QString url   = proto + "://" + base.host + port + base.path;
+                            const QString host  = base.host;
+                            const QString evidence =
+                                "param=" + key + " · canary=" + canary
+                                + " · reflected unencoded in response body";
+                            QMetaObject::invokeMethod(w.scanner, [w, rowId, host, url, evidence, key]() {
+                                w.scanner->reportFinding(
+                                    rowId, "high", "reflected-xss",
+                                    "Param '" + key + "' reflects unencoded in response",
+                                    evidence, host, url);
+                            }, Qt::QueuedConnection);
+                        }
+                    });
+                    return httpJson(200, QJsonObject{{ "ok", true },
+                                                      { "queued", true },
+                                                      { "params", params.size() }});
+                }
                 if (parts[1] == "replay") {
                     // Re-fire the captured request through the same mutation
                     // pipeline as live traffic. HttpClient::send() blocks

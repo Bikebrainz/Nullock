@@ -47,6 +47,16 @@ public slots:
                             const Nullock::Proxy::HttpResponse &resp);
 
     Q_INVOKABLE void clear();
+    // Direct finding emit, for callers that aren't a response (e.g. the
+    // active scanner / probe path). rowId points at the originating
+    // history row so the UI's click-to-jump still works.
+    Q_INVOKABLE void reportFinding(int rowId,
+                                   const QString &severity,
+                                   const QString &kind,
+                                   const QString &summary,
+                                   const QString &evidence,
+                                   const QString &host,
+                                   const QString &url);
 
 signals:
     void findingsChanged();
