@@ -662,58 +662,136 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     const int rowId = id;  // 1-based -- same as snapshot id
                     (void)QtConcurrent::run([w, base, useTls, prefix, params, rowId]() {
                         Nullock::Core::HttpClient client;
-                        for (int i = 0; i < params.size(); ++i) {
-                            const QString p = params[i];
-                            const int eq = p.indexOf('=');
-                            if (eq <= 0) continue;
-                            const QString key = p.left(eq);
+                        const QString proto = useTls ? "https" : "http";
+                        const QString hostPort  = (base.port == 80 || base.port == 443)
+                                                  ? QString() : ":" + QString::number(base.port);
+                        const QString baseUrl   = proto + "://" + base.host + hostPort + base.path;
 
-                            // Unique canary per param to disambiguate hits.
-                            // The "<x...>" shape makes the test meaningful:
-                            // if it survives unescaped in the body, the
-                            // server is plumbing user input straight into
-                            // HTML.
-                            const QString tag = QString("%1").arg(
-                                QRandomGenerator::global()->generate(),
-                                8, 16, QChar('0'));
-                            const QString canary = "NL<x" + tag + ">";
+                        auto report = [w, rowId, baseUrl, host = base.host]
+                                      (const QString &sev, const QString &kind,
+                                       const QString &summary, const QString &evidence) {
+                            if (!w.scanner) return;
+                            QMetaObject::invokeMethod(w.scanner, [w, rowId, host, baseUrl, sev, kind, summary, evidence]() {
+                                w.scanner->reportFinding(rowId, sev, kind, summary,
+                                                         evidence, host, baseUrl);
+                            }, Qt::QueuedConnection);
+                        };
 
+                        // One worker fn: substitute param i with `payload`,
+                        // run request through mutation pipeline, return result.
+                        auto fire = [&](int i, const QString &payload) {
                             QStringList rewritten;
                             for (int j = 0; j < params.size(); ++j) {
-                                if (j == i) rewritten.append(key + "=" + canary);
-                                else        rewritten.append(params[j]);
+                                if (j == i) {
+                                    const QString p = params[j];
+                                    const int eq = p.indexOf('=');
+                                    const QString key = eq > 0 ? p.left(eq) : p;
+                                    rewritten.append(key + "=" + payload);
+                                } else {
+                                    rewritten.append(params[j]);
+                                }
                             }
                             Nullock::Proxy::HttpRequest r = base;
                             r.path = prefix + rewritten.join('&');
                             r.target = r.path;
                             if (w.extensions) r = w.extensions->applyRequestMutation(r);
                             if (w.proxy)      w.proxy->applyRequestRules(r);
-
                             const QByteArray bytes =
                                 Nullock::Proxy::serializeRequestForOrigin(r);
-                            const auto result = client.send(r.host,
+                            return client.send(r.host,
                                 static_cast<quint16>(r.port), useTls, bytes);
-                            if (!result.ok) continue;
+                        };
 
-                            const QString bodyStr = QString::fromUtf8(result.parsed.body);
-                            if (!bodyStr.contains(canary)) continue;
+                        // Common SQL error fragments. Conservative list --
+                        // false positives in the wild are worse than a
+                        // missed hit, so only the ones I'd bet on.
+                        static const char *kSqlErrSigs[] = {
+                            "SQL syntax",                          // MySQL
+                            "mysql_fetch_",
+                            "ORA-",                                 // Oracle
+                            "PostgreSQL query failed",
+                            "psql:",
+                            "PG::SyntaxError",
+                            "Unclosed quotation mark",              // MS-SQL
+                            "SQLSTATE[",                            // generic PDO
+                            "syntax error at or near",              // Postgres
+                            "Microsoft OLE DB Provider for ODBC",
+                            "SQLite/JDBCDriver",
+                            "sqlite3.OperationalError",
+                        };
 
-                            // Hit. Report via the scanner on the main thread.
-                            if (!w.scanner) continue;
-                            const QString proto = useTls ? "https" : "http";
-                            const QString port  = (base.port == 80 || base.port == 443)
-                                                  ? QString() : ":" + QString::number(base.port);
-                            const QString url   = proto + "://" + base.host + port + base.path;
-                            const QString host  = base.host;
-                            const QString evidence =
-                                "param=" + key + " · canary=" + canary
-                                + " · reflected unencoded in response body";
-                            QMetaObject::invokeMethod(w.scanner, [w, rowId, host, url, evidence, key]() {
-                                w.scanner->reportFinding(
-                                    rowId, "high", "reflected-xss",
-                                    "Param '" + key + "' reflects unencoded in response",
-                                    evidence, host, url);
-                            }, Qt::QueuedConnection);
+                        for (int i = 0; i < params.size(); ++i) {
+                            const QString p = params[i];
+                            const int eq = p.indexOf('=');
+                            if (eq <= 0) continue;
+                            const QString key = p.left(eq);
+                            const QString tag = QString("%1").arg(
+                                QRandomGenerator::global()->generate(),
+                                8, 16, QChar('0'));
+
+                            // ---- reflected XSS --------------------------------
+                            {
+                                const QString canary = "NL<x" + tag + ">";
+                                const auto res = fire(i, canary);
+                                if (res.ok) {
+                                    const QString body = QString::fromUtf8(res.parsed.body);
+                                    if (body.contains(canary)) {
+                                        report("high", "reflected-xss",
+                                               "Param '" + key + "' reflects unencoded in response",
+                                               "param=" + key + " · canary=" + canary
+                                               + " · reflected unencoded in response body");
+                                    }
+                                }
+                            }
+
+                            // ---- open redirect --------------------------------
+                            // Plain external URL canary. If the response is
+                            // a 3xx and Location: contains this exact host,
+                            // the server is redirecting based on user input.
+                            {
+                                const QString redirCanary =
+                                    "https://nullock-canary-" + tag + ".invalid/";
+                                const auto res = fire(i, redirCanary);
+                                if (res.ok && res.parsed.statusCode >= 300
+                                    && res.parsed.statusCode < 400) {
+                                    QString loc;
+                                    for (const auto &h : res.parsed.headers) {
+                                        if (h.first.compare("Location", Qt::CaseInsensitive) == 0) {
+                                            loc = h.second; break;
+                                        }
+                                    }
+                                    if (!loc.isEmpty() && loc.contains("nullock-canary-" + tag)) {
+                                        report("high", "open-redirect",
+                                               "Param '" + key + "' controls the redirect target",
+                                               "param=" + key + " · payload=" + redirCanary
+                                               + " · Location: " + loc);
+                                    }
+                                }
+                            }
+
+                            // ---- SQLi error ---------------------------------
+                            // A single unbalanced quote often blows up an
+                            // unparameterized query into a stack trace; we
+                            // grep the response for known error fragments.
+                            {
+                                const QString sqlPayload = "'";
+                                const auto res = fire(i, sqlPayload);
+                                if (res.ok) {
+                                    const QString body = QString::fromUtf8(res.parsed.body);
+                                    QString hit;
+                                    for (const char *sig : kSqlErrSigs) {
+                                        if (body.contains(QString::fromLatin1(sig),
+                                                          Qt::CaseInsensitive)) {
+                                            hit = QString::fromLatin1(sig); break;
+                                        }
+                                    }
+                                    if (!hit.isEmpty()) {
+                                        report("high", "sqli-error",
+                                               "Param '" + key + "' triggers a SQL error page",
+                                               "param=" + key + " · payload=' · matched: " + hit);
+                                    }
+                                }
+                            }
                         }
                     });
                     return httpJson(200, QJsonObject{{ "ok", true },
