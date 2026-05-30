@@ -5,6 +5,7 @@ const TABS = [
   { id: "scope",     label: "SCOPE" },
   { id: "rules",     label: "RULES" },
   { id: "issues",    label: "ISSUES" },
+  { id: "scans",     label: "SCANS" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -864,6 +865,198 @@ function IssuesTab({ dispatch }) {
   );
 }
 
+// TCP port scanner (Nmap-flavored). Run a preset or custom port list
+// against a host, watch live progress, see banner-grabbed services.
+function ScansTab() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const ps = (window.NL && NL.portScan) ? NL.portScan
+            : { host: "", running: false, done: 0, total: 0, results: [], error: "" };
+  const [host, setHost] = React.useState(ps.host || "127.0.0.1");
+  React.useEffect(() => { if (ps.host) setHost(ps.host); }, [ps.host]);
+  const [preset, setPreset] = React.useState("top100");
+  const [customPorts, setCustomPorts] = React.useState("22,80,443,3306,5432,6379");
+  const [timeoutMs, setTimeoutMs] = React.useState(1500);
+  const [parallel, setParallel]   = React.useState(64);
+  const [grabBanner, setGrabBanner] = React.useState(true);
+  const [onlyOpen, setOnlyOpen]   = React.useState(true);
+
+  const start = async () => {
+    const payload = { host, timeoutMs, parallel, banner: grabBanner };
+    if (preset === "custom") {
+      payload.ports = customPorts.split(/[,\s]+/)
+        .map(s => parseInt(s, 10))
+        .filter(p => Number.isFinite(p) && p > 0 && p < 65536);
+    } else {
+      payload.preset = preset;
+    }
+    const r = await NL.actions.portscanStart(payload);
+    if (r && r.ok === false) alert("Scan failed to start: " + (r.error || ""));
+  };
+
+  const sorted = [...ps.results].sort((a, b) => {
+    if ((a.status === "open") !== (b.status === "open")) return a.status === "open" ? -1 : 1;
+    return a.port - b.port;
+  });
+  const visible = sorted.filter(r => !onlyOpen || r.status === "open");
+  const pct = ps.total ? Math.round((ps.done / ps.total) * 100) : 0;
+
+  const Btn = ({ label, onClick, primary, danger, disabled }) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)"
+             : primary ? "var(--bg)"
+             : danger ? "var(--err)"
+             : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)"
+                              : danger ? "var(--err)"
+                              : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  const inp = {
+    background: "var(--bg-deep)", color: "var(--text)",
+    border: "1px solid var(--line)", padding: "4px 6px",
+    fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Port scanner</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          TCP connect · no raw sockets · safe to run anywhere
+        </span>
+      </div>
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 12, borderRadius: 4, display: "grid",
+        gridTemplateColumns: "100px 1fr 100px 1fr", gap: 8,
+        alignItems: "center",
+      }}>
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Host</label>
+        <input style={inp} value={host}
+               placeholder="127.0.0.1 / example.com / 10.0.0.1"
+               onChange={e => setHost(e.target.value)} />
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Preset</label>
+        <select style={inp} value={preset} onChange={e => setPreset(e.target.value)}>
+          <option value="top100">top 100 ports (nmap default)</option>
+          <option value="web">web ports (80/443/8080/...)</option>
+          <option value="full1024">all 1-1024</option>
+          <option value="custom">custom (comma-sep)</option>
+        </select>
+
+        {preset === "custom" && (
+          <>
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Ports</label>
+            <input style={{ ...inp, gridColumn: "2 / span 3" }}
+                   value={customPorts}
+                   placeholder="22, 80, 443, 8080, 9000-9100"
+                   onChange={e => setCustomPorts(e.target.value)} />
+          </>
+        )}
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Timeout</label>
+        <input style={inp} type="number" value={timeoutMs}
+               onChange={e => setTimeoutMs(parseInt(e.target.value, 10) || 1500)} />
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Parallel</label>
+        <input style={inp} type="number" value={parallel}
+               onChange={e => setParallel(parseInt(e.target.value, 10) || 64)} />
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Flags</label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+          <input type="checkbox" checked={grabBanner}
+                 onChange={e => setGrabBanner(e.target.checked)} />
+          grab banner (5xx ms slower per open port)
+        </label>
+        <span />
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+          <input type="checkbox" checked={onlyOpen}
+                 onChange={e => setOnlyOpen(e.target.checked)} />
+          show open only
+        </label>
+
+        <div style={{ gridColumn: "1 / span 4", display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+          {!ps.running && <Btn label="Start scan" primary onClick={start} disabled={!host} />}
+          {ps.running  && <Btn label="Stop" danger onClick={() => NL.actions.portscanStop()} />}
+          <Btn label="Clear" onClick={() => NL.actions.portscanClear()} disabled={ps.running || !ps.results.length} />
+          <span style={{ flex: 1 }} />
+          <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+            {ps.running ? "scanning… " : "ready · "}
+            {ps.total ? (ps.done + "/" + ps.total + " · " + pct + "%") : ""}
+            {ps.error ? " · err: " + ps.error : ""}
+          </span>
+        </div>
+        {ps.total > 0 && (
+          <div style={{ gridColumn: "1 / span 4", height: 4, background: "var(--bg-deep)" }}>
+            <div style={{ width: pct + "%", height: "100%", background: "var(--accent)", transition: "width 0.2s" }} />
+          </div>
+        )}
+      </div>
+
+      {/* RESULTS */}
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "70px 80px 80px 120px 1fr",
+          gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)",
+          fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}>
+          <span>port</span><span>status</span><span>latency</span><span>service</span><span>banner</span>
+        </div>
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {visible.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+              {ps.running ? "scanning…" : "no results yet"}
+            </div>
+          )}
+          {visible.map(r => (
+            <div key={r.port} style={{
+              display: "grid",
+              gridTemplateColumns: "70px 80px 80px 120px 1fr",
+              gap: 6, padding: "5px 10px", alignItems: "baseline",
+              fontSize: "12px", fontFamily: "var(--ff-mono)",
+              borderBottom: "1px solid var(--line-soft)",
+            }}>
+              <span style={{ color: "var(--text)" }}>{r.port}</span>
+              <span style={{
+                color: r.status === "open" ? "#8ee5a0"
+                     : r.status === "closed" ? "var(--err, #f88)"
+                     : "var(--dim)",
+                fontWeight: 600, fontSize: "11px",
+                textTransform: "uppercase", letterSpacing: "0.05em",
+              }}>{r.status}</span>
+              <span style={{ color: "var(--dim)" }}>{r.latency}ms</span>
+              <span style={{ color: "var(--accent)" }}>{r.service || "—"}</span>
+              <span style={{
+                color: "var(--text-2)", overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }} title={r.banner}>{r.banner || ""}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Color edit + Save As panel. Reads the current theme's color map from
 // the backend snapshot, applies local edits as inline CSS variables for
 // live preview, and posts a full set to /api/theme/save-as on save.
@@ -1106,6 +1299,9 @@ function App() {
         )}
         {tab === "issues" && (
           <IssuesTab dispatch={dispatch} />
+        )}
+        {tab === "scans" && (
+          <ScansTab />
         )}
         {tab === "settings" && (
           <SettingsTab />

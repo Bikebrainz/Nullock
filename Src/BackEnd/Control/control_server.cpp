@@ -6,6 +6,7 @@
 #include "intruder.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
+#include "port_scanner.hpp"
 #include "project_store.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
@@ -145,6 +146,14 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
     }
     if (m_wiring.scanner) {
         connect(m_wiring.scanner, &Nullock::Core::PassiveScanner::findingsChanged,
+                this, bump);
+    }
+    if (m_wiring.portScanner) {
+        connect(m_wiring.portScanner, &Nullock::Core::PortScanner::progressChanged,
+                this, bump);
+        connect(m_wiring.portScanner, &Nullock::Core::PortScanner::resultsChanged,
+                this, bump);
+        connect(m_wiring.portScanner, &Nullock::Core::PortScanner::runningChanged,
                 this, bump);
     }
 }
@@ -417,6 +426,28 @@ QByteArray ControlServer::buildSnapshot() const {
         root["findingsCount"] = m_wiring.scanner->count();
     }
     root["findings"] = findingsArr;
+
+    // port scanner
+    if (m_wiring.portScanner) {
+        QJsonObject ps;
+        ps["host"]    = m_wiring.portScanner->host();
+        ps["running"] = m_wiring.portScanner->running();
+        ps["done"]    = m_wiring.portScanner->done();
+        ps["total"]   = m_wiring.portScanner->total();
+        ps["error"]   = m_wiring.portScanner->lastError();
+        QJsonArray rows;
+        for (const auto &r : m_wiring.portScanner->results()) {
+            QJsonObject ro;
+            ro["port"]    = r.port;
+            ro["status"]  = r.status;
+            ro["latency"] = r.latencyMs;
+            ro["banner"]  = r.banner;
+            ro["service"] = r.service;
+            rows.append(ro);
+        }
+        ps["results"] = rows;
+        root["portScan"] = ps;
+    }
 
     // history rows (match the mock shape so React renders without changes)
     QJsonArray rows;
@@ -1165,6 +1196,63 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
     if (path == "/api/findings/clear") {
         if (m_wiring.scanner) m_wiring.scanner->clear();
+        return okJson();
+    }
+
+    // ---- port scanner ------------------------------------------------
+    // POST /api/portscan/start { host, preset|ports, timeoutMs?,
+    //                            parallel?, banner? }
+    //   preset = "top100" | "web" | "full1024" | custom via ports[]
+    if (path == "/api/portscan/start") {
+        if (!m_wiring.portScanner)
+            return okJson({{ "ok", false }, { "error", "no port scanner" }});
+        Nullock::Core::ScanRequest sr;
+        sr.host = bodyJson.value("host").toString();
+        sr.timeoutMs = bodyJson.value("timeoutMs").toInt(1500);
+        sr.parallel  = bodyJson.value("parallel").toInt(64);
+        sr.grabBanner = bodyJson.value("banner").toBool(true);
+
+        // Curated presets so the user can hit "top 100 ports" in one click.
+        const QString preset = bodyJson.value("preset").toString();
+        QList<quint16> ports;
+        if (preset == "top100") {
+            // Nmap's --top-ports 100 list, sorted for grep-friendliness.
+            ports = { 7, 21, 22, 23, 25, 26, 53, 80, 81, 110, 111,
+                113, 119, 135, 139, 143, 144, 179, 199, 389, 427,
+                443, 444, 445, 465, 513, 514, 515, 543, 544, 548,
+                554, 587, 631, 646, 873, 990, 993, 995, 1025, 1026,
+                1027, 1028, 1029, 1110, 1433, 1720, 1723, 1755,
+                1900, 2000, 2001, 2049, 2121, 2717, 3000, 3128, 3306,
+                3389, 3986, 4899, 5000, 5009, 5051, 5060, 5101, 5190,
+                5357, 5432, 5631, 5666, 5800, 5900, 6000, 6001, 6646,
+                7070, 8000, 8008, 8009, 8080, 8081, 8443, 8888, 9100,
+                9999, 10000, 32768, 49152, 49153, 49154, 49155, 49156,
+                49157, 1024, 1027, 1029, 1110, 1433, 8443 };
+        } else if (preset == "web") {
+            ports = { 80, 81, 88, 443, 591, 631, 1080, 2375, 3000,
+                4443, 4567, 5000, 5601, 5985, 5986, 6443, 7474,
+                8000, 8001, 8008, 8009, 8080, 8081, 8086, 8088,
+                8161, 8181, 8443, 8500, 8530, 8531, 8800, 8834,
+                8880, 8888, 9000, 9090, 9091, 9200, 9418, 9443,
+                15672, 27017 };
+        } else if (preset == "full1024") {
+            for (quint16 p = 1; p <= 1024; ++p) ports.append(p);
+        } else {
+            for (const QJsonValue &v : bodyJson.value("ports").toArray()) {
+                const int p = v.toInt(0);
+                if (p > 0 && p < 65536) ports.append(static_cast<quint16>(p));
+            }
+        }
+        sr.ports = ports;
+        const bool ok = m_wiring.portScanner->start(sr);
+        return okJson({{ "ok", ok }, { "count", ports.size() }});
+    }
+    if (path == "/api/portscan/stop") {
+        if (m_wiring.portScanner) m_wiring.portScanner->stop();
+        return okJson();
+    }
+    if (path == "/api/portscan/clear") {
+        if (m_wiring.portScanner) m_wiring.portScanner->clear();
         return okJson();
     }
 

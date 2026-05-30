@@ -11,6 +11,7 @@
 #include "intercept.hpp"
 #include "intruder.hpp"
 #include "passive_scanner.hpp"
+#include "port_scanner.hpp"
 #include "project_store.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
@@ -624,6 +625,8 @@ int main(int argc, char *argv[]) {
     wiring.intruder     = &intruder;
     wiring.extensions   = &extensions;
     wiring.scanner      = &scanner;
+    Nullock::Core::PortScanner portScanner;
+    wiring.portScanner  = &portScanner;
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd
     // bundle this into a Qt resource; not done yet.

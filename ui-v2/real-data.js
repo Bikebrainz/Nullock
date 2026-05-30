@@ -35,6 +35,7 @@
     NL.rulesHit      = snap.rulesHit      || 0;
     NL.findings      = snap.findings      || [];
     NL.findingsCount = snap.findingsCount || 0;
+    NL.portScan      = snap.portScan      || { host: "", running: false, done: 0, total: 0, results: [], error: "" };
     NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
@@ -149,6 +150,13 @@
       return fetch("/api/history/" + rowId + "/replay", { method: "POST" })
         .then(r => r.json());
     },
+    probeRow(rowId) {
+      return fetch("/api/history/" + rowId + "/probe", { method: "POST" })
+        .then(r => r.json());
+    },
+    portscanStart(payload) { return post("/api/portscan/start", payload).then(r => r.json()); },
+    portscanStop()         { return post("/api/portscan/stop"); },
+    portscanClear()        { return post("/api/portscan/clear"); },
     probeRow(rowId) {
       // Light active scan: per-param canary injection + reflection check.
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })

@@ -8,6 +8,8 @@ add_library(Networking STATIC
     intruder.hpp
     passive_scanner.cpp
     passive_scanner.hpp
+    port_scanner.cpp
+    port_scanner.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
