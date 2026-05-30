@@ -861,6 +861,76 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                     }
                                 }
                             }
+
+                            // ---- path traversal -----------------------------
+                            // ../../../../etc/passwd canary. If the server
+                            // includes our marker (root:x:0:0:) in the body,
+                            // it served the local file.
+                            {
+                                const QString trav = "../../../../../../etc/passwd";
+                                const auto res = fire(i, trav);
+                                if (res.ok) {
+                                    const QString body = QString::fromUtf8(res.parsed.body);
+                                    if (body.contains("root:x:0:0:")
+                                        || body.contains("daemon:x:1:1:")) {
+                                        report("high", "path-traversal",
+                                               "Param '" + key + "' resolves to /etc/passwd",
+                                               "param=" + key + " · payload=" + trav
+                                               + " · matched: root:x:0:0:");
+                                    }
+                                }
+                            }
+
+                            // ---- command injection (output channel) --------
+                            // `;id` is the cheapest output-channel probe.
+                            // We look for "uid=" in the body which is the
+                            // canonical id(1) output. Quiet probes (sleep)
+                            // require timing measurement and false-positive
+                            // on slow upstreams, so output-channel only.
+                            {
+                                const QString cmdPayload = ";id;#";
+                                const auto res = fire(i, cmdPayload);
+                                if (res.ok) {
+                                    const QString body = QString::fromUtf8(res.parsed.body);
+                                    QRegularExpression rxUid(
+                                        "uid=\\d+\\(.+\\) gid=\\d+");
+                                    if (rxUid.match(body).hasMatch()) {
+                                        report("high", "cmd-injection",
+                                               "Param '" + key + "' executes shell commands",
+                                               "param=" + key + " · payload=" + cmdPayload
+                                               + " · uid=... line in response");
+                                    }
+                                }
+                            }
+
+                            // ---- CRLF header injection ---------------------
+                            // Inject %0d%0a marker and look for it as a real
+                            // header in the response. Some servers reflect the
+                            // injected newline into a Set-Cookie or Location.
+                            // No literal whitespace in the payload -- it
+                            // would break the request line; %20 percent-
+                            // encodes the space.
+                            {
+                                const QString crlfPayload =
+                                    "x%0d%0aX-Nullock-Inject:%20" + tag;
+                                const auto res = fire(i, crlfPayload);
+                                if (res.ok) {
+                                    bool found = false;
+                                    for (const auto &h : res.parsed.headers) {
+                                        if (h.first.compare("X-Nullock-Inject",
+                                                            Qt::CaseInsensitive) == 0
+                                            && h.second.contains(tag)) {
+                                            found = true; break;
+                                        }
+                                    }
+                                    if (found) {
+                                        report("high", "crlf-injection",
+                                               "Param '" + key + "' allows CRLF header injection",
+                                               "param=" + key + " · payload=" + crlfPayload
+                                               + " · injected header appeared in response");
+                                    }
+                                }
+                            }
                         }
                     });
                     return httpJson(200, QJsonObject{{ "ok", true },
