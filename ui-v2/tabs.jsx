@@ -377,6 +377,40 @@ const PAYLOAD_PRESETS = {
     "/admin","/admin/","/manager/html","/.well-known/security.txt",
     "/api","/api/v1","/api/v2","/swagger.json","/openapi.json",
   ].join("\n"),
+  "common paths (dir-brute)": [
+    "admin","admin/","login","logout","register","signup","signin",
+    "dashboard","panel","portal","wp-admin","wp-login.php","phpmyadmin",
+    "manager","manage","console","control","controlpanel","setup",
+    "install","installer","installation","backup","backups","old",
+    "test","tests","testing","dev","development","staging","beta",
+    "api","api/v1","api/v2","api/v3","graphql","rest","gateway",
+    "swagger","swagger-ui","docs","documentation","help",
+    "users","user","accounts","account","profile","profiles",
+    "uploads","upload","files","file","media","assets",
+    "static","public","private","internal",
+    "config","configuration","settings","options",
+    "log","logs","logfile","logfiles","trace","traces",
+    ".git","/.git/HEAD","/.git/config","/.svn","/.hg","/.bzr",
+    ".env",".env.local",".env.production",".env.development",
+    ".aws/credentials","credentials.json","keys.json","secrets.json",
+    "robots.txt","sitemap.xml","humans.txt","crossdomain.xml",
+    "favicon.ico","favicon.png","manifest.json","sw.js",
+    ".well-known/security.txt",".well-known/openid-configuration",
+    ".well-known/jwks.json",".well-known/acme-challenge/",
+    "actuator","actuator/health","actuator/info","actuator/env",
+    "metrics","health","healthcheck","ping","status","stats",
+    "server-status","server-info","nginx_status",
+    "phpinfo.php","info.php","test.php","shell.php","cmd.php",
+    "wp-config.php","wp-config.php.bak","wp-config.bak","config.php.bak",
+    ".htaccess",".htpasswd",".bash_history",".ssh","id_rsa",
+    "web.config","Web.config","global.asax",
+    "console","logs/error.log","logs/access.log","error.log","access.log",
+    "Trace.axd","trace.axd","elmah.axd",
+    "jenkins","hudson","jenkins/login","jenkins/script",
+    "kibana","grafana","prometheus","prometheus/api/v1/query",
+    "rabbitmq","rabbitmq/api","redis","mongo","mongodb",
+    "phpinfo","testfile","cgi-bin","cgi-bin/test","scripts","perl",
+  ].join("\n"),
   "fuzz strings (small)": [
     "", "a", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "0","-1","null","NULL","undefined","NaN","Infinity",
@@ -401,6 +435,32 @@ function IntruderTab({ intruder, dispatch }) {
   const pct = total ? Math.round((completed / total) * 100) : 0;
 
   const [presetMenuOpen, setPresetMenuOpen] = React.useState(false);
+  const [hide404, setHide404] = React.useState(false);
+
+  // Quick "set up content discovery" -- prompts for a URL and pre-fills
+  // host/port/tls/template/payloads in one shot. Cuts the "type the
+  // template by hand" step that scares people away from the Intruder.
+  const setupDiscovery = () => {
+    const u = prompt("Discovery target URL", "http://" + (intruder.host || "127.0.0.1") + "/");
+    if (!u) return;
+    let parsed;
+    try { parsed = new URL(u); }
+    catch { alert("Couldn't parse that URL"); return; }
+    const tls = parsed.protocol === "https:";
+    const port = parseInt(parsed.port, 10) || (tls ? 443 : 80);
+    const host = parsed.hostname;
+    // Use root path with §§ marker -- the payload becomes the path itself.
+    const template =
+      "GET /§§ HTTP/1.1\r\n" +
+      "Host: " + host + (port === (tls ? 443 : 80) ? "" : ":" + port) + "\r\n" +
+      "User-Agent: Nullock-Discovery\r\n" +
+      "Accept: */*\r\n" +
+      "Connection: close\r\n\r\n";
+    dispatch({ type: "intruder-set", payload: {
+      host, port, tls, template,
+      payloads: PAYLOAD_PRESETS["common paths (dir-brute)"].split("\n"),
+    }});
+  };
   const applyPreset = (key, mode) => {
     const text = PAYLOAD_PRESETS[key];
     if (!text) return;
@@ -443,6 +503,7 @@ function IntruderTab({ intruder, dispatch }) {
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           PROGRESS <span style={{ color: "var(--accent)" }}>{completed}/{total}</span>
         </span>
+        <button className="btn" onClick={setupDiscovery} title="Pre-fill template + a curated wordlist for content discovery">↦ DISCOVERY</button>
         <button className="btn" onClick={() => dispatch({ type: "intruder-clear" })}>CLEAR</button>
         {intruder.running ? (
           <button className="btn danger" onClick={() => dispatch({ type: "intruder-stop" })}>■ STOP</button>
@@ -551,6 +612,12 @@ function IntruderTab({ intruder, dispatch }) {
             <span className="ph-corner">▸</span>
             <span>RESULTS</span>
             <span className="ph-count">{completed} / {total} · {pct}%</span>
+            <span style={{ flex: 1 }} />
+            <label style={{ fontSize: "10.5px", color: "var(--dim)", display: "flex", gap: 4, alignItems: "center" }}>
+              <input type="checkbox" checked={hide404}
+                     onChange={e => setHide404(e.target.checked)} />
+              hide 404s
+            </label>
           </div>
           <div className="progress"><div className="bar" style={{ width: pct + "%" }} /></div>
           <div style={{ overflow: "auto", flex: 1 }}>
@@ -571,6 +638,7 @@ function IntruderTab({ intruder, dispatch }) {
                   const r = intruder.results[i] || { status: null, size: 0, ms: 0, err: "" };
                   const pending = r.status === null;
                   const cls = (r.status >= 400) ? "s4" : (r.status >= 300) ? "s3" : (r.status >= 200) ? "s2" : "";
+                  if (hide404 && r.status === 404) return null;
                   return (
                     <tr key={i} className={pending ? "pending" : ""}>
                       <td>{(i + 1).toString().padStart(3, "0")}</td>
