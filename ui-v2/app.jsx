@@ -878,8 +878,7 @@ function ScansTab() {
 
   const ps = (window.NL && NL.portScan) ? NL.portScan
             : { host: "", running: false, done: 0, total: 0, results: [], error: "" };
-  const [host, setHost] = React.useState(ps.host || "127.0.0.1");
-  React.useEffect(() => { if (ps.host) setHost(ps.host); }, [ps.host]);
+  const [host, setHost] = React.useState("127.0.0.1");
   const [preset, setPreset] = React.useState("top100");
   const [customPorts, setCustomPorts] = React.useState("22,80,443,3306,5432,6379");
   const [timeoutMs, setTimeoutMs] = React.useState(1500);
@@ -888,7 +887,19 @@ function ScansTab() {
   const [onlyOpen, setOnlyOpen]   = React.useState(true);
 
   const start = async () => {
-    const payload = { host, timeoutMs, parallel, banner: grabBanner };
+    // Recognize three host-field shapes:
+    // 1. CIDR "192.168.1.0/24" -> backend expands
+    // 2. Comma-separated "1.1.1.1,2.2.2.2" -> hosts: [...]
+    // 3. Single hostname/IP -> host: ...
+    const payload = { timeoutMs, parallel, banner: grabBanner };
+    const trimmed = host.trim();
+    if (trimmed.includes("/")) {
+      payload.cidr = trimmed;
+    } else if (trimmed.includes(",")) {
+      payload.hosts = trimmed.split(/[,\s]+/).filter(s => s);
+    } else {
+      payload.host = trimmed;
+    }
     if (preset === "custom") {
       payload.ports = customPorts.split(/[,\s]+/)
         .map(s => parseInt(s, 10))
@@ -901,7 +912,10 @@ function ScansTab() {
   };
 
   const sorted = [...ps.results].sort((a, b) => {
+    // open ports first, then by host, then by port
     if ((a.status === "open") !== (b.status === "open")) return a.status === "open" ? -1 : 1;
+    const hc = (a.host || "").localeCompare(b.host || "");
+    if (hc !== 0) return hc;
     return a.port - b.port;
   });
   const visible = sorted.filter(r => !onlyOpen || r.status === "open");
@@ -950,10 +964,11 @@ function ScansTab() {
       }}>
         <label style={{ fontSize: "11px", color: "var(--dim)" }}>Host</label>
         <input style={inp} value={host}
-               placeholder="127.0.0.1 / example.com / 10.0.0.1"
+               placeholder="127.0.0.1 · example.com · 192.168.1.0/24 · a,b,c"
                onChange={e => setHost(e.target.value)} />
         <label style={{ fontSize: "11px", color: "var(--dim)" }}>Preset</label>
         <select style={inp} value={preset} onChange={e => setPreset(e.target.value)}>
+          <option value="discovery">discovery (22/80/443/3389)</option>
           <option value="top100">top 100 ports (nmap default)</option>
           <option value="web">web ports (80/443/8080/...)</option>
           <option value="full1024">all 1-1024</option>
@@ -1015,12 +1030,12 @@ function ScansTab() {
       }}>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "70px 80px 80px 120px 1fr",
+          gridTemplateColumns: "150px 70px 80px 80px 120px 1fr",
           gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)",
           fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
           letterSpacing: "0.06em",
         }}>
-          <span>port</span><span>status</span><span>latency</span><span>service</span><span>banner</span>
+          <span>host</span><span>port</span><span>status</span><span>latency</span><span>service</span><span>banner</span>
         </div>
         <div style={{ overflow: "auto", flex: 1 }}>
           {visible.length === 0 && (
@@ -1028,14 +1043,17 @@ function ScansTab() {
               {ps.running ? "scanning…" : "no results yet"}
             </div>
           )}
-          {visible.map(r => (
-            <div key={r.port} style={{
+          {visible.map((r, i) => (
+            <div key={(r.host || "") + ":" + r.port + ":" + i} style={{
               display: "grid",
-              gridTemplateColumns: "70px 80px 80px 120px 1fr",
+              gridTemplateColumns: "150px 70px 80px 80px 120px 1fr",
               gap: 6, padding: "5px 10px", alignItems: "baseline",
               fontSize: "12px", fontFamily: "var(--ff-mono)",
               borderBottom: "1px solid var(--line-soft)",
             }}>
+              <span style={{ color: "var(--text-2)", overflow: "hidden",
+                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={r.host}>{r.host}</span>
               <span style={{ color: "var(--text)" }}>{r.port}</span>
               <span style={{
                 color: r.status === "open" ? "#8ee5a0"

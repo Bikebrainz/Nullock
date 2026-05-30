@@ -438,6 +438,7 @@ QByteArray ControlServer::buildSnapshot() const {
         QJsonArray rows;
         for (const auto &r : m_wiring.portScanner->results()) {
             QJsonObject ro;
+            ro["host"]    = r.host;
             ro["port"]    = r.port;
             ro["status"]  = r.status;
             ro["latency"] = r.latencyMs;
@@ -1276,9 +1277,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // ---- port scanner ------------------------------------------------
-    // POST /api/portscan/start { host, preset|ports, timeoutMs?,
-    //                            parallel?, banner? }
-    //   preset = "top100" | "web" | "full1024" | custom via ports[]
+    // POST /api/portscan/start { host | hosts | cidr, preset|ports,
+    //                            timeoutMs?, parallel?, banner? }
+    //   preset = "discovery" | "top100" | "web" | "full1024" | custom
     if (path == "/api/portscan/start") {
         if (!m_wiring.portScanner)
             return okJson({{ "ok", false }, { "error", "no port scanner" }});
@@ -1288,10 +1289,61 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.parallel  = bodyJson.value("parallel").toInt(64);
         sr.grabBanner = bodyJson.value("banner").toBool(true);
 
+        // Multi-host modes. hosts[] is just a JSON array. cidr is
+        // expanded server-side -- accepts "192.168.1.0/24" through
+        // "10.0.0.0/16" (caps at /16 = 65k hosts to keep us from
+        // immolating ourselves). The single-host form sr.host is
+        // already populated above.
+        for (const QJsonValue &v : bodyJson.value("hosts").toArray()) {
+            const QString h = v.toString().trimmed();
+            if (!h.isEmpty()) sr.hosts.append(h);
+        }
+        const QString cidr = bodyJson.value("cidr").toString().trimmed();
+        if (!cidr.isEmpty()) {
+            const int slash = cidr.indexOf('/');
+            if (slash > 0) {
+                const QString netStr = cidr.left(slash);
+                const int bits = cidr.mid(slash + 1).toInt();
+                const QStringList octets = netStr.split('.');
+                if (octets.size() == 4 && bits >= 16 && bits <= 32) {
+                    quint32 net = 0;
+                    bool ok = true;
+                    for (int i = 0; i < 4 && ok; ++i) {
+                        const int v = octets[i].toInt(&ok);
+                        if (v < 0 || v > 255) { ok = false; break; }
+                        net = (net << 8) | static_cast<quint32>(v);
+                    }
+                    if (ok) {
+                        const quint32 mask = bits == 32 ? 0xFFFFFFFFu
+                                              : (~0u) << (32 - bits);
+                        const quint32 base = net & mask;
+                        const quint32 size = bits == 32 ? 1
+                                              : (1u << (32 - bits));
+                        // Skip network + broadcast for /<31. /31 and /32
+                        // hand back everything (point-to-point / single).
+                        const quint32 startI = (bits < 31) ? 1u : 0u;
+                        const quint32 endI   = (bits < 31) ? size - 1u : size;
+                        for (quint32 i = startI; i < endI; ++i) {
+                            const quint32 ip = base + i;
+                            sr.hosts.append(QString("%1.%2.%3.%4")
+                                .arg((ip >> 24) & 0xff)
+                                .arg((ip >> 16) & 0xff)
+                                .arg((ip >> 8)  & 0xff)
+                                .arg(ip        & 0xff));
+                        }
+                    }
+                }
+            }
+        }
+
         // Curated presets so the user can hit "top 100 ports" in one click.
         const QString preset = bodyJson.value("preset").toString();
         QList<quint16> ports;
-        if (preset == "top100") {
+        if (preset == "discovery") {
+            // The "is anything alive at this IP" set -- four ports that
+            // catch ~95% of internet-exposed boxes. Fast.
+            ports = { 22, 80, 443, 3389 };
+        } else if (preset == "top100") {
             // Nmap's --top-ports 100 list, sorted for grep-friendliness.
             ports = { 7, 21, 22, 23, 25, 26, 53, 80, 81, 110, 111,
                 113, 119, 135, 139, 143, 144, 179, 199, 389, 427,

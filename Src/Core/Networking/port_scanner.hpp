@@ -10,6 +10,7 @@ namespace Nullock::Core {
 
 // One target port + result of probing it.
 struct PortResult {
+    QString  host;
     quint16  port    = 0;
     QString  status;       // "open" | "closed" | "filtered"
     int      latencyMs = 0;
@@ -19,7 +20,8 @@ struct PortResult {
 
 // Configuration for one scan run.
 struct ScanRequest {
-    QString        host;
+    QString        host;          // legacy single-host (kept for compat)
+    QStringList    hosts;         // multi-host (cidr expansion lives in caller)
     QList<quint16> ports;
     int            timeoutMs = 1500;
     int            parallel  = 64;     // how many concurrent probes

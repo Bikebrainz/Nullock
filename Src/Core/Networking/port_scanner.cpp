@@ -87,6 +87,7 @@ QString classifyBanner(quint16 port, const QByteArray &banner) {
 PortResult probeOne(const QString &host, quint16 port,
                     int timeoutMs, bool grabBanner) {
     PortResult r;
+    r.host = host;
     r.port = port;
 
     QTcpSocket s;
@@ -147,23 +148,34 @@ QString PortScanner::lastError() const {
 
 bool PortScanner::start(const ScanRequest &req) {
     if (m_running.loadAcquire() != 0) return false;
-    if (req.host.isEmpty() || req.ports.isEmpty()) return false;
+    if (req.ports.isEmpty()) return false;
+
+    // Build the unified host list. Single-host mode (req.host) and
+    // multi-host mode (req.hosts) coexist; we just merge both.
+    QStringList hosts = req.hosts;
+    if (!req.host.isEmpty()) hosts.prepend(req.host);
+    if (hosts.isEmpty()) return false;
+
+    ScanRequest expanded = req;
+    expanded.hosts = hosts;
+    expanded.host.clear();  // canonicalize to multi-host form
 
     {
         QMutexLocker lk(&m_mutex);
-        m_host = req.host;
+        m_host = hosts.size() == 1 ? hosts.first()
+                                   : QString("%1 hosts").arg(hosts.size());
         m_results.clear();
         m_lastError.clear();
     }
     m_stopFlag.storeRelease(0);
     m_done.storeRelease(0);
-    m_total.storeRelease(req.ports.size());
+    m_total.storeRelease(req.ports.size() * hosts.size());
     m_running.storeRelease(1);
     emit runningChanged();
     emit progressChanged();
     emit resultsChanged();
 
-    (void)QtConcurrent::run([this, req] { run(req); });
+    (void)QtConcurrent::run([this, expanded] { run(expanded); });
     return true;
 }
 
@@ -190,32 +202,37 @@ void PortScanner::run(const ScanRequest req) {
     // own thread.
     QSemaphore slotsSem(req.parallel > 0 ? req.parallel : 1);
     QList<QThread *> threads;
-    threads.reserve(req.ports.size());
+    threads.reserve(req.ports.size() * req.hosts.size());
 
-    for (quint16 port : req.ports) {
+    // Nested loop: for each host, scan every port. Stop check at both
+    // levels so a user-stop is honoured promptly across hosts.
+    for (const QString &host : req.hosts) {
         if (m_stopFlag.loadAcquire() != 0) break;
-        slotsSem.acquire();
+        for (quint16 port : req.ports) {
+            if (m_stopFlag.loadAcquire() != 0) break;
+            slotsSem.acquire();
 
-        QThread *t = QThread::create([this, host=req.host, port,
-                                      timeoutMs=req.timeoutMs,
-                                      grabBanner=req.grabBanner, &slotsSem] {
-            const PortResult r = probeOne(host, port, timeoutMs, grabBanner);
-            {
-                QMutexLocker lk(&m_mutex);
-                m_results.append(r);
-            }
-            m_done.fetchAndAddOrdered(1);
-            emit progressChanged();
-            // Only flag a results-changed every 8 probes so we don't
-            // hammer the snapshot poll for a 1000-port scan. Final
-            // sync happens after the join loop.
-            if ((m_done.loadAcquire() & 0x7) == 0)
-                emit resultsChanged();
-            slotsSem.release();
-        });
-        QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
-        threads.append(t);
-        t->start();
+            QThread *t = QThread::create([this, host, port,
+                                          timeoutMs=req.timeoutMs,
+                                          grabBanner=req.grabBanner, &slotsSem] {
+                const PortResult r = probeOne(host, port, timeoutMs, grabBanner);
+                {
+                    QMutexLocker lk(&m_mutex);
+                    m_results.append(r);
+                }
+                m_done.fetchAndAddOrdered(1);
+                emit progressChanged();
+                // Only flag a results-changed every 8 probes so we don't
+                // hammer the snapshot poll for a big scan. Final sync
+                // happens after the join loop.
+                if ((m_done.loadAcquire() & 0x7) == 0)
+                    emit resultsChanged();
+                slotsSem.release();
+            });
+            QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
+            threads.append(t);
+            t->start();
+        }
     }
 
     for (QThread *t : threads) {
