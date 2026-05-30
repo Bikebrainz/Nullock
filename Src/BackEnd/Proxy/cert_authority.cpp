@@ -24,6 +24,24 @@ QString sanitize(const QString &host) {
     return out;
 }
 
+// Strict DNS-host validation. A malicious client that drives a
+// CONNECT to "evil\nbasicConstraints = CA:TRUE" could otherwise inject
+// extension lines into the SAN config file, and "evil/CN=bank.com" could
+// graft extra DN fields onto the cert subject. Cheap to add, defense in
+// depth -- if the client's target isn't a real hostname, refuse to mint.
+bool isValidHostForCert(const QString &host) {
+    if (host.isEmpty() || host.size() > 253) return false;
+    for (QChar c : host) {
+        if (c.isLetterOrNumber()) continue;
+        if (c == QChar('-') || c == QChar('.') || c == QChar('_')) continue;
+        return false;
+    }
+    // No leading/trailing dot, no double dot.
+    if (host.startsWith('.') || host.endsWith('.')) return false;
+    if (host.contains("..")) return false;
+    return true;
+}
+
 } // namespace
 
 CertAuthority::CertAuthority(QString caDir, QObject *parent)
@@ -87,6 +105,10 @@ bool CertAuthority::ensureCa() {
 }
 
 LeafCert CertAuthority::leafCertFor(const QString &host) {
+    // Refuse anything that doesn't look like a real DNS hostname before
+    // we feed it into openssl args and the SAN ext file.
+    if (!isValidHostForCert(host)) return {};
+
     QMutexLocker lock(&m_mutex);
 
     if (auto it = m_cache.find(host); it != m_cache.end())

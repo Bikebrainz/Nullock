@@ -60,7 +60,11 @@ QByteArray httpResponse(int status, const QByteArray &mime,
          + (reason.isEmpty() ? QByteArray("OK") : reason) + "\r\n";
     out += "Content-Type: " + mime + "\r\n";
     out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-    out += "Access-Control-Allow-Origin: *\r\n";
+    // No Access-Control-Allow-Origin -- the control server is local-only
+    // and exposes private state (proxy history, captured creds). ACAO:*
+    // would let any web page in the user's browser read it cross-origin.
+    // Same-origin policy is the protection.
+    out += "X-Content-Type-Options: nosniff\r\n";
     out += "Cache-Control: no-store\r\n";
     out += "Connection: close\r\n";
     out += "\r\n";
@@ -205,14 +209,42 @@ void ControlServer::handle(QTcpSocket *socket) {
     const QString method = QString::fromLatin1(parts[0]);
     const QString target = QString::fromLatin1(parts[1]);
 
-    // Read body if Content-Length set (for POSTs).
+    // Read body if Content-Length set (for POSTs). While we're walking
+    // the headers, also capture Origin so we can do a CSRF check before
+    // dispatch.
     qint64 contentLength = 0;
+    QString origin;
     for (const QByteArray &line : header.split('\n')) {
         QByteArray l = line; if (l.endsWith('\r')) l.chop(1);
         const int c = l.indexOf(':');
         if (c <= 0) continue;
-        if (QString::fromLatin1(l.left(c)).compare("Content-Length", Qt::CaseInsensitive) == 0)
+        const QString key = QString::fromLatin1(l.left(c));
+        if (key.compare("Content-Length", Qt::CaseInsensitive) == 0)
             contentLength = QByteArray(l.mid(c + 1)).trimmed().toLongLong();
+        else if (key.compare("Origin", Qt::CaseInsensitive) == 0)
+            origin = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+    }
+
+    // CSRF guard. Any POST/PUT/PATCH/DELETE that came from a web page on
+    // another origin is rejected. curl and other non-browser clients
+    // don't send Origin at all, so an empty Origin is allowed. We accept
+    // 127.0.0.1 / localhost variants on our own port. The control server
+    // exposes "clear history", "open project", "add rule" -- a malicious
+    // site without this check could mutate the user's project silently
+    // just by linking them to a page that does fetch() in the background.
+    const bool isWriteMethod = (method == "POST" || method == "PUT"
+                                || method == "PATCH" || method == "DELETE");
+    if (isWriteMethod && !origin.isEmpty()) {
+        const quint16 myPort = this->listeningPort();
+        const QString expectedHttp  = "http://127.0.0.1:"  + QString::number(myPort);
+        const QString expectedLocal = "http://localhost:"  + QString::number(myPort);
+        if (origin != expectedHttp && origin != expectedLocal) {
+            socket->write(httpResponse(403, "text/plain",
+                "Cross-origin write rejected"));
+            socket->waitForBytesWritten(kReadTimeoutMs);
+            socket->disconnectFromHost();
+            return;
+        }
     }
     while (rest.size() < contentLength) {
         if (!socket->waitForReadyRead(kReadTimeoutMs)) break;
