@@ -468,7 +468,13 @@ QByteArray ControlServer::buildSnapshot() const {
             row["ip"]      = m_wiring.history->data(idx, Nullock::FrontEnd::ProxyModel::IpRole).toString();
             row["ts"]      = m_wiring.history->data(idx, Nullock::FrontEnd::ProxyModel::TimestampRole).toString();
             row["port"]    = m_wiring.history->portAt(i);
-            row["size"]    = 0; // body size not currently exposed per-row
+            // Surface response body size so the React stats panel can do
+            // Wireshark-style "endpoints" aggregation. Request size feeds
+            // the same per-host accounting.
+            const auto *resp = m_wiring.history->responseAt(i);
+            const auto *req  = m_wiring.history->requestAt(i);
+            row["size"]    = resp ? static_cast<qint64>(resp->body.size()) : 0;
+            row["reqSize"] = req  ? static_cast<qint64>(req->body.size())  : 0;
             row["elapsed"] = 0;
             rows.append(row);
         }

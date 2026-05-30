@@ -6,6 +6,7 @@ const TABS = [
   { id: "rules",     label: "RULES" },
   { id: "issues",    label: "ISSUES" },
   { id: "scans",     label: "SCANS" },
+  { id: "stats",     label: "STATS" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -1057,6 +1058,246 @@ function ScansTab() {
   );
 }
 
+// Wireshark "Statistics > Endpoints"-style aggregator. Walks the live
+// history rows and aggregates by host: request count, bytes in/out,
+// status-class breakdown, distinct paths, last-seen. No backend call --
+// pure derivation from NL.rows so it follows the snapshot poll naturally.
+function fmtBytes(n) {
+  if (!n) return "0";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + " MB";
+  return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+}
+
+function StatsTab({ dispatch }) {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const rows = (window.NL && NL.rows) ? NL.rows : [];
+  const [sortBy, setSortBy]   = React.useState("count"); // count|bytes|host|errors
+  const [order, setOrder]     = React.useState("desc");
+  const [methodMix, setMethodMix] = React.useState(false); // overall method pie-ish bar
+
+  // Aggregate.
+  const agg = React.useMemo(() => {
+    const byHost = new Map();
+    const overall = {
+      total: 0, bytesIn: 0, bytesOut: 0,
+      sc: { "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, "ws": 0, "other": 0 },
+      methods: {},
+      mimes: {},
+      tls: 0, plain: 0,
+    };
+    for (const r of rows) {
+      let h = byHost.get(r.host);
+      if (!h) {
+        h = {
+          host: r.host, count: 0, bytesIn: 0, bytesOut: 0,
+          sc: { "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0, "ws": 0, "other": 0 },
+          paths: new Set(), tls: false, lastTs: "",
+          firstId: r.id, lastId: r.id,
+        };
+        byHost.set(r.host, h);
+      }
+      h.count++;
+      h.bytesIn  += (r.size || 0);
+      h.bytesOut += (r.reqSize || 0);
+      h.paths.add(r.path || r.url || "");
+      h.tls = h.tls || !!r.tls;
+      h.lastTs = r.ts || h.lastTs;
+      if (r.id > h.lastId) h.lastId = r.id;
+
+      const m = r.method || "";
+      const isWs = m === "WS↑" || m === "WS↓";
+      let key = "other";
+      if (isWs) key = "ws";
+      else {
+        const status = r.status || 0;
+        if (status >= 100 && status < 200) key = "1xx";
+        else if (status < 300) key = "2xx";
+        else if (status < 400) key = "3xx";
+        else if (status < 500) key = "4xx";
+        else if (status < 600) key = "5xx";
+      }
+      h.sc[key]++;
+      overall.sc[key]++;
+      overall.total++;
+      overall.bytesIn  += (r.size || 0);
+      overall.bytesOut += (r.reqSize || 0);
+      if (r.tls) overall.tls++; else overall.plain++;
+      if (m) overall.methods[m] = (overall.methods[m] || 0) + 1;
+      if (r.mime) overall.mimes[r.mime] = (overall.mimes[r.mime] || 0) + 1;
+    }
+    return { byHost: Array.from(byHost.values()), overall };
+  }, [rows]);
+
+  const sorted = React.useMemo(() => {
+    const arr = [...agg.byHost];
+    const dir = order === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      if (sortBy === "host") return dir * a.host.localeCompare(b.host);
+      if (sortBy === "bytes") return dir * ((a.bytesIn + a.bytesOut) - (b.bytesIn + b.bytesOut));
+      if (sortBy === "errors") {
+        const ae = a.sc["4xx"] + a.sc["5xx"];
+        const be = b.sc["4xx"] + b.sc["5xx"];
+        return dir * (ae - be);
+      }
+      return dir * (a.count - b.count);
+    });
+    return arr;
+  }, [agg, sortBy, order]);
+
+  const jumpToHost = (host) => {
+    dispatch({ type: "set", payload: { tab: "proxy", hostFilter: host, selectedHost: host } });
+  };
+
+  const setSort = (key) => {
+    if (sortBy === key) setOrder(order === "asc" ? "desc" : "asc");
+    else { setSortBy(key); setOrder("desc"); }
+  };
+
+  const Pill = ({ label, value, color }) => (
+    <span style={{
+      display: "inline-block", padding: "1px 6px",
+      background: "var(--bg-deep)", border: "1px solid var(--line)",
+      borderRadius: 3, fontSize: "10px", fontFamily: "var(--ff-mono)",
+      color: color || "var(--text-2)", marginRight: 4,
+    }}>{label}: {value}</span>
+  );
+
+  const SCcell = (sc) => (
+    <span style={{ display: "inline-flex", gap: 3 }}>
+      {sc["2xx"] > 0 && <span style={{ color: "#8ee5a0" }}>{sc["2xx"]}</span>}
+      {sc["3xx"] > 0 && <span style={{ color: "var(--accent)" }}>{sc["3xx"]}</span>}
+      {sc["4xx"] > 0 && <span style={{ color: "#f0c060" }}>{sc["4xx"]}</span>}
+      {sc["5xx"] > 0 && <span style={{ color: "var(--err, #f88)" }}>{sc["5xx"]}</span>}
+      {sc["ws"]  > 0 && <span style={{ color: "var(--dim)" }}>WS:{sc["ws"]}</span>}
+    </span>
+  );
+
+  return (
+    <div style={{
+      padding: 14, display: "flex", flexDirection: "column", gap: 10,
+      height: "100%", minHeight: 0,
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Network endpoints</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          aggregated from {rows.length} captured rows
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: "11px", color: "var(--dim)" }}>
+          method mix <input type="checkbox" checked={methodMix} onChange={e => setMethodMix(e.target.checked)} />
+        </span>
+      </div>
+
+      {/* OVERALL */}
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 10, borderRadius: 4, display: "flex", flexWrap: "wrap",
+        gap: 6, alignItems: "center",
+      }}>
+        <Pill label="hosts" value={agg.byHost.length} color="var(--accent)" />
+        <Pill label="reqs" value={agg.overall.total} />
+        <Pill label="↓ resp bytes" value={fmtBytes(agg.overall.bytesIn)} />
+        <Pill label="↑ req bytes" value={fmtBytes(agg.overall.bytesOut)} />
+        <Pill label="2xx" value={agg.overall.sc["2xx"]} color="#8ee5a0" />
+        <Pill label="3xx" value={agg.overall.sc["3xx"]} color="var(--accent)" />
+        <Pill label="4xx" value={agg.overall.sc["4xx"]} color="#f0c060" />
+        <Pill label="5xx" value={agg.overall.sc["5xx"]} color="var(--err,#f88)" />
+        <Pill label="WS" value={agg.overall.sc["ws"]} color="var(--dim)" />
+        <Pill label="TLS" value={agg.overall.tls + " (" + (agg.overall.total ? Math.round(agg.overall.tls / agg.overall.total * 100) : 0) + "%)"} />
+        <Pill label="plain" value={agg.overall.plain} />
+      </div>
+
+      {methodMix && Object.keys(agg.overall.methods).length > 0 && (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          padding: 10, borderRadius: 4, fontSize: "11px",
+        }}>
+          <div style={{ color: "var(--dim)", marginBottom: 4 }}>Method mix</div>
+          <div style={{ display: "flex", height: 8, overflow: "hidden", borderRadius: 2 }}>
+            {Object.entries(agg.overall.methods).sort((a,b) => b[1]-a[1]).map(([m, c]) => {
+              const pct = (c / agg.overall.total) * 100;
+              const colors = { GET: "#8ee5a0", POST: "var(--accent)", PUT: "#f0c060",
+                              DELETE: "var(--err,#f88)", PATCH: "#c294f0", "WS↑": "#888", "WS↓": "#666" };
+              return (
+                <div key={m} title={m + ": " + c + " (" + pct.toFixed(1) + "%)"}
+                     style={{ width: pct + "%", background: colors[m] || "var(--dim)" }} />
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 6, fontFamily: "var(--ff-mono)", fontSize: "10.5px" }}>
+            {Object.entries(agg.overall.methods).sort((a,b) => b[1]-a[1]).map(([m, c]) =>
+              <span key={m} style={{ marginRight: 10, color: "var(--text-2)" }}>{m}: {c}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PER-HOST TABLE */}
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 70px 90px 90px 60px 110px 100px",
+          gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)",
+          fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}>
+          <span style={{ cursor: "pointer" }} onClick={() => setSort("host")}>host {sortBy==="host" ? (order==="asc"?"▲":"▼") : ""}</span>
+          <span style={{ cursor: "pointer" }} onClick={() => setSort("count")}>reqs {sortBy==="count" ? (order==="asc"?"▲":"▼") : ""}</span>
+          <span style={{ cursor: "pointer" }} onClick={() => setSort("bytes")}>↑ out {sortBy==="bytes" ? (order==="asc"?"▲":"▼") : ""}</span>
+          <span>↓ in</span>
+          <span>tls</span>
+          <span style={{ cursor: "pointer" }} onClick={() => setSort("errors")}>statuses {sortBy==="errors" ? (order==="asc"?"▲":"▼") : ""}</span>
+          <span>paths</span>
+        </div>
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {sorted.length === 0 && (
+            <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+              no traffic captured yet
+            </div>
+          )}
+          {sorted.map(h => (
+            <div key={h.host}
+                 onClick={() => jumpToHost(h.host)}
+                 title={"Click to filter Proxy tab by " + h.host}
+                 style={{
+                   display: "grid",
+                   gridTemplateColumns: "1fr 70px 90px 90px 60px 110px 100px",
+                   gap: 6, padding: "5px 10px", alignItems: "center",
+                   fontSize: "12px", fontFamily: "var(--ff-mono)",
+                   borderBottom: "1px solid var(--line-soft)",
+                   cursor: "pointer",
+                 }}>
+              <span style={{ color: "var(--text)", overflow: "hidden",
+                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={h.host}>{h.host || "(no host)"}</span>
+              <span style={{ color: "var(--accent)" }}>{h.count}</span>
+              <span style={{ color: "var(--text-2)" }}>{fmtBytes(h.bytesOut)}</span>
+              <span style={{ color: "var(--text-2)" }}>{fmtBytes(h.bytesIn)}</span>
+              <span style={{ color: h.tls ? "#8ee5a0" : "var(--dim)" }}>{h.tls ? "✓" : "—"}</span>
+              <span>{SCcell(h.sc)}</span>
+              <span style={{ color: "var(--dim)" }}>{h.paths.size}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Color edit + Save As panel. Reads the current theme's color map from
 // the backend snapshot, applies local edits as inline CSS variables for
 // live preview, and posts a full set to /api/theme/save-as on save.
@@ -1302,6 +1543,9 @@ function App() {
         )}
         {tab === "scans" && (
           <ScansTab />
+        )}
+        {tab === "stats" && (
+          <StatsTab dispatch={dispatch} />
         )}
         {tab === "settings" && (
           <SettingsTab />
