@@ -784,6 +784,21 @@ function IssuesTab({ dispatch }) {
         </span>
         <span style={{ flex: 1 }} />
         <button
+          onClick={async () => {
+            if (!confirm("Run active probe against every row with query params? (throttled at 200ms by default; takes seconds-to-minutes)"))
+              return;
+            const r = await NL.actions.probeAll(200, 50);
+            if (r && r.queued !== undefined) {
+              alert("Queued " + r.queued + " row(s). Findings will stream in.");
+            }
+          }}
+          style={{
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Probe all rows</button>
+        <button
           onClick={() => { if (confirm("Clear all findings?")) NL.actions.clearFindings(); }}
           style={{
             background: "transparent", color: "var(--err, #f88)",
@@ -885,13 +900,15 @@ function ScansTab() {
   const [parallel, setParallel]   = React.useState(64);
   const [grabBanner, setGrabBanner] = React.useState(true);
   const [onlyOpen, setOnlyOpen]   = React.useState(true);
+  const [throttleMs, setThrottleMs] = React.useState(0);
+  const [randomize, setRandomize]   = React.useState(false);
 
   const start = async () => {
     // Recognize three host-field shapes:
     // 1. CIDR "192.168.1.0/24" -> backend expands
     // 2. Comma-separated "1.1.1.1,2.2.2.2" -> hosts: [...]
     // 3. Single hostname/IP -> host: ...
-    const payload = { timeoutMs, parallel, banner: grabBanner };
+    const payload = { timeoutMs, parallel, banner: grabBanner, throttleMs, randomize };
     const trimmed = host.trim();
     if (trimmed.includes("/")) {
       payload.cidr = trimmed;
@@ -991,6 +1008,17 @@ function ScansTab() {
         <label style={{ fontSize: "11px", color: "var(--dim)" }}>Parallel</label>
         <input style={inp} type="number" value={parallel}
                onChange={e => setParallel(parseInt(e.target.value, 10) || 64)} />
+
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Throttle</label>
+        <input style={inp} type="number" value={throttleMs}
+               title="Delay between probe launches in ms. 0 = no throttle"
+               onChange={e => setThrottleMs(parseInt(e.target.value, 10) || 0)} />
+        <label style={{ fontSize: "11px", color: "var(--dim)" }}>Stealth</label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+          <input type="checkbox" checked={randomize}
+                 onChange={e => setRandomize(e.target.checked)} />
+          shuffle probe order (less obvious to log monitors)
+        </label>
 
         <label style={{ fontSize: "11px", color: "var(--dim)" }}>Flags</label>
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>

@@ -2,6 +2,7 @@
 
 #include <QElapsedTimer>
 #include <QMutexLocker>
+#include <QRandomGenerator>
 #include <QSemaphore>
 #include <QtConcurrent/QtConcurrent>
 #include <QTcpSocket>
@@ -204,35 +205,56 @@ void PortScanner::run(const ScanRequest req) {
     QList<QThread *> threads;
     threads.reserve(req.ports.size() * req.hosts.size());
 
-    // Nested loop: for each host, scan every port. Stop check at both
-    // levels so a user-stop is honoured promptly across hosts.
+    // Build the flat (host, port) task list. With randomize on, shuffle
+    // so we don't hammer one host with every port in a tight burst --
+    // useful when the user wants the scan to look less obvious (or to
+    // play nicely with rate-limited targets).
+    struct Task { QString host; quint16 port; };
+    QList<Task> tasks;
+    tasks.reserve(req.ports.size() * req.hosts.size());
     for (const QString &host : req.hosts) {
-        if (m_stopFlag.loadAcquire() != 0) break;
-        for (quint16 port : req.ports) {
-            if (m_stopFlag.loadAcquire() != 0) break;
-            slotsSem.acquire();
-
-            QThread *t = QThread::create([this, host, port,
-                                          timeoutMs=req.timeoutMs,
-                                          grabBanner=req.grabBanner, &slotsSem] {
-                const PortResult r = probeOne(host, port, timeoutMs, grabBanner);
-                {
-                    QMutexLocker lk(&m_mutex);
-                    m_results.append(r);
-                }
-                m_done.fetchAndAddOrdered(1);
-                emit progressChanged();
-                // Only flag a results-changed every 8 probes so we don't
-                // hammer the snapshot poll for a big scan. Final sync
-                // happens after the join loop.
-                if ((m_done.loadAcquire() & 0x7) == 0)
-                    emit resultsChanged();
-                slotsSem.release();
-            });
-            QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
-            threads.append(t);
-            t->start();
+        for (quint16 port : req.ports) tasks.append({ host, port });
+    }
+    if (req.randomize) {
+        auto *rng = QRandomGenerator::global();
+        for (int i = tasks.size() - 1; i > 0; --i) {
+            const int j = static_cast<int>(rng->bounded(i + 1));
+            std::swap(tasks[i], tasks[j]);
         }
+    }
+
+    for (const Task &task : tasks) {
+        if (m_stopFlag.loadAcquire() != 0) break;
+        slotsSem.acquire();
+        if (req.throttleMs > 0) {
+            // Pause between probe launches (in addition to the parallel
+            // cap). Throttle here in the launcher rather than inside the
+            // worker so the rate is honoured even with parallel=1.
+            QThread::msleep(static_cast<unsigned long>(req.throttleMs));
+        }
+        const QString host = task.host;
+        const quint16 port = task.port;
+
+        QThread *t = QThread::create([this, host, port,
+                                      timeoutMs=req.timeoutMs,
+                                      grabBanner=req.grabBanner, &slotsSem] {
+            const PortResult r = probeOne(host, port, timeoutMs, grabBanner);
+            {
+                QMutexLocker lk(&m_mutex);
+                m_results.append(r);
+            }
+            m_done.fetchAndAddOrdered(1);
+            emit progressChanged();
+            // Only flag a results-changed every 8 probes so we don't
+            // hammer the snapshot poll for a big scan. Final sync
+            // happens after the join loop.
+            if ((m_done.loadAcquire() & 0x7) == 0)
+                emit resultsChanged();
+            slotsSem.release();
+        });
+        QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
+        threads.append(t);
+        t->start();
     }
 
     for (QThread *t : threads) {

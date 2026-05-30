@@ -157,6 +157,11 @@
     portscanStart(payload) { return post("/api/portscan/start", payload).then(r => r.json()); },
     portscanStop()         { return post("/api/portscan/stop"); },
     portscanClear()        { return post("/api/portscan/clear"); },
+    probeAll(throttleMs, limit) {
+      // Fire the active probe against every history row that has query
+      // params. Throttle defaults to 200ms server-side; pass 0 to go fast.
+      return post("/api/probe/all", { throttleMs, limit }).then(r => r.json());
+    },
     probeRow(rowId) {
       // Light active scan: per-param canary injection + reflection check.
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })

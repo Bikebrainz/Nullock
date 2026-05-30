@@ -26,6 +26,10 @@ struct ScanRequest {
     int            timeoutMs = 1500;
     int            parallel  = 64;     // how many concurrent probes
     bool           grabBanner = true;  // pull first response bytes
+    int            throttleMs = 0;     // delay between probe launches
+                                        // (0 = fire as fast as semaphore allows)
+    bool           randomize  = false; // shuffle host*port order so we don't
+                                        // hit one host in a tight burst
 };
 
 // TCP-connect port scanner. Spawns a worker QThread per probe (cheap on

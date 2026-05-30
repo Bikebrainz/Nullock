@@ -19,6 +19,7 @@
 #include <QDateTime>
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
+#include <QThread>
 #include <QRandomGenerator>
 #include <QFileInfo>
 #include <QHash>
@@ -1276,6 +1277,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
 
+    // POST /api/probe/all  { throttleMs?: 200, limit?: 50 }
+    // Walks every history row that has query-string params and fires the
+    // same active probe pipeline. Defaults to 200ms throttle so a casual
+    // user doesn't accidentally DoS a target.
+    if (path == "/api/probe/all") {
+        if (!m_wiring.history || !m_wiring.proxy)
+            return okJson({{ "ok", false }});
+        const int throttleMs = bodyJson.value("throttleMs").toInt(200);
+        const int limit      = bodyJson.value("limit").toInt(50);
+        QList<int> rowIds;
+        const int rc = m_wiring.history->rowCount();
+        for (int i = rc - 1; i >= 0 && rowIds.size() < limit; --i) {
+            const auto *r = m_wiring.history->requestAt(i);
+            if (!r) continue;
+            if (r->method.startsWith("WS")) continue;
+            const int q = r->path.indexOf('?');
+            if (q < 0) continue;
+            const QString query = r->path.mid(q + 1);
+            if (query.isEmpty()) continue;
+            rowIds.append(i + 1);  // 1-based ids match snapshot rows
+        }
+        if (rowIds.isEmpty()) return okJson({{ "queued", 0 }});
+
+        // Fire probes serially with throttle, off-thread so the response
+        // returns immediately and the snapshot poll surfaces findings as
+        // they land. We post synthetic POSTs to our own /probe endpoint
+        // rather than duplicating the inner probe loop -- that way any
+        // future improvements to the probe pipeline get picked up here
+        // for free.
+        const quint16 myPort = this->listeningPort();
+        (void)QtConcurrent::run([myPort, rowIds, throttleMs]() {
+            for (int rowId : rowIds) {
+                QTcpSocket sock;
+                sock.connectToHost(QHostAddress::LocalHost, myPort);
+                if (!sock.waitForConnected(2000)) continue;
+                const QByteArray req =
+                    "POST /api/history/" + QByteArray::number(rowId) +
+                    "/probe HTTP/1.1\r\n"
+                    "Host: 127.0.0.1\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n\r\n";
+                sock.write(req);
+                sock.waitForBytesWritten(1000);
+                sock.waitForReadyRead(1000);
+                sock.disconnectFromHost();
+                if (throttleMs > 0) QThread::msleep(static_cast<unsigned long>(throttleMs));
+            }
+        });
+        return okJson({{ "queued", rowIds.size() }});
+    }
+
     // ---- port scanner ------------------------------------------------
     // POST /api/portscan/start { host | hosts | cidr, preset|ports,
     //                            timeoutMs?, parallel?, banner? }
@@ -1288,6 +1340,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.timeoutMs = bodyJson.value("timeoutMs").toInt(1500);
         sr.parallel  = bodyJson.value("parallel").toInt(64);
         sr.grabBanner = bodyJson.value("banner").toBool(true);
+        sr.throttleMs = bodyJson.value("throttleMs").toInt(0);
+        sr.randomize  = bodyJson.value("randomize").toBool(false);
 
         // Multi-host modes. hosts[] is just a JSON array. cidr is
         // expanded server-side -- accepts "192.168.1.0/24" through
