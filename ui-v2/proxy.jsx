@@ -232,6 +232,7 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
   const reqRef  = React.useRef(null);
   const respRef = React.useRef(null);
   const [overlay, setOverlay] = React.useState(null); // { title, body } | null
+  const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
 
   // Pull either the user's text selection or the entire textarea contents.
   // Clicking a codec button with no selection runs it against the whole
@@ -258,6 +259,49 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button onClick={() => setCopyMenuOpen(o => !o)}
+                  title="Copy this request as a command for another tool">
+            ↦ COPY AS ▾
+          </button>
+          {copyMenuOpen && (
+            <div onClick={(e) => e.stopPropagation()}
+                 style={{
+                   position: "absolute", top: "100%", right: 0, zIndex: 30,
+                   background: "var(--pane)", border: "1px solid var(--accent)",
+                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                   fontFamily: "var(--ff-mono)", fontSize: "11px",
+                   minWidth: 180, marginTop: 4,
+                 }}>
+              {[
+                ["curl",       "Unix-y, --insecure for self-signed"],
+                ["wget",       "Same syntax shape as curl"],
+                ["httpie",     "Cleaner one-liner"],
+                ["powershell", "Invoke-WebRequest"],
+                ["fetch",      "JavaScript fetch() in browser/node"],
+                ["sqlmap",     "Pre-armed sqlmap command line"],
+                ["postman",    "Single-item Postman collection JSON"],
+                ["nuclei",     "Nuclei template skeleton"],
+                ["burp-raw",   "Raw request bytes (Burp Repeater paste)"],
+              ].map(([k, hint]) => (
+                <div key={k}
+                     onClick={() => {
+                       const out = renderRequestAs(k, row, req);
+                       setOverlay({ title: "↦ " + k.toUpperCase(), body: out });
+                       setCopyMenuOpen(false);
+                     }}
+                     style={{
+                       padding: "5px 10px", cursor: "pointer",
+                       borderBottom: "1px solid var(--line-soft)",
+                       color: "var(--text)",
+                     }}>
+                  <div style={{ color: "var(--accent)" }}>{k}</div>
+                  <div style={{ color: "var(--dim)", fontSize: "10px" }}>{hint}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <button onClick={async () => {
           try {
             const r = await NL.actions.replayRow(row.id);
@@ -340,6 +384,169 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
       )}
     </div>
   );
+}
+
+// ===================== COPY AS (tool integration) ====================
+
+// Parse a captured raw HTTP request into { method, fullUrl, headers, body }.
+// row gives us the scheme/host/port that the bare request line doesn't.
+function parseRawRequest(row, raw) {
+  const out = { method: row.method || "GET", fullUrl: "", headers: [], body: "" };
+  const proto = row.tls ? "https" : "http";
+  const defaultPort = row.tls ? 443 : 80;
+  const portStr = (row.port && row.port !== defaultPort) ? ":" + row.port : "";
+  const path = row.url || "/";
+  out.fullUrl = proto + "://" + (row.host || "") + portStr + path;
+
+  if (!raw) return out;
+  // Body is whatever follows a blank line.
+  let headerBlock = raw;
+  const idx = raw.indexOf("\r\n\r\n");
+  const idx2 = raw.indexOf("\n\n");
+  let split = -1, splitLen = 0;
+  if (idx >= 0 && (idx2 < 0 || idx < idx2)) { split = idx; splitLen = 4; }
+  else if (idx2 >= 0) { split = idx2; splitLen = 2; }
+  if (split >= 0) {
+    headerBlock = raw.slice(0, split);
+    out.body = raw.slice(split + splitLen);
+  }
+  const lines = headerBlock.split(/\r?\n/);
+  const first = lines.shift() || "";
+  const fp = first.split(" ");
+  if (fp.length >= 2) out.method = fp[0];
+  for (const ln of lines) {
+    const c = ln.indexOf(":");
+    if (c <= 0) continue;
+    const k = ln.slice(0, c).trim();
+    const v = ln.slice(c + 1).trim();
+    // Drop hop-by-hop / proxy-only headers when copying to another tool.
+    const lc = k.toLowerCase();
+    if (lc === "host" || lc === "content-length" || lc === "proxy-connection")
+      continue;
+    out.headers.push([k, v]);
+  }
+  return out;
+}
+
+// Bash/sh single-quote escape: any ' becomes '\''.
+function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function psq(s) { return "'" + String(s).replace(/'/g, "''") + "'"; } // PowerShell
+
+function renderRequestAs(kind, row, raw) {
+  const r = parseRawRequest(row, raw);
+  const hasBody = r.body && r.body.length > 0;
+
+  if (kind === "curl") {
+    let out = "curl -k -X " + r.method + " " + shq(r.fullUrl);
+    for (const [k, v] of r.headers) out += " \\\n  -H " + shq(k + ": " + v);
+    if (hasBody) out += " \\\n  --data-raw " + shq(r.body);
+    return out;
+  }
+
+  if (kind === "wget") {
+    let out = "wget --no-check-certificate --method=" + r.method
+            + " --output-document=- " + shq(r.fullUrl);
+    for (const [k, v] of r.headers) out += " \\\n  --header=" + shq(k + ": " + v);
+    if (hasBody) out += " \\\n  --body-data=" + shq(r.body);
+    return out;
+  }
+
+  if (kind === "httpie") {
+    // httpie infers method from presence of body; force it anyway.
+    let out = "http --verify=no " + r.method + " " + shq(r.fullUrl);
+    for (const [k, v] of r.headers) out += " " + shq(k + ":" + v);
+    if (hasBody) out += " <<< " + shq(r.body);
+    return out;
+  }
+
+  if (kind === "powershell") {
+    let out = "$headers = @{}\n";
+    for (const [k, v] of r.headers)
+      out += "$headers[" + psq(k) + "] = " + psq(v) + "\n";
+    out += "Invoke-WebRequest -Uri " + psq(r.fullUrl)
+         + " -Method " + r.method
+         + " -Headers $headers"
+         + " -SkipCertificateCheck";
+    if (hasBody) out += " -Body " + psq(r.body);
+    return out;
+  }
+
+  if (kind === "fetch") {
+    const headersObj = {};
+    for (const [k, v] of r.headers) headersObj[k] = v;
+    const opts = { method: r.method, headers: headersObj };
+    if (hasBody) opts.body = r.body;
+    return "fetch(" + JSON.stringify(r.fullUrl) + ", "
+         + JSON.stringify(opts, null, 2) + ");";
+  }
+
+  if (kind === "sqlmap") {
+    // sqlmap defaults to GET with -u; for POST add --data and --method.
+    let out = "sqlmap --batch --random-agent -u " + shq(r.fullUrl);
+    for (const [k, v] of r.headers) {
+      // sqlmap takes one -H per header.
+      out += " \\\n  -H " + shq(k + ": " + v);
+    }
+    if (hasBody) {
+      out += " \\\n  --data " + shq(r.body) + " --method=" + r.method;
+    } else if (r.method !== "GET") {
+      out += " --method=" + r.method;
+    }
+    out += " --level=2 --risk=2";
+    return out;
+  }
+
+  if (kind === "postman") {
+    // Single Postman v2.1 collection item. Drop in via Import > Raw text.
+    const item = {
+      info: {
+        name: "Nullock export · row " + row.id,
+        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+      },
+      item: [{
+        name: row.method + " " + (row.url || "/"),
+        request: {
+          method: r.method,
+          header: r.headers.map(([k, v]) => ({ key: k, value: v })),
+          body: hasBody ? { mode: "raw", raw: r.body } : undefined,
+          url: { raw: r.fullUrl },
+        },
+      }],
+    };
+    return JSON.stringify(item, null, 2);
+  }
+
+  if (kind === "nuclei") {
+    // Minimal Nuclei template skeleton; user fills in matcher details.
+    let yaml = "id: nullock-row-" + row.id + "\n\n"
+             + "info:\n"
+             + "  name: TODO -- describe the check\n"
+             + "  author: nullock\n"
+             + "  severity: medium\n"
+             + "  description: |\n"
+             + "    Captured from Nullock row #" + row.id + " (" + (row.host || "") + ")\n\n"
+             + "requests:\n"
+             + "  - raw:\n";
+    // Indent raw request under YAML literal block.
+    yaml += "    - |\n";
+    const reqText = raw || (r.method + " " + (row.url || "/") + " HTTP/1.1\r\nHost: " + (row.host || "") + "\r\n\r\n" + (r.body || ""));
+    for (const line of reqText.split(/\r?\n/)) yaml += "      " + line + "\n";
+    yaml += "\n    matchers:\n";
+    yaml += "      - type: status\n        status:\n          - 200\n";
+    return yaml;
+  }
+
+  if (kind === "burp-raw") {
+    // Just the on-the-wire bytes (with the Host header preserved). Paste
+    // into Burp's Repeater "Raw" tab; many other proxies accept it too.
+    let txt = (raw || "").trimEnd();
+    // Burp expects an empty line before body; if user is on a request
+    // that has no body, make sure we still end with one.
+    if (!txt.endsWith("\r\n\r\n") && !txt.endsWith("\n\n")) txt += "\r\n\r\n";
+    return txt;
+  }
+
+  return "(unknown format)";
 }
 
 // ============================== DIFF =================================

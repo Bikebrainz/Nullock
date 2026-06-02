@@ -196,6 +196,21 @@ void PortScanner::clear() {
     emit progressChanged();
 }
 
+bool PortScanner::setResults(const QString &host,
+                             const QList<PortResult> &results) {
+    if (m_running.loadAcquire() != 0) return false;
+    {
+        QMutexLocker lk(&m_mutex);
+        m_results = results;
+        m_host    = host;
+    }
+    m_done.storeRelease(results.size());
+    m_total.storeRelease(results.size());
+    emit resultsChanged();
+    emit progressChanged();
+    return true;
+}
+
 void PortScanner::run(const ScanRequest req) {
     // Bound parallelism via a semaphore + one transient worker thread
     // per probe. QTcpSocket can't be moved between threads while a

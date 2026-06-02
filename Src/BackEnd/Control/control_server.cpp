@@ -23,6 +23,8 @@
 #include <QRandomGenerator>
 #include <QFileInfo>
 #include <QHash>
+#include <QMap>
+#include <QSet>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -31,6 +33,7 @@
 #include <QPair>
 #include <QStringList>
 #include <QTcpServer>
+#include <QXmlStreamReader>
 #include <QTcpSocket>
 #include <QUrl>
 #include <QUrlQuery>
@@ -1277,6 +1280,190 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
 
+    // ---- tool-integration exports ------------------------------------
+    // GET /api/export/nmap-xml  -> port scan results as nmap-compatible XML
+    if (path == "/api/export/nmap-xml") {
+        if (!m_wiring.portScanner)
+            return httpResponse(404, "text/plain", "no port scanner");
+        QByteArray xml;
+        xml += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+        xml += "<!DOCTYPE nmaprun>\n";
+        xml += "<?xml-stylesheet href=\"https://nmap.org/svn/docs/nmap.xsl\" type=\"text/xsl\"?>\n";
+        xml += "<nmaprun scanner=\"nullock\" args=\"nullock --port-scan\" "
+               "start=\"" + QByteArray::number(QDateTime::currentSecsSinceEpoch()) + "\" "
+               "version=\"" + "1.0" + "\" "
+               "xmloutputversion=\"1.05\">\n";
+        // Group results by host so the XML is nmap-shaped.
+        QMap<QString, QList<Nullock::Core::PortResult>> byHost;
+        for (const auto &r : m_wiring.portScanner->results())
+            byHost[r.host].append(r);
+        auto xmlEscape = [](const QString &s) {
+            // Replace control chars first so they don't survive as raw
+            // bytes inside an attribute -- many XML parsers reject CR/LF
+            // in attribute values (or silently mangle them).
+            QString cleaned;
+            cleaned.reserve(s.size());
+            for (QChar c : s) {
+                const ushort u = c.unicode();
+                if (u == '\n' || u == '\r' || u == '\t') cleaned.append(' ');
+                else if (u < 0x20) cleaned.append(' ');
+                else cleaned.append(c);
+            }
+            return cleaned.toUtf8()
+                    .replace('&', "&amp;").replace('<', "&lt;")
+                    .replace('>', "&gt;").replace('"', "&quot;")
+                    .replace('\'', "&apos;");
+        };
+        for (auto it = byHost.constBegin(); it != byHost.constEnd(); ++it) {
+            const QString host = it.key();
+            xml += "  <host>\n";
+            xml += "    <address addr=\"" + xmlEscape(host) + "\" addrtype=\"ipv4\"/>\n";
+            // <hostnames> if the input was a name not an IP -- best effort.
+            if (!host.isEmpty() && !host[0].isDigit())
+                xml += "    <hostnames><hostname name=\"" + xmlEscape(host)
+                     + "\" type=\"user\"/></hostnames>\n";
+            xml += "    <ports>\n";
+            for (const auto &r : it.value()) {
+                xml += "      <port protocol=\"tcp\" portid=\""
+                     + QByteArray::number(r.port) + "\">\n";
+                xml += "        <state state=\"" + xmlEscape(r.status)
+                     + "\" reason=\"" + (r.status == "open" ? "syn-ack"
+                                       : r.status == "closed" ? "conn-refused"
+                                       : "no-response") + "\"/>\n";
+                if (!r.service.isEmpty()) {
+                    xml += "        <service name=\"" + xmlEscape(r.service) + "\"";
+                    if (!r.banner.isEmpty())
+                        xml += " banner=\"" + xmlEscape(r.banner.left(80)) + "\"";
+                    xml += "/>\n";
+                }
+                xml += "      </port>\n";
+            }
+            xml += "    </ports>\n";
+            xml += "  </host>\n";
+        }
+        xml += "  <runstats>\n";
+        xml += "    <finished time=\"" + QByteArray::number(QDateTime::currentSecsSinceEpoch())
+             + "\" elapsed=\"0\"/>\n";
+        xml += "    <hosts up=\"" + QByteArray::number(byHost.size())
+             + "\" down=\"0\" total=\"" + QByteArray::number(byHost.size()) + "\"/>\n";
+        xml += "  </runstats>\n";
+        xml += "</nmaprun>\n";
+        return httpResponse(200, "application/xml; charset=utf-8", xml);
+    }
+
+    // GET /api/export/sarif  -> findings as SARIF v2 (CI-friendly)
+    if (path == "/api/export/sarif") {
+        if (!m_wiring.scanner)
+            return httpResponse(404, "application/json", "{}");
+        QJsonObject root;
+        root["$schema"] = "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json";
+        root["version"] = "2.1.0";
+        QJsonObject driver;
+        driver["name"]   = "Nullock";
+        driver["informationUri"] = "https://github.com/Gratonic/Nullock";
+        QJsonArray rules;
+        // Collect unique kinds to populate the rules array.
+        QSet<QString> seenKinds;
+        for (const auto &f : m_wiring.scanner->findings(1000)) {
+            if (seenKinds.contains(f.kind)) continue;
+            seenKinds.insert(f.kind);
+            QJsonObject rule;
+            rule["id"] = f.kind;
+            QJsonObject shortDesc;
+            shortDesc["text"] = f.kind;
+            rule["shortDescription"] = shortDesc;
+            rules.append(rule);
+        }
+        driver["rules"] = rules;
+        QJsonObject tool;
+        tool["driver"] = driver;
+        QJsonObject run;
+        run["tool"] = tool;
+        QJsonArray results;
+        for (const auto &f : m_wiring.scanner->findings(1000)) {
+            QJsonObject result;
+            result["ruleId"] = f.kind;
+            QString sarifLevel = "warning";
+            if (f.severity == "high")   sarifLevel = "error";
+            if (f.severity == "low")    sarifLevel = "note";
+            if (f.severity == "info")   sarifLevel = "note";
+            result["level"]  = sarifLevel;
+            QJsonObject msg;
+            msg["text"] = f.summary + (f.evidence.isEmpty() ? QString() : "\n\n" + f.evidence);
+            result["message"] = msg;
+            QJsonArray locations;
+            QJsonObject location;
+            QJsonObject physical;
+            QJsonObject artifact;
+            artifact["uri"] = f.url;
+            physical["artifactLocation"] = artifact;
+            location["physicalLocation"] = physical;
+            locations.append(location);
+            result["locations"] = locations;
+            results.append(result);
+        }
+        run["results"] = results;
+        QJsonArray runs; runs.append(run);
+        root["runs"] = runs;
+        return httpResponse(200, "application/sarif+json; charset=utf-8",
+                            QJsonDocument(root).toJson(QJsonDocument::Indented));
+    }
+
+    // GET /api/export/postman  -> current history as a Postman collection
+    if (path == "/api/export/postman") {
+        if (!m_wiring.history)
+            return httpResponse(404, "application/json", "{}");
+        QJsonObject info;
+        info["name"] = m_wiring.projectStore
+                          ? "Nullock · " + m_wiring.projectStore->metadata().name
+                          : QString("Nullock export");
+        info["schema"] = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
+        QJsonArray items;
+        const int n = m_wiring.history->rowCount();
+        for (int i = 0; i < n; ++i) {
+            const auto *req = m_wiring.history->requestAt(i);
+            const auto *resp = m_wiring.history->responseAt(i);
+            if (!req) continue;
+            if (req->method.startsWith("WS")) continue;
+            QJsonObject item;
+            item["name"] = req->method + " " + req->path;
+            QJsonObject requestObj;
+            requestObj["method"] = req->method;
+            QJsonArray hdrs;
+            for (const auto &h : req->headers) {
+                const QString k = h.first;
+                const QString lc = k.toLower();
+                if (lc == "host" || lc == "content-length" || lc == "proxy-connection") continue;
+                QJsonObject hh;
+                hh["key"] = k;
+                hh["value"] = h.second;
+                hdrs.append(hh);
+            }
+            requestObj["header"] = hdrs;
+            if (!req->body.isEmpty()) {
+                QJsonObject body;
+                body["mode"] = "raw";
+                body["raw"]  = QString::fromUtf8(req->body);
+                requestObj["body"] = body;
+            }
+            const bool tls = resp ? resp->wasTls : false;
+            const QString proto = tls ? "https" : "http";
+            const int defaultPort = tls ? 443 : 80;
+            const QString port = (req->port == defaultPort)
+                                 ? QString() : ":" + QString::number(req->port);
+            QJsonObject url;
+            url["raw"] = proto + "://" + req->host + port + req->path;
+            requestObj["url"] = url;
+            item["request"] = requestObj;
+            items.append(item);
+        }
+        QJsonObject root;
+        root["info"] = info;
+        root["item"] = items;
+        return httpResponse(200, "application/json; charset=utf-8",
+                            QJsonDocument(root).toJson(QJsonDocument::Indented));
+    }
+
     // POST /api/probe/all  { throttleMs?: 200, limit?: 50 }
     // Walks every history row that has query-string params and fires the
     // same active probe pipeline. Defaults to 200ms throttle so a casual
@@ -1436,6 +1623,60 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/portscan/clear") {
         if (m_wiring.portScanner) m_wiring.portScanner->clear();
         return okJson();
+    }
+    // POST /api/portscan/import-nmap  body: raw nmap XML
+    // Pulls <host>/<ports>/<port>/<state>/<service> into PortResult.
+    if (path == "/api/portscan/import-nmap") {
+        if (!m_wiring.portScanner)
+            return okJson({{ "ok", false }, { "error", "no port scanner" }});
+        QXmlStreamReader xml(body);
+        QString currentHost;
+        QString currentAddr;
+        QList<Nullock::Core::PortResult> imported;
+        while (!xml.atEnd()) {
+            xml.readNext();
+            if (xml.isStartElement()) {
+                const QString name = xml.name().toString();
+                if (name == "host") {
+                    currentHost.clear();
+                    currentAddr.clear();
+                } else if (name == "address") {
+                    currentAddr = xml.attributes().value("addr").toString();
+                } else if (name == "hostname") {
+                    currentHost = xml.attributes().value("name").toString();
+                } else if (name == "port") {
+                    Nullock::Core::PortResult r;
+                    r.host = !currentHost.isEmpty() ? currentHost : currentAddr;
+                    r.port = static_cast<quint16>(xml.attributes().value("portid").toInt());
+                    while (!xml.atEnd()) {
+                        xml.readNext();
+                        if (xml.isStartElement() && xml.name() == QLatin1String("state")) {
+                            r.status = xml.attributes().value("state").toString();
+                        } else if (xml.isStartElement() && xml.name() == QLatin1String("service")) {
+                            r.service = xml.attributes().value("name").toString();
+                            r.banner  = xml.attributes().value("banner").toString();
+                        } else if (xml.isEndElement() && xml.name() == QLatin1String("port")) {
+                            break;
+                        }
+                    }
+                    if (r.port > 0) imported.append(r);
+                }
+            }
+        }
+        if (xml.hasError())
+            return okJson({{ "ok", false }, { "error", xml.errorString() } });
+        // Group display host: just the first one found, or "N hosts"
+        // when imported from a multi-host nmap run.
+        QSet<QString> distinctHosts;
+        for (const auto &r : imported) distinctHosts.insert(r.host);
+        const QString displayHost = distinctHosts.size() == 1
+            ? *distinctHosts.cbegin()
+            : QString("%1 hosts").arg(distinctHosts.size());
+        const bool ok = m_wiring.portScanner->setResults(displayHost, imported);
+        return okJson({
+            { "ok",       ok },
+            { "imported", imported.size() },
+        });
     }
 
     // ---- project management ------------------------------------------

@@ -401,6 +401,12 @@ function SettingsTab() {
         <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="(none)" />
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
           <Btn label="Export HAR" onClick={() => NL.actions.exportHar()} />
+          <Btn label="Export Postman" onClick={() => {
+            const a = document.createElement("a");
+            a.href = "/api/export/postman";
+            a.download = "nullock-collection.postman.json";
+            document.body.appendChild(a); a.click(); a.remove();
+          }} />
           <label style={{
             display: "inline-flex", alignItems: "center", gap: 4,
             background: "transparent", color: "var(--accent)",
@@ -784,6 +790,22 @@ function IssuesTab({ dispatch }) {
         </span>
         <span style={{ flex: 1 }} />
         <button
+          onClick={() => {
+            const a = document.createElement("a");
+            a.href = "/api/export/sarif"; a.download = "nullock-findings.sarif.json";
+            document.body.appendChild(a); a.click(); a.remove();
+          }}
+          disabled={findings.length === 0}
+          style={{
+            background: "transparent",
+            color: findings.length ? "var(--accent)" : "var(--dim)",
+            border: "1px solid " + (findings.length ? "var(--accent)" : "var(--line)"),
+            padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)",
+            cursor: findings.length ? "pointer" : "not-allowed",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Export SARIF</button>
+        <button
           onClick={async () => {
             if (!confirm("Run active probe against every row with query params? (throttled at 200ms by default; takes seconds-to-minutes)"))
               return;
@@ -1037,6 +1059,11 @@ function ScansTab() {
           {!ps.running && <Btn label="Start scan" primary onClick={start} disabled={!host} />}
           {ps.running  && <Btn label="Stop" danger onClick={() => NL.actions.portscanStop()} />}
           <Btn label="Clear" onClick={() => NL.actions.portscanClear()} disabled={ps.running || !ps.results.length} />
+          <Btn label="Export nmap XML" onClick={() => {
+            const a = document.createElement("a");
+            a.href = "/api/export/nmap-xml"; a.download = "nullock-portscan.xml";
+            document.body.appendChild(a); a.click(); a.remove();
+          }} disabled={!ps.results.length} />
           <span style={{ flex: 1 }} />
           <span style={{ color: "var(--dim)", fontSize: "11px" }}>
             {ps.running ? "scanning… " : "ready · "}

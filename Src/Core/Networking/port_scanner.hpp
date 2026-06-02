@@ -59,6 +59,11 @@ public slots:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
 
+    // Push pre-built results (e.g. imported from an nmap XML file).
+    // Only callable when no scan is in progress so we don't race the
+    // worker threads' appenders.
+    bool setResults(const QString &host, const QList<PortResult> &results);
+
 signals:
     void runningChanged();
     void progressChanged();
