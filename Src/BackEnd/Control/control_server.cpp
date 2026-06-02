@@ -8,6 +8,7 @@
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
 #include "project_store.hpp"
+#include "recon_engine.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
@@ -158,6 +159,14 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.portScanner, &Nullock::Core::PortScanner::resultsChanged,
                 this, bump);
         connect(m_wiring.portScanner, &Nullock::Core::PortScanner::runningChanged,
+                this, bump);
+    }
+    if (m_wiring.recon) {
+        connect(m_wiring.recon, &Nullock::Core::ReconEngine::dnsRecordsChanged,
+                this, bump);
+        connect(m_wiring.recon, &Nullock::Core::ReconEngine::subdomainsChanged,
+                this, bump);
+        connect(m_wiring.recon, &Nullock::Core::ReconEngine::runningChanged,
                 this, bump);
     }
 }
@@ -452,6 +461,35 @@ QByteArray ControlServer::buildSnapshot() const {
         }
         ps["results"] = rows;
         root["portScan"] = ps;
+    }
+
+    // recon engine: DNS records + discovered subdomains
+    if (m_wiring.recon) {
+        QJsonObject rec;
+        rec["target"]  = m_wiring.recon->target();
+        rec["running"] = m_wiring.recon->running();
+        rec["error"]   = m_wiring.recon->lastError();
+        QJsonArray dns;
+        for (const auto &r : m_wiring.recon->dnsRecords()) {
+            QJsonObject d;
+            d["type"]     = r.type;
+            d["value"]    = r.value;
+            d["priority"] = r.priority;
+            dns.append(d);
+        }
+        rec["dns"] = dns;
+        QJsonArray subs;
+        for (const auto &s : m_wiring.recon->subdomains()) {
+            QJsonObject so;
+            so["name"]   = s.name;
+            so["source"] = s.source;
+            QJsonArray ips;
+            for (const QString &ip : s.resolvedIps) ips.append(ip);
+            so["ips"]    = ips;
+            subs.append(so);
+        }
+        rec["subdomains"] = subs;
+        root["recon"] = rec;
     }
 
     // history rows (match the mock shape so React renders without changes)
@@ -1622,6 +1660,38 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
     if (path == "/api/portscan/clear") {
         if (m_wiring.portScanner) m_wiring.portScanner->clear();
+        return okJson();
+    }
+
+    // ---- recon engine ------------------------------------------------
+    if (path == "/api/recon/dns") {
+        if (m_wiring.recon)
+            m_wiring.recon->runDns(bodyJson.value("domain").toString());
+        return okJson();
+    }
+    if (path == "/api/recon/crt") {
+        if (m_wiring.recon)
+            m_wiring.recon->runCertTransparency(bodyJson.value("domain").toString());
+        return okJson();
+    }
+    if (path == "/api/recon/wordlist") {
+        if (m_wiring.recon) {
+            const QString domain = bodyJson.value("domain").toString();
+            QStringList words;
+            for (const QJsonValue &v : bodyJson.value("subdomains").toArray()) {
+                const QString s = v.toString().trimmed();
+                if (!s.isEmpty()) words.append(s);
+            }
+            m_wiring.recon->runSubdomainWordlist(domain, words);
+        }
+        return okJson();
+    }
+    if (path == "/api/recon/stop") {
+        if (m_wiring.recon) m_wiring.recon->stop();
+        return okJson();
+    }
+    if (path == "/api/recon/clear") {
+        if (m_wiring.recon) m_wiring.recon->clear();
         return okJson();
     }
     // POST /api/portscan/import-nmap  body: raw nmap XML

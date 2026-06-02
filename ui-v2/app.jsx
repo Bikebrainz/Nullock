@@ -6,6 +6,7 @@ const TABS = [
   { id: "rules",     label: "RULES" },
   { id: "issues",    label: "ISSUES" },
   { id: "scans",     label: "SCANS" },
+  { id: "recon",     label: "RECON" },
   { id: "stats",     label: "STATS" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
@@ -1131,6 +1132,226 @@ function ScansTab() {
   );
 }
 
+// Curated short subdomain wordlist for the wordlist subdomain enum.
+// Tier-1 candidates only -- the user can paste a bigger list if they
+// want to be thorough.
+const SUBDOMAIN_WORDLIST = [
+  "www","mail","webmail","smtp","pop","imap","ftp","sftp","ssh","vpn",
+  "remote","admin","administrator","portal","login","auth","sso","oauth",
+  "api","api-v1","api-v2","api-v3","graphql","rest","gateway","apigw",
+  "app","apps","beta","alpha","dev","development","staging","stage",
+  "test","testing","qa","preprod","sandbox","preview","demo",
+  "blog","forum","forums","wiki","docs","documentation","help","support",
+  "store","shop","payments","pay","checkout","billing","invoice",
+  "cdn","static","assets","media","img","images","files","download","downloads",
+  "git","gitlab","github","bitbucket","jenkins","ci","build",
+  "monitoring","grafana","kibana","prometheus","metrics","status",
+  "elastic","es","search","db","database","mysql","postgres","redis",
+  "cache","memcache","mongo","rabbitmq",
+  "internal","intranet","corp","corporate","hr","finance","accounting",
+  "secure","secured","old","new","beta2","mobile","m","wap","go",
+  "track","tracker","analytics","stats","logs","kibana","splunk",
+  "ns1","ns2","ns3","dns","dns1","dns2","mx","mx1","mx2",
+];
+
+// RECON tab. DNS lookups, cert-transparency subdomain enum, wordlist
+// subdomain enum -- the recon-for-web-testing flavor, not OSINT for
+// people. Pairs with the rest of the workflow: scope a domain here,
+// click a found subdomain to populate the proxy host filter.
+function ReconTab() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const rec = (window.NL && NL.recon) ? NL.recon
+            : { target: "", running: false, dns: [], subdomains: [], error: "" };
+  const [domain, setDomain] = React.useState("");
+  React.useEffect(() => { if (rec.target && !domain) setDomain(rec.target); }, [rec.target]);
+
+  const runAll = async () => {
+    const d = domain.trim();
+    if (!d) return;
+    await NL.actions.reconDns(d);
+    await NL.actions.reconCrt(d);
+    await NL.actions.reconWordlist(d, SUBDOMAIN_WORDLIST);
+  };
+
+  // Group DNS records by type for display.
+  const dnsByType = {};
+  for (const r of rec.dns) {
+    (dnsByType[r.type] = dnsByType[r.type] || []).push(r);
+  }
+  const dnsOrder = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"];
+
+  // Sort subdomains: resolved first, alphabetical within
+  const sortedSubs = [...rec.subdomains].sort((a, b) => {
+    const ar = (a.ips && a.ips.length) ? 1 : 0;
+    const br = (b.ips && b.ips.length) ? 1 : 0;
+    if (ar !== br) return br - ar;
+    return a.name.localeCompare(b.name);
+  });
+
+  const Btn = ({ label, onClick, primary, danger, disabled, title }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)" : primary ? "var(--bg)"
+             : danger ? "var(--err)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)"
+                              : danger ? "var(--err)" : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  const inp = {
+    background: "var(--bg-deep)", color: "var(--text)",
+    border: "1px solid var(--line)", padding: "4px 6px",
+    fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Recon</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          DNS · certificate transparency · wordlist subdomain enum
+        </span>
+      </div>
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 12, borderRadius: 4, display: "flex", gap: 8,
+        alignItems: "center", flexWrap: "wrap",
+      }}>
+        <input style={{ ...inp, flex: 1, minWidth: 200 }}
+               value={domain}
+               placeholder="example.com"
+               onChange={e => setDomain(e.target.value)}
+               onKeyDown={e => { if (e.key === "Enter") runAll(); }} />
+        <Btn label="Run all" primary onClick={runAll} disabled={!domain.trim()} />
+        <Btn label="DNS only"   onClick={() => domain && NL.actions.reconDns(domain.trim())} />
+        <Btn label="crt.sh"     onClick={() => domain && NL.actions.reconCrt(domain.trim())} />
+        <Btn label="Wordlist"   onClick={() => domain && NL.actions.reconWordlist(domain.trim(), SUBDOMAIN_WORDLIST)} />
+        <Btn label="Stop"  danger onClick={() => NL.actions.reconStop()}  disabled={!rec.running} />
+        <Btn label="Clear"        onClick={() => NL.actions.reconClear()} disabled={rec.running} />
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
+          {rec.running ? "running…" : "ready"}
+          {rec.error ? " · " + rec.error : ""}
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+                    flex: 1, minHeight: 0 }}>
+        {/* DNS RECORDS */}
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, display: "flex", flexDirection: "column", minHeight: 0,
+        }}>
+          <div style={{
+            padding: "6px 10px", borderBottom: "1px solid var(--line)",
+            fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+            letterSpacing: "0.06em", display: "flex",
+          }}>
+            <span style={{ flex: 1 }}>DNS records</span>
+            <span>{rec.dns.length}</span>
+          </div>
+          <div style={{ overflow: "auto", flex: 1, padding: 8 }}>
+            {rec.dns.length === 0 && (
+              <div style={{ color: "var(--dim)", fontSize: "12px", textAlign: "center", padding: 16 }}>
+                no records yet
+              </div>
+            )}
+            {dnsOrder.map(type => {
+              const rows = dnsByType[type] || [];
+              if (rows.length === 0) return null;
+              return (
+                <div key={type} style={{ marginBottom: 10 }}>
+                  <div style={{
+                    color: "var(--accent)", fontSize: "10.5px",
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    fontFamily: "var(--ff-mono)", paddingBottom: 4,
+                    borderBottom: "1px solid var(--line-soft)",
+                  }}>{type} ({rows.length})</div>
+                  {rows.map((r, i) => (
+                    <div key={i} style={{
+                      fontSize: "11.5px", fontFamily: "var(--ff-mono)",
+                      color: "var(--text)", padding: "3px 4px",
+                      display: "flex", gap: 8,
+                    }}>
+                      {type === "MX" && (
+                        <span style={{ color: "var(--dim)", minWidth: 32 }}>{r.priority}</span>
+                      )}
+                      <span style={{
+                        flex: 1, overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }} title={r.value}>{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* SUBDOMAINS */}
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, display: "flex", flexDirection: "column", minHeight: 0,
+        }}>
+          <div style={{
+            padding: "6px 10px", borderBottom: "1px solid var(--line)",
+            fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+            letterSpacing: "0.06em", display: "flex",
+          }}>
+            <span style={{ flex: 1 }}>Subdomains</span>
+            <span>{rec.subdomains.length}</span>
+          </div>
+          <div style={{ overflow: "auto", flex: 1 }}>
+            {rec.subdomains.length === 0 && (
+              <div style={{ color: "var(--dim)", fontSize: "12px", textAlign: "center", padding: 16 }}>
+                no subdomains discovered yet
+              </div>
+            )}
+            {sortedSubs.map((s, i) => {
+              const resolved = s.ips && s.ips.length;
+              return (
+                <div key={i} style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 60px 1fr",
+                  gap: 6, padding: "5px 10px", alignItems: "baseline",
+                  fontSize: "12px", fontFamily: "var(--ff-mono)",
+                  borderBottom: "1px solid var(--line-soft)",
+                  opacity: resolved ? 1 : 0.55,
+                }}>
+                  <span style={{ color: "var(--text)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={s.name}>{s.name}</span>
+                  <span style={{ color: s.source === "crt.sh" ? "#8ee5a0" : "var(--accent)",
+                                 fontSize: "10px" }}>{s.source}</span>
+                  <span style={{ color: "var(--text-2)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={(s.ips || []).join(", ")}>
+                    {resolved ? s.ips.join(", ") : "(historical)"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Wireshark "Statistics > Endpoints"-style aggregator. Walks the live
 // history rows and aggregates by host: request count, bytes in/out,
 // status-class breakdown, distinct paths, last-seen. No backend call --
@@ -1616,6 +1837,9 @@ function App() {
         )}
         {tab === "scans" && (
           <ScansTab />
+        )}
+        {tab === "recon" && (
+          <ReconTab />
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />

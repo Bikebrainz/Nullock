@@ -13,6 +13,7 @@
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
 #include "project_store.hpp"
+#include "recon_engine.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -627,6 +628,8 @@ int main(int argc, char *argv[]) {
     wiring.scanner      = &scanner;
     Nullock::Core::PortScanner portScanner;
     wiring.portScanner  = &portScanner;
+    Nullock::Core::ReconEngine recon;
+    wiring.recon        = &recon;
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd
     // bundle this into a Qt resource; not done yet.

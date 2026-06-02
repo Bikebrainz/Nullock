@@ -36,6 +36,7 @@
     NL.findings      = snap.findings      || [];
     NL.findingsCount = snap.findingsCount || 0;
     NL.portScan      = snap.portScan      || { host: "", running: false, done: 0, total: 0, results: [], error: "" };
+    NL.recon         = snap.recon         || { target: "", running: false, dns: [], subdomains: [], error: "" };
     NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
@@ -162,6 +163,11 @@
       // params. Throttle defaults to 200ms server-side; pass 0 to go fast.
       return post("/api/probe/all", { throttleMs, limit }).then(r => r.json());
     },
+    reconDns(domain)            { return post("/api/recon/dns",      { domain }); },
+    reconCrt(domain)            { return post("/api/recon/crt",      { domain }); },
+    reconWordlist(domain, subdomains) { return post("/api/recon/wordlist", { domain, subdomains }); },
+    reconStop()                 { return post("/api/recon/stop"); },
+    reconClear()                { return post("/api/recon/clear"); },
     probeRow(rowId) {
       // Light active scan: per-param canary injection + reflection check.
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })

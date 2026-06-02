@@ -25,6 +25,7 @@ class Intruder;
 class ExtensionsApi;
 class PassiveScanner;
 class PortScanner;
+class ReconEngine;
 }
 
 namespace Nullock::Control {
@@ -45,6 +46,7 @@ struct Wiring {
     Nullock::Core::ExtensionsApi       *extensions   = nullptr;
     Nullock::Core::PassiveScanner      *scanner      = nullptr;
     Nullock::Core::PortScanner         *portScanner  = nullptr;
+    Nullock::Core::ReconEngine         *recon        = nullptr;
     QString                              uiDir;       // path to ui-v2/
 };
 
