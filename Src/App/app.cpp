@@ -514,16 +514,75 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
 
 } // namespace
 
+// Parse a CLI flag with optional =VALUE. Returns the value (or empty
+// when the flag is present without one, or QString() when absent).
+static QString flagValue(int argc, char *argv[], const QString &flag) {
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a == flag) return i + 1 < argc ? QString::fromLocal8Bit(argv[i + 1]) : QStringLiteral("");
+        if (a.startsWith(flag + "=")) return a.mid(flag.size() + 1);
+    }
+    return {};
+}
+
+static bool hasFlag(int argc, char *argv[], const QString &flag) {
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a == flag || a.startsWith(flag + "=")) return true;
+    }
+    return false;
+}
+
 int main(int argc, char *argv[]) {
     QCoreApplication::setOrganizationName("Nullock");
     QCoreApplication::setApplicationName("Nullock");
-    // Basic style honors Rectangle backgrounds on TextField/TextArea/etc.
-    // Native (Windows) style refuses to be customized and floods stderr
-    // with "background customization not supported" warnings every launch.
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
-    QGuiApplication app(argc, argv);
 
-    const bool smokeTest = app.arguments().contains("--smoke-test");
+    // Headless mode: no QML window, no auto-browser-open. Just proxy +
+    // control server. Useful for CI / Docker / scripting -- and any
+    // workflow where the React UI gets driven from another machine.
+    const bool headless = hasFlag(argc, argv, "--headless");
+    // NDJSON event stream on stdout. Each line is a JSON object describing
+    // one event (response, finding, port scan result). tail-friendly,
+    // pipes cleanly into `jq` and `grep`.
+    const bool ndjsonOut = hasFlag(argc, argv, "--ndjson");
+    // --help / --version short circuits.
+    if (hasFlag(argc, argv, "--help") || hasFlag(argc, argv, "-h")) {
+        QTextStream(stdout)
+            << "Nullock -- web security toolkit\n"
+            << "\n"
+            << "Usage: NullockApp [flags]\n"
+            << "\n"
+            << "Flags:\n"
+            << "  --headless            Skip QML window + auto-browser-open\n"
+            << "  --ndjson              Emit per-event JSON lines on stdout\n"
+            << "  --proxy-port=N        Proxy listen port (default 8080)\n"
+            << "  --control-port=N      Control server port (default 17777)\n"
+            << "  --smoke-test          Run the self-test and exit\n"
+            << "  --help / -h           This message\n"
+            << "\n"
+            << "Control API: http://127.0.0.1:<control-port>/api/*\n"
+            << "Project dir: %APPDATA%/Nullock/Nullock/\n";
+        return 0;
+    }
+
+    if (!headless) {
+        // Basic style honors Rectangle backgrounds on TextField/TextArea.
+        // Native (Windows) style refuses customization and floods stderr.
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
+    // Pick the right application class. QCoreApplication is enough for
+    // headless mode (no event-loop-on-GUI-thread requirements); we save
+    // ~30ms of startup and avoid needing a display server (Docker).
+    QScopedPointer<QCoreApplication> app(
+        headless
+            ? new QCoreApplication(argc, argv)
+            : static_cast<QCoreApplication *>(new QGuiApplication(argc, argv)));
+
+    const bool smokeTest = app->arguments().contains("--smoke-test");
+    const quint16 wantedProxyPort = static_cast<quint16>(
+        flagValue(argc, argv, "--proxy-port").toUInt());
+    const quint16 wantedControlPort = static_cast<quint16>(
+        flagValue(argc, argv, "--control-port").toUInt());
 
     Nullock::Proxy::CertAuthority certAuthority;
     certAuthority.ensureCa();
@@ -592,7 +651,8 @@ int main(int argc, char *argv[]) {
         scanner.clear();
     });
 
-    proxy.start();
+    if (wantedProxyPort > 0) proxy.start(QHostAddress::LocalHost, wantedProxyPort);
+    else                     proxy.start();
 
     Nullock::Core::Repeater repeater(&model);
     Nullock::Core::Intruder intruder(&model);
@@ -637,11 +697,66 @@ int main(int argc, char *argv[]) {
     Nullock::Control::ControlServer controlServer(wiring);
     // 17777 by default; MinIO owns 9000/9001 on this box and that's a
     // common collision so we steer well clear by default.
-    if (controlServer.start(QHostAddress::LocalHost, 17777)) {
+    const quint16 ctlPort = wantedControlPort > 0 ? wantedControlPort : 17777;
+    if (controlServer.start(QHostAddress::LocalHost, ctlPort)) {
         const QString url = QString("http://127.0.0.1:%1/")
                                 .arg(controlServer.listeningPort());
         qInfo().noquote() << "Nullock UI:" << url;
-        QDesktopServices::openUrl(QUrl(url));
+        if (!headless) QDesktopServices::openUrl(QUrl(url));
+    }
+
+    // NDJSON event stream. Wired here so we get every event from now on
+    // regardless of headless/GUI mode. Each line is a self-contained JSON
+    // object; consumers can tail stdout and pipe into jq.
+    if (ndjsonOut) {
+        // response events
+        QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                         [&model](const Nullock::Proxy::HttpRequest &req,
+                                  const Nullock::Proxy::HttpResponse &resp) {
+            QJsonObject e;
+            e["event"]  = "response";
+            e["rowId"]  = model.rowCount();   // 1-based once addResponse ran
+            e["method"] = req.method;
+            e["host"]   = req.host;
+            e["port"]   = req.port;
+            e["path"]   = req.path;
+            e["status"] = resp.statusCode;
+            e["tls"]    = resp.wasTls;
+            e["bytes"]  = static_cast<qint64>(resp.body.size());
+            QTextStream(stdout) << QJsonDocument(e).toJson(QJsonDocument::Compact) << '\n';
+            QTextStream(stdout).flush();
+        });
+        // finding events
+        QObject::connect(&scanner, &Nullock::Core::PassiveScanner::findingsChanged,
+                         [&scanner]() {
+            const auto findings = scanner.findings(1);  // newest only
+            if (findings.isEmpty()) return;
+            const auto &f = findings.first();
+            QJsonObject e;
+            e["event"]    = "finding";
+            e["rowId"]    = f.rowId;
+            e["severity"] = f.severity;
+            e["kind"]     = f.kind;
+            e["summary"]  = f.summary;
+            e["host"]     = f.host;
+            e["url"]      = f.url;
+            QTextStream(stdout) << QJsonDocument(e).toJson(QJsonDocument::Compact) << '\n';
+            QTextStream(stdout).flush();
+        });
+        // Emit a "ready" event so a tailing process knows when the proxy
+        // is actually listening.
+        QJsonObject ready;
+        ready["event"]       = "ready";
+        ready["proxyPort"]   = proxy.listeningPort();
+        ready["controlPort"] = controlServer.listeningPort();
+        ready["project"]     = projectStore.metadata().name;
+        QTextStream(stdout) << QJsonDocument(ready).toJson(QJsonDocument::Compact) << '\n';
+        QTextStream(stdout).flush();
+    }
+
+    if (headless) {
+        // Skip the QML window entirely. Event loop runs via QCoreApplication.
+        return app->exec();
     }
 
     QQmlApplicationEngine engine;
@@ -662,5 +777,5 @@ int main(int argc, char *argv[]) {
     engine.load(url);
     if (engine.rootObjects().isEmpty()) return -1;
 
-    return app.exec();
+    return app->exec();
 }
