@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+# nullock -- thin CLI over the Nullock control-server REST API.
+#
+# Targets a running Nullock instance (default 127.0.0.1:17777). Doesn't
+# spawn the app for you -- launch separately, ideally with --headless
+# --ndjson if you want to tail events too:
+#
+#     NullockApp --headless --ndjson &
+#     nullock status
+#
+# Override the API URL with $NULLOCK_API. Override jq path with $JQ.
+
+set -euo pipefail
+
+API="${NULLOCK_API:-http://127.0.0.1:17777}"
+JQ="${JQ:-jq}"
+ORIGIN_HEADER="-H Origin: $API"   # satisfy the CSRF guard from this script
+
+# ---- helpers -----------------------------------------------------------
+die()  { echo "nullock: $*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# POST <path> [<json-body>]
+post() {
+    local path=$1; shift || true
+    local body=${1:-'{}'}
+    curl -sS --max-time 30 \
+         -H "Content-Type: application/json" \
+         -H "Origin: $API" \
+         -X POST -d "$body" \
+         "$API$path"
+}
+
+# GET <path>
+get() {
+    curl -sS --max-time 30 "$API$path"
+}
+
+# Pretty-print if jq is around, raw otherwise.
+pp() {
+    if have "$JQ"; then "$JQ" "${1:-.}" ; else cat ; fi
+}
+
+# ---- subcommands -------------------------------------------------------
+
+cmd_status() {
+    curl -sS --max-time 5 "$API/api/snapshot" | pp '{
+        proxy:    .bootInfo.port,
+        proxyOn:  .bootInfo.proxyOn,
+        control:  .bootInfo.controlPort,
+        project:  .bootInfo.project,
+        rows:     (.rows | length),
+        findings: .findingsCount,
+        rules:    (.rules | length),
+        rulesHit: .rulesHit
+    }'
+}
+
+cmd_scan() {
+    # nullock scan <host-or-cidr-or-comma-list> [preset]
+    [[ -n ${1-} ]] || die "usage: nullock scan <host|cidr|a,b,c> [discovery|top100|web|full1024]"
+    local target=$1
+    local preset=${2:-top100}
+    local field='host'
+    case $target in
+        */*)  field='cidr'  ;;
+        *,*)  field='hosts' ; target="[\"${target//,/\",\"}\"]" ; target_quoted=$target ;;
+    esac
+    local body
+    if [[ $field == hosts ]]; then
+        body="{\"hosts\":$target,\"preset\":\"$preset\",\"timeoutMs\":1000}"
+    else
+        body="{\"$field\":\"$target\",\"preset\":\"$preset\",\"timeoutMs\":1000}"
+    fi
+    post /api/portscan/start "$body" > /dev/null
+    # Poll until done.
+    while :; do
+        local s
+        s=$(curl -sS --max-time 5 "$API/api/snapshot")
+        local running done_count total
+        running=$(echo "$s" | "$JQ" -r '.portScan.running')
+        done_count=$(echo "$s" | "$JQ" -r '.portScan.done')
+        total=$(echo "$s" | "$JQ" -r '.portScan.total')
+        echo "  $done_count/$total $( [[ $running == true ]] && echo running || echo done )" >&2
+        [[ $running == false ]] && break
+        sleep 1
+    done
+    curl -sS --max-time 5 "$API/api/snapshot" | "$JQ" '[
+        .portScan.results[] | select(.status=="open") |
+        { host, port, service, banner: (.banner // "" | .[0:80]) }
+    ]'
+}
+
+cmd_recon() {
+    [[ -n ${1-} ]] || die "usage: nullock recon <domain>"
+    local d=$1
+    post /api/recon/dns      "{\"domain\":\"$d\"}" > /dev/null
+    post /api/recon/wordlist "{\"domain\":\"$d\",\"subdomains\":[\"www\",\"mail\",\"api\",\"admin\",\"dev\",\"staging\",\"vpn\",\"portal\",\"login\",\"git\",\"docs\",\"app\",\"ns1\",\"ns2\",\"mx\"]}" > /dev/null
+    # Wait a few seconds for async lookups.
+    sleep 4
+    curl -sS --max-time 5 "$API/api/snapshot" | "$JQ" '{
+        target: .recon.target,
+        dns: [.recon.dns[] | {type, value, priority}],
+        subdomains: [.recon.subdomains[] | {name, source, ips}]
+    }'
+}
+
+cmd_probe_all() {
+    local throttle=${1:-200}
+    local limit=${2:-50}
+    post /api/probe/all "{\"throttleMs\":$throttle,\"limit\":$limit}" | pp
+}
+
+cmd_findings() {
+    local sev=${1:-}
+    if [[ -n $sev ]]; then
+        curl -sS --max-time 5 "$API/api/snapshot" \
+            | "$JQ" "[.findings[] | select(.severity==\"$sev\") | {severity, kind, rowId, summary, url}]"
+    else
+        curl -sS --max-time 5 "$API/api/snapshot" \
+            | "$JQ" '[.findings[] | {severity, kind, rowId, summary, url}]'
+    fi
+}
+
+cmd_history() {
+    # nullock history [n]
+    local n=${1:-20}
+    curl -sS --max-time 5 "$API/api/snapshot" \
+        | "$JQ" "[.rows[-$n:] | .[] | {id, method, host, path, status, size}]"
+}
+
+cmd_history_show() {
+    [[ -n ${1-} ]] || die "usage: nullock history-show <row-id>"
+    echo "--- request ---"
+    curl -sS --max-time 5 "$API/api/history/$1/request"
+    echo
+    echo "--- response ---"
+    curl -sS --max-time 5 "$API/api/history/$1/response"
+}
+
+cmd_replay() {
+    [[ -n ${1-} ]] || die "usage: nullock replay <row-id>"
+    post "/api/history/$1/replay" '{}' | pp
+}
+
+cmd_export() {
+    case ${1:-} in
+        nmap)      curl -sS "$API/api/export/nmap-xml" ;;
+        sarif)     curl -sS "$API/api/export/sarif" ;;
+        postman)   curl -sS "$API/api/export/postman" ;;
+        har)       post /api/har/export | pp ;;
+        *) die "usage: nullock export {nmap|sarif|postman|har}" ;;
+    esac
+}
+
+cmd_rule() {
+    # nullock rule add <name> <section> <find> <replace>
+    case ${1:-} in
+        add)
+            [[ $# -ge 5 ]] || die "usage: nullock rule add <name> <section:0-5> <find> <replace>"
+            post /api/rules/add "{\"enabled\":true,\"name\":\"$2\",\"section\":$3,\"find\":\"$4\",\"replace\":\"$5\"}" | pp
+            ;;
+        list)
+            curl -sS --max-time 5 "$API/api/snapshot" \
+                | "$JQ" '[.rules[] | {enabled, name, section, find, replace}]'
+            ;;
+        clear)
+            # No clear endpoint; remove until empty.
+            while :; do
+                local count
+                count=$(curl -sS --max-time 5 "$API/api/snapshot" | "$JQ" '.rules | length')
+                [[ $count == 0 ]] && break
+                post /api/rules/remove '{"index":0}' >/dev/null
+            done
+            echo "cleared"
+            ;;
+        *) die "usage: nullock rule {add|list|clear} [args...]" ;;
+    esac
+}
+
+cmd_intercept() {
+    case ${1:-} in
+        on|toggle) post /api/intercept/toggle | pp ;;
+        forward)   post /api/intercept/forwardAll | pp ;;
+        drop)      post /api/intercept/drop | pp ;;
+        queue)
+            curl -sS --max-time 5 "$API/api/snapshot" \
+                | "$JQ" '{ enabled: .interceptEnabled, queue: (.intercepted | length) }'
+            ;;
+        *) die "usage: nullock intercept {toggle|forward|drop|queue}" ;;
+    esac
+}
+
+cmd_project() {
+    case ${1:-} in
+        list)
+            curl -sS --max-time 5 "$API/api/project/list" | pp
+            ;;
+        open)
+            [[ -n ${2-} ]] || die "usage: nullock project open <name>"
+            post /api/project/open "{\"name\":\"$2\"}" | pp
+            ;;
+        create)
+            [[ -n ${2-} ]] || die "usage: nullock project create <name>"
+            post /api/project/create "{\"name\":\"$2\"}" | pp
+            ;;
+        clear-history)
+            post /api/clear-history | pp
+            ;;
+        *) die "usage: nullock project {list|open|create|clear-history} [name]" ;;
+    esac
+}
+
+cmd_help() {
+    cat <<EOF
+nullock -- CLI for a running Nullock instance
+
+Targets \$NULLOCK_API (default $API).
+Requires curl + jq.
+
+Status / inspection:
+  nullock status                 quick summary (proxy / project / counts)
+  nullock history [N]            last N captured rows (default 20)
+  nullock history-show <id>      raw request + response for row <id>
+  nullock findings [severity]    findings list (filter: high|medium|low|info)
+
+Scanning:
+  nullock scan <target> [preset] target = host / CIDR (1.2.3.0/24) / a,b,c
+                                 preset = discovery|top100|web|full1024
+                                 (default top100)
+  nullock recon <domain>         DNS + small wordlist subdomain enum
+  nullock probe-all [throttleMs] active probe across every row with params
+  nullock replay <row-id>        re-fire row through proxy + mutations
+
+Mutation:
+  nullock rule add <name> <section> <find> <replace>
+                                 section: 0=URL 1=req-header 2=req-body
+                                          3=resp-header 4=resp-body 5=resp-status
+  nullock rule list
+  nullock rule clear
+
+Intercept:
+  nullock intercept toggle|forward|drop|queue
+
+Project:
+  nullock project list
+  nullock project open <name>
+  nullock project create <name>
+  nullock project clear-history
+
+Export:
+  nullock export nmap | sarif | postman | har
+
+EOF
+}
+
+# ---- dispatch ----------------------------------------------------------
+have curl || die "curl is required"
+# jq is required for most subcommands; warn but don't bail.
+if ! have "$JQ"; then
+    echo "nullock: warning: jq not found -- output will be raw JSON" >&2
+fi
+
+case ${1:-help} in
+    status)        shift; cmd_status "$@"        ;;
+    scan)          shift; cmd_scan "$@"          ;;
+    recon)         shift; cmd_recon "$@"         ;;
+    probe-all)     shift; cmd_probe_all "$@"     ;;
+    findings)      shift; cmd_findings "$@"      ;;
+    history)       shift; cmd_history "$@"       ;;
+    history-show)  shift; cmd_history_show "$@"  ;;
+    replay)        shift; cmd_replay "$@"        ;;
+    rule)          shift; cmd_rule "$@"          ;;
+    intercept)     shift; cmd_intercept "$@"     ;;
+    project)       shift; cmd_project "$@"       ;;
+    export)        shift; cmd_export "$@"        ;;
+    help|-h|--help) cmd_help ;;
+    *) die "unknown subcommand: $1. Try 'nullock help'." ;;
+esac

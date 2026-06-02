@@ -203,11 +203,56 @@ Plus a few hardening notes from the audit logs:
 | Control server | ✓ | HTTP/1.1 on 127.0.0.1:17777, static UI + `/api/*` JSON, snapshot polling with `seq` 304 short-circuit, CSRF Origin guard |
 | Smoke test | ✓ | 14 cases covering proxy + intercept + repeater + intruder + HAR + h2 + WebSocket + extensions + rules + scanner + multi-tab + project switch |
 
+## Headless / CLI / scripting
+
+Nullock runs equally well as a GUI app and as a headless service. Same binary, just different flags:
+
+```
+NullockApp --headless --ndjson
+```
+
+- `--headless` skips the QML window and the browser auto-open; proxy + control server come up exactly as in GUI mode. Uses `QCoreApplication` so it works in Docker containers without a display.
+- `--ndjson` emits per-event JSON lines on stdout, flushed immediately. Each line is `{event, ...}` — `ready` once at boot, `response` for every captured round-trip (`rowId`, `method`, `host`, `path`, `status`, `tls`, `bytes`), `finding` for every passive-scanner hit (`severity`, `kind`, `summary`, `url`). Pipes cleanly into `jq`, `grep`, anything.
+- `--proxy-port=N` / `--control-port=N` — explicit port overrides; useful when running multiple instances on the same box.
+- `--smoke-test` — self-test, exit 0/1.
+- `--help` — usage page.
+
+The control server's REST API is the canonical programmable interface — anything the React UI does, a shell script or Python client can do.
+
+A thin CLI lives at `bin/nullock` (single bash script, wraps `curl`+`jq`). Add it to your PATH and:
+
+```bash
+nullock status                          # quick summary
+nullock scan 192.168.1.0/24 discovery   # CIDR sweep
+nullock recon example.com               # DNS + wordlist subdomain enum
+nullock probe-all                       # active probe every captured row with query params
+nullock findings high                   # list high-severity findings
+nullock export sarif > findings.sarif   # ship to CI
+nullock rule add ua-rewrite 1 '^User-Agent: .*$' 'User-Agent: Audit'
+```
+
+Or hit the raw API directly:
+
+```bash
+# fire a port scan and dump as nmap XML
+curl -X POST -H 'Content-Type: application/json' \
+     -d '{"host":"1.2.3.4","preset":"top100"}' \
+     http://127.0.0.1:17777/api/portscan/start
+
+# wait, then export
+curl http://127.0.0.1:17777/api/export/nmap-xml > scan.xml
+
+# probe every captured row that has query params
+curl -X POST -d '{"throttleMs":200}' \
+     http://127.0.0.1:17777/api/probe/all
+
+# export findings as SARIF for CI
+curl http://127.0.0.1:17777/api/export/sarif > findings.sarif
+```
+
 ## Roadmap
 
-- [ ] `--headless` flag (skip QML window + auto-browser-open, just run proxy + control server — for CI / Docker / scripting)
-- [ ] NDJSON stdout event stream in headless mode (tail-friendly, pipes into `jq`)
-- [ ] `nullock` CLI binary or shell wrapper around the REST API
+- [ ] `nullock` CLI binary or shell wrapper around the REST API (the API is already complete; this is just ergonomics)
 - [ ] Python client library (separate repo, `pip install pynullock`)
 - [ ] HTTP/2 multiplexing (currently single-stream per CONNECT)
 - [ ] Server-side h2 to the browser (we only speak h2 upstream)
