@@ -556,6 +556,7 @@ int main(int argc, char *argv[]) {
             << "Flags:\n"
             << "  --headless            Skip QML window + auto-browser-open\n"
             << "  --ndjson              Emit per-event JSON lines on stdout\n"
+            << "  --ndjson-include-query  Include URL query strings in --ndjson events (off by default; query strings can leak ?token=... to log files)\n"
             << "  --proxy-port=N        Proxy listen port (default 8080)\n"
             << "  --control-port=N      Control server port (default 17777)\n"
             << "  --smoke-test          Run the self-test and exit\n"
@@ -668,6 +669,14 @@ int main(int argc, char *argv[]) {
     proxy.setSessionManager(&sessions);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &sessions, &Nullock::Core::SessionManager::onResponseReceived);
+    // Engagement isolation: when the user switches projects, drop all
+    // captured sessions. Otherwise auto-inject would carry client-A's
+    // login cookies into client-B's traffic the moment they happened
+    // to hit a host they'd seen on the previous engagement (OAuth
+    // providers, CDN endpoints, etc.). Sessions are in-memory only --
+    // there is no persistence we have to clear from disk.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &sessions, &Nullock::Core::SessionManager::clearAll);
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run
@@ -718,17 +727,32 @@ int main(int argc, char *argv[]) {
     // regardless of headless/GUI mode. Each line is a self-contained JSON
     // object; consumers can tail stdout and pipe into jq.
     if (ndjsonOut) {
+        // Captures of paths that carry a query string also carry whatever
+        // ?token=ABC123 / ?api_key=... / ?session=... the URL had. A
+        // tester piping --ndjson into a log file (or a chat window for
+        // debugging) ends up exfiltrating those tokens. By default we
+        // strip query strings from the event stream's path and url
+        // fields. The full URL is still available via /api/snapshot for
+        // anyone with same-origin access. Opt back in if you really
+        // want the raw query.
+        const bool includeQuery = hasFlag(argc, argv, "--ndjson-include-query");
+
         // response events
         QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
-                         [&model](const Nullock::Proxy::HttpRequest &req,
-                                  const Nullock::Proxy::HttpResponse &resp) {
+                         [&model, includeQuery](const Nullock::Proxy::HttpRequest &req,
+                                                const Nullock::Proxy::HttpResponse &resp) {
+            QString path = req.path;
+            if (!includeQuery) {
+                const int q = path.indexOf('?');
+                if (q >= 0) path = path.left(q);
+            }
             QJsonObject e;
             e["event"]  = "response";
             e["rowId"]  = model.rowCount();   // 1-based once addResponse ran
             e["method"] = req.method;
             e["host"]   = req.host;
             e["port"]   = req.port;
-            e["path"]   = req.path;
+            e["path"]   = path;
             e["status"] = resp.statusCode;
             e["tls"]    = resp.wasTls;
             e["bytes"]  = static_cast<qint64>(resp.body.size());
@@ -737,10 +761,15 @@ int main(int argc, char *argv[]) {
         });
         // finding events
         QObject::connect(&scanner, &Nullock::Core::PassiveScanner::findingsChanged,
-                         [&scanner]() {
+                         [&scanner, includeQuery]() {
             const auto findings = scanner.findings(1);  // newest only
             if (findings.isEmpty()) return;
             const auto &f = findings.first();
+            QString url = f.url;
+            if (!includeQuery) {
+                const int q = url.indexOf('?');
+                if (q >= 0) url = url.left(q);
+            }
             QJsonObject e;
             e["event"]    = "finding";
             e["rowId"]    = f.rowId;
@@ -748,7 +777,7 @@ int main(int argc, char *argv[]) {
             e["kind"]     = f.kind;
             e["summary"]  = f.summary;
             e["host"]     = f.host;
-            e["url"]      = f.url;
+            e["url"]      = url;
             QTextStream(stdout) << QJsonDocument(e).toJson(QJsonDocument::Compact) << '\n';
             QTextStream(stdout).flush();
         });

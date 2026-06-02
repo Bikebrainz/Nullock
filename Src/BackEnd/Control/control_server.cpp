@@ -241,11 +241,12 @@ void ControlServer::handle(QTcpSocket *socket) {
     const QString target = QString::fromLatin1(parts[1]);
 
     // Read body if Content-Length set (for POSTs). While we're walking
-    // the headers, also capture Origin + the custom token so we can do
-    // a CSRF check before dispatch.
+    // the headers, also capture Origin + the custom token + Host so we
+    // can do a CSRF + DNS-rebinding check before dispatch.
     qint64 contentLength = 0;
     QString origin;
     QString nullockHdr;
+    QString hostHdr;
     for (const QByteArray &line : header.split('\n')) {
         QByteArray l = line; if (l.endsWith('\r')) l.chop(1);
         const int c = l.indexOf(':');
@@ -266,6 +267,36 @@ void ControlServer::handle(QTcpSocket *socket) {
             origin = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
         else if (key.compare("X-Nullock-UI", Qt::CaseInsensitive) == 0)
             nullockHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+        else if (key.compare("Host", Qt::CaseInsensitive) == 0)
+            hostHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+    }
+
+    // DNS-rebinding defence. The browser's same-origin policy is "scheme +
+    // host + port" -- a malicious page on evil.com whose DNS flips to
+    // resolve to 127.0.0.1 (low-TTL DNS rebinding) will still consider
+    // itself same-origin with the proxy, and SOP will let it read our
+    // responses. The Origin/X-Nullock-UI guard only covers writes; for
+    // reads we have to look at the Host header. A rebinded request still
+    // carries `Host: evil.com` because the browser uses the URL the page
+    // requested. Refuse anything whose Host isn't bound to us.
+    const quint16 myPort = this->listeningPort();
+    const QString portStr = QString::number(myPort);
+    static const QSet<QString> kAllowedHosts = {
+        "127.0.0.1:" + portStr,
+        "localhost:" + portStr,
+        "[::1]:" + portStr,
+        // Some clients omit the port when it's the default; we never
+        // listen on 80 by default, but allow plain hostnames just in case.
+        "127.0.0.1",
+        "localhost",
+        "[::1]",
+    };
+    if (!hostHdr.isEmpty() && !kAllowedHosts.contains(hostHdr.toLower())) {
+        socket->write(httpResponse(421, "text/plain",
+            "Misdirected Host (DNS rebinding defence)"));
+        socket->waitForBytesWritten(kReadTimeoutMs);
+        socket->disconnectFromHost();
+        return;
     }
 
     // Method validation: known HTTP verbs only. Closes the GET-to-mutating-
@@ -1372,7 +1403,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
     if (path == "/api/har/export") {
         QString out;
-        if (m_wiring.projectStore) out = m_wiring.projectStore->exportHar(QString());
+        if (m_wiring.projectStore) {
+            // Allow callers to override redaction with a body flag, but
+            // default-on so a user clicking "Export HAR" doesn't have to
+            // remember to opt into safety.
+            const bool wasRedact = m_wiring.projectStore->exportRedact();
+            if (bodyJson.contains("redact"))
+                m_wiring.projectStore->setExportRedact(bodyJson.value("redact").toBool(true));
+            out = m_wiring.projectStore->exportHar(QString());
+            m_wiring.projectStore->setExportRedact(wasRedact);
+        }
         return okJson({{ "path", out }});
     }
     if (path == "/api/har/import") {
@@ -1544,9 +1584,26 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // GET /api/export/postman  -> current history as a Postman collection
+    // ?raw=1 disables the sensitive-header redaction (default-on so a
+    // user sharing this with another human doesn't accidentally ship
+    // their session cookies).
     if (path == "/api/export/postman") {
         if (!m_wiring.history)
             return httpResponse(404, "application/json", "{}");
+        bool redact = true;
+        {
+            const QUrlQuery q(query);
+            if (q.queryItemValue("raw") == "1") redact = false;
+        }
+        // Mirror project_store.cpp::isSensitiveHeader -- same set, kept
+        // in sync deliberately so a single header policy covers all
+        // export paths.
+        static const QSet<QString> kSensitive = {
+            "authorization", "proxy-authorization", "cookie", "set-cookie",
+            "x-api-key", "x-auth-token", "x-csrf-token", "x-xsrf-token",
+            "x-session-id", "x-amz-security-token",
+            "x-goog-iam-authorization-token",
+        };
         QJsonObject info;
         info["name"] = m_wiring.projectStore
                           ? "Nullock · " + m_wiring.projectStore->metadata().name
@@ -1570,7 +1627,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 if (lc == "host" || lc == "content-length" || lc == "proxy-connection") continue;
                 QJsonObject hh;
                 hh["key"] = k;
-                hh["value"] = h.second;
+                if (redact && kSensitive.contains(lc)) {
+                    hh["value"] = QString("<redacted: %1 chars>").arg(h.second.size());
+                } else {
+                    hh["value"] = h.second;
+                }
                 hdrs.append(hh);
             }
             requestObj["header"] = hdrs;
