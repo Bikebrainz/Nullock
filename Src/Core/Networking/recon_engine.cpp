@@ -175,6 +175,25 @@ void ReconEngine::runCertTransparency(const QString &domain) {
     m_active.fetchAndAddOrdered(1);
     if (wasIdle) emit runningChanged();
 
+    // Validate the domain before composing the HTTP request. crt.sh is
+    // hit at TLS so URL-decoded request smuggling isn't directly
+    // exploitable across the wire, but a malicious caller could still
+    // inject `\r\n` and confuse a downstream HTTP parser (or our own
+    // HttpClient response handling). Cheap and safe to enforce here.
+    bool domainOk = !domain.isEmpty() && domain.size() <= 253;
+    if (domainOk) {
+        for (QChar c : domain) {
+            if (!c.isLetterOrNumber() && c != '.' && c != '-') {
+                domainOk = false; break;
+            }
+        }
+    }
+    if (!domainOk) {
+        QMutexLocker lk(&m_mutex);
+        m_lastError = "crt.sh: refusing malformed domain";
+        return;
+    }
+
     // crt.sh hosts a JSON endpoint that returns every cert mentioning the
     // given domain. Run on a worker thread because HttpClient blocks.
     (void)QtConcurrent::run([this, domain]() {
@@ -202,8 +221,12 @@ void ReconEngine::runCertTransparency(const QString &domain) {
             return;
         }
         // crt.sh sometimes returns NDJSON-ish output or pure JSON. Try
-        // parsing as JSON first.
-        const QJsonDocument doc = QJsonDocument::fromJson(res.parsed.body);
+        // parsing as JSON first. Cap the body size we'll try to parse so
+        // a hostile/MITM response can't OOM us on JSON parse.
+        constexpr int kMaxCrtJsonBytes = 32 * 1024 * 1024;
+        QByteArray body = res.parsed.body;
+        if (body.size() > kMaxCrtJsonBytes) body.truncate(kMaxCrtJsonBytes);
+        const QJsonDocument doc = QJsonDocument::fromJson(body);
         if (!doc.isArray()) {
             QMutexLocker lk(&m_mutex);
             m_lastError = "crt.sh: unexpected response shape";
@@ -243,10 +266,20 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
     }
     if (wasIdle) emit runningChanged();
 
+    // Cap how many candidates we'll process per request. A wordlist of
+    // hundreds of thousands would spawn one QDnsLookup per entry --
+    // each opens its own UDP socket -- and exhaust file descriptors,
+    // trigger resolver rate limiting, and look extremely loud to the
+    // network. 2000 is comfortably more than every curated subdomain
+    // wordlist that ships in the wild.
+    constexpr int kMaxSubsPerRequest = 2000;
+    QStringList capped = subdomains;
+    if (capped.size() > kMaxSubsPerRequest) capped = capped.mid(0, kMaxSubsPerRequest);
+
     // One QDnsLookup per candidate. We bound it lazily by trusting Qt
     // to multiplex over its own DNS workers; even at 100 names the
     // total network cost is well under a second.
-    for (const QString &sub : subdomains) {
+    for (const QString &sub : capped) {
         if (m_stopFlag.loadAcquire() != 0) break;
         const QString name = (sub + "." + domain).toLower();
 

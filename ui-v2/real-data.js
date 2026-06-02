@@ -96,7 +96,15 @@
   function post(path, payload) {
     return fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Custom header the backend CSRF guard accepts in lieu of a
+        // same-origin Origin. Browsers refuse to set custom headers on
+        // simple cross-origin POSTs without a CORS preflight, which we
+        // never grant -- so a malicious site can't trick us into
+        // mutating state on a user's behalf.
+        "X-Nullock-UI": "1",
+      },
       body: JSON.stringify(payload || {}),
     });
   }

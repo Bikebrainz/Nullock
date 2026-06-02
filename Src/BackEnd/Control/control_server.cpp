@@ -44,7 +44,11 @@ namespace Nullock::Control {
 
 namespace {
 
-constexpr int kReadTimeoutMs = 5'000;
+constexpr int     kReadTimeoutMs = 5'000;
+// Hard cap on request body size accepted by /api/*. Big enough for HAR
+// imports of medium projects (~32 MB), small enough that a malicious
+// 4 GB POST can't OOM us. Returns 413 above this.
+constexpr qint64  kMaxBodyBytes  = 64LL * 1024 * 1024;
 
 QByteArray mimeFor(const QString &path) {
     const QString p = path.toLower();
@@ -237,37 +241,66 @@ void ControlServer::handle(QTcpSocket *socket) {
     const QString target = QString::fromLatin1(parts[1]);
 
     // Read body if Content-Length set (for POSTs). While we're walking
-    // the headers, also capture Origin so we can do a CSRF check before
-    // dispatch.
+    // the headers, also capture Origin + the custom token so we can do
+    // a CSRF check before dispatch.
     qint64 contentLength = 0;
     QString origin;
+    QString nullockHdr;
     for (const QByteArray &line : header.split('\n')) {
         QByteArray l = line; if (l.endsWith('\r')) l.chop(1);
         const int c = l.indexOf(':');
         if (c <= 0) continue;
         const QString key = QString::fromLatin1(l.left(c));
-        if (key.compare("Content-Length", Qt::CaseInsensitive) == 0)
-            contentLength = QByteArray(l.mid(c + 1)).trimmed().toLongLong();
+        if (key.compare("Content-Length", Qt::CaseInsensitive) == 0) {
+            bool ok = false;
+            contentLength = QByteArray(l.mid(c + 1)).trimmed().toLongLong(&ok);
+            if (!ok || contentLength < 0 || contentLength > kMaxBodyBytes) {
+                socket->write(httpResponse(413, "text/plain",
+                    "Content-Length invalid or too large"));
+                socket->waitForBytesWritten(kReadTimeoutMs);
+                socket->disconnectFromHost();
+                return;
+            }
+        }
         else if (key.compare("Origin", Qt::CaseInsensitive) == 0)
             origin = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+        else if (key.compare("X-Nullock-UI", Qt::CaseInsensitive) == 0)
+            nullockHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
     }
 
-    // CSRF guard. Any POST/PUT/PATCH/DELETE that came from a web page on
-    // another origin is rejected. curl and other non-browser clients
-    // don't send Origin at all, so an empty Origin is allowed. We accept
-    // 127.0.0.1 / localhost variants on our own port. The control server
-    // exposes "clear history", "open project", "add rule" -- a malicious
-    // site without this check could mutate the user's project silently
-    // just by linking them to a page that does fetch() in the background.
-    const bool isWriteMethod = (method == "POST" || method == "PUT"
-                                || method == "PATCH" || method == "DELETE");
-    if (isWriteMethod && !origin.isEmpty()) {
+    // Method validation: known HTTP verbs only. Closes the GET-to-mutating-
+    // endpoint vector (probe / replay used to accept any method).
+    static const QStringList kAllowed = {
+        "GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"
+    };
+    if (!kAllowed.contains(method)) {
+        socket->write(httpResponse(405, "text/plain", "Method not allowed"));
+        socket->waitForBytesWritten(kReadTimeoutMs);
+        socket->disconnectFromHost();
+        return;
+    }
+
+    // CSRF guard, hardened. State-mutating endpoints (anything that's
+    // not a GET / HEAD / OPTIONS) require BOTH:
+    //   (a) a matching same-origin Origin header OR a custom X-Nullock-UI
+    //       header that non-browser clients can set freely; and
+    //   (b) explicitly NOT an empty Origin when sent from a browser --
+    //       previously we allowed empty Origin to pass for curl
+    //       compatibility, but a `file://`-loaded HTML page also sends
+    //       empty Origin so this bypassed the guard.
+    // The custom header costs nothing for scripts (curl sets it via -H),
+    // but a malicious cross-origin page can't add it without a CORS
+    // preflight, which we never grant.
+    const bool isReadMethod = (method == "GET" || method == "HEAD" || method == "OPTIONS");
+    if (!isReadMethod) {
         const quint16 myPort = this->listeningPort();
         const QString expectedHttp  = "http://127.0.0.1:"  + QString::number(myPort);
         const QString expectedLocal = "http://localhost:"  + QString::number(myPort);
-        if (origin != expectedHttp && origin != expectedLocal) {
+        const bool originOk = (origin == expectedHttp || origin == expectedLocal);
+        const bool tokenOk  = (nullockHdr == "1" || nullockHdr.toLower() == "true");
+        if (!originOk && !tokenOk) {
             socket->write(httpResponse(403, "text/plain",
-                "Cross-origin write rejected"));
+                "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)"));
             socket->waitForBytesWritten(kReadTimeoutMs);
             socket->disconnectFromHost();
             return;
@@ -653,6 +686,25 @@ QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
                                        const QByteArray &body,
                                        const QString &query) const {
+    // Method dispatch -- read-only endpoints accept GET; everything else
+    // is treated as a state-mutating action and requires POST. This closes
+    // the GET-via-<img> CSRF avenue on /api/history/<id>/probe + replay
+    // and friends (where the old check only ran at the top-level guard).
+    auto isReadPath = [](const QString &p) {
+        return p == "/api/snapshot"
+            || p == "/api/pac" || p == "/proxy.pac"
+            || p == "/api/search"
+            || p == "/api/project/list"
+            || p.startsWith("/api/export/")
+            // /api/history/<id>/request  or  /response  but NOT /probe or /replay
+            || (p.startsWith("/api/history/")
+                && (p.endsWith("/request") || p.endsWith("/response")));
+    };
+    if (!isReadPath(path) && method != "POST") {
+        return httpResponse(405, "text/plain",
+            "Use POST for mutating endpoints (see README)");
+    }
+
     // GET /api/pac -- proxy auto-config file. Drop the URL into a browser's
     // "Automatic proxy configuration" field and everything routes through
     // our listener with no manual host/port juggling.
@@ -788,6 +840,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     if (!src) return httpJson(404, QJsonObject{{ "error", "row not found" }});
 
                     const Nullock::Proxy::HttpRequest base = *src;
+
+                    // Scope guard: refuse to fire active payloads at hosts
+                    // the project does not consider in-scope. A malicious
+                    // local web page that pivots through us would otherwise
+                    // be able to attack arbitrary targets we'd once browsed.
+                    if (m_wiring.proxy && !m_wiring.proxy->isInScope(base.host)) {
+                        return httpJson(403, QJsonObject{
+                            { "ok", false },
+                            { "error", "row's host is out of scope; add it to "
+                                       "Scope first if you really mean it" },
+                        });
+                    }
+
                     const bool useTls = srcResp ? srcResp->wasTls : false;
 
                     const int qmark = base.path.indexOf('?');
@@ -1599,6 +1664,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.throttleMs = bodyJson.value("throttleMs").toInt(0);
         sr.randomize  = bodyJson.value("randomize").toBool(false);
 
+        // Clamp to sane bounds. parallel was previously taken raw; a
+        // malicious or buggy caller specifying parallel=100000 launched
+        // a thread per probe with no upper cap on concurrent sockets.
+        if (sr.parallel  < 1)    sr.parallel  = 1;
+        if (sr.parallel  > 256)  sr.parallel  = 256;
+        if (sr.timeoutMs < 50)   sr.timeoutMs = 50;
+        if (sr.timeoutMs > 30000) sr.timeoutMs = 30000;
+        if (sr.throttleMs < 0)   sr.throttleMs = 0;
+        if (sr.throttleMs > 60000) sr.throttleMs = 60000;
+
         // Multi-host modes. hosts[] is just a JSON array. cidr is
         // expanded server-side -- accepts "192.168.1.0/24" through
         // "10.0.0.0/16" (caps at /16 = 65k hosts to keep us from
@@ -1682,6 +1757,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             }
         }
         sr.ports = ports;
+
+        // Hard cap on total work. host * port can blow up fast: a /16
+        // (~65k hosts) with full1024 = ~67M probes. Refuse anything past
+        // 100k tasks; user can re-issue smaller chunks.
+        constexpr int kMaxScanTasks = 100'000;
+        const qint64 tasks = static_cast<qint64>(sr.hosts.size()) * sr.ports.size();
+        if (tasks > kMaxScanTasks) {
+            return okJson({
+                { "ok", false },
+                { "error", QString("scan too large: %1 probes (cap %2)")
+                              .arg(tasks).arg(kMaxScanTasks) },
+            });
+        }
         const bool ok = m_wiring.portScanner->start(sr);
         return okJson({{ "ok", ok }, { "count", ports.size() }});
     }

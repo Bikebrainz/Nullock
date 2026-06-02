@@ -31,6 +31,11 @@ QString sanitize(const QString &host) {
 // depth -- if the client's target isn't a real hostname, refuse to mint.
 bool isValidHostForCert(const QString &host) {
     if (host.isEmpty() || host.size() > 253) return false;
+    // Refuse leading '-' / '_' -- openssl reads `-subj /CN=<host>` as an
+    // arg-list, and some subcommands still treat a leading dash on a
+    // value position as an option in odd situations. Defence in depth
+    // even though QProcess::setArguments doesn't expand through a shell.
+    if (host.startsWith('-') || host.startsWith('_')) return false;
     for (QChar c : host) {
         if (c.isLetterOrNumber()) continue;
         if (c == QChar('-') || c == QChar('.') || c == QChar('_')) continue;

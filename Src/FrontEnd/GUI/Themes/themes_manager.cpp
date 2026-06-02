@@ -69,11 +69,25 @@ bool ThemesManager::isBuiltin(const QString &name) const {
 }
 
 bool ThemesManager::saveTheme(const QString &name, const QVariantMap &colors) {
-    if (name.trimmed().isEmpty()) return false;
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty() || trimmed.size() > 64) return false;
+    // Same name-shape requirements as a project name -- this writes a
+    // file to disk via `<themesDir>/<name>.json` and an unsanitised name
+    // would let any caller (including Q_INVOKABLE QML / the React API)
+    // walk out of the themes dir with `../../foo`. Restricting to a
+    // small character class also avoids Windows reserved device names.
+    for (QChar c : trimmed) {
+        const ushort u = c.unicode();
+        if (u < 0x20) return false;
+        if (!c.isLetterOrNumber()
+            && c != '_' && c != '-' && c != ' ') return false;
+    }
+    if (trimmed.contains("..") || trimmed.startsWith(' ') || trimmed.endsWith(' '))
+        return false;
 
     // Built-in names are reserved: forking writes "<name>-custom.json" so
     // the user can keep iterating without nuking the shipped theme.
-    QString outName = name;
+    QString outName = trimmed;
     if (m_builtinNames.contains(outName)) outName = outName + "-custom";
 
     const QString dir = themesDir();

@@ -27,6 +27,7 @@ post() {
     curl -sS --max-time 30 \
          -H "Content-Type: application/json" \
          -H "Origin: $API" \
+         -H "X-Nullock-UI: 1" \
          -X POST -d "$body" \
          "$API$path"
 }

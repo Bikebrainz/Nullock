@@ -26,18 +26,39 @@ QString SessionManager::lowercaseHost(const QString &host) {
     return host.toLower();
 }
 
+// Strip CR / LF / NUL and other C0 control bytes. Hostile upstreams that
+// embed \r\n in a Set-Cookie can otherwise cause us to write split
+// headers back out on the next request (HTTP request smuggling).
+static QString stripCtrl(QString s) {
+    QString out;
+    out.reserve(s.size());
+    for (QChar c : s) {
+        const ushort u = c.unicode();
+        if (u == '\r' || u == '\n' || u == '\0') continue;
+        if (u < 0x20) continue;     // other C0
+        out.append(c);
+    }
+    return out;
+}
+
 CapturedCookie SessionManager::parseSetCookie(const QString &raw) {
     CapturedCookie c;
-    c.raw = raw;
+    c.raw = stripCtrl(raw);
     // First "key=value;" is the cookie itself; remaining "; attr[=val]"
     // segments are attributes.
-    const QStringList parts = raw.split(';');
+    const QStringList parts = c.raw.split(';');
     if (parts.isEmpty()) return c;
     const QString first = parts.first().trimmed();
     const int eq = first.indexOf('=');
     if (eq <= 0) return c;
-    c.name  = first.left(eq).trimmed();
-    c.value = first.mid(eq + 1).trimmed();
+    c.name  = stripCtrl(first.left(eq).trimmed());
+    c.value = stripCtrl(first.mid(eq + 1).trimmed());
+    // The name must also be a "token" per RFC 6265; we don't enforce the
+    // full grammar but at minimum reject names that contain '=' or any
+    // whitespace -- they're meaningless and would produce a broken Cookie
+    // header on inject.
+    if (c.name.contains('=') || c.name.contains(' ') || c.name.contains('\t'))
+        c.name.clear();
     for (int i = 1; i < parts.size(); ++i) {
         const QString seg = parts[i].trimmed();
         if (seg.isEmpty()) continue;
@@ -73,7 +94,11 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
         s.host     = req.host;
         s.lastSeen = QDateTime::currentMSecsSinceEpoch();
         // Merge: replace existing cookies by name, append new ones. Keeps
-        // the bag size bounded by distinct cookie names per host.
+        // the bag size bounded by distinct cookie names per host. Hard
+        // cap at 256 -- a hostile upstream emitting thousands of distinct
+        // Set-Cookie names should not be allowed to grow our hash
+        // unboundedly (O(n) per insert with the same lock held).
+        constexpr int kMaxCookiesPerHost = 256;
         for (const auto &c : fresh) {
             bool replaced = false;
             for (auto &existing : s.cookies) {
@@ -83,7 +108,13 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
                     break;
                 }
             }
-            if (!replaced) s.cookies.append(c);
+            if (!replaced) {
+                if (s.cookies.size() >= kMaxCookiesPerHost) {
+                    // Drop the oldest (front) to make room. Cheap LRU.
+                    s.cookies.removeFirst();
+                }
+                s.cookies.append(c);
+            }
         }
     }
     emit sessionsChanged();

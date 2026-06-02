@@ -112,17 +112,41 @@ QStringList ProjectStore::listProjects() const {
     return names;
 }
 
+// Strict whitelist. Previously we only blocked `/`, `\\`, and `..`, which
+// missed: Windows drive letters (e.g. "D:foo" placed alongside the path
+// separator quirks), reserved device names (CON/NUL/PRN/COM1..9/LPT1..9/
+// AUX/CONOUT$), trailing dot/space (Win32 silently strips them and the
+// resulting path canonicalises to a sibling), NUL bytes (Qt -> Win32 API
+// boundary truncates), and overlong names.
+static bool isValidProjectName(const QString &name) {
+    if (name.isEmpty() || name.size() > 64) return false;
+    if (name.contains('\0') || name.contains('/') || name.contains('\\')
+        || name.contains("..") || name.startsWith('.') || name.startsWith(' ')
+        || name.endsWith('.') || name.endsWith(' ')) return false;
+    static const QStringList kReserved = {
+        "CON","NUL","PRN","AUX","CONIN$","CONOUT$",
+        "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+        "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9",
+    };
+    if (kReserved.contains(name.toUpper())) return false;
+    for (QChar c : name) {
+        const ushort u = c.unicode();
+        if (u < 0x20) return false;            // control chars
+        if (!c.isLetterOrNumber()
+            && c != '_' && c != '-' && c != ' ' && c != '.') return false;
+    }
+    return true;
+}
+
 bool ProjectStore::openByName(const QString &name) {
-    if (name.isEmpty() || name.contains('/') || name.contains('\\')
-        || name.contains("..")) return false;
+    if (!isValidProjectName(name)) return false;
     const QString dir = projectsRoot() + "/" + name;
     if (!QFileInfo::exists(dir)) return false;  // use createProject() for new
     return open(dir);
 }
 
 bool ProjectStore::createProject(const QString &name) {
-    if (name.isEmpty() || name.contains('/') || name.contains('\\')
-        || name.contains("..")) return false;
+    if (!isValidProjectName(name)) return false;
     const QString dir = projectsRoot() + "/" + name;
     if (QFileInfo::exists(dir)) {
         // already exists -- just open it instead of failing.
@@ -608,6 +632,26 @@ int ProjectStore::importHarBytes(const QByteArray &harJson) {
 }
 
 int ProjectStore::importHar(const QString &harPath) {
+    // Defence in depth against `/api/har/import` being used to read
+    // arbitrary local files. The path API is a convenience for the QML
+    // bridge; the React UI / CLI uses the `har` JSON body shape instead
+    // (importHarBytes) and gets here through that bypass-proof route.
+    // Reject UNC paths, anything not a regular file, and oversize files.
+    const QFileInfo fi(harPath);
+    if (!fi.exists() || !fi.isFile() || !fi.isReadable()) {
+        emit errorOccurred("importHar: not a readable file: " + harPath);
+        return -1;
+    }
+    if (harPath.startsWith("\\\\") || harPath.startsWith("//")) {
+        emit errorOccurred("importHar: UNC paths refused");
+        return -1;
+    }
+    // 256 MB ceiling -- HAR files this big are pathological.
+    constexpr qint64 kMaxHarBytes = 256LL * 1024 * 1024;
+    if (fi.size() > kMaxHarBytes) {
+        emit errorOccurred("importHar: file too large (>256 MB)");
+        return -1;
+    }
     QFile f(harPath);
     if (!f.open(QIODevice::ReadOnly)) {
         emit errorOccurred("importHar: cannot open " + harPath);
