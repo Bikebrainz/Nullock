@@ -14,6 +14,7 @@
 #include "port_scanner.hpp"
 #include "project_store.hpp"
 #include "recon_engine.hpp"
+#include "session_manager.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -661,6 +662,13 @@ int main(int argc, char *argv[]) {
     proxy.setInterceptController(&intercept);
     proxy.setExtensions(&extensions);
 
+    // Session manager: capture Set-Cookie on responses, inject into
+    // outgoing requests when autoInject is on per host.
+    Nullock::Core::SessionManager sessions;
+    proxy.setSessionManager(&sessions);
+    QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                     &sessions, &Nullock::Core::SessionManager::onResponseReceived);
+
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
@@ -690,6 +698,7 @@ int main(int argc, char *argv[]) {
     wiring.portScanner  = &portScanner;
     Nullock::Core::ReconEngine recon;
     wiring.recon        = &recon;
+    wiring.sessions     = &sessions;
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd
     // bundle this into a Qt resource; not done yet.

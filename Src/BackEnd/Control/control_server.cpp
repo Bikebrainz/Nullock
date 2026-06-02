@@ -9,6 +9,7 @@
 #include "port_scanner.hpp"
 #include "project_store.hpp"
 #include "recon_engine.hpp"
+#include "session_manager.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
 #include "Proxy/site_map_model.hpp"
@@ -167,6 +168,10 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.recon, &Nullock::Core::ReconEngine::subdomainsChanged,
                 this, bump);
         connect(m_wiring.recon, &Nullock::Core::ReconEngine::runningChanged,
+                this, bump);
+    }
+    if (m_wiring.sessions) {
+        connect(m_wiring.sessions, &Nullock::Core::SessionManager::sessionsChanged,
                 this, bump);
     }
 }
@@ -490,6 +495,32 @@ QByteArray ControlServer::buildSnapshot() const {
         }
         rec["subdomains"] = subs;
         root["recon"] = rec;
+    }
+
+    // sessions: per-host captured cookies
+    if (m_wiring.sessions) {
+        QJsonArray arr;
+        for (const auto &s : m_wiring.sessions->sessions()) {
+            QJsonObject so;
+            so["host"]       = s.host;
+            so["autoInject"] = s.autoInject;
+            so["lastSeen"]   = s.lastSeen;
+            QJsonArray cookies;
+            for (const auto &c : s.cookies) {
+                QJsonObject co;
+                co["name"]     = c.name;
+                co["value"]    = c.value;
+                co["path"]     = c.path;
+                co["expires"]  = c.expires;
+                co["httpOnly"] = c.httpOnly;
+                co["secure"]   = c.secure;
+                co["sameSite"] = c.sameSite;
+                cookies.append(co);
+            }
+            so["cookies"] = cookies;
+            arr.append(so);
+        }
+        root["sessions"] = arr;
     }
 
     // history rows (match the mock shape so React renders without changes)
@@ -1693,6 +1724,27 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/recon/clear") {
         if (m_wiring.recon) m_wiring.recon->clear();
         return okJson();
+    }
+
+    // ---- sessions (cookie jar) ---------------------------------------
+    if (path == "/api/sessions/autoInject") {
+        bool ok = m_wiring.sessions
+               && m_wiring.sessions->setAutoInject(bodyJson.value("host").toString(),
+                                                    bodyJson.value("on").toBool());
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/sessions/clear") {
+        if (!m_wiring.sessions) return okJson({{ "ok", false }});
+        const QString host = bodyJson.value("host").toString();
+        if (host.isEmpty()) m_wiring.sessions->clearAll();
+        else                m_wiring.sessions->clearHost(host);
+        return okJson();
+    }
+    if (path == "/api/sessions/copyTo") {
+        bool ok = m_wiring.sessions
+               && m_wiring.sessions->copyTo(bodyJson.value("from").toString(),
+                                             bodyJson.value("to").toString());
+        return okJson({{ "ok", ok }});
     }
     // POST /api/portscan/import-nmap  body: raw nmap XML
     // Pulls <host>/<ports>/<port>/<state>/<service> into PortResult.

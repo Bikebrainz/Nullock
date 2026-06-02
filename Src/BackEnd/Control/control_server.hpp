@@ -26,6 +26,7 @@ class ExtensionsApi;
 class PassiveScanner;
 class PortScanner;
 class ReconEngine;
+class SessionManager;
 }
 
 namespace Nullock::Control {
@@ -47,6 +48,7 @@ struct Wiring {
     Nullock::Core::PassiveScanner      *scanner      = nullptr;
     Nullock::Core::PortScanner         *portScanner  = nullptr;
     Nullock::Core::ReconEngine         *recon        = nullptr;
+    Nullock::Core::SessionManager      *sessions     = nullptr;
     QString                              uiDir;       // path to ui-v2/
 };
 

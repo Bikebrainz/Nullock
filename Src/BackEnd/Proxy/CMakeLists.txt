@@ -42,4 +42,5 @@ target_include_directories(Proxy PUBLIC
 # and avoids dragging Qml into Proxy's public dependency surface.
 target_include_directories(Proxy PRIVATE
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/ExtensionsAPI
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking
 )

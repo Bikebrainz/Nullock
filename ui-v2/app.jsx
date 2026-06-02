@@ -8,6 +8,7 @@ const TABS = [
   { id: "scans",     label: "SCANS" },
   { id: "recon",     label: "RECON" },
   { id: "stats",     label: "STATS" },
+  { id: "sessions",  label: "SESSIONS" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -1352,6 +1353,163 @@ function ReconTab() {
   );
 }
 
+// Cookie / session manager. Captures every Set-Cookie response into a
+// per-host bag. Toggle "auto-inject" on a host and all outgoing
+// requests for that host get the captured cookies merged into their
+// Cookie header. Burp-flavored "log in once, scan with that session".
+function SessionsTab() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const sessions = (window.NL && NL.sessions) ? NL.sessions : [];
+  const [expanded, setExpanded] = React.useState(null); // host being shown in detail
+
+  const Btn = ({ label, onClick, danger, primary, disabled, title, size }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)"
+             : primary ? "var(--bg)"
+             : danger ? "var(--err)"
+             : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)"
+                              : danger ? "var(--err)"
+                              : "var(--accent)"),
+        padding: size === "sm" ? "1px 6px" : "4px 10px",
+        fontSize: size === "sm" ? "10px" : "11px",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  const fmtAge = (ms) => {
+    if (!ms) return "?";
+    const dt = (Date.now() - ms) / 1000;
+    if (dt < 60)    return Math.floor(dt) + "s ago";
+    if (dt < 3600)  return Math.floor(dt / 60) + "m ago";
+    if (dt < 86400) return Math.floor(dt / 3600) + "h ago";
+    return Math.floor(dt / 86400) + "d ago";
+  };
+
+  const sorted = [...sessions].sort((a, b) => {
+    if (a.autoInject !== b.autoInject) return a.autoInject ? -1 : 1;
+    return (b.lastSeen || 0) - (a.lastSeen || 0);
+  });
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Sessions</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          captured Set-Cookies, per-host · toggle a row to inject those
+          cookies on every outgoing request for that host
+        </span>
+        <span style={{ flex: 1 }} />
+        <Btn label="Clear all" danger
+             disabled={sessions.length === 0}
+             onClick={() => { if (confirm("Clear ALL captured sessions?")) NL.actions.sessionClearAll(); }} />
+      </div>
+
+      {sessions.length === 0 && (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: 24, textAlign: "center",
+          color: "var(--dim)", fontSize: "12px",
+        }}>
+          No Set-Cookie responses captured yet. Proxy traffic that
+          triggers a login or any cookie-setting endpoint and they'll
+          show up here.
+        </div>
+      )}
+
+      {sorted.map(s => (
+        <div key={s.host} style={{
+          background: "var(--pane)", border: "1px solid " +
+            (s.autoInject ? "var(--accent)" : "var(--line)"),
+          borderRadius: 4, padding: 0,
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "8px 12px",
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: 4,
+              background: s.autoInject ? "var(--accent)" : "transparent",
+              border: "1px solid var(--accent)",
+            }} />
+            <span style={{ color: "var(--text)", fontFamily: "var(--ff-mono)",
+                           fontSize: "12px", flex: 1, overflow: "hidden",
+                           textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={s.host}>{s.host}</span>
+            <span style={{ color: "var(--text-2)", fontSize: "11px" }}>
+              {s.cookies.length} cookie{s.cookies.length === 1 ? "" : "s"}
+            </span>
+            <span style={{ color: "var(--dim)", fontSize: "10.5px", minWidth: 60, textAlign: "right" }}>
+              {fmtAge(s.lastSeen)}
+            </span>
+            <label style={{
+              display: "flex", gap: 4, alignItems: "center",
+              fontSize: "10.5px", color: "var(--text-2)",
+              textTransform: "uppercase", letterSpacing: "0.05em",
+            }}>
+              <input type="checkbox" checked={!!s.autoInject}
+                     onChange={e => NL.actions.sessionAutoInject(s.host, e.target.checked)} />
+              auto-inject
+            </label>
+            <Btn label={expanded === s.host ? "Hide" : "View"} size="sm"
+                 onClick={() => setExpanded(expanded === s.host ? null : s.host)} />
+            <Btn label="Copy to…" size="sm" onClick={() => {
+              const to = prompt("Copy this session to which host?", s.host);
+              if (to && to !== s.host) NL.actions.sessionCopyTo(s.host, to);
+            }} />
+            <Btn label="Clear" size="sm" danger onClick={() => {
+              if (confirm("Drop captured cookies for " + s.host + "?"))
+                NL.actions.sessionClearHost(s.host);
+            }} />
+          </div>
+          {expanded === s.host && (
+            <div style={{ borderTop: "1px solid var(--line)",
+                          padding: 8, background: "var(--bg-deep)" }}>
+              {s.cookies.length === 0 && (
+                <div style={{ color: "var(--dim)", fontSize: "11px", padding: 8 }}>
+                  (no cookies; backend captured the host but lost the list)
+                </div>
+              )}
+              {s.cookies.map((c, i) => (
+                <div key={i} style={{
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr 90px",
+                  gap: 6, padding: "4px 6px",
+                  fontFamily: "var(--ff-mono)", fontSize: "11.5px",
+                  borderBottom: "1px solid var(--line-soft)",
+                }}>
+                  <span style={{ color: "var(--accent)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={c.name}>{c.name}</span>
+                  <span style={{ color: "var(--text)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        title={c.value}>{c.value}</span>
+                  <span style={{ color: "var(--dim)", fontSize: "10px", textAlign: "right" }}>
+                    {c.httpOnly && "HO "}{c.secure && "S "}{c.sameSite && c.sameSite}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Wireshark "Statistics > Endpoints"-style aggregator. Walks the live
 // history rows and aggregates by host: request count, bytes in/out,
 // status-class breakdown, distinct paths, last-seen. No backend call --
@@ -1843,6 +2001,9 @@ function App() {
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />
+        )}
+        {tab === "sessions" && (
+          <SessionsTab />
         )}
         {tab === "settings" && (
           <SettingsTab />

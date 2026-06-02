@@ -4,6 +4,7 @@
 #include "extensions_api.hpp"
 #include "http2_client.hpp"
 #include "intercept.hpp"
+#include "session_manager.hpp"
 #include "websocket.hpp"
 
 #include <QEventLoop>
@@ -760,6 +761,9 @@ InterceptController *ProxyServer::interceptController() const { return m_interce
 void ProxyServer::setExtensions(Nullock::Core::ExtensionsApi *ext) { m_extensions = ext; }
 Nullock::Core::ExtensionsApi *ProxyServer::extensions() const { return m_extensions; }
 
+void ProxyServer::setSessionManager(Nullock::Core::SessionManager *sm) { m_sessionManager = sm; }
+Nullock::Core::SessionManager *ProxyServer::sessionManager() const { return m_sessionManager; }
+
 bool ProxyServer::isMitmBlocked(const QString &host) const {
     QMutexLocker lock(&m_blockMutex);
     return m_mitmBlocked.contains(host);
@@ -898,7 +902,6 @@ void fixContentLength(QList<QPair<QString, QString>> &headers, int newSize) {
 void ProxyServer::applyRequestRules(HttpRequest &req) const {
     QList<MatchReplaceRule> rs;
     { QMutexLocker lock(&m_rulesMutex); rs = m_rules; }
-    if (rs.isEmpty()) return;
 
     bool bodyChanged = false;
     for (const auto &r : rs) {
@@ -928,6 +931,12 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
         }
     }
     if (bodyChanged) fixContentLength(req.headers, req.body.size());
+
+    // Session injection runs AFTER user-defined rules so the rules can
+    // see what the client originally sent. With autoInject on for the
+    // host, server-captured cookies overwrite same-name client cookies
+    // in the outgoing Cookie header.
+    if (m_sessionManager) m_sessionManager->injectInto(req);
 }
 
 void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp) const {

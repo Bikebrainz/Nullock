@@ -37,6 +37,7 @@
     NL.findingsCount = snap.findingsCount || 0;
     NL.portScan      = snap.portScan      || { host: "", running: false, done: 0, total: 0, results: [], error: "" };
     NL.recon         = snap.recon         || { target: "", running: false, dns: [], subdomains: [], error: "" };
+    NL.sessions      = snap.sessions      || [];
     NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
@@ -168,6 +169,10 @@
     reconWordlist(domain, subdomains) { return post("/api/recon/wordlist", { domain, subdomains }); },
     reconStop()                 { return post("/api/recon/stop"); },
     reconClear()                { return post("/api/recon/clear"); },
+    sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
+    sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
+    sessionClearAll()           { return post("/api/sessions/clear",      {}); },
+    sessionCopyTo(from, to)     { return post("/api/sessions/copyTo",     { from, to }); },
     probeRow(rowId) {
       // Light active scan: per-param canary injection + reflection check.
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })
