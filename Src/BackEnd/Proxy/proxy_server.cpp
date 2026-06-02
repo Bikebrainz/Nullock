@@ -119,6 +119,41 @@ QString findHeader(const QList<QPair<QString, QString>> &headers, const QString 
     return {};
 }
 
+// RFC 7230 §3.3.3 / RFC 9112 §6.3: a message must not carry both
+// Content-Length and Transfer-Encoding, and must not have conflicting
+// duplicate Content-Length values. A hostile upstream (or hostile client)
+// who sends both can desync the proxy from the next hop and turn one
+// captured request/response into two; the trailing bytes of the "longer"
+// interpretation become the prefix of a smuggled second message on the
+// keep-alive socket. Reject any message that smells like this -- return
+// false from the parser collapses the connection cleanly.
+bool isFramingSafe(const QList<QPair<QString, QString>> &headers) {
+    bool sawTE = false;
+    QString cl;
+    bool clConflict = false;
+    for (const auto &h : headers) {
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) {
+            sawTE = true;
+        } else if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) {
+            // A single header value may itself be a comma list ("12, 12");
+            // RFC says reject if the values differ. Compare normalized.
+            const QStringList vals = h.second.split(',', Qt::SkipEmptyParts);
+            for (QString v : vals) {
+                v = v.trimmed();
+                if (v.isEmpty()) { clConflict = true; break; }
+                bool ok = false;
+                const qint64 n = v.toLongLong(&ok);
+                if (!ok || n < 0) { clConflict = true; break; }
+                if (cl.isEmpty()) cl = v;
+                else if (cl != v) { clConflict = true; break; }
+            }
+            if (clConflict) return false;
+        }
+    }
+    if (sawTE && !cl.isEmpty()) return false;
+    return true;
+}
+
 void rewriteHostPort(HttpRequest &req) {
     const QUrl url = QUrl::fromUserInput(req.target);
     if (url.isValid() && !url.host().isEmpty()) {
@@ -550,6 +585,10 @@ private:
 
         if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) return true;
 
+        // Smuggling defence: refuse messages framed by both CL and TE,
+        // or by conflicting/duplicate Content-Length values.
+        if (!isFramingSafe(req.headers)) return false;
+
         const QString cl = findHeader(req.headers, "Content-Length");
         if (!cl.isEmpty()) {
             const qint64 n = cl.toLongLong();
@@ -592,6 +631,13 @@ private:
             resp.body = rest;
             return true;
         }
+
+        // Smuggling defence: same CL+TE / duplicate-CL check on the
+        // response. A hostile upstream that frames the body two ways at
+        // once would otherwise let us pick one length and the browser
+        // pick the other, splitting one response into two on the
+        // keep-alive socket.
+        if (!isFramingSafe(resp.headers)) return false;
 
         const QString te = findHeader(resp.headers, "Transfer-Encoding");
         const QString cl = findHeader(resp.headers, "Content-Length");
@@ -976,6 +1022,17 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
         cs = m_compiledRules;
     }
 
+    // Scope-gate Match & Replace. A wildcard rule (host pattern ".*", which
+    // is the default) would otherwise rewrite EVERY outgoing request --
+    // including the user's normal browser traffic to out-of-scope hosts.
+    // A rule like (Cookie: (.*) -> X-Exfil: $1) imported from a hostile
+    // project file or a compromised extension would exfil cookies from
+    // unrelated sites the user happens to visit while running Nullock.
+    // Apply rules only to in-scope hosts (when scope is configured); the
+    // per-rule host regex still narrows from there. When in-scope is
+    // unset, fall through to the previous behaviour.
+    if (!isInScope(req.host)) return;
+
     bool bodyChanged = false;
     for (int i = 0; i < rs.size() && i < cs.size(); ++i) {
         const auto &r = rs[i];
@@ -1023,6 +1080,11 @@ void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp)
         cs = m_compiledRules;
     }
     if (rs.isEmpty()) return;
+    // Same scope-gate as applyRequestRules. Without it, a "Set-Cookie:
+    // (.*) -> Set-Cookie: $1; Domain=.attacker.example" rule would let
+    // a wildcard-import rule rewrite cookies on unrelated browsing
+    // traffic and re-scope them to an attacker domain.
+    if (!isInScope(req.host)) return;
 
     bool bodyChanged = false;
     for (int i = 0; i < rs.size() && i < cs.size(); ++i) {

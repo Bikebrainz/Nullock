@@ -31,6 +31,9 @@ private:
     qint64 tryParseOne(WsFrame *out);
 
     QByteArray m_buf;
+    // Set true after the per-stream buffer cap was exceeded; future
+    // feed() calls become no-ops so memory doesn't grow again.
+    bool m_giveUp = false;
 };
 
 // Best-effort label for a frame opcode, useful for the GUI URL column.

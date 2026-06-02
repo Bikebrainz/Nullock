@@ -4,6 +4,16 @@ namespace Nullock::Proxy {
 
 namespace {
 constexpr qint64 kMaxFramePayload = 16 * 1024 * 1024;  // 16 MiB sanity cap
+// Hard cap on the per-stream reassembly buffer. A hostile upstream that
+// dribbles bytes of a frame declared at the max payload length would
+// otherwise pin kMaxFramePayload per concurrent WS connection; 100
+// streams = 1.6 GiB. With this cap, m_buf is bounded at 2x the max
+// frame -- enough headroom to fully buffer one max frame plus a header
+// for the next, but small enough that 100 attacker streams sit at
+// 3.2 GiB total which still beats unbounded. When the cap is hit we
+// stop parsing frames for this stream (the raw relay continues so the
+// user's app keeps working; we just lose frame-level visibility).
+constexpr qint64 kMaxBufferBytes  = 2 * kMaxFramePayload;
 }
 
 const char *wsOpcodeLabel(quint8 opcode) {
@@ -73,7 +83,21 @@ qint64 WsFrameParser::tryParseOne(WsFrame *out) {
 }
 
 QList<WsFrame> WsFrameParser::feed(const QByteArray &chunk) {
+    if (m_giveUp) {
+        // Stream previously exceeded our buffer cap; keep no state for
+        // it. The caller's raw relay still forwards bytes to the
+        // browser, we just stop emitting frame events.
+        return {};
+    }
     m_buf.append(chunk);
+    if (m_buf.size() > kMaxBufferBytes) {
+        // Hostile or pathological stream. Drop the reassembly buffer
+        // and mark the parser dead so subsequent feed() calls don't
+        // grow memory again.
+        m_buf.clear();
+        m_giveUp = true;
+        return {};
+    }
     QList<WsFrame> out;
     while (true) {
         WsFrame f;

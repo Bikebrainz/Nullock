@@ -87,10 +87,32 @@ void InterceptController::promoteNextLocked() {
 }
 
 void InterceptController::addPendingOnMain(PendingRequest *p) {
+    // Race window: pend() reads m_enabled = true on a worker thread and
+    // queues a call to addPendingOnMain; before this slot runs, the user
+    // (or a project switch) calls setEnabled(false), which already drained
+    // m_queue + m_current. p is still in worker-local scope, so
+    // releaseAllAsForward() missed it. Without this re-check, p lands in
+    // m_queue while the GUI shows intercept-off; the user can't see or
+    // forward it, the worker thread blocks on p->done forever, and the
+    // request body (including auth headers / cookies) sits resident in
+    // memory until process death. Re-check enabled state under the mutex
+    // here -- if the toggle flipped during the race, treat the request as
+    // an immediate forward.
+    bool releaseAsForward = false;
     {
         QMutexLocker lk(&m_queueMutex);
-        if (!m_current) m_current = p;
-        else            m_queue.enqueue(p);
+        if (!m_enabled) {
+            releaseAsForward = true;
+        } else if (!m_current) {
+            m_current = p;
+        } else {
+            m_queue.enqueue(p);
+        }
+    }
+    if (releaseAsForward) {
+        p->decision.storeRelease(0);
+        p->done.release();
+        return;  // no queue change -> no signal needed
     }
     // Emit outside the lock -- same recursive-lock deadlock story as
     // forward() / drop(). Without this fix, a single intercepted
