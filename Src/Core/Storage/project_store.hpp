@@ -4,6 +4,7 @@
 
 #include <QDateTime>
 #include <QFile>
+#include <QMutex>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -125,6 +126,12 @@ private:
     // the raw values (e.g. importing the HAR back into another instance
     // of Nullock).
     bool m_exportRedact = true;
+    // Guards every touch of m_history (open / close / write / flush).
+    // Without it, a worker thread mid-appendEntry() races a main-thread
+    // close() during project switch: the worker writes into a closed
+    // QFile whose FD may have been recycled by the OS to (worst case)
+    // the CA private key or a theme JSON the app just opened to write.
+    mutable QMutex m_historyMutex;
 };
 
 } // namespace Nullock::Core

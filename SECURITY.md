@@ -29,6 +29,29 @@ These were caught and fixed during the multi-subsystem audit logged in commits `
 ### State hygiene across projects / engagements
 - **Cross-project session clear** — switching projects fires `historyShouldClear`, which now also wipes `SessionManager`. Cookies captured against `target-A.example` while pentesting Engagement A are no longer replayed into Engagement B's requests when the user switches.
 
+### Request / response framing safety
+- **CL+TE smuggling defence.** The proxy's request and response parsers refuse any message that carries both `Content-Length` and `Transfer-Encoding` headers, or that carries duplicate `Content-Length` values with conflicting numbers, or a `Content-Length` whose value isn't a single non-negative integer. A hostile upstream that frames a response two ways at once would otherwise let us pick one length and the browser pick the other, turning one captured response into two on the keep-alive socket.
+
+### Resource exhaustion (extended)
+- **Slowloris on control server.** Header read enforces a hard 10s wall-clock deadline per connection (separate from the per-`waitForReadyRead` budget) so a client dribbling one byte every 4.9s can't pin the main thread forever. Body read enforces a 30s deadline on the same basis.
+- **`/api/search` ReDoS.** Patterns are capped at 4 KB. Patterns whose shape matches a nested-unbounded-quantifier heuristic (`(...*)*`, `(...+)+`, `({n,})+`, etc.) are refused before they hit the matcher. Each scanned body is truncated to 1 MB and the loop visits at most 500 rows. Qt's PCRE backend doesn't expose a match-timeout so this is best-effort, but it converts the textbook bombs into a 400.
+- **nmap XML import: XXE / billion-laughs.** `<!DOCTYPE` and `<!ENTITY` in the body are refused up-front. Element nesting is capped at 64. QXmlStreamReader's default behaviour of ignoring external entities is the primary defence; these guards make sure a future Qt change (or a parser swap) can't silently re-open the hole.
+- **WebSocket reassembly buffer.** Per-stream `m_buf` is capped at 2× the max frame payload (32 MiB). On overflow the parser drops its state and stops emitting frame events for that stream; the raw relay still forwards bytes so the user's app keeps working. Without this cap, 100 hostile streams declaring 16 MiB frames and dribbling bytes would pin 1.6 GiB.
+
+### Intercept queue integrity
+- **Toggle-race fix.** `addPendingOnMain` re-checks `m_enabled` under the mutex; if the user (or a project switch) disabled intercept during the race window between `pend()`'s atomic check and the queued slot dispatch, the request is released as an immediate forward rather than parked in `m_queue` forever. Without this, the worker thread that called `pend()` would block on `p->done` indefinitely and the captured request bytes (including auth headers) would sit resident until process death.
+
+### State hygiene across projects / engagements (extended)
+- **Repeater, Intruder, intercept queue clear on project switch.** R2's `historyShouldClear` wiring now also fires `Repeater::clearAll`, `Intruder::clearAll`, and `intercept.forwardAll()/setEnabled(false)`. A request loaded into Repeater (with Engagement A's Authorization header) no longer survives a project switch to Engagement B.
+- **Project store I/O race.** `m_history` is now guarded by `m_historyMutex` across `open()`, `close()`, and `appendEntry()`. A worker thread mid-write while the main thread closed the file would previously have written into a closed `QFile` whose underlying FD may have been recycled by the OS to another open file in this process (CA private key, theme JSON).
+- **Imported M&R rule quarantine.** When loading a project's rules from disk, any rule whose host pattern is a catch-all (`*`, `.*`, empty) AND whose `find`/`replace` touches a credential-shaped header name (Cookie, Authorization, Bearer, X-API-Key, etc.) loads with `enabled = false` and a `[QUARANTINED on load]` tag in its comment. Defends against the project-file-from-a-DM exfil pattern, where a shared project shim drops a "duplicate Cookie into a new header" rule that any in-scope target then echoes back to the attacker.
+
+### Shutdown safety
+- **QtConcurrent task drain.** Main returns via `QThreadPool::globalInstance()->waitForDone(5000)` so in-flight port scan / probe / replay workers (whose lambdas capture raw pointers into the App-scope Wiring struct) get up to 5 seconds to finish before the stack unwinds out from under them.
+
+### CA private key file ACL
+- **Owner-only ACL on `ca.key`.** After generating (or on every startup, for pre-existing keys) the CA private key file's DACL is rewritten to a single ACE granting only the current user `GENERIC_ALL`, with inheritance disabled. On POSIX this is `chmod 0600`. Anyone with the CA private key can forge certs for any host the user trusts — Nullock's installed CA is treated as a root by the user's browser, so a leaked key trivially produces TLS-green spoofs of `bank.com` and the like.
+
 ### Export / clipboard credential safety
 - **Centralized sensitive-header policy** (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`, `X-CSRF-Token`, `X-XSRF-Token`, `X-Session-Id`, `X-Amz-Security-Token`, `X-Goog-IAM-Authorization-Token`) is applied uniformly to:
   - HAR export (default on; `redact:false` in the POST body to opt out)
@@ -69,16 +92,10 @@ These were caught and fixed during the multi-subsystem audit logged in commits `
 These were surfaced by the audit but not addressed in this pass. Listed so the next person reading the code knows what's open and where to start.
 
 ### High
-- **Request smuggling: CL+TE.** Proxy parsers tolerate a request/response carrying both `Content-Length` and `Transfer-Encoding: chunked`, picking one. If upstream picks differently from us, requests desync. Fix is to reject any message with both headers, and reject duplicate `Content-Length` with differing values.
-- **Slowloris on control server.** `onNewConnection → handle()` is single-threaded synchronous. A single client opening a socket and dribbling 1 byte every 4.9s holds the main thread. Fix: move handlers to a thread pool, or use async chunked reads with a per-connection deadline.
-- **Intercept toggle race.** A request that enters `pend()` after `setEnabled(false)` (but before the lock check) can sit in `m_queue` forever; the worker thread leaks. Re-check `m_enabled` inside `addPendingOnMain` under the mutex.
-- **WebSocket buffer cap.** `m_buf` has no upper bound; a hostile upstream declaring a 16 MiB frame then dribbling bytes parks 16 MiB per connection. Cap `m_buf.size()` and drop the parser if exceeded.
-- **QObject lifetime on shutdown.** Several worker threads (`QThread::create` in `proxy_server::onNewConnection`, `QtConcurrent::run` in port scanner / probe / replay) capture `this` or wiring pointers. `~ProxyServer` doesn't drain in-flight workers. Practical impact is "crash on shutdown only," but a future fix should track in-flight tasks and wait.
+- **`QThread::create` in `proxy_server::onNewConnection` lifetime on shutdown.** `~ProxyServer` doesn't track its own worker threads (only the QtConcurrent ones are now drained via the global pool in main). Practical impact remains "crash on shutdown only," but a future fix should track each connection's QThread and join in the destructor.
 
 ### Medium
-- **`/api/search` ReDoS.** User regex runs against every captured body with no match-timeout. Same fundamental problem as Match & Replace — Qt's PCRE doesn't expose a budget. Wrap in `QtConcurrent::run` with a hard wall-clock cap, or reject patterns containing nested quantifiers.
-- **`Wiring` raw-pointer captures.** Lambdas in the control server's probe/replay/probe-all paths capture `Wiring` by value (which copies pointers). If the user switches projects or the app shuts down mid-task, the captured pointers dangle. Switch to `QPointer<>` or look up state on the main thread at fire time.
-- **Project store race.** `appendEntry()` from worker threads can race `close()` from main. Hold the project's file under a mutex covering open/write/close.
+- **Per-handler thread pool on control server.** Slowloris is now bounded by the wall-clock deadlines added in this pass, but `handle()` is still synchronous-on-main. A single slow request still blocks others up to its deadline. Move handlers onto a thread pool to fully decouple.
 
 ## What to do if you find something
 

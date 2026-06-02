@@ -7,12 +7,75 @@
 #include <QProcess>
 #include <QStandardPaths>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <accctrl.h>
+#include <aclapi.h>
+#endif
+
 namespace Nullock::Proxy {
 
 namespace {
 
 constexpr int kStartTimeoutMs = 5'000;
 constexpr int kRunTimeoutMs   = 30'000;
+
+// Tighten the CA private key file's ACL so only the current OS user can
+// read it. The CA cert is installed in the user's browser as a trusted
+// root, so anyone who reads ca.key can forge certs for ANY host the user
+// trusts -- bank.com, gmail.com, internal corp SSO -- and serve them
+// with a valid TLS lock to the user's browser. Without lockdown, the
+// default DACL on %APPDATA% allows the user (and any process running
+// as the user, including unrelated installers / extensions / malware
+// that lives in the same profile) to slurp the key.
+//
+// POSIX: chmod 0600.
+// Windows: rewrite the DACL to a single ACE granting the current user
+//   GENERIC_ALL, with inheritance disabled. The owner field is left at
+//   whatever opensssl wrote, which on Windows is the user that ran us.
+void lockdownPrivateKeyFile(const QString &path) {
+    if (path.isEmpty() || !QFileInfo::exists(path)) return;
+#ifdef Q_OS_WIN
+    // Resolve the current user's SID. NULL DACL is famously dangerous;
+    // we build an explicit DACL with one ACE.
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) return;
+    DWORD tokenInfoLen = 0;
+    GetTokenInformation(hToken, TokenUser, nullptr, 0, &tokenInfoLen);
+    if (tokenInfoLen == 0) { CloseHandle(hToken); return; }
+    QByteArray tokenBuf(static_cast<int>(tokenInfoLen), Qt::Uninitialized);
+    if (!GetTokenInformation(hToken, TokenUser,
+            tokenBuf.data(), tokenInfoLen, &tokenInfoLen)) {
+        CloseHandle(hToken); return;
+    }
+    CloseHandle(hToken);
+    TOKEN_USER *tu = reinterpret_cast<TOKEN_USER *>(tokenBuf.data());
+
+    EXPLICIT_ACCESSW ea = {};
+    ea.grfAccessPermissions = GENERIC_ALL;
+    ea.grfAccessMode        = SET_ACCESS;
+    ea.grfInheritance       = NO_INHERITANCE;
+    ea.Trustee.TrusteeForm  = TRUSTEE_IS_SID;
+    ea.Trustee.TrusteeType  = TRUSTEE_IS_USER;
+    ea.Trustee.ptstrName    = reinterpret_cast<LPWSTR>(tu->User.Sid);
+
+    PACL pNewDacl = nullptr;
+    if (SetEntriesInAclW(1, &ea, nullptr, &pNewDacl) != ERROR_SUCCESS) return;
+
+    // Disable DACL inheritance so the parent dir's ACEs don't continue
+    // to grant access alongside our explicit ACE.
+    const std::wstring wpath = path.toStdWString();
+    SetNamedSecurityInfoW(const_cast<LPWSTR>(wpath.c_str()),
+                          SE_FILE_OBJECT,
+                          DACL_SECURITY_INFORMATION
+                            | PROTECTED_DACL_SECURITY_INFORMATION,
+                          nullptr, nullptr, pNewDacl, nullptr);
+    LocalFree(pNewDacl);
+#else
+    QFile::setPermissions(path,
+        QFile::ReadOwner | QFile::WriteOwner);
+#endif
+}
 
 QString sanitize(const QString &host) {
     QString out;
@@ -94,11 +157,23 @@ bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
 
 bool CertAuthority::ensureCa() {
     if (m_opensslExe.isEmpty()) return false;
-    if (QFileInfo::exists(m_caCertPath) && QFileInfo::exists(m_caKeyPath))
+    if (QFileInfo::exists(m_caCertPath) && QFileInfo::exists(m_caKeyPath)) {
+        // On every startup, re-assert owner-only ACL on the key file.
+        // Previous installs may have written it under the default
+        // (inherited) permissions, in which case any process running as
+        // the same user could read ca.key and forge certs for any host
+        // the user trusts. Pre-existing keys get tightened in place.
+        lockdownPrivateKeyFile(m_caKeyPath);
         return true;
+    }
 
     if (!runOpenssl({ "genrsa", "-out", m_caKeyPath, "2048" }))
         return false;
+    // Lock the freshly-generated key down to owner read+write only. On
+    // Windows we drop the inherited DACL and re-add a single ACE for
+    // the current user; on POSIX this becomes chmod 0600 via
+    // QFile::setPermissions.
+    lockdownPrivateKeyFile(m_caKeyPath);
 
     return runOpenssl({
         "req", "-x509", "-new", "-nodes",

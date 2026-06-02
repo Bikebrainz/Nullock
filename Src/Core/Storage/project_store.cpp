@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QMutexLocker>
 #include <QStandardPaths>
 #include <QTextStream>
 
@@ -179,11 +180,16 @@ bool ProjectStore::open(const QString &projectDir) {
 
     streamExistingHistory();
 
-    m_history.setFileName(m_dir + "/history.ndjson");
-    if (!m_history.open(QIODevice::WriteOnly | QIODevice::Append)) {
-        emit errorOccurred("could not open history.ndjson for append: "
-                           + m_history.errorString());
-        return false;
+    {
+        // Same mutex covers open() so a concurrent appendEntry() can't
+        // squeeze a write in while we're swapping the underlying file.
+        QMutexLocker lk(&m_historyMutex);
+        m_history.setFileName(m_dir + "/history.ndjson");
+        if (!m_history.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            emit errorOccurred("could not open history.ndjson for append: "
+                               + m_history.errorString());
+            return false;
+        }
     }
 
     // Tell downstream consumers (ProxyServer) to refresh their copy of
@@ -196,7 +202,10 @@ bool ProjectStore::open(const QString &projectDir) {
 }
 
 void ProjectStore::close() {
-    if (m_history.isOpen()) m_history.close();
+    {
+        QMutexLocker lk(&m_historyMutex);
+        if (m_history.isOpen()) m_history.close();
+    }
     if (!m_dir.isEmpty()) {
         m_dir.clear();
         emit openedChanged();
@@ -223,6 +232,33 @@ bool ProjectStore::ensureMetadata() {
         for (const QJsonValue &v : o.value("outOfScope").toArray())
             m_meta.outOfScope.append(v.toString());
         m_meta.rules.clear();
+        // Imported-rule quarantine. A project.json shared by a colleague
+        // (or, less innocently, mailed by an attacker) can carry M&R
+        // rules that exfil credentials -- e.g. host=".*" + section=
+        // ReqHeader + find="^Cookie: (.*)$" + replace adds a clone
+        // header that gets echoed by any in-scope target. We can't tell
+        // intent at load time, so we heuristically quarantine the rule
+        // shape that's most often weaponised: a catch-all host pattern
+        // combined with a credential-header touch. Quarantined rules
+        // arrive in the rules table with enabled=false and a comment
+        // explaining why, so the user has to look at each one and
+        // re-enable consciously.
+        static const QStringList kCredentialMarkers = {
+            "cookie", "set-cookie", "authorization",
+            "proxy-authorization", "bearer", "x-api-key",
+            "x-auth-token", "x-csrf-token", "x-xsrf-token",
+            "x-session-id", "x-amz-security-token",
+        };
+        auto isWildcardHost = [](const QString &g) {
+            const QString t = g.trimmed();
+            return t.isEmpty() || t == "*" || t == ".*" || t == "**";
+        };
+        auto looksCredential = [&](const QString &s) {
+            const QString lower = s.toLower();
+            for (const QString &m : kCredentialMarkers)
+                if (lower.contains(m)) return true;
+            return false;
+        };
         for (const QJsonValue &v : o.value("rules").toArray()) {
             const QJsonObject r = v.toObject();
             Nullock::Proxy::MatchReplaceRule rule;
@@ -235,6 +271,16 @@ bool ProjectStore::ensureMetadata() {
             rule.replace         = r.value("replace").toString();
             rule.caseInsensitive = r.value("caseInsensitive").toBool(true);
             rule.comment         = r.value("comment").toString();
+            if (rule.enabled
+                && isWildcardHost(rule.hostGlob)
+                && (looksCredential(rule.find) || looksCredential(rule.replace))) {
+                rule.enabled = false;
+                const QString tag = QStringLiteral(
+                    " [QUARANTINED on load: catch-all host + credential-header touch. "
+                    "Review and re-enable if intentional.]");
+                if (!rule.comment.contains("QUARANTINED"))
+                    rule.comment.append(tag);
+            }
             m_meta.rules.append(rule);
         }
         return true;
@@ -405,15 +451,21 @@ void ProjectStore::streamExistingHistory() {
 
 void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
                                const Nullock::Proxy::HttpResponse &response) {
-    if (!m_history.isOpen()) return;
-
+    // Build the line outside the lock so the JSON encode doesn't block
+    // another thread's response that's racing for the same write slot.
     QJsonObject o;
     o["v"]        = kSchemaVersion;
     o["ts"]       = request.timestamp.toUTC().toString(Qt::ISODateWithMs);
     o["request"]  = requestToJson(request);
     o["response"] = responseToJson(response);
-
     const QByteArray line = QJsonDocument(o).toJson(QJsonDocument::Compact) + "\n";
+
+    // Hold m_historyMutex across the isOpen() check and the actual
+    // write+flush. Without this, a main-thread close() during project
+    // switch can drop the file between our check and our write, and on
+    // Windows the OS may have already recycled the FD by then.
+    QMutexLocker lk(&m_historyMutex);
+    if (!m_history.isOpen()) return;
     m_history.write(line);
     m_history.flush();
 }
