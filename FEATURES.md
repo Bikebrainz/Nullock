@@ -1,168 +1,177 @@
-# Nullock features audit
+# Nullock features (live inventory)
 
-Verified live against PID 42036 on 2026-05-28. Every ✓ was smoke-tested
-via curl against the running app this session.
+Quick reference of everything that ships today. For the high-level
+overview see README.md; this file is the per-feature checklist for
+QA + scope conversations.
 
-## Backend
+## Tabs
 
-### Proxy core
-- [x] HTTP/1.1 plain proxy round-trip
-- [x] HTTPS MITM with forged leaf certs (covered by --smoke-test)
-- [x] HTTP/2 upstream (libnghttp2; covered by --smoke-test)
-- [x] WebSocket relay with frame parsing
-- [x] Per-host MITM blocklist persistence (clear works)
-- [x] Scope filter (in/out globs, filteredCount climbs on out-of-scope)
-- [x] Fallback port chain (running on 8080)
+- [x] **PROXY** — live history table, site map left rail, filter bar
+      (host / status / method / URL / regex deep search), detail pane
+      with REQ+RES (raw / headers / body / preview / hex), codec
+      helpers (URL / b64 / JWT / hex / HTML), row-to-row diff overlay,
+      ↦ REPEATER / INTRUDER / COPY AS, ↻ REPLAY, ⚡ PROBE, ⊟ MARK / DIFF
+- [x] **SCOPE** — in / out glob lists per project, notes, save-on-edit
+- [x] **RULES** — match & replace regex editor: name / host glob /
+      section (URL / req-header / req-body / resp-header / resp-body /
+      resp-status) / case-insensitive / find / replace / enabled /
+      reorder, persisted in project.json
+- [x] **ISSUES** — finding list with severity + kind filter chips,
+      "Probe all rows" + "Export SARIF" + "Clear all" buttons, click
+      to jump to originating row
+- [x] **SCANS** — port scanner UI: host / hosts / CIDR field,
+      presets (discovery / top100 / web / full1024 / custom),
+      timeout, parallel, throttle, shuffle, banner-grab toggle,
+      live progress + results table grouped open-first, host column,
+      "Export nmap XML"
+- [x] **RECON** — single-domain input, "Run all" button (DNS + crt.sh +
+      wordlist) or each individually, two-pane layout (DNS records
+      grouped by type, subdomains tagged by source)
+- [x] **STATS** — Wireshark-style per-host endpoints: count, ↑ ↓ bytes,
+      status-class mix, TLS, distinct paths, click to filter PROXY,
+      overall summary pills, optional method-mix bar
+- [x] **REPEATER** — tab strip (add / activate / rename / duplicate /
+      close), per-tab host / port / TLS / request / response,
+      send-to-repeater opens new tab
+- [x] **INTERCEPT** — toggle, queue with depth indicator, current
+      request editable, forward / drop / forward-all
+- [x] **INTRUDER** — Sniper mode template + payloads + results table
+      with per-row resend ↻, ↦ DISCOVERY one-click setup, hide-404s
+      filter, ~10 built-in payload presets
+- [x] **SETTINGS** — Proxy + CA & TLS + Projects + Project + Extensions
+      + Browser setup cards
 
-### Mutation pipeline
-- [x] Extensions API: JS in `extensions/` runs on startup
-- [x] Extensions: onResponse mutation (X-Audit-Ext injection confirmed)
-- [x] Extensions: onRequest mutation
-- [x] Match & Replace: URL rewrite
-- [x] Match & Replace: request header rewrite (UA rewrite confirmed)
-- [x] Match & Replace: request body rewrite (token rewrite confirmed)
-- [x] Match & Replace: response header rewrite
-- [x] Match & Replace: response body rewrite (METHOD→REWROTE confirmed)
-- [x] Match & Replace: response status rewrite
-- [x] Match & Replace: rulesHit counter increments
-- [x] Match & Replace: persistence in project.json
+## Backend modules
 
-### Intercept  **(critical deadlock fixed this audit)**
-- [x] Toggle on/off
-- [x] Forward current
-- [x] Drop current (connection breaks)
-- [x] Forward all (drain queue)
-- [x] Edit-then-forward (edits applied to wire)
+- [x] **Proxy** (`Src/BackEnd/Proxy`) — HTTP/1.1 keep-alive, HTTPS MITM
+      with on-the-fly forged leaf certs, HTTP/2 upstream via libnghttp2,
+      WebSocket relay after 101 with frame parsing, thread-per-connection,
+      scope filter, per-host MITM bypass list
+- [x] **CertAuthority** — root CA generation on first run, per-host leaf
+      mint via OpenSSL CLI, on-disk cache, strict hostname validation
+- [x] **Intercept** — pause / forward / drop / forward-all with queue,
+      QSemaphore-based worker handoff, signal emit outside the mutex
+      (deadlock fix `30320f0`)
+- [x] **Match & Replace** — `MatchReplaceRule` struct in proxy headers,
+      `applyRequestRules` / `applyResponseRules` on `ProxyServer`,
+      auto-Content-Length rewrite on body mutation, `rulesHit` counter
+- [x] **PassiveScanner** (`Src/Core/Networking/passive_scanner`) — 10
+      finding kinds, capped at 1000 in memory, rowId tracking synced
+      with `ProxyModel`
+- [x] **Active probe** (in `control_server.cpp`) — 6 vuln classes per
+      query param: reflected-xss / open-redirect / sqli-error /
+      path-traversal / cmd-injection / crlf-injection. `/probe/all`
+      throttles across every history row with query params.
+- [x] **PortScanner** (`Src/Core/Networking/port_scanner`) — TCP-connect,
+      banner grab + classify, presets, CIDR + multi-host, stealth
+      (throttle + shuffle), setResults for import
+- [x] **ReconEngine** (`Src/Core/Networking/recon_engine`) — async
+      QDnsLookup, crt.sh HTTPS query on a worker, wordlist DNS sweep
+      with OS-resolver suffix-expansion filter
+- [x] **Repeater** (`Src/Core/Networking`) — multi-tab with active-index
+      semantics, single-state legacy API preserved for QML
+- [x] **Intruder** — `QAbstractListModel`, `§marker§` template,
+      `QtConcurrent::run` worker, per-row resend
+- [x] **ProjectStore** (`Src/Core/Storage`) — `project.json` (scope +
+      notes + rules) + `history.ndjson`, multi-project switcher,
+      HAR import / export, `historyShouldClear` signal on project
+      switch
+- [x] **Themes** — built-ins (retro / mono / amber / cyber / ice) + JSON
+      file loader + save-as
+- [x] **ExtensionsApi** — JS plugins in shared `QJSEngine`,
+      `onRequest` / `onResponse` mutation hooks via
+      `BlockingQueuedConnection`
+- [x] **ControlServer** (`Src/BackEnd/Control`) — HTTP/1.1 on 127.0.0.1,
+      static ui-v2 serving, `/api/*` JSON, snapshot polling with
+      `seq` 304 short-circuit, **CSRF Origin guard** on writes,
+      no ACAO on responses
 
-### Repeater
-- [x] Send via raw bytes (TLS + plain)
-- [x] Multi-tab: add, activate, close, rename, duplicate
-- [x] Send-to-repeater opens new tab
-- [x] Active-tab semantics on the legacy single-state API
+## REST API surface
 
-### Intruder
-- [x] Sniper mode: §marker§ substitution
-- [x] Per-row resend
-- [x] Start / stop / clear
+### Snapshot + state
+- `GET /api/snapshot[?since=N]` — full state; 304 when seq unchanged
+- `GET /api/history/<id>/request` — raw request bytes
+- `GET /api/history/<id>/response` — raw response bytes
 
-### Scanners
-- [x] Passive: missing CSP/HSTS/XFO/XCTO/RP on HTML
-- [x] Passive: Set-Cookie hardening (HttpOnly / Secure / SameSite)
-- [x] Passive: Server-version leak / X-Powered-By
-- [x] Passive: CORS wildcard / wildcard + credentials
-- [x] Passive: sensitive params in URL
-- [x] Passive: auth-over-HTTP
-- [x] Active: reflected-XSS probe per row
-- [x] Findings rowId aligns with ProxyModel
+### Mutations
+- `POST /api/proxy/toggle`
+- `POST /api/intercept/{toggle,forward,drop,forwardAll}`
+- `POST /api/scope/{in,out}/{add,remove}`
+- `POST /api/scope/notes`
+- `POST /api/rules/{add,update,remove,toggle,move}`
+- `POST /api/repeater/{set,send,clear,tab/{add,addFromHistory,close,activate,rename,duplicate}}`
+- `POST /api/intruder/{set,start,stop,clear,resend}`
+- `POST /api/theme` / `/api/theme/save-as` / `/api/theme/reload`
+- `POST /api/clear-history`, `/api/mitm/clear-blocked`
+- `POST /api/extensions/reload`
+- `POST /api/findings/clear`
+- `POST /api/project/{list,open,create}`
 
-### Project store
-- [x] Open default project at startup
-- [x] Multi-project list/open/create
-- [x] Switch wipes model + reloads scope + reloads rules
-- [x] history.ndjson append on every response (clear-history wipes it)
-- [x] HAR export
-- [x] HAR import (path: 184 entries re-loaded)
-- [x] HAR import (object via React file picker)
+### Active scanning
+- `POST /api/history/<id>/probe` — per-row active scan
+- `POST /api/history/<id>/replay` — replay through mutation pipeline
+- `POST /api/probe/all` — every row with query params, throttled
 
-### Control server
-- [x] /api/snapshot full
-- [x] /api/snapshot?since=N → 304 short-circuit
-- [x] /api/history/<id>/request|response
-- [x] /api/history/<id>/replay
-- [x] /api/history/<id>/probe
-- [x] /api/search?q=…&where=…
-- [x] /api/pac
-- [x] /ca.pem and /ca.crt
-- [x] /api/proxy/toggle
-- [x] /api/intercept/{toggle,forward,drop,forwardAll}
-- [x] /api/scope/{in,out}/{add,remove}
-- [x] /api/scope/notes
-- [x] /api/repeater/{set,send,clear,tab/*}
-- [x] /api/intruder/{set,start,stop,clear,resend}
-- [x] /api/rules/{add,update,remove,toggle,move}
-- [x] /api/findings/clear
-- [x] /api/theme + /api/theme/save-as + /api/theme/reload
-- [x] /api/har/export + /api/har/import
-- [x] /api/clear-history
-- [x] /api/mitm/clear-blocked
-- [x] /api/extensions/reload
-- [x] /api/project/{list,open,create}
-- [x] Static file serving from ui-v2/
+### Port scanner
+- `POST /api/portscan/start` (host | hosts | cidr, preset | ports,
+  timeoutMs, parallel, throttleMs, randomize, banner)
+- `POST /api/portscan/{stop,clear}`
+- `POST /api/portscan/import-nmap` (raw nmap XML body)
 
-## Frontend
+### Recon
+- `POST /api/recon/{dns,crt,wordlist,stop,clear}`
 
-All shipped React components wire to the matching backend endpoint
-(audited by grepping `/api/*` strings across both sides — full overlap).
+### Search
+- `GET /api/search?q=<regex>&where=req|resp|both&limit=N`
 
-### Tabs
-- [x] PROXY · scope filter, history table, click-to-inspect detail pane
-- [x] SCOPE · in/out glob lists, notes
-- [x] RULES · create/edit/toggle/delete/reorder
-- [x] ISSUES · severity + kind filter chips, click-to-jump
-- [x] REPEATER · tab strip with rename/dup/close + real send
-- [x] INTERCEPT · queue depth + forward/drop/forwardAll
-- [x] INTRUDER · template + payloads + presets + results + per-row resend
-- [x] SETTINGS · Proxy, CA & TLS, Projects, Project, Extensions,
-  Browser setup cards
-
-### Proxy detail pane
-- [x] REQ / RES tabs (raw/headers/body/preview/hex)
-- [x] Codec bar (URL / b64 / JWT / hex / HTML en+decode, overlay output)
-- [x] Diff overlay between marked rows
-- [x] Replay button (mutations apply, new row appears)
-- [x] Probe button (per-param canary scan)
-- [x] Send-to-Repeater / Intruder
-
-### History filter bar
-- [x] Host substring filter
-- [x] Status-class chips (all/2xx/3xx/4xx/5xx)
-- [x] Method dropdown
-- [x] Search box (URL/path/method/mime, debounced)
-- [x] Deep search toggle (regex over response/request bodies)
-- [x] Clear filters
-
-### Tweaks panel
-- [x] Theme cycle (5 built-ins + JSON files)
-- [x] Colors editor live preview + save-as
-- [x] Accent override
-
-### Status bar
-- [x] Toggle proxy power
-- [x] Export HAR
-- [x] Clear history
+### Tool integration / exports
+- `GET /api/export/nmap-xml` — port-scan results as nmaprun XML
+- `GET /api/export/sarif` — findings as SARIF v2.1
+- `GET /api/export/postman` — history as Postman v2.1 collection
+- `POST /api/har/{export,import}`
+- `GET /api/pac` — proxy auto-config file with live port
+- `GET /ca.pem` / `/ca.crt` — CA download
 
 ## Future / unbuilt (roadmap)
 
+- [ ] `--headless` flag (skip QML window + browser auto-open)
+- [ ] NDJSON stdout event stream in headless mode
+- [ ] `nullock` CLI binary OR shell wrapper around REST API
+- [ ] Python client library (separate repo)
 - [ ] HTTP/2 multiplexing (single stream per CONNECT today)
 - [ ] Server-side h2 to browser
-- [ ] WebSocket permessage-deflate
-- [ ] TLS fingerprint randomization (JA3 evasion)
-- [ ] Active scanner: open-redirect probe (canary in Location)
-- [ ] Active scanner: SQLi-error probe
-- [ ] Active scanner: header param probes
-- [ ] Active scanner: POST body params
-- [ ] Saved auth tokens / session manager
-- [ ] Mobile CA install with LAN binding + QR code
-- [ ] Request templates / scratchpad
-- [ ] Smoke-test coverage for scanner / probe / replay / rules / project switch
-- [ ] WebSocket frame grouping in history (per-session view)
+- [ ] WebSocket `permessage-deflate`
+- [ ] TLS fingerprint randomization (JA3 evasion for Cloudflare hosts)
+- [ ] Saved auth-token / session manager
+- [ ] WHOIS + reverse DNS in recon tab
+- [ ] WebSocket frame grouping (per-session collapsible view in history)
 
-## Bugs caught & fixed in this audit
+## Bugs caught + fixed in this codebase
 
-- **Intercept deadlock (critical)** — `addPendingOnMain` / `forward()` /
-  `drop()` emitted `currentChanged` while still holding
+- **Critical: intercept deadlock** (`30320f0`) — `addPendingOnMain` /
+  `forward()` / `drop()` emitted `currentChanged` while holding
   `m_queueMutex`. QML's `intercept.queueDepth` binding evaluates
-  synchronously on signal emit and re-acquires the same mutex → main
-  thread deadlocks the moment any request hits the queue. Both the
-  proxy and the control server stopped responding entirely. Fix:
-  emit after the lock is released. Verified by repro before/after.
-- **(earlier)** okJson() always overwrote `ok` to true — endpoints
-  reporting failure were lying. Fixed.
-- **(earlier)** Scanner rowId out of sync with ProxyModel after
-  history replay. Fixed via `setNextRowId(model.rowCount()+1)` at
-  boot + modelReset wire.
-- **(earlier)** openByName silently created project dirs. Fixed.
-- **(earlier)** Replay re-entered control loop via sync HttpClient
-  → crashed app. Fixed by running on QtConcurrent.
-- **(earlier)** FrontEndGUI.dll + Qt6Concurrent.dll not auto-deployed.
-  Fixed via POST_BUILD steps in Src/App/CMakeLists.txt.
+  synchronously on emit and re-acquires the same non-recursive mutex
+  → main-thread deadlock, control server frozen. Fix: emit outside
+  the lock.
+- **okJson()** was hard-overriding `ok: true` regardless of input —
+  every endpoint that reported failure was lying. Fixed.
+- **CSRF via ACAO `*`** — any web page could read captured creds
+  cross-origin. Fixed: removed ACAO from API + added Origin guard
+  on writes.
+- **CA hostname injection** — newline in CONNECT host could inject
+  openssl extension config; `/` could graft DN fields onto the cert
+  subject. Fixed via strict `isValidHostForCert` check.
+- **`openByName` silently created project dirs** on typo. Fixed.
+- **Replay re-entered control loop** via sync HttpClient → crashed
+  the app. Fixed by running on QtConcurrent.
+- **Scanner rowId off-by-N** after history replay. Fixed via
+  `setNextRowId(model.rowCount() + 1)` + `modelReset` wire.
+- **DNS suffix expansion** contaminated wordlist subdomain enum
+  (Windows resolver appended local search domain to NXDOMAIN names).
+  Fixed by filtering on record name match.
+- **CRLF probe payload** had a literal space that broke its own
+  request line. Fixed by percent-encoding.
+- **Postbuild deploy** of FrontEndGUI.dll + Qt6Concurrent.dll was
+  missing → STATUS_ENTRYPOINT_NOT_FOUND on bare launches. Fixed
+  via POST_BUILD in `Src/App/CMakeLists.txt`.
