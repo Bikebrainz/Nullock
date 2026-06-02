@@ -37,6 +37,7 @@
 #include <QTcpServer>
 #include <QXmlStreamReader>
 #include <QTcpSocket>
+#include <QElapsedTimer>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -45,6 +46,16 @@ namespace Nullock::Control {
 namespace {
 
 constexpr int     kReadTimeoutMs = 5'000;
+// Absolute wall-clock budget for receiving the full request header block.
+// Defeats slowloris: a client dribbling one byte every 4.9s would refill
+// the per-read kReadTimeoutMs forever, but the elapsed-since-accept clock
+// keeps counting and drops them at 10s regardless. 10s is generous for
+// any honest client on localhost.
+constexpr qint64  kHeaderDeadlineMs = 10'000;
+// Similar deadline for receiving the request body once headers have been
+// parsed. A POST body of up to kMaxBodyBytes on localhost completes in
+// well under 30s.
+constexpr qint64  kBodyDeadlineMs   = 30'000;
 // Hard cap on request body size accepted by /api/*. Big enough for HAR
 // imports of medium projects (~32 MB), small enough that a malicious
 // 4 GB POST can't OOM us. Returns 413 above this.
@@ -210,10 +221,26 @@ void ControlServer::onNewConnection() {
 }
 
 void ControlServer::handle(QTcpSocket *socket) {
+    // Slowloris defence. Track an absolute wall-clock since accept(); even
+    // if the client refills the per-read kReadTimeoutMs by dribbling one
+    // byte every 4.9s, the deadline keeps counting and drops them at
+    // kHeaderDeadlineMs. Without this, 50 dribbling sockets would each pin
+    // the main thread's handle() loop forever and freeze the entire API
+    // surface (the UI included, since it polls /api/snapshot).
+    QElapsedTimer deadline;
+    deadline.start();
+
     // Read until headers complete.
     QByteArray buf;
     while (!buf.contains("\r\n\r\n")) {
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kReadTimeoutMs)) {
+        const qint64 remaining = kHeaderDeadlineMs - deadline.elapsed();
+        if (remaining <= 0) {
+            socket->write(httpResponse(408, "text/plain", "Header read timeout"));
+            socket->disconnectFromHost();
+            return;
+        }
+        const int waitMs = static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs));
+        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(waitMs)) {
             socket->disconnectFromHost();
             return;
         }
@@ -337,8 +364,20 @@ void ControlServer::handle(QTcpSocket *socket) {
             return;
         }
     }
+    // Body-side slowloris defence: same absolute-deadline pattern. A POST
+    // claiming kMaxBodyBytes that dribbles in below ~2 MB/sec is either a
+    // hostile slow-read or a network so broken there's nothing useful we
+    // can do with the result anyway.
+    QElapsedTimer bodyDeadline;
+    bodyDeadline.start();
     while (rest.size() < contentLength) {
-        if (!socket->waitForReadyRead(kReadTimeoutMs)) break;
+        const qint64 remaining = kBodyDeadlineMs - bodyDeadline.elapsed();
+        if (remaining <= 0) {
+            socket->disconnectFromHost();
+            return;
+        }
+        const int waitMs = static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs));
+        if (!socket->waitForReadyRead(waitMs)) break;
         rest.append(socket->readAll());
     }
     const QByteArray body = rest.left(contentLength);
@@ -776,6 +815,36 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (where.isEmpty()) where = "both";
             const int limit = q.queryItemValue("limit").toInt() > 0
                                 ? q.queryItemValue("limit").toInt() : 200;
+            // ReDoS defence. Qt's PCRE backend doesn't expose a match-time
+            // budget, so a hostile pattern like (a+)+$ run against MB of
+            // captured body backtracks for tens of seconds and freezes
+            // the whole API surface. Three guards:
+            //  1. Cap pattern length -- bombs are usually short, but a
+            //     malicious one inside a megabyte of legitimate text is
+            //     just noise.
+            //  2. Reject patterns whose shape screams "nested unbounded
+            //     quantifier" -- the textbook bomb pattern. Heuristic,
+            //     but the cost of a false positive is "user rewrites a
+            //     weird regex," which is fine.
+            //  3. Truncate each body to kSearchBodyCap and cap the total
+            //     rows scanned. A 200-row × 1 MB scan completes in
+            //     reasonable wall-clock even if the pattern is awkward.
+            constexpr int kPatternMax     = 4 * 1024;
+            constexpr int kSearchBodyCap  = 1 * 1024 * 1024;
+            constexpr int kSearchRowCap   = 500;
+            if (pattern.size() > kPatternMax) {
+                return httpJson(400, QJsonObject{{ "error",
+                    "search pattern too long (max 4 KB)" }});
+            }
+            static const QRegularExpression kBombShape(
+                R"(\([^)]*[*+]\)[*+]|\([^)]*\{\d+,\}\)[*+])",
+                QRegularExpression::NoPatternOption);
+            if (kBombShape.match(pattern).hasMatch()) {
+                return httpJson(400, QJsonObject{{ "error",
+                    "search pattern contains nested unbounded quantifier "
+                    "(potential catastrophic backtrack); rewrite or use a "
+                    "narrower pattern" }});
+            }
             if (!pattern.isEmpty()) {
                 const QRegularExpression rx(pattern,
                     QRegularExpression::CaseInsensitiveOption
@@ -812,14 +881,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         hit["excerpts"] = QJsonArray::fromStringList(excerpts);
                         hits.append(hit);
                     };
-                    for (int row = 0; row < n && hits.size() < limit; ++row) {
+                    const int rowLoopMax = std::min(n, kSearchRowCap);
+                    for (int row = 0; row < rowLoopMax && hits.size() < limit; ++row) {
                         if (where == "req" || where == "both") {
-                            const QString t = m_wiring.history->requestRawAt(row);
+                            QString t = m_wiring.history->requestRawAt(row);
+                            if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
                             if (!t.isEmpty()) scan(row, t, "req");
                         }
                         if (hits.size() >= limit) break;
                         if (where == "resp" || where == "both") {
-                            const QString t = m_wiring.history->responseRawAt(row);
+                            QString t = m_wiring.history->responseRawAt(row);
+                            if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
                             if (!t.isEmpty()) scan(row, t, "resp");
                         }
                     }
@@ -1900,13 +1972,33 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/portscan/import-nmap") {
         if (!m_wiring.portScanner)
             return okJson({{ "ok", false }, { "error", "no port scanner" }});
+        // XXE / billion-laughs defence. Qt's QXmlStreamReader doesn't
+        // expand external entities by default, but it does report
+        // <!ENTITY> declarations and entity references as tokens, and
+        // historical Qt CVEs (CVE-2015-1858) covered exactly this kind
+        // of recursive entity bomb. Rejecting any DTD/ENTITY in the body
+        // up front means a future Qt change (or a parser swap) can't
+        // re-open the hole. We also cap element nesting depth at 64 so
+        // a hand-crafted-deep XML can't blow the recursion budget.
+        const QByteArray needleD = QByteArrayLiteral("<!DOCTYPE");
+        const QByteArray needleE = QByteArrayLiteral("<!ENTITY");
+        const QByteArray bodyHead = body.left(64 * 1024);
+        if (bodyHead.contains(needleD) || bodyHead.contains(needleE)) {
+            return okJson({{ "ok", false }, { "error",
+                "nmap XML import refuses input containing DTD or ENTITY declarations" }});
+        }
         QXmlStreamReader xml(body);
+        int depth = 0;
         QString currentHost;
         QString currentAddr;
         QList<Nullock::Core::PortResult> imported;
         while (!xml.atEnd()) {
             xml.readNext();
             if (xml.isStartElement()) {
+                if (++depth > 64) {
+                    return okJson({{ "ok", false }, { "error",
+                        "nmap XML import: element nesting depth exceeded" }});
+                }
                 const QString name = xml.name().toString();
                 if (name == "host") {
                     currentHost.clear();
@@ -1932,6 +2024,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     }
                     if (r.port > 0) imported.append(r);
                 }
+            } else if (xml.isEndElement()) {
+                if (depth > 0) --depth;
             }
         }
         if (xml.hasError())
