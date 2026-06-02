@@ -11,7 +11,12 @@ namespace Nullock::Core {
 
 namespace {
 
-constexpr int kTimeoutMs = 15'000;
+constexpr int     kTimeoutMs    = 15'000;
+// Hard cap on the response body we'll accept. A hostile / MitM upstream
+// announcing Content-Length: 10 GiB or streaming forever otherwise OOMs.
+// 128 MB is comfortably larger than any real recon/replay payload we'd
+// look at; anything bigger we just truncate and bail with an error.
+constexpr qint64  kMaxBodyBytes = 128LL * 1024 * 1024;
 
 bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
     while (!out.contains("\r\n\r\n")) {
@@ -26,6 +31,7 @@ bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
 }
 
 bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
+    if (n < 0 || n > kMaxBodyBytes) return false;
     while (out.size() < n) {
         if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kTimeoutMs))
             return false;
@@ -38,11 +44,13 @@ bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
 
 void readUntilClose(QTcpSocket *socket, QByteArray &out) {
     while (socket->state() == QAbstractSocket::ConnectedState) {
+        if (out.size() >= kMaxBodyBytes) break;   // hard cap
         if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kTimeoutMs))
             break;
         out.append(socket->readAll());
     }
     out.append(socket->readAll());
+    if (out.size() > kMaxBodyBytes) out.truncate(kMaxBodyBytes);
 }
 
 bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded,
@@ -62,6 +70,10 @@ bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded
         bool ok = false;
         const qint64 chunkSize = sizeLine.trimmed().toLongLong(&ok, 16);
         if (!ok) return false;
+        // Reject negative / absurd chunk sizes that would later overflow
+        // the `buffer.size() < chunkSize + 2` arithmetic.
+        if (chunkSize < 0 || chunkSize > kMaxBodyBytes) return false;
+        if (decoded.size() + chunkSize > kMaxBodyBytes) return false;
         buffer.remove(0, crlf + 2);
         if (chunkSize == 0) {
             while (buffer.indexOf("\r\n") < 0) {

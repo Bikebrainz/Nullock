@@ -175,6 +175,16 @@ private:
     QAtomicInt m_h2UpstreamCount {0};
     mutable QMutex m_rulesMutex;
     QList<MatchReplaceRule> m_rules;
+    // Parallel to m_rules: holds the pre-compiled regex for each rule's
+    // `find` and `hostGlob`. Building QRegularExpression once per rule
+    // and reusing it on every request avoids ~500k regex compiles/sec
+    // under typical traffic. Filled by setRules(), used by apply*Rules.
+    struct CompiledRule {
+        QRegularExpression find;       // null pattern => skip rule
+        QRegularExpression host;       // null pattern => match all hosts
+        bool               hostAll = true;
+    };
+    QList<CompiledRule> m_compiledRules;
     mutable QAtomicInt m_rulesHit {0};
 };
 

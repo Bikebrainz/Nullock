@@ -154,15 +154,47 @@ void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &reques
 
 namespace {
 
+// Anything a JS handler returns ends up serialised onto the wire. A
+// header name or value carrying CR / LF would split the request and
+// hand an attacker a request-smuggling primitive against the upstream.
+// Validate aggressively at the boundary so handlers can't get this
+// wrong by accident or design.
+static bool isValidHeaderName(const QString &name) {
+    if (name.isEmpty() || name.size() > 256) return false;
+    // RFC 7230 token chars only.
+    for (QChar c : name) {
+        const ushort u = c.unicode();
+        if (u < 0x21 || u > 0x7E) return false;
+        // Reject separators that aren't valid in a token.
+        static const QString seps = "\"(),/:;<=>?@[\\]{}";
+        if (seps.contains(c)) return false;
+    }
+    return true;
+}
+static bool isValidHeaderValue(const QString &value) {
+    if (value.size() > 8192) return false;
+    for (QChar c : value) {
+        const ushort u = c.unicode();
+        // VCHAR + SP + HT; absolutely no CR / LF / NUL.
+        if (u == '\r' || u == '\n' || u == '\0') return false;
+        if (u < 0x20 && u != '\t') return false;
+    }
+    return true;
+}
+
 QList<QPair<QString, QString>> headersFromJs(const QJSValue &arr) {
     QList<QPair<QString, QString>> out;
     if (!arr.isArray()) return out;
     const int n = arr.property("length").toInt();
-    for (int i = 0; i < n; ++i) {
+    // Cap total header count to avoid a runaway handler blowing memory.
+    constexpr int kMaxHeaders = 256;
+    for (int i = 0; i < n && out.size() < kMaxHeaders; ++i) {
         const QJSValue pair = arr.property(i);
-        if (pair.isArray() && pair.property("length").toInt() >= 2) {
-            out.append({ pair.property(0).toString(), pair.property(1).toString() });
-        }
+        if (!pair.isArray() || pair.property("length").toInt() < 2) continue;
+        const QString k = pair.property(0).toString();
+        const QString v = pair.property(1).toString();
+        if (!isValidHeaderName(k) || !isValidHeaderValue(v)) continue;
+        out.append({ k, v });
     }
     return out;
 }
@@ -233,8 +265,28 @@ Nullock::Proxy::HttpRequest ExtensionsApi::doMutateRequest(Nullock::Proxy::HttpR
     // Read final mutated values back into the C++ struct. Host/port stay
     // immutable on purpose -- changing them mid-flight would require
     // reconnecting to a different upstream, which is a bigger design.
-    req.method = entry.property("method").toString();
-    req.path   = entry.property("path").toString();
+    // Validate everything from JS before letting it touch the wire:
+    // method must look like an HTTP method, path must not contain CR/LF.
+    {
+        const QString m = entry.property("method").toString();
+        bool methodOk = !m.isEmpty() && m.size() <= 32;
+        for (QChar c : m) {
+            const ushort u = c.unicode();
+            if (u < 'A' || u > 'Z') { methodOk = false; break; }
+        }
+        if (methodOk) req.method = m;
+    }
+    {
+        const QString p = entry.property("path").toString();
+        bool pathOk = !p.isEmpty() && p.size() <= 8192;
+        for (QChar c : p) {
+            const ushort u = c.unicode();
+            if (u == '\r' || u == '\n' || u == '\0' || u == ' ' || u < 0x20) {
+                pathOk = false; break;
+            }
+        }
+        if (pathOk) req.path = p;
+    }
     req.headers = headersFromJs(entry.property("headers"));
     req.body   = entry.property("bodyText").toString().toUtf8();
     return req;
@@ -268,8 +320,22 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
         if (r.isObject()) entry = r;
     }
 
-    resp.statusCode   = entry.property("status").toInt();
-    resp.reasonPhrase = entry.property("reasonPhrase").toString();
+    // Clamp the JS-returned status to a valid HTTP code; reject CR/LF
+    // in the reason phrase (would split the status line going to the
+    // client).
+    const int sc = entry.property("status").toInt();
+    if (sc >= 100 && sc < 600) resp.statusCode = sc;
+    {
+        const QString rp = entry.property("reasonPhrase").toString();
+        bool rpOk = rp.size() <= 128;
+        for (QChar c : rp) {
+            const ushort u = c.unicode();
+            if (u == '\r' || u == '\n' || u == '\0' || u < 0x20) {
+                rpOk = false; break;
+            }
+        }
+        if (rpOk) resp.reasonPhrase = rp;
+    }
     resp.headers      = headersFromJs(entry.property("headers"));
     resp.body         = entry.property("bodyText").toString().toUtf8();
     return resp;

@@ -852,8 +852,54 @@ void ProxyServer::noteFiltered() {
 }
 
 void ProxyServer::setRules(const QList<MatchReplaceRule> &rules) {
+    // Pre-compile patterns once. Massive speedup vs. re-compiling on
+    // every request, and rejects truly insane patterns at edit time so
+    // a malformed rule can't blow up in the request hot path.
+    QList<MatchReplaceRule>           accepted;
+    QList<ProxyServer::CompiledRule>  compiled;
+    accepted.reserve(rules.size());
+    compiled.reserve(rules.size());
+
+    // Hard cap on individual pattern size. ~4 KB find / 4 KB replace is
+    // more than any real Burp-style rule. Refuses obvious DoS payloads
+    // like a 1 MB regex.
+    constexpr int kMaxPatternBytes = 4096;
+
+    for (const auto &r : rules) {
+        if (r.find.size() > kMaxPatternBytes) continue;
+        if (r.replace.size() > kMaxPatternBytes) continue;
+        if (r.hostGlob.size() > 256) continue;
+
+        QRegularExpression::PatternOptions opts =
+            QRegularExpression::NoPatternOption
+          | QRegularExpression::DontCaptureOption;
+        if (r.caseInsensitive) opts |= QRegularExpression::CaseInsensitiveOption;
+        QRegularExpression findRx(r.find, opts);
+        if (!findRx.isValid()) continue;     // refuse malformed at edit time
+        findRx.optimize();
+
+        ProxyServer::CompiledRule cr;
+        cr.find = findRx;
+
+        if (r.hostGlob.isEmpty()) {
+            cr.hostAll = true;
+        } else {
+            QString pattern = QRegularExpression::escape(r.hostGlob);
+            pattern.replace("\\*", ".*");
+            cr.host = QRegularExpression("^" + pattern + "$",
+                                          QRegularExpression::CaseInsensitiveOption);
+            if (!cr.host.isValid()) continue;
+            cr.host.optimize();
+            cr.hostAll = false;
+        }
+
+        accepted.append(r);
+        compiled.append(cr);
+    }
+
     QMutexLocker lock(&m_rulesMutex);
-    m_rules = rules;
+    m_rules          = accepted;
+    m_compiledRules  = compiled;
 }
 
 QList<MatchReplaceRule> ProxyServer::rules() const {
@@ -863,24 +909,14 @@ QList<MatchReplaceRule> ProxyServer::rules() const {
 
 namespace {
 
-bool hostMatches(const QString &host, const QString &glob) {
-    if (glob.isEmpty()) return true;
-    QString pattern = QRegularExpression::escape(glob);
-    pattern.replace("\\*", ".*");
-    QRegularExpression rx("^" + pattern + "$",
-                          QRegularExpression::CaseInsensitiveOption);
-    return rx.match(host).hasMatch();
-}
-
-// Run a single regex find/replace against `s`. Returns true if at least
-// one substitution happened (so the caller can count hits / update CL).
-bool applyOne(QString &s, const MatchReplaceRule &r) {
-    QRegularExpression::PatternOptions opts = QRegularExpression::NoPatternOption;
-    if (r.caseInsensitive) opts |= QRegularExpression::CaseInsensitiveOption;
-    QRegularExpression rx(r.find, opts);
-    if (!rx.isValid()) return false;
+// Run a pre-compiled regex find/replace against `s`. Returns true if at
+// least one substitution happened (so the caller can count hits / update
+// Content-Length).
+bool applyOne(QString &s, const MatchReplaceRule &r,
+              const QRegularExpression &compiledFind) {
+    if (!compiledFind.isValid()) return false;
     const QString before = s;
-    s.replace(rx, r.replace);
+    s.replace(compiledFind, r.replace);
     return s != before;
 }
 
@@ -901,29 +937,36 @@ void fixContentLength(QList<QPair<QString, QString>> &headers, int newSize) {
 
 void ProxyServer::applyRequestRules(HttpRequest &req) const {
     QList<MatchReplaceRule> rs;
-    { QMutexLocker lock(&m_rulesMutex); rs = m_rules; }
+    QList<CompiledRule>     cs;
+    {
+        QMutexLocker lock(&m_rulesMutex);
+        rs = m_rules;
+        cs = m_compiledRules;
+    }
 
     bool bodyChanged = false;
-    for (const auto &r : rs) {
+    for (int i = 0; i < rs.size() && i < cs.size(); ++i) {
+        const auto &r = rs[i];
+        const auto &c = cs[i];
         if (!r.enabled) continue;
-        if (!hostMatches(req.host, r.hostGlob)) continue;
+        if (!c.hostAll && !c.host.match(req.host).hasMatch()) continue;
 
         if (r.section == MatchReplaceRule::ReqUrl) {
-            QString p = req.path;   if (applyOne(p, r)) { req.path = p; m_rulesHit.fetchAndAddOrdered(1); }
-            QString t = req.target; if (applyOne(t, r)) { req.target = t; m_rulesHit.fetchAndAddOrdered(1); }
+            QString p = req.path;   if (applyOne(p, r, c.find)) { req.path = p; m_rulesHit.fetchAndAddOrdered(1); }
+            QString t = req.target; if (applyOne(t, r, c.find)) { req.target = t; m_rulesHit.fetchAndAddOrdered(1); }
         } else if (r.section == MatchReplaceRule::ReqHeader) {
             for (auto &h : req.headers) {
                 QString combined = h.first + ": " + h.second;
-                if (applyOne(combined, r)) {
-                    const int c = combined.indexOf(": ");
-                    if (c > 0) { h.first = combined.left(c); h.second = combined.mid(c + 2); }
-                    else       { h.first = combined; h.second.clear(); }
+                if (applyOne(combined, r, c.find)) {
+                    const int colon = combined.indexOf(": ");
+                    if (colon > 0) { h.first = combined.left(colon); h.second = combined.mid(colon + 2); }
+                    else           { h.first = combined; h.second.clear(); }
                     m_rulesHit.fetchAndAddOrdered(1);
                 }
             }
         } else if (r.section == MatchReplaceRule::ReqBody) {
             QString body = QString::fromUtf8(req.body);
-            if (applyOne(body, r)) {
+            if (applyOne(body, r, c.find)) {
                 req.body = body.toUtf8();
                 bodyChanged = true;
                 m_rulesHit.fetchAndAddOrdered(1);
@@ -941,18 +984,25 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
 
 void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp) const {
     QList<MatchReplaceRule> rs;
-    { QMutexLocker lock(&m_rulesMutex); rs = m_rules; }
+    QList<CompiledRule>     cs;
+    {
+        QMutexLocker lock(&m_rulesMutex);
+        rs = m_rules;
+        cs = m_compiledRules;
+    }
     if (rs.isEmpty()) return;
 
     bool bodyChanged = false;
-    for (const auto &r : rs) {
+    for (int i = 0; i < rs.size() && i < cs.size(); ++i) {
+        const auto &r = rs[i];
+        const auto &c = cs[i];
         if (!r.enabled) continue;
-        if (!hostMatches(req.host, r.hostGlob)) continue;
+        if (!c.hostAll && !c.host.match(req.host).hasMatch()) continue;
 
         if (r.section == MatchReplaceRule::RespStatus) {
             QString line = resp.httpVersion + " " + QString::number(resp.statusCode)
                          + " " + resp.reasonPhrase;
-            if (applyOne(line, r)) {
+            if (applyOne(line, r, c.find)) {
                 const QStringList parts = line.split(' ', Qt::KeepEmptyParts);
                 if (parts.size() >= 2) {
                     resp.httpVersion  = parts[0];
@@ -964,16 +1014,16 @@ void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp)
         } else if (r.section == MatchReplaceRule::RespHeader) {
             for (auto &h : resp.headers) {
                 QString combined = h.first + ": " + h.second;
-                if (applyOne(combined, r)) {
-                    const int c = combined.indexOf(": ");
-                    if (c > 0) { h.first = combined.left(c); h.second = combined.mid(c + 2); }
-                    else       { h.first = combined; h.second.clear(); }
+                if (applyOne(combined, r, c.find)) {
+                    const int colon = combined.indexOf(": ");
+                    if (colon > 0) { h.first = combined.left(colon); h.second = combined.mid(colon + 2); }
+                    else           { h.first = combined; h.second.clear(); }
                     m_rulesHit.fetchAndAddOrdered(1);
                 }
             }
         } else if (r.section == MatchReplaceRule::RespBody) {
             QString body = QString::fromUtf8(resp.body);
-            if (applyOne(body, r)) {
+            if (applyOne(body, r, c.find)) {
                 resp.body = body.toUtf8();
                 bodyChanged = true;
                 m_rulesHit.fetchAndAddOrdered(1);
