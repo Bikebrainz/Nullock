@@ -432,13 +432,28 @@ function parseRawRequest(row, raw) {
 function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function psq(s) { return "'" + String(s).replace(/'/g, "''") + "'"; } // PowerShell
 
+// Sensitive header policy mirrors backend project_store::isSensitiveHeader.
+// Default-on so a tester who hits "COPY AS curl" and pastes into Slack /
+// a ticket / a recording doesn't ship their session cookies along with
+// the bug repro.
+const REDACTED_HEADERS = new Set([
+  "authorization", "proxy-authorization", "cookie", "set-cookie",
+  "x-api-key", "x-auth-token", "x-csrf-token", "x-xsrf-token",
+  "x-session-id", "x-amz-security-token",
+  "x-goog-iam-authorization-token",
+]);
+function maybeRedact(k, v) {
+  return REDACTED_HEADERS.has(k.toLowerCase())
+    ? "<redacted: " + v.length + " chars>" : v;
+}
+
 function renderRequestAs(kind, row, raw) {
   const r = parseRawRequest(row, raw);
   const hasBody = r.body && r.body.length > 0;
 
   if (kind === "curl") {
     let out = "curl -k -X " + r.method + " " + shq(r.fullUrl);
-    for (const [k, v] of r.headers) out += " \\\n  -H " + shq(k + ": " + v);
+    for (const [k, v] of r.headers) out += " \\\n  -H " + shq(k + ": " + maybeRedact(k, v));
     if (hasBody) out += " \\\n  --data-raw " + shq(r.body);
     return out;
   }
@@ -446,7 +461,7 @@ function renderRequestAs(kind, row, raw) {
   if (kind === "wget") {
     let out = "wget --no-check-certificate --method=" + r.method
             + " --output-document=- " + shq(r.fullUrl);
-    for (const [k, v] of r.headers) out += " \\\n  --header=" + shq(k + ": " + v);
+    for (const [k, v] of r.headers) out += " \\\n  --header=" + shq(k + ": " + maybeRedact(k, v));
     if (hasBody) out += " \\\n  --body-data=" + shq(r.body);
     return out;
   }
@@ -454,7 +469,7 @@ function renderRequestAs(kind, row, raw) {
   if (kind === "httpie") {
     // httpie infers method from presence of body; force it anyway.
     let out = "http --verify=no " + r.method + " " + shq(r.fullUrl);
-    for (const [k, v] of r.headers) out += " " + shq(k + ":" + v);
+    for (const [k, v] of r.headers) out += " " + shq(k + ":" + maybeRedact(k, v));
     if (hasBody) out += " <<< " + shq(r.body);
     return out;
   }
@@ -462,7 +477,7 @@ function renderRequestAs(kind, row, raw) {
   if (kind === "powershell") {
     let out = "$headers = @{}\n";
     for (const [k, v] of r.headers)
-      out += "$headers[" + psq(k) + "] = " + psq(v) + "\n";
+      out += "$headers[" + psq(k) + "] = " + psq(maybeRedact(k, v)) + "\n";
     out += "Invoke-WebRequest -Uri " + psq(r.fullUrl)
          + " -Method " + r.method
          + " -Headers $headers"
@@ -473,7 +488,7 @@ function renderRequestAs(kind, row, raw) {
 
   if (kind === "fetch") {
     const headersObj = {};
-    for (const [k, v] of r.headers) headersObj[k] = v;
+    for (const [k, v] of r.headers) headersObj[k] = maybeRedact(k, v);
     const opts = { method: r.method, headers: headersObj };
     if (hasBody) opts.body = r.body;
     return "fetch(" + JSON.stringify(r.fullUrl) + ", "

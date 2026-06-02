@@ -50,6 +50,14 @@ public:
     // Returns the absolute output path on success, empty string on failure.
     Q_INVOKABLE QString exportHar(const QString &outPath = {});
 
+    // Redaction policy for HAR / Postman / Copy-as exports. When on
+    // (default), known sensitive headers (Authorization, Cookie, Set-Cookie,
+    // X-API-Key, etc.) are replaced with "<redacted: N chars>" before
+    // leaving the process. Lets a tester share a HAR with a triager or
+    // colleague without also sharing their session.
+    void setExportRedact(bool on) { m_exportRedact = on; }
+    bool exportRedact() const { return m_exportRedact; }
+
     // Read a HAR file and replay each entry through the entryLoaded signal
     // (so anything wired to it -- ProxyModel, etc -- picks it up) plus
     // append to our own history.ndjson. Returns number of entries imported,
@@ -112,6 +120,11 @@ private:
     QString    m_dir;
     QFile      m_history;
     ProjectMeta m_meta;
+    // Redact known-sensitive headers in exports by default. Override per
+    // session via setExportRedact(false) when the user explicitly wants
+    // the raw values (e.g. importing the HAR back into another instance
+    // of Nullock).
+    bool m_exportRedact = true;
 };
 
 } // namespace Nullock::Core

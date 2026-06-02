@@ -420,12 +420,44 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
 
 namespace {
 
-QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers) {
+// Headers that an export should redact unless the caller explicitly
+// asks for raw values. These names carry credentials that the user
+// almost certainly does not mean to share with a triager / colleague /
+// support ticket when they attach a HAR. The threat model: testers
+// routinely paste/upload HAR files; a raw export turns "here's the
+// bug" into "here's my session for your prod app, also for OAuth, also
+// for our jenkins". Redacting by default trades a little debugging
+// pain for a much smaller leak surface.
+static bool isSensitiveHeader(const QString &name) {
+    static const QSet<QString> kSensitive = {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "x-auth-token",
+        "x-csrf-token",
+        "x-xsrf-token",
+        "x-session-id",
+        "x-amz-security-token",
+        "x-goog-iam-authorization-token",
+    };
+    return kSensitive.contains(name.toLower());
+}
+
+QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers, bool redact) {
     QJsonArray arr;
     for (const auto &kv : headers) {
         QJsonObject h;
-        h["name"]  = kv.first;
-        h["value"] = kv.second;
+        h["name"] = kv.first;
+        if (redact && isSensitiveHeader(kv.first)) {
+            // Preserve length + a hash-ish prefix so downstream consumers
+            // can tell the header was present without seeing the value.
+            const QString v = kv.second;
+            h["value"] = QString("<redacted: %1 chars>").arg(v.size());
+        } else {
+            h["value"] = kv.second;
+        }
         arr.append(h);
     }
     return arr;
@@ -458,7 +490,8 @@ QString findContentType(const QList<QPair<QString, QString>> &headers) {
     return {};
 }
 
-QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls) {
+QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls,
+                       bool redact) {
     QJsonObject o;
     o["method"]      = r.method;
     o["url"]         = (wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
@@ -466,7 +499,7 @@ QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls) {
                        + ((r.port == 80 || r.port == 443) ? QString() : QString(":%1").arg(r.port))
                        + r.path;
     o["httpVersion"] = r.httpVersion;
-    o["headers"]     = harHeaders(r.headers);
+    o["headers"]     = harHeaders(r.headers, redact);
     o["queryString"] = harQueryString(r.path);
     o["cookies"]     = QJsonArray();
     if (!r.body.isEmpty()) {
@@ -480,7 +513,7 @@ QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls) {
     return o;
 }
 
-QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r) {
+QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r, bool redact) {
     QJsonObject content;
     content["size"]     = r.body.size();
     content["mimeType"] = findContentType(r.headers);
@@ -489,7 +522,7 @@ QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r) {
     o["status"]      = r.statusCode;
     o["statusText"]  = r.reasonPhrase;
     o["httpVersion"] = r.httpVersion;
-    o["headers"]     = harHeaders(r.headers);
+    o["headers"]     = harHeaders(r.headers, redact);
     o["cookies"]     = QJsonArray();
     o["content"]     = content;
     o["redirectURL"] = "";
@@ -530,8 +563,8 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
             QJsonObject entry;
             entry["startedDateTime"] = src.value("ts").toString();
             entry["time"]            = 0;
-            entry["request"]         = harRequest(req, resp.wasTls);
-            entry["response"]        = harResponse(resp);
+            entry["request"]         = harRequest(req, resp.wasTls, m_exportRedact);
+            entry["response"]        = harResponse(resp, m_exportRedact);
             entry["cache"]           = QJsonObject();
             QJsonObject timings;
             timings["send"]    = -1;
