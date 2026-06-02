@@ -21,6 +21,21 @@ These were caught and fixed during the multi-subsystem audit logged in commits `
 - **Method enforcement**: read endpoints accept `GET`; everything else returns `405` unless POST'd. Previously the path-based dispatcher accepted any method, so a `<img src="http://127.0.0.1:17777/api/history/5/probe">` could fire the active probe cross-origin.
 - **Method allowlist** at the request parser drops unknown verbs at the door.
 - **Active probe scope check** — refuses to fire payloads (`'`, `;id;#`, `../../etc/passwd`, CRLF) at hosts that aren't in the project's scope. Previously a malicious local page could pivot Nullock into attacking arbitrary hosts the user had once browsed.
+- **DNS rebinding defence** — the control server validates the `Host` request header against the allowed set (`127.0.0.1[:port]`, `localhost[:port]`, `[::1][:port]`). A drive-by page that resolves an attacker-controlled hostname first to a public IP (to get the script loaded) and then to `127.0.0.1` (to talk to Nullock) gets rejected with `421 Misdirected Host` because the browser still sends `Host: rebind.attacker.example`.
+
+### Upstream TLS
+- **Explicit peer-cert verification** on the MITM upstream socket and on the Repeater/Scanner/Replay socket. `setPeerVerifyMode(VerifyPeer)` + `setPeerVerifyName(host)` set explicitly at the call site; an `sslErrors` handler captures and surfaces the underlying reason without ever calling `ignoreSslErrors()`. A network attacker between Nullock and a real origin can no longer present a forged cert and have us forward its decrypted bytes as "TLS" to the browser — the upstream handshake collapses and the tunnel dies.
+
+### State hygiene across projects / engagements
+- **Cross-project session clear** — switching projects fires `historyShouldClear`, which now also wipes `SessionManager`. Cookies captured against `target-A.example` while pentesting Engagement A are no longer replayed into Engagement B's requests when the user switches.
+
+### Export / clipboard credential safety
+- **Centralized sensitive-header policy** (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `X-Auth-Token`, `X-CSRF-Token`, `X-XSRF-Token`, `X-Session-Id`, `X-Amz-Security-Token`, `X-Goog-IAM-Authorization-Token`) is applied uniformly to:
+  - HAR export (default on; `redact:false` in the POST body to opt out)
+  - Postman collection export (default on; `?raw=1` query to opt out)
+  - "Copy as curl / wget / httpie / powershell / fetch" renderers in the UI
+  Lets a tester share a HAR with a triager or paste a "copy as curl" into a bug report without also sharing their session.
+- **NDJSON query-string suppression** — the `--ndjson` event stream strips `?token=…` from `path` and `url` fields by default. A tester piping `--ndjson` into a log file (or sharing a screenshot of their terminal) no longer leaks bearer tokens out of band. Pass `--ndjson-include-query` to opt in to the raw query string.
 
 ### Path traversal
 - **Project names** validated against `[A-Za-z0-9_\- .]{1,64}` with Windows reserved-name (`CON`, `NUL`, `COM1-9`, `LPT1-9`, `AUX`) blocklist, no leading/trailing dot or space, no NUL byte, no control chars, no `..`.
@@ -52,9 +67,6 @@ These were caught and fixed during the multi-subsystem audit logged in commits `
 ## Known gaps (not yet fixed)
 
 These were surfaced by the audit but not addressed in this pass. Listed so the next person reading the code knows what's open and where to start.
-
-### Critical
-- **Upstream TLS verification.** `proxy_server.cpp` connects to upstream origins via `QSslSocket::connectToHostEncrypted` and currently does not verify that the server cert's CN/SAN matches the requested host, nor does it inspect `sslErrors`. A network attacker between Nullock and the real origin can MITM our MITM, and the user sees a "TLS" green badge while talking to the attacker. Fix is to set `cfg.setPeerVerifyMode(QSslSocket::VerifyPeer)` + `setPeerVerifyName(host)` and refuse to forward on `sslErrors`.
 
 ### High
 - **Request smuggling: CL+TE.** Proxy parsers tolerate a request/response carrying both `Content-Length` and `Transfer-Encoding: chunked`, picking one. If upstream picks differently from us, requests desync. Fix is to reject any message with both headers, and reject duplicate `Content-Length` with differing values.

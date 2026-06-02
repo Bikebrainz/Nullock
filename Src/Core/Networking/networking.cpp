@@ -4,7 +4,9 @@
 #include <QList>
 #include <QPair>
 #include <QSslConfiguration>
+#include <QSslError>
 #include <QSslSocket>
+#include <QStringList>
 #include <QTcpSocket>
 
 namespace Nullock::Core {
@@ -137,11 +139,27 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         ssl = new QSslSocket(this);
         QSslConfiguration cfg = ssl->sslConfiguration();
         cfg.setAllowedNextProtocols({ QByteArrayLiteral("http/1.1") });
+        // Explicit peer verification. Repeater/replay/scanner all flow
+        // through here; without this an upstream MITM could feed us
+        // forged response bytes for the user to act on.
+        cfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
         ssl->setSslConfiguration(cfg);
+        ssl->setPeerVerifyName(host);
+        QStringList tlsErrors;
+        QObject::connect(ssl, &QSslSocket::sslErrors, ssl,
+                         [&tlsErrors, host](const QList<QSslError> &errs) {
+            for (const auto &e : errs) {
+                tlsErrors << (host + ": " + e.errorString());
+            }
+        });
         socket = ssl;
         ssl->connectToHostEncrypted(host, port);
         if (!ssl->waitForEncrypted(kTimeoutMs)) {
-            result.errorMessage = "TLS handshake failed: " + ssl->errorString();
+            QString reason = ssl->errorString();
+            if (!tlsErrors.isEmpty()) {
+                reason = tlsErrors.join("; ") + " :: " + reason;
+            }
+            result.errorMessage = "TLS handshake failed: " + reason;
             socket->deleteLater();
             return result;
         }

@@ -13,8 +13,10 @@
 #include <memory>
 #include <QSslCertificate>
 #include <QSslConfiguration>
+#include <QSslError>
 #include <QSslKey>
 #include <QSslSocket>
+#include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
@@ -324,7 +326,30 @@ public:
             QByteArrayLiteral("h2"),
             QByteArrayLiteral("http/1.1"),
         });
+        // Explicitly verify the upstream chain and hostname. Default in
+        // client mode is AutoVerifyPeer, but we set it explicitly here so
+        // the security posture is visible at the call site. Without this,
+        // a network attacker between Nullock and the real origin could
+        // present a self-signed cert and we'd happily forward decrypted
+        // bytes from the attacker as if they came from the real server
+        // (and the browser sees a TLS-green badge because *our* forged
+        // cert to the browser is valid).
+        upstreamCfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
         upstream->setSslConfiguration(upstreamCfg);
+        upstream->setPeerVerifyName(host);
+
+        // sslErrors fires before the handshake completes. Our handler
+        // records the errors for diagnostics and does NOT call
+        // ignoreSslErrors(), which causes Qt to abort the handshake.
+        // This is what turns a self-signed/expired/wrong-host upstream
+        // cert into a connection failure instead of a silent MITM.
+        QStringList tlsErrors;
+        connect(upstream, &QSslSocket::sslErrors, this,
+                [&tlsErrors, host](const QList<QSslError> &errs) {
+            for (const auto &e : errs) {
+                tlsErrors << (host + ": " + e.errorString());
+            }
+        });
 
         upstream->connectToHostEncrypted(host, port);
         if (!upstream->waitForEncrypted(kHandshakeTimeoutMs)) {
@@ -333,7 +358,14 @@ public:
             // skip the MITM dance and pass through opaquely. Short timeout
             // means the user sees ~3s on first hit, not 15s.
             m_server->markMitmBlocked(host);
-            fail("mitm: upstream TLS handshake failed: " + upstream->errorString());
+            QString reason = upstream->errorString();
+            if (!tlsErrors.isEmpty()) {
+                // Show the cert-level errors first -- "Hostname doesn't
+                // match" or "Certificate signed by unknown authority" is
+                // far more actionable than Qt's generic "TLS error".
+                reason = tlsErrors.join("; ") + " :: " + reason;
+            }
+            fail("mitm: upstream TLS handshake failed: " + reason);
             return;
         }
         const QByteArray negotiated = upstream->sslConfiguration().nextNegotiatedProtocol();
