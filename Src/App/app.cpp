@@ -20,6 +20,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QThreadPool>
 #include <QEventLoop>
 #include <QFile>
 #include <QGuiApplication>
@@ -678,6 +679,27 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &sessions, &Nullock::Core::SessionManager::clearAll);
 
+    // Same engagement-isolation story for the active tools. Without these,
+    // a request loaded into the Repeater (with the previous engagement's
+    // Authorization header) survives a project switch -- the user opens
+    // the tab in the new engagement, sees the old request still loaded,
+    // hits Send, and fires the previous client's auth into the new
+    // client's target (or, worse, into a colleague's machine over a
+    // tester-shared replay). Same for Intruder's loaded template +
+    // payloads and the intercept queue.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &repeater, &Nullock::Core::Repeater::clearAll);
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &intruder, &Nullock::Core::Intruder::clearAll);
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &intercept, [&intercept]() {
+        // Drop any in-flight intercepted requests as forward (so the
+        // worker threads waiting on done.acquire() can complete and
+        // unwind their captured bodies from memory).
+        intercept.forwardAll();
+        intercept.setEnabled(false);
+    });
+
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
@@ -794,7 +816,14 @@ int main(int argc, char *argv[]) {
 
     if (headless) {
         // Skip the QML window entirely. Event loop runs via QCoreApplication.
-        return app->exec();
+        const int rc = app->exec();
+        // Drain any QtConcurrent task still in flight (port scan, probe
+        // worker, replay). Their lambdas capture raw pointers to the
+        // stack objects above (Wiring); if we let main() unwind while
+        // they're mid-run, the pointers dangle. Cap the wait at 5s so a
+        // hung worker doesn't block shutdown forever.
+        QThreadPool::globalInstance()->waitForDone(5000);
+        return rc;
     }
 
     QQmlApplicationEngine engine;
@@ -815,5 +844,11 @@ int main(int argc, char *argv[]) {
     engine.load(url);
     if (engine.rootObjects().isEmpty()) return -1;
 
-    return app->exec();
+    const int rc = app->exec();
+    // Same drain as the headless path -- the GUI run-loop returns at
+    // window close, and any port-scan / probe / replay worker still in
+    // flight needs to finish (or time out) before main()'s locals
+    // destruct out from under them.
+    QThreadPool::globalInstance()->waitForDone(5000);
+    return rc;
 }

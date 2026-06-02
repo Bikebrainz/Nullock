@@ -97,6 +97,13 @@ public:
     // range or if a full attack is already running.
     Q_INVOKABLE bool resend(int row);
 
+    // Wipe everything -- host, port, template, payloads, and results.
+    // Wire to ProjectStore::historyShouldClear so a project switch
+    // doesn't leave the previous engagement's target loaded.
+public slots:
+    void clearAll();
+public:
+
 signals:
     void targetChanged();
     void templateChanged();

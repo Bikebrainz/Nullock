@@ -62,6 +62,16 @@ public:
     Q_INVOKABLE void loadFromHistory(int row);
     Q_INVOKABLE void send();
     Q_INVOKABLE void clear();
+    // Reset every tab back to a single blank tab. Wire this to
+    // ProjectStore::historyShouldClear so a project switch wipes any
+    // request still loaded from the previous engagement; otherwise the
+    // user could open the Repeater after switching projects, see the
+    // last engagement's request still loaded, and hit Send without
+    // realising they're firing into the wrong target (or leaking the
+    // previous client's Authorization headers).
+public slots:
+    void clearAll();
+public:
 
     // Tab management. Send-to-repeater from the proxy detail view goes
     // through addTabFromHistory so a fresh tab opens automatically.

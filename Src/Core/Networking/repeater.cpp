@@ -104,6 +104,15 @@ void Repeater::clear() {
     emit responseChanged();
 }
 
+void Repeater::clearAll() {
+    m_tabs.clear();
+    m_tabs.append(makeBlankTab());
+    m_active = 0;
+    emit tabsChanged();
+    emit requestTextChanged();
+    emit responseChanged();
+}
+
 void Repeater::send() {
     if (m_busy) return;
     auto &t = activeTab_();

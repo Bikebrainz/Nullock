@@ -97,6 +97,18 @@ void Intruder::clear() {
     emit progressChanged();
 }
 
+void Intruder::clearAll() {
+    clear();
+    m_host.clear();
+    m_port = 443;
+    m_useTls = true;
+    m_template.clear();
+    m_payloads.clear();
+    emit targetChanged();
+    emit templateChanged();
+    emit payloadsChanged();
+}
+
 void Intruder::stop() {
     if (!m_running) return;
     m_stopRequested = true;
