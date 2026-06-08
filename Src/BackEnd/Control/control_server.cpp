@@ -6,6 +6,7 @@
 #include "ws_repeater.hpp"
 #include "oast_server.hpp"
 #include "session_rules.hpp"
+#include "crawler.hpp"
 #include "intruder.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -1637,6 +1638,192 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/session-rules/clear-vars") {
         if (m_wiring.sessionRules) m_wiring.sessionRules->clearAll();
         return okJson();
+    }
+
+    // ---- Crawler -----------------------------------------------------
+    // POST /api/crawler/start { seed, maxPages?, maxDepth?, throttleMs? }
+    if (path == "/api/crawler/start") {
+        if (!m_wiring.crawler)
+            return okJson({{ "ok", false }, { "error", "crawler not wired" }});
+        const QString seed = bodyJson.value("seed").toString();
+        const int maxPages = bodyJson.value("maxPages").toInt(200);
+        const int maxDepth = bodyJson.value("maxDepth").toInt(4);
+        const int throttle = bodyJson.value("throttleMs").toInt(200);
+        const bool ok = m_wiring.crawler->start(seed, maxPages, maxDepth, throttle);
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/crawler/stop") {
+        if (m_wiring.crawler) m_wiring.crawler->stop();
+        return okJson();
+    }
+
+    // ---- OpenAPI / Swagger spec import -------------------------------
+    // POST /api/openapi/import { spec: <JSON>, baseUrl?: "https://..." }
+    // Walks paths + methods, emits one synthetic captured request per
+    // operation. Lets the user see the full surface in history, fan any
+    // operation out into the Repeater / Intruder, or auto-populate scope
+    // from the servers list.
+    if (path == "/api/openapi/import") {
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "no project store" }});
+
+        QJsonValue specVal = bodyJson.value("spec");
+        QJsonObject spec;
+        if (specVal.isString()) {
+            QJsonParseError jerr;
+            const QJsonDocument d = QJsonDocument::fromJson(specVal.toString().toUtf8(), &jerr);
+            if (jerr.error != QJsonParseError::NoError || !d.isObject())
+                return okJson({{ "ok", false }, { "error",
+                                                  "spec is not valid JSON: " + jerr.errorString() }});
+            spec = d.object();
+        } else if (specVal.isObject()) {
+            spec = specVal.toObject();
+        } else {
+            return okJson({{ "ok", false }, { "error", "spec missing or wrong type" }});
+        }
+
+        // Decide base URL. Override > spec.servers[0].url > spec.host+basePath.
+        QString baseUrlOverride = bodyJson.value("baseUrl").toString();
+        QString baseUrl;
+        if (!baseUrlOverride.isEmpty()) {
+            baseUrl = baseUrlOverride;
+        } else if (spec.contains("servers")) {
+            const QJsonArray servers = spec.value("servers").toArray();
+            if (!servers.isEmpty())
+                baseUrl = servers.first().toObject().value("url").toString();
+        } else if (spec.contains("host")) {
+            const QString scheme = spec.value("schemes").toArray().isEmpty()
+                ? QStringLiteral("https")
+                : spec.value("schemes").toArray().first().toString("https");
+            baseUrl = scheme + "://" + spec.value("host").toString()
+                            + spec.value("basePath").toString();
+        }
+        if (baseUrl.isEmpty())
+            return okJson({{ "ok", false }, { "error",
+                                              "no base URL found (set baseUrl in body or include servers[]/host)" }});
+        // Normalize: drop trailing slash so concatenation is clean.
+        while (baseUrl.endsWith('/')) baseUrl.chop(1);
+
+        const QUrl burl(baseUrl);
+        const QString hostStr = burl.host();
+        const bool useTls    = (burl.scheme().compare("https", Qt::CaseInsensitive) == 0);
+        const int  portInt   = burl.port(useTls ? 443 : 80);
+
+        const QJsonObject paths = spec.value("paths").toObject();
+        int imported = 0;
+        static const QStringList kMethods = {
+            "get", "put", "post", "delete", "options", "head", "patch", "trace"
+        };
+
+        for (auto it = paths.constBegin(); it != paths.constEnd(); ++it) {
+            const QString rawPath = it.key();
+            const QJsonObject pathItem = it.value().toObject();
+            // Path-level params would apply to every operation -- we don't
+            // model them separately; per-op overrides them anyway.
+
+            for (const QString &m : kMethods) {
+                if (!pathItem.contains(m)) continue;
+                const QJsonObject op = pathItem.value(m).toObject();
+
+                // Substitute path templates {paramName} with the param's
+                // example value (or "1" as a generic placeholder for the
+                // path-param `userId`/`id` shape).
+                QString finalPath = rawPath;
+                const QJsonArray params = op.value("parameters").toArray();
+                QHash<QString, QString> queryParams;
+                QHash<QString, QString> headerParams;
+                QString bodyJsonStr;
+                QString bodyCT;
+                for (const QJsonValue &pv : params) {
+                    const QJsonObject p = pv.toObject();
+                    const QString in   = p.value("in").toString();
+                    const QString name = p.value("name").toString();
+                    QString val = p.value("example").toVariant().toString();
+                    if (val.isEmpty()) val = p.value("default").toVariant().toString();
+                    if (val.isEmpty()) {
+                        const QString type = p.value("schema").toObject().value("type").toString(
+                                                p.value("type").toString());
+                        if (type == "integer" || type == "number") val = "1";
+                        else if (type == "boolean") val = "true";
+                        else val = "{{" + name + "}}";  // ready for session-rules injection
+                    }
+                    if (in == "path") {
+                        finalPath.replace("{" + name + "}", val);
+                    } else if (in == "query") {
+                        queryParams.insert(name, val);
+                    } else if (in == "header") {
+                        headerParams.insert(name, val);
+                    } else if (in == "body") {
+                        // OpenAPI v2 body parameter
+                        bodyJsonStr = QString::fromUtf8(QJsonDocument(
+                            p.value("schema").toObject().value("example").toObject()).toJson(
+                                QJsonDocument::Compact));
+                    }
+                }
+                // OpenAPI v3 requestBody
+                if (op.contains("requestBody")) {
+                    const QJsonObject rb = op.value("requestBody").toObject();
+                    const QJsonObject content = rb.value("content").toObject();
+                    for (auto cit = content.constBegin(); cit != content.constEnd(); ++cit) {
+                        bodyCT = cit.key();
+                        const QJsonObject example = cit.value().toObject().value("example").toObject();
+                        if (!example.isEmpty()) {
+                            bodyJsonStr = QString::fromUtf8(QJsonDocument(example).toJson(
+                                                                QJsonDocument::Compact));
+                        }
+                        break;  // first content type wins
+                    }
+                }
+
+                // Build full target path with query string.
+                if (!queryParams.isEmpty()) {
+                    QStringList parts;
+                    for (auto qit = queryParams.cbegin(); qit != queryParams.cend(); ++qit) {
+                        parts << (qit.key() + "="
+                            + QString::fromUtf8(QUrl::toPercentEncoding(qit.value())));
+                    }
+                    finalPath += "?" + parts.join("&");
+                }
+
+                Nullock::Proxy::HttpRequest req;
+                req.timestamp = QDateTime::currentDateTime();
+                req.method      = m.toUpper();
+                req.httpVersion = "HTTP/1.1";
+                req.target      = finalPath;
+                req.path        = finalPath;
+                req.host        = hostStr;
+                req.port        = static_cast<quint16>(portInt);
+                req.headers.append({ "Host", hostStr });
+                for (auto hit = headerParams.cbegin(); hit != headerParams.cend(); ++hit)
+                    req.headers.append({ hit.key(), hit.value() });
+                if (!bodyJsonStr.isEmpty()) {
+                    req.headers.append({ "Content-Type",
+                                         bodyCT.isEmpty() ? QString("application/json") : bodyCT });
+                    req.body = bodyJsonStr.toUtf8();
+                    req.headers.append({ "Content-Length",
+                                         QString::number(req.body.size()) });
+                }
+
+                Nullock::Proxy::HttpResponse resp;
+                resp.httpVersion  = "HTTP/1.1";
+                resp.statusCode   = 0;
+                resp.reasonPhrase = "OpenAPI imported (not yet sent)";
+                resp.wasTls       = useTls;
+
+                // appendEntry persists; entryLoaded signal updates the
+                // GUI proxy model live.
+                m_wiring.projectStore->appendEntry(req, resp);
+                emit m_wiring.projectStore->entryLoaded(req, resp);
+                ++imported;
+            }
+        }
+
+        return okJson({
+            { "ok",       true },
+            { "imported", imported },
+            { "host",     hostStr },
+            { "baseUrl",  baseUrl },
+        });
     }
 
     // ---- WebSocket Repeater ------------------------------------------

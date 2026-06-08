@@ -17,6 +17,7 @@
 #include "session_manager.hpp"
 #include "session_rules.hpp"
 #include "oast_server.hpp"
+#include "crawler.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -767,6 +768,21 @@ int main(int argc, char *argv[]) {
         qInfo().noquote() << "  oast      http://127.0.0.1:" + QString::number(oastPort) + "/";
     }
     wiring.oast = &oast;
+
+    // Link-following crawler. Builds the full attack surface from a
+    // seed URL; the rest of the toolchain (passive scanner, repeater,
+    // search) sees crawled responses just like normal captures.
+    Nullock::Core::Crawler crawler;
+    crawler.setScopeChecker([&proxy](const QString &host) {
+        return proxy.isInScope(host);
+    });
+    QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
+                     &model, &Nullock::FrontEnd::ProxyModel::addResponse);
+    QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
+                     &projectStore, &Nullock::Core::ProjectStore::appendEntry);
+    QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
+                     &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
+    wiring.crawler = &crawler;
 
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd

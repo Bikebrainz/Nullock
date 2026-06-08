@@ -2,9 +2,11 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QMutexLocker>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -109,9 +111,18 @@ void OastServer::onNewConnection() {
 }
 
 void OastServer::handleClient(QTcpSocket *socket) {
+    // Slowloris defence: absolute wall-clock deadline across header read.
+    // OAST listens on a publicly-reachable interface so a hostile peer
+    // dribbling header bytes 1 byte at a time would otherwise pin the
+    // main thread forever. Same pattern as control_server's R7 fix.
+    constexpr qint64 kHeaderDeadlineMs = 8'000;
+    QElapsedTimer deadline; deadline.start();
     QByteArray buf;
     while (!buf.contains("\r\n\r\n")) {
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(2000)) {
+        const qint64 remaining = kHeaderDeadlineMs - deadline.elapsed();
+        if (remaining <= 0) { socket->disconnectFromHost(); return; }
+        const int waitMs = static_cast<int>(std::min<qint64>(remaining, 2000));
+        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(waitMs)) {
             socket->disconnectFromHost();
             return;
         }
@@ -178,11 +189,13 @@ void OastServer::handleClient(QTcpSocket *socket) {
     emit hitReceived(hit);
 
     // Always 200 OK -- some scanners look for a known body. Keep it tiny.
-    QByteArray resp = "HTTP/1.1 200 OK\r\n"
-                      "Content-Type: text/plain\r\n"
-                      "Content-Length: 30\r\n"
-                      "Connection: close\r\n"
-                      "\r\nnullock-oast: callback received\n";
+    static const QByteArray kBody = "nullock-oast: callback received\n";
+    QByteArray resp;
+    resp += "HTTP/1.1 200 OK\r\n";
+    resp += "Content-Type: text/plain\r\n";
+    resp += "Content-Length: " + QByteArray::number(kBody.size()) + "\r\n";
+    resp += "Connection: close\r\n\r\n";
+    resp += kBody;
     socket->write(resp);
     socket->flush();
     socket->disconnectFromHost();

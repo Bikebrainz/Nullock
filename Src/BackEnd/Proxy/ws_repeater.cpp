@@ -5,6 +5,7 @@
 #include <QMutexLocker>
 #include <QRandomGenerator>
 #include <QTcpSocket>
+#include <QThread>
 
 namespace Nullock::Proxy {
 
@@ -118,13 +119,20 @@ bool WsRepeater::sendFrame(qint64 id, const QString &direction,
 
     // Sockets live in their connection's thread (see runWebSocketRelay).
     // Marshal the write so the thread that owns the socket performs it.
+    // If we're already on that thread, do a direct call -- otherwise
+    // BlockingQueuedConnection would deadlock (queue at self).
     QTcpSocket *raw = target.data();
-    bool ok = false;
-    QMetaObject::invokeMethod(raw, [raw, bytes, &ok]() {
-        if (raw->state() != QAbstractSocket::ConnectedState) { ok = false; return; }
+    auto write = [raw, bytes]() -> bool {
+        if (!raw || raw->state() != QAbstractSocket::ConnectedState) return false;
         const qint64 written = raw->write(bytes);
-        ok = (written == bytes.size());
-    }, Qt::BlockingQueuedConnection);
+        return (written == bytes.size());
+    };
+    if (raw->thread() == QThread::currentThread()) {
+        return write();
+    }
+    bool ok = false;
+    QMetaObject::invokeMethod(raw, [&ok, write]() { ok = write(); },
+                              Qt::BlockingQueuedConnection);
     return ok;
 }
 
