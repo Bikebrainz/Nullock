@@ -356,6 +356,111 @@ cmd_intruder() {
     esac
 }
 
+cmd_ws() {
+    # WebSocket repeater control.
+    case ${1:-} in
+        sessions)
+            curl -sS --max-time 5 "$API/api/ws/sessions" | pp
+            ;;
+        send)
+            # nullock ws send <session-id> <up|down> <opcode> <payload>
+            [[ $# -ge 4 ]] || die "usage: nullock ws send <id> <up|down> <opcode-int> [payload]"
+            local body="{\"sessionId\":$2,\"direction\":$(jsonq "$3"),\"opcode\":$4"
+            if [[ -n ${5-} ]]; then body+=",\"payload\":$(jsonq "$5")"; fi
+            body+="}"
+            post /api/ws/send "$body" | pp
+            ;;
+        *) die "usage: nullock ws {sessions|send <id> <dir> <opcode> [payload]}" ;;
+    esac
+}
+
+cmd_oast() {
+    # Out-of-band callback sink.
+    case ${1:-} in
+        mint)
+            post /api/oast/mint | pp
+            ;;
+        poll)
+            local since=${2:-0}
+            curl -sS --max-time 5 "$API/api/oast/poll?since=$since" | pp
+            ;;
+        status)
+            snapshot | "$JQ" '.oast'
+            ;;
+        watch)
+            # Tail mode: poll every 2s, only show new hits.
+            local since=0
+            while :; do
+                local resp
+                resp=$(curl -sS --max-time 5 "$API/api/oast/poll?since=$since")
+                local hits
+                hits=$(echo "$resp" | "$JQ" '.hits | length')
+                if [[ $hits -gt 0 ]]; then
+                    echo "$resp" | "$JQ" '.hits[] | "[" + (.atMs|tostring) + "] " + .sourceIp + " " + .method + " " + .hostHeader + .path + "  (tok=" + .token + ")"'
+                    since=$(echo "$resp" | "$JQ" '.hits | last | .id')
+                fi
+                sleep 2
+            done
+            ;;
+        *) die "usage: nullock oast {mint|poll [since]|status|watch}" ;;
+    esac
+}
+
+cmd_session_rules() {
+    case ${1:-} in
+        list)
+            snapshot | "$JQ" '.sessionRules'
+            ;;
+        clear-vars)
+            post /api/session-rules/clear-vars | pp
+            ;;
+        set)
+            # nullock session-rules set <rule-file.json>
+            # File contents: an array of SessionRule objects.
+            [[ -n ${2-} ]] || die "usage: nullock session-rules set <rule-file.json>"
+            local rules
+            if [[ $2 == "-" ]]; then rules=$(cat); else rules=$(cat "$2"); fi
+            post /api/session-rules/set "{\"rules\":$rules}" | pp
+            ;;
+        *) die "usage: nullock session-rules {list|set <file>|clear-vars}" ;;
+    esac
+}
+
+cmd_crawler() {
+    case ${1:-} in
+        start)
+            # nullock crawler start <seed> [maxPages] [maxDepth] [throttleMs]
+            [[ -n ${2-} ]] || die "usage: nullock crawler start <seed-url> [maxPages] [maxDepth] [throttleMs]"
+            local body
+            body="{\"seed\":$(jsonq "$2"),\"maxPages\":${3:-200},\"maxDepth\":${4:-4},\"throttleMs\":${5:-200}}"
+            post /api/crawler/start "$body" | pp
+            ;;
+        stop)
+            post /api/crawler/stop | pp
+            ;;
+        status)
+            snapshot | "$JQ" '{ running: .crawler.running, visited: .crawler.visited, queued: .crawler.queued, seed: .crawler.seed }'
+            ;;
+        *) die "usage: nullock crawler {start <seed>|stop|status}" ;;
+    esac
+}
+
+cmd_openapi() {
+    case ${1:-} in
+        import)
+            # nullock openapi import <spec-file.json> [base-url]
+            [[ -n ${2-} ]] || die "usage: nullock openapi import <spec-file.json> [base-url]"
+            local spec
+            if [[ $2 == "-" ]]; then spec=$(cat); else spec=$(cat "$2"); fi
+            local body="{\"spec\":$(jsonq "$spec")"
+            if [[ -n ${3-} ]]; then body+=",\"baseUrl\":$(jsonq "$3")"; fi
+            body+="}"
+            post /api/openapi/import "$body" | pp
+            ;;
+        *) die "usage: nullock openapi import <spec-file.json> [base-url]" ;;
+    esac
+}
+
 cmd_project() {
     case ${1:-} in
         list)
@@ -439,6 +544,34 @@ Project:
   nullock project create <name>
   nullock project clear-history
 
+WebSocket Repeater:
+  nullock ws sessions                    list active WS tunnels
+  nullock ws send <id> <up|down> <opcode> [payload]
+                                         inject a frame into a live tunnel
+                                         opcode: 1=text, 2=binary, 8=close,
+                                         9=ping, 10=pong
+
+OAST (out-of-band callback sink):
+  nullock oast mint                      get a fresh token + URL to embed
+  nullock oast poll [since-id]           list hits since the given id
+  nullock oast status                    running/port/host/hit count
+  nullock oast watch                     tail mode -- prints new hits live
+
+Session handling rules:
+  nullock session-rules set <file.json>  load a JSON array of SessionRule
+  nullock session-rules list             current rules + variable bag
+  nullock session-rules clear-vars       drop the variable bag
+
+Crawler:
+  nullock crawler start <url> [pages] [depth] [throttleMs]
+  nullock crawler stop
+  nullock crawler status
+
+OpenAPI:
+  nullock openapi import <spec.json> [base-url]
+                                         walks paths/methods, emits one
+                                         captured row per operation
+
 Export:
   nullock export nmap | sarif | postman | har
 
@@ -465,6 +598,11 @@ case ${1:-help} in
     intercept)     shift; cmd_intercept "$@"     ;;
     repeater)      shift; cmd_repeater "$@"      ;;
     intruder)      shift; cmd_intruder "$@"      ;;
+    ws)            shift; cmd_ws "$@"            ;;
+    oast)          shift; cmd_oast "$@"          ;;
+    session-rules) shift; cmd_session_rules "$@" ;;
+    crawler)       shift; cmd_crawler "$@"       ;;
+    openapi)       shift; cmd_openapi "$@"       ;;
     project)       shift; cmd_project "$@"       ;;
     export)        shift; cmd_export "$@"        ;;
     help|-h|--help) cmd_help ;;

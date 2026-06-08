@@ -13,7 +13,14 @@ namespace Nullock::Core {
 Crawler::Crawler(QObject *parent) : QObject(parent) {}
 
 bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttleMs) {
-    stop();
+    // Refuse if a previous crawl is still in flight. The caller has to
+    // stop() and wait. Without this, two starts would race -- one
+    // worker thread mid-crawlOne() while the other is overwriting
+    // m_queue / m_seenUrls.
+    if (m_running) {
+        emit errorOccurred("crawler: a crawl is already running; stop() first");
+        return false;
+    }
     QUrl u(seed);
     if (!u.isValid() || u.scheme().isEmpty() || u.host().isEmpty()) {
         emit errorOccurred("crawler: invalid seed URL");

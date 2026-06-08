@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/marketplace.schema.json",
+  "version": 1,
+  "updated": "2026-06-08",
+  "extensions": [
+    {
+      "id": "aws_sigv4",
+      "name": "AWS SigV4 Signer",
+      "summary": "Auto-signs outgoing requests to *.amazonaws.com with AWS Signature v4.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": ["auth", "cloud", "aws"],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/aws_sigv4.js",
+      "hooks": ["nullock.onRequest"],
+      "config": {
+        "accessKey":    { "type": "string", "secret": true,  "desc": "AWS Access Key ID" },
+        "secretKey":    { "type": "string", "secret": true,  "desc": "AWS Secret Access Key" },
+        "sessionToken": { "type": "string", "secret": true,  "desc": "STS / SSO session token (optional)" },
+        "region":       { "type": "string", "default": "us-east-1" },
+        "service":      { "type": "string", "default": "",   "desc": "Override; auto-detected from host if blank" }
+      }
+    },
+    {
+      "id": "identity_rotate",
+      "name": "Identity Rotator",
+      "summary": "Per-host sticky rotation of User-Agent / Accept-Language / Sec-CH-UA across realistic browser profiles.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": ["evasion", "fingerprint", "fuzzing"],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/identity_rotate.js",
+      "hooks": ["nullock.onRequest"],
+      "config": {}
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Nullock Companion",
+  "version": "0.1.0",
+  "description": "Routes browser traffic through a local Nullock proxy and one-click installs the CA cert. Removes the #1 onboarding friction.",
+
+  "permissions": [
+    "proxy",
+    "storage",
+    "tabs"
+  ],
+
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Nullock Companion"
+  },
+
+  "options_page": "options.html"
+}

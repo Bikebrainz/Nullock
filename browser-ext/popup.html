@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Nullock Companion</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    width: 320px;
+    font: 13px -apple-system, system-ui, sans-serif;
+    background: #0d0d12;
+    color: #d0d0d6;
+  }
+  header {
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    color: white;
+    padding: 14px 16px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  section { padding: 12px 16px; }
+  .stat { display: flex; justify-content: space-between; padding: 2px 0; }
+  .stat .k { color: #888; }
+  .stat .v { color: #b7a3d6; font-variant-numeric: tabular-nums; }
+  button {
+    width: 100%;
+    padding: 8px;
+    margin-top: 8px;
+    background: #1c1c24;
+    color: #e0e0e6;
+    border: 1px solid #2a2a35;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.primary {
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    color: white;
+    border: none;
+  }
+  button:hover { filter: brightness(1.2); }
+  .dim { color: #888; font-size: 11px; margin-top: 6px; }
+  .ok  { color: #4ade80; }
+  .bad { color: #f87171; }
+  hr   { border: 0; border-top: 1px solid #2a2a35; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<header>Nullock Companion</header>
+<section>
+  <div class="stat"><span class="k">Status</span><span class="v" id="status">checking...</span></div>
+  <div class="stat"><span class="k">Project</span><span class="v" id="project">-</span></div>
+  <div class="stat"><span class="k">Captured rows</span><span class="v" id="rows">-</span></div>
+  <div class="stat"><span class="k">Findings</span><span class="v" id="findings">-</span></div>
+  <hr/>
+  <button id="toggle" class="primary">Enable Proxy</button>
+  <button id="ca">Download CA cert</button>
+  <button id="ui">Open Nullock UI</button>
+  <button id="options">Settings</button>
+  <div class="dim">
+    Proxy <span id="cfgProxy"></span> · Control <span id="cfgControl"></span>
+  </div>
+</section>
+<script src="popup.js"></script>
+</body>
+</html>

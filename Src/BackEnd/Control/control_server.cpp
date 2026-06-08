@@ -1754,10 +1754,23 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     } else if (in == "header") {
                         headerParams.insert(name, val);
                     } else if (in == "body") {
-                        // OpenAPI v2 body parameter
-                        bodyJsonStr = QString::fromUtf8(QJsonDocument(
-                            p.value("schema").toObject().value("example").toObject()).toJson(
-                                QJsonDocument::Compact));
+                        // OpenAPI v2 body parameter. The example can be
+                        // an object, array, string, or number; handle
+                        // them all rather than blindly toObject().
+                        const QJsonValue ex = p.value("schema").toObject().value("example");
+                        if (ex.isObject()) {
+                            bodyJsonStr = QString::fromUtf8(
+                                QJsonDocument(ex.toObject()).toJson(QJsonDocument::Compact));
+                        } else if (ex.isArray()) {
+                            bodyJsonStr = QString::fromUtf8(
+                                QJsonDocument(ex.toArray()).toJson(QJsonDocument::Compact));
+                        } else if (ex.isString()) {
+                            bodyJsonStr = ex.toString();
+                        } else if (ex.isDouble()) {
+                            bodyJsonStr = QString::number(ex.toDouble());
+                        } else if (ex.isBool()) {
+                            bodyJsonStr = ex.toBool() ? "true" : "false";
+                        }
                     }
                 }
                 // OpenAPI v3 requestBody

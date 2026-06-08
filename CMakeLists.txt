@@ -27,3 +27,6 @@ add_subdirectory(Src)
 # Add Tests subdirectory (contains the code used to run tests)
 enable_testing()
 add_subdirectory(Tests)
+
+# Fuzz harnesses (off by default; -DNULLOCK_FUZZ=ON to opt in).
+add_subdirectory(tests/fuzz)
