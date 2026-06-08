@@ -26,6 +26,7 @@ target_include_directories(Control PRIVATE
     ${CMAKE_SOURCE_DIR}/Src/Core/Storage
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/ExtensionsAPI
+    ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast
 )
 
 target_include_directories(Control PUBLIC

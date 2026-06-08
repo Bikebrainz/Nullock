@@ -5,7 +5,9 @@
 #include "http2_client.hpp"
 #include "intercept.hpp"
 #include "session_manager.hpp"
+#include "session_rules.hpp"
 #include "websocket.hpp"
+#include "ws_repeater.hpp"
 
 #include <QEventLoop>
 #include <QFile>
@@ -730,6 +732,17 @@ private:
         quint16 portCopy = port;
         auto *server = m_server;
 
+        // Register this tunnel with the WS repeater so the user can
+        // inject frames from the UI / control API into either side
+        // while the connection is live. Deregistered when either socket
+        // closes.
+        const qint64 wsId = WsRepeater::instance()->registerSession(
+            client, upstream, host, port);
+        connect(client,   &QTcpSocket::disconnected, this,
+                [wsId]{ WsRepeater::instance()->deregisterSession(wsId); });
+        connect(upstream, &QTcpSocket::disconnected, this,
+                [wsId]{ WsRepeater::instance()->deregisterSession(wsId); });
+
         auto emitFrame = [server, hostCopy, portCopy](bool fromClient, const WsFrame &f) {
             HttpRequest req;
             req.timestamp = QDateTime::currentDateTime();
@@ -763,18 +776,22 @@ private:
         connect(upstream, &QTcpSocket::disconnected, &loop, quit);
 
         connect(client, &QTcpSocket::readyRead, this,
-            [client, upstream, clientParser, emitFrame] {
+            [client, upstream, clientParser, emitFrame, wsId] {
                 const QByteArray bytes = client->readAll();
                 upstream->write(bytes);
-                for (const WsFrame &f : clientParser->feed(bytes))
+                for (const WsFrame &f : clientParser->feed(bytes)) {
                     emitFrame(true, f);
+                    WsRepeater::instance()->noteFrame(wsId, true);
+                }
             });
         connect(upstream, &QTcpSocket::readyRead, this,
-            [client, upstream, upstreamParser, emitFrame] {
+            [client, upstream, upstreamParser, emitFrame, wsId] {
                 const QByteArray bytes = upstream->readAll();
                 client->write(bytes);
-                for (const WsFrame &f : upstreamParser->feed(bytes))
+                for (const WsFrame &f : upstreamParser->feed(bytes)) {
                     emitFrame(false, f);
+                    WsRepeater::instance()->noteFrame(wsId, false);
+                }
             });
 
         if (client->state() == QAbstractSocket::ConnectedState
@@ -841,6 +858,9 @@ Nullock::Core::ExtensionsApi *ProxyServer::extensions() const { return m_extensi
 
 void ProxyServer::setSessionManager(Nullock::Core::SessionManager *sm) { m_sessionManager = sm; }
 Nullock::Core::SessionManager *ProxyServer::sessionManager() const { return m_sessionManager; }
+
+void ProxyServer::setSessionRules(Nullock::Core::SessionRules *sr) { m_sessionRules = sr; }
+Nullock::Core::SessionRules *ProxyServer::sessionRules() const { return m_sessionRules; }
 
 bool ProxyServer::isMitmBlocked(const QString &host) const {
     QMutexLocker lock(&m_blockMutex);
@@ -1069,6 +1089,12 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
     // host, server-captured cookies overwrite same-name client cookies
     // in the outgoing Cookie header.
     if (m_sessionManager) m_sessionManager->injectInto(req);
+
+    // Session handling rules: substitute {{var}} placeholders from the
+    // variable bag into matching request headers / cookies / body /
+    // URL params. Runs LAST so it sees the request the way it would
+    // actually go on the wire.
+    if (m_sessionRules) m_sessionRules->applyToRequest(req);
 }
 
 void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp) const {

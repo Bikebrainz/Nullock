@@ -15,6 +15,8 @@
 #include "project_store.hpp"
 #include "recon_engine.hpp"
 #include "session_manager.hpp"
+#include "session_rules.hpp"
+#include "oast_server.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -730,6 +732,42 @@ int main(int argc, char *argv[]) {
     Nullock::Core::ReconEngine recon;
     wiring.recon        = &recon;
     wiring.sessions     = &sessions;
+    // Session handling rules: stash CSRF tokens / JWTs / nonces from
+    // matching responses and re-inject into subsequent requests. The
+    // #1 day-driver delta against Burp before this landed.
+    Nullock::Core::SessionRules sessionRules;
+    wiring.sessionRules = &sessionRules;
+    // Wire into the proxy pipeline. Run AFTER M&R rules so the variable
+    // bag has the latest extracted values when the request goes out,
+    // but BEFORE session-manager cookie injection so the bag values
+    // don't get cookie-clobbered.
+    QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                     &sessionRules,
+                     [&sessionRules](const Nullock::Proxy::HttpRequest &q,
+                                     const Nullock::Proxy::HttpResponse &r) {
+        sessionRules.applyToResponse(q, r);
+    });
+    // Engagement isolation: drop the variable bag on project switch.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &sessionRules, &Nullock::Core::SessionRules::clearAll);
+    // Note: applyToRequest is invoked by ProxyServer via the extension
+    // hook below. We can't connect to "request about to fire" because no
+    // such signal exists; we instead embed the call inside the existing
+    // applyRequestRules path.
+    proxy.setSessionRules(&sessionRules);
+
+    // OAST sink. HTTP-only Collaborator equivalent. Default to bind on
+    // 18080 -- close to the standard proxy port, easy to remember. The
+    // base host defaults to the loopback so internal testing works
+    // out of the box; deploy with --oast-host=<lan-or-public-ip> when
+    // probing real targets.
+    Nullock::Core::OastServer oast;
+    const quint16 oastPort = oast.start(18080, QStringLiteral("127.0.0.1"));
+    if (oastPort) {
+        qInfo().noquote() << "  oast      http://127.0.0.1:" + QString::number(oastPort) + "/";
+    }
+    wiring.oast = &oast;
+
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd
     // bundle this into a Qt resource; not done yet.

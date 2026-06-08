@@ -27,6 +27,9 @@ class PassiveScanner;
 class PortScanner;
 class ReconEngine;
 class SessionManager;
+class OastServer;
+class SessionRules;
+class Crawler;
 }
 
 namespace Nullock::Control {
@@ -49,6 +52,9 @@ struct Wiring {
     Nullock::Core::PortScanner         *portScanner  = nullptr;
     Nullock::Core::ReconEngine         *recon        = nullptr;
     Nullock::Core::SessionManager      *sessions     = nullptr;
+    Nullock::Core::OastServer          *oast         = nullptr;
+    Nullock::Core::SessionRules        *sessionRules = nullptr;
+    Nullock::Core::Crawler             *crawler      = nullptr;
     QString                              uiDir;       // path to ui-v2/
 };
 

@@ -10,6 +10,8 @@ add_library(Proxy STATIC
     http2_client.hpp
     websocket.cpp
     websocket.hpp
+    ws_repeater.cpp
+    ws_repeater.hpp
 )
 
 # nghttp2 lives at D:/vcpkg/installed/x64-windows. There's no CMake config

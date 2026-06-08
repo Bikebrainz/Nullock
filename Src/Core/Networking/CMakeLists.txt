@@ -14,6 +14,8 @@ add_library(Networking STATIC
     recon_engine.hpp
     session_manager.cpp
     session_manager.hpp
+    session_rules.cpp
+    session_rules.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

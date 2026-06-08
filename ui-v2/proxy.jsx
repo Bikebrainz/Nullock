@@ -831,18 +831,82 @@ function runCodec(name, input) {
       }
       case "b64-encode":  return btoa(unescape(encodeURIComponent(input)));
       case "jwt-decode": {
-        const parts = input.trim().split(".");
-        if (parts.length !== 3) throw new Error("not a JWT (need 3 dot-separated segments)");
-        const decodePart = (p) => {
+        // JWT can be a JWS (3 parts) or JWE (5 parts).
+        const trimmed = input.trim();
+        const parts = trimmed.split(".");
+        if (parts.length !== 3 && parts.length !== 5) {
+          throw new Error("not a JWT (need 3 segments for JWS or 5 for JWE)");
+        }
+        const decodeB64 = (p) => {
           let s = p.replace(/-/g, "+").replace(/_/g, "/");
           while (s.length % 4) s += "=";
-          const txt = decodeURIComponent(escape(atob(s)));
-          try { return JSON.stringify(JSON.parse(txt), null, 2); }
-          catch { return txt; }
+          return decodeURIComponent(escape(atob(s)));
         };
-        return "// header\n"   + decodePart(parts[0])
-             + "\n\n// payload\n" + decodePart(parts[1])
-             + "\n\n// signature (raw)\n" + parts[2];
+        const parseJson = (p) => {
+          const txt = decodeB64(p);
+          try { return [JSON.parse(txt), JSON.stringify(JSON.parse(txt), null, 2)]; }
+          catch { return [null, txt]; }
+        };
+
+        const [headerObj, headerStr] = parseJson(parts[0]);
+        const out = ["// header", headerStr];
+        const findings = [];
+
+        // Security annotations on the header.
+        if (headerObj) {
+          if (headerObj.alg === "none" || headerObj.alg === "None" || headerObj.alg === "NONE") {
+            findings.push("[!] alg=none -- if upstream accepts this, signature isn't checked");
+          }
+          if (headerObj.alg && headerObj.alg.toLowerCase().startsWith("hs") && parts.length === 3) {
+            findings.push("[i] HMAC algorithm -- brute-forceable if shared secret is weak");
+          }
+          if (headerObj.alg && /^rs|^es|^ps/i.test(headerObj.alg)) {
+            findings.push("[i] asymmetric algorithm -- check for alg-confusion (HS256 + public key)");
+          }
+          if (headerObj.kid) findings.push("[i] kid=\"" + headerObj.kid + "\" -- check for SQLi / path traversal in key lookup");
+          if (headerObj.jku) findings.push("[!] jku=\"" + headerObj.jku + "\" -- can the server be pointed at attacker-hosted JWKS?");
+          if (headerObj.x5u) findings.push("[!] x5u=\"" + headerObj.x5u + "\" -- can the server be pointed at attacker-hosted cert?");
+        }
+
+        if (parts.length === 5) {
+          // JWE: header.encryptedKey.iv.ciphertext.tag
+          out.push("\n// JWE (encrypted) -- payload not readable without key");
+          out.push("encrypted_key: " + parts[1].slice(0, 32) + (parts[1].length > 32 ? "..." : ""));
+          out.push("iv: " + parts[2]);
+          out.push("ciphertext: " + parts[3].slice(0, 64) + (parts[3].length > 64 ? "..." : ""));
+          out.push("tag: " + parts[4]);
+        } else {
+          const [payloadObj, payloadStr] = parseJson(parts[1]);
+          out.push("\n// payload", payloadStr);
+          if (payloadObj) {
+            const now = Math.floor(Date.now() / 1000);
+            const fmt = (epoch) => new Date(epoch * 1000).toISOString();
+            if (payloadObj.exp) {
+              const delta = payloadObj.exp - now;
+              if (delta < 0) findings.push("[!] expired (exp=" + fmt(payloadObj.exp) + ", " + (-delta) + "s ago)");
+              else           findings.push("[i] expires " + fmt(payloadObj.exp) + " (in " + delta + "s)");
+            } else {
+              findings.push("[!] no exp claim -- token never expires");
+            }
+            if (payloadObj.iat) findings.push("[i] issued " + fmt(payloadObj.iat));
+            if (payloadObj.nbf) findings.push("[i] not-before " + fmt(payloadObj.nbf));
+            if (payloadObj.iss) findings.push("[i] iss=\"" + payloadObj.iss + "\"");
+            if (payloadObj.aud) findings.push("[i] aud=" + JSON.stringify(payloadObj.aud));
+            if (payloadObj.sub) findings.push("[i] sub=\"" + payloadObj.sub + "\"");
+            const interesting = ["admin", "role", "roles", "scope", "scopes",
+                                 "permissions", "is_admin", "isAdmin", "groups"];
+            for (const k of interesting) {
+              if (k in payloadObj) findings.push("[i] " + k + "=" + JSON.stringify(payloadObj[k]) + " -- try tampering");
+            }
+          }
+          out.push("\n// signature (raw, b64url)\n" + parts[2]);
+        }
+
+        if (findings.length) {
+          out.push("\n// notes");
+          for (const f of findings) out.push(f);
+        }
+        return out.join("\n");
       }
       case "hex-encode":
         return Array.from(new TextEncoder().encode(input))

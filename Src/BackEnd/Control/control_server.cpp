@@ -3,6 +3,9 @@
 #include "cert_authority.hpp"
 #include "extensions_api.hpp"
 #include "intercept.hpp"
+#include "ws_repeater.hpp"
+#include "oast_server.hpp"
+#include "session_rules.hpp"
 #include "intruder.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -740,6 +743,44 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     root["intruder"] = intruder;
 
+    // OAST sink visibility for the UI badge.
+    if (m_wiring.oast) {
+        QJsonObject oast;
+        oast["running"]  = m_wiring.oast->running();
+        oast["port"]     = m_wiring.oast->port();
+        oast["baseHost"] = m_wiring.oast->baseHost();
+        oast["hits"]     = m_wiring.oast->hitCount();
+        root["oast"] = oast;
+    }
+
+    // Session handling rules: snapshot the rule list + currently-bound
+    // variable bag.
+    if (m_wiring.sessionRules) {
+        QJsonObject sr;
+        QJsonArray rules;
+        for (const auto &r : m_wiring.sessionRules->rules()) {
+            QJsonObject o;
+            o["name"]           = r.name;
+            o["enabled"]        = r.enabled;
+            o["hostGlob"]       = r.hostGlob;
+            o["pathGlob"]       = r.pathGlob;
+            o["extractFrom"]    = r.extractFrom;
+            o["extractKey"]     = r.extractKey;
+            o["variable"]       = r.variable;
+            o["injectInto"]     = r.injectInto;
+            o["injectKey"]      = r.injectKey;
+            o["injectTemplate"] = r.injectTemplate;
+            rules.append(o);
+        }
+        sr["rules"] = rules;
+        QJsonObject vars;
+        const auto bag = m_wiring.sessionRules->variables();
+        for (auto it = bag.cbegin(); it != bag.cend(); ++it)
+            vars[it.key()] = it.value();
+        sr["variables"] = vars;
+        root["sessionRules"] = sr;
+    }
+
     return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
@@ -765,6 +806,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/pac" || p == "/proxy.pac"
             || p == "/api/search"
             || p == "/api/project/list"
+            || p == "/api/ws/sessions"
+            || p == "/api/oast/poll"
             || p.startsWith("/api/export/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
             || (p.startsWith("/api/history/")
@@ -903,6 +946,55 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QJsonObject root;
         root["hits"]  = hits;
         root["count"] = hits.size();
+        return httpJson(200, root);
+    }
+
+    // ---- OAST (out-of-band callback sink) -----------------------------
+    // GET /api/oast/poll?since=<id>  -- list new hits since <id>
+    if (path == "/api/oast/poll") {
+        if (!m_wiring.oast) return httpJson(200, QJsonObject{{ "running", false }});
+        qint64 sinceId = 0;
+        if (!query.isEmpty()) {
+            const QUrlQuery q(query);
+            sinceId = q.queryItemValue("since").toLongLong();
+        }
+        QJsonArray arr;
+        for (const auto &h : m_wiring.oast->hitsSince(sinceId)) {
+            QJsonObject o;
+            o["id"]         = static_cast<double>(h.id);
+            o["atMs"]       = static_cast<double>(h.atMs);
+            o["token"]      = h.token;
+            o["sourceIp"]   = h.sourceIp;
+            o["method"]     = h.method;
+            o["hostHeader"] = h.hostHeader;
+            o["path"]       = h.path;
+            o["bodyBytes"]  = h.bodyBytes;
+            o["userAgent"]  = h.userAgent;
+            o["bodyPreview"] = h.bodyPreview;
+            arr.append(o);
+        }
+        QJsonObject root;
+        root["running"] = m_wiring.oast->running();
+        root["port"]    = m_wiring.oast->port();
+        root["baseHost"] = m_wiring.oast->baseHost();
+        root["hits"]    = arr;
+        return httpJson(200, root);
+    }
+
+    if (path == "/api/ws/sessions") {
+        QJsonArray arr;
+        for (const auto &s : Nullock::Proxy::WsRepeater::instance()->sessions()) {
+            QJsonObject o;
+            o["id"]         = static_cast<double>(s.id);
+            o["host"]       = s.host;
+            o["port"]       = s.port;
+            o["openedAtMs"] = static_cast<double>(s.openedAtMs);
+            o["framesUp"]   = static_cast<double>(s.framesUp);
+            o["framesDown"] = static_cast<double>(s.framesDown);
+            arr.append(o);
+        }
+        QJsonObject root;
+        root["sessions"] = arr;
         return httpJson(200, root);
     }
 
@@ -1078,6 +1170,69 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                                + " · Location: " + loc);
                                     }
                                 }
+                            }
+
+                            // ---- SSRF via cloud metadata ----------------------
+                            // If the response body contains telltale strings
+                            // from AWS/GCP/Azure metadata endpoints after we
+                            // injected those URLs as the param value, the
+                            // server is fetching attacker-controlled URLs
+                            // (SSRF). Highest-value cloud finding -- usually
+                            // leads to credential theft.
+                            {
+                                struct MetaProbe {
+                                    const char *url;
+                                    const char *signature;
+                                    const char *label;
+                                };
+                                static const MetaProbe kCloudMeta[] = {
+                                    { "http://169.254.169.254/latest/meta-data/",
+                                      "instance-id", "aws-imds-v1" },
+                                    { "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+                                      "AccessKeyId", "aws-imds-iam" },
+                                    { "http://metadata.google.internal/computeMetadata/v1/",
+                                      "computeMetadata", "gcp-metadata" },
+                                    { "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+                                      "compute", "azure-imds" },
+                                    { "http://100.100.100.200/latest/meta-data/",
+                                      "instance-id", "aliyun-imds" },
+                                };
+                                for (const auto &mp : kCloudMeta) {
+                                    const auto res = fire(i, QString::fromLatin1(mp.url));
+                                    if (!res.ok) continue;
+                                    const QString body = QString::fromUtf8(
+                                        res.parsed.body.left(64 * 1024));
+                                    if (body.contains(QString::fromLatin1(mp.signature),
+                                                      Qt::CaseInsensitive)) {
+                                        report("critical", "ssrf-cloud-metadata",
+                                               QString("Param '%1' triggers fetch of %2 metadata endpoint")
+                                                   .arg(key, QString::fromLatin1(mp.label)),
+                                               QString("param=%1 · payload=%2 · response contained \"%3\"")
+                                                   .arg(key,
+                                                        QString::fromLatin1(mp.url),
+                                                        QString::fromLatin1(mp.signature)));
+                                        break;  // one finding per param is enough
+                                    }
+                                }
+                            }
+
+                            // ---- OAST out-of-band SSRF ----------------------
+                            // Even when the response doesn't echo our payload,
+                            // a server-side fetch can land at our OAST sink.
+                            // Mint a token, embed the callback URL, fire; the
+                            // /api/oast/poll endpoint later surfaces hits and
+                            // ties them back to this row via the token.
+                            if (w.oast && w.oast->running()) {
+                                const auto tok = w.oast->mintToken();
+                                const QString hostUrl = tok.value("hostUrl").toString();
+                                const QString pathUrl = tok.value("pathUrl").toString();
+                                fire(i, pathUrl);   // fire-and-forget
+                                fire(i, hostUrl);
+                                report("info", "oast-token-fired",
+                                       QString("Param '%1': OAST callback URLs embedded; "
+                                               "check /api/oast/poll for hits").arg(key),
+                                       QString("param=%1 · token=%2 · url=%3")
+                                           .arg(key, tok.value("token").toString(), pathUrl));
                             }
 
                             // ---- SQLi error ---------------------------------
@@ -1445,6 +1600,63 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/intruder/resend") {
         bool ok = m_wiring.intruder
                && m_wiring.intruder->resend(bodyJson.value("row").toInt(-1));
+        return okJson({{ "ok", ok }});
+    }
+
+    // POST /api/oast/mint -- mints a new token + URL.
+    if (path == "/api/oast/mint") {
+        if (!m_wiring.oast || !m_wiring.oast->running())
+            return okJson({{ "ok", false }, { "error", "OAST server not running" }});
+        return httpJson(200, m_wiring.oast->mintToken());
+    }
+
+    // ---- Session handling rules --------------------------------------
+    // POST /api/session-rules/set { rules: [SessionRule, ...] }
+    if (path == "/api/session-rules/set") {
+        if (!m_wiring.sessionRules)
+            return okJson({{ "ok", false }, { "error", "session rules not wired" }});
+        QList<Nullock::Core::SessionRule> rules;
+        for (const QJsonValue &v : bodyJson.value("rules").toArray()) {
+            const QJsonObject o = v.toObject();
+            Nullock::Core::SessionRule r;
+            r.name           = o.value("name").toString();
+            r.enabled        = o.value("enabled").toBool(true);
+            r.hostGlob       = o.value("hostGlob").toString("*");
+            r.pathGlob       = o.value("pathGlob").toString("*");
+            r.extractFrom    = o.value("extractFrom").toInt(0);
+            r.extractKey     = o.value("extractKey").toString();
+            r.variable       = o.value("variable").toString();
+            r.injectInto     = o.value("injectInto").toInt(0);
+            r.injectKey      = o.value("injectKey").toString();
+            r.injectTemplate = o.value("injectTemplate").toString();
+            rules.append(r);
+        }
+        m_wiring.sessionRules->setRules(rules);
+        return okJson();
+    }
+    if (path == "/api/session-rules/clear-vars") {
+        if (m_wiring.sessionRules) m_wiring.sessionRules->clearAll();
+        return okJson();
+    }
+
+    // ---- WebSocket Repeater ------------------------------------------
+    // POST /api/ws/send { sessionId, direction: "up"|"down", opcode: 0-15, payload: str|null }
+    // payload is interpreted as text for opcode 0x1, and as base64 for
+    // 0x2 (binary). Other opcodes ignore payload.
+    if (path == "/api/ws/send") {
+        const qint64  sid  = bodyJson.value("sessionId").toVariant().toLongLong();
+        const QString dir  = bodyJson.value("direction").toString();
+        const int     op   = bodyJson.value("opcode").toInt(0x1);  // default text
+        QByteArray payload;
+        if (bodyJson.contains("payload")) {
+            const QJsonValue v = bodyJson.value("payload");
+            if (v.isString()) {
+                if (op == 0x2) payload = QByteArray::fromBase64(v.toString().toLatin1());
+                else           payload = v.toString().toUtf8();
+            }
+        }
+        const bool ok = Nullock::Proxy::WsRepeater::instance()->sendFrame(
+            sid, dir, op, payload);
         return okJson({{ "ok", ok }});
     }
 

@@ -6,6 +6,8 @@ add_library(APIs STATIC
     ExtensionsAPI/extensions_api.hpp
     ManagerAPI/manager_api.cpp
     ManagerAPI/manager_api.hpp
+    Oast/oast_server.cpp
+    Oast/oast_server.hpp
 )
 
 # Qt6::Qml needed for QJSEngine which the ExtensionsAPI uses to execute
@@ -22,4 +24,5 @@ target_link_libraries(APIs PUBLIC
 target_include_directories(APIs PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ExtensionsAPI
+    ${CMAKE_CURRENT_SOURCE_DIR}/Oast
 )

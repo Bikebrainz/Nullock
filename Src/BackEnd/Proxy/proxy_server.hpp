@@ -19,6 +19,7 @@ class QTcpSocket;
 namespace Nullock::Core {
 class ExtensionsApi;
 class SessionManager;
+class SessionRules;
 }
 
 namespace Nullock::Proxy {
@@ -104,6 +105,9 @@ public:
     void setSessionManager(Nullock::Core::SessionManager *sm);
     Nullock::Core::SessionManager *sessionManager() const;
 
+    void setSessionRules(Nullock::Core::SessionRules *sr);
+    Nullock::Core::SessionRules *sessionRules() const;
+
     // Hosts where we tried to MITM but the client (or upstream) refused our
     // forged certificate — typically apps that do cert pinning. Future
     // CONNECTs to these hosts skip the MITM and use a blind tunnel instead.
@@ -165,6 +169,7 @@ private:
     InterceptController *m_intercept = nullptr;
     Nullock::Core::ExtensionsApi *m_extensions = nullptr;
     Nullock::Core::SessionManager *m_sessionManager = nullptr;
+    Nullock::Core::SessionRules   *m_sessionRules   = nullptr;
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;
