@@ -21,6 +21,7 @@
 #include "networking.hpp"
 #include "proxy_server.hpp"
 
+#include <QAtomicInteger>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -38,7 +39,7 @@ class Crawler : public QObject {
 public:
     explicit Crawler(QObject *parent = nullptr);
 
-    bool    running() const { return m_running; }
+    bool    running() const { return m_running.loadAcquire() != 0; }
     int     visited() const { return m_visited; }
     int     queued()  const { return m_queue.size(); }
     QString seed()    const { return m_seed; }
@@ -73,8 +74,12 @@ private:
     void crawlOne(const PendingUrl &u);
     void extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth);
 
-    bool      m_running = false;
-    bool      m_stopRequested = false;
+    // m_running is set on the worker thread; readers can race so it's
+    // also atomic. m_stopRequested gets flipped from the main thread
+    // (stop() from QML / control API) and read on the worker; must be
+    // atomic to avoid UB on the cross-thread access.
+    QAtomicInteger<int> m_running        { 0 };
+    QAtomicInteger<int> m_stopRequested  { 0 };
     QString   m_seed;
     int       m_maxPages = 200;
     int       m_maxDepth = 4;

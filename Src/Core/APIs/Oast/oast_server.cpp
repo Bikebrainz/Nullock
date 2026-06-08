@@ -62,15 +62,24 @@ QJsonObject OastServer::mintToken() {
     quint64 a = QRandomGenerator::global()->generate64();
     QString tok = QString::number(a, 16).rightJustified(16, '0');
     const quint16 p = port();
-    const QString hostPart = m_baseHost.contains('.') || m_baseHost.contains(':')
-        ? QString("%1.%2").arg(tok, m_baseHost)
-        : QString("%1.%2").arg(tok, m_baseHost);
-    // Fallback URL form that puts the token in the path -- useful for
-    // environments where the embedded host doesn't actually resolve via
-    // DNS (a real Collaborator needs a wildcard DNS A record).
+    // Detect IP literal vs. DNS name: only DNS names can take a subdomain
+    // prefix in the host-form callback URL. (You can't write
+    // "abc.127.0.0.1" -- name resolution will fail.) For IP literals,
+    // both forms fall back to the path-form URL.
+    static const QRegularExpression kIpv4(R"(^\d{1,3}(?:\.\d{1,3}){3}$)");
+    static const QRegularExpression kIpv6(R"(^[0-9a-fA-F:]+$)");
+    const bool baseIsIpLiteral =
+        kIpv4.match(m_baseHost).hasMatch() ||
+        (m_baseHost.contains(':') && kIpv6.match(m_baseHost).hasMatch());
     const QString pathUrl = QString("http://%1:%2/oast/%3/cb")
                                 .arg(m_baseHost).arg(p).arg(tok);
-    const QString hostUrl = QString("http://%1:%2/").arg(hostPart).arg(p);
+    QString hostUrl;
+    if (baseIsIpLiteral) {
+        // No DNS subdomain available -- reuse the path-form URL.
+        hostUrl = pathUrl;
+    } else {
+        hostUrl = QString("http://%1.%2:%3/").arg(tok, m_baseHost).arg(p);
+    }
     QJsonObject o;
     o["token"]      = tok;
     o["pathUrl"]    = pathUrl;

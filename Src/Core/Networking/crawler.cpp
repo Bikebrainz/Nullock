@@ -17,7 +17,7 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     // stop() and wait. Without this, two starts would race -- one
     // worker thread mid-crawlOne() while the other is overwriting
     // m_queue / m_seenUrls.
-    if (m_running) {
+    if (m_running.loadAcquire() != 0) {
         emit errorOccurred("crawler: a crawl is already running; stop() first");
         return false;
     }
@@ -35,15 +35,16 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     m_queue.clear();
     m_queue.enqueue({ seed, 0 });
     m_seenUrls.insert(seed);
-    m_stopRequested = false;
-    m_running = true;
+    m_stopRequested.storeRelease(0);
+    m_running.storeRelease(1);
     emit seedChanged();
     emit runningChanged();
     emit progressChanged();
 
     // Run the BFS off-thread so the GUI / control API stay responsive.
     (void)QtConcurrent::run([this]() {
-        while (m_running && !m_stopRequested
+        while (m_running.loadAcquire() != 0
+               && m_stopRequested.loadAcquire() == 0
                && m_visited < m_maxPages
                && !m_queue.isEmpty()) {
             const PendingUrl u = m_queue.dequeue();
@@ -53,7 +54,7 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
             emit progressChanged();
             if (m_throttleMs > 0) QThread::msleep(m_throttleMs);
         }
-        m_running = false;
+        m_running.storeRelease(0);
         emit runningChanged();
         emit progressChanged();
     });
@@ -61,7 +62,7 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
 }
 
 void Crawler::stop() {
-    m_stopRequested = true;
+    m_stopRequested.storeRelease(1);
 }
 
 void Crawler::crawlOne(const PendingUrl &u) {
