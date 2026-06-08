@@ -19,6 +19,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     QuickControls2
     Network
     Concurrent
+    Sql
 )
 
 # Add source subdirectory

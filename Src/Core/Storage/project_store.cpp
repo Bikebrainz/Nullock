@@ -192,6 +192,12 @@ bool ProjectStore::open(const QString &projectDir) {
         }
     }
 
+    // Open the SQLite-backed metadata index next to the ndjson. Failures
+    // here are non-fatal -- the rest of the project keeps working, just
+    // without /api/history/find acceleration.
+    m_historyIndex.open(m_dir);
+    m_nextRowId = m_historyIndex.rowCount() + 1;
+
     // Tell downstream consumers (ProxyServer) to refresh their copy of
     // scope and rules with whatever this project specifies. Without this,
     // switching projects would carry the previous project's settings.
@@ -202,6 +208,7 @@ bool ProjectStore::open(const QString &projectDir) {
 }
 
 void ProjectStore::close() {
+    m_historyIndex.close();
     {
         QMutexLocker lk(&m_historyMutex);
         if (m_history.isOpen()) m_history.close();
@@ -464,10 +471,18 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
     // write+flush. Without this, a main-thread close() during project
     // switch can drop the file between our check and our write, and on
     // Windows the OS may have already recycled the FD by then.
-    QMutexLocker lk(&m_historyMutex);
-    if (!m_history.isOpen()) return;
-    m_history.write(line);
-    m_history.flush();
+    int rowId;
+    {
+        QMutexLocker lk(&m_historyMutex);
+        if (!m_history.isOpen()) return;
+        m_history.write(line);
+        m_history.flush();
+        rowId = m_nextRowId++;
+    }
+    // Mirror metadata into the SQLite index for /api/history/find. Done
+    // outside the file mutex so the index write doesn't serialize the
+    // hot ndjson append path. HistoryIndex carries its own mutex.
+    m_historyIndex.append(rowId, request, response);
 }
 
 namespace {

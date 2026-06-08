@@ -1640,6 +1640,24 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
 
+    // ---- SQLite-backed history find ----------------------------------
+    // POST /api/history/find { method?, host?, path?, status?, minSize?,
+    //                          maxSize?, sinceMs?, limit? }
+    // SQL-indexed search across every row ever captured in this
+    // project. Beats scanning the in-memory ProxyModel for big histories.
+    if (path == "/api/history/find") {
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "no project store" }});
+        auto *idx = m_wiring.projectStore->historyIndex();
+        if (!idx || !idx->isOpen())
+            return okJson({{ "ok", false }, { "error", "history index not available" }});
+        const QJsonArray rows = idx->find(bodyJson);
+        QJsonObject r;
+        r["rows"]  = rows;
+        r["count"] = rows.size();
+        return httpJson(200, r);
+    }
+
     // ---- Crawler -----------------------------------------------------
     // POST /api/crawler/start { seed, maxPages?, maxDepth?, throttleMs? }
     if (path == "/api/crawler/start") {

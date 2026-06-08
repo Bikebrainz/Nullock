@@ -78,4 +78,32 @@ elseif(WIN32)
     # Need Qt::Concurrent linked into NullockApp so the post-build copy
     # has a Qt6::Concurrent target to reference.
     target_link_libraries(NullockApp PRIVATE Qt6::Concurrent)
+
+    # Qt6Sql.dll same story: only reached transitively via Storage's
+    # use of QSqlDatabase. Without this manual copy, NullockApp.exe
+    # fails to load at startup with a DLL-not-found error.
+    target_link_libraries(NullockApp PRIVATE Qt6::Sql)
+    add_custom_command(TARGET NullockApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:Qt6::Sql>
+            $<TARGET_FILE_DIR:NullockApp>
+        COMMENT "deploying Qt6Sql.dll"
+    )
+
+    # Plus the SQLite driver plugin. QSqlDatabase loads sqldrivers/qsqlite.dll
+    # at runtime; if it's absent the addDatabase("QSQLITE") call returns
+    # an invalid handle and HistoryIndex silently degrades. We derive the
+    # plugin path from Qt6::Core's location (typically <prefix>/bin) by
+    # walking up one level and into plugins/sqldrivers.
+    get_target_property(_qtcore_loc Qt6::Core LOCATION)
+    get_filename_component(_qt_bin_dir "${_qtcore_loc}" DIRECTORY)
+    get_filename_component(_qt_prefix  "${_qt_bin_dir}" DIRECTORY)
+    add_custom_command(TARGET NullockApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:NullockApp>/sqldrivers"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_qt_prefix}/plugins/sqldrivers/qsqlite.dll"
+            "$<TARGET_FILE_DIR:NullockApp>/sqldrivers/"
+        COMMENT "deploying qsqlite driver plugin"
+    )
 endif()

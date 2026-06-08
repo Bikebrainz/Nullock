@@ -1,5 +1,6 @@
 #pragma once
 
+#include "history_index.hpp"
 #include "proxy_server.hpp"
 
 #include <QDateTime>
@@ -132,6 +133,15 @@ private:
     // QFile whose FD may have been recycled by the OS to (worst case)
     // the CA private key or a theme JSON the app just opened to write.
     mutable QMutex m_historyMutex;
+    // SQLite-backed metadata index over the rows written to ndjson.
+    // Drives /api/history/find for fast filtering over very large
+    // histories (200k+ rows). Optional -- if the open fails we keep
+    // going without the index.
+    HistoryIndex m_historyIndex;
+    int          m_nextRowId = 1;
+
+public:
+    HistoryIndex *historyIndex() { return &m_historyIndex; }
 };
 
 } // namespace Nullock::Core

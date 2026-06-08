@@ -8,6 +8,7 @@ add_library(Control STATIC
 target_link_libraries(Control PUBLIC
     Qt6::Core
     Qt6::Network
+    Qt6::Sql
     Proxy
 )
 # extensions_api.hpp (included transitively for ExtensionsApi forward decl)

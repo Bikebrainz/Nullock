@@ -4,10 +4,13 @@
 add_library(Storage STATIC
     project_store.cpp
     project_store.hpp
+    history_index.cpp
+    history_index.hpp
 )
 
 target_link_libraries(Storage PUBLIC
     Qt6::Core
+    Qt6::Sql
     Proxy
 )
 
