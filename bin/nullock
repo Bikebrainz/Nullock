@@ -34,7 +34,15 @@ post() {
 
 # GET <path>
 get() {
+    local path=$1
     curl -sS --max-time 30 "$API$path"
+}
+
+# Read .repeater / .intruder / .interceptEnabled / ... out of the snapshot
+# without round-tripping again -- many subcommands need both a write and
+# a follow-up read, so cache the JSON once per invocation.
+snapshot() {
+    curl -sS --max-time 5 "$API/api/snapshot"
 }
 
 # Pretty-print if jq is around, raw otherwise.
@@ -185,10 +193,166 @@ cmd_intercept() {
         forward)   post /api/intercept/forwardAll | pp ;;
         drop)      post /api/intercept/drop | pp ;;
         queue)
-            curl -sS --max-time 5 "$API/api/snapshot" \
+            snapshot \
                 | "$JQ" '{ enabled: .interceptEnabled, queue: (.intercepted | length) }'
             ;;
         *) die "usage: nullock intercept {toggle|forward|drop|queue}" ;;
+    esac
+}
+
+# Shell-escape a string for embedding inside a JSON string literal.
+# Wraps the input by piping through jq -Rs . which produces a properly
+# escaped, quoted JSON string (handles ", \, newlines, control bytes).
+# Falls back to a naive escape if jq isn't available -- good enough for
+# anything that isn't actively trying to break out.
+jsonq() {
+    if have "$JQ"; then printf '%s' "$1" | "$JQ" -Rs .
+    else printf '"%s"' "${1//\"/\\\"}"
+    fi
+}
+
+cmd_repeater() {
+    # nullock repeater {set|send|show|response|clear|load|tabs|tab ...}
+    case ${1:-} in
+        set)
+            # nullock repeater set <host> <port> <tls:true|false> [request-file|-]
+            [[ $# -ge 4 ]] || die "usage: nullock repeater set <host> <port> <tls> [request-file|-]"
+            local host=$2 port=$3 tls=$4 req=""
+            if [[ -n ${5-} ]]; then
+                if [[ $5 == "-" ]]; then req=$(cat); else req=$(cat "$5"); fi
+            fi
+            local body
+            body="{\"host\":$(jsonq "$host"),\"port\":$port,\"tls\":$tls"
+            if [[ -n $req ]]; then body+=",\"request\":$(jsonq "$req")"; fi
+            body+="}"
+            post /api/repeater/set "$body" | pp
+            ;;
+        send)
+            # Fire and wait briefly for the response to settle into snapshot.
+            post /api/repeater/send >/dev/null
+            local i=0
+            while (( i < 60 )); do
+                local busy
+                busy=$(snapshot | "$JQ" -r '.repeater.busy')
+                [[ $busy == false ]] && break
+                sleep 0.25
+                ((i++))
+            done
+            snapshot | "$JQ" '{
+                status: .repeater.statusLine,
+                response: (.repeater.response | .[0:2000])
+            }'
+            ;;
+        show)
+            # Show the loaded request that would be fired next.
+            snapshot | "$JQ" '{
+                host: .repeater.host, port: .repeater.port, tls: .repeater.tls,
+                activeTab: .repeater.activeTab,
+                request: .repeater.request
+            }'
+            ;;
+        response)
+            # Full response from the last send.
+            snapshot | "$JQ" -r '.repeater.response'
+            ;;
+        clear)
+            post /api/repeater/clear | pp
+            ;;
+        load)
+            # nullock repeater load <row-id>  -- pull a captured row into the active tab.
+            [[ -n ${2-} ]] || die "usage: nullock repeater load <row-id>"
+            local row=$2
+            # Two API options: history/<id>/request gives us the bytes; the cleaner
+            # path is the tab/addFromHistory endpoint (also wraps a fresh tab).
+            post /api/repeater/tab/addFromHistory "{\"row\":$row}" | pp
+            ;;
+        tabs)
+            snapshot | "$JQ" '{
+                active: .repeater.activeTab,
+                tabs: [.repeater.tabs[] | {name, host, port, tls, hasResponse: (.responseText != "")}]
+            }'
+            ;;
+        tab)
+            # nullock repeater tab {add|close|activate|rename|duplicate} ...
+            case ${2:-} in
+                add)
+                    post /api/repeater/tab/add "{\"name\":$(jsonq "${3:-}")}" | pp ;;
+                close)
+                    [[ -n ${3-} ]] || die "usage: nullock repeater tab close <index>"
+                    post /api/repeater/tab/close "{\"index\":$3}" | pp ;;
+                activate)
+                    [[ -n ${3-} ]] || die "usage: nullock repeater tab activate <index>"
+                    post /api/repeater/tab/activate "{\"index\":$3}" | pp ;;
+                rename)
+                    [[ $# -ge 4 ]] || die "usage: nullock repeater tab rename <index> <name>"
+                    post /api/repeater/tab/rename "{\"index\":$3,\"name\":$(jsonq "$4")}" | pp ;;
+                duplicate)
+                    [[ -n ${3-} ]] || die "usage: nullock repeater tab duplicate <index>"
+                    post /api/repeater/tab/duplicate "{\"index\":$3}" | pp ;;
+                *) die "usage: nullock repeater tab {add|close|activate|rename|duplicate}" ;;
+            esac
+            ;;
+        *) die "usage: nullock repeater {set|send|show|response|clear|load|tabs|tab ...}" ;;
+    esac
+}
+
+cmd_intruder() {
+    # nullock intruder {set|start|stop|clear|status|results|resend}
+    case ${1:-} in
+        set)
+            # nullock intruder set <host> <port> <tls> <template-file|-> <payloads-file|-|>
+            # Either file argument can be "-" to read stdin. Payloads is
+            # one entry per line; the §marker§ in the template (or
+            # whichever marker is configured in the project) is replaced
+            # with each payload at fire time.
+            [[ $# -ge 4 ]] || die "usage: nullock intruder set <host> <port> <tls> [template-file|-] [payloads-file|-]"
+            local host=$2 port=$3 tls=$4
+            local tmpl="" payloads=""
+            if [[ -n ${5-} ]]; then
+                if [[ $5 == "-" ]]; then tmpl=$(cat); else tmpl=$(cat "$5"); fi
+            fi
+            if [[ -n ${6-} ]]; then
+                if [[ $6 == "-" ]]; then payloads=$(cat); else payloads=$(cat "$6"); fi
+            fi
+            local body
+            body="{\"host\":$(jsonq "$host"),\"port\":$port,\"tls\":$tls"
+            if [[ -n $tmpl ]]; then body+=",\"template\":$(jsonq "$tmpl")"; fi
+            if [[ -n $payloads ]]; then body+=",\"payloads\":$(jsonq "$payloads")"; fi
+            body+="}"
+            post /api/intruder/set "$body" | pp
+            ;;
+        start)
+            post /api/intruder/start | pp ;;
+        stop)
+            post /api/intruder/stop | pp ;;
+        clear)
+            post /api/intruder/clear | pp ;;
+        status)
+            snapshot | "$JQ" '{
+                host: .intruder.host, port: .intruder.port, tls: .intruder.tls,
+                running: .intruder.running,
+                payloads: (.intruder.payloads | length),
+                results: (.intruder.results | length)
+            }'
+            ;;
+        results)
+            # Optional filter on status code or length.
+            local filter='.'
+            if [[ -n ${2-} ]]; then
+                # Treat numeric arg as status code filter.
+                if [[ $2 =~ ^[0-9]+$ ]]; then
+                    filter=".[] | select(.status==$2)"
+                else
+                    die "usage: nullock intruder results [<status-code>]"
+                fi
+            fi
+            snapshot \
+                | "$JQ" "[.intruder.results[] | {row: .row, payload, status, length, time}] | map($filter)"
+            ;;
+        resend)
+            [[ -n ${2-} ]] || die "usage: nullock intruder resend <row-index>"
+            post /api/intruder/resend "{\"row\":$2}" | pp ;;
+        *) die "usage: nullock intruder {set|start|stop|clear|status|results|resend}" ;;
     esac
 }
 
@@ -243,6 +407,32 @@ Mutation:
 Intercept:
   nullock intercept toggle|forward|drop|queue
 
+Repeater:
+  nullock repeater set <host> <port> <tls> [request-file|-]
+                                 load a request to fire (file or stdin)
+  nullock repeater send          fire the active tab + return status + body preview
+  nullock repeater show          inspect the loaded request
+  nullock repeater response      raw response body from the last send
+  nullock repeater load <row-id> add a captured row as a fresh tab
+  nullock repeater clear         clear the active tab
+  nullock repeater tabs          list tabs with active marker
+  nullock repeater tab add [name]
+  nullock repeater tab close <index>
+  nullock repeater tab activate <index>
+  nullock repeater tab rename <index> <name>
+  nullock repeater tab duplicate <index>
+
+Intruder:
+  nullock intruder set <host> <port> <tls> [template-file|-] [payloads-file|-]
+                                 payloads = one per line; \xC2\xA7marker\xC2\xA7 in template
+  nullock intruder start         fire the attack (returns immediately)
+  nullock intruder stop          interrupt a running attack
+  nullock intruder clear         drop results + loaded state
+  nullock intruder status        running flag, payload count, result count
+  nullock intruder results [status]
+                                 list results, optionally filtered by status code
+  nullock intruder resend <row>  re-fire one result row
+
 Project:
   nullock project list
   nullock project open <name>
@@ -273,6 +463,8 @@ case ${1:-help} in
     replay)        shift; cmd_replay "$@"        ;;
     rule)          shift; cmd_rule "$@"          ;;
     intercept)     shift; cmd_intercept "$@"     ;;
+    repeater)      shift; cmd_repeater "$@"      ;;
+    intruder)      shift; cmd_intruder "$@"      ;;
     project)       shift; cmd_project "$@"       ;;
     export)        shift; cmd_export "$@"        ;;
     help|-h|--help) cmd_help ;;
