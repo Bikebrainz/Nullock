@@ -9,6 +9,7 @@
 #include "session_rules.hpp"
 #include "crawler.hpp"
 #include "update_check.hpp"
+#include "sequencer.hpp"
 #include "intruder.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -1164,7 +1165,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
                     Wiring w = m_wiring;
                     const int rowId = id;  // 1-based -- same as snapshot id
-                    (void)QtConcurrent::run([w, base, useTls, prefix, params, rowId]() {
+                    const int srcStatusCode = srcResp ? srcResp->statusCode : 0;
+                    (void)QtConcurrent::run([w, base, useTls, prefix, params, rowId, srcStatusCode]() {
                         Nullock::Core::HttpClient client;
                         const QString proto = useTls ? "https" : "http";
                         const QString hostPort  = (base.port == 80 || base.port == 443)
@@ -1657,6 +1659,245 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                     }
                                 }
                             }
+
+                            // ---- Server-side prototype pollution ---------
+                            // Fire __proto__[isAdmin]=true and proto-shape
+                            // payloads. We can't prove pollution without a
+                            // follow-up request from a sandbox, but the
+                            // server accepting the key without 4xx is a
+                            // tell that JSON.parse + Object.assign exists.
+                            if (base.method == "POST" || base.method == "PUT"
+                                || base.method == "PATCH") {
+                                static const char *kProtoPay[] = {
+                                    "__proto__[nullockSentinel]=NSV",
+                                    "constructor[prototype][nullockSentinel]=NSV",
+                                    "__proto__.nullockSentinel=NSV",
+                                };
+                                for (const char *p : kProtoPay) {
+                                    const auto res = fire(i, QString::fromLatin1(p));
+                                    if (!res.ok) continue;
+                                    if (res.parsed.statusCode == 200) {
+                                        const QString b = QString::fromUtf8(
+                                            res.parsed.body.left(8 * 1024));
+                                        if (b.contains("NSV")) {
+                                            report("high", "proto-pollution-reflected",
+                                                   "Server-side prototype pollution: sentinel echoed",
+                                                   "payload=" + QString::fromLatin1(p));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ---- HTTP Parameter Pollution (HPP) ----------
+                            // Same key twice, different values. Inconsistent
+                            // handling across stack components is a smell.
+                            {
+                                const QString hpp = "a&" + key + "=b";
+                                const auto res = fire(i, hpp);
+                                if (res.ok && res.parsed.statusCode == 200) {
+                                    const QString b = QString::fromUtf8(
+                                        res.parsed.body.left(8 * 1024));
+                                    if (b.contains("a,b") || b.contains("b,a")
+                                        || (b.contains("a") && b.contains("b"))) {
+                                        report("info", "hpp-stack-divergence",
+                                               "Param '" + key + "' may exhibit HPP "
+                                               "(both values visible in response)",
+                                               "payload=" + hpp);
+                                    }
+                                }
+                            }
+                        }
+
+                        // ---- Per-row probes (not per-param) -------------
+                        // These don't iterate query params; they fire once
+                        // per row at the request's URL.
+
+                        // ---- Authentication-bypass via headers ----------
+                        // X-Original-URL / X-Rewrite-URL / X-Forwarded-Host
+                        // are honored by some reverse proxies (IIS, ARR,
+                        // some nginx configs). Try sending one and seeing
+                        // if a 403 path suddenly returns 200.
+                        if (srcStatusCode == 403) {
+                            struct BypassH {
+                                const char *header;
+                                const char *value;
+                                const char *kind;
+                            };
+                            static const BypassH kBypass[] = {
+                                { "X-Original-URL",   "/",           "auth-bypass-original-url" },
+                                { "X-Rewrite-URL",    "/",           "auth-bypass-rewrite-url" },
+                                { "X-Forwarded-For",  "127.0.0.1",   "auth-bypass-xff" },
+                                { "X-Real-IP",        "127.0.0.1",   "auth-bypass-real-ip" },
+                                { "X-Originating-IP", "127.0.0.1",   "auth-bypass-orig-ip" },
+                                { "X-Custom-IP-Authorization", "127.0.0.1", "auth-bypass-custom-ip" },
+                            };
+                            for (const auto &b : kBypass) {
+                                Nullock::Proxy::HttpRequest r = base;
+                                r.headers.append({ QString::fromLatin1(b.header),
+                                                   QString::fromLatin1(b.value) });
+                                if (w.extensions) r = w.extensions->applyRequestMutation(r);
+                                if (w.proxy)      w.proxy->applyRequestRules(r);
+                                const QByteArray bytes =
+                                    Nullock::Proxy::serializeRequestForOrigin(r);
+                                auto res = client.send(r.host,
+                                    static_cast<quint16>(r.port), useTls, bytes);
+                                if (!res.ok) continue;
+                                if (res.parsed.statusCode == 200) {
+                                    report("high", b.kind,
+                                           QString("403 -> 200 via %1 header bypass")
+                                               .arg(QString::fromLatin1(b.header)),
+                                           "header=" + QString::fromLatin1(b.header)
+                                           + ": " + QString::fromLatin1(b.value));
+                                    break;
+                                }
+                            }
+                        }
+
+                        // ---- HTTP smuggling detection (CL.TE) -----------
+                        // Send a request with both Content-Length and
+                        // Transfer-Encoding. If the server's response
+                        // timing changes dramatically (front-end picks
+                        // CL, back-end picks TE), that's the smell.
+                        // We're conservative: only flag a 5x baseline
+                        // timing delta with the malicious framing.
+                        {
+                            QElapsedTimer t1; t1.start();
+                            (void)client.send(base.host, static_cast<quint16>(base.port),
+                                              useTls,
+                                              Nullock::Proxy::serializeRequestForOrigin(base));
+                            const qint64 baselineMs = t1.elapsed();
+
+                            // Craft a CL+TE smuggling probe by hand. Reuse
+                            // base's request line + headers but force the
+                            // body framing.
+                            QByteArray probe;
+                            probe += base.method.toUtf8() + " " + base.path.toUtf8()
+                                  + " HTTP/1.1\r\n";
+                            probe += "Host: " + base.host.toUtf8() + "\r\n";
+                            probe += "Content-Length: 4\r\n";
+                            probe += "Transfer-Encoding: chunked\r\n";
+                            probe += "\r\n";
+                            probe += "1\r\n";
+                            probe += "A\r\n";
+                            probe += "0\r\n\r\n";
+
+                            QElapsedTimer t2; t2.start();
+                            auto smugRes = client.send(base.host,
+                                static_cast<quint16>(base.port), useTls, probe);
+                            const qint64 smugMs = t2.elapsed();
+
+                            // 5x slowdown AND > 5s absolute -> probably
+                            // back-end waiting on body that won't come.
+                            if (smugRes.ok && smugMs > 5000
+                                && smugMs > baselineMs * 5) {
+                                report("high", "http-smuggling-clte-suspect",
+                                       "CL+TE timing delta suggests front-end/back-end "
+                                       "framing disagreement",
+                                       QString("baseline=%1ms · CL+TE probe=%2ms")
+                                           .arg(baselineMs).arg(smugMs));
+                            }
+                        }
+
+                        // ---- Cache poisoning via X-Forwarded-Host -------
+                        // Inject the header, observe if the response body
+                        // reflects it (would cache + serve to next user).
+                        {
+                            const QString unique = QString("nullock-cache-")
+                                + QString::number(QRandomGenerator::global()->generate(), 16);
+                            Nullock::Proxy::HttpRequest r = base;
+                            r.headers.append({ "X-Forwarded-Host", unique + ".invalid" });
+                            if (w.extensions) r = w.extensions->applyRequestMutation(r);
+                            if (w.proxy)      w.proxy->applyRequestRules(r);
+                            auto res = client.send(r.host,
+                                static_cast<quint16>(r.port), useTls,
+                                Nullock::Proxy::serializeRequestForOrigin(r));
+                            if (res.ok) {
+                                const QString body = QString::fromUtf8(
+                                    res.parsed.body.left(64 * 1024));
+                                QString loc;
+                                for (const auto &h : res.parsed.headers)
+                                    if (h.first.compare("Location", Qt::CaseInsensitive) == 0) {
+                                        loc = h.second; break;
+                                    }
+                                if (body.contains(unique) || loc.contains(unique)) {
+                                    report("high", "cache-poison-xfh",
+                                           "X-Forwarded-Host value reflected in response "
+                                           "(potential web cache poisoning)",
+                                           "header reflected: " + unique + ".invalid");
+                                }
+                            }
+                        }
+
+                        // ---- Web cache deception ------------------------
+                        // Append /.css to the path. If the response 200s
+                        // AND the body looks like the original
+                        // (authenticated) page, the cache will serve
+                        // user A's account page from /account/.css to
+                        // anyone hitting it later.
+                        if (!base.path.contains(".") || base.path.endsWith("/")) {
+                            const QString deceived = (base.path.endsWith("/")
+                                ? base.path + "nullock-wcd.css"
+                                : base.path + "/nullock-wcd.css");
+                            Nullock::Proxy::HttpRequest r = base;
+                            r.path = deceived;
+                            r.target = deceived;
+                            if (w.extensions) r = w.extensions->applyRequestMutation(r);
+                            if (w.proxy)      w.proxy->applyRequestRules(r);
+                            auto res = client.send(r.host,
+                                static_cast<quint16>(r.port), useTls,
+                                Nullock::Proxy::serializeRequestForOrigin(r));
+                            if (res.ok && res.parsed.statusCode == 200
+                                && res.parsed.body.size() > 1024) {
+                                // Heuristic: response looks personalized
+                                // (contains a Set-Cookie or auth-shaped
+                                // header).
+                                bool personalized = false;
+                                for (const auto &h : res.parsed.headers) {
+                                    if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) == 0
+                                        || h.first.compare("Authorization", Qt::CaseInsensitive) == 0) {
+                                        personalized = true; break;
+                                    }
+                                }
+                                if (personalized) {
+                                    report("high", "web-cache-deception",
+                                           "Path-trick still served authenticated page "
+                                           "(cache-deception candidate)",
+                                           "deceived path: " + deceived);
+                                }
+                            }
+                        }
+
+                        // ---- Race condition probe -----------------------
+                        // Fire 5 identical requests concurrently. If more
+                        // than one returns 200 on what should be a
+                        // single-use mutation (POST/PUT/DELETE), the
+                        // server has TOCTOU.
+                        if (base.method == "POST" || base.method == "PUT"
+                            || base.method == "DELETE") {
+                            const QByteArray bytes2 =
+                                Nullock::Proxy::serializeRequestForOrigin(base);
+                            QList<QFuture<int>> fanOut;
+                            for (int k = 0; k < 5; ++k) {
+                                fanOut.append(QtConcurrent::run(
+                                    [host=base.host, port=base.port, useTls, bytes2]() {
+                                        Nullock::Core::HttpClient c;
+                                        auto r = c.send(host,
+                                            static_cast<quint16>(port), useTls, bytes2);
+                                        return r.ok ? r.parsed.statusCode : 0;
+                                    }));
+                            }
+                            int wins = 0;
+                            for (auto &f : fanOut) {
+                                f.waitForFinished();
+                                if (f.result() == 200) ++wins;
+                            }
+                            if (wins >= 2) {
+                                report("high", "race-condition-suspect",
+                                       "Identical mutation request returned 200 from "
+                                       + QString::number(wins) + "/5 concurrent fires",
+                                       base.method + " " + base.path);
+                            }
                         }
                     });
                     return httpJson(200, QJsonObject{{ "ok", true },
@@ -2054,6 +2295,18 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/crawler/stop") {
         if (m_wiring.crawler) m_wiring.crawler->stop();
         return okJson();
+    }
+
+    // ---- Sequencer (token randomness analyzer) -----------------------
+    // POST /api/sequencer/analyze { tokens: [str, str, ...] }
+    // Burp's Sequencer equivalent. Statistical tests on a captured
+    // corpus of session-style tokens. Returns per-test scores + verdict.
+    if (path == "/api/sequencer/analyze") {
+        QStringList tokens;
+        for (const QJsonValue &v : bodyJson.value("tokens").toArray())
+            tokens.append(v.toString());
+        Nullock::Core::Sequencer seq;
+        return httpJson(200, seq.analyze(tokens));
     }
 
     // ---- Reverse OpenAPI ---------------------------------------------

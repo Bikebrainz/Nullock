@@ -22,6 +22,8 @@ add_library(Networking STATIC
     tls_profile.hpp
     update_check.cpp
     update_check.hpp
+    sequencer.cpp
+    sequencer.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

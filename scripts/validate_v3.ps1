@@ -184,6 +184,39 @@ Test-Endpoint "extensions install-builtins responds" {
     return $r.StatusCode -eq 200
 }
 
+Write-Host "`n=== Sequencer ===" -ForegroundColor Cyan
+Test-Endpoint "sequencer rejects empty input gracefully" {
+    $body = '{"tokens":[]}'
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/sequencer/analyze" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 5
+    $j = $r.Content | ConvertFrom-Json
+    return $j.verdict -eq "no-data"
+}
+
+Test-Endpoint "sequencer flags sequential counter tokens as predictable" {
+    # 100, 101, 102, ... -- obviously predictable
+    $tokens = (100..120) | ForEach-Object { '"' + ($_.ToString()) + '"' }
+    $body = '{"tokens":[' + ($tokens -join ',') + ']}'
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/sequencer/analyze" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 5
+    $j = $r.Content | ConvertFrom-Json
+    return ($j.sequential.looksSequential -eq $true) -and ($j.verdict -eq "predictable")
+}
+
+Test-Endpoint "sequencer flags high-entropy tokens as looks-random" {
+    # 20 random 32-char hex tokens
+    $rng = [System.Random]::new()
+    $tokens = @()
+    for ($i = 0; $i -lt 20; $i++) {
+        $b = New-Object byte[] 16
+        $rng.NextBytes($b)
+        $hex = ($b | ForEach-Object { $_.ToString('x2') }) -join ''
+        $tokens += '"' + $hex + '"'
+    }
+    $body = '{"tokens":[' + ($tokens -join ',') + ']}'
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/sequencer/analyze" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 5
+    $j = $r.Content | ConvertFrom-Json
+    return $j.verdict -eq "looks-random"
+}
+
 # Cleanup
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500

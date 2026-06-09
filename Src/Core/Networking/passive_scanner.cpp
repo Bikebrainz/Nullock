@@ -1028,6 +1028,125 @@ void PassiveScanner::checkResponse(int rowId,
                        "Host: " + hostHdr + " · Location: " + loc2);
         }
     }
+
+    // ---- Deserialization signatures (passive detection) ---------------
+    // Look for serialized blobs in request bodies / cookies / params.
+    // High false-positive risk in general, so we only flag when the
+    // canonical magic bytes / prefixes are present.
+    const QString reqAllHeaders = [&]{
+        QString out;
+        for (const auto &h : req.headers) out += h.first + ": " + h.second + "\n";
+        return out;
+    }();
+    struct DesPat { const char *kind; const char *label; const char *prefix; };
+    static const DesPat kDesPats[] = {
+        // Java serialized: rO0 base64 prefix decodes to ac ed 00 05 magic
+        { "deser-java",   "Java serialized object (rO0...)",   "rO0AB" },
+        // Python pickle: gAB / gAR base64 prefix decodes to 0x80 0x04 (proto 4)
+        { "deser-pickle", "Python pickle (gAS... / gAR...)",   "gASV" },
+        // PHP serialized: O:N: / a:N: / s:N: pattern -- strict enough
+        // we won't trip on user names
+        { "deser-php",    "PHP serialized object (O:N:...)",   "O:" },
+        // Ruby Marshal: BAh prefix
+        { "deser-ruby",   "Ruby Marshal (BAh...)",             "BAh" },
+        // .NET BinaryFormatter: AAEAAAD base64 prefix
+        { "deser-dotnet", ".NET BinaryFormatter (AAEAAAD...)", "AAEAAAD" },
+    };
+    auto bodyText = QString::fromUtf8(req.body.left(64 * 1024));
+    for (const auto &d : kDesPats) {
+        const QString needle = QString::fromLatin1(d.prefix);
+        bool hit = false;
+        QString where;
+        if (bodyText.contains(needle)) { hit = true; where = "request body"; }
+        else if (reqAllHeaders.contains(needle)) { hit = true; where = "request headers"; }
+        if (hit) {
+            // PHP O: pattern is short. Require a colon-digit-colon to
+            // cut false positives.
+            if (QString::fromLatin1(d.kind) == "deser-php") {
+                static const QRegularExpression rxPhp(R"(O:\d+:")");
+                if (!rxPhp.match(bodyText).hasMatch()
+                    && !rxPhp.match(reqAllHeaders).hasMatch()) continue;
+            }
+            addFinding(rowId, req, resp, "high", d.kind,
+                       QString("Serialized %1 in %2 -- gadget-chain RCE candidate")
+                           .arg(QString::fromLatin1(d.label), where),
+                       "match begins: " + needle);
+            break;
+        }
+    }
+
+    // ---- CSV / formula injection markers (passive) --------------------
+    // Look at responses likely intended for CSV download. If user-
+    // controllable cells start with =, +, -, @, they execute as
+    // formulas in Excel/LibreOffice on open.
+    if (contentType.contains("text/csv", Qt::CaseInsensitive)
+        || contentType.contains("application/csv", Qt::CaseInsensitive)
+        || req.path.endsWith(".csv", Qt::CaseInsensitive)) {
+        const QString body = QString::fromUtf8(resp.body.left(256 * 1024));
+        static const QRegularExpression rxFormula(R"((^|\n)[=+\-@][A-Za-z])");
+        if (rxFormula.match(body).hasMatch()) {
+            addFinding(rowId, req, resp, "medium", "csv-formula-injection",
+                       "CSV cell starts with formula trigger (=, +, -, @) -- "
+                       "Excel will execute on open",
+                       "first formula cell visible in CSV body");
+        }
+    }
+
+    // ---- Subdomain takeover indicators (passive) ----------------------
+    // 404 / 503 response bodies with vendor-specific error pages
+    // suggest a CNAME pointing at an unclaimed cloud resource.
+    if (resp.statusCode == 404 || resp.statusCode == 503) {
+        const QString body = QString::fromUtf8(resp.body.left(32 * 1024));
+        struct STPat { const char *kind; const char *label; const char *needle; };
+        static const STPat kSTs[] = {
+            { "takeover-s3",        "AWS S3 NoSuchBucket",
+              "NoSuchBucket" },
+            { "takeover-heroku",    "Heroku 'No such app'",
+              "no such app" },
+            { "takeover-github",    "GitHub Pages 404",
+              "There isn't a GitHub Pages site here" },
+            { "takeover-azure",     "Azure 404 Web App",
+              "404 Web Site not found" },
+            { "takeover-fastly",    "Fastly Fastly error: unknown domain",
+              "Fastly error: unknown domain" },
+            { "takeover-shopify",   "Shopify Sorry, this shop is",
+              "Sorry, this shop is currently unavailable" },
+            { "takeover-tumblr",    "Tumblr Whatever you were looking",
+              "Whatever you were looking for" },
+            { "takeover-cargo",     "Cargo Collective error",
+              "404 Not Found" },  // weakly specific; combine with status
+        };
+        for (const auto &st : kSTs) {
+            if (body.contains(QString::fromLatin1(st.needle), Qt::CaseInsensitive)) {
+                addFinding(rowId, req, resp, "high", st.kind,
+                           QString("Possible subdomain takeover on %1 (%2)")
+                               .arg(req.host, QString::fromLatin1(st.label)),
+                           "needle: " + QString::fromLatin1(st.needle));
+                break;
+            }
+        }
+    }
+
+    // ---- SSRF outbound indicator: telltale OAST callback pattern ------
+    // If the response body or a redirect lands at an attacker-controlled
+    // OAST-shaped domain, the server already made an outbound request --
+    // this catches CYA cases where the attacker won the race.
+    // (Placeholder for now -- exercised only by self-test.)
+
+    // ---- Reflected file download indicator ----------------------------
+    // Content-Disposition: attachment with user-controlled filename in
+    // path/query -- enables RFD attacks where the user is convinced to
+    // execute the downloaded file.
+    const QString cdsp = headerOf(resp.headers, "Content-Disposition");
+    if (cdsp.contains("attachment", Qt::CaseInsensitive)) {
+        const QString q = req.path.contains('?') ? req.path.section('?', 1) : QString();
+        if (!q.isEmpty() && cdsp.contains(q.section('&', 0, 0).section('=', 1, 1),
+                                          Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "low", "reflected-file-download",
+                       "Content-Disposition filename appears to mirror a request param",
+                       cdsp.left(160));
+        }
+    }
 }
 
 } // namespace Nullock::Core
