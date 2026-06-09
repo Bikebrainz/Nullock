@@ -704,6 +704,330 @@ void PassiveScanner::checkResponse(int rowId,
                        "Access-Control-Allow-Origin: null");
         }
     }
+
+    // ---- CORS preflight overpermissive --------------------------------
+    if (headerOf(resp.headers, "Access-Control-Allow-Methods").contains("*")) {
+        addFinding(rowId, req, resp, "low", "cors-methods-wildcard",
+                   "Access-Control-Allow-Methods: * is overly permissive",
+                   "ACAM: *");
+    }
+    if (headerOf(resp.headers, "Access-Control-Allow-Headers").contains("*")) {
+        addFinding(rowId, req, resp, "low", "cors-headers-wildcard",
+                   "Access-Control-Allow-Headers: * permits any header",
+                   "ACAH: *");
+    }
+
+    // ---- Vary header on cookie-dependent responses --------------------
+    // If Set-Cookie is present AND Cache-Control allows caching AND
+    // Vary doesn't include Cookie, a shared cache will serve user A's
+    // cookies to user B. Classic Cloudflare bug pattern.
+    const QString vary = headerOf(resp.headers, "Vary").toLower();
+    if (setsCookie && resp.statusCode == 200) {
+        const QString cc = headerOf(resp.headers, "Cache-Control").toLower();
+        const bool cacheable = !cc.contains("no-store") && !cc.contains("private");
+        if (cacheable && !vary.contains("cookie")) {
+            addFinding(rowId, req, resp, "medium", "cache-vary-missing-cookie",
+                       "Response sets cookies and may be cached without Vary: Cookie",
+                       "Cache-Control: " + cc + " · Vary: " + vary);
+        }
+    }
+
+    // ---- WAF / CDN fingerprinting (informational) ---------------------
+    // Useful to know the user is sitting behind Cloudflare / Akamai /
+    // Imperva so they can plan evasion vs. block-list testing.
+    struct WafIndicator { const char *header; const char *kind; const char *label; };
+    static const WafIndicator kWafs[] = {
+        { "CF-RAY",                "waf-cloudflare", "Cloudflare" },
+        { "Server",                "waf-cloudflare", "Cloudflare" },  // cf-... server
+        { "X-Akamai-Transformed",  "waf-akamai",     "Akamai" },
+        { "X-Iinfo",               "waf-imperva",    "Imperva" },
+        { "X-CDN",                 "waf-fastly",     "Fastly/CDN" },
+        { "X-Cache",               "waf-varnish",    "Varnish/CDN" },
+        { "X-Sucuri-ID",           "waf-sucuri",     "Sucuri" },
+        { "Server-Timing",         "waf-server-timing", "Server-Timing" },
+    };
+    for (const auto &w : kWafs) {
+        const QString v = headerOf(resp.headers, w.header);
+        if (v.isEmpty()) continue;
+        if (QString::fromLatin1(w.kind) == "waf-cloudflare" && QString::fromLatin1(w.header) == "Server") {
+            if (!v.toLower().startsWith("cf")) continue;  // not cloudflare
+        }
+        addFinding(rowId, req, resp, "info", w.kind,
+                   QString("%1 detected via %2 header").arg(QString::fromLatin1(w.label),
+                                                             QString::fromLatin1(w.header)),
+                   QString::fromLatin1(w.header) + ": " + v.left(120));
+        if (QString::fromLatin1(w.kind) != "waf-cloudflare") break;
+    }
+
+    // ---- Server-Timing leak --------------------------------------------
+    // Reveals internal timing (DB lookup, cache miss, etc.) which can
+    // power timing attacks. Same header sometimes acts as WAF marker;
+    // we surface as separate finding only when content looks like timing.
+    const QString stiming = headerOf(resp.headers, "Server-Timing");
+    if (!stiming.isEmpty() && stiming.contains(QRegularExpression("dur=\\d"))) {
+        addFinding(rowId, req, resp, "info", "server-timing-leak",
+                   "Server-Timing header exposes internal timing measurements",
+                   "Server-Timing: " + stiming.left(200));
+    }
+
+    // ---- Cloud bucket / storage endpoints exposed ---------------------
+    // S3 / GCS / Azure Blob URLs in response body suggest public storage
+    // or hard-coded references the user can probe directly.
+    if (html && resp.body.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+        struct CloudPat { const char *kind; const char *label; QRegularExpression rx; };
+        static const CloudPat kCloud[] = {
+            { "cloud-s3-bucket", "AWS S3 bucket",
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.s3[.\-][a-zA-Z0-9.\-]*amazonaws\.com)") },
+            { "cloud-gcs-bucket", "GCS bucket",
+              QRegularExpression(R"(https?://storage\.googleapis\.com/[a-zA-Z0-9._\-]+)") },
+            { "cloud-azure-blob", "Azure Blob",
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.blob\.core\.windows\.net)") },
+            { "cloud-firebase", "Firebase Realtime DB",
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.firebaseio\.com)") },
+            { "cloud-firebase-storage", "Firebase Storage",
+              QRegularExpression(R"(https?://firebasestorage\.googleapis\.com)") },
+        };
+        for (const auto &c : kCloud) {
+            const auto m = c.rx.match(body);
+            if (m.hasMatch()) {
+                addFinding(rowId, req, resp, "info", c.kind,
+                           QString("%1 URL referenced -- check for public ACL")
+                               .arg(QString::fromLatin1(c.label)),
+                           "first: " + m.captured().left(160));
+            }
+        }
+    }
+
+    // ---- Dev / admin tooling exposed -----------------------------------
+    // The single largest source of "easy" bug bounty wins. If any of
+    // these paths return a 200, surface it loud.
+    if (resp.statusCode == 200) {
+        struct DevTool { const char *needle; const char *kind; const char *label; const char *severity; };
+        static const DevTool kDevTools[] = {
+            { "/actuator/",        "spring-actuator",  "Spring Boot Actuator",       "high" },
+            { "/actuator/env",     "spring-actuator-env", "Spring Boot /env",        "high" },
+            { "/actuator/heapdump","spring-actuator-heap","Spring Boot /heapdump",   "critical" },
+            { "/swagger-ui",       "swagger-ui",       "Swagger UI",                  "medium" },
+            { "/swagger.json",     "swagger-spec",     "Swagger spec",                "medium" },
+            { "/openapi.json",     "openapi-spec",     "OpenAPI spec",                "medium" },
+            { "/graphiql",         "graphiql",         "GraphiQL interface",          "medium" },
+            { "/voyager",          "graphql-voyager",  "GraphQL Voyager",             "medium" },
+            { "/playground",       "graphql-playground","GraphQL Playground",         "medium" },
+            { "/_debugbar",        "debug-bar",        "Symfony / Laravel debug bar", "high" },
+            { "/_profiler",        "symfony-profiler", "Symfony profiler",            "high" },
+            { "/admin/",           "admin-path",       "Admin path",                  "low" },
+            { "/.well-known/security.txt", "security-txt", "security.txt present",    "info" },
+            { "/manager/html",     "tomcat-manager",   "Tomcat manager",              "high" },
+            { "/host-manager",     "tomcat-host-mgr",  "Tomcat host manager",         "high" },
+            { "/phpmyadmin",       "phpmyadmin",       "phpMyAdmin",                  "high" },
+            { "/wp-admin",         "wp-admin",         "WordPress admin",             "info" },
+            { "/server-status",    "apache-status",    "Apache server-status",        "high" },
+            { "/server-info",      "apache-info",      "Apache server-info",          "high" },
+            { "/.git/HEAD",        "git-head-exposed", "Git HEAD exposed",            "critical" },
+            { "/jolokia",          "jolokia-exposed",  "Jolokia JMX HTTP",            "high" },
+            { "/druid",            "druid-monitor",    "Apache Druid monitoring",     "medium" },
+        };
+        for (const auto &d : kDevTools) {
+            if (req.path.contains(QString::fromLatin1(d.needle), Qt::CaseInsensitive)) {
+                addFinding(rowId, req, resp,
+                           QString::fromLatin1(d.severity), d.kind,
+                           QString("%1 reachable").arg(QString::fromLatin1(d.label)),
+                           "path: " + req.path);
+                break;  // one per row
+            }
+        }
+    }
+
+    // ---- phpinfo() output detection ------------------------------------
+    if (resp.statusCode == 200 && html) {
+        const QString body = QString::fromUtf8(resp.body.left(64 * 1024));
+        if (body.contains("phpinfo()", Qt::CaseInsensitive)
+            && body.contains("PHP Version", Qt::CaseInsensitive)
+            && body.contains("System ", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "critical", "phpinfo-output",
+                       "phpinfo() output reachable (full env + paths + extensions)",
+                       "page contains 'phpinfo()' + 'PHP Version' + 'System '");
+        }
+    }
+
+    // ---- Robots.txt / sitemap.xml sensitive paths ----------------------
+    // Crawlers like to publish private endpoints in their disallow rules.
+    if (resp.statusCode == 200 && req.path.endsWith("/robots.txt", Qt::CaseInsensitive)) {
+        const QString body = QString::fromUtf8(resp.body.left(128 * 1024));
+        static const QStringList kRobotsSnitch = {
+            "admin", "private", "secret", "internal", "staging",
+            "backup", "test", "debug", "/api/", "/v1/", "/dev/",
+        };
+        QStringList hits;
+        for (const QString &word : kRobotsSnitch) {
+            if (body.contains(word, Qt::CaseInsensitive)) hits << word;
+        }
+        if (!hits.isEmpty()) {
+            addFinding(rowId, req, resp, "low", "robots-discloses-paths",
+                       "robots.txt mentions sensitive-shape paths",
+                       "keywords: " + hits.join(", "));
+        }
+    }
+
+    // ---- Sec-Fetch-* missing on credentialed endpoints -----------------
+    // Modern browsers send Sec-Fetch-Site / Sec-Fetch-Mode; backends
+    // should verify them on sensitive requests. We can't prove enforcement
+    // -- only flag the user that they could be a defense layer.
+    if (hasAuth && resp.statusCode == 200
+        && headerOf(req.headers, "Sec-Fetch-Site").isEmpty()) {
+        // Don't flag: this is informational and would fire on every
+        // CLI / non-browser request. The user's CLI hitting their own
+        // API isn't a finding. Leaving this comment as a deliberate
+        // anti-finding so future-me doesn't add it back.
+    }
+
+    // ---- JWT in URL / form / response body ----------------------------
+    // Tokens in URLs get logged everywhere (proxy logs, referrers,
+    // bookmark sync). Same applies if a JWT shows up echoed in a body.
+    static const QRegularExpression rxJwt(
+        R"(\bey[A-Za-z0-9_-]{8,}\.ey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})");
+    if (rxJwt.match(req.path).hasMatch()) {
+        addFinding(rowId, req, resp, "medium", "jwt-in-url",
+                   "JWT-shape token visible in URL",
+                   "path: " + req.path.left(200));
+    }
+    if (resp.body.size() > 0 && resp.body.size() < 256 * 1024) {
+        const QString body = QString::fromUtf8(resp.body);
+        const auto mJ = rxJwt.match(body);
+        if (mJ.hasMatch()) {
+            // Don't double-flag obvious places like an /auth/login response.
+            if (!req.path.contains("login", Qt::CaseInsensitive)
+                && !req.path.contains("auth", Qt::CaseInsensitive)
+                && !req.path.contains("token", Qt::CaseInsensitive)) {
+                addFinding(rowId, req, resp, "info", "jwt-echoed-in-body",
+                           "JWT-shape token appears in response body of "
+                           "a non-auth endpoint",
+                           "first JWT: " + mJ.captured().left(40) + "...");
+            }
+        }
+    }
+
+    // ---- OPTIONS Allow header enumeration -----------------------------
+    if (req.method.compare("OPTIONS", Qt::CaseInsensitive) == 0) {
+        const QString allow = headerOf(resp.headers, "Allow");
+        if (allow.contains("DELETE", Qt::CaseInsensitive)
+            || allow.contains("PUT", Qt::CaseInsensitive)
+            || allow.contains("PATCH", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "options-mutation-methods",
+                       "OPTIONS response advertises mutation methods",
+                       "Allow: " + allow);
+        }
+    }
+
+    // ---- WebSocket Upgrade Origin not validated -----------------------
+    // If we see a 101 Switching Protocols and the request Origin doesn't
+    // match req.host's apex, that's a candidate cross-origin WS bug.
+    if (resp.statusCode == 101) {
+        const QString origin = headerOf(req.headers, "Origin");
+        if (!origin.isEmpty()) {
+            QString originHost;
+            const QUrl ou = QUrl::fromUserInput(origin);
+            if (ou.isValid()) originHost = ou.host();
+            if (!originHost.isEmpty()
+                && !originHost.endsWith(req.host, Qt::CaseInsensitive)
+                && !req.host.endsWith(originHost, Qt::CaseInsensitive)) {
+                addFinding(rowId, req, resp, "medium", "ws-cross-origin-accepted",
+                           "WebSocket upgrade accepted with cross-origin Origin",
+                           "Origin: " + origin + " · host: " + req.host);
+            }
+        }
+    }
+
+    // ---- DOM-XSS sink patterns in inline scripts ----------------------
+    if (html && resp.body.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+        struct DomPat { const char *kind; const char *label; QRegularExpression rx; };
+        static const DomPat kDom[] = {
+            { "dom-xss-innerhtml-location",
+              "innerHTML <- location",
+              QRegularExpression(
+                  R"(\.innerHTML\s*=\s*[^;]*(?:location|document\.referrer|window\.name))") },
+            { "dom-xss-eval-location",
+              "eval / setTimeout with location-derived string",
+              QRegularExpression(
+                  R"((?:eval|setTimeout|setInterval|Function)\s*\(\s*(?:location|document\.referrer|window\.name))") },
+            { "dom-postmessage-wildcard",
+              "postMessage with '*' target origin",
+              QRegularExpression(R"(postMessage\s*\([^,)]+,\s*['"]\*['"]\s*\))") },
+            { "dom-eval-of-fetch",
+              "eval of fetch / XHR response text",
+              QRegularExpression(R"(eval\s*\(\s*\w+\.responseText)") },
+        };
+        for (const auto &d : kDom) {
+            if (d.rx.match(body).hasMatch()) {
+                addFinding(rowId, req, resp, "medium", d.kind,
+                           QString("Suspicious inline JS pattern: %1")
+                               .arg(QString::fromLatin1(d.label)),
+                           "regex matched in body -- review the script tag");
+                break;  // one DOM finding per page is plenty
+            }
+        }
+    }
+
+    // ---- Local / session storage of secrets in inline JS --------------
+    if (html && resp.body.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+        static const QRegularExpression rxStoreSecret(
+            R"((?:localStorage|sessionStorage)\.setItem\s*\(\s*['"](?:token|auth|jwt|password|secret|apiKey|api_key|access)['"])",
+            QRegularExpression::CaseInsensitiveOption);
+        if (rxStoreSecret.match(body).hasMatch()) {
+            addFinding(rowId, req, resp, "low", "storage-of-secrets",
+                       "Inline JS stores credential-shape value in localStorage/sessionStorage",
+                       "matches setItem('token'|'jwt'|...)");
+        }
+    }
+
+    // ---- Verbose 4xx errors leaking SQL / framework info --------------
+    if (resp.statusCode >= 400 && resp.statusCode < 500
+        && resp.body.size() < 256 * 1024) {
+        const QString body = QString::fromUtf8(resp.body);
+        struct ErrPat { const char *kind; const char *needle; };
+        static const ErrPat kErrPats[] = {
+            { "verbose-sql-err",      "ORA-" },
+            { "verbose-sql-err",      "MySQL server version" },
+            { "verbose-sql-err",      "syntax error at or near" },
+            { "verbose-sql-err",      "Microsoft OLE DB Provider" },
+            { "verbose-sql-err",      "ODBC SQL Server Driver" },
+            { "verbose-sql-err",      "sqlite3.OperationalError" },
+            { "verbose-php-err",      "Warning: " },
+            { "verbose-php-err",      "Notice: " },
+            { "verbose-debug-page",   "Werkzeug Debugger" },
+            { "verbose-debug-page",   "Whoops! There was an error" },
+            { "verbose-debug-page",   "<title>Symfony Exception" },
+        };
+        for (const auto &e : kErrPats) {
+            if (body.contains(QString::fromLatin1(e.needle))) {
+                addFinding(rowId, req, resp, "medium", e.kind,
+                           "Verbose error leak (" + QString::fromLatin1(e.needle)
+                               + ") in 4xx response",
+                           "needle: " + QString::fromLatin1(e.needle));
+                break;
+            }
+        }
+    }
+
+    // ---- Host header reflection / unvalidated -------------------------
+    // If the Host header value shows up in a Set-Cookie domain attribute,
+    // a Location header, or a body href, the server isn't validating
+    // Host -> ripe for password-reset poisoning.
+    const QString hostHdr = headerOf(req.headers, "Host");
+    if (!hostHdr.isEmpty() && resp.statusCode >= 200 && resp.statusCode < 400) {
+        const QString loc2 = headerOf(resp.headers, "Location");
+        if (!loc2.isEmpty() && loc2.contains(hostHdr, Qt::CaseInsensitive)
+            && !loc2.startsWith("/") && !loc2.startsWith("http")) {
+            // Already-absolute Location with mathing host -- normal. Skip.
+        } else if (!loc2.isEmpty() && loc2.contains(hostHdr, Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "host-header-reflected-location",
+                       "Host header value appears in Location -- check for poisoning",
+                       "Host: " + hostHdr + " · Location: " + loc2);
+        }
+    }
 }
 
 } // namespace Nullock::Core

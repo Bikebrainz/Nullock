@@ -1578,6 +1578,85 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                            + base.method + " returned 200 with value 'true'");
                                 }
                             }
+
+                            // ---- Blind SQLi: time-based ------------------
+                            // Time-based confirms SQLi even when there's no
+                            // error reflection. Measure baseline, fire
+                            // SLEEP(3), compare. Cap at one engine per param.
+                            {
+                                QElapsedTimer base_t; base_t.start();
+                                const auto base_res = fire(i, "1");
+                                const qint64 baseMs = base_t.elapsed();
+                                if (!base_res.ok) goto blindsqli_done;
+
+                                struct TimePayload { const char *engine; const char *payload; };
+                                static const TimePayload kTimings[] = {
+                                    { "MySQL",      "1' AND SLEEP(3)-- -" },
+                                    { "PostgreSQL", "1';SELECT pg_sleep(3)-- -" },
+                                    { "MSSQL",      "1';WAITFOR DELAY '0:0:3'-- -" },
+                                    { "SQLite",     "1' AND randomblob(99999999)-- -" },
+                                };
+                                for (const auto &t : kTimings) {
+                                    QElapsedTimer probe_t; probe_t.start();
+                                    const auto probe_res = fire(i, QString::fromLatin1(t.payload));
+                                    const qint64 probeMs = probe_t.elapsed();
+                                    if (!probe_res.ok) continue;
+                                    // Need at least 2.5s extra delay AND
+                                    // a noticeable multiple over baseline
+                                    // to avoid network-jitter false positives.
+                                    if (probeMs > baseMs + 2500 && probeMs > baseMs * 3) {
+                                        report("critical",
+                                               QString("sqli-blind-time-") + QString::fromLatin1(t.engine).toLower(),
+                                               QString("Param '%1' looks vulnerable to time-based %2 SQLi")
+                                                   .arg(key, QString::fromLatin1(t.engine)),
+                                               QString("baseline=%1ms · probe=%2ms · payload=%3")
+                                                   .arg(baseMs).arg(probeMs)
+                                                   .arg(QString::fromLatin1(t.payload)));
+                                        break;
+                                    }
+                                }
+                            }
+                            blindsqli_done:;
+
+                            // ---- Open redirect variants ------------------
+                            // The original probe only tries https://canary.
+                            // Many filters block "https://" but allow other
+                            // schemes / path tricks.
+                            {
+                                static const char *kRedirVariants[] = {
+                                    "//nullock-canary.invalid/",
+                                    "/\\nullock-canary.invalid",
+                                    "javascript://nullock-canary.invalid/%0aalert(1)",
+                                    "data:text/html,<script>alert(1)</script>",
+                                    "https://[email protected]@evil.example/",
+                                    "https://target.example.evil.example/",
+                                };
+                                for (const char *p : kRedirVariants) {
+                                    const auto res = fire(i, QString::fromLatin1(p));
+                                    if (!res.ok || res.parsed.statusCode < 300
+                                        || res.parsed.statusCode >= 400) continue;
+                                    QString loc;
+                                    for (const auto &h : res.parsed.headers)
+                                        if (h.first.compare("Location", Qt::CaseInsensitive) == 0) {
+                                            loc = h.second; break;
+                                        }
+                                    if (loc.isEmpty()) continue;
+                                    // Heuristic: if the payload string is
+                                    // present in Location, the filter let
+                                    // it through.
+                                    if (loc.contains("nullock-canary.invalid")
+                                        || loc.contains("evil.example")
+                                        || loc.startsWith("javascript:")
+                                        || loc.startsWith("data:")) {
+                                        report("high", "open-redirect-variant",
+                                               QString("Param '%1' allows %2-style redirect bypass")
+                                                   .arg(key, QString::fromLatin1(p).left(20)),
+                                               QString("payload=%1 · Location=%2")
+                                                   .arg(QString::fromLatin1(p), loc.left(160)));
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     });
                     return httpJson(200, QJsonObject{{ "ok", true },
