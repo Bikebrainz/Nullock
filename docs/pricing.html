@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pricing -- Nullock</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="stylesheet" href="docs/docs.css" />
+<style>
+  .hero-mini {
+    text-align: center;
+    padding: 32px 0 48px;
+  }
+  .hero-mini h1 {
+    font-size: 42px;
+    margin: 0 0 12px;
+    color: #d4b9ff;
+  }
+  .hero-mini p {
+    color: #a0a0a8;
+    font-size: 17px;
+    max-width: 640px; margin: 0 auto;
+  }
+
+  table.matrix {
+    width: 100%; border-collapse: collapse;
+    margin: 32px 0 60px;
+    font-size: 13.5px;
+  }
+  table.matrix th, table.matrix td {
+    padding: 14px 16px;
+    border-bottom: 1px solid #1c1c24;
+    text-align: left;
+  }
+  table.matrix thead th {
+    color: #d4b9ff;
+    font-weight: 600;
+    font-size: 14px;
+    border-bottom: 1px solid #2a2a35;
+  }
+  table.matrix thead th.price {
+    color: #fff; font-size: 22px;
+  }
+  table.matrix thead th .label {
+    display: block; font-size: 12px; color: #888; font-weight: 400;
+    margin-top: 4px;
+  }
+  table.matrix td.feat { color: #b0b0b8; }
+  table.matrix td.y { color: #4ade80; font-weight: 700; }
+  table.matrix td.n { color: #555; }
+  table.matrix td.cap { color: #fbbf24; font-size: 12px; }
+  table.matrix tbody tr:hover { background: #14141a; }
+
+  .cta-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin: 32px 0 60px;
+  }
+  .cta-row a {
+    padding: 13px 18px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600; font-size: 13.5px;
+    text-decoration: none !important;
+    display: block;
+  }
+  .cta-row a.ghost {
+    border: 1px solid #2a2a35;
+    color: #d0d0d6;
+    background: transparent;
+  }
+  .cta-row a.primary {
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    color: #fff; border: none;
+  }
+  .cta-row a:hover { filter: brightness(1.1); transform: translateY(-1px); transition: 80ms ease; }
+
+  .note {
+    background: #14141a; border: 1px solid #1c1c24; border-radius: 6px;
+    padding: 14px 18px; color: #a0a0a8; font-size: 13px;
+    margin: 16px 0; line-height: 1.6;
+  }
+
+  @media (max-width: 800px) {
+    .cta-row { grid-template-columns: 1fr; }
+    table.matrix th, table.matrix td { padding: 10px 8px; font-size: 12.5px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand"><a href="./">Nullock</a> / Pricing</div>
+  <div class="links">
+    <a href="docs/">Docs</a>
+    <a href="support.html">Support</a>
+    <a href="marketplace/">Marketplace</a>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+</nav>
+
+<main>
+<div class="hero-mini">
+  <h1>Simple pricing</h1>
+  <p>
+    Desktop app is free, always. Pay for hosted services if you need them,
+    or pay for support if you want a human on email.
+  </p>
+</div>
+
+<table class="matrix">
+  <thead>
+    <tr>
+      <th></th>
+      <th class="price">Community<span class="label">$0 / forever</span></th>
+      <th class="price">Premium<span class="label">$99 / year</span></th>
+      <th class="price">Business<span class="label">$499 / year</span></th>
+      <th class="price">Enterprise<span class="label">talk to us</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="feat">Full desktop app</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Every Nullock feature (no gates)</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Local OAST callback sink</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Browser extension + CA install</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Marketplace extensions</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">12 hands-on labs</td>
+      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+    </tr>
+
+    <tr>
+      <td class="feat">Email support</td>
+      <td class="n">—</td>
+      <td class="cap">48h SLA</td>
+      <td class="cap">24h SLA</td>
+      <td class="y">custom SLA</td>
+    </tr>
+    <tr>
+      <td class="feat">Direct line to maintainer</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Priority bug-fix queue</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Custom extension review</td>
+      <td class="n">—</td>
+      <td class="cap">1/mo</td>
+      <td class="cap">4/mo</td>
+      <td class="y">unlimited</td>
+    </tr>
+    <tr>
+      <td class="feat">Quarterly video call</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">1h</td>
+      <td class="y">monthly</td>
+    </tr>
+    <tr>
+      <td class="feat">Early access (in-dev branches)</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Sponsor logo on nullock.io</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Named seats</td>
+      <td class="n">—</td>
+      <td class="cap">1</td>
+      <td class="cap">10</td>
+      <td class="y">unlimited</td>
+    </tr>
+    <tr>
+      <td class="feat">Cloud OAST (public subdomain) <em>coming soon</em></td>
+      <td class="n">—</td>
+      <td class="y">shared</td>
+      <td class="y">private</td>
+      <td class="y">private</td>
+    </tr>
+    <tr>
+      <td class="feat">Cross-machine history sync <em>coming soon</em></td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Team workspaces <em>coming soon</em></td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Custom extension development</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+    </tr>
+    <tr>
+      <td class="feat">Onboarding workshop</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+      <td class="y">✓</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="cta-row">
+  <a class="ghost" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download Free</a>
+  <a class="primary" href="STRIPE_PAYMENT_LINK_HERE">Buy Premium</a>
+  <a class="primary" href="STRIPE_PAYMENT_LINK_BUSINESS_HERE">Buy Business</a>
+  <a class="ghost" href="mailto:support@nullock.io?subject=Enterprise%20inquiry">Talk to us</a>
+</div>
+
+<div class="note">
+  <strong>Why the prices are low.</strong> A single human maintains Nullock today; pricing reflects what one person can sustainably deliver. As the team grows, more tiers may appear -- the existing tiers grandfather for the life of the subscription.
+</div>
+
+<div class="note">
+  <strong>Fair use.</strong> "Named seats" means individual people. Sharing a single Premium account across a 50-person team violates the fair-use understanding -- if more than a couple of folks at your company are getting email support, please bump to Business or talk to us about Enterprise.
+</div>
+
+<div class="note">
+  <strong>Refunds.</strong> 30-day no-questions refund. After 30 days, prorated. Cancel any time at the bottom of your Stripe receipt email.
+</div>
+
+</main>
+
+<footer>
+  <a href="LICENSE.html">License (MIT)</a> ·
+  <a href="PRIVACY.html">Privacy</a> ·
+  <a href="TERMS.html">Terms</a> ·
+  <a href="SECURITY.html">Security disclosure</a> ·
+  <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+</footer>
+</body>
+</html>

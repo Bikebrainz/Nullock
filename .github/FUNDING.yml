@@ -1,0 +1,15 @@
+# Enables the "Sponsor" button at the top of the repo.
+#
+# After you push this file, GitHub also asks you to:
+#   1. Settings -> Code security and analysis -> Enable Sponsors
+#   2. Open your GitHub Sponsors account at github.com/sponsors/accounts/new
+#      (free; needs a Stripe Connect link for payouts)
+#
+# Multiple platforms are supported -- list any you have accounts for.
+# Comment out the lines you don't use yet.
+
+github: [Bikebrainz]
+# patreon: bikebrainz       # uncomment after you create the Patreon
+# open_collective: nullock  # uncomment after you create the OC
+# ko_fi: bikebrainz         # uncomment after you create the Ko-fi
+# custom: ["https://nullock.io/sponsor"]   # once you have the domain
