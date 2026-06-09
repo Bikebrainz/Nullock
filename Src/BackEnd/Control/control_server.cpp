@@ -549,6 +549,15 @@ QByteArray ControlServer::buildSnapshot() const {
             fo["evidence"] = f.evidence;
             fo["host"]     = f.host;
             fo["url"]      = f.url;
+            // Enrichment: CWE / OWASP / CVSS / compliance / fix
+            fo["cwe"]        = f.cwe;
+            fo["owasp"]      = f.owasp;
+            fo["cvssScore"]  = f.cvssScore;
+            fo["cvssVector"] = f.cvssVector;
+            QJsonArray comp;
+            for (const QString &c : f.compliance) comp.append(c);
+            fo["compliance"] = comp;
+            fo["fixSummary"] = f.fixSummary;
             findingsArr.append(fo);
         }
         root["findingsCount"] = m_wiring.scanner->count();
@@ -842,6 +851,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/openapi/export"
             || p == "/api/cookies"
             || p == "/api/project/templates"
+            || p == "/api/findings/grouped"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -2295,6 +2305,267 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/crawler/stop") {
         if (m_wiring.crawler) m_wiring.crawler->stop();
         return okJson();
+    }
+
+    // ---- Findings grouped / deduped ----------------------------------
+    // GET /api/findings/grouped -- collapses findings with the same
+    // (kind, host) into a single entry with instance count + sample
+    // rowIds. Burp shows everything; we triage.
+    if (path == "/api/findings/grouped") {
+        if (!m_wiring.scanner)
+            return httpJson(200, QJsonObject{{ "groups", QJsonArray() }});
+        // Group key: kind|host. Track count, max severity, sample rowIds,
+        // first cwe/owasp/cvss (they're consistent within a kind anyway).
+        struct Bucket {
+            QString kind, host, severity, summary, cwe, owasp, fix;
+            double  cvssMax = 0;
+            int     instances = 0;
+            QList<int> sampleRowIds;
+        };
+        QMap<QString, Bucket> buckets;
+        const auto findings = m_wiring.scanner->findings(0);
+        const QHash<QString, int> sevOrder = {
+            {"info",0},{"low",1},{"medium",2},{"high",3},{"critical",4}
+        };
+        for (const auto &f : findings) {
+            const QString k = f.kind + "|" + f.host;
+            Bucket &b = buckets[k];
+            if (b.kind.isEmpty()) {
+                b.kind = f.kind; b.host = f.host;
+                b.summary = f.summary; b.cwe = f.cwe; b.owasp = f.owasp;
+                b.fix = f.fixSummary; b.severity = f.severity;
+            }
+            if (sevOrder.value(f.severity, -1) > sevOrder.value(b.severity, -1))
+                b.severity = f.severity;
+            if (f.cvssScore > b.cvssMax) b.cvssMax = f.cvssScore;
+            ++b.instances;
+            if (b.sampleRowIds.size() < 5) b.sampleRowIds.append(f.rowId);
+        }
+        QJsonArray arr;
+        for (const Bucket &b : buckets) {
+            QJsonObject o;
+            o["kind"]      = b.kind;
+            o["host"]      = b.host;
+            o["severity"]  = b.severity;
+            o["summary"]   = b.summary;
+            o["instances"] = b.instances;
+            o["cvssScore"] = b.cvssMax;
+            o["cwe"]       = b.cwe;
+            o["owasp"]     = b.owasp;
+            o["fix"]       = b.fix;
+            QJsonArray rids;
+            for (int r : b.sampleRowIds) rids.append(r);
+            o["sampleRowIds"] = rids;
+            arr.append(o);
+        }
+        QJsonObject root; root["groups"] = arr;
+        return httpJson(200, root);
+    }
+
+    // ---- AI payload generator ----------------------------------------
+    // POST /api/payloads/generate { kind: "xss", count: 20,
+    //                                model?: "qwen2.5:14b", ollama?: "..." }
+    // Asks a local Ollama model to mutate the seed payload set into N
+    // novel-but-shaped variants. Genuine differentiator: Burp's payload
+    // lists are static; ours grow on demand for the target you're hitting.
+    if (path == "/api/payloads/generate") {
+        const QString kind   = bodyJson.value("kind").toString("xss");
+        int count = bodyJson.value("count").toInt(10);
+        if (count <= 0) count = 10;
+        if (count > 50) count = 50;
+        QString ollama = bodyJson.value("ollama").toString("http://127.0.0.1:11434");
+        QString model  = bodyJson.value("model").toString("qwen2.5:14b");
+
+        const QString prompt =
+            "You generate fuzzing payloads for security testing.\n"
+            "Category: " + kind + "\n"
+            "Produce exactly " + QString::number(count) + " distinct payloads, one per line, "
+            "no commentary, no numbering, no markdown. Each payload should be "
+            "novel (try unusual encodings, alternate delimiters, edge-case characters) "
+            "but still trigger the same vulnerability class.\n";
+
+        QJsonObject ollReq;
+        ollReq["model"]  = model;
+        ollReq["prompt"] = prompt;
+        ollReq["stream"] = false;
+        const QByteArray ollBody = QJsonDocument(ollReq).toJson(QJsonDocument::Compact);
+
+        const QUrl u(ollama + "/api/generate");
+        QTcpSocket sock;
+        sock.connectToHost(u.host(), static_cast<quint16>(u.port(11434)));
+        if (!sock.waitForConnected(2000)) {
+            // Fallback: ship a deterministic seed set per kind.
+            QJsonArray fallback;
+            if (kind == "xss") {
+                static const char *seeds[] = {
+                    "<script>alert(1)</script>",
+                    "\"><svg onload=alert(1)>",
+                    "javascript:alert(1)",
+                    "<img src=x onerror=alert(1)>",
+                    "<svg/onload=alert(1)>",
+                    "<iframe src=javascript:alert(1)>",
+                    "'><script>alert(1)</script>",
+                };
+                for (auto *s : seeds) fallback.append(QString::fromLatin1(s));
+            } else if (kind == "sqli") {
+                static const char *seeds[] = {
+                    "' OR '1'='1", "' OR 1=1--", "\" OR \"\"=\"",
+                    "'); DROP TABLE x;--", "1' UNION SELECT NULL--",
+                };
+                for (auto *s : seeds) fallback.append(QString::fromLatin1(s));
+            } else {
+                fallback.append("(no fallback list for kind=" + kind + ")");
+            }
+            return httpJson(200, QJsonObject{
+                { "ok",        false },
+                { "fallback",  true },
+                { "model",     model },
+                { "payloads",  fallback },
+                { "error",     "ollama unreachable; returned seed list" }
+            });
+        }
+        QByteArray req;
+        req += "POST /api/generate HTTP/1.1\r\n";
+        req += "Host: " + u.host().toUtf8() + ":" + QByteArray::number(u.port(11434)) + "\r\n";
+        req += "Content-Type: application/json\r\n";
+        req += "Content-Length: " + QByteArray::number(ollBody.size()) + "\r\n";
+        req += "Connection: close\r\n\r\n";
+        req += ollBody;
+        sock.write(req);
+        sock.waitForBytesWritten(2000);
+        QByteArray resp2;
+        while (sock.waitForReadyRead(15'000)) {
+            resp2.append(sock.readAll());
+            if (sock.state() == QAbstractSocket::UnconnectedState) break;
+        }
+        const int hdrEnd = resp2.indexOf("\r\n\r\n");
+        const QJsonDocument d = hdrEnd > 0
+            ? QJsonDocument::fromJson(resp2.mid(hdrEnd + 4))
+            : QJsonDocument();
+        const QString rawResponse = d.isObject()
+            ? d.object().value("response").toString()
+            : QString();
+        QJsonArray payloads;
+        for (const QString &line :
+                rawResponse.split('\n', Qt::SkipEmptyParts)) {
+            const QString trimmed = line.trimmed();
+            if (trimmed.isEmpty()) continue;
+            if (trimmed.startsWith("#")) continue;
+            payloads.append(trimmed);
+            if (payloads.size() >= count) break;
+        }
+        return httpJson(200, QJsonObject{
+            { "ok",        true },
+            { "model",     model },
+            { "payloads",  payloads },
+        });
+    }
+
+    // ---- Authorization tester (multi-user replay / IDOR) ------------
+    // POST /api/authz-test {
+    //   rowId: <int>,
+    //   identities: [{name, headers: {Authorization, Cookie, ...}}]
+    // }
+    // Replays the captured request as each identity (overriding the
+    // listed headers); compares responses; flags mismatches that suggest
+    // BOLA / horizontal / vertical privilege issues. Burp Pro's
+    // "Auth Analyzer" feature, open-sourced.
+    if (path == "/api/authz-test") {
+        if (!m_wiring.history)
+            return okJson({{ "ok", false }, { "error", "no history" }});
+        const int rid = bodyJson.value("rowId").toInt(0);
+        if (rid <= 0)
+            return okJson({{ "ok", false }, { "error", "rowId required" }});
+
+        // Resolve the row -- in-memory window first, fall back to SQLite.
+        Nullock::Proxy::HttpRequest baseReq;
+        bool useTls = false;
+        if (auto *src = m_wiring.history->requestById(rid)) {
+            baseReq = *src;
+            if (auto *r = m_wiring.history->responseById(rid))
+                useTls = r->wasTls;
+        } else if (m_wiring.projectStore) {
+            auto *idx = m_wiring.projectStore->historyIndex();
+            if (idx && idx->isOpen()) {
+                auto fr = idx->loadFullRow(rid);
+                if (fr.ok) { baseReq = std::move(fr.request); useTls = fr.response.wasTls; }
+            }
+        }
+        if (baseReq.host.isEmpty())
+            return okJson({{ "ok", false }, { "error", "row not found" }});
+
+        const QJsonArray ids = bodyJson.value("identities").toArray();
+        if (ids.isEmpty())
+            return okJson({{ "ok", false }, { "error", "identities[] required" }});
+
+        Nullock::Core::HttpClient client;
+        QJsonArray results;
+        for (const QJsonValue &iv : ids) {
+            const QJsonObject id = iv.toObject();
+            const QString name = id.value("name").toString();
+            const QJsonObject headers = id.value("headers").toObject();
+            // Build a new request: clone baseReq, overlay headers.
+            Nullock::Proxy::HttpRequest req = baseReq;
+            QList<QPair<QString, QString>> filtered;
+            QSet<QString> overrideKeys;
+            for (const QString &k : headers.keys())
+                overrideKeys.insert(k.toLower());
+            // Drop existing same-name headers we're overriding.
+            for (const auto &h : baseReq.headers) {
+                if (overrideKeys.contains(h.first.toLower())) continue;
+                filtered.append(h);
+            }
+            for (const QString &k : headers.keys())
+                filtered.append({ k, headers.value(k).toString() });
+            req.headers = filtered;
+
+            const QByteArray bytes = Nullock::Proxy::serializeRequestForOrigin(req);
+            const auto res = client.send(req.host,
+                static_cast<quint16>(req.port), useTls, bytes);
+            QJsonObject r;
+            r["identity"]   = name;
+            r["ok"]         = res.ok;
+            r["status"]     = res.ok ? res.parsed.statusCode : 0;
+            r["bodySize"]   = res.ok ? static_cast<qint64>(res.parsed.body.size()) : 0;
+            r["error"]      = res.ok ? QString() : res.errorMessage;
+            results.append(r);
+        }
+
+        // Compare across identities: if statuses or bodySizes diverge,
+        // flag a finding. Same-shape = consistent access control.
+        QSet<int> distinctStatuses;
+        QSet<qint64> distinctSizes;
+        for (const QJsonValue &v : results) {
+            const QJsonObject r = v.toObject();
+            if (r.value("ok").toBool()) {
+                distinctStatuses.insert(r.value("status").toInt());
+                distinctSizes.insert(static_cast<qint64>(r.value("bodySize").toDouble()));
+            }
+        }
+        const bool divergent = distinctStatuses.size() > 1
+                            || distinctSizes.size() > 1;
+        if (divergent && m_wiring.scanner) {
+            m_wiring.scanner->reportFinding(rid, "high", "authz-divergence",
+                "Multi-identity replay shows divergent responses (BOLA / horizontal / vertical privilege candidate)",
+                "statuses=" + [&]{
+                    QStringList ss;
+                    for (int s : distinctStatuses) ss.append(QString::number(s));
+                    return ss.join(",");
+                }() +
+                " · sizes=" + [&]{
+                    QStringList ss;
+                    for (qint64 s : distinctSizes) ss.append(QString::number(s));
+                    return ss.join(",");
+                }(),
+                baseReq.host,
+                (useTls ? "https://" : "http://") + baseReq.host + baseReq.path);
+        }
+        return httpJson(200, QJsonObject{
+            { "ok",        true },
+            { "divergent", divergent },
+            { "results",   results },
+            { "row",       rid },
+        });
     }
 
     // ---- Sequencer (token randomness analyzer) -----------------------

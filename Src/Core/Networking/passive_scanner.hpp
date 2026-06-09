@@ -13,16 +13,27 @@ namespace Nullock::Core {
 // One observation from the passive scanner. id is monotonic. rowId is
 // the matching ProxyModel row (history table); the React UI uses it to
 // jump to the offending request when the user clicks a finding.
+//
+// Enriched fields (cwe, owasp, cvss*, compliance) are populated by
+// FindingEnricher::enrich() right after addFinding(). They default
+// empty when no mapping is registered for the kind.
 struct Finding {
     int        id        = 0;
     int        rowId     = 0;
     QDateTime  ts;
-    QString    severity;     // "info" | "low" | "medium" | "high"
+    QString    severity;     // "info" | "low" | "medium" | "high" | "critical"
     QString    kind;         // short stable key, e.g. "missing-csp"
     QString    summary;      // one-line description shown in the list
     QString    evidence;     // longer text: header line, query string, etc.
     QString    host;
     QString    url;
+    // Enrichment (Burp Pro parity + open-data leverage)
+    QString    cwe;          // "CWE-79" etc.
+    QString    owasp;        // "A03:2021-Injection"
+    double     cvssScore     = 0.0;     // CVSS v3.1 base score 0-10
+    QString    cvssVector;   // full vector string
+    QStringList compliance;  // ["PCI-DSS-6.5.7", "SOC2-CC6.1"]
+    QString    fixSummary;   // one-sentence fix guidance
 };
 
 // Passive scanner consumes every response that flows through the proxy

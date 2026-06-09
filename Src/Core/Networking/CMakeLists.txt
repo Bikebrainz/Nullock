@@ -24,6 +24,8 @@ add_library(Networking STATIC
     update_check.hpp
     sequencer.cpp
     sequencer.hpp
+    finding_enricher.cpp
+    finding_enricher.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

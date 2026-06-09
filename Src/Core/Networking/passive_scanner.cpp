@@ -1,4 +1,5 @@
 #include "passive_scanner.hpp"
+#include "finding_enricher.hpp"
 
 #include <QDateTime>
 #include <QMutexLocker>
@@ -81,6 +82,7 @@ void PassiveScanner::reportFinding(int rowId,
     f.evidence = evidence;
     f.host     = host;
     f.url      = url;
+    FindingEnricher::enrich(f);
     {
         QMutexLocker lock(&m_mutex);
         m_findings.append(f);
@@ -146,6 +148,7 @@ void PassiveScanner::addFinding(int rowId,
     f.url      = proto + "://" + req.host + port + (req.path.startsWith('/')
                                                     ? req.path
                                                     : "/" + req.path);
+    FindingEnricher::enrich(f);
     bool over = false;
     {
         QMutexLocker lock(&m_mutex);
@@ -1137,6 +1140,51 @@ void PassiveScanner::checkResponse(int rowId,
     // OAST-shaped domain, the server already made an outbound request --
     // this catches CYA cases where the attacker won the race.
     // (Placeholder for now -- exercised only by self-test.)
+
+    // ---- Defensive mode: outbound PII / secrets to public hosts -------
+    // Flag your own app accidentally exfiltrating customer data to
+    // unintended third-party hosts (analytics, error reporters that
+    // weren't scoped, surveys). Burp doesn't have this -- they're
+    // built for attacker-side use, we serve defender-side too.
+    {
+        const bool isPublicHost = !req.host.isEmpty()
+            && !req.host.startsWith("127.")
+            && !req.host.startsWith("10.")
+            && !req.host.startsWith("192.168.")
+            && !req.host.startsWith("172.")
+            && !req.host.endsWith(".local", Qt::CaseInsensitive)
+            && !req.host.endsWith(".internal", Qt::CaseInsensitive)
+            && !req.host.endsWith(".corp", Qt::CaseInsensitive);
+
+        const QString reqBody = QString::fromUtf8(req.body.left(256 * 1024));
+        const QString fullUrl = req.path;
+        const QString combined = fullUrl + "\n" + reqBody;
+
+        if (isPublicHost && !combined.isEmpty()) {
+            struct PiiPat { const char *kind; const char *label; QRegularExpression rx; };
+            static const PiiPat kPiis[] = {
+                { "pii-ssn-outbound", "US SSN",
+                  QRegularExpression(R"(\b\d{3}-\d{2}-\d{4}\b)") },
+                { "pii-cc-outbound", "Credit card number (Luhn shape)",
+                  QRegularExpression(R"(\b(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6011\d{12})\b)") },
+                { "pii-email-mass", "Email-shape (multiple)",
+                  QRegularExpression(R"((?:[a-zA-Z0-9._-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}.*?){3,})",
+                                     QRegularExpression::DotMatchesEverythingOption) },
+                { "pii-phone-us", "US phone number",
+                  QRegularExpression(R"(\b\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b)") },
+                { "pii-iban", "IBAN",
+                  QRegularExpression(R"(\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b)") },
+            };
+            for (const auto &p : kPiis) {
+                if (p.rx.match(combined).hasMatch()) {
+                    addFinding(rowId, req, resp, "medium", p.kind,
+                               QString("Outbound %1 in request to public host %2")
+                                   .arg(QString::fromLatin1(p.label), req.host),
+                               "review whether this destination is intended for this data class");
+                }
+            }
+        }
+    }
 
     // ---- Reflected file download indicator ----------------------------
     // Content-Disposition: attachment with user-controlled filename in
