@@ -1,5 +1,6 @@
 #include "passive_scanner.hpp"
 #include "finding_enricher.hpp"
+#include "cve_database.hpp"
 
 #include <QDateTime>
 #include <QMutexLocker>
@@ -1379,6 +1380,57 @@ void PassiveScanner::checkResponse(int rowId,
             addFinding(rowId, req, resp, "info", "fw-spa-state-leak",
                        "Initial-state JSON inlined in HTML (review for PII)",
                        "__INITIAL_STATE__ / __APOLLO_STATE__ marker");
+        }
+
+        // =====================================================
+        // CVE correlation. For each framework/CMS we already
+        // fingerprinted, sniff a version string and look it up
+        // in the static CVE table. Each match becomes its own
+        // finding tagged with the CVE ID. Burp Pro doesn't do
+        // this -- they sell it as a separate product.
+        // =====================================================
+        CveDatabase::HttpFingerprint fp;
+        fp.server      = headerOf(resp.headers, "Server");
+        fp.xPoweredBy  = xPoweredBy;
+        fp.xGenerator  = genHdr;
+        // Sniff version markers from the body. Patterns chosen
+        // to match generator meta tags, Drupal.settings JSON,
+        // wp-emoji src markers, NEXT_DATA build IDs, etc.
+        static const QRegularExpression bodyVerRx(
+            R"((?:WordPress|Drupal|Joomla|Magento|Sitecore|Next\.js|Express|Laravel|Django|Symfony)[\s\/-]?v?(\d+(?:\.\d+){1,3}))",
+            QRegularExpression::CaseInsensitiveOption);
+        const auto m = bodyVerRx.match(bodyHead);
+        if (m.hasMatch()) fp.bodyVersion = m.captured(1);
+
+        // Kinds we want CVE-correlated. Must match the kind we
+        // emitted in detector findings above.
+        static const QStringList cveKinds = {
+            "cms-wordpress", "cms-drupal", "cms-magento", "cms-sitecore",
+            "cms-confluence", "cms-jira",
+            "fw-spring",   "fw-aspnet", "fw-express", "fw-nextjs",
+            "fw-laravel",  "fw-django", "fw-symfony",
+        };
+        for (const QString &kind : cveKinds) {
+            // Did we actually fire a finding of this kind on this
+            // row? Cheap check: see if any pending finding in this
+            // batch matches. We don't have a per-row index here,
+            // so we just attempt the lookup whenever the
+            // fingerprint sources mention the kind's vendor.
+            const QString vendor = kind.section('-', 1, 1);
+            const QString hay = (fp.bodyVersion + " " + fp.xGenerator + " "
+                                 + fp.xPoweredBy + " " + fp.server).toLower();
+            if (!hay.contains(vendor)) continue;
+            const auto hits = CveDatabase::lookupByFingerprint(kind, fp);
+            for (const auto &h : hits) {
+                // Severity from CVSS base score.
+                const char *sev = h.cvss >= 9.0 ? "critical"
+                                : h.cvss >= 7.0 ? "high"
+                                : h.cvss >= 4.0 ? "medium" : "low";
+                addFinding(rowId, req, resp, sev, "cve-correlated",
+                           QString("%1: %2").arg(h.cveId, h.summary),
+                           QString("affected: %1 | fix: %2 | ref: %3")
+                               .arg(h.affectedRange, h.fixVersion, h.reference));
+            }
         }
     }
 }

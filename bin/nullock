@@ -558,6 +558,62 @@ cmd_update() {
     snapshot | "$JQ" '.update // {error: "update info not in snapshot yet"}'
 }
 
+cmd_sequencer() {
+    # nullock sequencer <token1> [token2 ...]
+    # Token randomness analyzer (Shannon entropy + run tests).
+    [[ -n ${1-} ]] || die "usage: nullock sequencer <token1> [token2 ...]"
+    local tokens="["
+    local first=1
+    for t in "$@"; do
+        if (( first )); then first=0; else tokens+=","; fi
+        tokens+=$(jsonq "$t")
+    done
+    tokens+="]"
+    post /api/sequencer/analyze "{\"tokens\":$tokens}" | pp
+}
+
+cmd_payloads() {
+    # nullock payloads <kind> [count]
+    # AI-generated payloads via local Ollama. kind = xss|sqli|ssti|...
+    [[ -n ${1-} ]] || die "usage: nullock payloads <kind> [count]"
+    local count=${2:-10}
+    post /api/payloads/generate \
+        "{\"kind\":$(jsonq "$1"),\"count\":$count}" | pp
+}
+
+cmd_authz() {
+    # nullock authz <rowId> <user1-cookie> <user2-cookie> [user3-cookie ...]
+    # Replay one row as each user; flag rows where status/length agrees
+    # (privilege escalation surface).
+    [[ $# -ge 3 ]] || die "usage: nullock authz <rowId> <user-cookie> <user-cookie> [...]"
+    local row=$1; shift
+    local cookies="["
+    local first=1
+    for c in "$@"; do
+        if (( first )); then first=0; else cookies+=","; fi
+        cookies+=$(jsonq "$c")
+    done
+    cookies+="]"
+    post /api/authz-test "{\"rowId\":$row,\"cookies\":$cookies}" | pp
+}
+
+cmd_grouped() {
+    # Findings grouped + deduped (Burp "issue activity" equivalent).
+    curl -sS --max-time 5 "$API/api/findings/grouped" | pp
+}
+
+cmd_cve() {
+    # Just findings filtered to the cve-correlated kind so the CVE
+    # tags are surfaced cleanly.
+    curl -sS --max-time 5 "$API/api/snapshot" \
+        | "$JQ" '[.findings[] | select(.kind=="cve-correlated") | {
+              cve: (.summary | split(":") | .[0]),
+              severity, summary, url, evidence,
+              cvss: .cvssScore, vector: .cvssVector,
+              compliance: .compliance, fix: .fixSummary
+          }]'
+}
+
 cmd_help() {
     cat <<EOF
 nullock -- CLI for a running Nullock instance
@@ -678,6 +734,21 @@ Extensions:
 Export:
   nullock export nmap | sarif | postman | har
 
+Sequencer (token randomness analyzer):
+  nullock sequencer <token1> [token2 ...]
+                                         Shannon entropy + verdict per token
+
+Above-Burp features (v4/v5):
+  nullock payloads <kind> [count]        AI-generated payloads via local Ollama
+                                         kinds: xss|sqli|ssti|cmd|lfi|xxe|...
+  nullock authz <row> <c1> <c2> [...]    multi-user replay; flags rows where
+                                         all users see the same status+length
+                                         (privilege escalation indicator)
+  nullock grouped                        findings grouped + deduped (Burp issue
+                                         activity equivalent)
+  nullock cve                            findings filtered to CVE-correlated,
+                                         with CVE id / CVSS / fix version
+
 EOF
 }
 
@@ -714,6 +785,11 @@ case ${1:-help} in
     update)        shift; cmd_update "$@"        ;;
     project)       shift; cmd_project "$@"       ;;
     export)        shift; cmd_export "$@"        ;;
+    sequencer)     shift; cmd_sequencer "$@"     ;;
+    payloads)      shift; cmd_payloads "$@"      ;;
+    authz)         shift; cmd_authz "$@"         ;;
+    grouped)       shift; cmd_grouped "$@"       ;;
+    cve)           shift; cmd_cve "$@"           ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

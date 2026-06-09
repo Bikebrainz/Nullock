@@ -26,6 +26,8 @@ add_library(Networking STATIC
     sequencer.hpp
     finding_enricher.cpp
     finding_enricher.hpp
+    cve_database.cpp
+    cve_database.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
