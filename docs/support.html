@@ -1,202 +1,91 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Premium Support -- Nullock</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="stylesheet" href="docs/docs.css" />
-<style>
-  /* Page-specific overrides for the support page layout. */
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
-    margin: 32px 0;
-  }
-  .card {
-    border: 1px solid #2a2a35;
-    background: #14141a;
-    border-radius: 8px;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-  }
-  .card.featured {
-    border-color: #9d4edd;
-    background: #161020;
-    box-shadow: 0 0 0 1px #9d4edd inset;
-  }
-  .card h3 {
-    margin: 0 0 8px;
-    font-size: 18px;
-    color: #d4b9ff;
-  }
-  .card .price {
-    font-size: 32px;
-    font-weight: 700;
-    color: #fff;
-    margin: 4px 0 16px;
-  }
-  .card .price span { font-size: 13px; color: #888; font-weight: 400; }
-  .card ul {
-    list-style: none; padding: 0; margin: 0 0 24px;
-    font-size: 13.5px; color: #b0b0b8;
-  }
-  .card ul li {
-    padding: 6px 0 6px 20px;
-    position: relative;
-  }
-  .card ul li::before {
-    content: "✓";
-    position: absolute; left: 0; top: 5px;
-    color: #9d4edd; font-weight: 700;
-  }
-  .card .cta {
-    margin-top: auto;
-    padding: 12px 24px;
-    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
-    color: #fff;
-    text-decoration: none;
-    text-align: center;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    transition: transform 80ms ease;
-  }
-  .card .cta:hover { transform: translateY(-1px); text-decoration: none; }
-  .card .cta.ghost {
-    background: transparent;
-    border: 1px solid #2a2a35;
-    color: #d0d0d6;
-  }
-  .faq {
-    margin-top: 60px;
-    padding: 32px;
-    background: #14141a;
-    border: 1px solid #1c1c24;
-    border-radius: 8px;
-  }
-  .faq dt { font-weight: 600; color: #d4b9ff; margin-top: 16px; font-size: 14px; }
-  .faq dt:first-child { margin-top: 0; }
-  .faq dd { margin: 4px 0 0; color: #b0b0b8; font-size: 13.5px; line-height: 1.6; }
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — premium support</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
 </head>
 <body>
-<nav>
-  <div class="brand"><a href="./">Nullock</a> / Support</div>
-  <div class="links">
-    <a href="docs/">Docs</a>
-    <a href="pricing.html">Pricing</a>
-    <a href="marketplace/">Marketplace</a>
-    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
   </div>
 </nav>
 
-<main>
-<h1>Premium Support</h1>
-<p class="lead">
-  Nullock is free and MIT-licensed -- the desktop app, every feature, every line of source.
-  Premium Support is for teams who want a human at the other end of an email.
-</p>
-
-<div class="card-grid">
-
-  <div class="card">
-    <h3>Community</h3>
-    <div class="price">$0<span> / forever</span></div>
-    <ul>
-      <li>Full desktop app</li>
-      <li>Every feature, no gates</li>
-      <li>GitHub Issues (best-effort)</li>
-      <li>Community Discord (when launched)</li>
-      <li>Read-the-docs help</li>
-    </ul>
-    <a class="cta ghost" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap center" style="padding-block:64px 8px;">
+    <p class="eyebrow">// premium support</p>
+    <h1 class="h1-page grad-text" style="margin:10px auto 0;">A human on email</h1>
+    <p class="lead center" style="margin:16px auto 0;">$200/mo, any plan including free. Next-business-day replies from the person who wrote the code. Cancel anytime.</p>
   </div>
+</header>
 
-  <div class="card featured">
-    <h3>Premium</h3>
-    <div class="price">$99<span> / year</span></div>
-    <ul>
-      <li>Everything in Community</li>
-      <li>Email support, 48h response SLA</li>
-      <li>Direct line to the maintainer</li>
-      <li>Priority bug-fix queue</li>
-      <li>Custom extension review</li>
-      <li>Cancel any time</li>
-    </ul>
-    <!--
-      Replace this href with your real Stripe Payment Link after you
-      create it. Setup walkthrough lives in MONETIZATION.md.
-    -->
-    <a class="cta" href="STRIPE_PAYMENT_LINK_HERE">Buy Premium</a>
+<section class="section" style="padding-top:32px;">
+  <div class="wrap">
+    <div class="grid feat-grid">
+      <div class="card"><h3>Direct email</h3><p>You write to the maintainer, not a queue. No bot, no tier-one script, no "have you tried reinstalling".</p></div>
+      <div class="card"><h3>Next business day</h3><p>A real answer within one business day, Mon–Fri. Most replies land same day.</p></div>
+      <div class="card"><h3>Bug triage</h3><p>Your reports jump the line. If it's a real bug, it gets a fix branch and a named release.</p></div>
+      <div class="card"><h3>Cancel anytime</h3><p>Month to month. Stop whenever. The desktop app keeps working — it's MIT and yours.</p></div>
+    </div>
+    <div class="row center" style="margin-top:30px;">
+      <a href="#" class="btn btn-primary btn-lg">Buy Premium · $200/mo</a>
+      <a href="mailto:hi@nullock.dev" class="btn btn-ghost btn-lg">Email a question first</a>
+    </div>
   </div>
+</section>
 
-  <div class="card featured">
-    <h3>Business</h3>
-    <div class="price">$499<span> / year</span></div>
-    <ul>
-      <li>Everything in Premium</li>
-      <li>24h response SLA, business hours</li>
-      <li>Logo on nullock.io sponsor page</li>
-      <li>Quarterly 1-hour video call</li>
-      <li>Early access to in-dev features</li>
-      <li>Up to 10 named seats per company</li>
-    </ul>
-    <a class="cta" href="STRIPE_PAYMENT_LINK_BUSINESS_HERE">Buy Business</a>
+<section class="section">
+  <div class="wrap">
+    <h2 class="h2-section center" style="margin-bottom:24px;">FAQ</h2>
+    <div class="faq">
+      <details><summary>Do I need Premium to get any help?</summary><p>No. Bugs and questions go to GitHub issues for free, and the community is active. Premium just guarantees a fast, private reply from the maintainer.</p></details>
+      <details><summary>Is the desktop app crippled without it?</summary><p>Never. The app is MIT, full-featured, and free forever. Premium buys time and attention, not features.</p></details>
+      <details><summary>Can my company buy this?</summary><p>Yes — it's a flat $200/mo, invoiced. For larger needs (training, custom extensions) email and we'll scope it.</p></details>
+      <details><summary>What's the refund policy?</summary><p><span class="badge err"><span class="dot"></span>refund</span> First 30 days, full refund, no questions. After that it's month to month, cancel anytime.</p></details>
+      <details><summary>What about security reports?</summary><p>Always free and always fast. Email <code class="inline">security@nullock.dev</code> — we reply within 72 hours and credit you.</p></details>
+    </div>
   </div>
+</section>
 
-  <div class="card">
-    <h3>Enterprise</h3>
-    <div class="price">talk<span> to us</span></div>
-    <ul>
-      <li>Custom contract terms</li>
-      <li>Unlimited seats</li>
-      <li>Onboarding workshop included</li>
-      <li>Custom extension development</li>
-      <li>SOC2 letter when we have it</li>
-      <li>Annual roadmap input</li>
-    </ul>
-    <a class="cta ghost" href="mailto:support@nullock.io?subject=Enterprise%20inquiry">Email us</a>
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
   </div>
-
-</div>
-
-<div class="faq">
-  <h2 style="margin-top: 0;">Common questions</h2>
-  <dl>
-    <dt>Can I use the free version in commercial work?</dt>
-    <dd>Yes. The desktop app is MIT-licensed, no restrictions. Sell pen-tests with it, use it in CI, embed the CLI in your build pipeline -- all fine. Premium is for support, not for permission.</dd>
-
-    <dt>What if I need a non-MIT commercial license for my product?</dt>
-    <dd>The Community edition under MIT already covers basically any commercial use -- you keep the LICENSE.md attribution and you're done. If your legal team specifically needs a non-MIT license for indemnity reasons, email us (Enterprise tier).</dd>
-
-    <dt>Do I get priority over GitHub issues?</dt>
-    <dd>Premium and Business sponsors get a private email channel. We try to triage your issues within the SLA window before public issues. Critical security reports always jump everything regardless of tier.</dd>
-
-    <dt>What's the difference between Premium and a GitHub Sponsorship?</dt>
-    <dd>Sponsorship money funds the project (signing certs, infra, maintainer time). Premium money also gets you a support relationship. If you only want to fund Nullock, sponsor. If you want help, buy Premium.</dd>
-
-    <dt>What does "custom extension review" mean?</dt>
-    <dd>You wrote a JS extension and want a second pair of eyes before deploying it across your team -- you send it, we read it, comment back on security / performance / correctness within the SLA window. Capped at one extension per month per Premium customer.</dd>
-
-    <dt>Refund policy?</dt>
-    <dd>Email us within 30 days of purchase, no questions, full refund. Beyond 30 days, prorated.</dd>
-
-    <dt>Are you a company?</dt>
-    <dd>Right now I'm a single maintainer operating as a sole proprietor. The Premium and Business tiers are designed to be servable by one person. If the business grows, the support model will too.</dd>
-  </dl>
-</div>
-
-</main>
-
-<footer>
-  <a href="LICENSE.html">License (MIT)</a> ·
-  <a href="PRIVACY.html">Privacy</a> ·
-  <a href="TERMS.html">Terms</a> ·
-  <a href="SECURITY.html">Security disclosure</a> ·
-  <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
 </footer>
+
+<style>
+.feat-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+.faq { max-width:680px; margin:0 auto; }
+.faq details { border:1px solid var(--border); border-radius:8px; background:var(--surface-1); margin-bottom:10px; }
+.faq summary { cursor:pointer; padding:15px 18px; font-size:14.5px; font-weight:600; color:var(--body); list-style:none; display:flex; justify-content:space-between; align-items:center; }
+.faq summary::-webkit-details-marker { display:none; }
+.faq summary::after { content:"+"; color:var(--purple); font-size:18px; font-weight:400; }
+.faq details[open] summary::after { content:"−"; }
+.faq details[open] summary { color:var(--purple-light); }
+.faq p { margin:0; padding:0 18px 16px; color:var(--secondary); font-size:13.5px; line-height:1.65; }
+</style>
+
 </body>
 </html>

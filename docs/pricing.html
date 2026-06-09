@@ -1,271 +1,180 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pricing -- Nullock</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="stylesheet" href="docs/docs.css" />
-<style>
-  .hero-mini {
-    text-align: center;
-    padding: 32px 0 48px;
-  }
-  .hero-mini h1 {
-    font-size: 42px;
-    margin: 0 0 12px;
-    color: #d4b9ff;
-  }
-  .hero-mini p {
-    color: #a0a0a8;
-    font-size: 17px;
-    max-width: 640px; margin: 0 auto;
-  }
-
-  table.matrix {
-    width: 100%; border-collapse: collapse;
-    margin: 32px 0 60px;
-    font-size: 13.5px;
-  }
-  table.matrix th, table.matrix td {
-    padding: 14px 16px;
-    border-bottom: 1px solid #1c1c24;
-    text-align: left;
-  }
-  table.matrix thead th {
-    color: #d4b9ff;
-    font-weight: 600;
-    font-size: 14px;
-    border-bottom: 1px solid #2a2a35;
-  }
-  table.matrix thead th.price {
-    color: #fff; font-size: 22px;
-  }
-  table.matrix thead th .label {
-    display: block; font-size: 12px; color: #888; font-weight: 400;
-    margin-top: 4px;
-  }
-  table.matrix td.feat { color: #b0b0b8; }
-  table.matrix td.y { color: #4ade80; font-weight: 700; }
-  table.matrix td.n { color: #555; }
-  table.matrix td.cap { color: #fbbf24; font-size: 12px; }
-  table.matrix tbody tr:hover { background: #14141a; }
-
-  .cta-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin: 32px 0 60px;
-  }
-  .cta-row a {
-    padding: 13px 18px;
-    border-radius: 6px;
-    text-align: center;
-    font-weight: 600; font-size: 13.5px;
-    text-decoration: none !important;
-    display: block;
-  }
-  .cta-row a.ghost {
-    border: 1px solid #2a2a35;
-    color: #d0d0d6;
-    background: transparent;
-  }
-  .cta-row a.primary {
-    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
-    color: #fff; border: none;
-  }
-  .cta-row a:hover { filter: brightness(1.1); transform: translateY(-1px); transition: 80ms ease; }
-
-  .note {
-    background: #14141a; border: 1px solid #1c1c24; border-radius: 6px;
-    padding: 14px 18px; color: #a0a0a8; font-size: 13px;
-    margin: 16px 0; line-height: 1.6;
-  }
-
-  @media (max-width: 800px) {
-    .cta-row { grid-template-columns: 1fr; }
-    table.matrix th, table.matrix td { padding: 10px 8px; font-size: 12.5px; }
-  }
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — pricing</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
 </head>
 <body>
 
-<nav>
-  <div class="brand"><a href="./">Nullock</a> / Pricing</div>
-  <div class="links">
-    <a href="docs/">Docs</a>
-    <a href="support.html">Support</a>
-    <a href="marketplace/">Marketplace</a>
-    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html" class="active">Pricing</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
   </div>
 </nav>
 
-<main>
-<div class="hero-mini">
-  <h1>Simple pricing</h1>
-  <p>
-    Desktop app is free, always. Pay for hosted services if you need them,
-    or pay for support if you want a human on email.
-  </p>
-</div>
+<!-- HERO MINI -->
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap-wide center" style="padding-block:64px 20px;">
+    <p class="eyebrow">// pricing</p>
+    <h1 class="h1-page grad-text" style="margin:10px auto 0;">Honest pricing</h1>
+    <p class="lead center" style="margin:16px auto 0;">The desktop app is free forever. Pay for hosted services if you need them, or pay for support if you want a human on email. No bait.</p>
+  </div>
+</header>
 
-<table class="matrix">
-  <thead>
-    <tr>
-      <th></th>
-      <th class="price">Community<span class="label">$0 / forever</span></th>
-      <th class="price">Premium<span class="label">$99 / year</span></th>
-      <th class="price">Business<span class="label">$499 / year</span></th>
-      <th class="price">Enterprise<span class="label">talk to us</span></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td class="feat">Full desktop app</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Every Nullock feature (no gates)</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Local OAST callback sink</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Browser extension + CA install</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Marketplace extensions</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">12 hands-on labs</td>
-      <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
-    </tr>
+<!-- PRICING CARDS -->
+<section class="section" style="padding-top:24px;">
+  <div class="wrap-wide">
+    <div class="price-grid">
+      <div class="card price-card">
+        <div class="pc-name">Desktop</div>
+        <div class="pc-price">$0<span>forever</span></div>
+        <p class="pc-sub">The full toolkit, on your machine.</p>
+        <ul class="pc-feats">
+          <li>Intercept, Repeater, Scope</li>
+          <li>200k+ row SQLite history</li>
+          <li>Extensions (JS / Python)</li>
+          <li>MIT licensed source</li>
+          <li>No account, no telemetry</li>
+        </ul>
+        <a href="index.html#download" class="btn btn-ghost" style="width:100%;justify-content:center;">Download</a>
+      </div>
 
-    <tr>
-      <td class="feat">Email support</td>
-      <td class="n">—</td>
-      <td class="cap">48h SLA</td>
-      <td class="cap">24h SLA</td>
-      <td class="y">custom SLA</td>
-    </tr>
-    <tr>
-      <td class="feat">Direct line to maintainer</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Priority bug-fix queue</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Custom extension review</td>
-      <td class="n">—</td>
-      <td class="cap">1/mo</td>
-      <td class="cap">4/mo</td>
-      <td class="y">unlimited</td>
-    </tr>
-    <tr>
-      <td class="feat">Quarterly video call</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">1h</td>
-      <td class="y">monthly</td>
-    </tr>
-    <tr>
-      <td class="feat">Early access (in-dev branches)</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Sponsor logo on nullock.io</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Named seats</td>
-      <td class="n">—</td>
-      <td class="cap">1</td>
-      <td class="cap">10</td>
-      <td class="y">unlimited</td>
-    </tr>
-    <tr>
-      <td class="feat">Cloud OAST (public subdomain) <em>coming soon</em></td>
-      <td class="n">—</td>
-      <td class="y">shared</td>
-      <td class="y">private</td>
-      <td class="y">private</td>
-    </tr>
-    <tr>
-      <td class="feat">Cross-machine history sync <em>coming soon</em></td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Team workspaces <em>coming soon</em></td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Custom extension development</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-    </tr>
-    <tr>
-      <td class="feat">Onboarding workshop</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="n">—</td>
-      <td class="y">✓</td>
-    </tr>
-  </tbody>
-</table>
+      <div class="card price-card featured">
+        <span class="badge" style="position:absolute;top:-10px;left:20px;">most popular</span>
+        <div class="pc-name">Hosted</div>
+        <div class="pc-price">$12<span>/ mo</span></div>
+        <p class="pc-sub">A relay we run, so your team can share captures.</p>
+        <ul class="pc-feats">
+          <li>Everything in Desktop</li>
+          <li>Cloud capture relay</li>
+          <li>Shared read-only scopes</li>
+          <li>Encrypted sync, 30-day retention</li>
+          <li>1 seat included</li>
+        </ul>
+        <a href="#" class="btn btn-primary" style="width:100%;justify-content:center;">Buy Hosted</a>
+      </div>
 
-<div class="cta-row">
-  <a class="ghost" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download Free</a>
-  <a class="primary" href="STRIPE_PAYMENT_LINK_HERE">Buy Premium</a>
-  <a class="primary" href="STRIPE_PAYMENT_LINK_BUSINESS_HERE">Buy Business</a>
-  <a class="ghost" href="mailto:support@nullock.io?subject=Enterprise%20inquiry">Talk to us</a>
-</div>
+      <div class="card price-card">
+        <div class="pc-name">Team</div>
+        <div class="pc-price">$49<span>/ mo</span></div>
+        <p class="pc-sub">Hosted, for a working group.</p>
+        <ul class="pc-feats">
+          <li>Everything in Hosted</li>
+          <li>5 seats included</li>
+          <li>SSO (SAML / OIDC)</li>
+          <li>90-day retention</li>
+          <li>Audit log export</li>
+        </ul>
+        <a href="#" class="btn btn-ghost" style="width:100%;justify-content:center;">Buy Team</a>
+      </div>
 
-<div class="note">
-  <strong>Why the prices are low.</strong> A single human maintains Nullock today; pricing reflects what one person can sustainably deliver. As the team grows, more tiers may appear -- the existing tiers grandfather for the life of the subscription.
-</div>
+      <div class="card price-card">
+        <div class="pc-name">Premium support</div>
+        <div class="pc-price">$200<span>/ mo</span></div>
+        <p class="pc-sub">A human on email, fast.</p>
+        <ul class="pc-feats">
+          <li>Any plan, including free</li>
+          <li>Next-business-day email</li>
+          <li>Direct line to the maintainer</li>
+          <li>Triage on your bug reports</li>
+          <li>Cancel anytime</li>
+        </ul>
+        <a href="support.html" class="btn btn-ghost" style="width:100%;justify-content:center;">Talk to us</a>
+      </div>
+    </div>
+  </div>
+</section>
 
-<div class="note">
-  <strong>Fair use.</strong> "Named seats" means individual people. Sharing a single Premium account across a 50-person team violates the fair-use understanding -- if more than a couple of folks at your company are getting email support, please bump to Business or talk to us about Enterprise.
-</div>
+<!-- MATRIX -->
+<section class="section">
+  <div class="wrap-wide">
+    <h2 class="h2-section center" style="margin-bottom:28px;">What's in each plan</h2>
+    <div style="overflow-x:auto;">
+      <table class="matrix" style="min-width:640px;">
+        <thead>
+          <tr><th>&nbsp;</th><th>Desktop</th><th class="feat-col">Hosted</th><th>Team</th><th>Premium</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Full desktop toolkit</td><td class="yes">✓</td><td class="feat-col yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Local SQLite history</td><td class="yes">✓</td><td class="feat-col yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Cloud capture relay</td><td class="no">—</td><td class="feat-col yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+          <tr><td>Shared scopes</td><td class="no">—</td><td class="feat-col yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+          <tr><td>Seats</td><td>1</td><td class="feat-col">1</td><td>5</td><td>—</td></tr>
+          <tr><td>SSO (SAML / OIDC)</td><td class="no">—</td><td class="feat-col no">—</td><td class="yes">✓</td><td class="no">—</td></tr>
+          <tr><td>Retention</td><td>local</td><td class="feat-col">30 days</td><td>90 days</td><td>—</td></tr>
+          <tr><td>Email support SLA</td><td class="no">community</td><td class="feat-col">3 days</td><td>3 days</td><td class="yes">next day</td></tr>
+          <tr><td>Price</td><td>$0</td><td class="feat-col">$12/mo</td><td>$49/mo</td><td>$200/mo</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
-<div class="note">
-  <strong>Refunds.</strong> 30-day no-questions refund. After 30 days, prorated. Cancel any time at the bottom of your Stripe receipt email.
-</div>
+<!-- NOTES -->
+<section class="section">
+  <div class="wrap">
+    <div class="notes">
+      <h3>The fine print, in plain words</h3>
+      <ul>
+        <li><strong>Refunds.</strong> <span class="badge err"><span class="dot"></span>refund</span> Not happy in the first 30 days? Email us and we send the money back. No form, no survey.</li>
+        <li><strong>Fair use.</strong> Hosted relay is metered on bandwidth, not requests. Heavy users get an email before anything changes, never a surprise bill.</li>
+        <li><strong>The desktop app stays free.</strong> It is MIT and it will always be MIT. Paid plans fund the hosting and one maintainer's time — they never paywall the core.</li>
+        <li><strong>Payments.</strong> Card processing by Stripe. We never see your card number. <span class="badge ok"><span class="dot"></span>payment confirmed · welcome aboard</span></li>
+      </ul>
+    </div>
+    <div class="row center" style="margin-top:32px;">
+      <a href="index.html#download" class="btn btn-primary btn-lg">Download free</a>
+      <a href="support.html" class="btn btn-ghost btn-lg">Buy Premium</a>
+    </div>
+  </div>
+</section>
 
-</main>
-
-<footer>
-  <a href="LICENSE.html">License (MIT)</a> ·
-  <a href="PRIVACY.html">Privacy</a> ·
-  <a href="TERMS.html">Terms</a> ·
-  <a href="SECURITY.html">Security disclosure</a> ·
-  <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
 </footer>
+
+<style>
+.price-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+.price-card { position:relative; display:flex; flex-direction:column; }
+.pc-name { font-size:14px; font-weight:600; color:var(--purple-light); letter-spacing:.2px; }
+.pc-price { font-size:34px; font-weight:700; color:var(--headline); margin:6px 0 2px; letter-spacing:-1px; }
+.pc-price span { font-size:14px; font-weight:400; color:var(--dim); letter-spacing:0; margin-left:4px; }
+.pc-sub { color:var(--secondary); font-size:13px; min-height:38px; margin:0 0 14px; }
+.pc-feats { list-style:none; margin:0 0 20px; padding:0; flex:1; }
+.pc-feats li { font-size:13px; color:var(--secondary); padding:7px 0 7px 20px; position:relative; border-bottom:1px solid var(--divider); }
+.pc-feats li::before { content:"▸"; color:var(--purple); position:absolute; left:0; }
+.notes { background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:26px 28px; }
+.notes h3 { color:var(--headline); margin-bottom:14px; }
+.notes ul { list-style:none; margin:0; padding:0; }
+.notes li { color:var(--secondary); font-size:14px; line-height:1.7; padding:10px 0; border-bottom:1px solid var(--divider); }
+.notes li:last-child { border-bottom:0; }
+.notes strong { color:var(--body); }
+@media (max-width:900px){ .price-grid { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:520px){ .price-grid { grid-template-columns:1fr; } }
+</style>
+
 </body>
 </html>

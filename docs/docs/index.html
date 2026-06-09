@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — docs</title>
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="../index.html">Product</a>
+      <a href="index.html" class="active">Docs</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+
+<div class="docs-layout">
+  <!-- SIDEBAR -->
+  <aside class="docs-side" id="docsSide">
+    <div class="ds-group">
+      <div class="ds-label">Start</div>
+      <a href="#getting-started" class="ds-link active">Getting started</a>
+      <a href="#install" class="ds-link">Install</a>
+      <a href="#first-capture" class="ds-link">Your first capture</a>
+    </div>
+    <div class="ds-group">
+      <div class="ds-label">Reference</div>
+      <a href="#cli" class="ds-link">CLI</a>
+      <a href="#extensions" class="ds-link">Extensions</a>
+    </div>
+    <div class="ds-group">
+      <div class="ds-label">Concepts</div>
+      <a href="#security-model" class="ds-link">Security model</a>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <main class="docs-content">
+    <p class="eyebrow">// docs · v3.2.0</p>
+    <h1 class="h1-page" style="margin:8px 0 0;">Documentation</h1>
+    <p class="lead" style="margin:14px 0 0;">Self-host first. Everything here runs on your machine, offline, with no account.</p>
+
+    <section id="getting-started" class="doc-sec">
+      <h2 class="h2-section">Getting started</h2>
+      <p>nullock is a man-in-the-middle proxy. It sits between your client and the network, captures every request and response, and lets you intercept, replay, and rewrite them. Three things to know before you start:</p>
+      <ol class="doc-list">
+        <li>It installs a local CA so it can read TLS. You control that CA; it never leaves your machine.</li>
+        <li>History is a single SQLite file. Back it up, copy it, grep it — it's just a file.</li>
+        <li>There is no telemetry. The binary makes no network calls except the traffic you point at it.</li>
+      </ol>
+    </section>
+
+    <section id="install" class="doc-sec">
+      <h2 class="h2-section">Install</h2>
+      <p>Pick a platform. All builds are signed and reproducible from source.</p>
+      <div class="code">
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="brew install nullock">Copy</button></div>
+        <pre><span class="c-comment"># macOS</span>
+<span class="c-purple">brew</span> install nullock
+
+<span class="c-comment"># Linux (Debian / Ubuntu)</span>
+<span class="c-purple">curl</span> -L https://get.nullock.dev | sh
+
+<span class="c-comment"># From source — needs Rust 1.78+</span>
+<span class="c-purple">cargo</span> install --git https://github.com/nullock/cli</pre>
+      </div>
+      <p>Trust the CA so TLS sites stop warning. nullock prints the exact path on first run:</p>
+      <div class="code">
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="nullock ca install">Copy</button></div>
+        <pre><span class="c-purple">nullock</span> ca install
+<span class="c-ok"># [nul-] CA added to system trust store ✓</span></pre>
+      </div>
+    </section>
+
+    <section id="first-capture" class="doc-sec">
+      <h2 class="h2-section">Your first capture</h2>
+      <p>Start the proxy on a port and point your client at it. The desktop app does this with one click; from the CLI:</p>
+      <div class="code">
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="nullock --proxy :8080 --scope app.local">Copy</button></div>
+        <pre><span class="c-purple">nullock</span> --proxy :8080 --scope app.local
+<span class="c-comment"># [nul-] listening on :8080 — system proxy set</span>
+<span class="c-comment"># [nul-] scope: app.local (3 hosts matched)</span>
+<span class="c-ok"># ─── working ───</span></pre>
+      </div>
+      <p>Everything matching <code class="inline">--scope</code> lands in the history table. Click a row to inspect the raw exchange, or hit <code class="inline">r</code> to send it to Repeater.</p>
+      <div class="callout">
+        <span class="badge"><span class="dot"></span>tip</span>
+        <p style="margin:0;">Out of scope traffic is still proxied — it just won't clutter your history. Widen scope later without losing rows.</p>
+      </div>
+    </section>
+
+    <section id="cli" class="doc-sec">
+      <h2 class="h2-section">CLI</h2>
+      <p>The desktop app is a front end over the same binary. Anything you do in the UI, you can script.</p>
+      <table class="matrix" style="margin-top:16px;">
+        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">nullock --proxy :PORT</code></td><td>Start capturing on a port</td></tr>
+          <tr><td><code class="inline">nullock replay &lt;id&gt;</code></td><td>Re-send a captured request</td></tr>
+          <tr><td><code class="inline">nullock export --json</code></td><td>Dump scoped history to JSON</td></tr>
+          <tr><td><code class="inline">nullock rules add</code></td><td>Add a match &amp; replace rule</td></tr>
+          <tr><td><code class="inline">nullock ca install</code></td><td>Trust the local CA</td></tr>
+          <tr><td><code class="inline">nullock vacuum</code></td><td>Compact the SQLite history file</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="extensions" class="doc-sec">
+      <h2 class="h2-section">Extensions</h2>
+      <p>Drop a single file into the extensions directory. It's loaded on next start — no build step, no marketplace gate. Hook the request lifecycle in JS or Python:</p>
+      <div class="code">
+        <div class="code-head"><span>strip-tracking.js</span><button class="copy" data-copy="export function onRequest(req) {&#10;  if (req.host.endsWith('telemetry.vendor.io')) req.block('blocked by ext');&#10;  return req;&#10;}">Copy</button></div>
+<pre><span class="c-comment">// ~/.nullock/ext/strip-tracking.js</span>
+<span class="c-purple">export function</span> onRequest(req) {
+  <span class="c-purple">if</span> (req.host.endsWith(<span class="c-ok">'telemetry.vendor.io'</span>))
+    req.block(<span class="c-ok">'blocked by ext'</span>);
+  <span class="c-purple">return</span> req;
+}</pre>
+      </div>
+      <p>Available hooks: <code class="inline">onRequest</code>, <code class="inline">onResponse</code>, <code class="inline">onConnect</code>. Each gets a mutable object and returns it. Throw to drop the connection.</p>
+    </section>
+
+    <section id="security-model" class="doc-sec">
+      <h2 class="h2-section">Security model</h2>
+      <p>A MITM proxy is, by design, a tool that reads encrypted traffic. Here is exactly what nullock can and cannot see, and where the lines are:</p>
+      <ul class="doc-list">
+        <li><strong>The CA is yours.</strong> Generated locally on first run, stored in your OS keychain. We never ship a shared key. Delete it and interception stops.</li>
+        <li><strong>Captures stay local.</strong> History is a file on disk. Nothing syncs unless you buy Hosted and opt in per scope.</li>
+        <li><strong>Secrets in history.</strong> Tokens and cookies land in plaintext in your SQLite file — that's the point. Encrypt the disk; don't commit the file.</li>
+        <li><strong>Reporting a flaw.</strong> Email <code class="inline">security@nullock.dev</code> with a PGP key on the site. We respond within 72 hours and credit you on the advisory.</li>
+      </ul>
+      <div class="callout warn">
+        <span class="badge warn"><span class="dot"></span>warn</span>
+        <p style="margin:0;">Only intercept traffic you own or are authorized to test. nullock is a tool; the law is yours to follow.</p>
+      </div>
+    </section>
+
+    <div class="doc-nextfoot">
+      <a href="../changelog.html" class="muted">Read the changelog ▸</a>
+    </div>
+  </main>
+</div>
+
+<footer class="footer">
+  <div class="f-links">
+    <a href="../license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="../privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="../terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="../security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
+</footer>
+
+<style>
+.docs-layout { display:grid; grid-template-columns:230px 1fr; max-width:var(--maxw-wide); margin:0 auto; gap:0; }
+.docs-side {
+  position:sticky; top:57px; align-self:start; height:calc(100vh - 57px);
+  overflow-y:auto; padding:32px 20px 32px var(--pad-x); border-right:1px solid var(--divider);
+}
+.ds-group { margin-bottom:22px; }
+.ds-label { font-family:var(--font-mono); font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.ds-link { display:block; padding:6px 12px; border-radius:6px; font-size:13.5px; color:var(--secondary); border-left:2px solid transparent; }
+.ds-link:hover { color:var(--body); background:rgba(157,78,221,0.05); }
+.ds-link.active { color:var(--purple-light); border-left-color:var(--purple); background:rgba(157,78,221,0.08); }
+.docs-content { padding:36px var(--pad-x) 60px; min-width:0; max-width:var(--maxw-docs); }
+.doc-sec { padding-top:44px; scroll-margin-top:72px; }
+.doc-sec p { color:var(--secondary); margin:14px 0 0; max-width:64ch; }
+.doc-sec .code { margin-top:16px; }
+.doc-list { color:var(--secondary); margin:14px 0 0; padding-left:22px; max-width:64ch; }
+.doc-list li { padding:5px 0; line-height:1.6; }
+.doc-list strong { color:var(--body); }
+.callout { display:flex; gap:14px; align-items:flex-start; background:var(--surface-1); border:1px solid var(--border); border-left:2px solid var(--purple); border-radius:6px; padding:14px 18px; margin-top:18px; }
+.callout.warn { border-left-color:var(--warn); }
+.callout p { font-size:13.5px; color:var(--secondary); }
+.callout .badge { flex-shrink:0; margin-top:2px; }
+.doc-nextfoot { margin-top:48px; padding-top:24px; border-top:1px solid var(--divider); }
+@media (max-width:760px){
+  .docs-layout { grid-template-columns:1fr; }
+  .docs-side { position:static; height:auto; border-right:0; border-bottom:1px solid var(--divider); display:flex; flex-wrap:wrap; gap:0 18px; padding:16px var(--pad-x); }
+  .ds-group { margin-bottom:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .ds-label { display:none; }
+}
+</style>
+
+<script>
+// active-link highlight on scroll
+const links = [...document.querySelectorAll('.ds-link')];
+const map = {};
+links.forEach(l => { const id = l.getAttribute('href').slice(1); const s = document.getElementById(id); if (s) map[id] = l; });
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const l = map[e.target.id]; if (l) l.classList.add('active');
+    }
+  });
+}, { rootMargin: '-72px 0px -65% 0px' });
+Object.keys(map).forEach(id => obs.observe(document.getElementById(id)));
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.copy'); if (!b) return;
+  const t = (b.getAttribute('data-copy')||'').replace(/&#10;/g,'\n');
+  navigator.clipboard && navigator.clipboard.writeText(t);
+  const p = b.textContent; b.textContent = 'copied ✓';
+  setTimeout(()=>b.textContent=p, 1400);
+});
+</script>
+
+</body>
+</html>

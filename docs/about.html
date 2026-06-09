@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — about</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="about.html" class="active">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap" style="padding-block:64px 8px;">
+    <p class="eyebrow">// about</p>
+    <h1 class="h1-page grad-text" style="margin:10px 0 0;max-width:16ch;">Why nullock exists</h1>
+    <p class="lead" style="margin:16px 0 0;">Good security tools were either expensive and closed, or free and rough. nullock is the third option: a fast, honest, MIT-licensed proxy you actually want to open.</p>
+  </div>
+</header>
+
+<section class="section" style="padding-top:36px;">
+  <div class="wrap">
+    <div class="about-grid">
+      <div>
+        <h2 class="h2-section" style="font-size:24px;">One maintainer, in the open</h2>
+        <p class="muted" style="margin-top:14px;">nullock started as a weekend tool to debug a TLS bug I couldn't see through. The commercial proxy cost more than my laptop; the free ones choked on a busy capture. So I wrote my own, put it on GitHub, and people kept showing up.</p>
+        <p class="muted" style="margin-top:14px;">It's still mostly one person. That shapes everything: the scope stays small, the code stays readable, and I only build features I'd use myself. Hosting and Premium support pay for the time — they never paywall the core.</p>
+      </div>
+      <div class="about-aside">
+        <pre class="mono" style="color:var(--purple-mid);font-size:10px;line-height:1.15;margin:0;">       _ _            _
+ _ __ | | | ___   ___| | __
+| '_ \| | |/ _ \ / __| |/ /
+| | | | | | (_) | (__|   <
+|_| |_|_|_|\___/ \___|_|\_\</pre>
+        <div class="stat-row">
+          <div class="stat"><span class="n">MIT</span><span class="l">license, always</span></div>
+          <div class="stat"><span class="n">0</span><span class="l">telemetry calls</span></div>
+          <div class="stat"><span class="n">200k+</span><span class="l">rows on 16 GB</span></div>
+          <div class="stat"><span class="n">~14 MB</span><span class="l">single binary</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="h2-section center">What we believe</h2>
+    <div class="grid feat-grid" style="margin-top:30px;">
+      <div class="card">
+        <h3>Local first</h3>
+        <p>Your captures are yours. Nothing syncs unless you ask it to. The binary makes no calls home — ever.</p>
+      </div>
+      <div class="card">
+        <h3>Honest pricing</h3>
+        <p>Free desktop. Paid hosting. No bait, no seat traps, no "contact sales" wall. The price is on the page.</p>
+      </div>
+      <div class="card">
+        <h3>Small on purpose</h3>
+        <p>One binary, one config dir, one SQLite file. We say no to features more than yes, and the tool is faster for it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <h2 class="h2-section">What's coming</h2>
+    <div class="roadmap" style="margin-top:24px;">
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>WebSocket interception</strong><p>Pause and rewrite frames, same as HTTP. Targeting v3.3.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>HTTP/3 + QUIC</strong><p>Decode QUIC streams with a local key log. In review.</p></div></div>
+      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Collaborative scopes</strong><p>Share a read-only session over the LAN. Self-hosted relay.</p></div></div>
+      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Headless CI mode</strong><p>Run scoped scans from a pipeline, emit JSON findings.</p></div></div>
+    </div>
+    <div class="cta-band glow-bg" style="margin-top:40px;">
+      <h2 class="h2-section" style="font-size:24px;">Want to help build it?</h2>
+      <p class="muted" style="margin:8px 0 0;">The code is on GitHub, the issues are open, and good PRs get merged fast. Or just sponsor a maintainer's coffee.</p>
+      <div class="row" style="margin-top:20px;">
+        <a href="https://github.com/Bikebrainz/Nullock" class="btn btn-primary">★ Star on GitHub</a>
+        <a href="index.html#download" class="btn btn-ghost">Download</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
+</footer>
+
+<style>
+.about-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:36px; align-items:start; }
+.about-grid p { font-size:15px; line-height:1.7; }
+.about-aside { background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:24px; }
+.stat-row { display:grid; grid-template-columns:1fr 1fr; gap:0; margin-top:22px; border-top:1px solid var(--divider); }
+.stat { padding:16px 4px; border-bottom:1px solid var(--divider); }
+.stat:nth-child(odd){ border-right:1px solid var(--divider); padding-right:16px; }
+.stat:nth-child(even){ padding-left:16px; }
+.stat .n { display:block; font-family:var(--font-mono); font-size:22px; color:var(--purple-light); font-weight:600; }
+.stat .l { display:block; font-size:12px; color:var(--dim); margin-top:2px; }
+.feat-grid { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+.roadmap { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.rm-item { display:flex; gap:14px; align-items:flex-start; background:var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:16px 18px; }
+.rm-item .badge { margin-top:2px; flex-shrink:0; }
+.rm-item strong { color:var(--headline); font-size:15px; }
+.rm-item p { color:var(--secondary); font-size:13px; margin:4px 0 0; line-height:1.55; }
+.cta-band { background:var(--surface-feat); border:1px solid var(--purple); box-shadow:0 0 0 1px var(--purple) inset; border-radius:12px; padding:36px; }
+@media (max-width:760px){ .about-grid { grid-template-columns:1fr; gap:24px; } .roadmap { grid-template-columns:1fr; } }
+</style>
+
+</body>
+</html>

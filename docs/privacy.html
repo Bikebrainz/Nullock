@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — privacy</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap-docs" style="padding-block:60px 8px;">
+    <p class="eyebrow">// privacy</p>
+    <h1 class="h1-page grad-text" style="margin:10px 0 0;">Privacy</h1>
+  </div>
+</header>
+<section class="section" style="padding-top:28px;">
+  <div class="wrap-docs legal">
+
+<p class="caption">Last updated June 2, 2026.</p>
+<p>The short version: the desktop app collects nothing. This page covers what the website and paid services touch.</p>
+<h2>The desktop app</h2>
+<p>No telemetry, no account, no phone-home. The binary makes no network calls except the traffic you point it at. Your captures live in a local SQLite file and never leave your machine unless you buy Hosted and opt in per scope.</p>
+<h2>This website</h2>
+<p>Static pages, no third-party analytics, no ad trackers. Server logs keep IP and user-agent for 14 days to catch abuse, then they're deleted.</p>
+<h2>Paid services</h2>
+<ul>
+  <li><strong>Payments</strong> are handled by Stripe. We store your email and a Stripe customer ID — never your card number.</li>
+  <li><strong>Hosted relay</strong> stores the captures you choose to sync, encrypted at rest, deleted on the retention schedule for your plan.</li>
+  <li><strong>Support</strong> email is kept as long as your subscription is active, then archived for one year for tax reasons.</li>
+</ul>
+<h2>Your rights</h2>
+<p>Email <code class="inline">privacy@nullock.dev</code> to see, export, or delete anything we hold. We reply within 30 days, usually the same week.</p>
+
+  </div>
+</section>
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
+</footer>
+<style>
+.legal h2 { font-size:18px; color:var(--purple-light); margin:28px 0 8px; }
+.legal h2:first-child { margin-top:0; }
+.legal p, .legal li { color:var(--secondary); font-size:14.5px; line-height:1.7; }
+.legal ul { padding-left:22px; }
+.legal li { padding:3px 0; }
+.legal .caption { margin-bottom:24px; }
+.legal pre { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:20px; font-size:12.5px; line-height:1.6; color:var(--body); white-space:pre-wrap; }
+</style>
+</body>
+</html>

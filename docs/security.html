@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — security</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap-docs" style="padding-block:60px 8px;">
+    <p class="eyebrow">// security disclosure</p>
+    <h1 class="h1-page grad-text" style="margin:10px 0 0;">Security disclosure</h1>
+  </div>
+</header>
+<section class="section" style="padding-top:28px;">
+  <div class="wrap-docs legal">
+
+<p class="caption">We take reports seriously and we don't sue researchers.</p>
+<h2>How to report</h2>
+<p>Email <code class="inline">security@nullock.dev</code>. A PGP key is published on that address. Include steps to reproduce and, if you can, a proof of concept.</p>
+<h2>What to expect</h2>
+<ul>
+  <li>Acknowledgement within <strong>72 hours</strong>.</li>
+  <li>A triage assessment and severity within one week.</li>
+  <li>A fix branch with a named release once it's resolved.</li>
+  <li>Public credit on the advisory — opt out if you'd rather stay anonymous.</li>
+</ul>
+<h2>Scope</h2>
+<p>The desktop binary, the CLI, this website, and the Hosted relay are all in scope. The fact that a MITM proxy can read TLS is by design, not a vulnerability — see the <a href="docs/index.html#security-model">security model</a>.</p>
+<h2>Safe harbor</h2>
+<p>Good-faith research that follows this policy is authorized. We won't pursue legal action and we'll help if anyone else tries to.</p>
+
+  </div>
+</section>
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
+</footer>
+<style>
+.legal h2 { font-size:18px; color:var(--purple-light); margin:28px 0 8px; }
+.legal h2:first-child { margin-top:0; }
+.legal p, .legal li { color:var(--secondary); font-size:14.5px; line-height:1.7; }
+.legal ul { padding-left:22px; }
+.legal li { padding:3px 0; }
+.legal .caption { margin-bottom:24px; }
+.legal pre { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:20px; font-size:12.5px; line-height:1.6; color:var(--body); white-space:pre-wrap; }
+</style>
+</body>
+</html>

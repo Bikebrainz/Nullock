@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nullock — changelog</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/nullock.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html" aria-label="nullock home">
+      <img class="mark" src="assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <div class="nav-links" id="navlinks">
+      <a href="index.html">Product</a>
+      <a href="docs/index.html">Docs</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="changelog.html" class="active">Changelog</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="glow-bg" style="overflow:hidden;">
+  <div class="wrap" style="padding-block:60px 8px;">
+    <p class="eyebrow">// changelog</p>
+    <h1 class="h1-page grad-text" style="margin:10px 0 0;">What shipped</h1>
+    <p class="lead" style="margin:14px 0 0;">Every release, newest first. Versions follow semver. Dates are when the build went out.</p>
+  </div>
+</header>
+
+<section class="section" style="padding-top:32px;">
+  <div class="wrap">
+    <div class="log">
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.2.0</span>
+          <span class="caption">Jun 2, 2026</span>
+          <span class="badge ok"><span class="dot"></span>latest</span>
+        </div>
+        <div class="rel-body">
+          <ul>
+            <li><span class="tag add">add</span> Repeater now diffs two responses side by side, with byte-level highlighting.</li>
+            <li><span class="tag add">add</span> <code class="inline">nullock export --json</code> streams scoped history without loading it all into memory.</li>
+            <li><span class="tag fix">fix</span> History scroll no longer jumps when new rows arrive while a row is selected.</li>
+            <li><span class="tag perf">perf</span> SQLite write batching cut capture overhead by ~40% at 200k rows.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.1.4</span>
+          <span class="caption">May 18, 2026</span>
+        </div>
+        <div class="rel-body">
+          <ul>
+            <li><span class="tag fix">fix</span> CA install on Linux now writes to <code class="inline">/usr/local/share/ca-certificates</code> correctly under Wayland.</li>
+            <li><span class="tag fix">fix</span> Match &amp; replace rules with empty bodies no longer drop the connection.</li>
+            <li><span class="tag add">add</span> <code class="inline">nullock vacuum</code> to compact history files after big sessions.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.1.0</span>
+          <span class="caption">Apr 29, 2026</span>
+        </div>
+        <div class="rel-body">
+          <ul>
+            <li><span class="tag add">add</span> Python extensions alongside JS. Same lifecycle hooks, drop a <code class="inline">.py</code> in the ext dir.</li>
+            <li><span class="tag add">add</span> Full-text search over request and response bodies.</li>
+            <li><span class="tag change">change</span> Scope syntax now accepts glob patterns, e.g. <code class="inline">*.app.local</code>.</li>
+            <li><span class="tag fix">fix</span> Memory leak when streaming large (&gt;50 MB) responses.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.0.0</span>
+          <span class="caption">Mar 11, 2026</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">Rewrote the capture core in Rust. The desktop app is now a thin front end over the same binary you can script.</p>
+          <ul>
+            <li><span class="tag add">add</span> Native desktop app for macOS, Linux, Windows.</li>
+            <li><span class="tag add">add</span> SQLite-backed history — 200k+ rows on a 16 GB box.</li>
+            <li><span class="tag change">change</span> Config moved to <code class="inline">~/.nullock/</code>. A migration runs on first launch.</li>
+            <li><span class="tag rm">remove</span> Dropped the legacy Electron build. It was slow and we don't miss it.</li>
+          </ul>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="f-links">
+    <a href="license.html">MIT License</a><span class="f-sep">·</span>
+    <a href="privacy.html">Privacy</a><span class="f-sep">·</span>
+    <a href="terms.html">Terms</a><span class="f-sep">·</span>
+    <a href="security.html">Security disclosure</a><span class="f-sep">·</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
+</footer>
+
+<style>
+.log { border-left:1px solid var(--divider); margin-left:6px; }
+.rel { display:grid; grid-template-columns:200px 1fr; gap:20px; padding:0 0 36px 28px; position:relative; }
+.rel::before { content:""; position:absolute; left:-5px; top:6px; width:9px; height:9px; border-radius:50%; background:var(--purple); box-shadow:0 0 0 4px var(--bg); }
+.rel-meta { display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
+.rel-ver { font-family:var(--font-mono); font-size:18px; color:var(--headline); font-weight:600; }
+.rel-body ul { list-style:none; margin:0; padding:0; }
+.rel-body li { font-size:14px; color:var(--secondary); line-height:1.6; padding:6px 0; display:flex; gap:10px; align-items:baseline; }
+.rel-note { color:var(--body); font-size:14px; margin:0 0 10px; }
+.tag { font-family:var(--font-mono); font-size:10.5px; font-weight:500; padding:1px 7px; border-radius:999px; flex-shrink:0; text-transform:uppercase; letter-spacing:.5px; }
+.tag.add { background:#102a18; color:var(--ok); }
+.tag.fix { background:var(--surface-2); color:var(--purple-light); }
+.tag.perf { background:#161020; color:var(--purple-mid); border:1px solid var(--purple); }
+.tag.change { background:#2a2010; color:var(--warn); }
+.tag.rm { background:#2a1010; color:var(--err); }
+@media (max-width:640px){ .rel { grid-template-columns:1fr; gap:10px; } .rel-meta { flex-direction:row; align-items:center; gap:12px; } }
+</style>
+
+</body>
+</html>
