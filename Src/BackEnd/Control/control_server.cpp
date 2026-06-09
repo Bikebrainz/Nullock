@@ -4,6 +4,7 @@
 #include "extensions_api.hpp"
 #include "intercept.hpp"
 #include "ws_repeater.hpp"
+#include "h2_events.hpp"
 #include "oast_server.hpp"
 #include "session_rules.hpp"
 #include "crawler.hpp"
@@ -820,7 +821,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/search"
             || p == "/api/project/list"
             || p == "/api/ws/sessions"
+            || p == "/api/h2/streams"
+            || p == "/api/h2/events"
             || p == "/api/oast/poll"
+            || p == "/api/openapi/export"
+            || p == "/api/cookies"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -993,6 +998,58 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         root["baseHost"] = m_wiring.oast->baseHost();
         root["hits"]    = arr;
         return httpJson(200, root);
+    }
+
+    // GET /api/h2/streams -- list every captured h2 stream summary.
+    if (path == "/api/h2/streams") {
+        QJsonArray arr;
+        for (const auto &s : Nullock::Proxy::H2EventLog::instance()->streams()) {
+            QJsonObject o;
+            o["streamId"]   = s.streamId;
+            o["conn"]       = s.conn;
+            o["method"]     = s.method;
+            o["path"]       = s.path;
+            o["status"]     = s.status;
+            o["bytesIn"]    = static_cast<double>(s.bytesIn);
+            o["bytesOut"]   = static_cast<double>(s.bytesOut);
+            o["framesIn"]   = s.framesIn;
+            o["framesOut"]  = s.framesOut;
+            o["lastError"]  = static_cast<int>(s.lastError);
+            o["openedAtMs"] = static_cast<double>(s.openedAtMs);
+            o["closed"]     = s.closed;
+            arr.append(o);
+        }
+        QJsonObject r;  r["streams"] = arr;
+        return httpJson(200, r);
+    }
+
+    // GET /api/h2/events?since=<ms> -- raw h2 frame stream.
+    if (path == "/api/h2/events") {
+        qint64 sinceTs = 0;
+        if (!query.isEmpty()) {
+            const QUrlQuery q(query);
+            sinceTs = q.queryItemValue("since").toLongLong();
+        }
+        QJsonArray arr;
+        const char *kTypes[] = {
+            "DATA", "HEADERS", "PRIORITY", "RST_STREAM", "SETTINGS",
+            "PUSH_PROMISE", "PING", "GOAWAY", "WINDOW_UPDATE", "CONTINUATION"
+        };
+        for (const auto &e : Nullock::Proxy::H2EventLog::instance()->eventsSince(sinceTs)) {
+            QJsonObject o;
+            o["ts"]        = static_cast<double>(e.ts);
+            o["conn"]      = e.conn;
+            o["type"]      = (e.frameType < 10)
+                               ? QString::fromLatin1(kTypes[e.frameType])
+                               : QString::number(e.frameType);
+            o["flags"]     = e.flags;
+            o["streamId"]  = e.streamId;
+            o["bytes"]     = static_cast<double>(e.bytes);
+            o["errorCode"] = static_cast<int>(e.errorCode);
+            arr.append(o);
+        }
+        QJsonObject r;  r["events"] = arr;
+        return httpJson(200, r);
     }
 
     if (path == "/api/ws/sessions") {
@@ -1754,6 +1811,239 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/crawler/stop") {
         if (m_wiring.crawler) m_wiring.crawler->stop();
         return okJson();
+    }
+
+    // ---- Reverse OpenAPI ---------------------------------------------
+    // GET /api/openapi/export -- walks captured history and synthesizes
+    // an OpenAPI 3.1 spec describing every (host, path, method) seen.
+    // Per-operation metadata is intentionally light -- response codes
+    // are collected as `responses: { code: { description } }`, no
+    // schemas. Real use is: pipe this into a code-gen tool, or hand
+    // to a developer as "here's the surface I saw, please document it."
+    if (path == "/api/openapi/export") {
+        if (!m_wiring.projectStore)
+            return httpJson(404, QJsonObject{{ "error", "no project store" }});
+        auto *idx = m_wiring.projectStore->historyIndex();
+        if (!idx || !idx->isOpen())
+            return httpJson(503, QJsonObject{{ "error", "history index not ready" }});
+
+        // hostKey = (scheme, host, port). For each, collect path -> method -> set<status>.
+        struct OpInfo {
+            QSet<int> statuses;
+            QStringList mimes;
+        };
+        QMap<QString, QMap<QString, QMap<QString, OpInfo>>> byHost;
+        for (int id : idx->allIds()) {
+            auto fr = idx->loadFullRow(id);
+            if (!fr.ok) continue;
+            if (fr.request.method.startsWith("WS")) continue;
+            const QString scheme  = fr.response.wasTls ? "https" : "http";
+            const QString hostKey = scheme + "://" + fr.request.host
+                + (fr.request.port == (fr.response.wasTls ? 443 : 80)
+                    ? QString()
+                    : ":" + QString::number(fr.request.port));
+            QString pathOnly = fr.request.path;
+            const int q = pathOnly.indexOf('?');
+            if (q >= 0) pathOnly = pathOnly.left(q);
+            auto &op = byHost[hostKey][pathOnly][fr.request.method.toLower()];
+            op.statuses.insert(fr.response.statusCode);
+        }
+        QJsonObject spec;
+        spec["openapi"] = "3.1.0";
+        QJsonObject info;
+        info["title"]   = "Reverse-engineered from Nullock capture";
+        info["version"] = "0.0.0";
+        spec["info"] = info;
+        QJsonArray servers;
+        for (auto hit = byHost.cbegin(); hit != byHost.cend(); ++hit) {
+            QJsonObject s; s["url"] = hit.key(); servers.append(s);
+        }
+        spec["servers"] = servers;
+        QJsonObject paths;
+        for (auto hit = byHost.cbegin(); hit != byHost.cend(); ++hit) {
+            for (auto pit = hit->cbegin(); pit != hit->cend(); ++pit) {
+                QJsonObject pathObj = paths.value(pit.key()).toObject();
+                for (auto mit = pit->cbegin(); mit != pit->cend(); ++mit) {
+                    QJsonObject responses;
+                    for (int st : mit->statuses) {
+                        QJsonObject r;
+                        r["description"] = QString("observed status %1").arg(st);
+                        responses[QString::number(st)] = r;
+                    }
+                    QJsonObject op;
+                    op["responses"] = responses;
+                    op["x-nullock-host"] = hit.key();
+                    pathObj[mit.key()] = op;
+                }
+                paths[pit.key()] = pathObj;
+            }
+        }
+        spec["paths"] = paths;
+        return httpJson(200, spec);
+    }
+
+    // ---- AI-assisted finding triage ----------------------------------
+    // POST /api/triage/finding { rowId, kind, severity, summary, evidence }
+    //   ?model=qwen2.5:14b (default)
+    //   ?ollama=http://127.0.0.1:11434 (default)
+    // Asks a local Ollama model to grade impact / suggest fix / flag
+    // false-positive risk. Fire-and-forget over HTTP to Ollama's
+    // /api/generate. Falls back to a heuristic if Ollama isn't running.
+    if (path == "/api/triage/finding") {
+        QString ollama = "http://127.0.0.1:11434";
+        QString model  = "qwen2.5:14b";
+        if (!query.isEmpty()) {
+            const QUrlQuery q(query);
+            if (!q.queryItemValue("ollama").isEmpty()) ollama = q.queryItemValue("ollama");
+            if (!q.queryItemValue("model").isEmpty())  model  = q.queryItemValue("model");
+        }
+        const QString summary  = bodyJson.value("summary").toString();
+        const QString kind     = bodyJson.value("kind").toString();
+        const QString severity = bodyJson.value("severity").toString();
+        const QString evidence = bodyJson.value("evidence").toString();
+        // Optional context: rowId pulls the captured request/response
+        // raw text and inlines them so the model has the real payload.
+        QString rawCtx;
+        const int rowId = bodyJson.value("rowId").toInt(0);
+        if (rowId > 0 && m_wiring.history) {
+            const QString req  = m_wiring.history->requestRawById(rowId);
+            const QString resp = m_wiring.history->responseRawById(rowId);
+            if (!req.isEmpty())  rawCtx += "\n\n--- captured request ---\n" + req.left(8 * 1024);
+            if (!resp.isEmpty()) rawCtx += "\n\n--- captured response ---\n" + resp.left(8 * 1024);
+        }
+        const QString prompt =
+            "You are a senior application security analyst. Triage this "
+            "finding from a passive proxy scan. Be concise (under 200 "
+            "words). Cover: real impact, suggested fix in one line, and "
+            "false-positive likelihood as low/med/high.\n\n"
+            "kind: " + kind + "\nseverity: " + severity +
+            "\nsummary: " + summary + "\nevidence: " + evidence + rawCtx;
+
+        QJsonObject ollamaReq;
+        ollamaReq["model"]   = model;
+        ollamaReq["prompt"]  = prompt;
+        ollamaReq["stream"]  = false;
+        const QByteArray ollamaBody = QJsonDocument(ollamaReq).toJson(QJsonDocument::Compact);
+
+        // Crude HTTP/1.1 POST to Ollama. Synchronous; the snapshot
+        // poll has its own timeout so the user sees the spinner.
+        const QUrl u(ollama + "/api/generate");
+        QTcpSocket sock;
+        sock.connectToHost(u.host(), static_cast<quint16>(u.port(11434)));
+        if (!sock.waitForConnected(2000)) {
+            QJsonObject r;
+            r["ok"]     = false;
+            r["error"]  = "ollama unreachable at " + ollama;
+            r["model"]  = model;
+            r["triage"] = "(heuristic) " + severity.toUpper() + ": " + summary
+                + " -- evidence suggests "
+                + (severity == "critical" || severity == "high"
+                    ? "real impact; verify and patch"
+                    : "low-impact informational; deprioritize")
+                + ". Fix: see kind=" + kind + " docs.";
+            return httpJson(200, r);
+        }
+        QByteArray req;
+        req += "POST /api/generate HTTP/1.1\r\n";
+        req += "Host: " + u.host().toUtf8() + ":" + QByteArray::number(u.port(11434)) + "\r\n";
+        req += "Content-Type: application/json\r\n";
+        req += "Content-Length: " + QByteArray::number(ollamaBody.size()) + "\r\n";
+        req += "Connection: close\r\n\r\n";
+        req += ollamaBody;
+        sock.write(req);
+        sock.waitForBytesWritten(2000);
+        QByteArray resp;
+        while (sock.waitForReadyRead(15'000)) {
+            resp.append(sock.readAll());
+            if (sock.state() == QAbstractSocket::UnconnectedState) break;
+        }
+        const int hdrEnd = resp.indexOf("\r\n\r\n");
+        const QJsonDocument d = hdrEnd > 0
+            ? QJsonDocument::fromJson(resp.mid(hdrEnd + 4))
+            : QJsonDocument();
+        QJsonObject r;
+        r["ok"]     = true;
+        r["model"]  = model;
+        r["triage"] = d.isObject()
+            ? d.object().value("response").toString()
+            : QString("(empty response from ollama)");
+        return httpJson(200, r);
+    }
+
+    // ---- Cookie tomography -------------------------------------------
+    // GET /api/cookies -- inventory of every cookie captured per host
+    // with security flag breakdown. Replaces the diff'ing that pen-testers
+    // do by hand when a target sets dozens of cookies across login.
+    if (path == "/api/cookies") {
+        if (!m_wiring.sessions)
+            return httpJson(200, QJsonObject{{ "hosts", QJsonArray() }});
+        QJsonArray hosts;
+        for (const auto &h : m_wiring.sessions->sessions()) {
+            QJsonObject hostObj;
+            hostObj["host"]       = h.host;
+            hostObj["lastSeenMs"] = static_cast<double>(h.lastSeen);
+            hostObj["autoInject"] = h.autoInject;
+            QJsonArray cookies;
+            int httpOnlyCnt = 0, secureCnt = 0, sameSiteCnt = 0;
+            for (const auto &c : h.cookies) {
+                QJsonObject co;
+                co["name"]     = c.name;
+                co["valueLen"] = c.value.size();
+                co["path"]     = c.path;
+                co["expires"]  = c.expires;
+                co["httpOnly"] = c.httpOnly;
+                co["secure"]   = c.secure;
+                co["sameSite"] = c.sameSite;
+                if (c.httpOnly) ++httpOnlyCnt;
+                if (c.secure)   ++secureCnt;
+                if (!c.sameSite.isEmpty()) ++sameSiteCnt;
+                cookies.append(co);
+            }
+            hostObj["cookies"]      = cookies;
+            hostObj["count"]        = cookies.size();
+            hostObj["httpOnlyPct"]  = cookies.size()
+                ? int(100 * httpOnlyCnt / cookies.size()) : 0;
+            hostObj["securePct"]    = cookies.size()
+                ? int(100 * secureCnt   / cookies.size()) : 0;
+            hostObj["sameSitePct"]  = cookies.size()
+                ? int(100 * sameSiteCnt / cookies.size()) : 0;
+            hosts.append(hostObj);
+        }
+        QJsonObject root; root["hosts"] = hosts;
+        return httpJson(200, root);
+    }
+
+    // ---- Built-in extensions install ---------------------------------
+    // POST /api/extensions/install-builtins -- copies the extensions
+    // shipped with the repo (extensions/*.js) into the user's
+    // extensions dir. Removes the "go find the file in github and
+    // copy it yourself" onboarding step.
+    if (path == "/api/extensions/install-builtins") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+        const QString destDir = m_wiring.extensions->extensionsDir();
+        QDir().mkpath(destDir);
+        // Walk our shipped extensions dir. We look for it relative to
+        // uiDir (which already points at the repo's ui-v2) -- one level
+        // up from there is the repo root, with extensions/ alongside.
+        QString srcDir = m_wiring.uiDir + "/../extensions";
+        if (!QFileInfo::exists(srcDir))
+            srcDir = QCoreApplication::applicationDirPath() + "/../../../../extensions";
+        if (!QFileInfo::exists(srcDir))
+            return okJson({{ "ok", false }, { "error",
+                "couldn't locate built-in extensions dir" }});
+        QDir d(srcDir);
+        const QStringList files = d.entryList({"*.js"}, QDir::Files);
+        int installed = 0;
+        for (const QString &f : files) {
+            const QString src = d.absoluteFilePath(f);
+            const QString dst = destDir + "/" + f;
+            QFile::remove(dst);
+            if (QFile::copy(src, dst)) ++installed;
+        }
+        if (m_wiring.extensions) m_wiring.extensions->reload();
+        return okJson({{ "ok", true }, { "installed", installed },
+                       { "destDir", destDir }});
     }
 
     // ---- OpenAPI / Swagger spec import -------------------------------

@@ -163,6 +163,30 @@ void PassiveScanner::checkResponse(int rowId,
     const QString contentType = headerOf(resp.headers, "Content-Type");
     const bool html = isHtmlResponse(contentType);
 
+    // Protocol-level fingerprinting. Flag gRPC and GraphQL endpoints
+    // so the user can immediately see them in the findings panel and
+    // use the right decoder (grpc-frame / graphql-parse).
+    if (contentType.contains("application/grpc", Qt::CaseInsensitive)) {
+        addFinding(rowId, req, resp, "info", "protocol-grpc",
+                   "gRPC endpoint detected",
+                   "content-type=" + contentType
+                   + "; use grpc-frame decoder + check for grpc-status in trailers");
+    } else if (req.path == "/graphql" || req.path.endsWith("/graphql")
+               || contentType.contains("application/graphql", Qt::CaseInsensitive)) {
+        QString detail = "path looks GraphQL-shaped";
+        // Cheap introspection sniff -- if the response body contains
+        // "__schema" or "__typename" the endpoint allowed introspection.
+        if (QString::fromUtf8(resp.body.left(8 * 1024))
+                .contains("__schema", Qt::CaseInsensitive)) {
+            detail = "introspection ENABLED -- production servers usually disable";
+            addFinding(rowId, req, resp, "low", "graphql-introspection",
+                       "GraphQL introspection exposed", detail);
+        } else {
+            addFinding(rowId, req, resp, "info", "protocol-graphql",
+                       "GraphQL endpoint detected", detail);
+        }
+    }
+
     if (html && resp.statusCode >= 200 && resp.statusCode < 400) {
         struct Rule {
             const char *header;

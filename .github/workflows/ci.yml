@@ -1,0 +1,104 @@
+name: ci
+
+on:
+  push:
+    branches: [Nullock]
+  pull_request:
+    branches: [Nullock]
+  workflow_dispatch:
+
+env:
+  QT_VERSION: 6.7.3
+
+jobs:
+  marketplace-json:
+    name: marketplace.json schema check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: jq is installed
+        run: jq --version
+      - name: marketplace.json parses
+        run: jq -e '.version, .updated, (.extensions | length > 0)' extensions/marketplace.json
+      - name: every extension has required fields
+        run: |
+          jq -e '
+            .extensions
+            | all(
+                (has("id")      and (.id      | type) == "string") and
+                (has("name")    and (.name    | type) == "string") and
+                (has("summary") and (.summary | type) == "string") and
+                (has("version") and (.version | type) == "string") and
+                (has("author")  and (.author  | type) == "string") and
+                (has("url")     and (.url     | startswith("https://")))
+              )
+          ' extensions/marketplace.json
+      - name: docs site mirror is up to date
+        run: diff -q extensions/marketplace.json docs/marketplace/marketplace.json
+
+  python-labs:
+    name: labs syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: every lab compiles
+        run: |
+          for lab in labs/*/app.py; do
+            python -m py_compile "$lab"
+          done
+
+  cli-smoke:
+    name: nullock CLI syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n
+        run: bash -n bin/nullock
+
+  build-windows:
+    name: build NullockApp (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtquickcontrols2 qtwebsockets'
+          # Sql + Network + Concurrent are in the base install.
+      - name: install nghttp2 (vcpkg)
+        run: |
+          vcpkg install nghttp2:x64-windows
+      - name: configure
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows" `
+            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
+      - name: build NullockApp
+        run: cmake --build build --config Release --target NullockApp
+      - name: smoke
+        # httpbin is flaky; allow up to one failure.
+        run: |
+          $out = .\build\Src\App\Release\NullockApp.exe --smoke-test
+          $out | Out-String
+          $fails = ($out | Select-String "^FAIL").Count
+          if ($fails -gt 1) { exit 1 }
+
+  fuzz-corpus-replay:
+    name: replay fuzz corpus (standalone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: skip if no corpus
+        run: |
+          if [ ! -d tests/fuzz/corpus ] || [ -z "$(ls -A tests/fuzz/corpus 2>/dev/null)" ]; then
+            echo "no fuzz corpus checked in -- skipping (intended)"
+            exit 0
+          fi
+          echo "corpus replay would happen here once corpus is checked in"
+          # NULLOCK_FUZZ + standalone-driver build steps go here in a
+          # future iteration -- currently the fuzz harnesses build but
+          # the corpus is gitignored.

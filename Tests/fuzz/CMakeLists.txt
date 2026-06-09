@@ -32,6 +32,9 @@ add_nullock_fuzzer(fuzz_ws_parser
 add_nullock_fuzzer(fuzz_har_import
                    fuzz_har_import.cpp
                    "Storage;Qt6::Core")
+add_nullock_fuzzer(fuzz_http1_parser
+                   fuzz_http1_parser.cpp
+                   "Proxy;Qt6::Core")
 
 # Seed corpora to bootstrap libFuzzer.
 add_custom_target(fuzz_corpora ALL

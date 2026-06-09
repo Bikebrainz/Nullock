@@ -14,6 +14,10 @@ labs/
   06-graphql/         # GraphQL introspection + over-fetching            (5006)
   07-ssti/            # Jinja2 SSTI -> RCE via __class__.__mro__         (5007)
   08-oauth-state/     # OAuth callback with missing/unverified state     (5008)
+  09-race-condition/  # Time-of-check/time-of-use bank transfer race    (5009)
+  10-deserialization/ # Pickle untrusted -> RCE                          (5010)
+  11-prototype-pollution/  # Deep-merge __class__ poisoning             (5011)
+  12-broken-access/   # Admin endpoint without auth check                (5012)
 ```
 
 ## Why labs?

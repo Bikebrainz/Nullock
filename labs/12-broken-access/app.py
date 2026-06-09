@@ -1,0 +1,59 @@
+"""
+Lab 12 -- Broken access control via missing auth check on admin endpoint.
+
+The /admin/delete-user endpoint accepts a user id and deletes the
+account. There's a /login that grants a session cookie, and the
+non-admin endpoints check it -- but /admin/delete-user does not.
+A regular logged-in user (or even an anonymous request) can purge
+the user database.
+
+Run:
+    pip install flask
+    python app.py
+
+In Nullock:
+    1. POST /login {"user":"alice","password":"secret"} -- get session cookie.
+    2. GET /users -- list, auth required.
+    3. POST /admin/delete-user?id=2 with NO cookie. Should require admin.
+       Actual response: { "deleted": "bob" }. Forbidden bug.
+    4. GET /users again -- bob is gone.
+    5. Real fix: every admin route uses a single decorator that checks
+       BOTH "logged in" AND "is_admin". Most often-missed: lateral
+       admin endpoints under "internal" prefixes.
+"""
+
+from flask import Flask, request, jsonify, session
+
+app = Flask(__name__)
+app.secret_key = "lab-12"
+
+USERS = {1: "alice", 2: "bob", 3: "carol"}
+
+def require_session():
+    if "user" not in session:
+        return jsonify(error="login required"), 401
+    return None
+
+@app.route("/login", methods=["POST"])
+def login():
+    body = request.get_json(silent=True) or {}
+    if body.get("user") and body.get("password"):
+        session["user"] = body["user"]
+        session["is_admin"] = False
+        return jsonify(ok=True)
+    return jsonify(error="bad creds"), 401
+
+@app.route("/users")
+def users():
+    if (err := require_session()): return err
+    return jsonify(users=USERS)
+
+@app.route("/admin/delete-user", methods=["POST"])
+def delete_user():
+    # VULN: no auth check at all. Should require_session() + check is_admin.
+    uid = int(request.args.get("id", "0"))
+    name = USERS.pop(uid, None)
+    return jsonify(deleted=name)
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5012, debug=False)

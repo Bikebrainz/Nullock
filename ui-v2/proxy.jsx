@@ -744,6 +744,7 @@ function CodecBar({ onRun }) {
     "jwt-decode",
     "hex-decode", "hex-encode",
     "html-decode",
+    "graphql-parse", "grpc-frame", "cbor-decode", "saml-decode",
   ];
   return (
     <div style={{
@@ -924,6 +925,154 @@ function runCodec(name, input) {
         const ta = document.createElement("textarea");
         ta.innerHTML = input;
         return ta.value;
+      }
+      case "graphql-parse": {
+        // Pretty-print a GraphQL operation. Pulls operation type/name
+        // out, indents braces, flags introspection queries.
+        const txt = String(input || "").trim();
+        // Quick parse: find operation type keyword + operation name.
+        const m = txt.match(/^\s*(query|mutation|subscription)\s*([A-Za-z_][A-Za-z0-9_]*)?/i);
+        const opType = m ? m[1] : "(anonymous query)";
+        const opName = m && m[2] ? m[2] : "";
+        const out = ["// operation: " + opType + (opName ? " " + opName : "")];
+        if (txt.includes("__schema") || txt.includes("__type")) {
+          out.push("// [!] introspection query -- prod servers usually disable this");
+        }
+        // Cheap indent: insert newline + 2-space indent after { and before }
+        let depth = 0;
+        let formatted = "";
+        for (const c of txt) {
+          if (c === "{") {
+            formatted += " {\n" + "  ".repeat(++depth);
+          } else if (c === "}") {
+            depth = Math.max(0, depth - 1);
+            formatted += "\n" + "  ".repeat(depth) + "}";
+          } else if (c === "\n") {
+            formatted += "\n" + "  ".repeat(depth);
+          } else {
+            formatted += c;
+          }
+        }
+        out.push("", formatted.trim());
+        return out.join("\n");
+      }
+      case "grpc-frame": {
+        // gRPC = 5-byte length-prefix + protobuf payload. Walk the buffer
+        // showing each frame's (compressed-flag, length, payload-hex-preview).
+        // Input is interpreted as base64 if it looks like b64, else raw bytes.
+        let bytes;
+        const probe = String(input || "");
+        if (/^[A-Za-z0-9+/=\s]+$/.test(probe.replace(/\s/g, ""))) {
+          try {
+            const bin = atob(probe.replace(/\s/g, ""));
+            bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          } catch (_e) {
+            bytes = new Uint8Array(probe.length);
+            for (let i = 0; i < probe.length; i++) bytes[i] = probe.charCodeAt(i) & 0xff;
+          }
+        } else {
+          bytes = new Uint8Array(probe.length);
+          for (let i = 0; i < probe.length; i++) bytes[i] = probe.charCodeAt(i) & 0xff;
+        }
+        const out = [];
+        let off = 0, frame = 0;
+        while (off + 5 <= bytes.length) {
+          const compressed = bytes[off];
+          const len = (bytes[off+1] << 24) | (bytes[off+2] << 16)
+                    | (bytes[off+3] << 8)  |  bytes[off+4];
+          const payload = bytes.slice(off + 5, off + 5 + len);
+          const hex = Array.from(payload.slice(0, 64))
+                          .map(b => b.toString(16).padStart(2, "0")).join(" ");
+          out.push("// frame " + frame + ": compressed=" + compressed + ", len=" + len);
+          out.push(hex + (payload.length > 64 ? " ..." : ""));
+          out.push("");
+          off += 5 + len;
+          frame++;
+          if (frame > 100) { out.push("// truncated after 100 frames"); break; }
+        }
+        if (off < bytes.length) {
+          out.push("// trailing " + (bytes.length - off) + " bytes (partial frame)");
+        }
+        return out.join("\n");
+      }
+      case "cbor-decode": {
+        // RFC 8949 CBOR decoder, partial. Handles major types 0/1/2/3/4/5
+        // for inspecting WebAuthn / COSE payloads. No tag handling.
+        const decode = (bytes, off) => {
+          if (off >= bytes.length) return [null, off];
+          const ib = bytes[off++];
+          const mt = ib >> 5, ai = ib & 0x1f;
+          const read = (len) => {
+            let n = 0; for (let i = 0; i < len; i++) n = n * 256 + bytes[off++];
+            return n;
+          };
+          let n = ai;
+          if (ai >= 24 && ai <= 27) n = read([1,2,4,8][ai-24]);
+          if (mt === 0) return [n, off];                       // uint
+          if (mt === 1) return [-1 - n, off];                  // negint
+          if (mt === 2) {                                       // bytes
+            const b = bytes.slice(off, off + n); off += n;
+            return ["bytes(" + n + "):" +
+                    Array.from(b.slice(0,32)).map(x=>x.toString(16).padStart(2,"0")).join(""), off];
+          }
+          if (mt === 3) {                                       // text
+            const t = new TextDecoder().decode(bytes.slice(off, off+n));
+            off += n; return [t, off];
+          }
+          if (mt === 4) {                                       // array
+            const arr = []; for (let i = 0; i < n; i++) { const [v, no] = decode(bytes, off); arr.push(v); off = no; }
+            return [arr, off];
+          }
+          if (mt === 5) {                                       // map
+            const obj = {}; for (let i = 0; i < n; i++) {
+              const [k, ko] = decode(bytes, off); off = ko;
+              const [v, vo] = decode(bytes, off); off = vo;
+              obj[String(k)] = v;
+            }
+            return [obj, off];
+          }
+          return ["(unsupported major=" + mt + ")", off];
+        };
+        const txt = String(input || "");
+        let bytes;
+        if (/^[0-9a-fA-F\s]+$/.test(txt.trim())) {
+          const h = txt.replace(/\s/g, "");
+          bytes = new Uint8Array(h.length / 2);
+          for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(h.substr(i*2, 2), 16);
+        } else {
+          let bin;
+          try { bin = atob(txt.replace(/\s/g, "")); }
+          catch (_e) { bin = txt; }
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
+        }
+        const [val, off] = decode(bytes, 0);
+        return JSON.stringify(val, null, 2) +
+               (off < bytes.length ? "\n\n// trailing " + (bytes.length - off) + " bytes" : "");
+      }
+      case "saml-decode": {
+        // SAML responses are URL-encoded base64-encoded deflate-compressed
+        // XML (sometimes just b64-encoded XML, for POST binding). Try the
+        // simpler path first; fall through to a raw b64-decode.
+        let raw = decodeURIComponent(String(input || "").trim());
+        // base64 -> bytes
+        let b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+        while (b64.length % 4) b64 += "=";
+        let bin;
+        try { bin = atob(b64); } catch (_e) { return "// not base64: " + raw.slice(0, 200); }
+        // Heuristic: if it starts with "<", it's already XML.
+        if (bin.charCodeAt(0) === 0x3c) {
+          // pretty-print: insert newlines between tags
+          return bin.replace(/></g, ">\n<");
+        }
+        // Otherwise it's likely deflate-compressed (Redirect binding).
+        // We don't ship a deflate impl in pure JS here -- show the
+        // b64-decoded bytes as hex so the user can run it through a
+        // separate inflate step.
+        return "// looks like deflate-compressed SAML; b64-decoded hex:\n" +
+               Array.from(bin).map(c => c.charCodeAt(0).toString(16).padStart(2,"0"))
+                               .join(" ").slice(0, 2048);
       }
     }
     return input;

@@ -1,4 +1,5 @@
 #include "http2_client.hpp"
+#include "h2_events.hpp"
 
 #include <QByteArray>
 #include <QList>
@@ -32,6 +33,7 @@ struct H2RequestState {
     bool    headersComplete = false;
     bool    hadError = false;
     QString errorMessage;
+    QString connName;     // for H2EventLog correlation
 
     int statusCode = 0;
     QList<QPair<QString, QString>> headers;
@@ -101,12 +103,29 @@ int onDataChunk(nghttp2_session *,
 
 int onFrameRecv(nghttp2_session *, const nghttp2_frame *frame, void *userData) {
     auto *st = static_cast<H2RequestState *>(userData);
-    if (frame->hd.stream_id != st->streamId) return 0;
+    // Surface every frame (not just our stream) into the H2 event log
+    // so the user can see SETTINGS / PING / GOAWAY too.
+    Nullock::Proxy::H2EventLog::instance()->noteFrame(
+        st->connName,
+        frame->hd.type,
+        frame->hd.flags,
+        frame->hd.stream_id,
+        static_cast<qint64>(frame->hd.length),
+        /*sent=*/false);
     if (frame->hd.type == NGHTTP2_HEADERS
-        && (frame->hd.flags & NGHTTP2_FLAG_END_HEADERS)) {
+        && (frame->hd.flags & NGHTTP2_FLAG_END_HEADERS)
+        && frame->hd.stream_id == st->streamId) {
         st->headersComplete = true;
+        Nullock::Proxy::H2EventLog::instance()->noteResponseStatus(
+            st->connName, st->streamId, st->statusCode);
     }
-    if (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) {
+    if (frame->hd.type == NGHTTP2_RST_STREAM) {
+        Nullock::Proxy::H2EventLog::instance()->noteRstStream(
+            st->connName, frame->hd.stream_id,
+            frame->rst_stream.error_code);
+    }
+    if ((frame->hd.flags & NGHTTP2_FLAG_END_STREAM)
+        && frame->hd.stream_id == st->streamId) {
         st->streamDone = true;
     }
     return 0;
@@ -114,6 +133,7 @@ int onFrameRecv(nghttp2_session *, const nghttp2_frame *frame, void *userData) {
 
 int onStreamClose(nghttp2_session *, int32_t streamId, uint32_t errCode, void *userData) {
     auto *st = static_cast<H2RequestState *>(userData);
+    Nullock::Proxy::H2EventLog::instance()->noteStreamClosed(st->connName, streamId);
     if (streamId != st->streamId) return 0;
     st->streamDone = true;
     if (errCode != NGHTTP2_NO_ERROR) {
@@ -172,6 +192,7 @@ H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req)
     nghttp2_session_callbacks_set_on_stream_close_callback(cbs, onStreamClose);
 
     H2RequestState state;
+    state.connName = req.host + ":" + QString::number(req.port);
 
     nghttp2_session *session = nullptr;
     if (nghttp2_session_client_new(&session, cbs, &state) != 0) {
@@ -251,6 +272,13 @@ H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req)
 
     state.streamId = nghttp2_submit_request(session, nullptr, nvs.data(),
                                             nvs.size(), dpPtr, nullptr);
+    if (state.streamId > 0) {
+        Nullock::Proxy::H2EventLog::instance()->noteRequestHeader(
+            state.connName, state.streamId, req.method, req.path);
+        Nullock::Proxy::H2EventLog::instance()->noteFrame(
+            state.connName, /*HEADERS*/1, /*flags*/0, state.streamId,
+            /*bytes*/0, /*sent=*/true);
+    }
     if (state.streamId < 0) {
         nghttp2_session_del(session);
         nghttp2_session_callbacks_del(cbs);

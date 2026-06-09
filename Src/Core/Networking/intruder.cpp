@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <QThread>
 #include <QtConcurrent/QtConcurrent>
 
 namespace Nullock::Core {
@@ -180,6 +181,23 @@ void Intruder::runWorker(const QStringList &payloadsCopy,
 
         const int row = i;
         const int statusCode = result.ok ? result.parsed.statusCode : 0;
+        // Rate-limit awareness. If the target returns 429, pause for
+        // Retry-After (capped at 60s so a malicious header can't park
+        // the whole fuzz run). Without this, intruder runs against
+        // production-grade WAFs hit a wall of 429s the moment they
+        // exceed the per-source limit, and the entire payload set
+        // returns as 429 noise.
+        if (statusCode == 429) {
+            int waitMs = 1000;
+            for (const auto &h : result.parsed.headers) {
+                if (h.first.compare("Retry-After", Qt::CaseInsensitive) != 0) continue;
+                bool ok = false;
+                const int secs = h.second.toInt(&ok);
+                if (ok && secs > 0 && secs < 60) waitMs = secs * 1000;
+                break;
+            }
+            QThread::msleep(waitMs);
+        }
         const int size       = result.parsed.body.size();
         const QString errMsg = result.ok ? QString() : result.errorMessage;
 
