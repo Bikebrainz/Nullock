@@ -3542,6 +3542,166 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "queued", rowIds.size() }});
     }
 
+    // ---- GraphQL active probe ----------------------------------------
+    // POST /api/graphql/probe  { url, headers?: {Name: Value, ...} }
+    //
+    // Fires five distinct GraphQL attack probes against the target and
+    // emits one finding per real hit. Burp Pro has a separate add-on
+    // ($ extra) for this; we ship it native.
+    //
+    // Probes:
+    //   1. Introspection enabled — fires the standard __schema query and
+    //      flags if the server returns schema data in production.
+    //   2. Field suggestion leak — sends a deliberate typo; if the
+    //      response includes "Did you mean ...?" the server is leaking
+    //      schema fragments even with introspection off.
+    //   3. Alias-based amplification — fires 100 identical aliased
+    //      fields in one query; if the server accepts it the endpoint
+    //      lacks alias-count limits and is exposed to query-amplification
+    //      DoS / auth-rate-limit bypass.
+    //   4. Query-depth bypass — fires a nested query 10 levels deep; if
+    //      accepted, depth limits are missing.
+    //   5. Batched-query bypass — fires [{q1}, {q2}, ...] array form; if
+    //      the server processes both, rate limiting can be batch-bypassed.
+    if (path == "/api/graphql/probe") {
+        if (!m_wiring.scanner)
+            return okJson({{ "ok", false }, { "error", "no scanner" }});
+        const QString url = bodyJson.value("url").toString();
+        if (url.isEmpty())
+            return okJson({{ "ok", false }, { "error", "url required" }});
+        const QUrl u(url);
+        if (!u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "invalid url" }});
+        const QJsonObject extraHeaders = bodyJson.value("headers").toObject();
+
+        // Build probe queries up front; pure data so we can fan them out.
+        struct Probe {
+            QByteArray name;
+            QByteArray queryJson;
+            QByteArray expectMarker;     // substring -> "fired" finding
+            QByteArray missMarker;       // substring -> "negative" (no finding)
+            const char *severity;
+            const char *kind;
+            const char *summary;
+            const char *fixHint;
+        };
+        const QList<Probe> probes = {
+            {
+                "introspection",
+                R"({"query":"{__schema{types{name}}}"})",
+                "\"__schema\"", "",
+                "medium", "graphql-introspection-active",
+                "GraphQL introspection enabled in production",
+                "disable introspection or restrict to dev environments",
+            },
+            {
+                "field-suggestion",
+                R"({"query":"{ usrr { id } }"})",
+                "Did you mean",   "",
+                "low", "graphql-field-suggestion",
+                "GraphQL leaks schema via field suggestions",
+                "set NoSchemaIntrospectionCustomRule or disable suggestions",
+            },
+            {
+                "alias-amplification",
+                // 100 aliased __typename calls -- cheap to assemble,
+                // expensive for the server if there's no alias cap.
+                {},  // built below
+                "\"data\"", "",
+                "high", "graphql-alias-amplification",
+                "GraphQL accepts 100+ aliased fields in one query",
+                "set max-alias-count or enforce query-cost limits",
+            },
+            {
+                "depth-bypass",
+                R"({"query":"{a{a{a{a{a{a{a{a{a{a{__typename}}}}}}}}}}}"})",
+                "\"data\"", "Cannot query field",
+                "medium", "graphql-depth-bypass",
+                "GraphQL allows 10-level deep nested query (no depth limit)",
+                "set max query depth (graphql-depth-limit etc.)",
+            },
+            {
+                "batch-bypass",
+                R"([{"query":"{__typename}"},{"query":"{__typename}"}])",
+                "[", "",
+                "low", "graphql-batched-queries",
+                "GraphQL accepts batched-array queries (rate-limit bypass)",
+                "disable batched mode or rate-limit per-operation",
+            },
+        };
+        // Build the alias-amplification body.
+        QByteArray aliasQuery = "{\"query\":\"{";
+        for (int i = 0; i < 100; ++i) {
+            aliasQuery += "a" + QByteArray::number(i) + ":__typename ";
+        }
+        aliasQuery += "}\"}";
+        QList<Probe> work = probes;
+        for (auto &p : work) {
+            if (p.queryJson.isEmpty()) p.queryJson = aliasQuery;
+        }
+
+        Wiring w = m_wiring;
+        const QString host = u.host();
+        const int port = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool useTls = (u.scheme() == "https");
+        const QString reqPath = u.path().isEmpty() ? "/graphql" : u.path();
+
+        (void)QtConcurrent::run([w, host, port, useTls, reqPath, work, extraHeaders]() {
+            for (const auto &p : work) {
+                // Hand-craft an HTTP/1.1 POST. We use HttpClient::send for
+                // wire-level TLS/keepalive; raw assembly is fine here
+                // because we control every byte.
+                QByteArray bytes;
+                bytes  = "POST " + reqPath.toUtf8() + " HTTP/1.1\r\n";
+                bytes += "Host: " + host.toUtf8() + "\r\n";
+                bytes += "Content-Type: application/json\r\n";
+                bytes += "User-Agent: Nullock/graphql-probe\r\n";
+                bytes += "Accept: application/json\r\n";
+                for (auto it = extraHeaders.begin(); it != extraHeaders.end(); ++it) {
+                    bytes += it.key().toUtf8() + ": "
+                          + it.value().toString().toUtf8() + "\r\n";
+                }
+                bytes += "Content-Length: "
+                       + QByteArray::number(p.queryJson.size()) + "\r\n";
+                bytes += "Connection: close\r\n\r\n";
+                bytes += p.queryJson;
+
+                Nullock::Core::HttpClient client;
+                const auto r = client.send(host, static_cast<quint16>(port),
+                                           useTls, bytes);
+                if (!r.ok) continue;
+                const QByteArray respBody = r.parsed.body;
+
+                // Negative-marker check first (e.g. "Cannot query field"
+                // means depth probe was rejected -> no finding).
+                if (!p.missMarker.isEmpty()
+                    && respBody.contains(p.missMarker))
+                    continue;
+                // Positive-marker check: response must contain the
+                // expected indicator (e.g. "__schema" reflected back).
+                if (!respBody.contains(p.expectMarker))
+                    continue;
+                // Don't flag transport errors as findings.
+                if (r.parsed.statusCode >= 500) continue;
+
+                const QString fullUrl =
+                    QString("%1://%2%3").arg(useTls ? "https" : "http", host, reqPath);
+                if (w.scanner) {
+                    QMetaObject::invokeMethod(w.scanner, [w, p, host, fullUrl]() {
+                        w.scanner->reportFinding(
+                            0, QString::fromLatin1(p.severity),
+                            QString::fromLatin1(p.kind),
+                            QString::fromLatin1(p.summary),
+                            QString::fromLatin1(p.fixHint),
+                            host, fullUrl);
+                    }, Qt::QueuedConnection);
+                }
+            }
+        });
+        return okJson({{ "queued", static_cast<int>(work.size()) },
+                       { "target", url }});
+    }
+
     // ---- port scanner ------------------------------------------------
     // POST /api/portscan/start { host | hosts | cidr, preset|ports,
     //                            timeoutMs?, parallel?, banner? }

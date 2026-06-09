@@ -217,6 +217,25 @@ Test-Endpoint "sequencer flags high-entropy tokens as looks-random" {
     return $j.verdict -eq "looks-random"
 }
 
+Write-Host "`n=== GraphQL active probe ===" -ForegroundColor Cyan
+Test-Endpoint "graphql probe rejects empty url" {
+    $body = '{}'
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/graphql/probe" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 5
+        $j = $r.Content | ConvertFrom-Json
+        return $j.ok -eq $false
+    } catch { return $false }
+}
+
+Test-Endpoint "graphql probe queues 5 attack probes for a real target" {
+    # We don't care if example.com actually has GraphQL; we just want
+    # the endpoint to accept the work and report 5 queued.
+    $body = '{"url":"https://example.com/graphql"}'
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/graphql/probe" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 5
+    $j = $r.Content | ConvertFrom-Json
+    return ($j.ok -eq $true) -and ($j.queued -eq 5)
+}
+
 # Cleanup
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500

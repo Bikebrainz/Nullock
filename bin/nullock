@@ -602,6 +602,28 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_graphql() {
+    # nullock graphql <url> [header:value ...]
+    # Fires 5 GraphQL active probes against the target.
+    [[ -n ${1-} ]] || die "usage: nullock graphql <url> [Header:Value ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"
+        local first=1
+        for h in "$@"; do
+            local name=${h%%:*}
+            local val=${h#*:}
+            val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/graphql/probe \
+        "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_cve() {
     # Just findings filtered to the cve-correlated kind so the CVE
     # tags are surfaced cleanly.
@@ -748,6 +770,9 @@ Above-Burp features (v4/v5):
                                          activity equivalent)
   nullock cve                            findings filtered to CVE-correlated,
                                          with CVE id / CVSS / fix version
+  nullock graphql <url> [hdr:val ...]    5 active GraphQL probes (introspection,
+                                         field suggestion, alias amplification,
+                                         depth bypass, batched-query bypass)
 
 EOF
 }
@@ -790,6 +815,7 @@ case ${1:-help} in
     authz)         shift; cmd_authz "$@"         ;;
     grouped)       shift; cmd_grouped "$@"       ;;
     cve)           shift; cmd_cve "$@"           ;;
+    graphql)       shift; cmd_graphql "$@"       ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
