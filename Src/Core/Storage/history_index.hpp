@@ -80,6 +80,11 @@ public:
     QString loadFullRequestRaw(int id) const;
     QString loadFullResponseRaw(int id) const;
 
+    // All ids in ascending order. Used by exports (Postman / SARIF /
+    // HAR) that want to walk every captured row, including those
+    // already evicted from the in-memory ProxyModel window.
+    QList<int> allIds() const;
+
 private:
     bool ensureSchema();
 

@@ -2193,10 +2193,36 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                           : QString("Nullock export");
         info["schema"] = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
         QJsonArray items;
-        const int n = m_wiring.history->rowCount();
-        for (int i = 0; i < n; ++i) {
-            const auto *req = m_wiring.history->requestAt(i);
-            const auto *resp = m_wiring.history->responseAt(i);
+        // Iterate by id via HistoryIndex when available so exports cover
+        // the full captured history, not just the in-memory window.
+        // Falls back to the windowed model when SQLite isn't open.
+        QList<int> ids;
+        auto *fullIdx = m_wiring.projectStore
+                            ? m_wiring.projectStore->historyIndex()
+                            : nullptr;
+        if (fullIdx && fullIdx->isOpen()) {
+            ids = fullIdx->allIds();
+        } else {
+            const int n = m_wiring.history->rowCount();
+            for (int i = 0; i < n; ++i) {
+                const auto *r = m_wiring.history->requestAt(i);
+                if (r) ids.append(m_wiring.history->firstId() + i);
+            }
+        }
+        Nullock::Proxy::HttpRequest  scratchReq;
+        Nullock::Proxy::HttpResponse scratchResp;
+        for (int id : ids) {
+            const Nullock::Proxy::HttpRequest  *req  = m_wiring.history->requestById(id);
+            const Nullock::Proxy::HttpResponse *resp = m_wiring.history->responseById(id);
+            if (!req && fullIdx && fullIdx->isOpen()) {
+                auto fr = fullIdx->loadFullRow(id);
+                if (fr.ok) {
+                    scratchReq  = std::move(fr.request);
+                    scratchResp = std::move(fr.response);
+                    req  = &scratchReq;
+                    resp = &scratchResp;
+                }
+            }
             if (!req) continue;
             if (req->method.startsWith("WS")) continue;
             QJsonObject item;

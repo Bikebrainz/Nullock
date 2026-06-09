@@ -265,6 +265,16 @@ QString HistoryIndex::loadFullResponseRaw(int id) const {
     return r.ok ? renderRawResponse(r.response) : QString();
 }
 
+QList<int> HistoryIndex::allIds() const {
+    QMutexLocker lk(&m_mutex);
+    QList<int> out;
+    if (!m_db.isOpen()) return out;
+    QSqlQuery q(m_db);
+    if (!q.exec("SELECT id FROM rows ORDER BY id ASC")) return out;
+    while (q.next()) out.append(q.value(0).toInt());
+    return out;
+}
+
 QJsonArray HistoryIndex::find(const QJsonObject &filters) const {
     QMutexLocker lk(&m_mutex);
     QJsonArray out;

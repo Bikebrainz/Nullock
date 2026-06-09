@@ -95,8 +95,23 @@ void SessionRules::clearAll() {
 
 bool SessionRules::matches(const SessionRule &r,
                            const QString &host, const QString &path) const {
-    return globToRx(r.hostGlob).match(host).hasMatch()
-        && globToRx(r.pathGlob).match(path).hasMatch();
+    // QRegularExpression caches compiled state lazily on first match,
+    // BUT we throw the object away after each call which discards the
+    // cache. Instead, keep a process-local memoization keyed by the
+    // glob string -- 99% of requests reuse the same handful of globs.
+    // Thread-safe access via the static QMutex.
+    static QMutex          cacheMu;
+    static QHash<QString, QRegularExpression> cache;
+    auto resolve = [](const QString &g) -> QRegularExpression {
+        QMutexLocker lk(&cacheMu);
+        auto it = cache.find(g);
+        if (it != cache.end()) return *it;
+        const QRegularExpression rx = globToRx(g);
+        cache.insert(g, rx);
+        return rx;
+    };
+    return resolve(r.hostGlob).match(host).hasMatch()
+        && resolve(r.pathGlob).match(path).hasMatch();
 }
 
 QString SessionRules::substitute(const QString &templ,
