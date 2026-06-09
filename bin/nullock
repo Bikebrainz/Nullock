@@ -457,7 +457,60 @@ cmd_openapi() {
             body+="}"
             post /api/openapi/import "$body" | pp
             ;;
-        *) die "usage: nullock openapi import <spec-file.json> [base-url]" ;;
+        export)
+            # Reverse: dump captured history as an OpenAPI 3.1 spec.
+            curl -sS --max-time 30 "$API/api/openapi/export" | pp
+            ;;
+        *) die "usage: nullock openapi {import <spec-file.json> [base-url]|export}" ;;
+    esac
+}
+
+cmd_h2() {
+    case ${1:-} in
+        streams)
+            curl -sS --max-time 5 "$API/api/h2/streams" | pp
+            ;;
+        events)
+            curl -sS --max-time 5 "$API/api/h2/events?since=${2:-0}" | pp
+            ;;
+        watch)
+            local since=0
+            while :; do
+                local resp
+                resp=$(curl -sS --max-time 5 "$API/api/h2/events?since=$since")
+                local count
+                count=$(echo "$resp" | "$JQ" '.events | length')
+                if [[ $count -gt 0 ]]; then
+                    echo "$resp" | "$JQ" -r '.events[] | "[" + (.ts|tostring) + "] " + .conn + " s" + (.streamId|tostring) + " " + .type + " " + (.bytes|tostring) + "B"'
+                    since=$(echo "$resp" | "$JQ" '.events | last | .ts')
+                fi
+                sleep 1
+            done
+            ;;
+        *) die "usage: nullock h2 {streams|events [since-ms]|watch}" ;;
+    esac
+}
+
+cmd_cookies() {
+    curl -sS --max-time 5 "$API/api/cookies" | pp
+}
+
+cmd_triage() {
+    # nullock triage <rowId> [kind] [severity] [summary] [evidence]
+    # Sends a finding-shaped triage request to the local Ollama model.
+    [[ -n ${1-} ]] || die "usage: nullock triage <rowId> [kind] [severity] [summary] [evidence]"
+    local body
+    body="{\"rowId\":$1,\"kind\":$(jsonq "${2:-protocol-graphql}"),\"severity\":$(jsonq "${3:-info}"),\"summary\":$(jsonq "${4:-Manual triage request}"),\"evidence\":$(jsonq "${5:-}")}"
+    post /api/triage/finding "$body" | pp
+}
+
+cmd_extensions() {
+    case ${1:-} in
+        install-builtins)
+            post /api/extensions/install-builtins | pp ;;
+        reload)
+            post /api/extensions/reload | pp ;;
+        *) die "usage: nullock extensions {install-builtins|reload}" ;;
     esac
 }
 
@@ -571,6 +624,24 @@ OpenAPI:
   nullock openapi import <spec.json> [base-url]
                                          walks paths/methods, emits one
                                          captured row per operation
+  nullock openapi export                 reverse: capture history -> OpenAPI 3.1
+
+HTTP/2 native:
+  nullock h2 streams                     all captured h2 streams + status
+  nullock h2 events [since-ms]           raw frame-level events
+  nullock h2 watch                       live frame tail
+
+Cookies:
+  nullock cookies                        per-host inventory + security score
+
+Triage:
+  nullock triage <rowId> [kind] [sev] [summary] [evidence]
+                                         AI triage via local Ollama
+
+Extensions:
+  nullock extensions install-builtins    copy aws_sigv4.js / identity_rotate.js
+                                         to your extensions dir
+  nullock extensions reload              reload all extensions from disk
 
 Export:
   nullock export nmap | sarif | postman | har
@@ -603,6 +674,10 @@ case ${1:-help} in
     session-rules) shift; cmd_session_rules "$@" ;;
     crawler)       shift; cmd_crawler "$@"       ;;
     openapi)       shift; cmd_openapi "$@"       ;;
+    h2)            shift; cmd_h2 "$@"            ;;
+    cookies)       shift; cmd_cookies "$@"       ;;
+    triage)        shift; cmd_triage "$@"        ;;
+    extensions)    shift; cmd_extensions "$@"    ;;
     project)       shift; cmd_project "$@"       ;;
     export)        shift; cmd_export "$@"        ;;
     help|-h|--help) cmd_help ;;

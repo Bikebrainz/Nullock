@@ -1870,9 +1870,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         r["description"] = QString("observed status %1").arg(st);
                         responses[QString::number(st)] = r;
                     }
-                    QJsonObject op;
-                    op["responses"] = responses;
-                    op["x-nullock-host"] = hit.key();
+                    // If this (path, method) was already seen on a
+                    // different host, MERGE rather than clobber: tack
+                    // the new host onto x-nullock-hosts (array) and
+                    // union the response codes.
+                    QJsonObject op = pathObj.value(mit.key()).toObject();
+                    QJsonArray  hosts = op.value("x-nullock-hosts").toArray();
+                    if (!hosts.contains(QJsonValue(hit.key())))
+                        hosts.append(hit.key());
+                    op["x-nullock-hosts"] = hosts;
+                    QJsonObject existingResp = op.value("responses").toObject();
+                    for (const QString &code : responses.keys())
+                        existingResp[code] = responses.value(code);
+                    op["responses"] = existingResp;
                     pathObj[mit.key()] = op;
                 }
                 paths[pit.key()] = pathObj;
