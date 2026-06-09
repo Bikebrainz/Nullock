@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Writing extensions -- Nullock docs</title>
+<link rel="stylesheet" href="docs.css" />
+</head><body>
+<nav>
+  <div class="brand"><a href="../">Nullock</a> / <a href=".">docs</a></div>
+  <div class="links">
+    <a href="getting-started.html">Getting started</a>
+    <a href="cli.html">CLI</a>
+    <a href="extensions.html" class="active">Extensions</a>
+    <a href="security-model.html">Security model</a>
+    <a href="../">Home</a>
+  </div>
+</nav>
+
+<main>
+<h1>Writing extensions</h1>
+<p class="lead">JavaScript plugins that mutate captured traffic. ~50-500 lines each.</p>
+
+<h2>The model</h2>
+<p>Nullock loads every <code>.js</code> file in your extensions directory into a sandboxed QJSEngine. Each extension can register hook functions:</p>
+<pre><code>nullock.onRequest  = function(req)  { /* mutate req, return new req */ };
+nullock.onResponse = function(req, resp) { /* mutate resp, return new resp */ };
+nullock.log("loaded my extension v1");</code></pre>
+
+<p>Hooks fire AFTER the user-defined Match &amp; Replace rules and AFTER session-rules variable substitution. They run on the proxy thread; do not block.</p>
+
+<h2>Request shape</h2>
+<pre><code>{
+  method:      "GET",
+  host:        "api.target.example",
+  port:        443,
+  path:        "/v1/users/42?embed=true",
+  httpVersion: "HTTP/1.1",
+  headers:     [["Host", "api.target.example"], ["Cookie", "sess=..."]],
+  body:        ""    // ArrayBuffer-ish string for bodied requests
+}</code></pre>
+<p>Return a modified object to swap; return falsy to leave it alone.</p>
+
+<h2>Response shape</h2>
+<pre><code>{
+  httpVersion:  "HTTP/1.1",
+  statusCode:   200,
+  reasonPhrase: "OK",
+  headers:      [["Content-Type", "application/json"], ...],
+  body:         "..."
+}</code></pre>
+
+<h2>What you can call</h2>
+<table>
+<tr><th>API</th><th>What it does</th></tr>
+<tr><td><code>nullock.log(msg)</code></td><td>Append to the extensions log panel (capped at last 200 lines)</td></tr>
+<tr><td><code>nullock.atob(s)</code></td><td>base64 decode</td></tr>
+<tr><td><code>nullock.btoa(s)</code></td><td>base64 encode</td></tr>
+<tr><td><code>nullock.sha256(s)</code></td><td>SHA-256 hex digest</td></tr>
+<tr><td><code>nullock.now()</code></td><td>epoch ms</td></tr>
+</table>
+
+<p>No <code>fetch</code>. No <code>setTimeout</code>. No DOM. No filesystem. No npm. This is a deliberate boundary -- extensions run on the proxy hot path and arbitrary network calls would break that.</p>
+
+<h2>Example: drop tracking headers</h2>
+<pre><code>(function() {
+  nullock.onRequest = function(req) {
+    const dropList = ["X-Track-Id", "X-User-Pixel", "Sec-CH-UA-Full"];
+    req.headers = req.headers.filter(h => !dropList.includes(h[0]));
+    return req;
+  };
+  nullock.log("drop-tracking: loaded");
+})();</code></pre>
+
+<h2>Example: bearer-token rotator</h2>
+<pre><code>(function() {
+  let tokens = ["Bearer aaa", "Bearer bbb", "Bearer ccc"];
+  let i = 0;
+  nullock.onRequest = function(req) {
+    for (let h of req.headers) {
+      if (h[0].toLowerCase() === "authorization") {
+        h[1] = tokens[i++ % tokens.length];
+        return req;
+      }
+    }
+    return req;
+  };
+  nullock.log("token-rotator: " + tokens.length + " tokens loaded");
+})();</code></pre>
+
+<h2>Loading</h2>
+<p>Drop the <code>.js</code> file into:</p>
+<ul>
+<li><strong>Windows</strong>: <code>%APPDATA%/Nullock/Nullock/extensions/</code></li>
+<li><strong>macOS</strong>: <code>~/Library/Application Support/Nullock/Nullock/extensions/</code></li>
+<li><strong>Linux</strong>: <code>~/.local/share/Nullock/Nullock/extensions/</code></li>
+</ul>
+
+<p>Then either restart Nullock or call:</p>
+<pre><code>nullock extensions reload</code></pre>
+
+<p>For the bundled extensions (AWS SigV4 signer, identity rotator) one-click:</p>
+<pre><code>nullock extensions install-builtins</code></pre>
+
+<h2>Publishing to the marketplace</h2>
+<p>Submit a PR adding your extension to <code>extensions/marketplace.json</code>. We list extensions whose code we've reviewed; the marketplace at <a href="../marketplace/">/marketplace/</a> renders the catalog.</p>
+
+</main>
+<footer>
+  <a href="../LICENSE.html">License (MIT)</a> ·
+  <a href="../PRIVACY.html">Privacy</a> ·
+  <a href="../TERMS.html">Terms</a> ·
+  <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+</footer>
+</body></html>

@@ -20,6 +20,8 @@
 #include "crawler.hpp"
 #include "networking.hpp"
 #include "tls_profile.hpp"
+#include "update_check.hpp"
+#include "crash_reporter.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -541,8 +543,16 @@ static bool hasFlag(int argc, char *argv[], const QString &flag) {
 }
 
 int main(int argc, char *argv[]) {
+    Nullock::Core::CrashReporter::install();
     QCoreApplication::setOrganizationName("Nullock");
     QCoreApplication::setApplicationName("Nullock");
+    QCoreApplication::setApplicationVersion(
+#ifdef NULLOCK_VERSION
+        QStringLiteral(NULLOCK_VERSION)
+#else
+        QStringLiteral("1.0.0")
+#endif
+    );
 
     // Headless mode: no QML window, no auto-browser-open. Just proxy +
     // control server. Useful for CI / Docker / scripting -- and any
@@ -792,6 +802,19 @@ int main(int argc, char *argv[]) {
     // Link-following crawler. Builds the full attack surface from a
     // seed URL; the rest of the toolchain (passive scanner, repeater,
     // search) sees crawled responses just like normal captures.
+    // Background update check. Hits GitHub Releases API once at startup,
+    // surfaces the result via /api/snapshot. No telemetry, no
+    // auto-download -- just a small "X.Y.Z available" pill in the UI.
+    // --no-update-check / NULLOCK_NO_UPDATE=1 disables.
+    Nullock::Core::UpdateChecker updateChecker;
+    const bool skipUpdateCheck = hasFlag(argc, argv, "--no-update-check")
+                              || !qEnvironmentVariable("NULLOCK_NO_UPDATE").isEmpty();
+    if (!skipUpdateCheck && !smokeTest) {
+        updateChecker.checkAsync(QCoreApplication::applicationVersion().isEmpty()
+                                    ? QStringLiteral("1.0.0")
+                                    : QCoreApplication::applicationVersion());
+    }
+
     Nullock::Core::Crawler crawler;
     crawler.setScopeChecker([&proxy](const QString &host) {
         return proxy.isInScope(host);
@@ -803,6 +826,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
                      &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
     wiring.crawler = &crawler;
+    wiring.updates = &updateChecker;
 
     wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
     // dev-run path: project root has ui-v2/. For installed binaries we'd

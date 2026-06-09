@@ -99,6 +99,64 @@ These were surfaced by the audit but not addressed in this pass. Listed so the n
 
 ## What to do if you find something
 
-If you're a security researcher and you've found a vulnerability that isn't already on the "known gaps" list above, please open a private security advisory on GitHub (Security → Advisories → "Report a vulnerability") rather than a public issue.
+### Reporting
+
+If you're a security researcher and you've found a vulnerability that isn't already on the "known gaps" list above:
+
+1. **Preferred**: open a private security advisory on GitHub (Security → Advisories → "Report a vulnerability"). This routes to maintainers without going public.
+2. **Backup**: email the maintainer (see GitHub profile) with a subject starting `[SECURITY]`.
+3. **Public Discord / Twitter / Mastodon**: please don't. Public disclosure before a fix puts every Nullock user at risk.
+
+### What to include
+
+- Affected version (run `nullock --version` or check About → Version in the UI)
+- Operating system
+- Repro steps -- shortest possible
+- Impact -- what does an attacker get? Local code execution? Data read? Account takeover?
+- A proof-of-concept request / script if available
+- Whether you intend to publish a writeup, and if so, a target date
+
+### Our SLA
+
+We aim to:
+
+| Step | Target |
+|---|---|
+| First human response | within 72 hours |
+| Severity acknowledgement | within 7 days |
+| Patch released (Critical) | within 14 days |
+| Patch released (High) | within 30 days |
+| Patch released (Medium/Low) | within 90 days |
+| Public advisory published | coordinated with reporter, typically 30-90 days after patch |
+
+We're a small team. If we miss an SLA target, we'll tell you why and ask for an extension. We won't ignore you.
+
+### Bug bounty
+
+We don't run a paid bug bounty yet. Once we have hosted services (paid tier), we plan to set one up via HackerOne. For now, our thanks + a CVE credit + a Hall of Fame entry in `SECURITY.md` are what we can offer.
+
+### Scope
+
+In scope for reporting:
+
+- Anything in the FOSS desktop app at `github.com/Bikebrainz/Nullock`
+- Built-in extensions shipped in `extensions/`
+- The browser extension at `browser-ext/`
+- The marketplace catalog
+- Anything in the lab apps under `labs/` (as bonus -- those are intentionally vulnerable)
+
+Out of scope:
+
+- Theoretical attacks against the threat model (we already accept malicious upstream traffic by design; please find real bugs in the parsers / scope guards, not "if you bypass scope you can probe an out-of-scope host")
+- Reports against `gratonic/nullock` upstream (different repo, different maintainers)
+- DoS by sustained CPU usage (we don't claim to be DoS-resistant against arbitrary user-configured regex / wordlists)
+
+### Past advisories
+
+None yet. This space will list resolved advisories with CVE IDs and credits as they accrue.
+
+## Path forward
+
+This section of the README is about what we plan to harden next; the "Known gaps" list above is the current ledger.
 
 For the things on the "known gaps" list, PRs welcome — but please touch one item per PR and include a regression test or repro script.

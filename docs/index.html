@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Nullock -- FOSS web security toolkit. MITM proxy, repeater, intruder, scanner, OAST, gRPC/GraphQL decoders, AI triage. Burp Suite alternative." />
+<title>Nullock -- FOSS web security toolkit</title>
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: #0d0d12;
+    color: #d0d0d6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: #b7a3d6; text-decoration: none; }
+  a:hover { color: #d4b9ff; text-decoration: underline; }
+
+  /* Top nav */
+  nav.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid #1c1c24;
+    position: sticky; top: 0;
+    background: rgba(13, 13, 18, 0.92);
+    backdrop-filter: blur(10px);
+    z-index: 10;
+  }
+  nav.top .brand {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  nav.top .links a { margin-left: 24px; color: #999; font-size: 13px; }
+  nav.top .links a:hover { color: #fff; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 32px 60px;
+    text-align: center;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  .hero h1 {
+    font-size: 52px; line-height: 1.1; letter-spacing: -1.5px;
+    margin: 0 0 20px;
+    background: linear-gradient(135deg, #d4b9ff 0%, #9d4edd 50%, #5a189a 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero .tagline {
+    font-size: 19px; color: #a0a0a8;
+    max-width: 640px; margin: 0 auto 36px;
+  }
+  .hero .ctas {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+  }
+  .btn {
+    padding: 13px 24px;
+    border-radius: 6px;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    text-decoration: none !important;
+    display: inline-block;
+    transition: transform 80ms ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary {
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    color: #fff; border: none;
+  }
+  .btn.ghost {
+    background: transparent; color: #d0d0d6;
+    border: 1px solid #2a2a35;
+  }
+  .badges {
+    margin-top: 32px;
+    font-size: 12px; color: #666;
+  }
+  .badges span { margin: 0 8px; }
+
+  /* Sections */
+  section { padding: 60px 32px; max-width: 1080px; margin: 0 auto; }
+  section h2 {
+    font-size: 28px; margin: 0 0 12px;
+    color: #d4b9ff;
+  }
+  section p.lead {
+    color: #999; font-size: 16px; max-width: 720px;
+  }
+
+  /* Feature grid */
+  .features {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px; margin-top: 32px;
+  }
+  .feature {
+    border: 1px solid #1c1c24;
+    background: #14141a;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .feature h3 { color: #d4b9ff; font-size: 15px; margin: 0 0 8px; }
+  .feature p { color: #999; font-size: 13px; margin: 0; }
+
+  /* Comparison */
+  table.cmp {
+    width: 100%; border-collapse: collapse; margin-top: 24px;
+    font-size: 14px;
+  }
+  table.cmp th, table.cmp td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1c1c24;
+    text-align: left;
+  }
+  table.cmp th { color: #888; font-weight: 600; font-size: 12px; }
+  table.cmp td.yes { color: #4ade80; font-weight: 600; }
+  table.cmp td.no  { color: #6b6b78; }
+  table.cmp td.partial { color: #fbbf24; }
+
+  /* Code */
+  pre, code {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    background: #1c1c24;
+    color: #d4b9ff;
+  }
+  pre {
+    padding: 16px; border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px; line-height: 1.5;
+  }
+  code { padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  pre code { padding: 0; background: transparent; }
+
+  footer {
+    padding: 40px 32px; text-align: center;
+    color: #555; font-size: 12px;
+    border-top: 1px solid #1c1c24; margin-top: 60px;
+  }
+  footer a { color: #888; margin: 0 10px; }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="brand">Nullock</div>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#compare">vs Burp</a>
+    <a href="docs/">Docs</a>
+    <a href="marketplace/">Marketplace</a>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <h1>The MITM proxy<br/>built for 2026</h1>
+  <p class="tagline">
+    Open-source web security toolkit with a scriptable CLI, in-process OAST,
+    SQLite-backed history at 200k+ rows, native h2 / gRPC / GraphQL / CBOR / SAML
+    decoders, and AI-assisted triage. No license file. No telemetry. No bullshit.
+  </p>
+  <div class="ctas">
+    <a class="btn primary" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+    <a class="btn ghost" href="https://github.com/Bikebrainz/Nullock">Source</a>
+    <a class="btn ghost" href="docs/getting-started.html">Get started</a>
+  </div>
+  <div class="badges">
+    <span>MIT licensed</span> · <span>Windows / Linux / macOS</span> · <span>Self-host first</span>
+  </div>
+</header>
+
+<section id="features">
+  <h2>What's in the box</h2>
+  <p class="lead">Every pen-test tool you reach for, in one binary, with a real API behind every panel.</p>
+
+  <div class="features">
+    <div class="feature">
+      <h3>MITM proxy</h3>
+      <p>HTTP/1.1 + HTTP/2 with native frame visibility. WebSocket interception with editable replay.</p>
+    </div>
+    <div class="feature">
+      <h3>Repeater + Intruder</h3>
+      <p>Multi-tab repeater. Rate-limit-aware fuzzer. Payload library + custom payloads. Drive everything via the CLI.</p>
+    </div>
+    <div class="feature">
+      <h3>Scanner</h3>
+      <p>Passive + active. Reflected XSS, SQLi, open redirect, SSTI, cmd injection, header CRLF, path traversal, cloud-metadata SSRF, OAST OOB.</p>
+    </div>
+    <div class="feature">
+      <h3>OAST sink</h3>
+      <p>In-process Burp-Collaborator-equivalent. Mint a token, embed in payloads, watch callbacks land. Tier-2 in-process; hosted public tier coming.</p>
+    </div>
+    <div class="feature">
+      <h3>Session handling rules</h3>
+      <p>Extract CSRF tokens / JWTs / nonces from any response, re-inject into every subsequent request. Auto-refresh expiring auth.</p>
+    </div>
+    <div class="feature">
+      <h3>Decoders</h3>
+      <p>JWT (with security annotations), GraphQL, gRPC framing, CBOR (WebAuthn / COSE), SAML, base64, hex, JSON.</p>
+    </div>
+    <div class="feature">
+      <h3>Crawler</h3>
+      <p>Link-following BFS from a seed URL. Scope-gated. Feeds the scanner automatically.</p>
+    </div>
+    <div class="feature">
+      <h3>Port scan + recon</h3>
+      <p>CIDR sweeps, top-100 / top-1024 presets, banner grabbing. DNS + WHOIS + cert transparency + wordlist subdomain enum.</p>
+    </div>
+    <div class="feature">
+      <h3>Extensions</h3>
+      <p>JS plugin API with onRequest / onResponse mutation hooks. Marketplace catalog of vetted extensions.</p>
+    </div>
+    <div class="feature">
+      <h3>SQLite history</h3>
+      <p>200k+ row engagements stay snappy. Bodies stored as JSON blobs. SQL-style filtering at full database speed.</p>
+    </div>
+    <div class="feature">
+      <h3>AI triage</h3>
+      <p>Feed any finding to your local Ollama; get impact / fix / FP-likelihood in seconds. Deterministic fallback if no model.</p>
+    </div>
+    <div class="feature">
+      <h3>Scriptable CLI</h3>
+      <p>25+ subcommands. Drive intercept, repeater, intruder, crawler, OAST, OpenAPI, port scan from your shell. CI-friendly.</p>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <h2>How we compare</h2>
+  <p class="lead">Honest table. We pull no punches; neither does Burp.</p>
+
+  <table class="cmp">
+    <thead>
+      <tr><th>Feature</th><th>Nullock</th><th>Burp Community</th><th>Burp Pro</th><th>mitmproxy</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Price</td><td class="yes">Free</td><td class="yes">Free</td><td class="no">$475/yr</td><td class="yes">Free</td></tr>
+      <tr><td>MITM proxy</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>HTTP/2 native</td><td class="yes">✓</td><td class="partial">basic</td><td class="yes">✓</td><td class="partial">basic</td></tr>
+      <tr><td>WebSocket Repeater</td><td class="yes">✓</td><td class="no">—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      <tr><td>OAST (Collaborator)</td><td class="yes">in-process</td><td class="no">—</td><td class="yes">hosted</td><td class="no">—</td></tr>
+      <tr><td>Active scanner</td><td class="yes">✓</td><td class="no">—</td><td class="yes">✓</td><td class="no">—</td></tr>
+      <tr><td>Session handling</td><td class="yes">✓</td><td class="no">—</td><td class="yes">✓</td><td class="no">—</td></tr>
+      <tr><td>CLI control of every panel</td><td class="yes">✓</td><td class="no">—</td><td class="partial">jython</td><td class="yes">✓</td></tr>
+      <tr><td>JS extensions</td><td class="yes">QJSEngine</td><td class="partial">via BApps</td><td class="yes">BApps</td><td class="yes">Python addons</td></tr>
+      <tr><td>SQLite history at 200k+ rows</td><td class="yes">✓</td><td class="no">in-memory</td><td class="partial">in-memory</td><td class="no">flat file</td></tr>
+      <tr><td>AI triage</td><td class="yes">local Ollama</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+      <tr><td>Native gRPC / GraphQL</td><td class="yes">✓</td><td class="no">—</td><td class="partial">paid addons</td><td class="no">—</td></tr>
+      <tr><td>Cloud-metadata probes</td><td class="yes">✓</td><td class="no">—</td><td class="partial">via Burp Suite Enterprise</td><td class="no">—</td></tr>
+      <tr><td>HTTP/3 / QUIC</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+      <tr><td>Web Security Academy clone</td><td class="partial">12 labs</td><td class="no">—</td><td class="yes">300+</td><td class="no">—</td></tr>
+      <tr><td>Brand recognition</td><td class="no">v1</td><td class="yes">huge</td><td class="yes">huge</td><td class="yes">large</td></tr>
+    </tbody>
+  </table>
+  <p style="color: #666; font-size: 12px; margin-top: 12px;">
+    Comparison made in good faith as of 2026-06; corrections welcome via PR.
+  </p>
+</section>
+
+<section>
+  <h2>30 seconds to first finding</h2>
+  <pre><code># 1. install (Windows shown; Linux uses apt/yum/AppImage)
+winget install Nullock.Nullock
+# or grab the .msi from github.com/Bikebrainz/Nullock/releases
+
+# 2. start the proxy
+NullockApp --headless --proxy-port=8080 --control-port=17777 &amp;
+
+# 3. install the browser extension
+# Chrome -> chrome://extensions -> Load unpacked -> browser-ext/
+
+# 4. browse your target. Then:
+nullock history 10
+nullock scan target.example top100
+nullock crawler start https://target.example
+nullock oast mint               # for blind-bug testing
+nullock openapi export &gt; spec.json</code></pre>
+  <p style="color: #888; margin-top: 16px;">
+    Full guide: <a href="docs/getting-started.html">docs/getting-started.html</a>
+  </p>
+</section>
+
+<section>
+  <h2>What's next</h2>
+  <p class="lead">Roadmap (issues + projects tracked at GitHub):</p>
+  <ul style="color: #999; line-height: 2;">
+    <li>Hosted OAST tier (free + paid)</li>
+    <li>HTTP/3 / QUIC support</li>
+    <li>Native CA-preloaded Chromium bundle</li>
+    <li>Team workspaces + sync</li>
+    <li>Web Security Academy expansion to 50+ labs</li>
+    <li>SOC2 audit + enterprise tier</li>
+  </ul>
+</section>
+
+<footer>
+  <a href="LICENSE.html">License (MIT)</a>
+  <a href="PRIVACY.html">Privacy</a>
+  <a href="TERMS.html">Terms</a>
+  <a href="SECURITY.html">Security disclosure</a>
+  <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  <div style="margin-top: 18px; color: #444;">© 2026 Nullock contributors. MIT licensed.</div>
+</footer>
+
+</body>
+</html>

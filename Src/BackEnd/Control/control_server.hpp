@@ -30,6 +30,7 @@ class SessionManager;
 class OastServer;
 class SessionRules;
 class Crawler;
+class UpdateChecker;
 }
 
 namespace Nullock::Control {
@@ -55,6 +56,7 @@ struct Wiring {
     Nullock::Core::OastServer          *oast         = nullptr;
     Nullock::Core::SessionRules        *sessionRules = nullptr;
     Nullock::Core::Crawler             *crawler      = nullptr;
+    Nullock::Core::UpdateChecker       *updates      = nullptr;
     QString                              uiDir;       // path to ui-v2/
 };
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://github.com/Bikebrainz/Nullock/blob/Nullock/templates/projects/SCHEMA.md",
+  "id": "oauth-review",
+  "name": "OAuth / SSO security review",
+  "description": "Auth-flow focused. Captures every redirect chain. JWT decoder annotations on every captured token. SAML decoder available. Match&Replace rules pre-set to flag missing state / nonce / PKCE.",
+  "inScope": [
+    "auth.target.example",
+    "*.idp.target.example",
+    "target.example"
+  ],
+  "outOfScope": [],
+  "notes": "OAuth/SSO review. Look at every /authorize -> /callback hop.\n\nThings the passive scanner will surface:\n  - missing state param in /authorize\n  - missing PKCE in mobile/SPA flows\n  - weak JWT signing alg\n  - alg=none acceptance\n  - kid path traversal\n  - jku/x5u pointing at attacker-controlled URLs",
+  "rules": [
+    {
+      "enabled": true,
+      "name": "flag missing state in oauth",
+      "section": 0,
+      "find": "/authorize\\?(?!.*state=)",
+      "replace": "/authorize?[!NO-STATE-PARAM-DETECTED!]&",
+      "comment": "VISIBLE flag: if you see [!NO-STATE-PARAM-DETECTED!] in a captured URL, the IdP accepted a request without state. Re-test that exact flow with PoC."
+    }
+  ],
+  "extensionsEnabled": []
+}

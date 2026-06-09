@@ -4,6 +4,12 @@ qt_add_executable(NullockApp
     app.qml
 )
 
+# Bake in the build version so the update checker can compare it
+# against latest GitHub Release.
+target_compile_definitions(NullockApp PRIVATE
+    NULLOCK_VERSION="${PROJECT_VERSION}"
+)
+
 # Register the QML module for the App
 qt_add_qml_module(NullockApp
     URI Nullock.App

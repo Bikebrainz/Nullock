@@ -20,6 +20,8 @@ add_library(Networking STATIC
     crawler.hpp
     tls_profile.cpp
     tls_profile.hpp
+    update_check.cpp
+    update_check.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

@@ -8,6 +8,7 @@
 #include "oast_server.hpp"
 #include "session_rules.hpp"
 #include "crawler.hpp"
+#include "update_check.hpp"
 #include "intruder.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -745,6 +746,19 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     root["intruder"] = intruder;
 
+    // Update info -- one HTTPS round-trip at startup, cached forever.
+    if (m_wiring.updates) {
+        const auto u = m_wiring.updates->lastResult();
+        QJsonObject upd;
+        upd["available"]      = u.available;
+        upd["currentVersion"] = u.currentVersion;
+        upd["latestVersion"]  = u.latestVersion;
+        upd["releaseUrl"]     = u.releaseUrl;
+        upd["releaseNotes"]   = u.releaseNotes;
+        upd["publishedAt"]    = u.publishedAt;
+        root["update"] = upd;
+    }
+
     // OAST sink visibility for the UI badge.
     if (m_wiring.oast) {
         QJsonObject oast;
@@ -826,6 +840,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/oast/poll"
             || p == "/api/openapi/export"
             || p == "/api/cookies"
+            || p == "/api/project/templates"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -2021,6 +2036,162 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         QJsonObject root; root["hosts"] = hosts;
         return httpJson(200, root);
+    }
+
+    // ---- Project templates -------------------------------------------
+    // GET /api/project/templates -- list available templates
+    // POST /api/project/create-from-template { templateId, projectName }
+    if (path == "/api/project/templates") {
+        QStringList searchDirs;
+        searchDirs << (m_wiring.uiDir + "/../templates/projects");
+        searchDirs << (QCoreApplication::applicationDirPath()
+                       + "/../../../../templates/projects");
+        searchDirs << (QCoreApplication::applicationDirPath()
+                       + "/../share/nullock/templates/projects");
+        QJsonArray arr;
+        QSet<QString> seenIds;
+        for (const QString &dir : searchDirs) {
+            if (!QFileInfo::exists(dir)) continue;
+            for (const QString &f : QDir(dir).entryList({"*.json"}, QDir::Files)) {
+                QFile fp(dir + "/" + f);
+                if (!fp.open(QIODevice::ReadOnly)) continue;
+                const QJsonDocument d = QJsonDocument::fromJson(fp.readAll());
+                if (!d.isObject()) continue;
+                const QJsonObject o = d.object();
+                const QString id = o.value("id").toString();
+                if (id.isEmpty() || seenIds.contains(id)) continue;
+                seenIds.insert(id);
+                QJsonObject summary;
+                summary["id"]          = id;
+                summary["name"]        = o.value("name").toString();
+                summary["description"] = o.value("description").toString();
+                summary["inScope"]     = o.value("inScope");
+                summary["outOfScope"]  = o.value("outOfScope");
+                summary["extensionsEnabled"] = o.value("extensionsEnabled");
+                arr.append(summary);
+            }
+        }
+        QJsonObject root; root["templates"] = arr;
+        return httpJson(200, root);
+    }
+    if (path == "/api/project/create-from-template") {
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "no project store" }});
+        const QString tplId = bodyJson.value("templateId").toString();
+        const QString name  = bodyJson.value("projectName").toString();
+        if (tplId.isEmpty() || name.isEmpty())
+            return okJson({{ "ok", false }, { "error",
+                                              "templateId and projectName required" }});
+        QStringList searchDirs;
+        searchDirs << (m_wiring.uiDir + "/../templates/projects");
+        searchDirs << (QCoreApplication::applicationDirPath()
+                       + "/../../../../templates/projects");
+        searchDirs << (QCoreApplication::applicationDirPath()
+                       + "/../share/nullock/templates/projects");
+        QJsonObject tplObj;
+        for (const QString &dir : searchDirs) {
+            const QString fpath = dir + "/" + tplId + ".json";
+            if (!QFileInfo::exists(fpath)) continue;
+            QFile fp(fpath);
+            if (!fp.open(QIODevice::ReadOnly)) continue;
+            const QJsonDocument d = QJsonDocument::fromJson(fp.readAll());
+            if (d.isObject()) { tplObj = d.object(); break; }
+        }
+        if (tplObj.isEmpty())
+            return okJson({{ "ok", false }, { "error", "template not found: " + tplId }});
+
+        if (!m_wiring.projectStore->createProject(name))
+            return okJson({{ "ok", false }, { "error", "createProject failed" }});
+
+        // Apply template metadata on top of the empty project.
+        QStringList inS;
+        for (const auto &v : tplObj.value("inScope").toArray()) inS.append(v.toString());
+        QStringList outS;
+        for (const auto &v : tplObj.value("outOfScope").toArray()) outS.append(v.toString());
+        m_wiring.projectStore->setInScope(inS);
+        m_wiring.projectStore->setOutOfScope(outS);
+        m_wiring.projectStore->setNotes(tplObj.value("notes").toString());
+        return okJson({{ "ok", true }, { "project", name },
+                       { "applied", tplId }});
+    }
+
+    // ---- Report builder ----------------------------------------------
+    // POST /api/report/build -- produces a Markdown engagement report
+    // from findings + scope + notes + session metadata. Useful as a
+    // first-pass draft the user can hand to their report-writing
+    // pipeline.
+    if (path == "/api/report/build") {
+        QString out;
+        const QString proj = m_wiring.projectStore
+            ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
+        out += "# Nullock engagement report -- " + proj + "\n\n";
+        out += "*Generated " + QDateTime::currentDateTime().toString(Qt::ISODate) + "*\n\n";
+
+        out += "## Scope\n\n";
+        if (m_wiring.projectStore) {
+            const auto meta = m_wiring.projectStore->metadata();
+            out += "**In-scope hosts:**\n";
+            for (const auto &s : meta.inScope) out += "- `" + s + "`\n";
+            if (meta.inScope.isEmpty()) out += "_(no hosts configured)_\n";
+            out += "\n**Out-of-scope hosts:**\n";
+            for (const auto &s : meta.outOfScope) out += "- `" + s + "`\n";
+            if (meta.outOfScope.isEmpty()) out += "_(none)_\n";
+            out += "\n";
+            if (!meta.notes.isEmpty()) {
+                out += "## Notes\n\n";
+                out += meta.notes + "\n\n";
+            }
+        }
+
+        out += "## Findings\n\n";
+        if (m_wiring.scanner) {
+            const auto findings = m_wiring.scanner->findings(0);
+            // Group by severity, descending.
+            QMap<QString, QList<Nullock::Core::Finding>> bySev;
+            const QStringList severityOrder = {"critical", "high", "medium", "low", "info"};
+            for (const auto &f : findings) bySev[f.severity.toLower()].append(f);
+            for (const QString &sev : severityOrder) {
+                if (!bySev.contains(sev)) continue;
+                out += "### " + sev.toUpper() + " (" +
+                       QString::number(bySev[sev].size()) + ")\n\n";
+                for (const auto &f : bySev[sev]) {
+                    out += "- **" + f.kind + "** at " + f.host + " — " + f.summary + "\n";
+                    if (!f.url.isEmpty()) out += "  - URL: `" + f.url + "`\n";
+                    if (!f.evidence.isEmpty()) {
+                        out += "  - Evidence: `" + f.evidence.left(200) + "`\n";
+                    }
+                }
+                out += "\n";
+            }
+            out += "Total findings: **" + QString::number(findings.size()) + "**\n\n";
+        } else {
+            out += "_(scanner not wired)_\n\n";
+        }
+
+        out += "## Captured surface\n\n";
+        if (m_wiring.projectStore) {
+            auto *idx = m_wiring.projectStore->historyIndex();
+            const int total = idx ? idx->rowCount() : 0;
+            out += "**Total captured requests:** " + QString::number(total) + "\n\n";
+        }
+
+        out += "## Methodology\n\n";
+        out += "- Tool: Nullock (https://github.com/Bikebrainz/Nullock)\n";
+        out += "- Passive scanner enabled throughout\n";
+        out += "- Active probe applied to in-scope rows with query parameters\n";
+        out += "- OAST callbacks monitored for blind SSRF / blind XSS / OOB-DNS\n\n";
+
+        out += "---\n";
+        out += "*Report auto-generated by Nullock. Review before distribution.*\n";
+
+        QByteArray hdr;
+        hdr += "HTTP/1.1 200 OK\r\n";
+        hdr += "Content-Type: text/markdown; charset=utf-8\r\n";
+        hdr += "Content-Disposition: attachment; filename=\"nullock-report.md\"\r\n";
+        const QByteArray body = out.toUtf8();
+        hdr += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+        hdr += "Connection: close\r\n\r\n";
+        return hdr + body;
     }
 
     // ---- Built-in extensions install ---------------------------------
