@@ -20,3 +20,7 @@ target_link_libraries(NullockTests PRIVATE
 
 # Register tests
 add_test(NAME NullockTests COMMAND NullockTests)
+
+# Scanner regression corpus -- exercises every passive detector with
+# positive + negative cases. Run via: ctest -R scanner_regression -V
+add_subdirectory(scanner_regression)

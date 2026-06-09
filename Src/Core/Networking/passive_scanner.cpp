@@ -339,8 +339,13 @@ void PassiveScanner::checkResponse(int rowId,
                        "CSP missing base-uri (<base> injection can change all relative URLs)",
                        "base-uri directive absent");
         }
-        // report-only without enforcement does nothing for users.
-        const QString cspRO = headerOf(resp.headers, "Content-Security-Policy-Report-Only");
+    }
+    // Report-Only without an enforcing CSP: separate block so it fires
+    // even when there's no enforcing CSP at all (which is precisely the
+    // case we care about).
+    {
+        const QString cspRO = headerOf(resp.headers,
+                                       "Content-Security-Policy-Report-Only");
         if (!cspRO.isEmpty() && csp.isEmpty()) {
             addFinding(rowId, req, resp, "info", "csp-report-only",
                        "Only CSP-Report-Only is set; nothing is enforced",
@@ -1145,6 +1150,187 @@ void PassiveScanner::checkResponse(int rowId,
             addFinding(rowId, req, resp, "low", "reflected-file-download",
                        "Content-Disposition filename appears to mirror a request param",
                        cdsp.left(160));
+        }
+    }
+
+    // ========================================================
+    // CMS / framework fingerprinting (informational unless the
+    // specific stack version is known-vulnerable). Detection is
+    // path + header + body signature.
+    // ========================================================
+    if (resp.statusCode >= 200 && resp.statusCode < 400) {
+        const QString bodyHead = QString::fromUtf8(resp.body.left(64 * 1024));
+        const QString xPoweredBy = headerOf(resp.headers, "X-Powered-By");
+        const QString genHdr = headerOf(resp.headers, "X-Generator");
+        // Cached "have we already flagged a CMS for this row?" -- one
+        // CMS finding per response is plenty.
+        bool cmsHit = false;
+        auto flagCms = [&](const char *sev, const char *kind, const QString &label,
+                           const QString &evidence) {
+            if (cmsHit) return;
+            cmsHit = true;
+            addFinding(rowId, req, resp, sev, kind,
+                       "Detected: " + label, evidence.left(240));
+        };
+
+        // ---- WordPress -----------------------------------------------
+        if (req.path.contains("/wp-content/") || req.path.contains("/wp-includes/")
+            || req.path.contains("/wp-admin/")
+            || bodyHead.contains("/wp-content/") || bodyHead.contains("wp-emoji")) {
+            flagCms("info", "cms-wordpress", "WordPress",
+                    "path or body contains wp-* markers");
+        }
+        // ---- Drupal --------------------------------------------------
+        if (!cmsHit && (genHdr.contains("Drupal", Qt::CaseInsensitive)
+                        || bodyHead.contains("Drupal.settings")
+                        || bodyHead.contains("/sites/default/files")
+                        || req.path.startsWith("/sites/default/"))) {
+            flagCms("info", "cms-drupal", "Drupal",
+                    "X-Generator/Drupal.settings/sites-default marker");
+        }
+        // ---- Joomla --------------------------------------------------
+        if (!cmsHit && (bodyHead.contains("Joomla!")
+                        || bodyHead.contains("/media/system/js/")
+                        || req.path.startsWith("/administrator/"))) {
+            flagCms("info", "cms-joomla", "Joomla",
+                    "Joomla! string or /administrator/ marker");
+        }
+        // ---- Magento -------------------------------------------------
+        const QString xMagento = headerOf(resp.headers, "X-Magento-Vary");
+        if (!cmsHit && (!xMagento.isEmpty()
+                        || bodyHead.contains("Mage.Cookies")
+                        || bodyHead.contains("/skin/frontend/")
+                        || req.path.startsWith("/index.php/admin"))) {
+            flagCms("info", "cms-magento", "Magento",
+                    "X-Magento-Vary / Mage.Cookies / skin/frontend marker");
+        }
+        // ---- Shopify -------------------------------------------------
+        const QString xShopifyStage = headerOf(resp.headers, "X-Shopify-Stage");
+        if (!cmsHit && (!xShopifyStage.isEmpty()
+                        || bodyHead.contains("Shopify.theme")
+                        || bodyHead.contains("cdn.shopify.com"))) {
+            flagCms("info", "cms-shopify", "Shopify",
+                    "X-Shopify-Stage / Shopify.theme / cdn.shopify.com");
+        }
+        // ---- Sitecore ------------------------------------------------
+        if (!cmsHit && (!headerOf(resp.headers, "X-Sc-CompatibilityVersion").isEmpty()
+                        || bodyHead.contains("scLayout")
+                        || req.path.contains("/sitecore/"))) {
+            flagCms("info", "cms-sitecore", "Sitecore",
+                    "X-Sc-CompatibilityVersion / scLayout / /sitecore/ path");
+        }
+        // ---- Adobe Experience Manager --------------------------------
+        if (!cmsHit && (bodyHead.contains("/etc/clientlibs/")
+                        || bodyHead.contains("/content/dam/")
+                        || bodyHead.contains("/aemforms/"))) {
+            flagCms("info", "cms-aem", "Adobe Experience Manager",
+                    "/etc/clientlibs/, /content/dam/, /aemforms/");
+        }
+        // ---- Umbraco -------------------------------------------------
+        if (!cmsHit && (req.path.startsWith("/umbraco/")
+                        || bodyHead.contains("umbraco.api"))) {
+            flagCms("info", "cms-umbraco", "Umbraco",
+                    "umbraco path or API string");
+        }
+        // ---- Salesforce / SF Commerce / Aura -------------------------
+        if (!cmsHit && (bodyHead.contains("Aura.Component")
+                        || bodyHead.contains("force.com")
+                        || bodyHead.contains("salesforce.com"))) {
+            flagCms("info", "cms-salesforce", "Salesforce / Aura",
+                    "Aura.Component / force.com / salesforce.com marker");
+        }
+        // ---- Atlassian Confluence ------------------------------------
+        const QString xConfReq = headerOf(resp.headers, "X-Confluence-Request-Time");
+        if (!cmsHit && (!xConfReq.isEmpty()
+                        || bodyHead.contains("ajs-version-number")
+                        || bodyHead.contains("Confluence."))) {
+            flagCms("info", "cms-confluence", "Atlassian Confluence",
+                    "Confluence X-header / ajs-version / Confluence. marker");
+        }
+        // ---- Atlassian Jira ------------------------------------------
+        if (!cmsHit && (req.path.startsWith("/secure/Dashboard.jspa")
+                        || bodyHead.contains("jira-projectkey")
+                        || bodyHead.contains("jira-issue"))) {
+            flagCms("info", "cms-jira", "Atlassian Jira",
+                    "Jira dashboard path / projectkey / issue marker");
+        }
+        // ---- WooCommerce on top of WordPress -------------------------
+        if (cmsHit && req.path.contains("/wp-content/")
+            && bodyHead.contains("woocommerce")) {
+            // Separate finding for the platform layered on top.
+            addFinding(rowId, req, resp, "info", "cms-woocommerce",
+                       "Detected: WooCommerce",
+                       "wp-content + 'woocommerce' string in body");
+        }
+
+        // ===== Framework / language ===================================
+        // Independent of CMS finding -- multiple of these may apply.
+        if (xPoweredBy.contains("Express", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "fw-express",
+                       "Detected: Node.js / Express",
+                       "X-Powered-By: " + xPoweredBy);
+        }
+        if (xPoweredBy.contains("ASP.NET", Qt::CaseInsensitive)
+            || !headerOf(resp.headers, "X-AspNet-Version").isEmpty()
+            || !headerOf(resp.headers, "X-AspNetMvc-Version").isEmpty()) {
+            addFinding(rowId, req, resp, "info", "fw-aspnet",
+                       "Detected: ASP.NET / MVC",
+                       "X-AspNet headers present");
+        }
+        if (bodyHead.contains("__NEXT_DATA__")) {
+            addFinding(rowId, req, resp, "info", "fw-nextjs",
+                       "Detected: Next.js",
+                       "__NEXT_DATA__ script tag in HTML");
+        }
+        if (bodyHead.contains("window.__NUXT__")) {
+            addFinding(rowId, req, resp, "info", "fw-nuxt",
+                       "Detected: Nuxt.js",
+                       "window.__NUXT__ in HTML");
+        }
+        if (bodyHead.contains("ng-app=") || bodyHead.contains("ng-controller=")
+            || bodyHead.contains("data-ng-app")) {
+            addFinding(rowId, req, resp, "info", "fw-angularjs",
+                       "Detected: AngularJS / Angular",
+                       "ng-app / ng-controller attributes in HTML");
+        }
+        if (bodyHead.contains("data-reactroot") || bodyHead.contains("__REACT_DEVTOOLS_GLOBAL_HOOK__")) {
+            addFinding(rowId, req, resp, "info", "fw-react",
+                       "Detected: React",
+                       "data-reactroot / __REACT_DEVTOOLS_GLOBAL_HOOK__ marker");
+        }
+        if (bodyHead.contains("v-app=") || bodyHead.contains("data-server-rendered")
+            || bodyHead.contains("__VUE_HMR_RUNTIME__")) {
+            addFinding(rowId, req, resp, "info", "fw-vue",
+                       "Detected: Vue",
+                       "Vue.js runtime marker");
+        }
+        if (!headerOf(resp.headers, "X-Runtime").isEmpty()
+            || headerOf(resp.headers, "Set-Cookie").contains("_session_id=", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "fw-rails",
+                       "Detected: Ruby on Rails",
+                       "X-Runtime or _session_id cookie");
+        }
+        if (headerOf(resp.headers, "Set-Cookie").contains("laravel_session", Qt::CaseInsensitive)
+            || xPoweredBy.contains("Laravel", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "fw-laravel",
+                       "Detected: Laravel",
+                       "laravel_session cookie / X-Powered-By");
+        }
+        if (headerOf(resp.headers, "Set-Cookie").contains("csrftoken=", Qt::CaseInsensitive)
+            && headerOf(resp.headers, "Set-Cookie").contains("sessionid=", Qt::CaseInsensitive)) {
+            addFinding(rowId, req, resp, "info", "fw-django",
+                       "Detected: Django",
+                       "csrftoken + sessionid cookies");
+        }
+        if (!headerOf(resp.headers, "X-Debug-Token").isEmpty()) {
+            addFinding(rowId, req, resp, "info", "fw-symfony",
+                       "Detected: Symfony",
+                       "X-Debug-Token header");
+        }
+        if (bodyHead.contains("__INITIAL_STATE__") || bodyHead.contains("__APOLLO_STATE__")) {
+            addFinding(rowId, req, resp, "info", "fw-spa-state-leak",
+                       "Initial-state JSON inlined in HTML (review for PII)",
+                       "__INITIAL_STATE__ / __APOLLO_STATE__ marker");
         }
     }
 }
