@@ -527,11 +527,35 @@ cmd_project() {
             [[ -n ${2-} ]] || die "usage: nullock project create <name>"
             post /api/project/create "{\"name\":\"$2\"}" | pp
             ;;
+        templates)
+            curl -sS --max-time 5 "$API/api/project/templates" | pp
+            ;;
+        from-template)
+            # nullock project from-template <templateId> <projectName>
+            [[ $# -ge 3 ]] || die "usage: nullock project from-template <templateId> <projectName>"
+            post /api/project/create-from-template "{\"templateId\":$(jsonq "$2"),\"projectName\":$(jsonq "$3")}" | pp
+            ;;
         clear-history)
             post /api/clear-history | pp
             ;;
-        *) die "usage: nullock project {list|open|create|clear-history} [name]" ;;
+        *) die "usage: nullock project {list|open|create|templates|from-template <id> <name>|clear-history} [args...]" ;;
     esac
+}
+
+cmd_report() {
+    case ${1:-} in
+        build)
+            local out=${2:-nullock-report.md}
+            curl -sS --max-time 30 -X POST -H "Origin: $API" -H "X-Nullock-UI: 1" \
+                "$API/api/report/build" -o "$out"
+            echo "wrote $out"
+            ;;
+        *) die "usage: nullock report build [output.md]" ;;
+    esac
+}
+
+cmd_update() {
+    snapshot | "$JQ" '.update // {error: "update info not in snapshot yet"}'
 }
 
 cmd_help() {
@@ -595,7 +619,15 @@ Project:
   nullock project list
   nullock project open <name>
   nullock project create <name>
+  nullock project templates                  list pre-built engagement templates
+  nullock project from-template <id> <name>  create from template
   nullock project clear-history
+
+Report:
+  nullock report build [output.md]           markdown engagement report
+
+Update:
+  nullock update                             check if newer release on GitHub
 
 WebSocket Repeater:
   nullock ws sessions                    list active WS tunnels
@@ -678,6 +710,8 @@ case ${1:-help} in
     cookies)       shift; cmd_cookies "$@"       ;;
     triage)        shift; cmd_triage "$@"        ;;
     extensions)    shift; cmd_extensions "$@"    ;;
+    report)        shift; cmd_report "$@"        ;;
+    update)        shift; cmd_update "$@"        ;;
     project)       shift; cmd_project "$@"       ;;
     export)        shift; cmd_export "$@"        ;;
     help|-h|--help) cmd_help ;;

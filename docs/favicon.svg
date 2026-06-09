@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d4b9ff"/>
+      <stop offset="50%" stop-color="#9d4edd"/>
+      <stop offset="100%" stop-color="#5a189a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="8" fill="#0d0d12"/>
+  <!-- a stylized "n" with a lock keyhole -->
+  <path d="M16 48 L16 22 Q16 16 22 16 Q28 16 28 22 L28 48 M28 48 L40 48 M40 48 L40 22 Q40 16 46 16 Q52 16 52 22 L52 48"
+        stroke="url(#g)" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="36" r="3" fill="#9d4edd"/>
+</svg>

@@ -1,0 +1,64 @@
+name: docs-site
+
+# Publishes /docs as a GitHub Pages site on every push to Nullock.
+# Marketplace catalog gets mirrored from extensions/ -> docs/marketplace/
+# automatically so the static site stays in sync.
+
+on:
+  push:
+    branches: [Nullock]
+    paths:
+      - 'docs/**'
+      - 'extensions/marketplace.json'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: mirror marketplace catalog
+        run: |
+          cp extensions/marketplace.json docs/marketplace/marketplace.json
+      - name: mirror legal markdown as HTML
+        # Convert PRIVACY.md / TERMS.md / LICENSE.md / SECURITY.md so they
+        # show up at docs/PRIVACY.html etc. for the site footer links.
+        run: |
+          for f in PRIVACY TERMS LICENSE SECURITY; do
+            if [ -f "${f}.md" ]; then
+              cat > "docs/${f}.html" <<HEREDOC
+          <!doctype html><html><head>
+          <meta charset="utf-8" />
+          <title>${f} -- Nullock</title>
+          <link rel="stylesheet" href="docs/docs.css" />
+          </head><body>
+          <main>
+          $(python3 -c "import sys, html; print(html.escape(open('${f}.md').read()))" | sed -E 's/^# (.+)$/<h1>\1<\/h1>/; s/^## (.+)$/<h2>\1<\/h2>/; s/^### (.+)$/<h3>\1<\/h3>/; s/^- (.+)$/<li>\1<\/li>/; s/\`([^\`]+)\`/<code>\1<\/code>/g; s/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g')
+          </main></body></html>
+          HEREDOC
+            fi
+          done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

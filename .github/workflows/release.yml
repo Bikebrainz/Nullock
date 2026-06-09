@@ -1,0 +1,137 @@
+name: release
+
+# Builds installer artifacts on every tag matching v*.*.* and uploads
+# them to a GitHub Release. Provides the download targets the docs
+# portal links to.
+#
+# Tag a release:
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Outputs (per platform):
+#   Windows : Nullock-1.0.0-win64.exe   (NSIS installer)
+#             Nullock-1.0.0-win64.zip   (portable)
+#   Linux   : Nullock-1.0.0-Linux.deb
+#             Nullock-1.0.0-Linux.rpm
+#             Nullock-x86_64.AppImage
+#   macOS   : Nullock-1.0.0-Darwin.dmg
+#
+# No code signing here (free engineering only). When we have certs,
+# add a signing step BEFORE the artifact upload and notarization for
+# macOS BETWEEN build and dmg-pack.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  QT_VERSION: 6.7.3
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtquickcontrols2 qtwebsockets'
+      - name: install nghttp2
+        run: vcpkg install nghttp2:x64-windows
+      - name: install NSIS
+        run: choco install nsis -y
+      - name: configure
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows"
+      - name: build
+        run: cmake --build build --config Release --target NullockApp
+      - name: package
+        working-directory: build
+        run: cpack -G "NSIS;ZIP" -C Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            build/Nullock-*-win64.exe
+            build/Nullock-*-win64.zip
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtquickcontrols2 qtwebsockets'
+      - name: install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential \
+            libnghttp2-dev libssl-dev \
+            rpm dpkg-dev imagemagick wget
+      - name: configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: build
+        run: cmake --build build -j
+      - name: cpack -- DEB / RPM / TGZ
+        working-directory: build
+        run: cpack -G "DEB;RPM;TGZ"
+      - name: stage for AppImage
+        run: |
+          DESTDIR=stage cmake --install build --prefix /usr
+      - name: AppImage
+        run: bash packaging/appimage/build_appimage.sh stage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            build/Nullock-*-Linux.deb
+            build/Nullock-*-Linux.rpm
+            build/Nullock-*-Linux.tar.gz
+            Nullock-*.AppImage
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtquickcontrols2 qtwebsockets'
+      - name: install nghttp2
+        run: brew install nghttp2
+      - name: configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build
+        run: cmake --build build -j
+      - name: cpack -- DMG
+        working-directory: build
+        run: cpack -G "DragNDrop"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            build/Nullock-*-Darwin.dmg
+
+  release:
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: list artifacts
+        run: find artifacts -type f
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/windows/*
+            artifacts/linux/*
+            artifacts/macos/*
