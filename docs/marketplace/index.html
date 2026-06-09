@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nullock -- Extensions Marketplace</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    font: 14px -apple-system, system-ui, sans-serif;
+    background: #0d0d12;
+    color: #d0d0d6;
+  }
+  header {
+    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+    color: white; padding: 24px 32px;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  header p  { margin: 4px 0 0; opacity: 0.92; font-size: 13px; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 32px; }
+  .ext {
+    border: 1px solid #2a2a35;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    background: #14141a;
+  }
+  .ext h2 { margin: 0 0 6px; font-size: 15px; color: #b7a3d6; }
+  .ext .summary { margin: 0 0 10px; color: #a0a0a8; }
+  .meta { display: flex; gap: 12px; font-size: 12px; color: #666; flex-wrap: wrap; }
+  .meta span { background: #1c1c24; padding: 2px 8px; border-radius: 999px; }
+  .install { display: inline-block; padding: 6px 12px; margin-top: 8px;
+             background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
+             color: white; text-decoration: none; border-radius: 4px;
+             font-weight: 500; font-size: 12px; }
+  code { background: #1c1c24; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  pre  { background: #1c1c24; padding: 12px; border-radius: 4px; overflow-x: auto;
+         font-size: 12px; line-height: 1.5; }
+  .err  { color: #f87171; }
+  footer { padding: 24px 32px; color: #666; font-size: 12px; border-top: 1px solid #1c1c24; }
+  footer a { color: #b7a3d6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nullock -- Extensions Marketplace</h1>
+  <p>Curated JS extensions for the Nullock proxy. Drop them into your <code>extensions/</code> dir, hit Reload.</p>
+</header>
+<main>
+  <div id="list">Loading...</div>
+
+  <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Install an extension</h2>
+  <p>The Nullock extensions dir is at:</p>
+  <pre>%APPDATA%/Nullock/Nullock/extensions/           (Windows)
+~/.local/share/Nullock/Nullock/extensions/      (Linux)
+~/Library/Application Support/Nullock/Nullock/extensions/  (macOS)</pre>
+  <p>Save the .js file there, then in the Nullock UI: <strong>Settings &rarr; Extensions &rarr; Reload</strong>, or via CLI:</p>
+  <pre>nullock extensions reload</pre>
+
+  <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Publish your own</h2>
+  <p>Submit a PR to <a href="https://github.com/Bikebrainz/Nullock">Bikebrainz/Nullock</a> adding your extension to <code>extensions/marketplace.json</code>. Keep your extension under 500 lines of pure JS; no external dependencies (QJSEngine has no npm).</p>
+</main>
+<footer>
+  Catalog: <code>marketplace.json</code> -- curated by the Nullock authors.
+  Source: <a href="https://github.com/Bikebrainz/Nullock">github.com/Bikebrainz/Nullock</a>.
+</footer>
+<script>
+const list = document.getElementById("list");
+
+fetch("./marketplace.json")
+  .then(r => r.json())
+  .then(data => {
+    list.innerHTML = "";
+    if (!data.extensions || !data.extensions.length) {
+      list.textContent = "No extensions yet.";
+      return;
+    }
+    for (const ext of data.extensions) {
+      const div = document.createElement("div");
+      div.className = "ext";
+      const cats = (ext.categories || []).map(c => `<span>${c}</span>`).join("");
+      div.innerHTML = `
+        <h2>${ext.name} <span style="color: #666; font-weight: 400; font-size: 12px;">v${ext.version}</span></h2>
+        <p class="summary">${ext.summary || ""}</p>
+        <div class="meta">
+          <span>by ${ext.author || "unknown"}</span>
+          ${cats}
+          <span>hooks: ${(ext.hooks || []).join(", ") || "none"}</span>
+        </div>
+        <a class="install" href="${ext.url}" download>Download ${ext.id}.js</a>
+      `;
+      list.appendChild(div);
+    }
+  })
+  .catch(e => {
+    list.innerHTML = `<p class="err">Failed to load marketplace.json: ${e}</p>`;
+  });
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@
 #include "intercept.hpp"
 #include "session_manager.hpp"
 #include "session_rules.hpp"
+#include "networking.hpp"
 #include "websocket.hpp"
 #include "ws_repeater.hpp"
 
@@ -372,6 +373,11 @@ public:
         // (and the browser sees a TLS-green badge because *our* forged
         // cert to the browser is valid).
         upstreamCfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
+        // Browser-shaped TLS handshake to defeat tier-1 WAF
+        // fingerprinting. Default profile is None == Qt defaults; set
+        // via --tls-fingerprint=chrome|firefox.
+        Nullock::Core::TlsProfile::apply(upstreamCfg,
+            Nullock::Core::HttpClient::defaultProfile());
         upstream->setSslConfiguration(upstreamCfg);
         upstream->setPeerVerifyName(host);
 

@@ -3,6 +3,9 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMutexLocker>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -55,16 +58,18 @@ bool HistoryIndex::ensureSchema() {
     // Caller already holds m_mutex.
     static const char *kSchema =
         "CREATE TABLE IF NOT EXISTS rows ("
-        "  id      INTEGER PRIMARY KEY,"
-        "  ts      INTEGER,"          // epoch ms
-        "  method  TEXT NOT NULL,"
-        "  host    TEXT NOT NULL,"
-        "  port    INTEGER,"
-        "  path    TEXT NOT NULL,"
-        "  status  INTEGER,"
-        "  size    INTEGER,"          // response body size
-        "  tls     INTEGER,"          // 0/1
-        "  mime    TEXT"
+        "  id        INTEGER PRIMARY KEY,"
+        "  ts        INTEGER,"          // epoch ms
+        "  method    TEXT NOT NULL,"
+        "  host      TEXT NOT NULL,"
+        "  port      INTEGER,"
+        "  path      TEXT NOT NULL,"
+        "  status    INTEGER,"
+        "  size      INTEGER,"          // response body size
+        "  tls       INTEGER,"          // 0/1
+        "  mime      TEXT,"
+        "  req_json  TEXT,"             // full HttpRequest serialized
+        "  resp_json TEXT"              // full HttpResponse serialized
         ")";
     QSqlQuery q(m_db);
     if (!q.exec(kSchema)) {
@@ -95,6 +100,105 @@ QString mimeOf(const Nullock::Proxy::HttpResponse &r) {
             return h.second;
     return {};
 }
+
+QJsonObject requestToJson(const Nullock::Proxy::HttpRequest &r) {
+    QJsonObject o;
+    o["method"]      = r.method;
+    o["target"]      = r.target;
+    o["path"]        = r.path;
+    o["host"]        = r.host;
+    o["port"]        = r.port;
+    o["httpVersion"] = r.httpVersion;
+    o["ts"]          = r.timestamp.toMSecsSinceEpoch();
+    QJsonArray hs;
+    for (const auto &h : r.headers) {
+        QJsonArray pair;
+        pair.append(h.first);
+        pair.append(h.second);
+        hs.append(pair);
+    }
+    o["headers"] = hs;
+    o["body_b64"] = QString::fromLatin1(r.body.toBase64());
+    return o;
+}
+
+QJsonObject responseToJson(const Nullock::Proxy::HttpResponse &r) {
+    QJsonObject o;
+    o["httpVersion"]  = r.httpVersion;
+    o["statusCode"]   = r.statusCode;
+    o["reasonPhrase"] = r.reasonPhrase;
+    o["wasTls"]       = r.wasTls;
+    o["peerAddress"]  = r.peerAddress;
+    QJsonArray hs;
+    for (const auto &h : r.headers) {
+        QJsonArray pair;
+        pair.append(h.first);
+        pair.append(h.second);
+        hs.append(pair);
+    }
+    o["headers"] = hs;
+    o["body_b64"] = QString::fromLatin1(r.body.toBase64());
+    return o;
+}
+
+Nullock::Proxy::HttpRequest requestFromJson(const QJsonObject &o) {
+    Nullock::Proxy::HttpRequest r;
+    r.method      = o.value("method").toString();
+    r.target      = o.value("target").toString();
+    r.path        = o.value("path").toString();
+    r.host        = o.value("host").toString();
+    r.port        = static_cast<quint16>(o.value("port").toInt());
+    r.httpVersion = o.value("httpVersion").toString();
+    r.timestamp   = QDateTime::fromMSecsSinceEpoch(
+                        o.value("ts").toVariant().toLongLong());
+    for (const QJsonValue &v : o.value("headers").toArray()) {
+        const QJsonArray pair = v.toArray();
+        if (pair.size() == 2)
+            r.headers.append({ pair[0].toString(), pair[1].toString() });
+    }
+    r.body = QByteArray::fromBase64(o.value("body_b64").toString().toLatin1());
+    return r;
+}
+
+Nullock::Proxy::HttpResponse responseFromJson(const QJsonObject &o) {
+    Nullock::Proxy::HttpResponse r;
+    r.httpVersion  = o.value("httpVersion").toString();
+    r.statusCode   = o.value("statusCode").toInt();
+    r.reasonPhrase = o.value("reasonPhrase").toString();
+    r.wasTls       = o.value("wasTls").toBool();
+    r.peerAddress  = o.value("peerAddress").toString();
+    for (const QJsonValue &v : o.value("headers").toArray()) {
+        const QJsonArray pair = v.toArray();
+        if (pair.size() == 2)
+            r.headers.append({ pair[0].toString(), pair[1].toString() });
+    }
+    r.body = QByteArray::fromBase64(o.value("body_b64").toString().toLatin1());
+    return r;
+}
+
+QString renderRawRequest(const Nullock::Proxy::HttpRequest &req) {
+    QString out;
+    out += QString("%1 %2 %3\n").arg(req.method, req.path, req.httpVersion);
+    for (const auto &h : req.headers)
+        out += QString("%1: %2\n").arg(h.first, h.second);
+    out += "\n";
+    out += QString::fromUtf8(req.body.left(64 * 1024));
+    return out;
+}
+
+QString renderRawResponse(const Nullock::Proxy::HttpResponse &resp) {
+    QString out;
+    out += QString("%1 %2 %3\n")
+              .arg(resp.httpVersion)
+              .arg(resp.statusCode)
+              .arg(resp.reasonPhrase);
+    for (const auto &h : resp.headers)
+        out += QString("%1: %2\n").arg(h.first, h.second);
+    out += "\n";
+    out += QString::fromUtf8(resp.body.left(64 * 1024));
+    return out;
+}
+
 }
 
 void HistoryIndex::append(int rowId,
@@ -102,14 +206,19 @@ void HistoryIndex::append(int rowId,
                           const Nullock::Proxy::HttpResponse &resp) {
     QMutexLocker lk(&m_mutex);
     if (!m_db.isOpen()) return;
+    const QString reqJson  = QString::fromUtf8(QJsonDocument(requestToJson(req))
+                                  .toJson(QJsonDocument::Compact));
+    const QString respJson = QString::fromUtf8(QJsonDocument(responseToJson(resp))
+                                  .toJson(QJsonDocument::Compact));
     QSqlQuery q(m_db);
     q.prepare(
-        "INSERT INTO rows (id, ts, method, host, port, path, status, size, tls, mime) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "INSERT INTO rows (id, ts, method, host, port, path, status, size, tls, mime, req_json, resp_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "  ts=excluded.ts, method=excluded.method, host=excluded.host, "
         "  port=excluded.port, path=excluded.path, status=excluded.status, "
-        "  size=excluded.size, tls=excluded.tls, mime=excluded.mime");
+        "  size=excluded.size, tls=excluded.tls, mime=excluded.mime, "
+        "  req_json=excluded.req_json, resp_json=excluded.resp_json");
     q.addBindValue(rowId);
     q.addBindValue(req.timestamp.isValid()
                        ? req.timestamp.toMSecsSinceEpoch()
@@ -122,9 +231,38 @@ void HistoryIndex::append(int rowId,
     q.addBindValue(static_cast<qint64>(resp.body.size()));
     q.addBindValue(resp.wasTls ? 1 : 0);
     q.addBindValue(mimeOf(resp));
+    q.addBindValue(reqJson);
+    q.addBindValue(respJson);
     if (!q.exec()) {
         qWarning() << "history-index: insert failed:" << q.lastError().text();
     }
+}
+
+HistoryIndex::FullRow HistoryIndex::loadFullRow(int id) const {
+    FullRow out;
+    QMutexLocker lk(&m_mutex);
+    if (!m_db.isOpen()) return out;
+    QSqlQuery q(m_db);
+    q.prepare("SELECT req_json, resp_json FROM rows WHERE id = ?");
+    q.addBindValue(id);
+    if (!q.exec() || !q.next()) return out;
+    const QJsonDocument req  = QJsonDocument::fromJson(q.value(0).toString().toUtf8());
+    const QJsonDocument resp = QJsonDocument::fromJson(q.value(1).toString().toUtf8());
+    if (!req.isObject() || !resp.isObject()) return out;
+    out.request  = requestFromJson(req.object());
+    out.response = responseFromJson(resp.object());
+    out.ok = true;
+    return out;
+}
+
+QString HistoryIndex::loadFullRequestRaw(int id) const {
+    const FullRow r = loadFullRow(id);
+    return r.ok ? renderRawRequest(r.request) : QString();
+}
+
+QString HistoryIndex::loadFullResponseRaw(int id) const {
+    const FullRow r = loadFullRow(id);
+    return r.ok ? renderRawResponse(r.response) : QString();
 }
 
 QJsonArray HistoryIndex::find(const QJsonObject &filters) const {

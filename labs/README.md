@@ -6,9 +6,14 @@ no external dependencies beyond Flask + requests.
 
 ```
 labs/
-  01-xss-mirror/      # Reflected XSS in a search-echo handler
-  02-sqli-basic/      # Error-based SQLi via a string-concatenated query
-  03-jwt-weak/        # JWT signed with a short / leaked / `none` algorithm
+  01-xss-mirror/      # Reflected XSS in a search-echo handler           (5001)
+  02-sqli-basic/      # Error-based SQLi via a string-concatenated query (5002)
+  03-jwt-weak/        # JWT signed with a short / leaked / `none` alg    (5003)
+  04-idor/            # IDOR -- /profile/<id> with no ownership check    (5004)
+  05-ssrf/            # SSRF via /fetch?url=... (no host allow-list)     (5005)
+  06-graphql/         # GraphQL introspection + over-fetching            (5006)
+  07-ssti/            # Jinja2 SSTI -> RCE via __class__.__mro__         (5007)
+  08-oauth-state/     # OAuth callback with missing/unverified state     (5008)
 ```
 
 ## Why labs?

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proxy_server.hpp"
+#include "tls_profile.hpp"
 
 #include <QByteArray>
 #include <QObject>
@@ -29,6 +30,15 @@ public:
                     quint16 port,
                     bool useTls,
                     const QByteArray &requestBytes);
+
+    // TLS handshake profile. Default Profile::None == Qt defaults.
+    // Set once at App wire time from the --tls-fingerprint flag.
+    void setProfile(TlsProfile::Profile p) { m_profile = p; }
+    static void setDefaultProfile(TlsProfile::Profile p);
+    static TlsProfile::Profile defaultProfile();
+
+private:
+    TlsProfile::Profile m_profile = TlsProfile::Profile::None;
 };
 
 } // namespace Nullock::Core

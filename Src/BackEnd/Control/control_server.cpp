@@ -787,12 +787,24 @@ QByteArray ControlServer::buildSnapshot() const {
 
 QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
     if (!m_wiring.history) return {};
-    // Row indices in ProxyModel are 0-based; rowId is 1-based.
-    const int row = id - 1;
-    if (row < 0 || row >= m_wiring.history->rowCount()) return {};
-    return wantRequest
-        ? m_wiring.history->requestRawAt(row).toUtf8()
-        : m_wiring.history->responseRawAt(row).toUtf8();
+    // Prefer the in-memory ProxyModel -- O(1) lookup, full structs.
+    // If the id has been evicted from the window (200k-row engagement,
+    // bounded window), fall back to the SQLite index which carries the
+    // full req_json / resp_json blobs.
+    const QString fromModel = wantRequest
+        ? m_wiring.history->requestRawById(id)
+        : m_wiring.history->responseRawById(id);
+    if (!fromModel.isEmpty()) return fromModel.toUtf8();
+    if (m_wiring.projectStore) {
+        auto *idx = m_wiring.projectStore->historyIndex();
+        if (idx && idx->isOpen()) {
+            const QString cold = wantRequest
+                ? idx->loadFullRequestRaw(id)
+                : idx->loadFullResponseRaw(id);
+            if (!cold.isEmpty()) return cold.toUtf8();
+        }
+    }
+    return {};
 }
 
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
@@ -810,6 +822,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/ws/sessions"
             || p == "/api/oast/poll"
             || p.startsWith("/api/export/")
+            || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
             || (p.startsWith("/api/history/")
                 && (p.endsWith("/request") || p.endsWith("/response")));
@@ -1030,9 +1043,24 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     // public reportFinding hook. Fire-and-forget; new
                     // findings show up in the next snapshot poll.
                     if (!m_wiring.history) return httpJson(404, QJsonObject{{ "error", "no history" }});
-                    const int rowIndex = id - 1;
-                    auto *src = m_wiring.history->requestAt(rowIndex);
-                    auto *srcResp = m_wiring.history->responseAt(rowIndex);
+                    // Prefer the in-memory window; fall back to SQLite
+                    // for evicted rows.
+                    auto *src     = m_wiring.history->requestById(id);
+                    auto *srcResp = m_wiring.history->responseById(id);
+                    Nullock::Proxy::HttpRequest   coldReq;
+                    Nullock::Proxy::HttpResponse  coldResp;
+                    if (!src && m_wiring.projectStore) {
+                        auto *idx = m_wiring.projectStore->historyIndex();
+                        if (idx && idx->isOpen()) {
+                            auto fr = idx->loadFullRow(id);
+                            if (fr.ok) {
+                                coldReq = std::move(fr.request);
+                                coldResp = std::move(fr.response);
+                                src     = &coldReq;
+                                srcResp = &coldResp;
+                            }
+                        }
+                    }
                     if (!src) return httpJson(404, QJsonObject{{ "error", "row not found" }});
 
                     const Nullock::Proxy::HttpRequest base = *src;
@@ -1345,13 +1373,26 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     // the snapshot poll ~250ms later.
                     if (!m_wiring.history || !m_wiring.proxy)
                         return httpJson(404, QJsonObject{{ "error", "no history" }});
-                    const int row = id - 1;
-                    auto *src = m_wiring.history->requestAt(row);
-                    auto *srcResp = m_wiring.history->responseAt(row);
-                    if (!src) return httpJson(404, QJsonObject{{ "error", "row not found" }});
-
-                    Nullock::Proxy::HttpRequest req = *src;
-                    const bool useTls = srcResp ? srcResp->wasTls : false;
+                    Nullock::Proxy::HttpRequest req;
+                    bool useTls = false;
+                    if (auto *src = m_wiring.history->requestById(id)) {
+                        req = *src;
+                        auto *srcResp = m_wiring.history->responseById(id);
+                        useTls = srcResp ? srcResp->wasTls : false;
+                    } else if (m_wiring.projectStore) {
+                        auto *idx = m_wiring.projectStore->historyIndex();
+                        if (idx && idx->isOpen()) {
+                            auto fr = idx->loadFullRow(id);
+                            if (fr.ok) {
+                                req = std::move(fr.request);
+                                useTls = fr.response.wasTls;
+                            } else {
+                                return httpJson(404, QJsonObject{{ "error", "row not found" }});
+                            }
+                        }
+                    } else {
+                        return httpJson(404, QJsonObject{{ "error", "row not found" }});
+                    }
                     Wiring w = m_wiring;
                     (void)QtConcurrent::run([w, req, useTls]() {
                         Nullock::Proxy::HttpRequest r = req;
@@ -1638,6 +1679,46 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/session-rules/clear-vars") {
         if (m_wiring.sessionRules) m_wiring.sessionRules->clearAll();
         return okJson();
+    }
+
+    // ---- Full row fetch by id (cold-storage path) --------------------
+    // GET /api/history/full/<id> -- reads the full HttpRequest +
+    // HttpResponse from the SQLite store. Used by the UI when the user
+    // navigates to a row that has been evicted from the in-memory
+    // ProxyModel window. Returns the same shape as snapshot's row
+    // entries, plus rawRequest and rawResponse pre-rendered.
+    if (path.startsWith("/api/history/full/")) {
+        bool ok = false;
+        const int id = path.mid(QString("/api/history/full/").size()).toInt(&ok);
+        if (!ok || id <= 0)
+            return httpJson(400, QJsonObject{{ "error", "bad id" }});
+        if (!m_wiring.projectStore)
+            return httpJson(404, QJsonObject{{ "error", "no project store" }});
+        auto *idx = m_wiring.projectStore->historyIndex();
+        if (!idx || !idx->isOpen())
+            return httpJson(503, QJsonObject{{ "error", "history index not ready" }});
+        const auto fr = idx->loadFullRow(id);
+        if (!fr.ok)
+            return httpJson(404, QJsonObject{{ "error", "row not found" }});
+        QJsonObject o;
+        o["id"]     = id;
+        o["method"] = fr.request.method;
+        o["host"]   = fr.request.host;
+        o["port"]   = fr.request.port;
+        o["path"]   = fr.request.path;
+        o["status"] = fr.response.statusCode;
+        o["size"]   = static_cast<qint64>(fr.response.body.size());
+        o["tls"]    = fr.response.wasTls;
+        // Pre-render so the React UI doesn't have to reconstruct.
+        const QString req = m_wiring.history
+            ? m_wiring.history->requestRawById(id)
+            : QString();
+        const QString rsp = m_wiring.history
+            ? m_wiring.history->responseRawById(id)
+            : QString();
+        o["rawRequest"]  = req.isEmpty() ? idx->loadFullRequestRaw(id)  : req;
+        o["rawResponse"] = rsp.isEmpty() ? idx->loadFullResponseRaw(id) : rsp;
+        return httpJson(200, o);
     }
 
     // ---- SQLite-backed history find ----------------------------------

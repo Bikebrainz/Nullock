@@ -49,8 +49,20 @@ void ProxyModel::clear() {
     if (m_entries.isEmpty()) return;
     beginResetModel();
     m_entries.clear();
-    m_nextId = 1;
+    m_nextId  = 1;
+    m_firstId = 1;
     endResetModel();
+}
+
+void ProxyModel::setMaxRowsInMemory(int n) {
+    m_maxRows = std::max(100, n);
+    // Trim immediately if we're now over the new cap.
+    while (static_cast<int>(m_entries.size()) > m_maxRows) {
+        beginRemoveRows({}, 0, 0);
+        m_entries.removeFirst();
+        ++m_firstId;
+        endRemoveRows();
+    }
 }
 
 void ProxyModel::addResponse(const Nullock::Proxy::HttpRequest &request,
@@ -59,6 +71,44 @@ void ProxyModel::addResponse(const Nullock::Proxy::HttpRequest &request,
     beginInsertRows({}, row, row);
     m_entries.append({ m_nextId++, request, response });
     endInsertRows();
+    // Window cap. Evict the oldest entry when we'd otherwise grow the
+    // in-memory window past m_maxRows. The evicted row stays in
+    // history.ndjson + HistoryIndex so /api/history/find and
+    // /api/history/full/<id> still see it -- only the live model loses it.
+    while (static_cast<int>(m_entries.size()) > m_maxRows) {
+        beginRemoveRows({}, 0, 0);
+        m_entries.removeFirst();
+        ++m_firstId;
+        endRemoveRows();
+    }
+}
+
+const Nullock::Proxy::HttpRequest *ProxyModel::requestById(int id) const {
+    if (id < m_firstId) return nullptr;
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return nullptr;
+    return &m_entries[idx].request;
+}
+
+const Nullock::Proxy::HttpResponse *ProxyModel::responseById(int id) const {
+    if (id < m_firstId) return nullptr;
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return nullptr;
+    return &m_entries[idx].response;
+}
+
+QString ProxyModel::requestRawById(int id) const {
+    if (id < m_firstId) return {};
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return {};
+    return requestRawAt(idx);
+}
+
+QString ProxyModel::responseRawById(int id) const {
+    if (id < m_firstId) return {};
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return {};
+    return responseRawAt(idx);
 }
 
 namespace {

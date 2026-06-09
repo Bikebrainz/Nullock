@@ -18,6 +18,8 @@ add_library(Networking STATIC
     session_rules.hpp
     crawler.cpp
     crawler.hpp
+    tls_profile.cpp
+    tls_profile.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

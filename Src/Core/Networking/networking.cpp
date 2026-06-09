@@ -125,7 +125,23 @@ QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name)
 
 } // namespace
 
-HttpClient::HttpClient(QObject *parent) : QObject(parent) {}
+namespace {
+// Process-wide default profile so callers that construct HttpClient
+// ad-hoc (Crawler, ContentDiscovery, Recon, scattered QtConcurrent::run
+// lambdas) all inherit it without us having to thread a config through
+// every call site.
+TlsProfile::Profile g_defaultProfile = TlsProfile::Profile::None;
+}
+
+void HttpClient::setDefaultProfile(TlsProfile::Profile p) {
+    g_defaultProfile = p;
+}
+TlsProfile::Profile HttpClient::defaultProfile() {
+    return g_defaultProfile;
+}
+
+HttpClient::HttpClient(QObject *parent) : QObject(parent),
+    m_profile(g_defaultProfile) {}
 
 HttpClient::SendResult HttpClient::send(const QString &host,
                                         quint16 port,
@@ -143,6 +159,10 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         // through here; without this an upstream MITM could feed us
         // forged response bytes for the user to act on.
         cfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
+        // Apply the configured TLS handshake profile (browser-shaped
+        // cipher order + protocol). Default is Profile::None which
+        // leaves Qt defaults alone.
+        TlsProfile::apply(cfg, m_profile);
         ssl->setSslConfiguration(cfg);
         ssl->setPeerVerifyName(host);
         QStringList tlsErrors;

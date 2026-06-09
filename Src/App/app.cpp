@@ -18,6 +18,8 @@
 #include "session_rules.hpp"
 #include "oast_server.hpp"
 #include "crawler.hpp"
+#include "networking.hpp"
+#include "tls_profile.hpp"
 #include "proxy_server.hpp"
 #include "repeater.hpp"
 
@@ -561,6 +563,11 @@ int main(int argc, char *argv[]) {
             << "  --headless            Skip QML window + auto-browser-open\n"
             << "  --ndjson              Emit per-event JSON lines on stdout\n"
             << "  --ndjson-include-query  Include URL query strings in --ndjson events (off by default; query strings can leak ?token=... to log files)\n"
+            << "  --max-rows=N          ProxyModel in-memory window cap (default 10000)\n"
+            << "  --tls-fingerprint=X   Outbound TLS handshake profile: chrome|firefox|none. Tunes\n"
+            << "                        cipher list + ALPN to approximate a real browser. Note: full\n"
+            << "                        JA3-exact shaping isn't possible via Qt's API; SChannel on\n"
+            << "                        Windows ignores cipher order anyway.\n"
             << "  --proxy-port=N        Proxy listen port (default 8080)\n"
             << "  --control-port=N      Control server port (default 17777)\n"
             << "  --smoke-test          Run the self-test and exit\n"
@@ -589,6 +596,18 @@ int main(int argc, char *argv[]) {
         flagValue(argc, argv, "--proxy-port").toUInt());
     const quint16 wantedControlPort = static_cast<quint16>(
         flagValue(argc, argv, "--control-port").toUInt());
+    // In-memory ProxyModel window cap. Default 10k. Override with
+    // --max-rows=N for very long engagements; the SQLite-backed
+    // HistoryIndex sees everything regardless, only the live model is
+    // bounded.
+    const int wantedMaxRows = flagValue(argc, argv, "--max-rows").toInt();
+    // TLS handshake profile. Applies to MITM upstream + HttpClient.
+    // Default "none" leaves Qt defaults alone.
+    const QString tlsFingerprint = flagValue(argc, argv, "--tls-fingerprint");
+    if (!tlsFingerprint.isEmpty()) {
+        const auto p = Nullock::Core::TlsProfile::fromName(tlsFingerprint);
+        Nullock::Core::HttpClient::setDefaultProfile(p);
+    }
 
     Nullock::Proxy::CertAuthority certAuthority;
     certAuthority.ensureCa();
@@ -600,6 +619,7 @@ int main(int argc, char *argv[]) {
     proxy.setBlocklistPath(certAuthority.caDir() + "/mitm_blocked.txt");
 
     Nullock::FrontEnd::ProxyModel model;
+    if (wantedMaxRows > 0) model.setMaxRowsInMemory(wantedMaxRows);
     Nullock::FrontEnd::ProxyFilterModel filteredModel;
     filteredModel.setSourceModel(&model);
     Nullock::FrontEnd::SiteMapModel siteMap(&model);

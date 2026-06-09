@@ -64,6 +64,22 @@ public:
     // matching the snapshot row shape so the UI can reuse renderers.
     QJsonArray find(const QJsonObject &filters) const;
 
+    // Full-row fetch for IDs that have been evicted from the in-memory
+    // ProxyModel. Returns the reconstructed HttpRequest + HttpResponse
+    // by reading the req_json + resp_json blobs. ok==false on miss.
+    struct FullRow {
+        bool                          ok = false;
+        Nullock::Proxy::HttpRequest   request;
+        Nullock::Proxy::HttpResponse  response;
+    };
+    FullRow loadFullRow(int id) const;
+    // Cheaper variants that return just the request/response without
+    // re-parsing the JSON into structs. The control server uses these
+    // for /api/history/<id>/request and /response when the model has
+    // already evicted the row.
+    QString loadFullRequestRaw(int id) const;
+    QString loadFullResponseRaw(int id) const;
+
 private:
     bool ensureSchema();
 
