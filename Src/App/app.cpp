@@ -677,6 +677,9 @@ int main(int argc, char *argv[]) {
     // table (otherwise findings would point at the wrong row).
     Nullock::Core::PassiveScanner scanner;
     scanner.setNextRowId(model.rowCount() + 1);
+    // Let JS extensions emit findings into the same panel via
+    // nullock.reportFinding(). Without this they fall back to the ext log.
+    extensions.setScanner(&scanner);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
     // ProxyModel::clear() resets its own next-id to 1; mirror that on the

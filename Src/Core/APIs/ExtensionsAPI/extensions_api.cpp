@@ -1,6 +1,8 @@
 #include "extensions_api.hpp"
+#include "passive_scanner.hpp"
 
 #include <QDateTime>
+#include <QUrl>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -37,6 +39,25 @@ void ExtensionsApiBridge::onRequest(const QJSValue &callback) {
         return;
     }
     m_owner->m_onRequestHandlers.append(callback);
+}
+
+void ExtensionsApiBridge::reportFinding(const QString &severity,
+                                        const QString &kind,
+                                        const QString &summary,
+                                        const QString &evidence,
+                                        const QString &url) {
+    PassiveScanner *scanner = m_owner->scanner();
+    if (!scanner) {
+        // No scanner wired -- don't silently drop the signal; surface it
+        // in the extension log so the author still sees their finding.
+        m_owner->appendLog(QString("[ext][finding] %1/%2: %3 (%4)")
+                               .arg(severity, kind, summary, url));
+        return;
+    }
+    const QString host = QUrl(url).host();
+    // rowId 0 = extension-originated; the panel still renders it, the URL
+    // makes it actionable. reportFinding runs the enrichment pass for us.
+    scanner->reportFinding(0, severity, kind, summary, evidence, host, url);
 }
 
 ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
@@ -129,8 +150,12 @@ void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &reques
     entry.setProperty("status", response.statusCode);
     entry.setProperty("reasonPhrase", response.reasonPhrase);
     entry.setProperty("responseSize", static_cast<int>(response.body.size()));
+    // 64 KiB preview. Static analysis extensions (DOM taint, secret
+    // scanning) need enough of the body to see inline scripts and bundle
+    // headers; 4 KiB truncated mid-<script>. responseSize still reports
+    // the true length so handlers can tell when they're seeing a prefix.
     entry.setProperty("bodyPreview",
-        QString::fromUtf8(response.body.left(4096)));
+        QString::fromUtf8(response.body.left(64 * 1024)));
 
     QJSValue headers = m_engine.newArray(response.headers.size());
     for (qsizetype i = 0; i < response.headers.size(); ++i) {

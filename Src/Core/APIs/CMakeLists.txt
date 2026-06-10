@@ -20,9 +20,18 @@ target_link_libraries(APIs PUBLIC
     Proxy
 )
 
+# Networking gives us PassiveScanner so extensions can emit findings via
+# nullock.reportFinding(). Private: only the .cpp calls into it; the
+# public header just forward-declares PassiveScanner. Networking links
+# Proxy (not APIs), so there's no dependency cycle.
+target_link_libraries(APIs PRIVATE Networking)
+
 # Include directories
 target_include_directories(APIs PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ExtensionsAPI
     ${CMAKE_CURRENT_SOURCE_DIR}/Oast
+)
+target_include_directories(APIs PRIVATE
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking
 )

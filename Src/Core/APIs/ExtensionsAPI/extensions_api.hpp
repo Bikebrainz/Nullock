@@ -10,6 +10,8 @@
 
 namespace Nullock::Core {
 
+class PassiveScanner;       // forward — wired by app.cpp so JS extensions
+                            // can emit findings via nullock.reportFinding()
 class ExtensionsApiBridge;  // forward — internal
 
 // Loads JavaScript extensions from <appdata>/Nullock/Nullock/extensions/
@@ -43,6 +45,12 @@ public:
 
     Q_INVOKABLE QStringList recentLog(int max = 50) const;
     Q_INVOKABLE bool reload();
+
+    // Wire the passive scanner so extensions can call
+    // nullock.reportFinding(severity, kind, summary, evidence, url).
+    // Optional -- if unset, reportFinding() falls back to logging.
+    void setScanner(PassiveScanner *scanner) { m_scanner = scanner; }
+    PassiveScanner *scanner() const { return m_scanner; }
 
     // Apply onRequest mutation handlers and return the (possibly modified)
     // request. Thread-safe: if called from a non-main thread it routes via
@@ -79,6 +87,7 @@ private:
 
     QJSEngine            m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
+    PassiveScanner      *m_scanner = nullptr;
     QList<QJSValue>      m_onResponseHandlers;
     QList<QJSValue>      m_onRequestHandlers;
     QStringList          m_loadedScripts;
@@ -101,6 +110,19 @@ public:
     // Returning a modified entry (with new headers/body/method/path) actually
     // changes what gets forwarded upstream.
     Q_INVOKABLE void onRequest(const QJSValue &callback);
+
+    // Exposed to JS as
+    //   nullock.reportFinding(severity, kind, summary, evidence, url)
+    // Emits a finding into the same panel the passive scanner uses, so an
+    // extension's findings get the same CWE/OWASP/CVSS enrichment and show
+    // up in reports / exports. If no scanner is wired it falls back to log.
+    // host is derived from the url. rowId is 0 (extension-originated, no
+    // single history row).
+    Q_INVOKABLE void reportFinding(const QString &severity,
+                                   const QString &kind,
+                                   const QString &summary,
+                                   const QString &evidence,
+                                   const QString &url);
 
 private:
     ExtensionsApi *m_owner;
