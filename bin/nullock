@@ -602,6 +602,22 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_chain() {
+    # nullock chain <chain-file.json | ->
+    # Runs a multi-step request chain. The file is the JSON body the
+    # /api/chain/run endpoint expects: { steps: [...], continueOnError? }.
+    [[ -n ${1-} ]] || die "usage: nullock chain <chain-file.json|->"
+    local doc
+    if [[ $1 == "-" ]]; then doc=$(cat); else doc=$(cat "$1"); fi
+    # Pass through verbatim -- the file already is the request body.
+    curl -sS --max-time 120 \
+         -H "Content-Type: application/json" \
+         -H "Origin: $API" \
+         -H "X-Nullock-UI: 1" \
+         -X POST -d "$doc" \
+         "$API/api/chain/run" | pp
+}
+
 cmd_graphql() {
     # nullock graphql <url> [header:value ...]
     # Fires 5 GraphQL active probes against the target.
@@ -773,6 +789,10 @@ Above-Burp features (v4/v5):
   nullock graphql <url> [hdr:val ...]    5 active GraphQL probes (introspection,
                                          field suggestion, alias amplification,
                                          depth bypass, batched-query bypass)
+  nullock chain <file.json|->            run a multi-step request chain;
+                                         extract vars from each response (json/
+                                         header/cookie/regex/status) and thread
+                                         them as {{var}} into later requests
 
 EOF
 }
@@ -816,6 +836,7 @@ case ${1:-help} in
     grouped)       shift; cmd_grouped "$@"       ;;
     cve)           shift; cmd_cve "$@"           ;;
     graphql)       shift; cmd_graphql "$@"       ;;
+    chain)         shift; cmd_chain "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

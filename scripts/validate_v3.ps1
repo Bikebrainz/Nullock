@@ -236,6 +236,64 @@ Test-Endpoint "graphql probe queues 5 attack probes for a real target" {
     return ($j.ok -eq $true) -and ($j.queued -eq 5)
 }
 
+Write-Host "`n=== Repeater chains ===" -ForegroundColor Cyan
+Test-Endpoint "chain run rejects empty steps" {
+    $body = '{"steps":[]}'
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/chain/run" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 10
+        $j = $r.Content | ConvertFrom-Json
+        return $j.ok -eq $false
+    } catch { return $false }
+}
+
+Test-Endpoint "chain threads a token from step1 json into step2 header" {
+    # Self-contained loopback origin: /login returns {token:...}; /me echoes
+    # the Authorization header it received. The chain must extract token from
+    # step1 and substitute it into step2's Authorization. (We don't target
+    # the control server itself -- that would deadlock, since the control
+    # handler blocks until the chain completes.)
+    $oport = 19799
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l = [System.Net.HttpListener]::new()
+        $l.Prefixes.Add("http://127.0.0.1:$port/")
+        $l.Start()
+        1..4 | ForEach-Object {
+            try {
+                $ctx = $l.GetContext()
+                if ($ctx.Request.Url.AbsolutePath -eq "/login") {
+                    $b = '{"token":"chainTok9"}'
+                } else {
+                    $b = '{"seen":"' + $ctx.Request.Headers["Authorization"] + '"}'
+                }
+                $ctx.Response.ContentType = "application/json"
+                $buf = [System.Text.Encoding]::UTF8.GetBytes($b)
+                $ctx.Response.OutputStream.Write($buf, 0, $buf.Length)
+                $ctx.Response.Close()
+            } catch {}
+        }
+        $l.Stop()
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 600
+    try {
+        $req1 = "POST /login HTTP/1.1`r`nHost: 127.0.0.1`r`nContent-Type: application/json`r`nContent-Length: 2`r`nConnection: close`r`n`r`n{}"
+        $req2 = "GET /me HTTP/1.1`r`nHost: 127.0.0.1`r`nAuthorization: Bearer {{token}}`r`nConnection: close`r`n`r`n"
+        $chain = @{
+            steps = @(
+                @{ name="login"; host="127.0.0.1"; port=$oport; tls=$false; request=$req1;
+                   extract=@( @{ var="token"; from="json"; key="token" } ) },
+                @{ name="use"; host="127.0.0.1"; port=$oport; tls=$false; request=$req2;
+                   extract=@( @{ var="echoed"; from="json"; key="seen" } ) }
+            )
+        } | ConvertTo-Json -Depth 8
+        $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/chain/run" -Method POST -Headers $hdr -Body $chain -ContentType "application/json" -TimeoutSec 20
+        $j = $r.Content | ConvertFrom-Json
+        return ($j.ran -eq 2) -and ($j.vars.token -eq "chainTok9") -and ($j.vars.echoed -eq "Bearer chainTok9")
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Cleanup
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500

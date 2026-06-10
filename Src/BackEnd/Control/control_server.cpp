@@ -11,6 +11,7 @@
 #include "update_check.hpp"
 #include "sequencer.hpp"
 #include "intruder.hpp"
+#include "chain_runner.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -3700,6 +3701,96 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         });
         return okJson({{ "queued", static_cast<int>(work.size()) },
                        { "target", url }});
+    }
+
+    // ---- Repeater chains ---------------------------------------------
+    // POST /api/chain/run
+    //   { continueOnError?: false,
+    //     steps: [ { name, host, port, tls, request,
+    //                extract: [ { var, from: "header"|"cookie"|"json"|
+    //                                    "regex"|"status", key } ] } ] }
+    //
+    // Runs the steps in order, threading {{var}} values extracted from
+    // each response into the next request. Returns every step's status,
+    // timing, and the values it extracted. Postman-style chaining that
+    // Burp lacks natively.
+    //
+    // This handler blocks until the whole chain finishes so the caller
+    // gets results in one round-trip. Two consequences: (1) a long chain
+    // briefly stalls other control requests, and (2) a step must NOT
+    // target this control server's own port -- that self-loops into a
+    // deadlock (we're busy waiting for the chain we'd need to serve).
+    // Chains target the app under test, so this is a non-issue in practice.
+    if (path == "/api/chain/run") {
+        const QJsonArray stepsArr = bodyJson.value("steps").toArray();
+        if (stepsArr.isEmpty())
+            return okJson({{ "ok", false }, { "error", "steps[] required" }});
+        if (stepsArr.size() > 50)
+            return okJson({{ "ok", false }, { "error", "max 50 steps" }});
+
+        QList<Nullock::Core::ChainRunner::Step> steps;
+        for (const QJsonValue &sv : stepsArr) {
+            const QJsonObject so = sv.toObject();
+            Nullock::Core::ChainRunner::Step st;
+            st.name = so.value("name").toString();
+            st.host = so.value("host").toString();
+            st.port = so.value("port").toInt(so.value("tls").toBool(true) ? 443 : 80);
+            st.tls  = so.value("tls").toBool(true);
+            st.request = so.value("request").toString().toUtf8();
+            if (st.host.isEmpty() || st.request.isEmpty())
+                return okJson({{ "ok", false },
+                               { "error", "each step needs host + request" }});
+            for (const QJsonValue &ev : so.value("extract").toArray()) {
+                const QJsonObject eo = ev.toObject();
+                Nullock::Core::ChainRunner::Extract ex;
+                ex.var = eo.value("var").toString();
+                ex.key = eo.value("key").toString();
+                const QString from = eo.value("from").toString("header").toLower();
+                if      (from == "cookie") ex.from = Nullock::Core::ChainRunner::Extract::Cookie;
+                else if (from == "json")   ex.from = Nullock::Core::ChainRunner::Extract::Json;
+                else if (from == "regex")  ex.from = Nullock::Core::ChainRunner::Extract::Regex;
+                else if (from == "status") ex.from = Nullock::Core::ChainRunner::Extract::Status;
+                else                       ex.from = Nullock::Core::ChainRunner::Extract::Header;
+                st.extracts.append(ex);
+            }
+            steps.append(st);
+        }
+
+        const bool continueOnError = bodyJson.value("continueOnError").toBool(false);
+        // Chains are sequential network I/O; run off the GUI thread but
+        // block this control request until done so the caller gets results.
+        Nullock::Core::ChainRunner::Result r;
+        {
+            auto future = QtConcurrent::run([steps, continueOnError]() {
+                return Nullock::Core::ChainRunner::run(steps, continueOnError);
+            });
+            future.waitForFinished();
+            r = future.result();
+        }
+
+        QJsonArray stepsOut;
+        for (const auto &sr : r.steps) {
+            QJsonObject eo;
+            for (auto it = sr.extracted.cbegin(); it != sr.extracted.cend(); ++it)
+                eo.insert(it.key(), it.value());
+            stepsOut.append(QJsonObject{
+                { "name", sr.name },
+                { "ok", sr.ok },
+                { "status", sr.status },
+                { "ms", static_cast<double>(sr.ms) },
+                { "requestSize", sr.requestSize },
+                { "responseSize", sr.responseSize },
+                { "error", sr.error },
+                { "extracted", eo },
+                { "responsePreview", QString::fromUtf8(sr.responsePreview) },
+            });
+        }
+        QJsonObject varsOut;
+        for (auto it = r.vars.cbegin(); it != r.vars.cend(); ++it)
+            varsOut.insert(it.key(), it.value());
+        return okJson({{ "ran", static_cast<int>(r.steps.size()) },
+                       { "steps", stepsOut },
+                       { "vars", varsOut }});
     }
 
     // ---- port scanner ------------------------------------------------

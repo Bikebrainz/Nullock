@@ -28,6 +28,8 @@ add_library(Networking STATIC
     finding_enricher.hpp
     cve_database.cpp
     cve_database.hpp
+    chain_runner.cpp
+    chain_runner.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
