@@ -602,6 +602,51 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_jwt() {
+    # nullock jwt analyze <token> [wordlist-file]
+    # nullock jwt forge   <token> none|hs256 [secret] [claim=val ...]
+    case ${1:-} in
+        analyze)
+            [[ -n ${2-} ]] || die "usage: nullock jwt analyze <token> [wordlist-file]"
+            local token=$2 body
+            if [[ -n ${3-} ]]; then
+                # Build a JSON array of words from the wordlist file.
+                local words
+                words=$(while IFS= read -r line; do
+                            [[ -z $line ]] && continue
+                            printf '%s\n' "$line"
+                        done < "$3" | "$JQ" -R . | "$JQ" -s -c .)
+                body="{\"token\":$(jsonq "$token"),\"wordlist\":$words}"
+            else
+                body="{\"token\":$(jsonq "$token")}"
+            fi
+            post /api/jwt/analyze "$body" | pp
+            ;;
+        forge)
+            [[ $# -ge 3 ]] || die "usage: nullock jwt forge <token> none|hs256 [secret] [claim=val ...]"
+            local token=$2 attack=$3 secret=${4:-}
+            shift 4 2>/dev/null || shift $#
+            # Remaining args claim=val become a JSON claims object.
+            local claims="{}"
+            if (( $# > 0 )); then
+                claims="{"
+                local first=1
+                for kv in "$@"; do
+                    local k=${kv%%=*} v=${kv#*=}
+                    if (( first )); then first=0; else claims+=","; fi
+                    claims+="$(jsonq "$k"):$(jsonq "$v")"
+                done
+                claims+="}"
+            fi
+            local body="{\"token\":$(jsonq "$token"),\"attack\":$(jsonq "$attack"),\"claims\":$claims"
+            [[ -n $secret ]] && body+=",\"secret\":$(jsonq "$secret")"
+            body+="}"
+            post /api/jwt/forge "$body" | pp
+            ;;
+        *) die "usage: nullock jwt {analyze <token> [wordlist]|forge <token> none|hs256 [secret] [claim=val ...]}" ;;
+    esac
+}
+
 cmd_chain() {
     # nullock chain <chain-file.json | ->
     # Runs a multi-step request chain. The file is the JSON body the
@@ -793,6 +838,14 @@ Above-Burp features (v4/v5):
                                          extract vars from each response (json/
                                          header/cookie/regex/status) and thread
                                          them as {{var}} into later requests
+  nullock jwt analyze <token> [wordlist] decode + flag weaknesses (alg:none,
+                                         no/expired exp, weak HMAC, priv claims,
+                                         kid injection); wordlist brute-forces
+                                         the HS* secret
+  nullock jwt forge <token> none|hs256 [secret] [claim=val ...]
+                                         forge alg:none (signature stripped) or
+                                         re-sign HS256 with secret, applying any
+                                         claim overrides (e.g. admin=true)
 
 EOF
 }
@@ -837,6 +890,7 @@ case ${1:-help} in
     cve)           shift; cmd_cve "$@"           ;;
     graphql)       shift; cmd_graphql "$@"       ;;
     chain)         shift; cmd_chain "$@"         ;;
+    jwt)           shift; cmd_jwt "$@"           ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

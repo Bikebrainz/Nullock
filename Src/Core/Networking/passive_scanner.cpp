@@ -1,6 +1,7 @@
 #include "passive_scanner.hpp"
 #include "finding_enricher.hpp"
 #include "cve_database.hpp"
+#include "jwt_tool.hpp"
 
 #include <QDateTime>
 #include <QMutexLocker>
@@ -917,6 +918,48 @@ void PassiveScanner::checkResponse(int rowId,
         }
     }
 
+    // ---- JWT weakness analysis ----------------------------------------
+    // Decode any JWT carried on this request (Authorization: Bearer, a
+    // cookie, or the URL) and emit findings for real weaknesses --
+    // alg:none, missing/expired exp, kid-injection surface, etc. Each
+    // distinct token is analysed once (keyed by its signature segment) so
+    // an authenticated session doesn't spray duplicate findings.
+    {
+        QString jwt;
+        const QString authz = headerOf(req.headers, "Authorization");
+        if (authz.startsWith("Bearer ", Qt::CaseInsensitive)) {
+            const QString cand = authz.mid(7).trimmed();
+            if (rxJwt.match(cand).hasMatch()) jwt = cand;
+        }
+        if (jwt.isEmpty()) {
+            // Fall back to a JWT-shaped token anywhere in the URL.
+            const auto mu = rxJwt.match(req.path);
+            if (mu.hasMatch()) jwt = mu.captured();
+        }
+        if (!jwt.isEmpty()) {
+            const QString sig = jwt.section('.', 2, 2);
+            bool fresh = false;
+            {
+                QMutexLocker lk(&m_mutex);
+                if (!m_jwtSeen.contains(sig)) { m_jwtSeen.insert(sig); fresh = true; }
+                // Cap the set so a long fuzzing session doesn't grow it forever.
+                if (m_jwtSeen.size() > 20000) m_jwtSeen.clear();
+            }
+            if (fresh) {
+                const auto d = JwtTool::decode(jwt);
+                if (d.ok) {
+                    for (const auto &w : JwtTool::analyze(d)) {
+                        // Skip the pure-informational HMAC note to avoid
+                        // flagging every normal HS256 token; keep the rest.
+                        if (w.id == "jwt-hmac-alg") continue;
+                        addFinding(rowId, req, resp, w.severity, w.id,
+                                   "JWT: " + w.detail.left(120), w.detail);
+                    }
+                }
+            }
+        }
+    }
+
     // ---- OPTIONS Allow header enumeration -----------------------------
     if (req.method.compare("OPTIONS", Qt::CaseInsensitive) == 0) {
         const QString allow = headerOf(resp.headers, "Allow");
@@ -1428,8 +1471,9 @@ void PassiveScanner::checkResponse(int rowId,
                                 : h.cvss >= 4.0 ? "medium" : "low";
                 addFinding(rowId, req, resp, sev, "cve-correlated",
                            QString("%1: %2").arg(h.cveId, h.summary),
-                           QString("affected: %1 | fix: %2 | ref: %3")
-                               .arg(h.affectedRange, h.fixVersion, h.reference));
+                           QString("CVSS %1 %2 | affected: %3 | fix: %4 | ref: %5")
+                               .arg(QString::number(h.cvss), h.cvssVector,
+                                    h.affectedRange, h.fixVersion, h.reference));
             }
         }
     }

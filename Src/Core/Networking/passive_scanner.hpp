@@ -6,6 +6,7 @@
 #include <QList>
 #include <QMutex>
 #include <QObject>
+#include <QSet>
 #include <QString>
 
 namespace Nullock::Core {
@@ -93,6 +94,9 @@ private:
     QList<Finding> m_findings;
     int            m_nextId    = 1;
     int            m_nextRowId = 1;
+    // JWTs already analysed (keyed by signature segment) so each distinct
+    // token's weaknesses fire once, not on every request that carries it.
+    QSet<QString>  m_jwtSeen;
 };
 
 } // namespace Nullock::Core

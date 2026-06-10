@@ -294,6 +294,46 @@ Test-Endpoint "chain threads a token from step1 json into step2 header" {
     }
 }
 
+Write-Host "`n=== JWT attack toolkit ===" -ForegroundColor Cyan
+# Mint a token at runtime (HS256, secret 'letmein', admin claim, no exp)
+# so we never commit a JWT fixture and the test is self-verifying.
+function New-B64Url([byte[]]$b){ [Convert]::ToBase64String($b).TrimEnd('=').Replace('+','-').Replace('/','_') }
+$jwtSecret = 'letmein'
+$jwtHb = New-B64Url([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
+$jwtPb = New-B64Url([Text.Encoding]::UTF8.GetBytes('{"sub":"42","name":"Jane","admin":true,"iat":1516239022}'))
+$jwtSi = "$jwtHb.$jwtPb"
+$jwtHmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($jwtSecret))
+$jwtSig = New-B64Url($jwtHmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($jwtSi)))
+$jwt = "$jwtSi.$jwtSig"
+
+Test-Endpoint "jwt analyze decodes + flags no-exp and priv-claim" {
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/jwt/analyze" -Method POST -Headers $hdr -Body (@{token=$jwt} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10
+    $j = $r.Content | ConvertFrom-Json
+    $ids = @($j.weaknesses | ForEach-Object { $_.id })
+    return ($j.alg -eq "HS256") -and ($j.payload.admin -eq $true) -and ($ids -contains "jwt-no-exp") -and ($ids -contains "jwt-priv-claim")
+}
+
+Test-Endpoint "jwt analyze brute-forces a weak HS256 secret" {
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/jwt/analyze" -Method POST -Headers $hdr -Body (@{token=$jwt; wordlist=@("admin","wrong","letmein","123456")} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10
+    $j = $r.Content | ConvertFrom-Json
+    return ($j.secretRecovered -eq $true) -and ($j.secret -eq "letmein")
+}
+
+Test-Endpoint "jwt forge none strips signature (alg:none bypass)" {
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/jwt/forge" -Method POST -Headers $hdr -Body (@{token=$jwt; attack="none"; claims=@{admin=$true}} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10
+    $j = $r.Content | ConvertFrom-Json
+    return ($j.ok -eq $true) -and ($j.token.EndsWith("."))
+}
+
+Test-Endpoint "jwt forge hs256 produces a token that re-validates" {
+    $f = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/jwt/forge" -Method POST -Headers $hdr -Body (@{token=$jwt; attack="hs256"; secret=$jwtSecret; claims=@{role="superadmin"}} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10
+    $fj = $f.Content | ConvertFrom-Json
+    if (-not $fj.token) { return $false }
+    $v = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/jwt/analyze" -Method POST -Headers $hdr -Body (@{token=$fj.token; wordlist=@($jwtSecret)} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10
+    $vj = $v.Content | ConvertFrom-Json
+    return ($vj.secretRecovered -eq $true) -and ($vj.payload.role -eq "superadmin")
+}
+
 # Cleanup
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500

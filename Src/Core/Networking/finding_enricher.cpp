@@ -134,6 +134,29 @@ const QHash<QString, Mapping> &table() {
         { "web-cache-deception",      { "CWE-525", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Don't cache responses to paths whose effective handler is dynamic." } },
         { "race-condition-suspect",   { "CWE-362", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Add a unique-row constraint / SELECT FOR UPDATE around the mutation." } },
 
+        // ---- JWT weaknesses (passive analysis + active toolkit) ------
+        { "jwt-alg-none",   { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Reject alg:none; pin the expected algorithm server-side." } },
+        { "jwt-no-exp",     { "CWE-613", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Require and enforce an 'exp' claim; keep lifetimes short." } },
+        { "jwt-expired",    { "CWE-613", "A07:2021-Identification and Authentication Failures", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Confirm the server actually rejects expired tokens." } },
+        { "jwt-long-exp",   { "CWE-613", "A07:2021-Identification and Authentication Failures", 3.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Shorten token lifetime; use refresh tokens for longevity." } },
+        { "jwt-kid",        { "CWE-347", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Treat kid as untrusted; never use it to build a file path or SQL." } },
+        { "jwt-priv-claim", { "CWE-345", "A04:2021-Insecure Design", 3.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Don't trust client-presented role/privilege claims without server checks." } },
+
+        // ---- DOM-XSS taint (from the dom_taint extension) ------------
+        { "dom-taint-html", { "CWE-79", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "PCI-DSS-6.5.7", "Sanitize before the markup sink; use textContent / a sanitizer." } },
+        { "dom-taint-code", { "CWE-95", "A03:2021-Injection", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:L/A:N", "", "Never pass attacker-controllable data to eval/Function/setTimeout-string." } },
+        { "dom-taint-nav",  { "CWE-601", "A01:2021-Broken Access Control", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N", "", "Validate the destination / src against an allow-list before assigning." } },
+
+        // ---- GraphQL active probes ----------------------------------
+        { "graphql-introspection-active", { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Disable introspection in production." } },
+        { "graphql-field-suggestion",     { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Disable field suggestions (NoSchemaIntrospectionCustomRule)." } },
+        { "graphql-alias-amplification",  { "CWE-770", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H", "", "Cap alias/field counts; enforce query-cost limits." } },
+        { "graphql-depth-bypass",         { "CWE-770", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Enforce a maximum query depth." } },
+        { "graphql-batched-queries",      { "CWE-770", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Disable batched queries or rate-limit per operation." } },
+
+        // ---- CVE correlation ----------------------------------------
+        { "cve-correlated", { "CWE-1395", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Upgrade the component to the fixed version named in the advisory." } },
+
         // ---- Information disclosure -- secondary --------------------
         { "git-head-exposed", { "CWE-538", "A05:2021-Security Misconfiguration", 9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.5", "Block .git/ at the reverse proxy; redeploy without VCS metadata." } },
         { "phpinfo-output",   { "CWE-200", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Delete the phpinfo() page; disable expose_php." } },
@@ -184,8 +207,16 @@ void enrich(Finding &f) {
     const Mapping &m = *it;
     f.cwe        = QString::fromLatin1(m.cwe);
     f.owasp      = QString::fromLatin1(m.owasp);
-    f.cvssScore  = m.cvssScore;
-    f.cvssVector = QString::fromLatin1(m.cvssVector);
+    // A 0.0 table score is a placeholder meaning "score isn't fixed for
+    // this kind" -- e.g. cve-correlated carries a per-CVE CVSS, CMS tags
+    // are informational. Fall back to a severity-derived number rather
+    // than forcing 0.0 onto a critical finding.
+    if (m.cvssScore > 0.0) {
+        f.cvssScore  = m.cvssScore;
+        f.cvssVector = QString::fromLatin1(m.cvssVector);
+    } else if (f.cvssScore <= 0.0) {
+        f.cvssScore  = defaultScoreForSeverity(f.severity);
+    }
     f.fixSummary = QString::fromLatin1(m.fix);
     const QString comp = QString::fromLatin1(m.compliance);
     f.compliance.clear();

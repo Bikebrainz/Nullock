@@ -30,6 +30,8 @@ add_library(Networking STATIC
     cve_database.hpp
     chain_runner.cpp
     chain_runner.hpp
+    jwt_tool.cpp
+    jwt_tool.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
