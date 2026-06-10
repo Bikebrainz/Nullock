@@ -42,9 +42,27 @@
 
       <article class="rel">
         <div class="rel-meta">
+          <span class="rel-ver">v3.3.0</span>
+          <span class="caption">Jun 9, 2026</span>
+          <span class="badge ok"><span class="dot"></span>latest</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">The "above the paid tools" release. Five capabilities that commercial scanners gate behind add-ons or don't ship at all — now in the free core, each with regression coverage.</p>
+          <ul>
+            <li><span class="tag add">add</span> <strong>CVE correlation.</strong> Fingerprinted frameworks (WordPress, Drupal, Magento, Spring, Next.js, …) are matched against a curated CVE table; every hit becomes a finding tagged with CVE id, CVSS, and fix version.</li>
+            <li><span class="tag add">add</span> <strong>GraphQL attack probes.</strong> One call fires five probes — introspection, field-suggestion leak, alias amplification, depth bypass, batched-query bypass — with false-positive guards. <code class="inline">nullock graphql &lt;url&gt;</code>.</li>
+            <li><span class="tag add">add</span> <strong>DOM-XSS taint analysis.</strong> A proxy-side extension does one-hop dataflow on every served script, connecting sources (location, referrer, postMessage, storage) to sinks (innerHTML, eval, document.write) and attributing the true origin.</li>
+            <li><span class="tag add">add</span> <strong>Repeater chains.</strong> Define a sequence of requests, extract values (JSON path / header / cookie / regex / status) from each response, and thread them as <code class="inline">{{var}}</code> into later steps. <code class="inline">nullock chain &lt;file&gt;</code>.</li>
+            <li><span class="tag add">add</span> <strong>JWT attack toolkit.</strong> Decode + weakness analysis (alg:none, missing/expired exp, kid injection, privilege claims), weak-secret brute-force, and forging (alg:none + HS256 re-sign). Passive auto-analysis on captured tokens too.</li>
+            <li><span class="tag add">add</span> Every finding now carries CWE, OWASP Top-10 2021, CVSS v3.1, and a one-line fix — across all of the above.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
           <span class="rel-ver">v3.2.0</span>
           <span class="caption">Jun 2, 2026</span>
-          <span class="badge ok"><span class="dot"></span>latest</span>
         </div>
         <div class="rel-body">
           <ul>
