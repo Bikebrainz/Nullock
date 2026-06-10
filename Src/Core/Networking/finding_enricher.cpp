@@ -119,6 +119,7 @@ const QHash<QString, Mapping> &table() {
         { "path-traversal", { "CWE-22",  "A01:2021-Broken Access Control", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Canonicalize and reject paths that escape the document root." } },
         { "ssrf-cloud-metadata", { "CWE-918", "A10:2021-Server-Side Request Forgery", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.8", "Use IMDSv2 (token-required); block 169.254.0.0/16 at egress." } },
         { "oast-token-fired",    { "CWE-918", "A10:2021-Server-Side Request Forgery", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Check /api/oast/poll after a delay to confirm OOB callback." } },
+        { "ssrf-oast-confirmed", { "CWE-918", "A10:2021-Server-Side Request Forgery", 9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N", "PCI-DSS-6.5.8", "Confirmed OOB fetch -- block egress to internal ranges; allow-list outbound hosts." } },
         { "nosql-injection-suspect", { "CWE-943", "A03:2021-Injection", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Whitelist allowed query operators; refuse JSON shapes with $-keys." } },
         { "ldap-injection-suspect",  { "CWE-90",  "A03:2021-Injection", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Escape LDAP metacharacters; use a vetted bind library." } },
         { "mass-assignment-suspect", { "CWE-915", "A04:2021-Insecure Design", 8.1, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Explicit allow-list of fields the user is permitted to set." } },

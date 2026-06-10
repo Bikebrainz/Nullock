@@ -6,6 +6,7 @@
 #include "ws_repeater.hpp"
 #include "h2_events.hpp"
 #include "oast_server.hpp"
+#include "oast_correlator.hpp"
 #include "session_rules.hpp"
 #include "crawler.hpp"
 #include "update_check.hpp"
@@ -778,6 +779,10 @@ QByteArray ControlServer::buildSnapshot() const {
         oast["port"]     = m_wiring.oast->port();
         oast["baseHost"] = m_wiring.oast->baseHost();
         oast["hits"]     = m_wiring.oast->hitCount();
+        if (m_wiring.oastCorrelator) {
+            oast["registered"] = m_wiring.oastCorrelator->registeredCount();
+            oast["confirmed"]  = m_wiring.oastCorrelator->confirmedCount();
+        }
         root["oast"] = oast;
     }
 
@@ -1339,15 +1344,29 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                             // ties them back to this row via the token.
                             if (w.oast && w.oast->running()) {
                                 const auto tok = w.oast->mintToken();
+                                const QString token   = tok.value("token").toString();
                                 const QString hostUrl = tok.value("hostUrl").toString();
                                 const QString pathUrl = tok.value("pathUrl").toString();
+                                // Register BEFORE firing so a fast callback
+                                // can't race ahead of the registry and be
+                                // dropped as "unknown token".
+                                if (w.oastCorrelator) {
+                                    Nullock::Core::OastOrigin origin;
+                                    origin.rowId = rowId;
+                                    origin.host  = base.host;
+                                    origin.param = key;
+                                    origin.url   = pathUrl;
+                                    origin.kind  = "ssrf-oast";
+                                    w.oastCorrelator->registerToken(token, origin);
+                                }
                                 fire(i, pathUrl);   // fire-and-forget
                                 fire(i, hostUrl);
                                 report("info", "oast-token-fired",
                                        QString("Param '%1': OAST callback URLs embedded; "
-                                               "check /api/oast/poll for hits").arg(key),
+                                               "a confirmed finding auto-appears if the "
+                                               "target calls back").arg(key),
                                        QString("param=%1 · token=%2 · url=%3")
-                                           .arg(key, tok.value("token").toString(), pathUrl));
+                                           .arg(key, token, pathUrl));
                             }
 
                             // ---- SQLi error ---------------------------------
@@ -2199,10 +2218,27 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // POST /api/oast/mint -- mints a new token + URL.
+    //   Optional body { register: true, rowId?, host?, param?, note? }
+    //   registers the token with the correlator so that when the callback
+    //   lands, a confirmed finding auto-appears. Use this to mint a URL,
+    //   paste it into a Repeater request by hand, and still get automatic
+    //   confirmation -- the Collaborator workflow, self-hosted.
     if (path == "/api/oast/mint") {
         if (!m_wiring.oast || !m_wiring.oast->running())
             return okJson({{ "ok", false }, { "error", "OAST server not running" }});
-        return httpJson(200, m_wiring.oast->mintToken());
+        const QJsonObject minted = m_wiring.oast->mintToken();
+        if (bodyJson.value("register").toBool(false) && m_wiring.oastCorrelator) {
+            Nullock::Core::OastOrigin origin;
+            origin.rowId = bodyJson.value("rowId").toInt(0);
+            origin.host  = bodyJson.value("host").toString();
+            origin.param = bodyJson.value("param").toString();
+            origin.note  = bodyJson.value("note").toString("manual mint");
+            origin.url   = minted.value("pathUrl").toString();
+            origin.kind  = "ssrf-oast";
+            m_wiring.oastCorrelator->registerToken(
+                minted.value("token").toString(), origin);
+        }
+        return httpJson(200, minted);
     }
 
     // ---- Session handling rules --------------------------------------

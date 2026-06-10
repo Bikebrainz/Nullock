@@ -17,6 +17,7 @@
 #include "session_manager.hpp"
 #include "session_rules.hpp"
 #include "oast_server.hpp"
+#include "oast_correlator.hpp"
 #include "crawler.hpp"
 #include "networking.hpp"
 #include "tls_profile.hpp"
@@ -801,6 +802,17 @@ int main(int argc, char *argv[]) {
         qInfo().noquote() << "  oast      http://127.0.0.1:" + QString::number(oastPort) + "/";
     }
     wiring.oast = &oast;
+
+    // Correlator: closes the OOB loop. Probes (and manual mints) register
+    // their tokens here; when a callback lands on the sink, this auto-
+    // emits a confirmed finding linked to the originating row. This is
+    // the piece that turns the raw callback log into actionable,
+    // true-positive findings -- the part of Collaborator worth paying for.
+    Nullock::Core::OastCorrelator oastCorrelator;
+    oastCorrelator.setScanner(&scanner);
+    QObject::connect(&oast, &Nullock::Core::OastServer::hitReceived,
+                     &oastCorrelator, &Nullock::Core::OastCorrelator::onHit);
+    wiring.oastCorrelator = &oastCorrelator;
 
     // Link-following crawler. Builds the full attack surface from a
     // seed URL; the rest of the toolchain (passive scanner, repeater,

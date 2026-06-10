@@ -378,13 +378,26 @@ cmd_oast() {
     # Out-of-band callback sink.
     case ${1:-} in
         mint)
-            post /api/oast/mint | pp
+            # nullock oast mint [host] [param] [note]
+            # With a host arg, registers the token for auto-correlation:
+            # when the callback lands, a confirmed finding appears by
+            # itself. Paste the returned pathUrl into a Repeater request.
+            if [[ -n ${2-} ]]; then
+                local body="{\"register\":true,\"host\":$(jsonq "$2")"
+                [[ -n ${3-} ]] && body+=",\"param\":$(jsonq "$3")"
+                [[ -n ${4-} ]] && body+=",\"note\":$(jsonq "$4")"
+                body+="}"
+                post /api/oast/mint "$body" | pp
+            else
+                post /api/oast/mint | pp
+            fi
             ;;
         poll)
             local since=${2:-0}
             curl -sS --max-time 5 "$API/api/oast/poll?since=$since" | pp
             ;;
         status)
+            # Includes registered/confirmed correlation counts.
             snapshot | "$JQ" '.oast'
             ;;
         watch)
@@ -775,10 +788,15 @@ WebSocket Repeater:
                                          opcode: 1=text, 2=binary, 8=close,
                                          9=ping, 10=pong
 
-OAST (out-of-band callback sink):
+OAST (out-of-band callback sink + auto-correlation):
   nullock oast mint                      get a fresh token + URL to embed
+  nullock oast mint <host> [param] [note]
+                                         mint a *registered* token -- when the
+                                         callback lands, a confirmed SSRF
+                                         finding auto-appears (Collaborator-style,
+                                         self-hosted). Paste pathUrl into a request.
   nullock oast poll [since-id]           list hits since the given id
-  nullock oast status                    running/port/host/hit count
+  nullock oast status                    running/port/host/hits + registered/confirmed
   nullock oast watch                     tail mode -- prints new hits live
 
 Session handling rules:

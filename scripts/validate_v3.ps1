@@ -131,6 +131,21 @@ Test-Endpoint "OAST sink actually receives a hit when we curl it" {
     return $false
 }
 
+Write-Host "`n=== OAST auto-correlation (confirmed SSRF) ===" -ForegroundColor Cyan
+Test-Endpoint "registered token + callback auto-emits a confirmed finding" {
+    # Mint a token registered with an origin, then fire the callback at
+    # the sink. The correlator should turn it into a confirmed finding.
+    $mintBody = @{ register=$true; host="victim.internal"; param="image_url"; note="v3-correlate" } | ConvertTo-Json
+    $mint = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/oast/mint" -Method POST -Headers $hdr -Body $mintBody -ContentType "application/json" -TimeoutSec 5
+    $mintJ = $mint.Content | ConvertFrom-Json
+    if (-not $mintJ.token -or -not $mintJ.pathUrl) { return $false }
+    try { Invoke-WebRequest -UseBasicParsing -Uri $mintJ.pathUrl -TimeoutSec 5 | Out-Null } catch { return $false }
+    Start-Sleep -Milliseconds 800
+    $snap = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
+    $confirmed = @($snap.findings | Where-Object { $_.kind -eq "ssrf-oast-confirmed" })
+    return ($snap.oast.confirmed -ge 1) -and ($confirmed.Count -ge 1) -and ($confirmed[0].severity -eq "high")
+}
+
 Write-Host "`n=== /api/h2/events shape ===" -ForegroundColor Cyan
 Test-Endpoint "h2 events endpoint returns events array" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/h2/events?since=0" -Headers $hdr -TimeoutSec 5

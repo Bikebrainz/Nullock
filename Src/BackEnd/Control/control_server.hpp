@@ -28,6 +28,7 @@ class PortScanner;
 class ReconEngine;
 class SessionManager;
 class OastServer;
+class OastCorrelator;
 class SessionRules;
 class Crawler;
 class UpdateChecker;
@@ -54,6 +55,7 @@ struct Wiring {
     Nullock::Core::ReconEngine         *recon        = nullptr;
     Nullock::Core::SessionManager      *sessions     = nullptr;
     Nullock::Core::OastServer          *oast         = nullptr;
+    Nullock::Core::OastCorrelator      *oastCorrelator = nullptr;
     Nullock::Core::SessionRules        *sessionRules = nullptr;
     Nullock::Core::Crawler             *crawler      = nullptr;
     Nullock::Core::UpdateChecker       *updates      = nullptr;
