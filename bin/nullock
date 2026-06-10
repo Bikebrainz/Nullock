@@ -392,6 +392,13 @@ cmd_oast() {
                 post /api/oast/mint | pp
             fi
             ;;
+        blast)
+            # nullock oast blast <url>
+            # Spray OOB payloads (SSRF param battery + blind XXE) at a
+            # target; each callback auto-confirms with its attack class.
+            [[ -n ${2-} ]] || die "usage: nullock oast blast <url>"
+            post /api/oast/blast "{\"url\":$(jsonq "$2")}" | pp
+            ;;
         poll)
             local since=${2:-0}
             curl -sS --max-time 5 "$API/api/oast/poll?since=$since" | pp
@@ -795,6 +802,9 @@ OAST (out-of-band callback sink + auto-correlation):
                                          callback lands, a confirmed SSRF
                                          finding auto-appears (Collaborator-style,
                                          self-hosted). Paste pathUrl into a request.
+  nullock oast blast <url>               spray OOB payloads (SSRF param battery
+                                         + blind XXE) at one target; callbacks
+                                         auto-confirm tagged by attack class
   nullock oast poll [since-id]           list hits since the given id
   nullock oast status                    running/port/host/hits + registered/confirmed
   nullock oast watch                     tail mode -- prints new hits live

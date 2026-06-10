@@ -146,6 +146,24 @@ Test-Endpoint "registered token + callback auto-emits a confirmed finding" {
     return ($snap.oast.confirmed -ge 1) -and ($confirmed.Count -ge 1) -and ($confirmed[0].severity -eq "high")
 }
 
+Test-Endpoint "oast blast fires SSRF+XXE vectors and a callback confirms by class" {
+    # Blast a dead target -- sends fail fast but every token is registered.
+    # Then fire the XXE vector's callback ourselves and assert a confirmed
+    # finding of the right class appears.
+    $blast = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/oast/blast" -Method POST -Headers $hdr -Body (@{ url="http://127.0.0.1:9/api/fetch" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 15
+    $bj = $blast.Content | ConvertFrom-Json
+    if ($bj.fired -lt 2) { return $false }
+    $kinds = @($bj.vectors | ForEach-Object { $_.kind } | Sort-Object -Unique)
+    if (-not ($kinds -contains "ssrf-oast") -or -not ($kinds -contains "xxe-oast")) { return $false }
+    $xxe = $bj.vectors | Where-Object { $_.kind -eq "xxe-oast" } | Select-Object -First 1
+    if (-not $xxe) { return $false }
+    try { Invoke-WebRequest -UseBasicParsing -Uri $xxe.callbackUrl -TimeoutSec 5 | Out-Null } catch { return $false }
+    Start-Sleep -Milliseconds 800
+    $snap = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
+    $f = @($snap.findings | Where-Object { $_.kind -eq "xxe-oast-confirmed" })
+    return ($f.Count -ge 1) -and ($f[0].cwe -eq "CWE-611")
+}
+
 Write-Host "`n=== /api/h2/events shape ===" -ForegroundColor Cyan
 Test-Endpoint "h2 events endpoint returns events array" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/h2/events?since=0" -Headers $hdr -TimeoutSec 5

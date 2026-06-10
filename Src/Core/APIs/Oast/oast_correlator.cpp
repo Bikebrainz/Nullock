@@ -48,13 +48,17 @@ void OastCorrelator::onHit(const OastHit &hit) {
 
     // Build a confirmed finding. A registered token arriving out-of-band
     // means the target actually performed the server-side request -- this
-    // is a true positive by construction.
-    const QString kind = origin.kind.isEmpty() ? QStringLiteral("ssrf-oast-confirmed")
-                                               : origin.kind + "-confirmed";
+    // is a true positive by construction. The finding kind is derived
+    // from the registered probe kind so a Log4Shell callback reads as
+    // log4shell-oast-confirmed, an XXE callback as xxe-oast-confirmed,
+    // etc. (each has its own CWE/CVSS in the enricher).
+    const QString baseKind = origin.kind.isEmpty() ? QStringLiteral("ssrf-oast")
+                                                   : origin.kind;
+    const QString kind = baseKind + "-confirmed";
     const QString summary =
-        QString("Confirmed out-of-band interaction: target fetched our OAST URL"
+        QString("Confirmed out-of-band interaction: target reached our OAST sink"
                 "%1%2")
-            .arg(origin.param.isEmpty() ? QString() : QString(" via param '%1'").arg(origin.param),
+            .arg(origin.param.isEmpty() ? QString() : QString(" via '%1'").arg(origin.param),
                  origin.note.isEmpty()  ? QString() : QString(" [%1]").arg(origin.note));
 
     const QString evidence =
@@ -66,11 +70,14 @@ void OastCorrelator::onHit(const OastHit &hit) {
                  hit.userAgent.left(80),
                  origin.url);
 
-    // Always grade a confirmed OOB callback "high" -- impact (full SSRF,
-    // RCE, data exfil) depends on what's reachable, but the interaction
-    // itself is proven.
-    m_scanner->reportFinding(origin.rowId, QStringLiteral("high"),
-                             QStringLiteral("ssrf-oast-confirmed"),
+    // A confirmed OOB callback is at least "high"; code-execution classes
+    // (Log4Shell) are critical. Impact still depends on what's reachable,
+    // but the interaction itself is proven.
+    const QString severity =
+        baseKind.startsWith("log4shell") || baseKind.startsWith("rce")
+            ? QStringLiteral("critical") : QStringLiteral("high");
+
+    m_scanner->reportFinding(origin.rowId, severity, kind,
                              summary, evidence, origin.host, origin.url);
 }
 
