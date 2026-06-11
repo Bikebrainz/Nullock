@@ -42,6 +42,8 @@ add_library(Networking STATIC
     cors_tester.hpp
     js_recon.cpp
     js_recon.hpp
+    race_tester.cpp
+    race_tester.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

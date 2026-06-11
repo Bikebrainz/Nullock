@@ -251,6 +251,39 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== Race-condition tester ===" -ForegroundColor Cyan
+Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
+    # Listener with a per-path counter: race3 lets the first 3 succeed,
+    # atomic the first 1, idempotent always. Firing 20 concurrent should
+    # flag only race3 (1 < successes < count).
+    $oport = 19791
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $n=@{}
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                if (-not $n.ContainsKey($p)) { $n[$p]=0 }; $n[$p]++
+                $thr = if ($p -like '*race3*') {3} elseif ($p -like '*atomic*') {1} else {999999}
+                $st = if ($n[$p] -le $thr) {200} else {409}
+                $c.Response.StatusCode=$st
+                $buf=[Text.Encoding]::UTF8.GetBytes("x"); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r3 = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/race/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/redeem/race3"; count=20; body='{}' } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $r1 = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/race/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/redeem/atomic"; count=20; body='{}' } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $ri = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/race/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/redeem/idem"; count=20; body='{}' } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        return ($r3.raceSuspected -eq $true) -and ($r1.raceSuspected -eq $false) -and ($ri.raceSuspected -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== JS recon (endpoints + source maps) ===" -ForegroundColor Cyan
 Test-Endpoint "jsrecon mines endpoints + flags an exposed source map" {
     $oport = 19792

@@ -622,6 +622,35 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_race() {
+    # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
+    local url=$1; shift
+    local count=20
+    if [[ -n ${1-} && $1 =~ ^[0-9]+$ ]]; then count=$1; shift; fi
+    local method="POST"
+    if [[ -n ${1-} && $1 =~ ^(POST|PUT|PATCH|GET|DELETE|post|put|patch|get|delete)$ ]]; then method=$1; shift; fi
+    local body=""
+    if [[ -n ${1-} && $1 != *:* ]]; then
+        if [[ $1 == "-" ]]; then body=$(cat); else body=$(cat "$1"); fi
+        shift
+    fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    local b="{\"url\":$(jsonq "$url"),\"count\":$count,\"method\":$(jsonq "$method"),\"headers\":$headers"
+    [[ -n $body ]] && b+=",\"body\":$(jsonq "$body")"
+    b+="}"
+    post /api/race/test "$b" | pp
+}
+
 cmd_jsrecon() {
     # nullock jsrecon <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock jsrecon <url> [Header:Value ...]"
@@ -993,6 +1022,10 @@ Above-Burp features (v4/v5):
   nullock jsrecon <url> [hdr:val ...]    mine same-origin JS bundles for API
                                          endpoints (attack surface) + flag
                                          exposed source maps (leak source)
+  nullock race <url> [count] [method] [body-file|-] [hdr:val ...]
+                                         race-condition test -- fires N
+                                         concurrent copies; flags a single-use
+                                         operation that leaked extra successes
 
 EOF
 }
@@ -1043,6 +1076,7 @@ case ${1:-help} in
     massassign)    shift; cmd_massassign "$@"    ;;
     cors)          shift; cmd_cors "$@"          ;;
     jsrecon)       shift; cmd_jsrecon "$@"       ;;
+    race)          shift; cmd_race "$@"          ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

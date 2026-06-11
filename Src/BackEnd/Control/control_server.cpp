@@ -20,6 +20,7 @@
 #include "mass_assign.hpp"
 #include "cors_tester.hpp"
 #include "js_recon.hpp"
+#include "race_tester.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4069,6 +4070,68 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
                        { "found", found }});
+    }
+
+    // ---- Race-condition tester ---------------------------------------
+    // POST /api/race/test { url, method?, body?, contentType?, headers?,
+    //                       count?, successStatusMin?, successStatusMax?,
+    //                       successMatch? }
+    //   Fires `count` concurrent copies and flags a limited-use operation
+    //   that leaked extra successes (1 < successes < count). The single-
+    //   packet / Turbo-Intruder class, in the core.
+    if (path == "/api/race/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::RaceTester::Request rr;
+        rr.host = u.host();
+        rr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        rr.tls  = (u.scheme() == "https");
+        rr.method = bodyJson.value("method").toString("POST").toUpper();
+        rr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            rr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        rr.body = bodyJson.value("body").toString().toUtf8();
+        rr.contentType = bodyJson.value("contentType").toString("application/json");
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            rr.headers.append({ it.key(), it.value().toString() });
+
+        const int count = bodyJson.value("count").toInt(20);
+        const int smin  = bodyJson.value("successStatusMin").toInt(200);
+        const int smax  = bodyJson.value("successStatusMax").toInt(299);
+        const QString smatch = bodyJson.value("successMatch").toString();
+
+        // test() runs its own dedicated thread pool and blocks until the
+        // burst completes, so call it directly -- no outer QtConcurrent wrap.
+        const auto rres = Nullock::Core::RaceTester::test(rr, count, smin, smax, smatch);
+
+        QJsonObject hist;
+        for (auto it = rres.statusHistogram.cbegin(); it != rres.statusHistogram.cend(); ++it)
+            hist.insert(QString::number(it.key()), it.value());
+        if (m_wiring.scanner && rres.raceSuspected) {
+            m_wiring.scanner->reportFinding(0, "high", "race-condition-suspect",
+                QString("Race condition: %1 of %2 concurrent requests succeeded "
+                        "(a single-use operation leaked extra successes)")
+                    .arg(rres.successCount).arg(rres.count),
+                "status histogram: " + QString::fromUtf8(QJsonDocument(hist).toJson(QJsonDocument::Compact)),
+                u.host(), url);
+        }
+        return okJson({{ "ok", rres.error.isEmpty() },
+                       { "error", rres.error },
+                       { "count", rres.count },
+                       { "successCount", rres.successCount },
+                       { "rejectionCount", rres.rejectionCount },
+                       { "rateLimited", rres.rateLimited },
+                       { "serverError", rres.serverError },
+                       { "transportFail", rres.transportFail },
+                       { "raceSuspected", rres.raceSuspected },
+                       { "inconclusive", rres.inconclusive },
+                       { "allSucceeded", rres.allSucceeded },
+                       { "statusHistogram", hist }});
     }
 
     // ---- JS recon: endpoints + source-map exposure -------------------
