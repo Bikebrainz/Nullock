@@ -19,6 +19,7 @@
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
 #include "cors_tester.hpp"
+#include "js_recon.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4068,6 +4069,69 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
                        { "found", found }});
+    }
+
+    // ---- JS recon: endpoints + source-map exposure -------------------
+    // POST /api/jsrecon/scan { url, headers?: {}, maxScripts? }
+    //   Mines the page's same-origin JS bundles for API endpoints and
+    //   flags any exposed source maps (which leak original source).
+    if (path == "/api/jsrecon/scan") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::JsRecon::Request jr;
+        jr.host = u.host();
+        jr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        jr.tls  = (u.scheme() == "https");
+        jr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            jr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            jr.headers.append({ it.key(), it.value().toString() });
+        const int maxScripts = bodyJson.value("maxScripts").toInt(20);
+
+        Nullock::Core::JsRecon::Result jres;
+        {
+            auto fut = QtConcurrent::run([jr, maxScripts]() {
+                return Nullock::Core::JsRecon::scan(jr, maxScripts);
+            });
+            fut.waitForFinished();
+            jres = fut.result();
+        }
+
+        QJsonArray endpoints;
+        for (const QString &e : jres.endpoints) endpoints.append(e);
+        QJsonArray scripts;
+        for (const QString &s : jres.scripts) scripts.append(s);
+        QJsonArray crossOrigin;
+        for (const QString &s : jres.crossOriginScripts) crossOrigin.append(s);
+        QJsonArray maps;
+        for (const auto &m : jres.sourceMaps) {
+            QJsonArray srcs;
+            for (const QString &s : m.sources) srcs.append(s);
+            maps.append(QJsonObject{
+                { "jsUrl", m.jsUrl }, { "mapUrl", m.mapUrl },
+                { "accessible", m.accessible }, { "sources", srcs } });
+            if (m_wiring.scanner && m.accessible) {
+                m_wiring.scanner->reportFinding(0, "medium", "source-map-exposed",
+                    QString("Source map exposed: %1 leaks %2 original source file(s)")
+                        .arg(m.mapUrl).arg(m.sources.size()),
+                    "first sources: " + m.sources.mid(0, 5).join(", "),
+                    u.host(), url);
+            }
+        }
+        return okJson({{ "ok", jres.error.isEmpty() },
+                       { "error", jres.error },
+                       { "requestsSent", jres.requestsSent },
+                       { "scripts", scripts },
+                       { "crossOriginScripts", crossOrigin },
+                       { "endpointCount", static_cast<int>(jres.endpoints.size()) },
+                       { "endpoints", endpoints },
+                       { "sourceMaps", maps }});
     }
 
     // ---- Active CORS exploitability ----------------------------------

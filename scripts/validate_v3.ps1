@@ -251,6 +251,37 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== JS recon (endpoints + source maps) ===" -ForegroundColor Cyan
+Test-Endpoint "jsrecon mines endpoints + flags an exposed source map" {
+    $oport = 19792
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $html='<html><head><script src="/static/app.js"></script><script src="https://cdn.example/lib.js"></script></head><body>hi</body></html>'
+        $js="(function(){ fetch('/api/secret/users'); axios.get('/api/v2/orders'); })();`n//# sourceMappingURL=app.js.map"
+        $map='{"version":3,"sources":["src/secret.ts","src/api/client.ts"],"mappings":"AAAA"}'
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $ct="text/html"; $b=$html
+                if ($p -eq '/static/app.js') { $ct="application/javascript"; $b=$js }
+                elseif ($p -eq '/static/app.js.map') { $ct="application/json"; $b=$map }
+                $c.Response.ContentType=$ct
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/jsrecon/scan" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $hasEp = ($r.endpoints -contains '/api/secret/users') -and ($r.endpoints -contains '/api/v2/orders')
+        $sm = $r.sourceMaps | Where-Object { $_.accessible } | Select-Object -First 1
+        return $hasEp -and ($null -ne $sm) -and ($sm.sources.Count -ge 2)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Active CORS exploitability ===" -ForegroundColor Cyan
 Test-Endpoint "cors flags reflected-credentialed origin, clean on fixed allow-list" {
     $oport = 19793

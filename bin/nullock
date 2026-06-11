@@ -622,6 +622,23 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_jsrecon() {
+    # nullock jsrecon <url> [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock jsrecon <url> [Header:Value ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/jsrecon/scan "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_cors() {
     # nullock cors <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock cors <url> [Header:Value ...]"
@@ -973,6 +990,9 @@ Above-Burp features (v4/v5):
                                          battery (arbitrary, null, subdomain,
                                          scheme-swap) and flags which reflect,
                                          with/without credentials
+  nullock jsrecon <url> [hdr:val ...]    mine same-origin JS bundles for API
+                                         endpoints (attack surface) + flag
+                                         exposed source maps (leak source)
 
 EOF
 }
@@ -1022,6 +1042,7 @@ case ${1:-help} in
     idor)          shift; cmd_idor "$@"          ;;
     massassign)    shift; cmd_massassign "$@"    ;;
     cors)          shift; cmd_cors "$@"          ;;
+    jsrecon)       shift; cmd_jsrecon "$@"       ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
