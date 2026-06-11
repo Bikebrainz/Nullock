@@ -622,6 +622,20 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_paramminer() {
+    # nullock paramminer <url> [method] [wordlist-file]
+    [[ -n ${1-} ]] || die "usage: nullock paramminer <url> [GET|POST] [wordlist-file]"
+    local url=$1 method=${2:-GET} body
+    if [[ -n ${3-} ]]; then
+        local words
+        words=$(grep -v '^[[:space:]]*$' "$3" | "$JQ" -R . | "$JQ" -s -c .)
+        body="{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method"),\"wordlist\":$words}"
+    else
+        body="{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method")}"
+    fi
+    post /api/paramminer "$body" | pp
+}
+
 cmd_jwt() {
     # nullock jwt analyze <token> [wordlist-file]
     # nullock jwt forge   <token> none|hs256 [secret] [claim=val ...]
@@ -874,6 +888,10 @@ Above-Burp features (v4/v5):
                                          forge alg:none (signature stripped) or
                                          re-sign HS256 with secret, applying any
                                          claim overrides (e.g. admin=true)
+  nullock paramminer <url> [GET|POST] [wordlist]
+                                         discover hidden params -- response-diffs
+                                         a candidate wordlist, reports the ones
+                                         reflected or that flip the HTTP status
 
 EOF
 }
@@ -919,6 +937,7 @@ case ${1:-help} in
     graphql)       shift; cmd_graphql "$@"       ;;
     chain)         shift; cmd_chain "$@"         ;;
     jwt)           shift; cmd_jwt "$@"           ;;
+    paramminer)    shift; cmd_paramminer "$@"    ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

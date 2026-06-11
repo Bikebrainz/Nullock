@@ -138,6 +138,10 @@ const QHash<QString, Mapping> &table() {
         { "web-cache-deception",      { "CWE-525", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Don't cache responses to paths whose effective handler is dynamic." } },
         { "race-condition-suspect",   { "CWE-362", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Add a unique-row constraint / SELECT FOR UPDATE around the mutation." } },
 
+        // ---- Parameter mining (hidden inputs) -----------------------
+        { "hidden-param-reflected", { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Undocumented reflected param -- test it for XSS / injection; remove if unused." } },
+        { "hidden-param",           { "CWE-200", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Undocumented param alters behavior -- review for hidden/debug functionality." } },
+
         // ---- JWT weaknesses (passive analysis + active toolkit) ------
         { "jwt-alg-none",   { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Reject alg:none; pin the expected algorithm server-side." } },
         { "jwt-no-exp",     { "CWE-613", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Require and enforce an 'exp' claim; keep lifetimes short." } },

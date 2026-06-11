@@ -15,6 +15,7 @@
 #include "intruder.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
+#include "param_miner.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -3986,6 +3987,84 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         return httpJson(200, QJsonObject{
             { "ok", true }, { "attack", attack }, { "token", forged } });
+    }
+
+    // ---- Parameter mining --------------------------------------------
+    // POST /api/paramminer { url, method?, wordlist?: [...], headers?: {} }
+    //   Discovers hidden parameters by response-diffing: fires batches of
+    //   candidate names and reports the ones the server reflects or that
+    //   flip the HTTP status. Burp ships this only as the param-miner
+    //   extension; we do it in the core. Discovered params also become
+    //   findings so they ride into the report / SARIF export.
+    if (path == "/api/paramminer") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::ParamMiner::Request mreq;
+        mreq.host   = u.host();
+        mreq.port   = u.port(u.scheme() == "https" ? 443 : 80);
+        mreq.tls    = (u.scheme() == "https");
+        mreq.method = bodyJson.value("method").toString("GET").toUpper();
+        mreq.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                        ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            mreq.basePath += "?" + u.query(QUrl::FullyEncoded);
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            mreq.headers.append({ it.key(), it.value().toString() });
+
+        QStringList wordlist;
+        for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
+            wordlist << v.toString();
+        if (wordlist.isEmpty())
+            wordlist = Nullock::Core::ParamMiner::defaultWordlist();
+        if (wordlist.size() > 2000) wordlist = wordlist.mid(0, 2000);
+        const int batch = bodyJson.value("batchSize").toInt(25);
+
+        Nullock::Core::ParamMiner::Result mr;
+        {
+            auto fut = QtConcurrent::run([mreq, wordlist, batch]() {
+                return Nullock::Core::ParamMiner::mine(mreq, wordlist, batch);
+            });
+            fut.waitForFinished();
+            mr = fut.result();
+        }
+
+        // Emit findings for discovered params so they show up in the
+        // findings panel / report alongside everything else.
+        if (m_wiring.scanner) {
+            const QString host = u.host();
+            for (const auto &f : mr.found) {
+                const QString sev  = f.reflected ? QStringLiteral("medium")
+                                                 : QStringLiteral("low");
+                const QString kind = f.reflected ? QStringLiteral("hidden-param-reflected")
+                                                 : QStringLiteral("hidden-param");
+                const QString summary = f.reflected
+                    ? QString("Hidden parameter '%1' is reflected in the response").arg(f.name)
+                    : QString("Hidden parameter '%1' changes the response (status %2 -> %3)")
+                          .arg(f.name).arg(f.baselineStatus).arg(f.observedStatus);
+                m_wiring.scanner->reportFinding(0, sev, kind, summary,
+                    "discovered by param-miner via " + f.signal, host, url);
+            }
+        }
+
+        QJsonArray found;
+        for (const auto &f : mr.found)
+            found.append(QJsonObject{
+                { "name", f.name }, { "signal", f.signal },
+                { "reflected", f.reflected },
+                { "baselineStatus", f.baselineStatus },
+                { "observedStatus", f.observedStatus } });
+        return okJson({{ "ok", mr.error.isEmpty() },
+                       { "error", mr.error },
+                       { "requestsSent", mr.requestsSent },
+                       { "candidatesTried", mr.candidatesTried },
+                       { "statusSignalUsable", mr.statusSignalUsable },
+                       { "reflectionSignalUsable", mr.reflectionSignalUsable },
+                       { "foundCount", static_cast<int>(mr.found.size()) },
+                       { "found", found }});
     }
 
     // ---- Repeater chains ---------------------------------------------

@@ -191,6 +191,66 @@ Test-Endpoint "DNS sink: a name-only callback auto-confirms" {
     return ($snap1.oast.dnsHits -ge 1) -and ($f.Count -ge 1)
 }
 
+Write-Host "`n=== Parameter mining ===" -ForegroundColor Cyan
+Test-Endpoint "paramminer finds a reflected param and a status-flip param" {
+    # Local origin: reflects ?q= in the body, returns 500 when ?debug present.
+    $oport = 19797
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext(); $qs=$c.Request.QueryString
+                $status=200; $body="<html>baseline</html>"
+                if ($qs["q"]) { $body="<html>echo:" + $qs["q"] + "</html>" }
+                if ($null -ne $qs["debug"]) { $status=500 }
+                $c.Response.StatusCode=$status
+                $buf=[Text.Encoding]::UTF8.GetBytes($body)
+                $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/paramminer" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $reflected = @($r.found | Where-Object { $_.name -eq "q" -and $_.signal -eq "reflected" })
+        $flip      = @($r.found | Where-Object { $_.name -eq "debug" -and $_.signal -eq "status-change" })
+        return ($r.ok -eq $true) -and ($reflected.Count -ge 1) -and ($flip.Count -ge 1)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Test-Endpoint "paramminer guards against targets that flip on any param" {
+    # A target that 500s on ANY query param must NOT flood every candidate
+    # as a hidden param -- the control probe should disable the status
+    # signal and report zero status-change findings.
+    $oport = 19796
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext()
+                $st = 200; if ($c.Request.Url.Query.Length -gt 0) { $st = 500 }
+                $c.Response.StatusCode=$st
+                $buf=[Text.Encoding]::UTF8.GetBytes("x")
+                $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/paramminer" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $statusFinds = @($r.found | Where-Object { $_.signal -eq "status-change" })
+        return ($r.statusSignalUsable -eq $false) -and ($statusFinds.Count -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== /api/h2/events shape ===" -ForegroundColor Cyan
 Test-Endpoint "h2 events endpoint returns events array" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/h2/events?since=0" -Headers $hdr -TimeoutSec 5

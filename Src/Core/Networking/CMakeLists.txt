@@ -32,6 +32,8 @@ add_library(Networking STATIC
     chain_runner.hpp
     jwt_tool.cpp
     jwt_tool.hpp
+    param_miner.cpp
+    param_miner.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
