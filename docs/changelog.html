@@ -42,9 +42,26 @@
 
       <article class="rel">
         <div class="rel-meta">
+          <span class="rel-ver">v3.4.0</span>
+          <span class="caption">Jun 11, 2026</span>
+          <span class="badge ok"><span class="dot"></span>latest</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">Active testing &amp; API-security release. Five scanners that find real, exploitable bugs the free tools can't — each shipped with adversarial code review and a regression test, each with built-in false-positive guards.</p>
+          <ul>
+            <li><span class="tag add">add</span> <strong>OAST auto-correlation + active OOB blast + DNS sink.</strong> Out-of-band callbacks become <em>confirmed</em> findings automatically; <code class="inline">nullock oast blast</code> sprays SSRF/XXE/Log4Shell, and a DNS sink catches the name-only callbacks an HTTP sink can't.</li>
+            <li><span class="tag add">add</span> <strong>Hidden parameter mining.</strong> Response-diffs a candidate wordlist to find undocumented params (reflected or status-flipping), with a control probe that suppresses targets reacting to any param.</li>
+            <li><span class="tag add">add</span> <strong>IDOR / BOLA auto-detection</strong> (OWASP API #1). Replays neighboring object ids under your session and flags distinct accessible objects — robust to per-request tokens via calibrated length comparison.</li>
+            <li><span class="tag add">add</span> <strong>Mass-assignment scanner</strong> (OWASP API #6). Injects privileged fields (role, is_admin, balance…) into write requests and reports the ones the server binds back.</li>
+            <li><span class="tag add">add</span> <strong>Active CORS exploitability.</strong> Fires an Origin battery and proves credentialed cross-origin reads — not just a passive header note.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
           <span class="rel-ver">v3.3.0</span>
           <span class="caption">Jun 9, 2026</span>
-          <span class="badge ok"><span class="dot"></span>latest</span>
         </div>
         <div class="rel-body">
           <p class="rel-note">The "above the paid tools" release. Five capabilities that commercial scanners gate behind add-ons or don't ship at all — now in the free core, each with regression coverage.</p>
