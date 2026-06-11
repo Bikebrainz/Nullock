@@ -42,9 +42,26 @@
 
       <article class="rel">
         <div class="rel-meta">
-          <span class="rel-ver">v3.4.0</span>
+          <span class="rel-ver">v3.5.0</span>
           <span class="caption">Jun 11, 2026</span>
           <span class="badge ok"><span class="dot"></span>latest</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">More scanners that find real, exploitable bugs the free tools can't — each shipped with adversarial code review, a regression test, and built-in false-positive guards. Plus a tool-wide HTTP client correctness fix.</p>
+          <ul>
+            <li><span class="tag add">add</span> <strong>Hidden parameter mining</strong>, <strong>IDOR/BOLA</strong> (API #1), <strong>mass-assignment</strong> (API #6), and <strong>active CORS</strong> exploitability — the API-security battery.</li>
+            <li><span class="tag add">add</span> <strong>JS recon.</strong> Mines same-origin bundles for API endpoints (real attack surface, including unlinked routes) and flags exposed source maps that leak original source.</li>
+            <li><span class="tag add">add</span> <strong>Race-condition tester.</strong> Fires N synchronized concurrent copies and flags a limited-use operation that leaked extra successes — distinguishing a real race from rate-limiting / overload.</li>
+            <li><span class="tag add">add</span> <strong>Verb-tampering auth bypass.</strong> Retries a denied request with alternate methods / override headers and flags any that flip to 2xx serving real content.</li>
+            <li><span class="tag fix">fix</span> HTTP client no longer hangs on HEAD / 204 / 304 responses, correctly skips 1xx interim responses, and handles stacked Transfer-Encoding — across every active-testing feature.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.4.0</span>
+          <span class="caption">Jun 11, 2026</span>
         </div>
         <div class="rel-body">
           <p class="rel-note">Active testing &amp; API-security release. Five scanners that find real, exploitable bugs the free tools can't — each shipped with adversarial code review and a regression test, each with built-in false-positive guards.</p>
