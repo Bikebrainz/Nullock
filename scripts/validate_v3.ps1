@@ -1,4 +1,4 @@
-# v3 validation: hits the endpoints I shipped but never actually tested.
+﻿# v3 validation: hits the endpoints I shipped but never actually tested.
 # Spins up a fresh NullockApp instance, fires real HTTP calls at the
 # endpoints, asserts the responses are shaped correctly. Doesn't depend
 # on httpbin -- only loopback.
@@ -194,7 +194,7 @@ Test-Endpoint "DNS sink: a name-only callback auto-confirms" {
 Write-Host "`n=== Parameter mining ===" -ForegroundColor Cyan
 Test-Endpoint "paramminer finds a reflected param and a status-flip param" {
     # Local origin: reflects ?q= in the body, returns 500 when ?debug present.
-    $oport = 19797
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -226,7 +226,7 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     # A target that 500s on ANY query param must NOT flood every candidate
     # as a hidden param -- the control probe should disable the status
     # signal and report zero status-change findings.
-    $oport = 19796
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -255,7 +255,7 @@ Write-Host "`n=== Verb-tampering auth bypass ===" -ForegroundColor Cyan
 Test-Endpoint "verbtamper flags a HEAD/override bypass, clean when all denied" {
     # vuln: GET /admin -> 403 but HEAD -> 200 and X-HTTP-Method-Override:GET -> 200.
     # secure: every method -> 403.
-    $oport = 19790
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -289,7 +289,7 @@ Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
     # Listener with a per-path counter: race3 lets the first 3 succeed,
     # atomic the first 1, idempotent always. Firing 20 concurrent should
     # flag only race3 (1 < successes < count).
-    $oport = 19791
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -319,7 +319,7 @@ Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
 
 Write-Host "`n=== JS recon (endpoints + source maps) ===" -ForegroundColor Cyan
 Test-Endpoint "jsrecon mines endpoints + flags an exposed source map" {
-    $oport = 19792
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -350,7 +350,7 @@ Test-Endpoint "jsrecon mines endpoints + flags an exposed source map" {
 
 Write-Host "`n=== Active CORS exploitability ===" -ForegroundColor Cyan
 Test-Endpoint "cors flags reflected-credentialed origin, clean on fixed allow-list" {
-    $oport = 19793
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -384,7 +384,7 @@ Write-Host "`n=== Mass assignment (OWASP API #6) ===" -ForegroundColor Cyan
 Test-Endpoint "massassign flags over-bound privileged fields, clean on allow-list" {
     # vuln ORM binds a broad set incl privileged fields; secure binds only
     # name/email. Both DROP genuinely-unknown fields (like the junk control).
-    $oport = 19794
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -417,7 +417,7 @@ Test-Endpoint "massassign flags over-bound privileged fields, clean on allow-lis
 
 Write-Host "`n=== IDOR / BOLA detection ===" -ForegroundColor Cyan
 Test-Endpoint "idor flags neighboring objects on a vulnerable id, ignores a static page" {
-    $oport = 19795
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
@@ -565,7 +565,7 @@ Test-Endpoint "chain threads a token from step1 json into step2 header" {
     # step1 and substitute it into step2's Authorization. (We don't target
     # the control server itself -- that would deadlock, since the control
     # handler blocks until the chain completes.)
-    $oport = 19799
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
     $job = Start-Job -ScriptBlock {
         param($port)
         $l = [System.Net.HttpListener]::new()
