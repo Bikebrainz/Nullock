@@ -622,6 +622,33 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_massassign() {
+    # nullock massassign <url> [method] [body-file|-] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock massassign <url> [POST|PUT|PATCH] [body-file|-] [Header:Value ...]"
+    local url=$1; shift
+    local method="POST"
+    if [[ -n ${1-} && $1 =~ ^(POST|PUT|PATCH|post|put|patch)$ ]]; then method=$1; shift; fi
+    local body=""
+    if [[ -n ${1-} && $1 != *:* ]]; then
+        if [[ $1 == "-" ]]; then body=$(cat); else body=$(cat "$1"); fi
+        shift
+    fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    local b="{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method"),\"headers\":$headers"
+    [[ -n $body ]] && b+=",\"body\":$(jsonq "$body")"
+    b+="}"
+    post /api/massassign/test "$b" | pp
+}
+
 cmd_idor() {
     # nullock idor <url> [idParam] [Header:Value ...]
     # Tests for horizontal IDOR by replaying neighboring object ids.
@@ -920,6 +947,11 @@ Above-Burp features (v4/v5):
                                          IDOR/BOLA test -- replays neighboring
                                          object ids under your session; reports
                                          ids that return distinct valid objects
+  nullock massassign <url> [POST|PUT|PATCH] [body-file|-] [hdr:val ...]
+                                         mass-assignment test -- injects
+                                         privileged fields (role, is_admin,
+                                         balance...) into the write request and
+                                         reports the ones the server accepts
 
 EOF
 }
@@ -967,6 +999,7 @@ case ${1:-help} in
     jwt)           shift; cmd_jwt "$@"           ;;
     paramminer)    shift; cmd_paramminer "$@"    ;;
     idor)          shift; cmd_idor "$@"          ;;
+    massassign)    shift; cmd_massassign "$@"    ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

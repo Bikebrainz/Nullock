@@ -36,6 +36,8 @@ add_library(Networking STATIC
     param_miner.hpp
     idor_tester.cpp
     idor_tester.hpp
+    mass_assign.cpp
+    mass_assign.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

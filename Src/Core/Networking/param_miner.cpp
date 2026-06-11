@@ -46,6 +46,10 @@ QByteArray buildRequest(const Request &req,
     out += "Host: " + req.host.toUtf8() + "\r\n";
     out += "User-Agent: Nullock/param-miner\r\n";
     out += "Accept: */*\r\n";
+    // Identity encoding: we scan the body for our canary and the HTTP
+    // client doesn't inflate gzip/deflate, so a compressed response would
+    // hide reflections (false clean).
+    out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

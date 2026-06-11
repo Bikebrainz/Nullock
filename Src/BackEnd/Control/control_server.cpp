@@ -17,6 +17,7 @@
 #include "jwt_tool.hpp"
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
+#include "mass_assign.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4065,6 +4066,72 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "statusSignalUsable", mr.statusSignalUsable },
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
+                       { "found", found }});
+    }
+
+    // ---- Mass assignment / auto-binding ------------------------------
+    // POST /api/massassign/test { url, method?, body?, contentType?,
+    //                            headers?: {}, fields?: [...] }
+    //   Injects privileged field names into the write request and reports
+    //   the ones the server accepts (echoes our marker back). OWASP API #6;
+    //   Burp has no native scanner for it.
+    if (path == "/api/massassign/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::MassAssign::Request mr;
+        mr.host = u.host();
+        mr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        mr.tls  = (u.scheme() == "https");
+        mr.method = bodyJson.value("method").toString("POST").toUpper();
+        mr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            mr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        mr.body = bodyJson.value("body").toString().toUtf8();
+        mr.contentType = bodyJson.value("contentType").toString();
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            mr.headers.append({ it.key(), it.value().toString() });
+
+        QStringList fields;
+        for (const QJsonValue &v : bodyJson.value("fields").toArray())
+            fields << v.toString();
+        if (fields.isEmpty())
+            fields = Nullock::Core::MassAssign::defaultFields();
+        if (fields.size() > 1000) fields = fields.mid(0, 1000);
+
+        Nullock::Core::MassAssign::Result ma;
+        {
+            auto fut = QtConcurrent::run([mr, fields]() {
+                return Nullock::Core::MassAssign::test(mr, fields);
+            });
+            fut.waitForFinished();
+            ma = fut.result();
+        }
+
+        QJsonArray found;
+        QStringList accepted;
+        for (const auto &f : ma.found) {
+            found.append(QJsonObject{{ "field", f.field }, { "marker", f.marker }});
+            accepted << f.field;
+        }
+        if (m_wiring.scanner && !ma.found.isEmpty()) {
+            m_wiring.scanner->reportFinding(0, "high", "mass-assignment",
+                QString("Mass assignment: endpoint accepted privileged field(s) %1")
+                    .arg(accepted.join(", ")),
+                "injected fields were echoed back in the response object",
+                u.host(), url);
+        }
+        return okJson({{ "ok", ma.error.isEmpty() },
+                       { "error", ma.error },
+                       { "bodyKind", ma.bodyKind },
+                       { "requestsSent", ma.requestsSent },
+                       { "fieldsTried", ma.fieldsTried },
+                       { "reflectionUsable", ma.reflectionUsable },
+                       { "foundCount", static_cast<int>(ma.found.size()) },
                        { "found", found }});
     }
 

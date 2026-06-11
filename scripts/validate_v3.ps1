@@ -251,6 +251,41 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== Mass assignment (OWASP API #6) ===" -ForegroundColor Cyan
+Test-Endpoint "massassign flags over-bound privileged fields, clean on allow-list" {
+    # vuln ORM binds a broad set incl privileged fields; secure binds only
+    # name/email. Both DROP genuinely-unknown fields (like the junk control).
+    $oport = 19794
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $vulnSet=@('name','email','role','is_admin','admin','verified','is_verified','balance','status','active','plan','owner','user_id','permissions')
+        $secSet=@('name','email')
+        for ($i=0; $i -lt 600; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                $reader=New-Object System.IO.StreamReader($c.Request.InputStream); $raw=$reader.ReadToEnd()
+                $allowed = if ($p -like '*secure*') { $secSet } else { $vulnSet }
+                $out=@{}
+                try { $obj=$raw | ConvertFrom-Json; foreach ($pr in $obj.PSObject.Properties) { if ($allowed -contains $pr.Name) { $out[$pr.Name]=$pr.Value } } } catch {}
+                $b=($out | ConvertTo-Json -Compress); if (-not $b) { $b='{}' }
+                $c.Response.StatusCode=200; $c.Response.ContentType="application/json"
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/massassign/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/users"; body='{"name":"alice"}' } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/massassign/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/secure/users"; body='{"name":"bob"}' } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $hasRole = @($v.found | Where-Object { $_.field -eq "role" }).Count -ge 1
+        return ($v.reflectionUsable -eq $true) -and ($v.foundCount -ge 2) -and $hasRole -and ($s.foundCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== IDOR / BOLA detection ===" -ForegroundColor Cyan
 Test-Endpoint "idor flags neighboring objects on a vulnerable id, ignores a static page" {
     $oport = 19795
