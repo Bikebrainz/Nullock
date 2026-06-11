@@ -148,6 +148,13 @@ const QHash<QString, Mapping> &table() {
         // ---- Mass assignment (OWASP API #6) -------------------------
         { "mass-assignment", { "CWE-915", "A08:2021-Software and Data Integrity Failures", 8.1, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Bind an explicit allow-list of writable fields; never auto-bind the request body onto the model." } },
 
+        // ---- Active CORS exploitability -----------------------------
+        { "cors-reflected-credentialed", { "CWE-942", "A05:2021-Security Misconfiguration", 8.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:L/A:N", "", "Reflect only an exact allow-list of trusted origins; never reflect arbitrary Origin with Allow-Credentials." } },
+        { "cors-arbitrary-origin",       { "CWE-942", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Validate Origin against an exact allow-list; don't reflect untrusted origins." } },
+        { "cors-null-origin",            { "CWE-942", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:N", "", "Never allow the 'null' origin -- it's reachable from sandboxed iframes / data URLs." } },
+        { "cors-wildcard-credentials",   { "CWE-942", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "ACAO:* with Allow-Credentials is a broken policy; pin exact origins." } },
+        { "cors-scheme-downgrade",       { "CWE-942", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Allowing the http origin of an https site enables credentialed reads from a MITM position; pin https only." } },
+
         // ---- JWT weaknesses (passive analysis + active toolkit) ------
         { "jwt-alg-none",   { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Reject alg:none; pin the expected algorithm server-side." } },
         { "jwt-no-exp",     { "CWE-613", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Require and enforce an 'exp' claim; keep lifetimes short." } },

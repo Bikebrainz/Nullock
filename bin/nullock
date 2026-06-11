@@ -622,6 +622,23 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_cors() {
+    # nullock cors <url> [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock cors <url> [Header:Value ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/cors/test "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_massassign() {
     # nullock massassign <url> [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock massassign <url> [POST|PUT|PATCH] [body-file|-] [Header:Value ...]"
@@ -952,6 +969,10 @@ Above-Burp features (v4/v5):
                                          privileged fields (role, is_admin,
                                          balance...) into the write request and
                                          reports the ones the server accepts
+  nullock cors <url> [hdr:val ...]       active CORS test -- fires an Origin
+                                         battery (arbitrary, null, subdomain,
+                                         scheme-swap) and flags which reflect,
+                                         with/without credentials
 
 EOF
 }
@@ -1000,6 +1021,7 @@ case ${1:-help} in
     paramminer)    shift; cmd_paramminer "$@"    ;;
     idor)          shift; cmd_idor "$@"          ;;
     massassign)    shift; cmd_massassign "$@"    ;;
+    cors)          shift; cmd_cors "$@"          ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

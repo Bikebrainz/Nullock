@@ -18,6 +18,7 @@
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
+#include "cors_tester.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4067,6 +4068,62 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
                        { "found", found }});
+    }
+
+    // ---- Active CORS exploitability ----------------------------------
+    // POST /api/cors/test { url, method?, headers?: {} }
+    //   Fires an Origin battery and classifies ACAO/ACAC. Proves whether a
+    //   cross-origin attacker can read the response (vs the passive scanner
+    //   which only notices a reflection that already happened).
+    if (path == "/api/cors/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::CorsTester::Request cr;
+        cr.host = u.host();
+        cr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cr.tls  = (u.scheme() == "https");
+        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            cr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            cr.headers.append({ it.key(), it.value().toString() });
+
+        Nullock::Core::CorsTester::Result cres;
+        {
+            auto fut = QtConcurrent::run([cr]() {
+                return Nullock::Core::CorsTester::test(cr);
+            });
+            fut.waitForFinished();
+            cres = fut.result();
+        }
+
+        QJsonArray probes;
+        for (const auto &p : cres.probes) {
+            probes.append(QJsonObject{
+                { "origin", p.origin }, { "label", p.label },
+                { "acao", p.acao }, { "credentials", p.credentials },
+                { "reflected", p.reflected }, { "severity", p.severity },
+                { "kind", p.kind } });
+            if (m_wiring.scanner && !p.severity.isEmpty()) {
+                m_wiring.scanner->reportFinding(0, p.severity, p.kind,
+                    QString("CORS: %1 origin '%2' reflected%3")
+                        .arg(p.label, p.origin,
+                             p.credentials ? " WITH credentials" : ""),
+                    "ACAO=" + p.acao + " ACAC=" + (p.credentials ? "true" : "false"),
+                    u.host(), url);
+            }
+        }
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "requestsSent", cres.requestsSent },
+                       { "findingCount", cres.findingCount },
+                       { "probes", probes }});
     }
 
     // ---- Mass assignment / auto-binding ------------------------------

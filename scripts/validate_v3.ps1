@@ -251,6 +251,38 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== Active CORS exploitability ===" -ForegroundColor Cyan
+Test-Endpoint "cors flags reflected-credentialed origin, clean on fixed allow-list" {
+    $oport = 19793
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $o=$c.Request.Headers["Origin"]
+                if ($p -like '*secure*') {
+                    $c.Response.Headers.Add("Access-Control-Allow-Origin","https://trusted.example")
+                    $c.Response.Headers.Add("Access-Control-Allow-Credentials","true")
+                } else {
+                    if ($o) { $c.Response.Headers.Add("Access-Control-Allow-Origin",$o) }
+                    $c.Response.Headers.Add("Access-Control-Allow-Credentials","true")
+                }
+                $buf=[Text.Encoding]::UTF8.GetBytes("data"); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cors/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/data" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cors/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/secure" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $crit = @($v.probes | Where-Object { $_.kind -eq "cors-reflected-credentialed" })
+        return ($crit.Count -ge 1) -and ($s.findingCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Mass assignment (OWASP API #6) ===" -ForegroundColor Cyan
 Test-Endpoint "massassign flags over-bound privileged fields, clean on allow-list" {
     # vuln ORM binds a broad set incl privileged fields; secure binds only
