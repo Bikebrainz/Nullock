@@ -582,6 +582,12 @@ int main(int argc, char *argv[]) {
             << "                        Windows ignores cipher order anyway.\n"
             << "  --proxy-port=N        Proxy listen port (default 8080)\n"
             << "  --control-port=N      Control server port (default 17777)\n"
+            << "  --oast-host=HOST      Host/IP embedded in OAST callback URLs\n"
+            << "                        (default 127.0.0.1; set to a LAN/public IP or a\n"
+            << "                        wildcard DNS name reachable from your targets)\n"
+            << "  --oast-port=N         OAST HTTP sink port (default 18080)\n"
+            << "  --dns-port=N          OAST DNS sink UDP port (default 8053; use 53 with a\n"
+            << "                        wildcard NS delegation for real-internet targets)\n"
             << "  --smoke-test          Run the self-test and exit\n"
             << "  --help / -h           This message\n"
             << "\n"
@@ -797,10 +803,16 @@ int main(int argc, char *argv[]) {
     // base host defaults to the loopback so internal testing works
     // out of the box; deploy with --oast-host=<lan-or-public-ip> when
     // probing real targets.
+    const QString oastHost = flagValue(argc, argv, "--oast-host").isEmpty()
+        ? QStringLiteral("127.0.0.1")
+        : flagValue(argc, argv, "--oast-host");
+    quint16 oastBindPort = 18080;
+    if (const uint v = flagValue(argc, argv, "--oast-port").toUInt()) oastBindPort = quint16(v);
     Nullock::Core::OastServer oast;
-    const quint16 oastPort = oast.start(18080, QStringLiteral("127.0.0.1"));
+    const quint16 oastPort = oast.start(oastBindPort, oastHost);
     if (oastPort) {
-        qInfo().noquote() << "  oast      http://127.0.0.1:" + QString::number(oastPort) + "/";
+        qInfo().noquote() << "  oast      http://" + oastHost + ":"
+                             + QString::number(oastPort) + "/";
     }
     wiring.oast = &oast;
 
@@ -821,8 +833,12 @@ int main(int argc, char *argv[]) {
     // for a registered token auto-confirms just like an HTTP one. Default
     // port 8053 (non-privileged); use --dns-port=53 with a wildcard NS
     // delegation for real-internet targets.
+    quint16 dnsBindPort = 8053;
+    if (const uint v = flagValue(argc, argv, "--dns-port").toUInt()) dnsBindPort = quint16(v);
     Nullock::Core::DnsSink dnsSink;
-    const quint16 dnsPort = dnsSink.start(8053, QStringLiteral("127.0.0.1"));
+    // answerIp is the A record we hand back; use the OAST host when it's
+    // an IP literal so a resolved name points back at this box.
+    const quint16 dnsPort = dnsSink.start(dnsBindPort, oastHost, oastHost);
     if (dnsPort) {
         qInfo().noquote() << "  oast-dns  udp/" + QString::number(dnsPort)
                              + " (lab: point resolver here)";
