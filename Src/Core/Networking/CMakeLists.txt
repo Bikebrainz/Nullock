@@ -44,6 +44,8 @@ add_library(Networking STATIC
     js_recon.hpp
     race_tester.cpp
     race_tester.hpp
+    verb_tamper.cpp
+    verb_tamper.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

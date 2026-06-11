@@ -21,6 +21,7 @@
 #include "cors_tester.hpp"
 #include "js_recon.hpp"
 #include "race_tester.hpp"
+#include "verb_tamper.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4070,6 +4071,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
                        { "found", found }});
+    }
+
+    // ---- Verb-tampering / method auth-bypass -------------------------
+    // POST /api/verbtamper/test { url, method?, body?, headers? }
+    //   Takes a denied request and retries it with alternate methods,
+    //   method-override headers, and case variation; flags any that flip
+    //   to 2xx (a confirmed access-control bypass). CWE-650.
+    if (path == "/api/verbtamper/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::VerbTamper::Request vr;
+        vr.host = u.host();
+        vr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        vr.tls  = (u.scheme() == "https");
+        vr.method = bodyJson.value("method").toString("GET").toUpper();
+        vr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            vr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        vr.body = bodyJson.value("body").toString().toUtf8();
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            vr.headers.append({ it.key(), it.value().toString() });
+
+        const auto vres = Nullock::Core::VerbTamper::test(vr);
+
+        QJsonArray bypasses;
+        QStringList techniques;
+        for (const auto &b : vres.bypasses) {
+            bypasses.append(QJsonObject{
+                { "technique", b.technique }, { "detail", b.detail },
+                { "status", b.status } });
+            techniques << b.technique;
+        }
+        if (m_wiring.scanner && !vres.bypasses.isEmpty()) {
+            m_wiring.scanner->reportFinding(0, "high", "auth-bypass-verb-tampering",
+                QString("Verb tampering: %1 (denied %2) is reachable via %3")
+                    .arg(vr.basePath).arg(vres.baselineStatus).arg(techniques.join(", ")),
+                "denied baseline flipped to 2xx under the listed techniques",
+                u.host(), url);
+        }
+        return okJson({{ "ok", vres.error.isEmpty() },
+                       { "error", vres.error },
+                       { "baselineStatus", vres.baselineStatus },
+                       { "baselineDenied", vres.baselineDenied },
+                       { "requestsSent", vres.requestsSent },
+                       { "bypassCount", static_cast<int>(vres.bypasses.size()) },
+                       { "bypasses", bypasses }});
     }
 
     // ---- Race-condition tester ---------------------------------------

@@ -622,6 +622,25 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_verbtamper() {
+    # nullock verbtamper <url> [method] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock verbtamper <url> [method] [Header:Value ...]"
+    local url=$1; shift
+    local method="GET"
+    if [[ -n ${1-} && $1 != *:* ]]; then method=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/verbtamper/test "{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
+}
+
 cmd_race() {
     # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
@@ -1026,6 +1045,10 @@ Above-Burp features (v4/v5):
                                          race-condition test -- fires N
                                          concurrent copies; flags a single-use
                                          operation that leaked extra successes
+  nullock verbtamper <url> [method] [hdr:val ...]
+                                         method auth-bypass -- retries a denied
+                                         request with alternate verbs / override
+                                         headers; flags any that flip to 2xx
 
 EOF
 }
@@ -1077,6 +1100,7 @@ case ${1:-help} in
     cors)          shift; cmd_cors "$@"          ;;
     jsrecon)       shift; cmd_jsrecon "$@"       ;;
     race)          shift; cmd_race "$@"          ;;
+    verbtamper)    shift; cmd_verbtamper "$@"    ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

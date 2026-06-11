@@ -251,6 +251,39 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== Verb-tampering auth bypass ===" -ForegroundColor Cyan
+Test-Endpoint "verbtamper flags a HEAD/override bypass, clean when all denied" {
+    # vuln: GET /admin -> 403 but HEAD -> 200 and X-HTTP-Method-Override:GET -> 200.
+    # secure: every method -> 403.
+    $oport = 19790
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $m=$c.Request.HttpMethod
+                $ov=$c.Request.Headers["X-HTTP-Method-Override"]
+                $st=403; $body="DENIED-403-PAGE"
+                if ($p -like '*vuln*') {
+                    if ($m -eq 'HEAD' -or $ov) { $st=200; $body="SECRET-PROTECTED-DATA" }
+                }
+                $c.Response.StatusCode=$st
+                if ($m -ne 'HEAD') { $buf=[Text.Encoding]::UTF8.GetBytes($body); $c.Response.OutputStream.Write($buf,0,$buf.Length) }
+                $c.Response.Close()
+            } catch { try { $c.Response.Abort() } catch {} }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/verbtamper/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/admin/vuln" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/verbtamper/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/admin/secure" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($v.baselineDenied -eq $true) -and ($v.bypassCount -ge 1) -and ($s.bypassCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Race-condition tester ===" -ForegroundColor Cyan
 Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
     # Listener with a per-path counter: race3 lets the first 3 succeed,

@@ -206,16 +206,38 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         socket->deleteLater();
         return result;
     }
+
+    // Skip 1xx interim responses (100 Continue, 103 Early Hints) to the
+    // real final response. Each interim is a complete header block; the
+    // bytes after its CRLFCRLF are the start of the next one, so re-seed
+    // readHeaderBlock with them. A guard caps pathological loops.
+    QByteArray headerBlock, rest;
+    int sp1 = -1, sp2 = -1;
+    for (int guard = 0; ; ++guard) {
+        const int sep = headerBuf.indexOf("\r\n\r\n");
+        headerBlock = headerBuf.left(sep);
+        rest = headerBuf.mid(sep + 4);
+        const int firstLineEnd = headerBlock.indexOf("\r\n");
+        const QByteArray statusLine =
+            headerBlock.left(firstLineEnd < 0 ? headerBlock.size() : firstLineEnd);
+        sp1 = statusLine.indexOf(' ');
+        sp2 = sp1 < 0 ? -1 : statusLine.indexOf(' ', sp1 + 1);
+        const int code = sp1 < 0 ? 0 : statusLine.mid(sp1 + 1, 3).toInt();
+        if (code >= 100 && code < 200 && guard < 8) {
+            headerBuf = rest;                    // next response starts here
+            if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
+                result.errorMessage = "no final response after 1xx";
+                socket->deleteLater();
+                return result;
+            }
+            continue;
+        }
+        break;
+    }
     result.rawResponse = headerBuf;
 
-    const int sep = headerBuf.indexOf("\r\n\r\n");
-    const QByteArray headerBlock = headerBuf.left(sep);
-    QByteArray rest = headerBuf.mid(sep + 4);
-
-    const int firstLineEnd = headerBlock.indexOf("\r\n");
-    const QByteArray statusLine = headerBlock.left(firstLineEnd);
-    const int sp1 = statusLine.indexOf(' ');
-    const int sp2 = statusLine.indexOf(' ', sp1 + 1);
+    const QByteArray statusLine =
+        headerBlock.left(qMax(0, headerBlock.indexOf("\r\n")));
     if (sp1 < 0 || sp2 < 0) {
         result.errorMessage = "malformed status line: " + QString::fromLatin1(statusLine);
         socket->deleteLater();
@@ -231,7 +253,21 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     const QString te = findHeader(result.parsed.headers, "Transfer-Encoding");
     const QString cl = findHeader(result.parsed.headers, "Content-Length");
 
-    if (te.compare("chunked", Qt::CaseInsensitive) == 0) {
+    // A response to HEAD, and any 204/304, has NO body regardless of the
+    // Content-Length / Transfer-Encoding it advertises (RFC 9110). Reading
+    // one would block until the timeout waiting for bytes that never come
+    // -- the classic HEAD hang. Detect it from the request method + status
+    // and stop after the headers. (1xx is already skipped above.)
+    const QByteArray reqMethod = requestBytes.left(qMax(0, requestBytes.indexOf(' ')));
+    const int sc = result.parsed.statusCode;
+    const bool bodyless = reqMethod.compare("HEAD", Qt::CaseInsensitive) == 0
+                       || sc == 204 || sc == 304;
+    // Transfer-Encoding may be a stacked list ("gzip, chunked"); the body
+    // is chunk-framed when the FINAL coding is chunked.
+    const bool isChunked = te.contains("chunked", Qt::CaseInsensitive);
+    if (bodyless) {
+        result.parsed.body = QByteArray();
+    } else if (isChunked) {
         QByteArray decoded;
         if (!readChunkedBody(socket, rest, decoded, result.rawResponse)) {
             result.errorMessage = "chunked body read failed";
