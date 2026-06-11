@@ -251,6 +251,35 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== IDOR / BOLA detection ===" -ForegroundColor Cyan
+Test-Endpoint "idor flags neighboring objects on a vulnerable id, ignores a static page" {
+    $oport = 19795
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 500; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $st=200; $b="default"
+                if ($p -match '/api/orders/(\d+)') {
+                    $idn=[int]$Matches[1]
+                    if ($idn -le 100) { $b="order #$idn owner=user$idn unique-$idn" } else { $st=404; $b="not found" }
+                } elseif ($p -match '/api/static/(\d+)') { $b="STATIC always identical" }
+                $c.Response.StatusCode=$st
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/idor/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/orders/5" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/idor/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/static/5" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 60).Content | ConvertFrom-Json
+        return ($v.findingCount -ge 1) -and ($v.findings[0].location -eq "path[3]") -and ($s.findingCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== /api/h2/events shape ===" -ForegroundColor Cyan
 Test-Endpoint "h2 events endpoint returns events array" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/h2/events?since=0" -Headers $hdr -TimeoutSec 5

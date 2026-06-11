@@ -622,6 +622,30 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_idor() {
+    # nullock idor <url> [idParam] [Header:Value ...]
+    # Tests for horizontal IDOR by replaying neighboring object ids.
+    [[ -n ${1-} ]] || die "usage: nullock idor <url> [idParam] [Header:Value ...]"
+    local url=$1; shift
+    local idParam=""
+    # First arg may be an idParam (no colon) or a header (has colon).
+    if [[ -n ${1-} && $1 != *:* ]]; then idParam=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    local body="{\"url\":$(jsonq "$url"),\"headers\":$headers"
+    [[ -n $idParam ]] && body+=",\"idParam\":$(jsonq "$idParam")"
+    body+="}"
+    post /api/idor/test "$body" | pp
+}
+
 cmd_paramminer() {
     # nullock paramminer <url> [method] [wordlist-file]
     [[ -n ${1-} ]] || die "usage: nullock paramminer <url> [GET|POST] [wordlist-file]"
@@ -892,6 +916,10 @@ Above-Burp features (v4/v5):
                                          discover hidden params -- response-diffs
                                          a candidate wordlist, reports the ones
                                          reflected or that flip the HTTP status
+  nullock idor <url> [idParam] [hdr:val ...]
+                                         IDOR/BOLA test -- replays neighboring
+                                         object ids under your session; reports
+                                         ids that return distinct valid objects
 
 EOF
 }
@@ -938,6 +966,7 @@ case ${1:-help} in
     chain)         shift; cmd_chain "$@"         ;;
     jwt)           shift; cmd_jwt "$@"           ;;
     paramminer)    shift; cmd_paramminer "$@"    ;;
+    idor)          shift; cmd_idor "$@"          ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac

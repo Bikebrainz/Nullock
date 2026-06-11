@@ -34,6 +34,8 @@ add_library(Networking STATIC
     jwt_tool.hpp
     param_miner.cpp
     param_miner.hpp
+    idor_tester.cpp
+    idor_tester.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

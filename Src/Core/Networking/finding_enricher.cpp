@@ -142,6 +142,9 @@ const QHash<QString, Mapping> &table() {
         { "hidden-param-reflected", { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Undocumented reflected param -- test it for XSS / injection; remove if unused." } },
         { "hidden-param",           { "CWE-200", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Undocumented param alters behavior -- review for hidden/debug functionality." } },
 
+        // ---- IDOR / BOLA --------------------------------------------
+        { "idor-horizontal", { "CWE-639", "A01:2021-Broken Access Control", 8.1, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce per-object authorization server-side; don't trust client-supplied ids." } },
+
         // ---- JWT weaknesses (passive analysis + active toolkit) ------
         { "jwt-alg-none",   { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Reject alg:none; pin the expected algorithm server-side." } },
         { "jwt-no-exp",     { "CWE-613", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Require and enforce an 'exp' claim; keep lifetimes short." } },

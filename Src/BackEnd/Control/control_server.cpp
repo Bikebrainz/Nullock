@@ -16,6 +16,7 @@
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "param_miner.hpp"
+#include "idor_tester.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4065,6 +4066,71 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "reflectionSignalUsable", mr.reflectionSignalUsable },
                        { "foundCount", static_cast<int>(mr.found.size()) },
                        { "found", found }});
+    }
+
+    // ---- IDOR / BOLA auto-detection ----------------------------------
+    // POST /api/idor/test { url, method?, idParam?, headers?: {} }
+    //   Finds numeric object ids in the URL, replays with neighboring ids
+    //   under the same session, and reports neighbors that return a
+    //   distinct valid object (a horizontal IDOR lead). headers carries
+    //   the session cookies / Authorization so the test runs authenticated.
+    if (path == "/api/idor/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::IdorTester::Request ir;
+        ir.host = u.host();
+        ir.port = u.port(u.scheme() == "https" ? 443 : 80);
+        ir.tls  = (u.scheme() == "https");
+        ir.method = bodyJson.value("method").toString("GET").toUpper();
+        ir.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            ir.basePath += "?" + u.query(QUrl::FullyEncoded);
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            ir.headers.append({ it.key(), it.value().toString() });
+        const QString idParam = bodyJson.value("idParam").toString();
+
+        Nullock::Core::IdorTester::Result tr;
+        {
+            auto fut = QtConcurrent::run([ir, idParam]() {
+                return Nullock::Core::IdorTester::test(ir, idParam);
+            });
+            fut.waitForFinished();
+            tr = fut.result();
+        }
+
+        QJsonArray findings;
+        for (const auto &f : tr.findings) {
+            QJsonArray accessible;
+            QStringList ids;
+            for (const auto &a : f.accessible) {
+                accessible.append(QJsonObject{
+                    { "id", a.mutatedId }, { "status", a.status }, { "length", a.length } });
+                ids << a.mutatedId;
+            }
+            findings.append(QJsonObject{
+                { "location", f.loc.descriptor },
+                { "originalId", f.loc.originalValue },
+                { "accessible", accessible } });
+            // Each location with accessible neighbors is a real finding.
+            if (m_wiring.scanner) {
+                m_wiring.scanner->reportFinding(0, "high", "idor-horizontal",
+                    QString("IDOR: %1 (id=%2) exposes neighboring objects %3")
+                        .arg(f.loc.descriptor, f.loc.originalValue, ids.join(", ")),
+                    "same-session replay of neighboring ids returned distinct valid objects",
+                    u.host(), url);
+            }
+        }
+        return okJson({{ "ok", tr.error.isEmpty() },
+                       { "error", tr.error },
+                       { "idLocationsFound", tr.idLocationsFound },
+                       { "requestsSent", tr.requestsSent },
+                       { "findingCount", static_cast<int>(tr.findings.size()) },
+                       { "findings", findings }});
     }
 
     // ---- Repeater chains ---------------------------------------------
