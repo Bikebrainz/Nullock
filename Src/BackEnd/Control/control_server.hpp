@@ -29,6 +29,7 @@ class ReconEngine;
 class SessionManager;
 class OastServer;
 class OastCorrelator;
+class DnsSink;
 class SessionRules;
 class Crawler;
 class UpdateChecker;
@@ -56,6 +57,7 @@ struct Wiring {
     Nullock::Core::SessionManager      *sessions     = nullptr;
     Nullock::Core::OastServer          *oast         = nullptr;
     Nullock::Core::OastCorrelator      *oastCorrelator = nullptr;
+    Nullock::Core::DnsSink             *dnsSink      = nullptr;
     Nullock::Core::SessionRules        *sessionRules = nullptr;
     Nullock::Core::Crawler             *crawler      = nullptr;
     Nullock::Core::UpdateChecker       *updates      = nullptr;

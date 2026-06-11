@@ -164,6 +164,33 @@ Test-Endpoint "oast blast fires SSRF+XXE vectors and a callback confirms by clas
     return ($f.Count -ge 1) -and ($f[0].cwe -eq "CWE-611")
 }
 
+Test-Endpoint "DNS sink: a name-only callback auto-confirms" {
+    # The HTTP sink can't see OOB that only does a DNS lookup (Log4Shell,
+    # blind-SQLi DNS exfil). Mint a registered token, then send a raw DNS
+    # A-query for <token>.oast to the UDP sink and assert it correlates.
+    $snap0 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
+    if (-not $snap0.oast.dnsRunning) { return $false }
+    $dnsPort = [int]$snap0.oast.dnsPort
+    $m = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/oast/mint" -Headers $hdr -Body (@{register=$true; host="victim.corp"; param="dns"; note="v3-dns"} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 5).Content | ConvertFrom-Json
+    if (-not $m.token) { return $false }
+    # Build a minimal DNS A-query for <token>.oast.
+    $ms = New-Object System.IO.MemoryStream
+    $bw = New-Object System.IO.BinaryWriter($ms)
+    $bw.Write([byte[]]@(0x13,0x37, 0x01,0x00, 0x00,0x01, 0x00,0x00, 0x00,0x00, 0x00,0x00))
+    foreach ($lbl in @($m.token, "oast")) {
+        $b = [Text.Encoding]::ASCII.GetBytes($lbl); $bw.Write([byte]$b.Length); $bw.Write($b)
+    }
+    $bw.Write([byte]0); $bw.Write([byte[]]@(0x00,0x01, 0x00,0x01)); $bw.Flush()
+    $pkt = $ms.ToArray()
+    $udp = New-Object System.Net.Sockets.UdpClient
+    [void]$udp.Send($pkt, $pkt.Length, "127.0.0.1", $dnsPort)
+    $udp.Close()
+    Start-Sleep -Milliseconds 900
+    $snap1 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
+    $f = @($snap1.findings | Where-Object { $_.kind -eq "ssrf-oast-confirmed" -and $_.evidence -like "*DNS*" })
+    return ($snap1.oast.dnsHits -ge 1) -and ($f.Count -ge 1)
+}
+
 Write-Host "`n=== /api/h2/events shape ===" -ForegroundColor Cyan
 Test-Endpoint "h2 events endpoint returns events array" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/h2/events?since=0" -Headers $hdr -TimeoutSec 5

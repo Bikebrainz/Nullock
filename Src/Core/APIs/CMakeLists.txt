@@ -10,6 +10,8 @@ add_library(APIs STATIC
     Oast/oast_server.hpp
     Oast/oast_correlator.cpp
     Oast/oast_correlator.hpp
+    Oast/dns_sink.cpp
+    Oast/dns_sink.hpp
 )
 
 # Qt6::Qml needed for QJSEngine which the ExtensionsAPI uses to execute

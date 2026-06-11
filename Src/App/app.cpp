@@ -18,6 +18,7 @@
 #include "session_rules.hpp"
 #include "oast_server.hpp"
 #include "oast_correlator.hpp"
+#include "dns_sink.hpp"
 #include "crawler.hpp"
 #include "networking.hpp"
 #include "tls_profile.hpp"
@@ -813,6 +814,22 @@ int main(int argc, char *argv[]) {
     QObject::connect(&oast, &Nullock::Core::OastServer::hitReceived,
                      &oastCorrelator, &Nullock::Core::OastCorrelator::onHit);
     wiring.oastCorrelator = &oastCorrelator;
+
+    // DNS sink. Catches the OOB classes the HTTP sink can't see -- a
+    // resolver lookup of <token>.<host> (Log4Shell JNDI, blind-SQLi DNS
+    // exfil, DNS-only SSRF). Feeds the SAME correlator, so a DNS callback
+    // for a registered token auto-confirms just like an HTTP one. Default
+    // port 8053 (non-privileged); use --dns-port=53 with a wildcard NS
+    // delegation for real-internet targets.
+    Nullock::Core::DnsSink dnsSink;
+    const quint16 dnsPort = dnsSink.start(8053, QStringLiteral("127.0.0.1"));
+    if (dnsPort) {
+        qInfo().noquote() << "  oast-dns  udp/" + QString::number(dnsPort)
+                             + " (lab: point resolver here)";
+        QObject::connect(&dnsSink, &Nullock::Core::DnsSink::hitReceived,
+                         &oastCorrelator, &Nullock::Core::OastCorrelator::onHit);
+    }
+    wiring.dnsSink = &dnsSink;
 
     // Link-following crawler. Builds the full attack surface from a
     // seed URL; the rest of the toolchain (passive scanner, repeater,
