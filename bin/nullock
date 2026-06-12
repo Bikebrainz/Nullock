@@ -892,6 +892,23 @@ cmd_graphql() {
         done
         headers+="}"
     fi
+    # First arg "schema" -> schema analysis instead of the probe battery.
+    if [[ $url == "schema" ]]; then
+        local surl=$1; shift 2>/dev/null || true
+        # rebuild headers from remaining args
+        headers="{}"
+        if (( $# > 0 )); then
+            headers="{"; local first=1
+            for h in "$@"; do
+                local name=${h%%:*} val=${h#*:}; val=${val# }
+                if (( first )); then first=0; else headers+=","; fi
+                headers+="$(jsonq "$name"):$(jsonq "$val")"
+            done
+            headers+="}"
+        fi
+        post /api/graphql/schema "{\"url\":$(jsonq "$surl"),\"headers\":$headers}" | pp
+        return
+    fi
     post /api/graphql/probe \
         "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
 }
@@ -1053,6 +1070,10 @@ Above-Burp features (v4/v5):
   nullock graphql <url> [hdr:val ...]    5 active GraphQL probes (introspection,
                                          field suggestion, alias amplification,
                                          depth bypass, batched-query bypass)
+  nullock graphql schema <url> [hdr:val ...]
+                                         analyze the GraphQL schema (if
+                                         introspection is on): flags dangerous
+                                         mutations + sensitive fields
   nullock chain <file.json|->            run a multi-step request chain;
                                          extract vars from each response (json/
                                          header/cookie/regex/status) and thread

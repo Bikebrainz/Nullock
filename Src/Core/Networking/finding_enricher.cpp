@@ -180,6 +180,8 @@ const QHash<QString, Mapping> &table() {
         { "graphql-alias-amplification",  { "CWE-770", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H", "", "Cap alias/field counts; enforce query-cost limits." } },
         { "graphql-depth-bypass",         { "CWE-770", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Enforce a maximum query depth." } },
         { "graphql-batched-queries",      { "CWE-770", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Disable batched queries or rate-limit per operation." } },
+        { "graphql-dangerous-mutation",   { "CWE-285", "A01:2021-Broken Access Control", 5.4, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:H/A:N", "", "Verify per-mutation authorization; don't rely on the mutation being undocumented." } },
+        { "graphql-sensitive-field",      { "CWE-213", "A01:2021-Broken Access Control", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Never expose secret/credential fields in the schema; gate them behind field-level auth." } },
 
         // ---- CVE correlation ----------------------------------------
         { "cve-correlated", { "CWE-1395", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Upgrade the component to the fixed version named in the advisory." } },

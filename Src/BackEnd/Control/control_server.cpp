@@ -3887,6 +3887,146 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     //      accepted, depth limits are missing.
     //   5. Batched-query bypass — fires [{q1}, {q2}, ...] array form; if
     //      the server processes both, rate limiting can be batch-bypassed.
+    // ---- GraphQL schema analysis -------------------------------------
+    // POST /api/graphql/schema { url, headers? }
+    //   When introspection is on, fetch the schema and analyse it for the
+    //   attack surface Burp doesn't: dangerous mutations (delete/grant/
+    //   impersonate/...) and sensitive fields (password/token/ssn/...).
+    if (path == "/api/graphql/schema") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        const QString host = u.host();
+        const int port = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool tls = (u.scheme() == "https");
+        const QString gpath = u.path(QUrl::FullyEncoded).isEmpty()
+                              ? QStringLiteral("/graphql") : u.path(QUrl::FullyEncoded);
+
+        // Minimal introspection: type names + their fields, and which type
+        // is the mutation root.
+        const QByteArray q =
+            R"({"query":"query{__schema{mutationType{name} queryType{name} types{name kind fields{name}}}}"})";
+        QByteArray req;
+        req  = "POST " + gpath.toUtf8() + " HTTP/1.1\r\n";
+        req += "Host: " + host.toUtf8() + "\r\n";
+        req += "User-Agent: Nullock/graphql-schema\r\n";
+        req += "Content-Type: application/json\r\nAccept: application/json\r\n";
+        req += "Accept-Encoding: identity\r\n";
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it) {
+            // Reject CR/LF in header name/value -- it would split the request.
+            const QString k = it.key(), v = it.value().toString();
+            if (k.contains('\r') || k.contains('\n') || v.contains('\r') || v.contains('\n'))
+                continue;
+            req += k.toUtf8() + ": " + v.toUtf8() + "\r\n";
+        }
+        req += "Content-Length: " + QByteArray::number(q.size()) + "\r\n";
+        req += "Connection: close\r\n\r\n";
+        req += q;
+
+        Nullock::Core::HttpClient client;
+        const auto res = client.send(host, static_cast<quint16>(port), tls, req);
+        if (!res.ok)
+            return okJson({{ "ok", false }, { "error", "request failed: " + res.errorMessage }});
+        // Cap the body we parse so a hostile endpoint can't OOM us.
+        constexpr int kMaxSchema = 16 * 1024 * 1024;
+        QJsonParseError jerr;
+        const QJsonDocument doc = QJsonDocument::fromJson(res.parsed.body.left(kMaxSchema), &jerr);
+        if (jerr.error != QJsonParseError::NoError || !doc.isObject())
+            return okJson({{ "ok", true }, { "introspectionEnabled", false },
+                           { "note", "response is not a JSON object (WAF/error page?) -- introspection state unknown" }});
+        const QJsonObject root = doc.object();
+        const QJsonObject schema = root.value("data").toObject().value("__schema").toObject();
+        if (schema.isEmpty()) {
+            const bool hadErrors = root.contains("errors");
+            return okJson({{ "ok", true }, { "introspectionEnabled", false },
+                           { "note", hadErrors
+                               ? "introspection disabled (server returned a GraphQL error)"
+                               : "no __schema in response -- introspection likely disabled" }});
+        }
+
+        // Empty mutationTypeName (no mutations) must NOT match a type whose
+        // name happens to be empty -- guard explicitly.
+        const QString mutationTypeName = schema.value("mutationType").toObject().value("name").toString();
+        static const QRegularExpression dangerousRx(
+            R"(^(delete|remove|destroy|drop|purge|wipe|grant|revoke|setRole|set_role|makeAdmin|promote|impersonate|assumeIdentity|resetPassword|reset_password|disable|ban|deactivate|transfer|refund|approve|override)\w*)",
+            QRegularExpression::CaseInsensitiveOption);
+        // A field is sensitive if its (lower-cased) name contains any of
+        // these tokens -- catches userPassword / stripeApiKey / hashedToken,
+        // not just names that start with the token.
+        static const QStringList sensitiveTokens = {
+            "password", "passwd", "secret", "token", "apikey", "accesstoken",
+            "refreshtoken", "privatekey", "ssn", "socialsecurity", "creditcard",
+            "cardnumber", "cvv", "mfasecret", "recoverycode",
+        };
+        // The token must sit on a name boundary -- at the start, after a
+        // '_', or at a camelCase hump -- and end the same way, so 'password'
+        // in userPassword / x_ssn / apiKeyList matches but 'token' inside
+        // 'tokenize' (lowercase continuation) doesn't.
+        auto isSensitive = [&](const QString &fn) {
+            const QString l = fn.toLower();
+            for (const QString &tok : sensitiveTokens) {
+                int idx = l.indexOf(tok);
+                while (idx >= 0) {
+                    const int after = idx + tok.size();
+                    const bool boundBefore = idx == 0 || l[idx - 1] == '_'
+                        || fn[idx].isUpper();
+                    const bool boundAfter = after >= l.size() || l[after] == '_'
+                        || fn[after].isUpper() || fn[after].isDigit();
+                    if (boundBefore && boundAfter) return true;
+                    idx = l.indexOf(tok, idx + 1);
+                }
+            }
+            return false;
+        };
+
+        QJsonArray dangerousMutations, sensitiveFields;
+        int typeCount = 0, fieldCount = 0;
+        constexpr int kMaxList = 200;   // bound the returned arrays
+        for (const QJsonValue &tv : schema.value("types").toArray()) {
+            const QJsonObject type = tv.toObject();
+            const QString typeName = type.value("name").toString();
+            if (typeName.isEmpty() || typeName.startsWith("__")) continue;
+            ++typeCount;
+            const bool isMutationType = !mutationTypeName.isEmpty() && typeName == mutationTypeName;
+            for (const QJsonValue &fv : type.value("fields").toArray()) {
+                const QString fn = fv.toObject().value("name").toString();
+                if (fn.isEmpty()) continue;
+                ++fieldCount;
+                if (isMutationType && dangerousMutations.size() < kMaxList
+                    && dangerousRx.match(fn).hasMatch())
+                    dangerousMutations.append(fn);
+                if (sensitiveFields.size() < kMaxList && isSensitive(fn))
+                    sensitiveFields.append(QString("%1.%2").arg(typeName, fn));
+            }
+        }
+
+        if (m_wiring.scanner) {
+            m_wiring.scanner->reportFinding(0, "low", "graphql-introspection-active",
+                "GraphQL introspection enabled -- full schema readable",
+                QString("%1 types, %2 fields exposed").arg(typeCount).arg(fieldCount),
+                host, url);
+            if (!dangerousMutations.isEmpty()) {
+                QStringList ms; for (const auto &v : dangerousMutations) ms << v.toString();
+                m_wiring.scanner->reportFinding(0, "medium", "graphql-dangerous-mutation",
+                    "GraphQL exposes state-changing mutations: " + ms.join(", "),
+                    "review authorization on each", host, url);
+            }
+            if (!sensitiveFields.isEmpty()) {
+                QStringList fs; for (const auto &v : sensitiveFields) fs << v.toString();
+                m_wiring.scanner->reportFinding(0, "medium", "graphql-sensitive-field",
+                    "GraphQL schema exposes sensitive field(s): " + fs.mid(0, 10).join(", "),
+                    "ensure these are never returned to unauthorized callers", host, url);
+            }
+        }
+        return okJson({{ "ok", true }, { "introspectionEnabled", true },
+                       { "types", typeCount }, { "fields", fieldCount },
+                       { "mutationType", mutationTypeName },
+                       { "dangerousMutations", dangerousMutations },
+                       { "sensitiveFields", sensitiveFields }});
+    }
+
     if (path == "/api/graphql/probe") {
         if (!m_wiring.scanner)
             return okJson({{ "ok", false }, { "error", "no scanner" }});

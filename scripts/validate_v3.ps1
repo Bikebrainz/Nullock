@@ -617,6 +617,34 @@ Test-Endpoint "graphql probe queues 5 attack probes for a real target" {
     return ($j.ok -eq $true) -and ($j.queued -eq 5)
 }
 
+Write-Host "`n=== GraphQL schema analysis ===" -ForegroundColor Cyan
+Test-Endpoint "graphql schema flags dangerous mutations + sensitive fields" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $intro='{"data":{"__schema":{"mutationType":{"name":"Mutation"},"queryType":{"name":"Query"},"types":[{"name":"Query","kind":"OBJECT","fields":[{"name":"user"}]},{"name":"Mutation","kind":"OBJECT","fields":[{"name":"createUser"},{"name":"deleteUser"},{"name":"grantAdmin"}]},{"name":"User","kind":"OBJECT","fields":[{"name":"id"},{"name":"email"},{"name":"password"},{"name":"apiKey"}]}]}}}'
+        $disabled='{"errors":[{"message":"introspection is disabled"}]}'
+        for ($i=0; $i -lt 100; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                $b = if ($p -like '*secure*') { $disabled } else { $intro }
+                $c.Response.StatusCode=200; $c.Response.ContentType="application/json"
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/graphql/schema" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/graphql/vuln" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 15).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/graphql/schema" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/graphql/secure" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 15).Content | ConvertFrom-Json
+        return ($v.introspectionEnabled -eq $true) -and ($v.dangerousMutations -contains "deleteUser") -and ($v.sensitiveFields -contains "User.password") -and ($s.introspectionEnabled -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Repeater chains ===" -ForegroundColor Cyan
 Test-Endpoint "chain run rejects empty steps" {
     $body = '{"steps":[]}'
