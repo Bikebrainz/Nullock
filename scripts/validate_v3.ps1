@@ -416,6 +416,42 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Open redirect ===" -ForegroundColor Cyan
+Test-Endpoint "open redirect confirms via resolved Location host, ignores reflection + param-independent redirects" {
+    # /login: redirects to ?next verbatim (vuln). /reflect: echoes next in a 200 body (no redirect).
+    # /always: 302s to the sentinel regardless of param (must be reported inconclusive, not a hit).
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 500; $i++) {
+            try {
+                $c=$l.GetContext(); $req=$c.Request; $p=$req.Url.AbsolutePath; $next=$req.QueryString["next"]; if ($null -eq $next) { $next="" }
+                if ($p -eq "/login") {
+                    $c.Response.StatusCode=302; try { $c.Response.RedirectLocation=$next } catch { $c.Response.StatusCode=400 }; $c.Response.Close()
+                } elseif ($p -eq "/reflect") {
+                    $b=[Text.Encoding]::UTF8.GetBytes("you asked for: $next"); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($b,0,$b.Length); $c.Response.Close()
+                } elseif ($p -eq "/always") {
+                    $c.Response.StatusCode=302; try { $c.Response.RedirectLocation="https://nullock-oob.test/" } catch {}; $c.Response.Close()
+                } else { $b=[Text.Encoding]::UTF8.GetBytes("ok"); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($b,0,$b.Length); $c.Response.Close() }
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v  = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/openredirect/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/login?next=/home" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $rf = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/openredirect/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/reflect?next=/home" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $al = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/openredirect/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/always?next=/home" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $loc = ($v.hits | Where-Object { $_.via -eq 'Location' }).Count
+        return ($v.vulnerable -eq $true) -and ($loc -ge 6) -and ($v.testedParam -eq 'next') `
+               -and ($rf.vulnerable -eq $false) `
+               -and ($al.vulnerable -eq $false) -and ($al.error -match 'inconclusive')
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Race-condition tester ===" -ForegroundColor Cyan
 Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
     # Listener with a per-path counter: race3 lets the first 3 succeed,

@@ -24,6 +24,7 @@
 #include "verb_tamper.hpp"
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
+#include "open_redirect.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4583,6 +4584,63 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Open redirect -----------------------------------------------
+    // POST /api/openredirect/test { url, param?, method?, headers? }
+    //   Fires parser-confusion bypass payloads at the redirect param and
+    //   confirms only when the Location header *resolves* to our sentinel
+    //   host -- not on naive reflection. CWE-601.
+    if (path == "/api/openredirect/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::OpenRedirect::Request orq;
+        orq.host = u.host();
+        orq.port = u.port(u.scheme() == "https" ? 443 : 80);
+        orq.tls  = (u.scheme() == "https");
+        orq.method = bodyJson.value("method").toString("GET").toUpper();
+        orq.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        orq.query = u.query(QUrl::FullyEncoded);
+        orq.param = bodyJson.value("param").toString();
+        const QJsonObject ohdrs = bodyJson.value("headers").toObject();
+        for (auto it = ohdrs.begin(); it != ohdrs.end(); ++it)
+            orq.headers.append({ it.key(), it.value().toString() });
+
+        const auto ores = Nullock::Core::OpenRedirect::test(orq);
+
+        QJsonArray hits;
+        QStringList techniques;
+        for (const auto &h : ores.hits) {
+            hits.append(QJsonObject{
+                { "technique", h.technique }, { "payload", h.payload },
+                { "via", h.via }, { "resolvedHost", h.resolvedHost },
+                { "status", h.status } });
+            techniques << h.technique;
+        }
+        if (m_wiring.scanner && ores.vulnerable) {
+            // Header-confirmed (Location) is high; client-side-only is medium.
+            bool headerConfirmed = false;
+            for (const auto &h : ores.hits) if (h.via == "Location") headerConfirmed = true;
+            m_wiring.scanner->reportFinding(0, headerConfirmed ? "high" : "medium",
+                "open-redirect",
+                QString("Open redirect in '%1' -- %2 redirect(s) leave the origin (%3)")
+                    .arg(ores.testedParam).arg(ores.hits.size()).arg(techniques.join(", ")),
+                "a crafted value redirects victims off-origin; an OAuth/SSO redirect_uri "
+                "in this position is a token-leak primitive",
+                u.host(), url);
+        }
+        return okJson({{ "ok", ores.error.isEmpty() },
+                       { "error", ores.error },
+                       { "testedParam", ores.testedParam },
+                       { "vulnerable", ores.vulnerable },
+                       { "baselineStatus", ores.baselineStatus },
+                       { "requestsSent", ores.requestsSent },
+                       { "hitCount", static_cast<int>(ores.hits.size()) },
                        { "hits", hits }});
     }
 

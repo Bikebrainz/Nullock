@@ -161,6 +161,9 @@ const QHash<QString, Mapping> &table() {
         // ---- Verb tampering -----------------------------------------
         { "auth-bypass-verb-tampering", { "CWE-650", "A01:2021-Broken Access Control", 8.2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce authorization independent of HTTP method; deny by default and ignore method-override headers." } },
 
+        // ---- Open redirect -------------------------------------------
+        { "open-redirect", { "CWE-601", "A01:2021-Broken Access Control", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Validate redirect targets against an allow-list of relative paths or exact hosts; never redirect to a raw user-supplied URL." } },
+
         // ---- Web cache poisoning -------------------------------------
         { "web-cache-poisoning-confirmed", { "CWE-349", "A05:2021-Security Misconfiguration", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:H/A:L", "", "Add every reflected request input to the cache key, or strip unkeyed headers at the edge before they reach the origin." } },
         { "web-cache-poisoning",           { "CWE-349", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:N", "", "Key the cache on the reflected header, or don't reflect untrusted headers into cacheable responses." } },

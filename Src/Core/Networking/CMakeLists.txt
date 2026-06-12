@@ -50,6 +50,8 @@ add_library(Networking STATIC
     ssti_tester.hpp
     cache_poison.cpp
     cache_poison.hpp
+    open_redirect.cpp
+    open_redirect.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the
