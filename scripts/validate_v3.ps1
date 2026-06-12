@@ -251,6 +251,41 @@ Test-Endpoint "paramminer guards against targets that flip on any param" {
     }
 }
 
+Write-Host "`n=== Deep-scan orchestrator ===" -ForegroundColor Cyan
+Test-Endpoint "audit runs the battery and aggregates findings from multiple testers" {
+    # One multi-vuln endpoint: distinct object per id (IDOR), reflects ?q
+    # (param mining), reflects Origin+creds (CORS). One /api/audit/run call
+    # should surface findings from all three.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $q=$c.Request.QueryString; $o=$c.Request.Headers["Origin"]; $m=$c.Request.HttpMethod
+                if ($o) { $c.Response.Headers.Add("Access-Control-Allow-Origin",$o); $c.Response.Headers.Add("Access-Control-Allow-Credentials","true") }
+                $st=200; $b="default"
+                if ($p -match '/api/orders/(\d+)') {
+                    $idn=[int]$Matches[1]
+                    if ($idn -le 100) { $b="order #$idn FULL RECORD owner=user$idn balance=10000 confidential-$idn"; if ($q["q"]) { $b+=" echo:"+$q["q"] } } else { $st=404; $b="nf" }
+                }
+                $c.Response.StatusCode=$st
+                if ($m -ne 'HEAD') { $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length) }
+                $c.Response.Close()
+            } catch { try { $c.Response.Abort() } catch {} }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/orders/5" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
+        $bt=@{}; $a.testers | ForEach-Object { $bt[$_.tester]=$_.items }
+        return ($a.totalFindings -ge 3) -and ($bt['param-mining'] -ge 1) -and ($bt['idor'] -ge 1) -and ($bt['cors'] -ge 1)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Verb-tampering auth bypass ===" -ForegroundColor Cyan
 Test-Endpoint "verbtamper flags a HEAD/override bypass, clean when all denied" {
     # vuln: GET /admin -> 403 but HEAD -> 200 and X-HTTP-Method-Override:GET -> 200.

@@ -3995,6 +3995,147 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "ok", true }, { "attack", attack }, { "token", forged } });
     }
 
+    // ---- Deep-scan orchestrator --------------------------------------
+    // POST /api/audit/run { url, method?, body?, headers?, include?: [...] }
+    //   Points the whole active-testing battery at one endpoint in a single
+    //   call -- parameter mining, verb-tampering, CORS, IDOR, and (when a
+    //   body is given) mass-assignment -- and returns a consolidated report.
+    //   Each tester emits its findings into the panel as usual. The "one
+    //   command, every test" workflow Burp's per-insertion-point active
+    //   scan doesn't give you.
+    if (path == "/api/audit/run") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        const QString host = u.host();
+        const int port = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool tls = (u.scheme() == "https");
+        QString basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                           ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QString rawQuery = u.query(QUrl::FullyEncoded);
+        if (!rawQuery.isEmpty()) basePath += "?" + rawQuery;
+        const QString method = bodyJson.value("method").toString("GET").toUpper();
+        const QByteArray body = bodyJson.value("body").toString().toUtf8();
+        QList<QPair<QString, QString>> headers;
+        const QJsonObject hdrs = bodyJson.value("headers").toObject();
+        for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
+            headers.append({ it.key(), it.value().toString() });
+
+        // Which testers to run (default: all applicable).
+        QSet<QString> include;
+        for (const QJsonValue &v : bodyJson.value("include").toArray())
+            include.insert(v.toString().toLower());
+        auto wants = [&](const QString &name) {
+            return include.isEmpty() || include.contains(name);
+        };
+
+        Nullock::Core::PassiveScanner *sc = m_wiring.scanner;
+        QJsonArray testerReports;
+        // totalFindings counts the distinct testers that surfaced an issue
+        // -- one summary finding is emitted into the panel per such tester
+        // (the standalone endpoints already emit per-item detail when run
+        // individually), so the count and the panel stay in sync.
+        int totalFindings = 0;
+        auto note = [&](const QString &tester, int items, const QString &detail,
+                        const QString &severity, const QString &kind,
+                        const QString &summary) {
+            testerReports.append(QJsonObject{
+                { "tester", tester }, { "items", items }, { "detail", detail } });
+            if (items > 0) {
+                ++totalFindings;
+                if (sc) sc->reportFinding(0, severity, kind, summary,
+                                          "found by deep audit: " + detail, host, url);
+            }
+        };
+
+        // NOTE: this runs the whole battery synchronously and blocks the
+        // control server for its duration, like the other active-test
+        // endpoints -- a deep scan against a slow host can take many
+        // seconds. (A future async-job model would free the UI meanwhile.)
+        {
+            // -- parameter mining (GET query params). A focused wordlist
+            //    keeps the audit's request volume bounded. --
+            if (wants("params") || wants("param-mining")) {
+                Nullock::Core::ParamMiner::Request pr;
+                pr.host = host; pr.port = port; pr.tls = tls;
+                pr.method = method; pr.basePath = basePath; pr.headers = headers;
+                const auto res = Nullock::Core::ParamMiner::mine(
+                    pr, Nullock::Core::ParamMiner::defaultWordlist().mid(0, 60));
+                QStringList names; for (const auto &f : res.found) names << f.name;
+                note("param-mining", res.found.size(),
+                     QString("%1 found: %2").arg(res.found.size()).arg(names.join(", ")),
+                     "medium", "hidden-param",
+                     "Deep audit: hidden parameter(s) " + names.join(", "));
+            }
+            // -- verb tampering --
+            if (wants("verbs") || wants("verb-tampering")) {
+                Nullock::Core::VerbTamper::Request vr;
+                vr.host = host; vr.port = port; vr.tls = tls;
+                vr.method = method; vr.basePath = basePath; vr.headers = headers; vr.body = body;
+                const auto res = Nullock::Core::VerbTamper::test(vr);
+                QStringList techs; for (const auto &b : res.bypasses) techs << b.technique;
+                note("verb-tampering", res.bypasses.size(),
+                     res.baselineDenied ? techs.join(", ") : "baseline not denied (skipped)",
+                     "high", "auth-bypass-verb-tampering",
+                     "Deep audit: verb-tampering bypass via " + techs.join(", "));
+            }
+            // -- active CORS --
+            if (wants("cors")) {
+                Nullock::Core::CorsTester::Request cr;
+                cr.host = host; cr.port = port; cr.tls = tls;
+                cr.method = "GET"; cr.basePath = basePath; cr.headers = headers;
+                const auto res = Nullock::Core::CorsTester::test(cr);
+                int n = 0; QString worst = "low";
+                for (const auto &p : res.probes) {
+                    if (p.severity.isEmpty()) continue;
+                    ++n;
+                    if (p.severity == "critical") worst = "critical";
+                    else if (p.severity == "high" && worst != "critical") worst = "high";
+                    else if (p.severity == "medium" && worst == "low") worst = "medium";
+                }
+                note("cors", n, QString("%1 reflected origin(s)").arg(n),
+                     worst, "cors-reflected-credentialed",
+                     "Deep audit: CORS reflects untrusted origin(s)");
+            }
+            // -- IDOR (only fires when the URL carries a numeric id) --
+            if (wants("idor")) {
+                Nullock::Core::IdorTester::Request ir;
+                ir.host = host; ir.port = port; ir.tls = tls;
+                ir.method = method; ir.basePath = basePath; ir.headers = headers;
+                const auto res = Nullock::Core::IdorTester::test(ir);
+                QStringList locs; for (const auto &f : res.findings) locs << f.loc.descriptor;
+                note("idor", res.findings.size(),
+                     QString("%1 id location(s) checked, %2 exposed")
+                         .arg(res.idLocationsFound).arg(res.findings.size()) + " " + locs.join(", "),
+                     "high", "idor-horizontal",
+                     "Deep audit: IDOR at " + locs.join(", "));
+            }
+            // -- mass assignment (only when a body is supplied; forces a
+            //    write method + carries the body's content-type) --
+            if ((wants("massassign") || wants("mass-assignment")) && !body.isEmpty()) {
+                Nullock::Core::MassAssign::Request mr;
+                mr.host = host; mr.port = port; mr.tls = tls;
+                const bool isWrite = method == "POST" || method == "PUT" || method == "PATCH";
+                mr.method = isWrite ? method : QStringLiteral("POST");
+                mr.basePath = basePath; mr.headers = headers; mr.body = body;
+                for (const auto &h : headers)
+                    if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
+                        { mr.contentType = h.second; break; }
+                const auto res = Nullock::Core::MassAssign::test(mr, Nullock::Core::MassAssign::defaultFields());
+                QStringList fields; for (const auto &f : res.found) fields << f.field;
+                note("mass-assignment", res.found.size(), fields.join(", "),
+                     "high", "mass-assignment",
+                     "Deep audit: mass-assignable field(s) " + fields.join(", "));
+            }
+        }
+
+        return okJson({{ "target", url },
+                       { "totalFindings", totalFindings },
+                       { "testers", testerReports }});
+    }
+
     // ---- Parameter mining --------------------------------------------
     // POST /api/paramminer { url, method?, wordlist?: [...], headers?: {} }
     //   Discovers hidden parameters by response-diffing: fires batches of

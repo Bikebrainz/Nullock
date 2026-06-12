@@ -622,6 +622,34 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_audit() {
+    # nullock audit <url> [method] [body-file|-] [Header:Value ...]
+    # Runs the whole active-testing battery against one endpoint.
+    [[ -n ${1-} ]] || die "usage: nullock audit <url> [method] [body-file|-] [Header:Value ...]"
+    local url=$1; shift
+    local method="GET"
+    if [[ -n ${1-} && $1 =~ ^(GET|POST|PUT|PATCH|DELETE|get|post|put|patch|delete)$ ]]; then method=$1; shift; fi
+    local body=""
+    if [[ -n ${1-} && $1 != *:* ]]; then
+        if [[ $1 == "-" ]]; then body=$(cat); else body=$(cat "$1"); fi
+        shift
+    fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    local b="{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method"),\"headers\":$headers"
+    [[ -n $body ]] && b+=",\"body\":$(jsonq "$body")"
+    b+="}"
+    post /api/audit/run "$b" | pp
+}
+
 cmd_verbtamper() {
     # nullock verbtamper <url> [method] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock verbtamper <url> [method] [Header:Value ...]"
@@ -1049,6 +1077,10 @@ Above-Burp features (v4/v5):
                                          method auth-bypass -- retries a denied
                                          request with alternate verbs / override
                                          headers; flags any that flip to 2xx
+  nullock audit <url> [method] [body-file|-] [hdr:val ...]
+                                         deep scan -- runs the whole battery
+                                         (param mining, verb-tampering, CORS,
+                                         IDOR, mass-assignment) in one call
 
 EOF
 }
@@ -1101,6 +1133,7 @@ case ${1:-help} in
     jsrecon)       shift; cmd_jsrecon "$@"       ;;
     race)          shift; cmd_race "$@"          ;;
     verbtamper)    shift; cmd_verbtamper "$@"    ;;
+    audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
