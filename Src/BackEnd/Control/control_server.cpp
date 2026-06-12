@@ -22,6 +22,7 @@
 #include "js_recon.hpp"
 #include "race_tester.hpp"
 #include "verb_tamper.hpp"
+#include "ssti_tester.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4513,6 +4514,75 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", vres.requestsSent },
                        { "bypassCount", static_cast<int>(vres.bypasses.size()) },
                        { "bypasses", bypasses }});
+    }
+
+    // ---- Server-Side Template Injection ------------------------------
+    // POST /api/ssti/test { url, param, in?, method?, body?, contentType?,
+    //                       headers? }
+    //   Injects an arithmetic-bearing polyglot per template-engine delimiter
+    //   family into `param` and confirms SSTI when the server returns the
+    //   evaluated product (not the literal expression). The family that fires
+    //   fingerprints the engine. CWE-1336 -- frequently RCE.
+    if (path == "/api/ssti/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        const QString param = bodyJson.value("param").toString();
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        if (param.isEmpty())
+            return okJson({{ "ok", false }, { "error", "param required" }});
+
+        Nullock::Core::Ssti::Request sr;
+        sr.host = u.host();
+        sr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        sr.tls  = (u.scheme() == "https");
+        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        sr.query = u.query(QUrl::FullyEncoded);
+        sr.body = bodyJson.value("body").toString().toUtf8();
+        sr.contentType = bodyJson.value("contentType").toString();
+        sr.paramName = param;
+        sr.paramIn = bodyJson.value("in").toString("query");
+        const QJsonObject shdrs = bodyJson.value("headers").toObject();
+        for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
+            sr.headers.append({ it.key(), it.value().toString() });
+
+        const auto sres = Nullock::Core::Ssti::test(sr);
+
+        QJsonArray hits;
+        QStringList fams;
+        for (const auto &h : sres.hits) {
+            hits.append(QJsonObject{
+                { "polyglot", h.polyglot }, { "engines", h.engines },
+                { "evidence", h.evidence } });
+            fams << h.polyglot;
+        }
+        if (m_wiring.scanner && sres.confirmed) {
+            m_wiring.scanner->reportFinding(0, "critical", "ssti-confirmed",
+                QString("Server-side template injection in '%1' -- %2 (%3)")
+                    .arg(param, sres.engines, fams.join(", ")),
+                "the server evaluated an injected arithmetic expression; "
+                "template injection is frequently a path to RCE",
+                u.host(), url);
+        } else if (m_wiring.scanner && sres.engineLikely) {
+            m_wiring.scanner->reportFinding(0, "medium", "ssti-engine-likely",
+                QString("Template engine likely behind '%1' -- a syntax break "
+                        "5xx'd an otherwise-OK endpoint").arg(param),
+                "no value reflected, but malformed template syntax errored the "
+                "response; worth manual confirmation",
+                u.host(), url);
+        }
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "injected", sres.injected },
+                       { "confirmed", sres.confirmed },
+                       { "engineLikely", sres.engineLikely },
+                       { "engines", sres.engines },
+                       { "baselineStatus", sres.baselineStatus },
+                       { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
     }
 
     // ---- Race-condition tester ---------------------------------------

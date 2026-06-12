@@ -352,6 +352,35 @@ Test-Endpoint "verbtamper flags a HEAD/override bypass, clean when all denied" {
     }
 }
 
+Write-Host "`n=== Server-side template injection ===" -ForegroundColor Cyan
+Test-Endpoint "ssti confirms an evaluated polyglot + fingerprints engine, ignores literal reflection" {
+    # vuln /greet: Jinja2-style -- evaluates {{ int*int }} only.
+    # safe /safe: reflects the raw value verbatim (no evaluation).
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $name=$c.Request.QueryString["name"]; if ($null -eq $name) { $name="" }
+                if ($p -like '*greet*') {
+                    $out=[regex]::Replace($name,'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',{ param($m) [string]([int64]$m.Groups[1].Value*[int64]$m.Groups[2].Value) }); $out="Hello, $out!"
+                } else { $out="Hello, $name!" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($out); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/ssti/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/greet?name=x"; param="name" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/ssti/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe?name=x"; param="name" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        return ($v.confirmed -eq $true) -and ($v.engines -match 'Jinja2') -and ($s.injected -eq $true) -and ($s.confirmed -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Race-condition tester ===" -ForegroundColor Cyan
 Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
     # Listener with a per-path counter: race3 lets the first 3 succeed,

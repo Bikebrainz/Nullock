@@ -685,6 +685,28 @@ cmd_verbtamper() {
     post /api/verbtamper/test "{\"url\":$(jsonq "$url"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_ssti() {
+    # nullock ssti <url> <param> [in] [method] [Header:Value ...]
+    #   in: query (default) | form | json
+    [[ -n ${1-} && -n ${2-} ]] || die "usage: nullock ssti <url> <param> [query|form|json] [method] [hdr:val ...]"
+    local url=$1 param=$2; shift 2
+    local loc="query"
+    if [[ -n ${1-} && $1 != *:* && ( $1 == query || $1 == form || $1 == json ) ]]; then loc=$1; shift; fi
+    local method="GET"
+    if [[ -n ${1-} && $1 != *:* ]]; then method=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
+}
+
 cmd_race() {
     # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
@@ -1114,6 +1136,10 @@ Above-Burp features (v4/v5):
                                          method auth-bypass -- retries a denied
                                          request with alternate verbs / override
                                          headers; flags any that flip to 2xx
+  nullock ssti <url> <param> [query|form|json] [method] [hdr:val ...]
+                                         server-side template injection -- injects
+                                         an arithmetic polyglot per engine family
+                                         and confirms when the product is rendered
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1174,6 +1200,7 @@ case ${1:-help} in
     jsrecon)       shift; cmd_jsrecon "$@"       ;;
     race)          shift; cmd_race "$@"          ;;
     verbtamper)    shift; cmd_verbtamper "$@"    ;;
+    ssti)          shift; cmd_ssti "$@"          ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
