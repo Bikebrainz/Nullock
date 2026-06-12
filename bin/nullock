@@ -624,8 +624,24 @@ cmd_grouped() {
 
 cmd_audit() {
     # nullock audit <url> [method] [body-file|-] [Header:Value ...]
-    # Runs the whole active-testing battery against one endpoint.
-    [[ -n ${1-} ]] || die "usage: nullock audit <url> [method] [body-file|-] [Header:Value ...]"
+    # nullock audit all [url1 url2 ...]      # sweep history + given urls
+    # nullock audit history                  # sweep captured history rows
+    # Runs the whole active-testing battery.
+    if [[ ${1-} == "all" || ${1-} == "history" ]]; then
+        local mode=$1; shift
+        local urls="["
+        local first=1
+        for u in "$@"; do
+            if (( first )); then first=0; else urls+=","; fi
+            urls+=$(jsonq "$u")
+        done
+        urls+="]"
+        local fromHist="true"
+        [[ $mode == "all" && $# -gt 0 ]] && fromHist="true"
+        post /api/audit/all "{\"urls\":$urls,\"fromHistory\":$fromHist}" | pp
+        return
+    fi
+    [[ -n ${1-} ]] || die "usage: nullock audit <url> [method] [body|-] [hdr:val] | audit all [urls...] | audit history"
     local url=$1; shift
     local method="GET"
     if [[ -n ${1-} && $1 =~ ^(GET|POST|PUT|PATCH|DELETE|get|post|put|patch|delete)$ ]]; then method=$1; shift; fi
@@ -1081,6 +1097,10 @@ Above-Burp features (v4/v5):
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
                                          IDOR, mass-assignment) in one call
+  nullock audit all [url1 url2 ...]      session-wide sweep -- deep-audits the
+                                         given urls + every captured history
+                                         row with params/body (async)
+  nullock audit history                  sweep just the captured history rows
 
 EOF
 }

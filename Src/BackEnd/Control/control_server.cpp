@@ -35,8 +35,10 @@
 #include "repeater.hpp"
 #include "themes_manager.hpp"
 
+#include <QAtomicInteger>
 #include <QByteArray>
 #include <QDateTime>
+#include <QPointer>
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
 #include <QThread>
@@ -78,6 +80,115 @@ constexpr qint64  kBodyDeadlineMs   = 30'000;
 // imports of medium projects (~32 MB), small enough that a malicious
 // 4 GB POST can't OOM us. Returns 413 above this.
 constexpr qint64  kMaxBodyBytes  = 64LL * 1024 * 1024;
+
+// ---- Deep-scan audit helper --------------------------------------------
+// Runs the active-testing battery against one target and emits one summary
+// finding per tester that hit. Shared by /api/audit/run (single URL, sync)
+// and /api/audit/all (many URLs/rows, off-thread). `reportsOut` collects a
+// per-tester JSON summary; returns the number of distinct testers that
+// surfaced an issue.
+struct AuditTarget {
+    QString host;
+    int     port = 443;
+    bool    tls  = true;
+    QString method = QStringLiteral("GET");
+    QString basePath;
+    QByteArray body;
+    QString contentType;
+    QList<QPair<QString, QString>> headers;
+    QString url;            // display URL for findings
+};
+
+int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
+                 const QSet<QString> &include, QJsonArray &reportsOut) {
+    int total = 0;
+    auto wants = [&](const QString &n) { return include.isEmpty() || include.contains(n); };
+    auto note = [&](const QString &tester, int items, const QString &detail,
+                    const QString &sev, const QString &kind, const QString &summary) {
+        reportsOut.append(QJsonObject{
+            { "tester", tester }, { "items", items }, { "detail", detail },
+            { "url", t.url } });
+        if (items > 0) {
+            ++total;
+            // Marshal the emission onto the scanner's own thread: runDeepAudit
+            // runs on a background worker for /api/audit/all, and reportFinding
+            // emits findingsChanged() -- firing that cross-thread would run
+            // UI/stdout handlers on the worker. A queued invoke is safely
+            // dropped if the scanner is already gone.
+            if (sc) {
+                const QString host = t.host, url = t.url, ev = "found by deep audit: " + detail;
+                QMetaObject::invokeMethod(sc, [sc, sev, kind, summary, ev, host, url]() {
+                    sc->reportFinding(0, sev, kind, summary, ev, host, url);
+                }, Qt::QueuedConnection);
+            }
+        }
+    };
+
+    if (wants("params") || wants("param-mining")) {
+        Nullock::Core::ParamMiner::Request pr;
+        pr.host = t.host; pr.port = t.port; pr.tls = t.tls;
+        pr.method = t.method; pr.basePath = t.basePath; pr.headers = t.headers;
+        const auto res = Nullock::Core::ParamMiner::mine(
+            pr, Nullock::Core::ParamMiner::defaultWordlist().mid(0, 60));
+        QStringList names; for (const auto &f : res.found) names << f.name;
+        note("param-mining", res.found.size(),
+             QString("%1 found: %2").arg(res.found.size()).arg(names.join(", ")),
+             "medium", "hidden-param",
+             "Deep audit: hidden parameter(s) " + names.join(", "));
+    }
+    if (wants("verbs") || wants("verb-tampering")) {
+        Nullock::Core::VerbTamper::Request vr;
+        vr.host = t.host; vr.port = t.port; vr.tls = t.tls;
+        vr.method = t.method; vr.basePath = t.basePath; vr.headers = t.headers; vr.body = t.body;
+        const auto res = Nullock::Core::VerbTamper::test(vr);
+        QStringList techs; for (const auto &b : res.bypasses) techs << b.technique;
+        note("verb-tampering", res.bypasses.size(),
+             res.baselineDenied ? techs.join(", ") : "baseline not denied (skipped)",
+             "high", "auth-bypass-verb-tampering",
+             "Deep audit: verb-tampering bypass via " + techs.join(", "));
+    }
+    if (wants("cors")) {
+        Nullock::Core::CorsTester::Request cr;
+        cr.host = t.host; cr.port = t.port; cr.tls = t.tls;
+        cr.method = "GET"; cr.basePath = t.basePath; cr.headers = t.headers;
+        const auto res = Nullock::Core::CorsTester::test(cr);
+        int n = 0; QString worst = "low";
+        for (const auto &p : res.probes) {
+            if (p.severity.isEmpty()) continue;
+            ++n;
+            if (p.severity == "critical") worst = "critical";
+            else if (p.severity == "high" && worst != "critical") worst = "high";
+            else if (p.severity == "medium" && worst == "low") worst = "medium";
+        }
+        note("cors", n, QString("%1 reflected origin(s)").arg(n),
+             worst, "cors-reflected-credentialed",
+             "Deep audit: CORS reflects untrusted origin(s)");
+    }
+    if (wants("idor")) {
+        Nullock::Core::IdorTester::Request ir;
+        ir.host = t.host; ir.port = t.port; ir.tls = t.tls;
+        ir.method = t.method; ir.basePath = t.basePath; ir.headers = t.headers;
+        const auto res = Nullock::Core::IdorTester::test(ir);
+        QStringList locs; for (const auto &f : res.findings) locs << f.loc.descriptor;
+        note("idor", res.findings.size(),
+             QString("%1 id location(s) checked, %2 exposed ")
+                 .arg(res.idLocationsFound).arg(res.findings.size()) + locs.join(", "),
+             "high", "idor-horizontal", "Deep audit: IDOR at " + locs.join(", "));
+    }
+    if ((wants("massassign") || wants("mass-assignment")) && !t.body.isEmpty()) {
+        Nullock::Core::MassAssign::Request mr;
+        mr.host = t.host; mr.port = t.port; mr.tls = t.tls;
+        const bool isWrite = t.method == "POST" || t.method == "PUT" || t.method == "PATCH";
+        mr.method = isWrite ? t.method : QStringLiteral("POST");
+        mr.basePath = t.basePath; mr.headers = t.headers; mr.body = t.body;
+        mr.contentType = t.contentType;
+        const auto res = Nullock::Core::MassAssign::test(mr, Nullock::Core::MassAssign::defaultFields());
+        QStringList fields; for (const auto &f : res.found) fields << f.field;
+        note("mass-assignment", res.found.size(), fields.join(", "),
+             "high", "mass-assignment", "Deep audit: mass-assignable field(s) " + fields.join(", "));
+    }
+    return total;
+}
 
 QByteArray mimeFor(const QString &path) {
     const QString p = path.toLower();
@@ -4027,113 +4138,112 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QSet<QString> include;
         for (const QJsonValue &v : bodyJson.value("include").toArray())
             include.insert(v.toString().toLower());
-        auto wants = [&](const QString &name) {
-            return include.isEmpty() || include.contains(name);
-        };
 
-        Nullock::Core::PassiveScanner *sc = m_wiring.scanner;
-        QJsonArray testerReports;
-        // totalFindings counts the distinct testers that surfaced an issue
-        // -- one summary finding is emitted into the panel per such tester
-        // (the standalone endpoints already emit per-item detail when run
-        // individually), so the count and the panel stay in sync.
-        int totalFindings = 0;
-        auto note = [&](const QString &tester, int items, const QString &detail,
-                        const QString &severity, const QString &kind,
-                        const QString &summary) {
-            testerReports.append(QJsonObject{
-                { "tester", tester }, { "items", items }, { "detail", detail } });
-            if (items > 0) {
-                ++totalFindings;
-                if (sc) sc->reportFinding(0, severity, kind, summary,
-                                          "found by deep audit: " + detail, host, url);
-            }
-        };
+        AuditTarget t;
+        t.host = host; t.port = port; t.tls = tls;
+        t.method = method; t.basePath = basePath; t.body = body;
+        t.headers = headers; t.url = url;
+        for (const auto &h : headers)
+            if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
+                { t.contentType = h.second; break; }
 
         // NOTE: this runs the whole battery synchronously and blocks the
         // control server for its duration, like the other active-test
-        // endpoints -- a deep scan against a slow host can take many
-        // seconds. (A future async-job model would free the UI meanwhile.)
-        {
-            // -- parameter mining (GET query params). A focused wordlist
-            //    keeps the audit's request volume bounded. --
-            if (wants("params") || wants("param-mining")) {
-                Nullock::Core::ParamMiner::Request pr;
-                pr.host = host; pr.port = port; pr.tls = tls;
-                pr.method = method; pr.basePath = basePath; pr.headers = headers;
-                const auto res = Nullock::Core::ParamMiner::mine(
-                    pr, Nullock::Core::ParamMiner::defaultWordlist().mid(0, 60));
-                QStringList names; for (const auto &f : res.found) names << f.name;
-                note("param-mining", res.found.size(),
-                     QString("%1 found: %2").arg(res.found.size()).arg(names.join(", ")),
-                     "medium", "hidden-param",
-                     "Deep audit: hidden parameter(s) " + names.join(", "));
-            }
-            // -- verb tampering --
-            if (wants("verbs") || wants("verb-tampering")) {
-                Nullock::Core::VerbTamper::Request vr;
-                vr.host = host; vr.port = port; vr.tls = tls;
-                vr.method = method; vr.basePath = basePath; vr.headers = headers; vr.body = body;
-                const auto res = Nullock::Core::VerbTamper::test(vr);
-                QStringList techs; for (const auto &b : res.bypasses) techs << b.technique;
-                note("verb-tampering", res.bypasses.size(),
-                     res.baselineDenied ? techs.join(", ") : "baseline not denied (skipped)",
-                     "high", "auth-bypass-verb-tampering",
-                     "Deep audit: verb-tampering bypass via " + techs.join(", "));
-            }
-            // -- active CORS --
-            if (wants("cors")) {
-                Nullock::Core::CorsTester::Request cr;
-                cr.host = host; cr.port = port; cr.tls = tls;
-                cr.method = "GET"; cr.basePath = basePath; cr.headers = headers;
-                const auto res = Nullock::Core::CorsTester::test(cr);
-                int n = 0; QString worst = "low";
-                for (const auto &p : res.probes) {
-                    if (p.severity.isEmpty()) continue;
-                    ++n;
-                    if (p.severity == "critical") worst = "critical";
-                    else if (p.severity == "high" && worst != "critical") worst = "high";
-                    else if (p.severity == "medium" && worst == "low") worst = "medium";
-                }
-                note("cors", n, QString("%1 reflected origin(s)").arg(n),
-                     worst, "cors-reflected-credentialed",
-                     "Deep audit: CORS reflects untrusted origin(s)");
-            }
-            // -- IDOR (only fires when the URL carries a numeric id) --
-            if (wants("idor")) {
-                Nullock::Core::IdorTester::Request ir;
-                ir.host = host; ir.port = port; ir.tls = tls;
-                ir.method = method; ir.basePath = basePath; ir.headers = headers;
-                const auto res = Nullock::Core::IdorTester::test(ir);
-                QStringList locs; for (const auto &f : res.findings) locs << f.loc.descriptor;
-                note("idor", res.findings.size(),
-                     QString("%1 id location(s) checked, %2 exposed")
-                         .arg(res.idLocationsFound).arg(res.findings.size()) + " " + locs.join(", "),
-                     "high", "idor-horizontal",
-                     "Deep audit: IDOR at " + locs.join(", "));
-            }
-            // -- mass assignment (only when a body is supplied; forces a
-            //    write method + carries the body's content-type) --
-            if ((wants("massassign") || wants("mass-assignment")) && !body.isEmpty()) {
-                Nullock::Core::MassAssign::Request mr;
-                mr.host = host; mr.port = port; mr.tls = tls;
-                const bool isWrite = method == "POST" || method == "PUT" || method == "PATCH";
-                mr.method = isWrite ? method : QStringLiteral("POST");
-                mr.basePath = basePath; mr.headers = headers; mr.body = body;
-                for (const auto &h : headers)
-                    if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
-                        { mr.contentType = h.second; break; }
-                const auto res = Nullock::Core::MassAssign::test(mr, Nullock::Core::MassAssign::defaultFields());
-                QStringList fields; for (const auto &f : res.found) fields << f.field;
-                note("mass-assignment", res.found.size(), fields.join(", "),
-                     "high", "mass-assignment",
-                     "Deep audit: mass-assignable field(s) " + fields.join(", "));
-            }
-        }
+        // endpoints. For a session-wide sweep use /api/audit/all, which
+        // runs off-thread.
+        QJsonArray testerReports;
+        const int totalFindings = runDeepAudit(m_wiring.scanner, t, include, testerReports);
 
         return okJson({{ "target", url },
                        { "totalFindings", totalFindings },
                        { "testers", testerReports }});
+    }
+
+    // ---- Session-wide deep audit -------------------------------------
+    // POST /api/audit/all { urls?: [...], fromHistory?, limit?, throttleMs?,
+    //                       include? }
+    //   Runs the deep-scan battery against every URL given (and/or every
+    //   captured history row that carries a query string or body), OFF the
+    //   control thread so the UI stays responsive. Findings land in the
+    //   panel as they're confirmed; returns the queued count immediately.
+    //   The "browse the app, then audit everything you touched" workflow.
+    if (path == "/api/audit/all") {
+        // One sweep at a time -- a second concurrent sweep would double the
+        // outbound active-test traffic against the target for no benefit.
+        static QAtomicInteger<int> auditAllInFlight(0);
+        if (!auditAllInFlight.testAndSetAcquire(0, 1))
+            return okJson({{ "ok", false }, { "queued", 0 },
+                           { "error", "a deep-audit sweep is already running" }});
+
+        QSet<QString> include;
+        for (const QJsonValue &v : bodyJson.value("include").toArray())
+            include.insert(v.toString().toLower());
+        int throttleMs = bodyJson.value("throttleMs").toInt(150);
+        int limit = bodyJson.value("limit").toInt(50);
+        throttleMs = qBound(0, throttleMs, 60'000);
+        limit = qBound(1, limit, 200);
+
+        QList<AuditTarget> targets;
+        auto fromUrl = [&](const QString &urlStr) {
+            const QUrl uu(urlStr);
+            if (!uu.isValid() || uu.host().isEmpty()) return;
+            AuditTarget t;
+            t.host = uu.host();
+            t.port = uu.port(uu.scheme() == "https" ? 443 : 80);
+            t.tls  = (uu.scheme() == "https");
+            t.method = "GET";
+            t.basePath = uu.path(QUrl::FullyEncoded).isEmpty()
+                         ? QStringLiteral("/") : uu.path(QUrl::FullyEncoded);
+            if (!uu.query(QUrl::FullyEncoded).isEmpty())
+                t.basePath += "?" + uu.query(QUrl::FullyEncoded);
+            t.url = urlStr;
+            targets.append(t);
+        };
+        for (const QJsonValue &v : bodyJson.value("urls").toArray())
+            if (targets.size() < limit) fromUrl(v.toString());
+
+        // Pull in history rows that have a query string or a body.
+        if (bodyJson.value("fromHistory").toBool(false) && m_wiring.history) {
+            const int rc = m_wiring.history->rowCount();
+            for (int i = rc - 1; i >= 0 && targets.size() < limit; --i) {
+                const auto *r = m_wiring.history->requestAt(i);
+                if (!r || r->method.startsWith("WS")) continue;
+                const bool hasQuery = r->path.contains('?');
+                const bool hasBody  = !r->body.isEmpty();
+                if (!hasQuery && !hasBody) continue;
+                AuditTarget t;
+                t.host = r->host; t.port = r->port;
+                // Use the captured response's real TLS flag, not a port guess.
+                const auto *resp = m_wiring.history->responseAt(i);
+                t.tls = resp ? resp->wasTls : (r->port == 443);
+                t.method = r->method.isEmpty() ? QStringLiteral("GET") : r->method;
+                t.basePath = r->path; t.body = r->body;
+                for (const auto &h : r->headers)
+                    if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
+                        { t.contentType = h.second; break; }
+                t.url = (t.tls ? "https://" : "http://") + r->host + r->path;
+                targets.append(t);
+            }
+        }
+        if (targets.isEmpty()) {
+            auditAllInFlight.storeRelease(0);
+            return okJson({{ "ok", false }, { "queued", 0 },
+                           { "error", "no urls or history rows with params/body" }});
+        }
+
+        // QPointer guards against the scanner being torn down mid-sweep: we
+        // check it before each target and bail if it's gone.
+        QPointer<Nullock::Core::PassiveScanner> scGuard(m_wiring.scanner);
+        (void)QtConcurrent::run([scGuard, targets, include, throttleMs]() {
+            for (const AuditTarget &t : targets) {
+                if (scGuard.isNull()) break;          // app/scanner torn down
+                QJsonArray ignore;
+                runDeepAudit(scGuard.data(), t, include, ignore);
+                if (throttleMs > 0) QThread::msleep(static_cast<unsigned long>(throttleMs));
+            }
+            auditAllInFlight.storeRelease(0);          // sweep done; allow the next
+        });
+        return okJson({{ "queued", static_cast<int>(targets.size()) }});
     }
 
     // ---- Parameter mining --------------------------------------------

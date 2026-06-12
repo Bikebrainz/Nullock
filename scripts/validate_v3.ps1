@@ -286,6 +286,39 @@ Test-Endpoint "audit runs the battery and aggregates findings from multiple test
     }
 }
 
+Test-Endpoint "audit all queues URLs and lands findings async" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 800; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $q=$c.Request.QueryString; $o=$c.Request.Headers["Origin"]; $m=$c.Request.HttpMethod
+                if ($o) { $c.Response.Headers.Add("Access-Control-Allow-Origin",$o); $c.Response.Headers.Add("Access-Control-Allow-Credentials","true") }
+                $st=200; $b="default"
+                if ($p -match '/api/orders/(\d+)') { $idn=[int]$Matches[1]
+                    if ($idn -le 100) { $b="order #$idn FULL RECORD owner=user$idn confidential-$idn"; if ($q["q"]) { $b+=" echo:"+$q["q"] } } else { $st=404; $b="nf" } }
+                $c.Response.StatusCode=$st
+                if ($m -ne 'HEAD') { $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length) }
+                $c.Response.Close()
+            } catch { try { $c.Response.Abort() } catch {} }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $urls = @("http://127.0.0.1:$oport/api/orders/5","http://127.0.0.1:$oport/api/orders/7")
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/all" -Headers $hdr -Body (@{ urls=$urls } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        if ($a.queued -ne 2) { return $false }
+        Start-Sleep -Seconds 12
+        $snap=(Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
+        $af = @($snap.findings | Where-Object { $_.evidence -like '*deep audit*' })
+        return $af.Count -ge 4
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Verb-tampering auth bypass ===" -ForegroundColor Cyan
 Test-Endpoint "verbtamper flags a HEAD/override bypass, clean when all denied" {
     # vuln: GET /admin -> 403 but HEAD -> 200 and X-HTTP-Method-Override:GET -> 200.
