@@ -381,6 +381,41 @@ Test-Endpoint "ssti confirms an evaluated polyglot + fingerprints engine, ignore
     }
 }
 
+Write-Host "`n=== Web cache poisoning ===" -ForegroundColor Cyan
+Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on an unkeyed cache" {
+    # /vuln: cache keyed on the ncb buster, reflects X-Forwarded-Host (safe to test, confirmable).
+    # /unkeyed: cache IGNORES ncb -> injecting would hit the real key -> tester must abort.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000   # random port avoids TIME_WAIT collisions across runs
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $cache=@{}
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext(); $req=$c.Request; $p=$req.Url.AbsolutePath
+                $xfh=$req.Headers["X-Forwarded-Host"]; $ncb=$req.QueryString["ncb"]
+                $body=""; $xcache="MISS"; $cc="public, max-age=60"
+                $key = if ($p -eq '/unkeyed') { 'unkeyed' } else { "$p|$ncb" }   # /unkeyed ignores the buster
+                if ($cache.ContainsKey($key)) { $body=$cache[$key]; $xcache="HIT" }
+                else { $h = if ($xfh) { $xfh } else { $req.UserHostName }; $body="<a href='http://$h/x'>x</a>"; $cache[$key]=$body }
+                $buf=[Text.Encoding]::UTF8.GetBytes($body); $c.Response.StatusCode=200
+                $c.Response.Headers["Cache-Control"]=$cc; $c.Response.Headers["X-Cache"]=$xcache
+                $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cache/poison" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $u = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cache/poison" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/unkeyed" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 40).Content | ConvertFrom-Json
+        $vc = ($v.hits | Where-Object { $_.header -eq 'X-Forwarded-Host' }).cacheConfirmed
+        return ($v.anyConfirmed -eq $true) -and ($vc -eq $true) -and ($u.hitCount -eq 0) -and ($u.error -match 'unkeyed')
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Race-condition tester ===" -ForegroundColor Cyan
 Test-Endpoint "race flags a limited-use op, clean on atomic + idempotent" {
     # Listener with a per-path counter: race3 lets the first 3 succeed,

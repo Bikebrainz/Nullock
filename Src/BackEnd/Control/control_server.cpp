@@ -23,6 +23,7 @@
 #include "race_tester.hpp"
 #include "verb_tamper.hpp"
 #include "ssti_tester.hpp"
+#include "cache_poison.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4582,6 +4583,70 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Web cache poisoning -----------------------------------------
+    // POST /api/cache/poison { url, method?, headers? }
+    //   Injects unkeyed headers (X-Forwarded-Host, X-Original-URL, ...) with
+    //   a random sentinel and a per-probe cache-buster, then re-requests the
+    //   same key with no header; a sentinel served from cache proves the
+    //   poisoning end to end. CWE-349. Verifies the buster is cache-keyed
+    //   before injecting and aborts otherwise, so it can't poison real users.
+    if (path == "/api/cache/poison") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::CachePoison::Request cr;
+        cr.host = u.host();
+        cr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cr.tls  = (u.scheme() == "https");
+        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        cr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject chdrs = bodyJson.value("headers").toObject();
+        for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
+            cr.headers.append({ it.key(), it.value().toString() });
+
+        const auto cres = Nullock::Core::CachePoison::test(cr);
+
+        QJsonArray hits;
+        for (const auto &h : cres.hits) {
+            hits.append(QJsonObject{
+                { "header", h.header }, { "sentValue", h.sentValue },
+                { "where", h.where }, { "reflected", h.reflected },
+                { "cacheable", h.cacheable }, { "cacheConfirmed", h.cacheConfirmed } });
+            if (m_wiring.scanner) {
+                if (h.cacheConfirmed)
+                    m_wiring.scanner->reportFinding(0, "critical", "web-cache-poisoning-confirmed",
+                        QString("Web cache poisoning via %1 on %2 -- a clean request was served the injected value from cache")
+                            .arg(h.header, cr.basePath),
+                        "an unkeyed header reflected into a cacheable response and survived a header-less re-request",
+                        u.host(), url);
+                else if (h.cacheable)
+                    m_wiring.scanner->reportFinding(0, "high", "web-cache-poisoning",
+                        QString("Unkeyed header %1 reflects into a cacheable response (%2)")
+                            .arg(h.header, h.where),
+                        "reflected into a response carrying cache signals; likely poisonable",
+                        u.host(), url);
+                else
+                    m_wiring.scanner->reportFinding(0, "low", "web-cache-unkeyed-reflected",
+                        QString("Unkeyed header %1 reflects into the response (%2)")
+                            .arg(h.header, h.where),
+                        "no cache evidence observed; confirm whether a fronting cache stores it",
+                        u.host(), url);
+            }
+        }
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "baselineStatus", cres.baselineStatus },
+                       { "requestsSent", cres.requestsSent },
+                       { "anyConfirmed", cres.anyConfirmed },
+                       { "anyCacheable", cres.anyCacheable },
+                       { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }
 
