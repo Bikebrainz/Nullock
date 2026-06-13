@@ -447,6 +447,34 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== XXE (XML external entity) ===" -ForegroundColor Cyan
+Test-Endpoint "xxe confirms external-entity file read by content signature, clean when entities disabled" {
+    # /vuln resolves the external entity (returns passwd content); /safe never does.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 300; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                $rd=[System.IO.StreamReader]::new($c.Request.InputStream); $body=$rd.ReadToEnd(); $rd.Close()
+                $b="<r>parsed</r>"
+                if ($p -eq "/vuln" -and $body -match 'file:///etc/passwd') { $b="<r>root:x:0:0:root:/root:/bin/bash`nbin:x:1:1:bin:/bin:/usr/sbin/nologin</r>" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=200; $c.Response.ContentType="application/xml"; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/xxe/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/xxe/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($v.vulnerable -eq $true) -and ($v.hits[0].target -eq '/etc/passwd') -and ($s.vulnerable -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== SQL injection (error-based) ===" -ForegroundColor Cyan
 Test-Endpoint "sqli confirms a DBMS error on an unbalanced quote, clean on parameterized + always-erroring pages" {
     # /vuln errors when the id has an odd number of quotes; /safe never errors; /always errors regardless (baseline guard).

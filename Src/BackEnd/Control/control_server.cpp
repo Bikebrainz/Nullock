@@ -32,6 +32,7 @@
 #include "cmd_injection.hpp"
 #include "xss_reflected.hpp"
 #include "sql_injection.hpp"
+#include "xxe_injection.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -233,6 +234,22 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    // XXE only makes sense against an XML endpoint -- gate on content-type/body.
+    if (wants("xxe")) {
+        const QString ctl = t.contentType.toLower();
+        const QByteArray bt = t.body.trimmed();
+        if (ctl.contains("xml") || bt.startsWith("<?xml") || bt.startsWith('<')) {
+            Nullock::Core::XxeInjection::Request xrr;
+            xrr.host = t.host; xrr.port = t.port; xrr.tls = t.tls;
+            xrr.method = (t.method == "GET") ? QStringLiteral("POST") : t.method;
+            xrr.basePath = auditPath; xrr.contentType = t.contentType; xrr.headers = t.headers;
+            const auto res = Nullock::Core::XxeInjection::test(xrr);
+            QStringList where; for (const auto &h : res.hits) where << h.target;
+            note("xxe", res.hits.size(),
+                 res.error.isEmpty() ? where.join(", ") : res.error,
+                 "critical", "xxe-injection", "Deep audit: XXE reading " + where.join(", "));
+        }
     }
     if (wants("sqli") || wants("sql-injection")) {
         Nullock::Core::SqlInjection::Request srr;
@@ -4712,6 +4729,50 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- XXE (XML external entity) -----------------------------------
+    // POST /api/xxe/test { url, method?, contentType?, headers? }
+    //   POSTs an XML body whose external entity targets a local file; confirms
+    //   by the file's content signature in the response. CWE-611.
+    if (path == "/api/xxe/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::XxeInjection::Request xr;
+        xr.host = u.host();
+        xr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        xr.tls  = (u.scheme() == "https");
+        xr.method = bodyJson.value("method").toString("POST").toUpper();
+        xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        xr.contentType = bodyJson.value("contentType").toString();
+        const QJsonObject xhdrs = bodyJson.value("headers").toObject();
+        for (auto it = xhdrs.begin(); it != xhdrs.end(); ++it)
+            xr.headers.append({ it.key(), it.value().toString() });
+
+        const auto xres = Nullock::Core::XxeInjection::test(xr);
+
+        QJsonArray hits;
+        for (const auto &h : xres.hits)
+            hits.append(QJsonObject{
+                { "technique", h.technique }, { "target", h.target },
+                { "evidence", h.evidence } });
+        if (m_wiring.scanner && xres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "critical", "xxe-injection",
+                QString("XXE: the XML parser resolved an external entity reading %1")
+                    .arg(xres.hits.first().target),
+                "an injected external entity returned the target file's content: " + xres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", xres.error.isEmpty() },
+                       { "error", xres.error },
+                       { "vulnerable", xres.vulnerable },
+                       { "baselineStatus", xres.baselineStatus },
+                       { "requestsSent", xres.requestsSent },
+                       { "hitCount", static_cast<int>(xres.hits.size()) },
                        { "hits", hits }});
     }
 
