@@ -286,6 +286,37 @@ Test-Endpoint "audit runs the battery and aggregates findings from multiple test
     }
 }
 
+Test-Endpoint "audit battery now includes open-redirect and SSTI testers" {
+    # /page: redirects ?next to a sentinel host (open redirect) and evaluates
+    # a Jinja-style {{int*int}} in ?name (SSTI). One audit/run surfaces both.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 800; $i++) {
+            try {
+                $c=$l.GetContext(); $req=$c.Request; $p=$req.Url.AbsolutePath
+                $next=$req.QueryString["next"]; $name=$req.QueryString["name"]; if ($null -eq $name) { $name="" }
+                if ($p -eq "/page" -and $next -and ($next -match 'nullock-oob\.test')) {
+                    $c.Response.StatusCode=302; try { $c.Response.RedirectLocation=$next } catch { $c.Response.StatusCode=400 }; $c.Response.Close()
+                } elseif ($p -eq "/page") {
+                    $out=[regex]::Replace($name,'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',{ param($m) [string]([int64]$m.Groups[1].Value*[int64]$m.Groups[2].Value) })
+                    $b=[Text.Encoding]::UTF8.GetBytes("Hi $out"); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($b,0,$b.Length); $c.Response.Close()
+                } else { $b=[Text.Encoding]::UTF8.GetBytes("ok"); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($b,0,$b.Length); $c.Response.Close() }
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/page?next=/home&name=guest" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
+        $bt=@{}; $a.testers | ForEach-Object { $bt[$_.tester]=$_.items }
+        return ($bt['open-redirect'] -ge 1) -and ($bt['ssti'] -ge 1) -and ($a.testers.tester -contains 'cache-poisoning')
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Test-Endpoint "audit all queues URLs and lands findings async" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000
     $job = Start-Job -ScriptBlock {

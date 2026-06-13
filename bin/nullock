@@ -1187,7 +1187,8 @@ Above-Burp features (v4/v5):
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
-                                         IDOR, mass-assignment) in one call
+                                         IDOR, mass-assignment, open-redirect,
+                                         cache-poisoning, SSTI) in one call
   nullock audit all [url1 url2 ...]      session-wide sweep -- deep-audits the
                                          given urls + every captured history
                                          row with params/body (async)

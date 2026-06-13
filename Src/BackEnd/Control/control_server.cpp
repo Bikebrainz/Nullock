@@ -190,6 +190,59 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("mass-assignment", res.found.size(), fields.join(", "),
              "high", "mass-assignment", "Deep audit: mass-assignable field(s) " + fields.join(", "));
     }
+    // The path/query split shared by the URL-based testers below.
+    const int qpos = t.basePath.indexOf('?');
+    const QString auditPath  = qpos < 0 ? t.basePath : t.basePath.left(qpos);
+    const QString auditQuery = qpos < 0 ? QString()  : t.basePath.mid(qpos + 1);
+
+    if (wants("openredirect") || wants("redirect")) {
+        Nullock::Core::OpenRedirect::Request orq;
+        orq.host = t.host; orq.port = t.port; orq.tls = t.tls;
+        orq.method = t.method; orq.headers = t.headers;
+        orq.basePath = auditPath; orq.query = auditQuery;   // param auto-detected
+        const auto res = Nullock::Core::OpenRedirect::test(orq);
+        QStringList techs; for (const auto &h : res.hits) techs << h.technique;
+        // Header-confirmed (Location) is high; client-side-only is medium.
+        bool headerConfirmed = false;
+        for (const auto &h : res.hits) if (h.via == "Location") headerConfirmed = true;
+        note("open-redirect", res.hits.size(),
+             res.error.isEmpty()
+                 ? QString("param %1: %2").arg(res.testedParam, techs.join(", "))
+                 : res.error,
+             headerConfirmed ? "high" : "medium", "open-redirect",
+             "Deep audit: open redirect in '" + res.testedParam + "'");
+    }
+    if (wants("cache") || wants("cachepoison")) {
+        Nullock::Core::CachePoison::Request cpr;
+        cpr.host = t.host; cpr.port = t.port; cpr.tls = t.tls;
+        cpr.method = QStringLiteral("GET"); cpr.headers = t.headers;
+        cpr.basePath = auditPath; cpr.query = auditQuery;
+        const auto res = Nullock::Core::CachePoison::test(cpr);
+        QStringList hdrs2; for (const auto &h : res.hits) hdrs2 << h.header;
+        const QString sev  = res.anyConfirmed ? "critical" : (res.anyCacheable ? "high" : "low");
+        const QString kind = res.anyConfirmed ? "web-cache-poisoning-confirmed"
+                           : (res.anyCacheable ? "web-cache-poisoning"
+                                               : "web-cache-unkeyed-reflected");
+        note("cache-poisoning", res.hits.size(),
+             res.error.isEmpty() ? hdrs2.join(", ") : res.error,
+             sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("ssti")) {
+        // Test each query parameter (capped) for template injection.
+        QUrlQuery qq(auditQuery);
+        const auto items = qq.queryItems();
+        int hits = 0; QStringList engines;
+        for (int i = 0; i < items.size() && i < 5; ++i) {
+            Nullock::Core::Ssti::Request sr;
+            sr.host = t.host; sr.port = t.port; sr.tls = t.tls; sr.method = t.method;
+            sr.basePath = auditPath; sr.query = auditQuery; sr.headers = t.headers;
+            sr.paramName = items[i].first; sr.paramIn = QStringLiteral("query");
+            const auto res = Nullock::Core::Ssti::test(sr);
+            if (res.confirmed) { ++hits; engines << res.engines; }
+        }
+        note("ssti", hits, hits ? engines.join("; ") : "no template injection",
+             "critical", "ssti-confirmed", "Deep audit: SSTI (" + engines.join("; ") + ")");
+    }
     return total;
 }
 
