@@ -54,6 +54,8 @@ add_library(Networking STATIC
     open_redirect.hpp
     header_audit.cpp
     header_audit.hpp
+    secret_scanner.cpp
+    secret_scanner.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

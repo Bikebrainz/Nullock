@@ -161,6 +161,9 @@ const QHash<QString, Mapping> &table() {
         // ---- Verb tampering -----------------------------------------
         { "auth-bypass-verb-tampering", { "CWE-650", "A01:2021-Broken Access Control", 8.2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce authorization independent of HTTP method; deny by default and ignore method-override headers." } },
 
+        // ---- Exposed secrets in client code --------------------------
+        { "secret-exposed", { "CWE-798", "A07:2021-Identification and Authentication Failures", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Move the credential server-side; rotate it immediately (assume compromised) and scope front-end keys to least privilege." } },
+
         // ---- Security headers / CSP ----------------------------------
         { "csp-missing",         { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Deploy a Content-Security-Policy with a nonce/hash-based script-src and 'strict-dynamic'." } },
         { "csp-unsafe-inline",   { "CWE-693", "A05:2021-Security Misconfiguration", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Drop 'unsafe-inline'; use per-response nonces or hashes plus 'strict-dynamic'." } },

@@ -447,6 +447,43 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Secret scanning ===" -ForegroundColor Cyan
+Test-Endpoint "secret scan finds provider keys across page + JS, excludes placeholders, never leaks cleartext" {
+    # Mint fake key shapes at RUNTIME (never commit literal key shapes -- push protection).
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $UP='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; $AN='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+        $aws='AKIA'+(-join((1..16)|%{$UP[(Get-Random -Max $UP.Length)]}))
+        $goog='AIza'+(-join((1..35)|%{$AN[(Get-Random -Max $AN.Length)]}))
+        $stripe='sk_'+'live_'+(-join((1..24)|%{$AN[(Get-Random -Max $AN.Length)]}))
+        $assigned=(-join((1..30)|%{$AN[(Get-Random -Max $AN.Length)]}))
+        $js="var cfg={awsKey:'$aws',gKey:'$goog',stripe:'$stripe'};var apiKey = `"$assigned`";var ph='your-api-key-here';"
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $r=$c.Response; $b=""
+                if ($p -eq "/app") { $r.ContentType="text/html"; $b="<html><head><script src='/bundle.js'></script></head><body>x</body></html>" }
+                elseif ($p -eq "/bundle.js") { $r.ContentType="application/javascript"; $b=$js }
+                else { $b="ok" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=200; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/secrets/scan" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        $types = $s.hits.type
+        $txt = ($s.hits | ForEach-Object { "$($_.context) $($_.masked)" }) -join ' '
+        $leak = ($txt -match 'AIza[A-Za-z0-9_\-]{35}') -or ($txt -match 'AKIA[A-Z0-9]{16}')
+        return ($types -contains 'aws-access-key-id') -and ($types -contains 'google-api-key') -and ($types -contains 'stripe-secret-key') `
+               -and (($types | Where-Object { $_ -eq 'assigned-secret' }).Count -eq 1) -and ($s.resourcesScanned -eq 2) -and (-not $leak)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Security-header / CSP audit ===" -ForegroundColor Cyan
 Test-Endpoint "header audit flags a weak CSP + bypassable gadget host, clean on a hardened policy" {
     # /weak: unsafe-inline + ajax.googleapis.com gadget host, no nosniff/XFO, flagless cookie.

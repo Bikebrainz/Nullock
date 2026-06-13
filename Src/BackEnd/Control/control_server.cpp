@@ -26,6 +26,7 @@
 #include "cache_poison.hpp"
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
+#include "secret_scanner.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -227,6 +228,23 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("secrets")) {
+        Nullock::Core::SecretScanner::Request ssr;
+        ssr.host = t.host; ssr.port = t.port; ssr.tls = t.tls;
+        ssr.basePath = auditPath; ssr.query = auditQuery; ssr.headers = t.headers;
+        const auto res = Nullock::Core::SecretScanner::scan(ssr);
+        QStringList types; for (const auto &h : res.hits) types << h.type;
+        types.removeDuplicates();
+        // Highest severity among the hits drives the aggregate finding.
+        QString sev = "medium";
+        for (const auto &h : res.hits) {
+            if (h.severity == "critical") { sev = "critical"; break; }
+            if (h.severity == "high") sev = "high";
+        }
+        note("secrets", res.hits.size(),
+             res.error.isEmpty() ? types.join(", ") : res.error,
+             sev, "secret-exposed", "Deep audit: exposed secret(s) " + types.join(", "));
     }
     if (wants("ssti")) {
         // Test each query parameter (capped) for template injection.
@@ -4636,6 +4654,50 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "engineLikely", sres.engineLikely },
                        { "engines", sres.engines },
                        { "baselineStatus", sres.baselineStatus },
+                       { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Secret scanning (page + same-origin JS) ---------------------
+    // POST /api/secrets/scan { url, headers?, followScripts? }
+    //   Fetches the URL and its same-origin scripts and flags exposed
+    //   provider keys / tokens / private keys, masked. CWE-798.
+    if (path == "/api/secrets/scan") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::SecretScanner::Request sr;
+        sr.host = u.host();
+        sr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        sr.tls  = (u.scheme() == "https");
+        sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        sr.query = u.query(QUrl::FullyEncoded);
+        sr.followScripts = bodyJson.value("followScripts").toBool(true);
+        const QJsonObject shdrs = bodyJson.value("headers").toObject();
+        for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
+            sr.headers.append({ it.key(), it.value().toString() });
+
+        const auto sres = Nullock::Core::SecretScanner::scan(sr);
+
+        QJsonArray hits;
+        for (const auto &h : sres.hits) {
+            hits.append(QJsonObject{
+                { "type", h.type }, { "severity", h.severity },
+                { "location", h.location }, { "masked", h.masked },
+                { "context", h.context } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, h.severity, "secret-exposed",
+                    QString("Exposed %1 in client code: %2").arg(h.type, h.masked),
+                    "found at " + h.location + " -- context: " + h.context,
+                    u.host(), h.location);
+        }
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "resourcesScanned", sres.resourcesScanned },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
