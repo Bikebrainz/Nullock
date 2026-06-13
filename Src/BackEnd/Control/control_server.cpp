@@ -30,6 +30,7 @@
 #include "crlf_injection.hpp"
 #include "path_traversal.hpp"
 #include "cmd_injection.hpp"
+#include "xss_reflected.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -231,6 +232,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("xss")) {
+        Nullock::Core::XssReflected::Request xrr;
+        xrr.host = t.host; xrr.port = t.port; xrr.tls = t.tls; xrr.method = t.method;
+        xrr.basePath = auditPath; xrr.query = auditQuery; xrr.headers = t.headers;
+        const auto res = Nullock::Core::XssReflected::test(xrr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "/" + h.context;
+        note("reflected-xss", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "high", "reflected-xss", "Deep audit: reflected XSS " + where.join(", "));
     }
     if (wants("cmdi") || wants("command-injection")) {
         Nullock::Core::CmdInjection::Request cir;
@@ -4689,6 +4700,55 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Reflected XSS -----------------------------------------------
+    // POST /api/xss/test { url, param?, method?, headers? }
+    //   Injects context-breakout marker tags; confirms when the angle
+    //   brackets reflect unencoded. CWE-79.
+    if (path == "/api/xss/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::XssReflected::Request xr;
+        xr.host = u.host();
+        xr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        xr.tls  = (u.scheme() == "https");
+        xr.method = bodyJson.value("method").toString("GET").toUpper();
+        xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        xr.query = u.query(QUrl::FullyEncoded);
+        xr.param = bodyJson.value("param").toString();
+        const QJsonObject xhdrs = bodyJson.value("headers").toObject();
+        for (auto it = xhdrs.begin(); it != xhdrs.end(); ++it)
+            xr.headers.append({ it.key(), it.value().toString() });
+
+        const auto xres = Nullock::Core::XssReflected::test(xr);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : xres.hits) {
+            hits.append(QJsonObject{
+                { "param", h.param }, { "context", h.context },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+            where << h.param + "/" + h.context;
+        }
+        if (m_wiring.scanner && xres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "high", "reflected-xss",
+                QString("Reflected XSS in '%1' (%2 context) -- markup reflects unencoded")
+                    .arg(xres.hits.first().param, xres.hits.first().context),
+                "an injected tag was reflected with raw angle brackets: " + xres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", xres.error.isEmpty() },
+                       { "error", xres.error },
+                       { "vulnerable", xres.vulnerable },
+                       { "baselineStatus", xres.baselineStatus },
+                       { "requestsSent", xres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(xres.testedParams) },
+                       { "hitCount", static_cast<int>(xres.hits.size()) },
                        { "hits", hits }});
     }
 

@@ -447,6 +447,39 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Reflected XSS ===" -ForegroundColor Cyan
+Test-Endpoint "reflected XSS confirms unencoded element-content reflection, suppresses JSON/comment/attr/encoded" {
+    # /vuln reflects raw into element content; /safe encodes; /json is non-HTML; /comment & /attr are non-executing.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $f=$c.Request.QueryString["q"]; if ($null -eq $f) { $f="" }
+                $ct="text/html"; $b=""
+                switch ($p) {
+                    "/vuln"    { $b="<html><body><h1>Results for: $f</h1></body></html>" }
+                    "/safe"    { $enc=$f -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;'; $b="<html><body>$enc</body></html>" }
+                    "/json"    { $ct="application/json"; $b="{""query"":""$f""}" }
+                    "/comment" { $b="<html><body><!-- $f --></body></html>" }
+                    "/attr"    { $b="<html><body><input value=`"$f`"></body></html>" }
+                    default    { $b="<html>ok</html>" }
+                }
+                $c.Response.ContentType=$ct; $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        function Vuln($path) { ((Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/xss/test" -Headers $hdr -Body (@{ url=("http://127.0.0.1:{0}/{1}?q=hello" -f $oport,$path); param="q" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json).vulnerable }
+        return (Vuln "vuln") -and (-not (Vuln "safe")) -and (-not (Vuln "json")) -and (-not (Vuln "comment")) -and (-not (Vuln "attr"))
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== OS command injection ===" -ForegroundColor Cyan
 Test-Endpoint "command injection confirms shell exec via arithmetic, clean on literal reflection" {
     # /vuln expands $((a*b)) like a shell that ran the command; /safe reflects the value literally.
