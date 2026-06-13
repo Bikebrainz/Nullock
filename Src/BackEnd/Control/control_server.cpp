@@ -27,6 +27,7 @@
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
 #include "secret_scanner.hpp"
+#include "crlf_injection.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -228,6 +229,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("crlf")) {
+        Nullock::Core::CrlfInjection::Request cir;
+        cir.host = t.host; cir.port = t.port; cir.tls = t.tls; cir.method = t.method;
+        cir.basePath = auditPath; cir.query = auditQuery; cir.headers = t.headers;
+        const auto res = Nullock::Core::CrlfInjection::test(cir);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "/" + h.technique;
+        note("crlf", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "high", "crlf-injection", "Deep audit: CRLF/response-splitting via " + where.join(", "));
     }
     if (wants("secrets")) {
         Nullock::Core::SecretScanner::Request ssr;
@@ -4656,6 +4667,55 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- CRLF / HTTP response splitting ------------------------------
+    // POST /api/crlf/test { url, param?, method?, headers? }
+    //   Injects encoded-CRLF payloads carrying a marker header; confirms by
+    //   that header appearing in the parsed response. CWE-113.
+    if (path == "/api/crlf/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::CrlfInjection::Request cr;
+        cr.host = u.host();
+        cr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cr.tls  = (u.scheme() == "https");
+        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        cr.query = u.query(QUrl::FullyEncoded);
+        cr.param = bodyJson.value("param").toString();
+        const QJsonObject chdrs = bodyJson.value("headers").toObject();
+        for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
+            cr.headers.append({ it.key(), it.value().toString() });
+
+        const auto cres = Nullock::Core::CrlfInjection::test(cr);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : cres.hits) {
+            hits.append(QJsonObject{
+                { "param", h.param }, { "technique", h.technique },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+            where << h.param + "/" + h.technique;
+        }
+        if (m_wiring.scanner && cres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "high", "crlf-injection",
+                QString("HTTP response splitting via %1 -- an injected header landed in the response (%2)")
+                    .arg(cres.hits.first().param, where.join(", ")),
+                "user input reaches a response header without CR/LF stripping",
+                u.host(), url);
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "vulnerable", cres.vulnerable },
+                       { "baselineStatus", cres.baselineStatus },
+                       { "requestsSent", cres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(cres.testedParams) },
+                       { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }
 

@@ -707,6 +707,25 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_crlf() {
+    # nullock crlf <url> [param] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock crlf <url> [param] [hdr:val ...]"
+    local url=$1; shift
+    local param=""
+    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/crlf/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+}
+
 cmd_secrets() {
     # nullock secrets <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock secrets <url> [hdr:val ...]"
@@ -1225,11 +1244,15 @@ Above-Burp features (v4/v5):
   nullock secrets <url> [hdr:val ...]    scan the page + same-origin JS for
                                          exposed keys/tokens/private keys
                                          (AWS, Google, Stripe, GitHub...), masked
+  nullock crlf <url> [param] [hdr:val ...]
+                                         CRLF / response splitting -- injects
+                                         encoded CRLF + a marker header and
+                                         confirms it lands in the response
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
                                          IDOR, mass-assignment, open-redirect,
-                                         cache-poisoning, SSTI, secrets) in one call
+                                         cache-poisoning, SSTI, secrets, CRLF) in one call
   nullock audit all [url1 url2 ...]      session-wide sweep -- deep-audits the
                                          given urls + every captured history
                                          row with params/body (async)
@@ -1291,6 +1314,7 @@ case ${1:-help} in
     openredirect)  shift; cmd_openredirect "$@"  ;;
     headeraudit)   shift; cmd_headeraudit "$@"   ;;
     secrets)       shift; cmd_secrets "$@"       ;;
+    crlf)          shift; cmd_crlf "$@"          ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

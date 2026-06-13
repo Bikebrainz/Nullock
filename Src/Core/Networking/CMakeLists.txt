@@ -56,6 +56,8 @@ add_library(Networking STATIC
     header_audit.hpp
     secret_scanner.cpp
     secret_scanner.hpp
+    crlf_injection.cpp
+    crlf_injection.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

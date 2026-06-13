@@ -447,6 +447,41 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== CRLF / response splitting ===" -ForegroundColor Cyan
+Test-Endpoint "crlf injection confirms an injected header on a vulnerable param, clean when CR/LF stripped" {
+    # Raw TCP mock: reflects the ?redirect value into an X-Echo response header.
+    # /vuln writes it unsanitized (CRLF splits a new header in); /clean strips CR/LF.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$port); $listener.Start()
+        for ($i=0; $i -lt 300; $i++) {
+            try {
+                $cl=$listener.AcceptTcpClient(); $ns=$cl.GetStream()
+                $buf=New-Object byte[] 8192; $req=""
+                do { $n=$ns.Read($buf,0,$buf.Length); if($n -le 0){break}; $req+=[Text.Encoding]::ASCII.GetString($buf,0,$n) } until ($req -match "`r`n`r`n")
+                $line=($req -split "`r`n")[0]; $target=($line -split ' ')[1]
+                $pth=$target.Split('?')[0]; $query=if($target.Contains('?')){$target.Split('?',2)[1]}else{""}
+                $rv=""
+                foreach($pair in $query.Split('&')){ $kv=$pair.Split('=',2); if($kv[0] -eq 'redirect' -and $kv.Count -eq 2){ $rv=[System.Uri]::UnescapeDataString($kv[1]) } }
+                if($pth.EndsWith('clean')){ $rv=$rv -replace "`r","" -replace "`n","" }
+                $body="ok"
+                $resp="HTTP/1.1 200 OK`r`nContent-Type: text/plain`r`nX-Echo: $rv`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n$body"
+                $bytes=[Text.Encoding]::ASCII.GetBytes($resp); $ns.Write($bytes,0,$bytes.Length); $ns.Flush(); $cl.Close()
+            } catch { break }
+        }
+        try { $listener.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/crlf/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln?redirect=x"; param="redirect" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/crlf/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/clean?redirect=x"; param="redirect" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($v.vulnerable -eq $true) -and ($v.hitCount -ge 1) -and ($v.hits.param -contains 'redirect') -and ($s.vulnerable -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Secret scanning ===" -ForegroundColor Cyan
 Test-Endpoint "secret scan finds provider keys across page + JS, excludes placeholders, never leaks cleartext" {
     # Mint fake key shapes at RUNTIME (never commit literal key shapes -- push protection).
