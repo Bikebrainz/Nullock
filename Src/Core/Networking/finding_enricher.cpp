@@ -161,6 +161,9 @@ const QHash<QString, Mapping> &table() {
         // ---- Verb tampering -----------------------------------------
         { "auth-bypass-verb-tampering", { "CWE-650", "A01:2021-Broken Access Control", 8.2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce authorization independent of HTTP method; deny by default and ignore method-override headers." } },
 
+        // ---- Path traversal / LFI ------------------------------------
+        { "path-traversal", { "CWE-22", "A01:2021-Broken Access Control", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-6.5.8", "Resolve the requested path and confirm it stays within an allow-listed base directory (canonicalize, then prefix-check); never pass user input to file APIs raw." } },
+
         // ---- CRLF / HTTP response splitting --------------------------
         { "crlf-injection", { "CWE-113", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip or reject CR/LF in any user input that reaches a response header; use the framework's header API, never string concatenation." } },
 

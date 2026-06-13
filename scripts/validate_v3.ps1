@@ -447,6 +447,36 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Path traversal / LFI ===" -ForegroundColor Cyan
+Test-Endpoint "path traversal confirms /etc/passwd by content signature, ignores sanitized + prose mentions" {
+    # /vuln returns passwd content when ?file traverses; /safe strips ../; /docs prose-mentions root:x:0:0:.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 300; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $f=$c.Request.QueryString["file"]; if ($null -eq $f) { $f="" }
+                $b="file not found"
+                if ($p -eq "/vuln") { if ($f -match 'etc/passwd') { $b="root:x:0:0:root:/root:/bin/bash`nbin:x:1:1:bin:/bin:/usr/sbin/nologin" } }
+                elseif ($p -eq "/safe") { $clean=$f -replace '\.\./','' -replace '\.\.\\',''; $b="serving: $clean" }
+                elseif ($p -eq "/docs") { $b="<p>The line root:x:0:0: defines the root account.</p>" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/pathtraversal/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln?file=home.txt"; param="file" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/pathtraversal/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe?file=home.txt"; param="file" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $d = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/pathtraversal/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/docs?file=home.txt"; param="file" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($v.vulnerable -eq $true) -and ($v.hits[0].target -eq '/etc/passwd') -and ($s.vulnerable -eq $false) -and ($d.vulnerable -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== CRLF / response splitting ===" -ForegroundColor Cyan
 Test-Endpoint "crlf injection confirms an injected header on a vulnerable param, clean when CR/LF stripped" {
     # Raw TCP mock: reflects the ?redirect value into an X-Echo response header.

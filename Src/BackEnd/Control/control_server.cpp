@@ -28,6 +28,7 @@
 #include "header_audit.hpp"
 #include "secret_scanner.hpp"
 #include "crlf_injection.hpp"
+#include "path_traversal.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -229,6 +230,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("lfi") || wants("pathtraversal") || wants("traversal")) {
+        Nullock::Core::PathTraversal::Request ptr;
+        ptr.host = t.host; ptr.port = t.port; ptr.tls = t.tls; ptr.method = t.method;
+        ptr.basePath = auditPath; ptr.query = auditQuery; ptr.headers = t.headers;
+        const auto res = Nullock::Core::PathTraversal::test(ptr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "->" + h.target;
+        note("path-traversal", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "critical", "path-traversal", "Deep audit: path traversal " + where.join(", "));
     }
     if (wants("crlf")) {
         Nullock::Core::CrlfInjection::Request cir;
@@ -4667,6 +4678,56 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Path traversal / LFI ----------------------------------------
+    // POST /api/pathtraversal/test { url, param?, method?, headers? }
+    //   Injects traversal encodings aimed at /etc/passwd & win.ini; confirms
+    //   by the file's content signature in the response. CWE-22.
+    if (path == "/api/pathtraversal/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::PathTraversal::Request pr;
+        pr.host = u.host();
+        pr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        pr.tls  = (u.scheme() == "https");
+        pr.method = bodyJson.value("method").toString("GET").toUpper();
+        pr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        pr.query = u.query(QUrl::FullyEncoded);
+        pr.param = bodyJson.value("param").toString();
+        const QJsonObject phdrs = bodyJson.value("headers").toObject();
+        for (auto it = phdrs.begin(); it != phdrs.end(); ++it)
+            pr.headers.append({ it.key(), it.value().toString() });
+
+        const auto pres = Nullock::Core::PathTraversal::test(pr);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : pres.hits) {
+            hits.append(QJsonObject{
+                { "param", h.param }, { "technique", h.technique },
+                { "target", h.target }, { "payload", h.payload },
+                { "evidence", h.evidence } });
+            where << h.param + " -> " + h.target;
+        }
+        if (m_wiring.scanner && pres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "critical", "path-traversal",
+                QString("Path traversal: %1 read via %2 (%3)")
+                    .arg(pres.hits.first().target, pres.hits.first().param, pres.hits.first().technique),
+                "a traversal payload returned the target file's content: " + pres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", pres.error.isEmpty() },
+                       { "error", pres.error },
+                       { "vulnerable", pres.vulnerable },
+                       { "baselineStatus", pres.baselineStatus },
+                       { "requestsSent", pres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(pres.testedParams) },
+                       { "hitCount", static_cast<int>(pres.hits.size()) },
                        { "hits", hits }});
     }
 
