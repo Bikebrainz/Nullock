@@ -64,6 +64,8 @@ add_library(Networking STATIC
     cmd_injection.hpp
     xss_reflected.cpp
     xss_reflected.hpp
+    sql_injection.cpp
+    sql_injection.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

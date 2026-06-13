@@ -31,6 +31,7 @@
 #include "path_traversal.hpp"
 #include "cmd_injection.hpp"
 #include "xss_reflected.hpp"
+#include "sql_injection.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -232,6 +233,17 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("sqli") || wants("sql-injection")) {
+        Nullock::Core::SqlInjection::Request srr;
+        srr.host = t.host; srr.port = t.port; srr.tls = t.tls; srr.method = t.method;
+        srr.basePath = auditPath; srr.query = auditQuery; srr.headers = t.headers;
+        const auto res = Nullock::Core::SqlInjection::test(srr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.dbms + ")";
+        const bool specific = !res.hits.isEmpty() && res.hits.first().dbms != "generic";
+        note("sql-injection", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             specific ? "critical" : "high", "sql-injection", "Deep audit: SQL injection " + where.join(", "));
     }
     if (wants("xss")) {
         Nullock::Core::XssReflected::Request xrr;
@@ -4699,6 +4711,60 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "engines", sres.engines },
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- SQL injection (error-based) ---------------------------------
+    // POST /api/sqli/test { url, param?, method?, headers? }
+    //   Injects syntax-breaking quotes; confirms by a DBMS error absent from
+    //   the baseline and cleared by a balanced quote. CWE-89.
+    if (path == "/api/sqli/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::SqlInjection::Request sr;
+        sr.host = u.host();
+        sr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        sr.tls  = (u.scheme() == "https");
+        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        sr.query = u.query(QUrl::FullyEncoded);
+        sr.param = bodyJson.value("param").toString();
+        const QJsonObject shdrs = bodyJson.value("headers").toObject();
+        for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
+            sr.headers.append({ it.key(), it.value().toString() });
+
+        const auto sres = Nullock::Core::SqlInjection::test(sr);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : sres.hits) {
+            hits.append(QJsonObject{
+                { "param", h.param }, { "dbms", h.dbms },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+            where << h.param + " (" + h.dbms + ")";
+        }
+        if (m_wiring.scanner && sres.vulnerable) {
+            // A DBMS-specific fingerprint is critical; a generic-signature-only
+            // match is high (could be a non-DB error page) -- confirm manually.
+            const bool specific = (sres.hits.first().dbms != "generic");
+            m_wiring.scanner->reportFinding(0, specific ? "critical" : "high", "sql-injection",
+                QString("SQL injection in '%1' (%2) -- a quote broke the query syntax")
+                    .arg(sres.hits.first().param, sres.hits.first().dbms),
+                "the database returned a syntax error on an injected quote, cleared by a "
+                "balanced quote: " + sres.hits.first().evidence,
+                u.host(), url);
+        }
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "vulnerable", sres.vulnerable },
+                       { "baselineStatus", sres.baselineStatus },
+                       { "requestsSent", sres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(sres.testedParams) },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
     }

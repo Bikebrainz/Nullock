@@ -447,6 +447,36 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== SQL injection (error-based) ===" -ForegroundColor Cyan
+Test-Endpoint "sqli confirms a DBMS error on an unbalanced quote, clean on parameterized + always-erroring pages" {
+    # /vuln errors when the id has an odd number of quotes; /safe never errors; /always errors regardless (baseline guard).
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $err="You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version"
+        for ($i=0; $i -lt 400; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $q=$c.Request.QueryString["id"]; if ($null -eq $q) { $q="" }
+                $cnt=($q.ToCharArray() | Where-Object {$_ -eq "'"}).Count
+                $b="<html>Product results for id $q</html>"
+                if ($p -eq "/vuln") { if ($cnt % 2 -eq 1) { $b="<html>DB problem: $err</html>" } }
+                elseif ($p -eq "/always") { $b="<html>DB problem: $err</html>" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=200; $c.Response.ContentType="text/html"; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        function Sqli($path) { (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/sqli/test" -Headers $hdr -Body (@{ url=("http://127.0.0.1:{0}/{1}?id=5" -f $oport,$path); param="id" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json }
+        $v = Sqli "vuln"
+        return ($v.vulnerable -eq $true) -and ($v.hits[0].dbms -eq 'MySQL') -and (-not (Sqli "safe").vulnerable) -and (-not (Sqli "always").vulnerable)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Reflected XSS ===" -ForegroundColor Cyan
 Test-Endpoint "reflected XSS confirms unencoded element-content reflection, suppresses JSON/comment/attr/encoded" {
     # /vuln reflects raw into element content; /safe encodes; /json is non-HTML; /comment & /attr are non-executing.
