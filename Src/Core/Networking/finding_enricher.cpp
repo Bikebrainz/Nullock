@@ -161,6 +161,23 @@ const QHash<QString, Mapping> &table() {
         // ---- Verb tampering -----------------------------------------
         { "auth-bypass-verb-tampering", { "CWE-650", "A01:2021-Broken Access Control", 8.2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce authorization independent of HTTP method; deny by default and ignore method-override headers." } },
 
+        // ---- Security headers / CSP ----------------------------------
+        { "csp-missing",         { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Deploy a Content-Security-Policy with a nonce/hash-based script-src and 'strict-dynamic'." } },
+        { "csp-unsafe-inline",   { "CWE-693", "A05:2021-Security Misconfiguration", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Drop 'unsafe-inline'; use per-response nonces or hashes plus 'strict-dynamic'." } },
+        { "csp-unsafe-eval",     { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Remove 'unsafe-eval' and refactor any eval/new Function usage." } },
+        { "csp-wildcard-source", { "CWE-693", "A05:2021-Security Misconfiguration", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Replace * / scheme-wide / data: script sources with an explicit nonce/hash allow-list." } },
+        { "csp-bypassable-host", { "CWE-693", "A05:2021-Security Misconfiguration", 5.4, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Remove JSONP/gadget-serving CDN hosts from script-src; pin specific files via hash." } },
+        { "csp-no-object-src",   { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Add object-src 'none' to block plugin-based script execution." } },
+        { "csp-no-base-uri",     { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Add base-uri 'none' (or 'self') to stop <base>-tag re-rooting of relative scripts." } },
+        { "csp-report-only",     { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Move the policy from Report-Only to an enforcing Content-Security-Policy header." } },
+        { "hsts-missing",        { "CWE-319", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Send Strict-Transport-Security with a long max-age and includeSubDomains; preload." } },
+        { "hsts-weak",           { "CWE-319", "A02:2021-Cryptographic Failures", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Raise HSTS max-age to at least 180 days (ideally 1 year + preload)." } },
+        { "hsts-no-subdomains",  { "CWE-319", "A02:2021-Cryptographic Failures", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Add includeSubDomains to HSTS so subdomains can't be TLS-stripped." } },
+        { "xcto-missing",        { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Send X-Content-Type-Options: nosniff on every response." } },
+        { "clickjacking-missing",{ "CWE-1021", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Set CSP frame-ancestors 'none' (or 'self'); X-Frame-Options as a fallback." } },
+        { "referrer-policy-missing", { "CWE-200", "A01:2021-Broken Access Control", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Set Referrer-Policy: strict-origin-when-cross-origin (or no-referrer) to stop URL/token leakage." } },
+        { "cookie-insecure",     { "CWE-1004", "A05:2021-Security Misconfiguration", 5.0, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Set Secure + HttpOnly + SameSite on session cookies." } },
+
         // ---- Open redirect -------------------------------------------
         { "open-redirect", { "CWE-601", "A01:2021-Broken Access Control", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Validate redirect targets against an allow-list of relative paths or exact hosts; never redirect to a raw user-supplied URL." } },
 

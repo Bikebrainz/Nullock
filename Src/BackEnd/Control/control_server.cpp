@@ -25,6 +25,7 @@
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
 #include "open_redirect.hpp"
+#include "header_audit.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4638,6 +4639,48 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- Security-header / CSP audit ---------------------------------
+    // POST /api/headers/audit { url, headers? }
+    //   Fetches the URL once and audits response security headers, with a
+    //   CSP analyzer that flags unsafe-inline/eval, wildcard sources, missing
+    //   object-src/base-uri, and bypassable script-gadget hosts.
+    if (path == "/api/headers/audit") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::HeaderAudit::Request hr;
+        hr.host = u.host();
+        hr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        hr.tls  = (u.scheme() == "https");
+        hr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        hr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject hhdrs = bodyJson.value("headers").toObject();
+        for (auto it = hhdrs.begin(); it != hhdrs.end(); ++it)
+            hr.headers.append({ it.key(), it.value().toString() });
+
+        const auto hres = Nullock::Core::HeaderAudit::test(hr);
+
+        QJsonArray findings;
+        for (const auto &f : hres.findings) {
+            findings.append(QJsonObject{
+                { "key", f.key }, { "severity", f.severity },
+                { "title", f.title }, { "detail", f.detail } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, f.severity, f.key, f.title,
+                                                f.detail, u.host(), url);
+        }
+        return okJson({{ "ok", hres.error.isEmpty() },
+                       { "error", hres.error },
+                       { "status", hres.status },
+                       { "hasCsp", hres.hasCsp },
+                       { "reportOnlyOnly", hres.reportOnlyOnly },
+                       { "findingCount", static_cast<int>(hres.findings.size()) },
+                       { "findings", findings }});
     }
 
     // ---- Open redirect -----------------------------------------------

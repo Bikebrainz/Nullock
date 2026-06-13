@@ -52,6 +52,8 @@ add_library(Networking STATIC
     cache_poison.hpp
     open_redirect.cpp
     open_redirect.hpp
+    header_audit.cpp
+    header_audit.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

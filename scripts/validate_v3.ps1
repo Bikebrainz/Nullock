@@ -447,6 +447,43 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Security-header / CSP audit ===" -ForegroundColor Cyan
+Test-Endpoint "header audit flags a weak CSP + bypassable gadget host, clean on a hardened policy" {
+    # /weak: unsafe-inline + ajax.googleapis.com gadget host, no nosniff/XFO, flagless cookie.
+    # /strong: nonce + strict-dynamic, object-src/base-uri/frame-ancestors none, nosniff, hardened cookie.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 200; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $r=$c.Response
+                if ($p -eq "/weak") {
+                    $r.Headers.Add("Content-Security-Policy","script-src 'self' 'unsafe-inline' ajax.googleapis.com")
+                    $r.Headers.Add("Set-Cookie","sid=abc123")
+                } elseif ($p -eq "/strong") {
+                    $r.Headers.Add("Content-Security-Policy","script-src 'nonce-r4nd' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+                    $r.Headers.Add("X-Content-Type-Options","nosniff")
+                    $r.Headers.Add("Referrer-Policy","no-referrer")
+                    $r.Headers.Add("Set-Cookie","sid=abc123; HttpOnly; SameSite=Strict")
+                }
+                $b=[Text.Encoding]::UTF8.GetBytes("ok"); $r.StatusCode=200; $r.OutputStream.Write($b,0,$b.Length); $r.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $w = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/headers/audit" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/weak" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/headers/audit" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/strong" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        $wk = $w.findings.key; $sk = $s.findings.key
+        return ($wk -contains 'csp-unsafe-inline') -and ($wk -contains 'csp-bypassable-host') -and ($wk -contains 'clickjacking-missing') -and ($wk -contains 'cookie-insecure') `
+               -and (-not ($sk -contains 'csp-unsafe-inline')) -and (-not ($sk -contains 'csp-bypassable-host')) -and ($s.findingCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Open redirect ===" -ForegroundColor Cyan
 Test-Endpoint "open redirect confirms via resolved Location host, ignores reflection + param-independent redirects" {
     # /login: redirects to ?next verbatim (vuln). /reflect: echoes next in a 200 body (no redirect).
