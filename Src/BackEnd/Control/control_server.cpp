@@ -33,6 +33,7 @@
 #include "xss_reflected.hpp"
 #include "sql_injection.hpp"
 #include "xxe_injection.hpp"
+#include "nosql_injection.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -234,6 +235,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("nosqli") || wants("nosql-injection")) {
+        Nullock::Core::NoSqlInjection::Request nrr;
+        nrr.host = t.host; nrr.port = t.port; nrr.tls = t.tls; nrr.method = t.method;
+        nrr.basePath = auditPath; nrr.query = auditQuery; nrr.headers = t.headers;
+        const auto res = Nullock::Core::NoSqlInjection::test(nrr);
+        QStringList where; for (const auto &h : res.hits) where << h.param;
+        note("nosql-injection", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "high", "nosql-injection", "Deep audit: NoSQL operator injection " + where.join(", "));
     }
     // XXE only makes sense against an XML endpoint -- gate on content-type/body.
     if (wants("xxe")) {
@@ -4729,6 +4740,53 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- NoSQL injection ---------------------------------------------
+    // POST /api/nosqli/test { url, param?, method?, headers? }
+    //   Probes literal vs $ne vs $eq operator variants; confirms when the
+    //   operator was interpreted (the differential). CWE-943.
+    if (path == "/api/nosqli/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::NoSqlInjection::Request nr;
+        nr.host = u.host();
+        nr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        nr.tls  = (u.scheme() == "https");
+        nr.method = bodyJson.value("method").toString("GET").toUpper();
+        nr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        nr.query = u.query(QUrl::FullyEncoded);
+        nr.param = bodyJson.value("param").toString();
+        const QJsonObject nhdrs = bodyJson.value("headers").toObject();
+        for (auto it = nhdrs.begin(); it != nhdrs.end(); ++it)
+            nr.headers.append({ it.key(), it.value().toString() });
+
+        const auto nres = Nullock::Core::NoSqlInjection::test(nr);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : nres.hits) {
+            hits.append(QJsonObject{ { "param", h.param }, { "detail", h.detail } });
+            where << h.param;
+        }
+        if (m_wiring.scanner && nres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "high", "nosql-injection",
+                QString("NoSQL operator injection in '%1' -- a query operator was interpreted")
+                    .arg(nres.hits.first().param),
+                "literal/$ne/$eq differential confirms the operator: " + nres.hits.first().detail,
+                u.host(), url);
+        return okJson({{ "ok", nres.error.isEmpty() },
+                       { "error", nres.error },
+                       { "vulnerable", nres.vulnerable },
+                       { "baselineStatus", nres.baselineStatus },
+                       { "requestsSent", nres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(nres.testedParams) },
+                       { "hitCount", static_cast<int>(nres.hits.size()) },
                        { "hits", hits }});
     }
 

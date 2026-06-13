@@ -707,6 +707,25 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_nosqli() {
+    # nullock nosqli <url> [param] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock nosqli <url> [param] [hdr:val ...]"
+    local url=$1; shift
+    local param=""
+    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/nosqli/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+}
+
 cmd_xxe() {
     # nullock xxe <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock xxe <url> [hdr:val ...]"
@@ -1360,13 +1379,18 @@ Above-Burp features (v4/v5):
   nullock xxe <url> [hdr:val ...]        XXE -- POSTs an XML body whose external
                                          entity reads a local file; confirmed by
                                          the file's content signature
+  nullock nosqli <url> [param] [hdr:val ...]
+                                         NoSQL operator injection -- literal vs
+                                         $ne vs $eq differential confirms a query
+                                         operator was interpreted (auth bypass)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
                                          IDOR, mass-assignment, open-redirect,
                                          cache-poisoning, SSTI, secrets, CRLF,
                                          path-traversal, command-injection,
-                                         reflected-XSS, SQL-injection) in one call
+                                         reflected-XSS, SQL-injection, NoSQL,
+                                         XXE) in one call
   nullock audit all [url1 url2 ...]      session-wide sweep -- deep-audits the
                                          given urls + every captured history
                                          row with params/body (async)
@@ -1434,6 +1458,7 @@ case ${1:-help} in
     xss)           shift; cmd_xss "$@"           ;;
     sqli)          shift; cmd_sqli "$@"          ;;
     xxe)           shift; cmd_xxe "$@"           ;;
+    nosqli)        shift; cmd_nosqli "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

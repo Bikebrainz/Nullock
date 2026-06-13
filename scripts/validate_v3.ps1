@@ -447,6 +447,36 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== NoSQL injection ===" -ForegroundColor Cyan
+Test-Endpoint "nosqli confirms operator interpretation, suppresses dynamic + type-confusion + safe" {
+    # /vuln: user[$ne] matches everything (long); /safe: never; /dynamic: random length; /typeconf: 500 on any [$.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $r=[Random]::new()
+        for ($i=0; $i -lt 600; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                $q=[System.Uri]::UnescapeDataString($c.Request.Url.Query)
+                $code=200; $b="Invalid credentials"
+                if ($p -eq "/vuln") { if ($q.Contains('user[$ne]')) { $b="Welcome back, admin! Private dashboard with account details, recent orders, and full settings panel content here." } }
+                elseif ($p -eq "/dynamic") { $b="results: " + ("x" * $r.Next(10,400)) }
+                elseif ($p -eq "/typeconf") { if ($q.Contains('[$')) { $code=500; $b="TypeError: cannot convert object to string at handler" } }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=$code; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        function NoSqli($path) { ((Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/nosqli/test" -Headers $hdr -Body (@{ url=("http://127.0.0.1:{0}/{1}?user=admin" -f $oport,$path); param="user" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json).vulnerable }
+        return (NoSqli "vuln") -and (-not (NoSqli "safe")) -and (-not (NoSqli "dynamic")) -and (-not (NoSqli "typeconf"))
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== XXE (XML external entity) ===" -ForegroundColor Cyan
 Test-Endpoint "xxe confirms external-entity file read by content signature, clean when entities disabled" {
     # /vuln resolves the external entity (returns passwd content); /safe never does.
