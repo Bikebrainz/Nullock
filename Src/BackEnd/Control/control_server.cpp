@@ -29,6 +29,7 @@
 #include "secret_scanner.hpp"
 #include "crlf_injection.hpp"
 #include "path_traversal.hpp"
+#include "cmd_injection.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -230,6 +231,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    if (wants("cmdi") || wants("command-injection")) {
+        Nullock::Core::CmdInjection::Request cir;
+        cir.host = t.host; cir.port = t.port; cir.tls = t.tls; cir.method = t.method;
+        cir.basePath = auditPath; cir.query = auditQuery; cir.headers = t.headers;
+        const auto res = Nullock::Core::CmdInjection::test(cir);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "/" + h.technique;
+        note("command-injection", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "critical", "command-injection", "Deep audit: OS command injection " + where.join(", "));
     }
     if (wants("lfi") || wants("pathtraversal") || wants("traversal")) {
         Nullock::Core::PathTraversal::Request ptr;
@@ -4678,6 +4689,55 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- OS command injection ----------------------------------------
+    // POST /api/cmdi/test { url, param?, method?, headers? }
+    //   Chains `echo <sentinel>$((a*b))<sentinel>` onto the param; confirms by
+    //   the evaluated arithmetic in the response (real shell exec). CWE-78.
+    if (path == "/api/cmdi/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::CmdInjection::Request cir;
+        cir.host = u.host();
+        cir.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cir.tls  = (u.scheme() == "https");
+        cir.method = bodyJson.value("method").toString("GET").toUpper();
+        cir.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        cir.query = u.query(QUrl::FullyEncoded);
+        cir.param = bodyJson.value("param").toString();
+        const QJsonObject chdrs = bodyJson.value("headers").toObject();
+        for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
+            cir.headers.append({ it.key(), it.value().toString() });
+
+        const auto cres = Nullock::Core::CmdInjection::test(cir);
+
+        QJsonArray hits;
+        QStringList where;
+        for (const auto &h : cres.hits) {
+            hits.append(QJsonObject{
+                { "param", h.param }, { "technique", h.technique },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+            where << h.param + "/" + h.technique;
+        }
+        if (m_wiring.scanner && cres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "critical", "command-injection",
+                QString("OS command injection in '%1' via %2 -- arbitrary commands execute")
+                    .arg(cres.hits.first().param, cres.hits.first().technique),
+                "the server evaluated an injected shell arithmetic expression: " + cres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "vulnerable", cres.vulnerable },
+                       { "baselineStatus", cres.baselineStatus },
+                       { "requestsSent", cres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(cres.testedParams) },
+                       { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }
 

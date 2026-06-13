@@ -707,6 +707,25 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_cmdi() {
+    # nullock cmdi <url> [param] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock cmdi <url> [param] [hdr:val ...]"
+    local url=$1; shift
+    local param=""
+    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/cmdi/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+}
+
 cmd_lfi() {
     # nullock lfi <url> [param] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock lfi <url> [param] [hdr:val ...]"
@@ -1271,12 +1290,16 @@ Above-Burp features (v4/v5):
                                          path traversal / LFI -- traversal
                                          encodings to /etc/passwd & win.ini,
                                          confirmed by file content signature
+  nullock cmdi <url> [param] [hdr:val ...]
+                                         OS command injection -- chains echo
+                                         $((a*b)); confirmed RCE when the shell
+                                         evaluates the arithmetic (no timing)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
                                          IDOR, mass-assignment, open-redirect,
                                          cache-poisoning, SSTI, secrets, CRLF,
-                                         path-traversal) in one call
+                                         path-traversal, command-injection) in one call
   nullock audit all [url1 url2 ...]      session-wide sweep -- deep-audits the
                                          given urls + every captured history
                                          row with params/body (async)
@@ -1340,6 +1363,7 @@ case ${1:-help} in
     secrets)       shift; cmd_secrets "$@"       ;;
     crlf)          shift; cmd_crlf "$@"          ;;
     lfi)           shift; cmd_lfi "$@"           ;;
+    cmdi)          shift; cmd_cmdi "$@"          ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

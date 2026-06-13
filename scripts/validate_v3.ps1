@@ -447,6 +447,35 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== OS command injection ===" -ForegroundColor Cyan
+Test-Endpoint "command injection confirms shell exec via arithmetic, clean on literal reflection" {
+    # /vuln expands $((a*b)) like a shell that ran the command; /safe reflects the value literally.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 300; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $f=$c.Request.QueryString["cmd"]; if ($null -eq $f) { $f="" }
+                if ($p -eq "/vuln") {
+                    $out=[regex]::Replace($f,'\$\(\((\d+)\*(\d+)\)\)',{ param($m) [string]([int64]$m.Groups[1].Value*[int64]$m.Groups[2].Value) })
+                    $b="PING output for: $out"
+                } else { $b="result: $f" }
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.StatusCode=200; $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cmdi/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln?cmd=8.8.8.8"; param="cmd" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cmdi/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe?cmd=8.8.8.8"; param="cmd" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($v.vulnerable -eq $true) -and ($v.hits[0].evidence -match 'executed') -and ($s.vulnerable -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Path traversal / LFI ===" -ForegroundColor Cyan
 Test-Endpoint "path traversal confirms /etc/passwd by content signature, ignores sanitized + prose mentions" {
     # /vuln returns passwd content when ?file traverses; /safe strips ../; /docs prose-mentions root:x:0:0:.
