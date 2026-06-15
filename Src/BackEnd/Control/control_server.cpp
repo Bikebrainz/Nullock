@@ -34,6 +34,7 @@
 #include "sql_injection.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
+#include "smuggling.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -235,6 +236,19 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("cache-poisoning", res.hits.size(),
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
+    }
+    // Smuggling is slow (timing probes block until the back-end's socket
+    // timeout), so it runs ONLY when explicitly opted in -- never in the
+    // default-all sweep.
+    if (!include.isEmpty() && (include.contains("smuggle") || include.contains("smuggling"))) {
+        Nullock::Core::Smuggling::Request smr;
+        smr.host = t.host; smr.port = t.port; smr.tls = t.tls;
+        smr.basePath = auditPath; smr.headers = t.headers;
+        const auto res = Nullock::Core::Smuggling::test(smr);
+        QStringList where; for (const auto &h : res.hits) where << h.variant;
+        note("smuggling", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "critical", "request-smuggling", "Deep audit: HTTP request smuggling " + where.join(", "));
     }
     if (wants("nosqli") || wants("nosql-injection")) {
         Nullock::Core::NoSqlInjection::Request nrr;
@@ -4738,6 +4752,47 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "engineLikely", sres.engineLikely },
                        { "engines", sres.engines },
                        { "baselineStatus", sres.baselineStatus },
+                       { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- HTTP request smuggling --------------------------------------
+    // POST /api/smuggle/test { url, headers? }
+    //   Times CL.TE and TE.CL desync probes against a baseline; flags a
+    //   variant whose response is delayed (reproducibly). CWE-444. Slow by
+    //   design -- a vulnerable host blocks until its socket timeout.
+    if (path == "/api/smuggle/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::Smuggling::Request sr;
+        sr.host = u.host();
+        sr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        sr.tls  = (u.scheme() == "https");
+        sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QJsonObject shdrs = bodyJson.value("headers").toObject();
+        for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
+            sr.headers.append({ it.key(), it.value().toString() });
+
+        const auto sres = Nullock::Core::Smuggling::test(sr);
+
+        QJsonArray hits;
+        for (const auto &h : sres.hits)
+            hits.append(QJsonObject{ { "variant", h.variant }, { "delayMs", h.delayMs } });
+        if (m_wiring.scanner && sres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "critical", "request-smuggling",
+                QString("HTTP request smuggling (%1) -- a desync probe blocked the back-end (%2 ms over baseline)")
+                    .arg(sres.hits.first().variant).arg(sres.hits.first().delayMs),
+                "the front-end and back-end disagree on request length; the timing delay reproduced",
+                u.host(), url);
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "vulnerable", sres.vulnerable },
+                       { "baselineMs", sres.baselineMs },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});

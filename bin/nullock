@@ -707,6 +707,23 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_smuggle() {
+    # nullock smuggle <url> [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock smuggle <url> [hdr:val ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/smuggle/test "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_nosqli() {
     # nullock nosqli <url> [param] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock nosqli <url> [param] [hdr:val ...]"
@@ -1383,6 +1400,10 @@ Above-Burp features (v4/v5):
                                          NoSQL operator injection -- literal vs
                                          $ne vs $eq differential confirms a query
                                          operator was interpreted (auth bypass)
+  nullock smuggle <url> [hdr:val ...]    HTTP request smuggling -- times CL.TE /
+                                         TE.CL desync probes; flags a variant
+                                         whose response is reproducibly delayed
+                                         (slow: blocks until back-end timeout)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1459,6 +1480,7 @@ case ${1:-help} in
     sqli)          shift; cmd_sqli "$@"          ;;
     xxe)           shift; cmd_xxe "$@"           ;;
     nosqli)        shift; cmd_nosqli "$@"        ;;
+    smuggle)       shift; cmd_smuggle "$@"       ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

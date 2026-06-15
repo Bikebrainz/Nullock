@@ -70,6 +70,8 @@ add_library(Networking STATIC
     xxe_injection.hpp
     nosql_injection.cpp
     nosql_injection.hpp
+    smuggling.cpp
+    smuggling.hpp
 )
 
 # Networking exposes Repeater which references ProxyModel and the

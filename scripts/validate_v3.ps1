@@ -447,6 +447,37 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== HTTP request smuggling ===" -ForegroundColor Cyan
+Test-Endpoint "smuggling flags a CL.TE desync by reproducible timing, clean on a fast server" {
+    # Raw-TCP mock: /clte stalls 6s on the CL.TE desync probe (desync); /safe never stalls.
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $listener=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$port); $listener.Start()
+        for ($i=0; $i -lt 60; $i++) {
+            try {
+                $cl=$listener.AcceptTcpClient(); $ns=$cl.GetStream(); $ns.ReadTimeout=800
+                $buf=New-Object byte[] 8192; $req=""
+                try { do { $n=$ns.Read($buf,0,$buf.Length); if($n -le 0){break}; $req+=[Text.Encoding]::ASCII.GetString($buf,0,$n) } until ($req -match "`r`n`r`n") } catch {}
+                $path=(($req -split "`r`n")[0] -split ' ')[1]
+                $hasTE = $req.ToLower() -match 'transfer-encoding:\s*chunked'
+                if ($path -eq "/clte" -and $hasTE -and $req.Contains("1`r`nA")) { Start-Sleep -Seconds 6 }
+                $body="ok"; $resp="HTTP/1.1 200 OK`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n$body"
+                $bytes=[Text.Encoding]::ASCII.GetBytes($resp); try { $ns.Write($bytes,0,$bytes.Length); $ns.Flush() } catch {}; $cl.Close()
+            } catch { break }
+        }
+        try { $listener.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/smuggle/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/clte" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 120).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/smuggle/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 120).Content | ConvertFrom-Json
+        return ($v.vulnerable -eq $true) -and ($v.hits[0].variant -eq 'CL.TE') -and ($s.vulnerable -eq $false)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== NoSQL injection ===" -ForegroundColor Cyan
 Test-Endpoint "nosqli confirms operator interpretation, suppresses dynamic + type-confusion + safe" {
     # /vuln: user[$ne] matches everything (long); /safe: never; /dynamic: random length; /typeconf: 500 on any [$.

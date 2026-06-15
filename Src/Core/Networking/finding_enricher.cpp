@@ -161,6 +161,9 @@ const QHash<QString, Mapping> &table() {
         // ---- Verb tampering -----------------------------------------
         { "auth-bypass-verb-tampering", { "CWE-650", "A01:2021-Broken Access Control", 8.2, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce authorization independent of HTTP method; deny by default and ignore method-override headers." } },
 
+        // ---- HTTP request smuggling ----------------------------------
+        { "request-smuggling", { "CWE-444", "A05:2021-Security Misconfiguration", 9.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:L", "", "Make the whole chain agree on request length: reject messages with both Content-Length and Transfer-Encoding, normalize at the front-end, and use HTTP/2 end-to-end where possible." } },
+
         // ---- NoSQL injection -----------------------------------------
         { "nosql-injection", { "CWE-943", "A03:2021-Injection", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "", "Reject query operators in user input: cast values to the expected type (string) and never let a parsed object reach the query; use an allow-list of fields." } },
 
