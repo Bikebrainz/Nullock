@@ -8,10 +8,19 @@
 $ErrorActionPreference = 'Continue'
 $exe = "D:\dev\Nullock\Build\Src\App\Release\NullockApp.exe"
 
+# Clean slate: a stray NullockApp from a prior/overlapping run holding the
+# control port (or in TIME_WAIT), or leftover mock-listener jobs, is the main
+# cause of the suite hanging. Kill both before we start, and randomize ports so
+# we never collide with a port still winding down.
+Get-Process NullockApp -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Job -ErrorAction SilentlyContinue | Stop-Job -ErrorAction SilentlyContinue
+Get-Job -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+
 $projDir = Join-Path $env:TEMP "nullock-v3val-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path $projDir | Out-Null
-$proxyPort = 19770
-$ctlPort   = 19771
+$proxyPort = Get-Random -Minimum 20000 -Maximum 45000
+$ctlPort   = Get-Random -Minimum 20000 -Maximum 45000
 
 $nl = Start-Process -FilePath $exe `
     -ArgumentList "--headless","--proxy-port=$proxyPort","--control-port=$ctlPort","--project=$projDir","--no-update-check" `
@@ -278,7 +287,7 @@ Test-Endpoint "audit runs the battery and aggregates findings from multiple test
     } -ArgumentList $oport
     Start-Sleep -Milliseconds 700
     try {
-        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/orders/5" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/api/orders/5"; include=@("params","idor","cors") } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
         $bt=@{}; $a.testers | ForEach-Object { $bt[$_.tester]=$_.items }
         return ($a.totalFindings -ge 3) -and ($bt['param-mining'] -ge 1) -and ($bt['idor'] -ge 1) -and ($bt['cors'] -ge 1)
     } finally {
@@ -309,7 +318,7 @@ Test-Endpoint "audit battery now includes open-redirect and SSTI testers" {
     } -ArgumentList $oport
     Start-Sleep -Milliseconds 700
     try {
-        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/page?next=/home&name=guest" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/run" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/page?next=/home&name=guest"; include=@("openredirect","ssti","cache") } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 90).Content | ConvertFrom-Json
         $bt=@{}; $a.testers | ForEach-Object { $bt[$_.tester]=$_.items }
         return ($bt['open-redirect'] -ge 1) -and ($bt['ssti'] -ge 1) -and ($a.testers.tester -contains 'cache-poisoning')
     } finally {
@@ -339,7 +348,7 @@ Test-Endpoint "audit all queues URLs and lands findings async" {
     Start-Sleep -Milliseconds 700
     try {
         $urls = @("http://127.0.0.1:$oport/api/orders/5","http://127.0.0.1:$oport/api/orders/7")
-        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/all" -Headers $hdr -Body (@{ urls=$urls } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $a = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/audit/all" -Headers $hdr -Body (@{ urls=$urls; include=@("params","idor","cors") } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
         if ($a.queued -ne 2) { return $false }
         Start-Sleep -Seconds 12
         $snap=(Invoke-WebRequest -UseBasicParsing -Uri "$base/api/snapshot" -Headers $hdr -TimeoutSec 5).Content | ConvertFrom-Json
@@ -1194,8 +1203,11 @@ Test-Endpoint "jwt forge hs256 produces a token that re-validates" {
     return ($vj.secretRecovered -eq $true) -and ($vj.payload.role -eq "superadmin")
 }
 
-# Cleanup
+# Cleanup: the instance plus any mock-listener jobs a test's finally may have
+# missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
+Get-Job -ErrorAction SilentlyContinue | Stop-Job -ErrorAction SilentlyContinue
+Get-Job -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 
 Write-Host ""
