@@ -761,11 +761,12 @@ cmd_xxe() {
 }
 
 cmd_sqli() {
-    # nullock sqli <url> [param] [Header:Value ...]
-    [[ -n ${1-} ]] || die "usage: nullock sqli <url> [param] [hdr:val ...]"
+    # nullock sqli <url> [param] [blind] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock sqli <url> [param] [blind] [hdr:val ...]"
     local url=$1; shift
-    local param=""
-    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local param="" blind="false"
+    if [[ -n ${1-} && $1 != *:* && $1 != blind ]]; then param=$1; shift; fi
+    if [[ ${1-} == blind ]]; then blind="true"; shift; fi
     local headers="{}"
     if (( $# > 0 )); then
         headers="{"; local first=1
@@ -776,7 +777,7 @@ cmd_sqli() {
         done
         headers+="}"
     fi
-    post /api/sqli/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+    post /api/sqli/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"blind\":$blind,\"headers\":$headers}" | pp
 }
 
 cmd_xss() {
@@ -1389,10 +1390,10 @@ Above-Burp features (v4/v5):
                                          reflected XSS -- marker tag, confirmed
                                          only when it reflects unencoded in
                                          executable HTML element content
-  nullock sqli <url> [param] [hdr:val ...]
-                                         SQL injection (error-based) -- quote
-                                         probes; confirmed by a DBMS error the
-                                         baseline lacks + cleared when balanced
+  nullock sqli <url> [param] [blind] [hdr:val ...]
+                                         SQL injection -- error-based (DBMS error
+                                         the baseline lacks, cleared when balanced);
+                                         add 'blind' for time-based SLEEP detection
   nullock xxe <url> [hdr:val ...]        XXE -- POSTs an XML body whose external
                                          entity reads a local file; confirmed by
                                          the file's content signature

@@ -4908,6 +4908,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         sr.query = u.query(QUrl::FullyEncoded);
         sr.param = bodyJson.value("param").toString();
+        sr.timeBased = bodyJson.value("blind").toBool(false);   // opt-in blind time-based (slow)
         const QJsonObject shdrs = bodyJson.value("headers").toObject();
         for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
             sr.headers.append({ it.key(), it.value().toString() });
@@ -4919,8 +4920,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         for (const auto &h : sres.hits) {
             hits.append(QJsonObject{
                 { "param", h.param }, { "dbms", h.dbms },
+                { "technique", h.technique },
                 { "payload", h.payload }, { "evidence", h.evidence } });
-            where << h.param + " (" + h.dbms + ")";
+            where << h.param + " (" + h.dbms + "/" + h.technique + ")";
         }
         if (m_wiring.scanner && sres.vulnerable) {
             // A DBMS-specific fingerprint is critical; a generic-signature-only

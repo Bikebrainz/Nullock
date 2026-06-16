@@ -18,8 +18,9 @@ namespace Nullock::Core::SqlInjection {
 struct Hit {
     QString param;       // parameter the payload went into
     QString dbms;        // "MySQL", "PostgreSQL", "MSSQL", "Oracle", "SQLite", "generic"
+    QString technique;   // "error-based" | "time-based"
     QString payload;     // the probe that triggered it
-    QString evidence;    // the matched error fragment
+    QString evidence;    // the matched error fragment, or the timing summary
 };
 
 struct Request {
@@ -31,6 +32,7 @@ struct Request {
     QString query;
     QString param;                              // param to test; empty => auto
     QList<QPair<QString, QString>> headers;
+    bool    timeBased = false;                  // also run blind time-based probes (slow)
 };
 
 struct Result {
