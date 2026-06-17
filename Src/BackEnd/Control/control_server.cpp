@@ -44,6 +44,7 @@
 #include "cache_deception.hpp"
 #include "scan_bridge.hpp"
 #include "robots_recon.hpp"
+#include "waf_detect.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2652,7 +2653,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
-        "/api/pipeline/run", "/api/robots/scan",
+        "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -6012,6 +6013,48 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "sitemapUrlCount", res.sitemapUrls.size() },
             { "sitemapUrls", QJsonArray::fromStringList(res.sitemapUrls) },
             { "findingsEmitted", emitted },
+        });
+    }
+
+    // ---- WAF / CDN detection -----------------------------------------
+    // POST /api/waf/detect { url }
+    //   Identifies protective infrastructure (WAF/CDN/LB) from response header
+    //   and cookie signatures on a normal GET. Passive -- no attack payload.
+    if (path == "/api/waf/detect") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        if (u.scheme() != "http" && u.scheme() != "https")
+            return okJson({{ "ok", false }, { "error", "url scheme must be http or https" }});
+
+        Nullock::Core::WafDetect::Request wr;
+        wr.host = u.host();
+        wr.tls  = (u.scheme() == "https");
+        wr.port = u.port(wr.tls ? 443 : 80);
+        wr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QJsonObject whdrs = bodyJson.value("headers").toObject();
+        for (auto it = whdrs.begin(); it != whdrs.end(); ++it)
+            wr.headers.append({ it.key(), it.value().toString() });
+
+        const auto res = Nullock::Core::WafDetect::detect(wr);
+        QJsonArray dets;
+        for (const auto &d : res.detections) {
+            dets.append(QJsonObject{
+                { "name", d.name }, { "kind", d.kind }, { "evidence", d.evidence } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, "info", "waf-detected",
+                    d.kind.toUpper() + " detected: " + d.name,
+                    "matched on " + d.evidence, wr.host, url);
+        }
+        return okJson({
+            { "ok", res.error.isEmpty() },
+            { "error", res.error },
+            { "host", res.host },
+            { "status", res.status },
+            { "detectionCount", res.detections.size() },
+            { "detections", dets },
         });
     }
 

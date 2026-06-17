@@ -1723,6 +1723,35 @@ Test-Endpoint "robots scan surfaces Disallow paths + sitemap URLs" {
     }
 }
 
+Write-Host "`n=== WAF / CDN detection ===" -ForegroundColor Cyan
+Test-Endpoint "waf detect identifies Cloudflare + F5 from headers/cookies; clean=0" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for ($i=0; $i -lt 50; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath
+                if ($p -eq '/waf') {
+                    $c.Response.Headers.Add("cf-ray","7abc-DFW")
+                    $c.Response.AppendHeader("Set-Cookie","BIGipServerpool=1; path=/")
+                }
+                $buf=[Text.Encoding]::UTF8.GetBytes("ok"); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r  = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/waf/detect" -Headers $hdr -Body (@{url="http://127.0.0.1:$oport/waf"} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $names = @($r.detections | ForEach-Object { $_.name })
+        $rc = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/waf/detect" -Headers $hdr -Body (@{url="http://127.0.0.1:$oport/clean"} | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($names -contains "Cloudflare") -and ($names -contains "F5 BIG-IP") -and ($rc.detectionCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
