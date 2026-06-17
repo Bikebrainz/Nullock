@@ -160,6 +160,172 @@ PostureGrade computePostureGrade(const QList<Nullock::Core::Finding> &findings) 
     return g;
 }
 
+// Shared severity rank (worst-first ordering). info=1 so a non-empty group
+// never ties with "unknown" (0).
+inline int severityRank(const QString &s) {
+    if (s == "critical") return 5;
+    if (s == "high")     return 4;
+    if (s == "medium")   return 3;
+    if (s == "low")      return 2;
+    if (s == "info")     return 1;
+    return 0;
+}
+
+// Host-centric attack-surface rollup. Shared by /api/inventory and the JSON
+// master report. Merges port-scan results (open ports/services) with findings
+// (counts/severity/tech) into one record per host, risk-sorted. No network.
+QJsonObject computeInventory(const QList<Nullock::Core::PortResult> &portResults,
+                             const QList<Nullock::Core::Finding> &findings) {
+    struct HostAgg {
+        QMap<quint16, QString> ports;
+        QSet<QString> services;
+        QSet<QString> techs;
+        int total = 0;
+        QMap<QString, int> bySev;
+        double maxCvss = 0.0;
+        QSet<QString> kinds;
+    };
+    QMap<QString, HostAgg> hosts;
+    // Lower-case host merge key (DNS is case-insensitive; scanners may differ).
+    for (const auto &r : portResults) {
+        if (r.status.toLower() != QLatin1String("open")) continue;
+        if (r.host.isEmpty()) continue;
+        HostAgg &a = hosts[r.host.toLower()];
+        a.ports.insert(r.port, r.service);
+        if (!r.service.isEmpty()) a.services.insert(r.service);
+    }
+    for (const auto &f : findings) {
+        if (f.host.isEmpty()) continue;
+        HostAgg &a = hosts[f.host.toLower()];
+        ++a.total;
+        const QString t = f.severity.trimmed().toLower();
+        const QString sev = t.isEmpty() ? QStringLiteral("info") : t;
+        a.bySev[sev]++;
+        if (f.cvssScore > a.maxCvss) a.maxCvss = f.cvssScore;
+        if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
+        if (f.kind == QLatin1String("tech-detected")) {
+            QString s = f.summary;
+            if (s.startsWith(QLatin1String("Detected "))) s = s.mid(9);
+            if (!s.isEmpty()) a.techs.insert(s);
+        }
+    }
+    // Risk sort (max CVSS desc, then count) via precomputed keys (no operator[] mutate).
+    QHash<QString, double> cvssOf;
+    QHash<QString, int> totalOf;
+    for (auto it = hosts.constBegin(); it != hosts.constEnd(); ++it) {
+        cvssOf[it.key()] = it.value().maxCvss;
+        totalOf[it.key()] = it.value().total;
+    }
+    QStringList hostKeys = hosts.keys();
+    std::sort(hostKeys.begin(), hostKeys.end(), [&](const QString &x, const QString &y) {
+        if (cvssOf.value(x) != cvssOf.value(y)) return cvssOf.value(x) > cvssOf.value(y);
+        return totalOf.value(x) > totalOf.value(y);
+    });
+    QJsonArray arr;
+    int totalFindings = 0, totalOpenPorts = 0;
+    for (const QString &hk : hostKeys) {
+        const HostAgg &a = hosts[hk];
+        QJsonArray ports;
+        for (auto it = a.ports.begin(); it != a.ports.end(); ++it)
+            ports.append(QJsonObject{{ "port", it.key() }, { "service", it.value() }});
+        QJsonObject bySev;
+        QString topSev; int topR = 0;
+        for (auto it = a.bySev.begin(); it != a.bySev.end(); ++it) {
+            bySev[it.key()] = it.value();
+            if (severityRank(it.key()) > topR) { topR = severityRank(it.key()); topSev = it.key(); }
+        }
+        QStringList svc = a.services.values();  svc.sort();
+        QStringList tech = a.techs.values();    tech.sort();
+        QStringList kinds = a.kinds.values();   kinds.sort();
+        arr.append(QJsonObject{
+            { "host", hk }, { "openPorts", ports },
+            { "services", QJsonArray::fromStringList(svc) },
+            { "technologies", QJsonArray::fromStringList(tech) },
+            { "findingsTotal", a.total }, { "bySeverity", bySev },
+            { "maxCvss", a.maxCvss }, { "topSeverity", topSev },
+            { "kinds", QJsonArray::fromStringList(kinds) },
+        });
+        totalFindings += a.total;
+        totalOpenPorts += a.ports.size();
+    }
+    return QJsonObject{
+        { "ok", true }, { "hostCount", hostKeys.size() },
+        { "totalOpenPorts", totalOpenPorts }, { "totalFindings", totalFindings },
+        { "hosts", arr },
+    };
+}
+
+// OWASP Top-10 + compliance coverage rollup. Shared by /api/compliance and the
+// JSON master report.
+QJsonObject computeOwaspCoverage(const QList<Nullock::Core::Finding> &findings) {
+    static const QList<QPair<QString, QString>> kOwaspTop10 = {
+        { "A01", "Broken Access Control" },
+        { "A02", "Cryptographic Failures" },
+        { "A03", "Injection" },
+        { "A04", "Insecure Design" },
+        { "A05", "Security Misconfiguration" },
+        { "A06", "Vulnerable and Outdated Components" },
+        { "A07", "Identification and Authentication Failures" },
+        { "A08", "Software and Data Integrity Failures" },
+        { "A09", "Security Logging and Monitoring Failures" },
+        { "A10", "Server-Side Request Forgery" },
+    };
+    struct Agg { int count = 0; int topRank = 0; QString topSev; QSet<QString> kinds; QString label; };
+    QMap<QString, Agg> byOwaspFull;
+    QMap<QString, int> byOwaspId;
+    QMap<QString, int> byCompliance;
+    int mapped = 0;
+    for (const auto &f : findings) {
+        if (!f.owasp.isEmpty()) {
+            ++mapped;
+            Agg &a = byOwaspFull[f.owasp];
+            a.label = f.owasp;
+            ++a.count;
+            const QString t = f.severity.trimmed().toLower();
+            const QString sev = t.isEmpty() ? QStringLiteral("info") : t;
+            if (severityRank(sev) > a.topRank) { a.topRank = severityRank(sev); a.topSev = sev; }
+            if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
+            const int colon = f.owasp.indexOf(':');
+            const QString id = colon > 0 ? f.owasp.left(colon) : f.owasp;
+            byOwaspId[id]++;
+        }
+        for (const QString &c : f.compliance)
+            if (!c.isEmpty()) byCompliance[c]++;
+    }
+    QList<QString> okeys = byOwaspFull.keys();
+    std::sort(okeys.begin(), okeys.end(), [&](const QString &x, const QString &y) {
+        return byOwaspFull.value(x).count > byOwaspFull.value(y).count;
+    });
+    QJsonArray byOwaspArr;
+    for (const QString &k : okeys) {
+        const Agg &a = byOwaspFull.value(k);
+        QStringList kinds = a.kinds.values(); kinds.sort();
+        byOwaspArr.append(QJsonObject{
+            { "category", a.label }, { "count", a.count },
+            { "topSeverity", a.topSev }, { "kinds", QJsonArray::fromStringList(kinds) },
+        });
+    }
+    QJsonArray top10;
+    int categoriesHit = 0;
+    for (const auto &cat : kOwaspTop10) {
+        const int n = byOwaspId.value(cat.first, 0);
+        if (n > 0) ++categoriesHit;
+        top10.append(QJsonObject{{ "id", cat.first }, { "name", cat.second }, { "count", n }});
+    }
+    QList<QString> ckeys = byCompliance.keys();
+    std::sort(ckeys.begin(), ckeys.end(), [&](const QString &x, const QString &y) {
+        return byCompliance.value(x) > byCompliance.value(y);
+    });
+    QJsonArray complianceArr;
+    for (const QString &k : ckeys)
+        complianceArr.append(QJsonObject{{ "tag", k }, { "count", byCompliance.value(k) }});
+    return QJsonObject{
+        { "ok", true }, { "totalFindings", findings.size() }, { "mappedFindings", mapped },
+        { "owaspCategoriesHit", categoriesHit }, { "complianceTagsHit", complianceArr.size() },
+        { "byOwasp", byOwaspArr }, { "owaspTop10", top10 }, { "byCompliance", complianceArr },
+    };
+}
+
 // Shared "safe identification" battery for one web target: tech fingerprint
 // (+CVE correlation), security-header/CSP audit, HTTP-method audit, and (for
 // https) TLS inspection. Emits each finding into the passive scanner and
@@ -1298,6 +1464,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/inventory"
             || p == "/api/posture"
             || p == "/api/compliance"
+            || p == "/api/report/json"
             || p == "/api/cve/overlay"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
@@ -3052,111 +3219,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // aggregation of existing state -- no network, no probing. The natural
     // "what do I know about each host" view after a scan + assessment.
     if (path == "/api/inventory") {
-        struct HostAgg {
-            QMap<quint16, QString> ports;   // port -> service label
-            QSet<QString> services;
-            QSet<QString> techs;
-            int total = 0;
-            QMap<QString, int> bySev;
-            double maxCvss = 0.0;
-            QSet<QString> kinds;
-        };
-        QMap<QString, HostAgg> hosts;
-
-        // Merge key is the lower-cased host: DNS hostnames are case-insensitive,
-        // and the port scanner and passive scanner may differ in case. (Full
-        // IP<->hostname unification would need a resolver -- out of scope here.)
-        if (m_wiring.portScanner) {
-            for (const auto &r : m_wiring.portScanner->results()) {
-                if (r.status.toLower() != QLatin1String("open")) continue;
-                if (r.host.isEmpty()) continue;
-                HostAgg &a = hosts[r.host.toLower()];
-                a.ports.insert(r.port, r.service);
-                if (!r.service.isEmpty()) a.services.insert(r.service);
-            }
-        }
-        if (m_wiring.scanner) {
-            for (const auto &f : m_wiring.scanner->findings(0)) {
-                if (f.host.isEmpty()) continue;
-                HostAgg &a = hosts[f.host.toLower()];
-                ++a.total;
-                // Coalesce empty/blank severity to "info" so topSeverity is
-                // never empty for a host that has findings.
-                const QString sev = f.severity.trimmed().isEmpty()
-                    ? QStringLiteral("info") : f.severity.toLower();
-                a.bySev[sev]++;
-                if (f.cvssScore > a.maxCvss) a.maxCvss = f.cvssScore;
-                if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
-                if (f.kind == QLatin1String("tech-detected")) {
-                    QString s = f.summary;
-                    if (s.startsWith(QLatin1String("Detected "))) s = s.mid(9);
-                    if (!s.isEmpty()) a.techs.insert(s);
-                }
-            }
-        }
-
-        auto sevRank = [](const QString &s) -> int {
-            if (s == "critical") return 5;
-            if (s == "high")     return 4;
-            if (s == "medium")   return 3;
-            if (s == "low")      return 2;
-            if (s == "info")     return 1;
-            return 0;
-        };
-
-        // Sort hosts by risk (max CVSS desc, then finding count desc). Precompute
-        // the sort keys so the comparator does read-only lookups (no QMap
-        // operator[] inserting a default into the map mid-sort).
-        QHash<QString, double> cvssOf;
-        QHash<QString, int> totalOf;
-        for (auto it = hosts.constBegin(); it != hosts.constEnd(); ++it) {
-            cvssOf[it.key()] = it.value().maxCvss;
-            totalOf[it.key()] = it.value().total;
-        }
-        QStringList hostKeys = hosts.keys();
-        std::sort(hostKeys.begin(), hostKeys.end(), [&](const QString &x, const QString &y) {
-            if (cvssOf.value(x) != cvssOf.value(y)) return cvssOf.value(x) > cvssOf.value(y);
-            return totalOf.value(x) > totalOf.value(y);
-        });
-
-        QJsonArray arr;
-        int totalFindings = 0, totalOpenPorts = 0;
-        for (const QString &hk : hostKeys) {
-            const HostAgg &a = hosts[hk];
-            QJsonArray ports;
-            for (auto it = a.ports.begin(); it != a.ports.end(); ++it)
-                ports.append(QJsonObject{{ "port", it.key() }, { "service", it.value() }});
-            QJsonObject bySev;
-            QString topSev; int topR = 0;
-            for (auto it = a.bySev.begin(); it != a.bySev.end(); ++it) {
-                bySev[it.key()] = it.value();
-                if (sevRank(it.key()) > topR) { topR = sevRank(it.key()); topSev = it.key(); }
-            }
-            QStringList svc = a.services.values();  svc.sort();
-            QStringList tech = a.techs.values();    tech.sort();
-            QStringList kinds = a.kinds.values();   kinds.sort();
-            arr.append(QJsonObject{
-                { "host", hk },
-                { "openPorts", ports },
-                { "services", QJsonArray::fromStringList(svc) },
-                { "technologies", QJsonArray::fromStringList(tech) },
-                { "findingsTotal", a.total },
-                { "bySeverity", bySev },
-                { "maxCvss", a.maxCvss },
-                { "topSeverity", topSev },
-                { "kinds", QJsonArray::fromStringList(kinds) },
-            });
-            totalFindings += a.total;
-            totalOpenPorts += a.ports.size();
-        }
-
-        return httpJson(200, QJsonObject{
-            { "ok", true },
-            { "hostCount", hostKeys.size() },
-            { "totalOpenPorts", totalOpenPorts },
-            { "totalFindings", totalFindings },
-            { "hosts", arr },
-        });
+        const auto portResults = m_wiring.portScanner
+            ? m_wiring.portScanner->results() : QList<Nullock::Core::PortResult>();
+        const auto findings = m_wiring.scanner
+            ? m_wiring.scanner->findings(0) : QList<Nullock::Core::Finding>();
+        return httpJson(200, computeInventory(portResults, findings));
     }
 
     // ---- Findings baseline / diff ------------------------------------
@@ -3325,19 +3392,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             const QString t = s.trimmed().toLower();
             return t.isEmpty() ? QStringLiteral("info") : t;
         };
-        auto sevRank = [](const QString &s) -> int {
-            if (s == "critical") return 5;
-            if (s == "high")     return 4;
-            if (s == "medium")   return 3;
-            if (s == "low")      return 2;
-            if (s == "info")     return 1;
-            return 0;
-        };
-        // Worst findings first: by severity rank, then CVSS.
+        // Worst findings first: by severity rank (shared severityRank), then CVSS.
         QList<Nullock::Core::Finding> sorted = findings;
         std::sort(sorted.begin(), sorted.end(),
                   [&](const Nullock::Core::Finding &a, const Nullock::Core::Finding &b) {
-            const int ra = sevRank(canonSev(a.severity)), rb = sevRank(canonSev(b.severity));
+            const int ra = severityRank(canonSev(a.severity)), rb = severityRank(canonSev(b.severity));
             if (ra != rb) return ra > rb;
             return a.cvssScore > b.cvssScore;
         });
@@ -3373,104 +3432,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // Read-only aggregation; no network. The compliance reporting view Burp
     // gates behind Enterprise.
     if (path == "/api/compliance") {
-        QList<Nullock::Core::Finding> findings;
-        if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
-
-        auto sevRank = [](const QString &s) -> int {
-            if (s == "critical") return 5;
-            if (s == "high")     return 4;
-            if (s == "medium")   return 3;
-            if (s == "low")      return 2;
-            if (s == "info")     return 1;
-            return 0;
-        };
-
-        // OWASP Top 10 2021 -- the enricher tags findings with these exact
-        // "A03:2021-Injection"-style labels, so we group on the "Axx" prefix.
-        static const QList<QPair<QString, QString>> kOwaspTop10 = {
-            { "A01", "Broken Access Control" },
-            { "A02", "Cryptographic Failures" },
-            { "A03", "Injection" },
-            { "A04", "Insecure Design" },
-            { "A05", "Security Misconfiguration" },
-            { "A06", "Vulnerable and Outdated Components" },
-            { "A07", "Identification and Authentication Failures" },
-            { "A08", "Software and Data Integrity Failures" },
-            { "A09", "Security Logging and Monitoring Failures" },
-            { "A10", "Server-Side Request Forgery" },
-        };
-
-        struct Agg { int count = 0; int topRank = 0; QString topSev; QSet<QString> kinds; QString label; };
-        QMap<QString, Agg> byOwaspFull;   // keyed by full owasp label
-        QMap<QString, int> byOwaspId;     // keyed by "Axx"
-        QMap<QString, int> byCompliance;
-        int mapped = 0;
-        for (const auto &f : findings) {
-            if (!f.owasp.isEmpty()) {
-                ++mapped;
-                Agg &a = byOwaspFull[f.owasp];
-                a.label = f.owasp;
-                ++a.count;
-                // Coalesce blank severity to "info" (matching /inventory and
-                // /posture) so topSeverity is never empty for a non-empty group.
-                const QString sev = f.severity.trimmed().isEmpty()
-                    ? QStringLiteral("info") : f.severity.toLower();
-                if (sevRank(sev) > a.topRank) { a.topRank = sevRank(sev); a.topSev = sev; }
-                if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
-                const int colon = f.owasp.indexOf(':');
-                const QString id = colon > 0 ? f.owasp.left(colon) : f.owasp;
-                byOwaspId[id]++;
-            }
-            for (const QString &c : f.compliance)
-                if (!c.isEmpty()) byCompliance[c]++;
-        }
-
-        // byOwasp: present categories, sorted by count desc.
-        QList<QString> okeys = byOwaspFull.keys();
-        std::sort(okeys.begin(), okeys.end(), [&](const QString &x, const QString &y) {
-            return byOwaspFull.value(x).count > byOwaspFull.value(y).count;  // .value(): read-only, no insert-on-miss
-        });
-        QJsonArray byOwaspArr;
-        for (const QString &k : okeys) {
-            const Agg &a = byOwaspFull[k];
-            QStringList kinds = a.kinds.values(); kinds.sort();
-            byOwaspArr.append(QJsonObject{
-                { "category", a.label }, { "count", a.count },
-                { "topSeverity", a.topSev },
-                { "kinds", QJsonArray::fromStringList(kinds) },
-            });
-        }
-
-        // owaspTop10: all 10, count each (0 = no findings in that category).
-        QJsonArray top10;
-        int categoriesHit = 0;
-        for (const auto &cat : kOwaspTop10) {
-            const int n = byOwaspId.value(cat.first, 0);
-            if (n > 0) ++categoriesHit;
-            top10.append(QJsonObject{
-                { "id", cat.first }, { "name", cat.second }, { "count", n },
-            });
-        }
-
-        // byCompliance: sorted by count desc.
-        QList<QString> ckeys = byCompliance.keys();
-        std::sort(ckeys.begin(), ckeys.end(), [&](const QString &x, const QString &y) {
-            return byCompliance.value(x) > byCompliance.value(y);  // .value(): read-only, no insert-on-miss
-        });
-        QJsonArray complianceArr;
-        for (const QString &k : ckeys)
-            complianceArr.append(QJsonObject{{ "tag", k }, { "count", byCompliance[k] }});
-
-        return httpJson(200, QJsonObject{
-            { "ok", true },
-            { "totalFindings", findings.size() },
-            { "mappedFindings", mapped },
-            { "owaspCategoriesHit", categoriesHit },
-            { "complianceTagsHit", complianceArr.size() },
-            { "byOwasp", byOwaspArr },
-            { "owaspTop10", top10 },
-            { "byCompliance", complianceArr },
-        });
+        const auto findings = m_wiring.scanner
+            ? m_wiring.scanner->findings(0) : QList<Nullock::Core::Finding>();
+        return httpJson(200, computeOwaspCoverage(findings));
     }
 
     // ---- CVE feed overlay (cve_feed_sync) ----------------------------
@@ -4386,6 +4350,52 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         hdr += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
         hdr += "Connection: close\r\n\r\n";
         return hdr + body;
+    }
+
+    // ---- JSON master report (machine-readable engagement bundle) -----
+    // GET /api/report/json -- one payload bundling the whole engagement for CI /
+    // dashboards: posture grade, OWASP+compliance coverage, host inventory, and
+    // the full findings list. Composes the same shared helpers the dedicated
+    // endpoints use, so the numbers match across all of them. Read-only.
+    if (path == "/api/report/json") {
+        const QString proj = m_wiring.projectStore
+            ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
+        const auto findings = m_wiring.scanner
+            ? m_wiring.scanner->findings(0) : QList<Nullock::Core::Finding>();
+        const auto portResults = m_wiring.portScanner
+            ? m_wiring.portScanner->results() : QList<Nullock::Core::PortResult>();
+
+        const PostureGrade pg = computePostureGrade(findings);
+        QJsonObject sevCounts;
+        for (auto it = pg.bySeverity.constBegin(); it != pg.bySeverity.constEnd(); ++it)
+            sevCounts[it.key()] = it.value();
+
+        QJsonArray findingsArr;
+        for (const auto &f : findings) {
+            // Coalesce severity the same way the rollups do, so a consumer
+            // bucketing findings[] matches posture/coverage/inventory.
+            const QString t = f.severity.trimmed().toLower();
+            findingsArr.append(QJsonObject{
+                { "severity", t.isEmpty() ? QStringLiteral("info") : t }, { "kind", f.kind },
+                { "summary", f.summary }, { "host", f.host }, { "url", f.url },
+                { "cwe", f.cwe }, { "owasp", f.owasp },
+                { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary },
+            });
+        }
+
+        return httpJson(200, QJsonObject{
+            { "ok", true },
+            { "project", proj },
+            { "generatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODate) },
+            { "posture", QJsonObject{
+                { "grade", pg.grade }, { "score", pg.score },
+                { "penalty", pg.penalty }, { "bySeverity", sevCounts },
+            }},
+            { "coverage", computeOwaspCoverage(findings) },
+            { "inventory", computeInventory(portResults, findings) },
+            { "findingsTotal", findings.size() },
+            { "findings", findingsArr },
+        });
     }
 
     // ---- Built-in extensions install ---------------------------------

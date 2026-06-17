@@ -1672,6 +1672,28 @@ Test-Endpoint "service-CVE: Apache 2.4.41 flags CVE-2023-25690, 2.4.58 does not"
     return ($vuln -match "CVE-2023-25690") -and (-not ($patched -match "CVE-2023-25690|CVE-2021-44790"))
 }
 
+Write-Host "`n=== JSON master report bundle ===" -ForegroundColor Cyan
+# Seed findings, then the bundle composes posture + coverage + inventory +
+# findings consistently with the dedicated endpoints (shared helpers).
+Test-Endpoint "report/json bundles posture+coverage+inventory+findings" {
+    $jx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.61" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="21"><state state="open"/><service name="ftp" banner="220 (vsFTPd 2.3.4)"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $jx -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $pos = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/posture" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    $rj  = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/report/json" -Headers $hdr -TimeoutSec 15).Content | ConvertFrom-Json
+    return ($rj.ok -eq $true) -and ($rj.project) -and ($rj.generatedAt) `
+       -and ($rj.posture.grade -eq $pos.grade) -and ($rj.posture.score -eq $pos.score) `
+       -and (@($rj.coverage.owaspTop10).Count -eq 10) `
+       -and ($rj.inventory.hostCount -ge 1) `
+       -and ($rj.findingsTotal -ge 2) -and (@($rj.findings).Count -eq $rj.findingsTotal)
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

@@ -577,7 +577,11 @@ cmd_report() {
                 "$API/api/report/html" -o "$out"
             echo "wrote $out"
             ;;
-        *) die "usage: nullock report build [output.md] | nullock report html [output.html]" ;;
+        json)
+            # Machine-readable bundle: posture + coverage + inventory + findings.
+            curl -sS --max-time 30 "$API/api/report/json" | pp
+            ;;
+        *) die "usage: nullock report build [out.md] | html [out.html] | json" ;;
     esac
 }
 
