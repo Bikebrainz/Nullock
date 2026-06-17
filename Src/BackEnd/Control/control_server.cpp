@@ -78,6 +78,8 @@
 #include <QStringList>
 #include <QTcpServer>
 #include <QXmlStreamReader>
+#include <QRegularExpression>
+#include <QUuid>
 #include <QTcpSocket>
 #include <QElapsedTimer>
 #include <QUrl>
@@ -4258,7 +4260,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         root["version"] = "2.1.0";
         QJsonObject driver;
         driver["name"]   = "Nullock";
-        driver["informationUri"] = "https://github.com/Gratonic/Nullock";
+        driver["informationUri"] = "https://github.com/Bikebrainz/Nullock";
         QJsonArray rules;
         // Collect unique kinds to populate the rules array.
         QSet<QString> seenKinds;
@@ -4304,6 +4306,141 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QJsonArray runs; runs.append(run);
         root["runs"] = runs;
         return httpResponse(200, "application/sarif+json; charset=utf-8",
+                            QJsonDocument(root).toJson(QJsonDocument::Indented));
+    }
+
+    // GET /api/export/sbom  -> CycloneDX 1.5 SBOM. Components come from detected
+    // technologies (fingerprint) + the products named in CVE correlations;
+    // vulnerabilities come from cve-correlated findings, linked to their
+    // component. A supply-chain / compliance artifact Burp doesn't produce.
+    // Read-only aggregation of existing findings.
+    if (path == "/api/export/sbom") {
+        if (!m_wiring.scanner)
+            return httpResponse(404, "application/json", "{}");
+
+        const QString proj = m_wiring.projectStore
+            ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
+
+        // Component registry keyed by "name@version" so tech-detected and
+        // cve-correlated findings naming the same product share one bom-ref.
+        struct Comp { QString name, version; };
+        QMap<QString, Comp> comps;
+        // bom-ref is case-folded so "nginx" and "Nginx" share one component and
+        // a vuln's affects[].ref resolves regardless of source casing.
+        auto refFor = [](const QString &name, const QString &version) {
+            const QString n = name.toLower();
+            return version.isEmpty() ? n : n + "@" + version;
+        };
+        auto addComp = [&](const QString &name, const QString &version) -> QString {
+            if (name.isEmpty()) return QString();
+            const QString key = refFor(name, version);
+            if (!comps.contains(key)) comps.insert(key, { name, version });
+            return key;
+        };
+
+        QRegularExpression reCve(QStringLiteral("CVE-\\d{4}-\\d{4,}"));
+        // "<product> <version>" anchored at the start of a candidate substring.
+        QRegularExpression reProd(QStringLiteral("^([A-Za-z][\\w.+\\-]*)\\s+([0-9][\\w.]*)"));
+        // Split a trailing version off a tech name: "Microsoft IIS 10.0" ->
+        // ("Microsoft IIS", "10.0"); "WordPress" -> ("WordPress", "").
+        QRegularExpression reTrailVer(QStringLiteral("^(.*?)\\s+([0-9][\\w.]*)$"));
+        // cve-correlated summaries come in several shapes. Extract product+version
+        // ONLY from a known structured position, never from free-text advisory
+        // prose (which would mint junk components like "before@2.15.0"):
+        //   "CVE.. in <prod> <ver> -- .."      (assess)         -> after " in "
+        //   "CVE.. — <prod> <ver> on h:p" (scan bridge)    -> after " — "
+        //   "CVE.. on h:p (<prod> <ver>) -- .."(servicevulns)   -> inside ( )
+        //   "CVE..: <free prose>"              (passive)        -> NO product
+        QRegularExpression reF4(QStringLiteral("^CVE-\\d{4}-\\d{4,}:\\s"));
+        auto parseProduct = [&](const QString &summary, QString &prod, QString &ver) -> bool {
+            if (reF4.match(summary).hasMatch()) return false;  // prose -> no product
+            QStringList cands;
+            int idx;
+            if ((idx = summary.indexOf(QStringLiteral(" in "))) >= 0)
+                cands << summary.mid(idx + 4);
+            if ((idx = summary.indexOf(QStringLiteral(" — "))) >= 0)
+                cands << summary.mid(idx + 3);   // " <em-dash> " is 3 UTF-16 units
+            const int lp = summary.indexOf('(');
+            const int rp = lp >= 0 ? summary.indexOf(')', lp + 1) : -1;
+            if (lp >= 0 && rp > lp) cands << summary.mid(lp + 1, rp - lp - 1);
+            for (const QString &c : cands) {
+                const auto m = reProd.match(c.trimmed());
+                if (m.hasMatch()) { prod = m.captured(1); ver = m.captured(2); return true; }
+            }
+            return false;
+        };
+
+        QJsonArray vulns;
+        for (const auto &f : m_wiring.scanner->findings(0)) {
+            if (f.kind == QLatin1String("tech-detected")) {
+                QString s = f.summary;
+                if (s.startsWith(QLatin1String("Detected "))) s = s.mid(9);
+                s = s.trimmed();
+                QString name = s, version;
+                const auto m = reTrailVer.match(s);
+                if (m.hasMatch()) { name = m.captured(1).trimmed(); version = m.captured(2); }
+                addComp(name, version);
+            } else if (f.kind == QLatin1String("cve-correlated")) {
+                const auto cm = reCve.match(f.summary);
+                if (!cm.hasMatch()) continue;
+                const QString cveId = cm.captured(0);
+                QString prod, ver;
+                parseProduct(f.summary, prod, ver);
+                const QString ref = addComp(prod, ver);
+
+                QJsonObject vuln;
+                vuln["id"] = cveId;
+                vuln["source"] = QJsonObject{
+                    { "name", "NVD" },
+                    { "url", "https://nvd.nist.gov/vuln/detail/" + cveId },
+                };
+                if (f.cvssScore > 0.0) {
+                    QJsonObject rating{
+                        { "score", f.cvssScore },
+                        { "severity", f.severity.toLower() },
+                        { "method", f.cvssVector.startsWith("CVSS:3.1") ? "CVSSv31" : "CVSSv3" },
+                    };
+                    if (!f.cvssVector.isEmpty()) rating["vector"] = f.cvssVector;
+                    vuln["ratings"] = QJsonArray{ rating };
+                }
+                vuln["description"] = f.summary;
+                if (!ref.isEmpty())
+                    vuln["affects"] = QJsonArray{ QJsonObject{{ "ref", ref }} };
+                vulns.append(vuln);
+            }
+        }
+
+        QJsonArray comparr;
+        for (auto it = comps.constBegin(); it != comps.constEnd(); ++it) {
+            QJsonObject c{
+                { "type", "application" },
+                { "bom-ref", it.key() },
+                { "name", it.value().name },
+            };
+            if (!it.value().version.isEmpty()) c["version"] = it.value().version;
+            comparr.append(c);
+        }
+
+        QJsonObject toolc{ { "vendor", "Bikebrainz" }, { "name", "Nullock" } };
+        const QString appVer = QCoreApplication::applicationVersion();
+        if (!appVer.isEmpty()) toolc["version"] = appVer;
+
+        QJsonObject meta{
+            { "timestamp", QDateTime::currentDateTimeUtc().toString(Qt::ISODate) },
+            { "tools", QJsonArray{ toolc } },
+            { "component", QJsonObject{{ "type", "application" }, { "name", proj }} },
+        };
+        QJsonObject root{
+            { "bomFormat", "CycloneDX" },
+            { "specVersion", "1.5" },
+            { "serialNumber", "urn:uuid:" + QUuid::createUuid().toString(QUuid::WithoutBraces) },
+            { "version", 1 },
+            { "metadata", meta },
+            { "components", comparr },
+        };
+        if (!vulns.isEmpty()) root["vulnerabilities"] = vulns;
+
+        return httpResponse(200, "application/vnd.cyclonedx+json; charset=utf-8",
                             QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 

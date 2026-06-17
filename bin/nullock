@@ -156,9 +156,10 @@ cmd_export() {
     case ${1:-} in
         nmap)      curl -sS "$API/api/export/nmap-xml" ;;
         sarif)     curl -sS "$API/api/export/sarif" ;;
+        sbom)      curl -sS "$API/api/export/sbom" ;;
         postman)   curl -sS "$API/api/export/postman" ;;
         har)       post /api/har/export | pp ;;
-        *) die "usage: nullock export {nmap|sarif|postman|har}" ;;
+        *) die "usage: nullock export {nmap|sarif|sbom|postman|har}" ;;
     esac
 }
 

@@ -1537,6 +1537,30 @@ Test-Endpoint "inventory rolls up ports + findings per host, risk-sorted" {
        -and (@($inv.hosts)[0].host -eq "198.51.100.21")
 }
 
+Write-Host "`n=== CycloneDX SBOM export ===" -ForegroundColor Cyan
+# Seed a cve-correlated finding (vsftpd 2.3.4 banner -> bridge), then export the
+# SBOM and assert the component + linked vulnerability. (PowerShell returns the
+# vnd.cyclonedx+json body as bytes -- decode before parsing.)
+Test-Endpoint "export sbom: CycloneDX with component + linked CVE" {
+    $sx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="203.0.113.40" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="21"><state state="open"/><service name="ftp" banner="220 (vsFTPd 2.3.4)"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $sx -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/export/sbom" -TimeoutSec 15 -Headers $hdr
+    $body = if ($r.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($r.Content) } else { $r.Content }
+    $sbom = $body | ConvertFrom-Json
+    $comp = @($sbom.components | Where-Object { $_.name -eq "vsftpd" -and $_.version -eq "2.3.4" })[0]
+    $vuln = @($sbom.vulnerabilities | Where-Object { $_.id -eq "CVE-2011-2523" })[0]
+    return ($sbom.bomFormat -eq "CycloneDX") -and ($sbom.specVersion -eq "1.5") `
+       -and ($null -ne $comp) -and ($comp.'bom-ref' -eq "vsftpd@2.3.4") `
+       -and ($null -ne $vuln) -and ($vuln.affects[0].ref -eq "vsftpd@2.3.4") `
+       -and ($vuln.ratings[0].severity -eq "critical")
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
