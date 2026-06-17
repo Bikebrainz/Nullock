@@ -628,6 +628,11 @@ cmd_grouped() {
     curl -sS --max-time 5 "$API/api/findings/grouped" | pp
 }
 
+cmd_inventory() {
+    # Host-centric attack-surface rollup: open ports/services + findings per host.
+    curl -sS --max-time 10 "$API/api/inventory" | pp
+}
+
 cmd_audit() {
     # nullock audit <url> [method] [body-file|-] [Header:Value ...]
     # nullock audit all [url1 url2 ...]      # sweep history + given urls
@@ -1517,6 +1522,9 @@ Above-Burp features (v4/v5):
                                          results to findings + CVEs, then assess
                                          every open web port (fingerprint, headers,
                                          methods, TLS) -- one point-at-host report
+  nullock inventory                      host-centric attack-surface rollup: open
+                                         ports/services, technologies, and finding
+                                         counts (by severity + max CVSS) per host
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1616,6 +1624,7 @@ case ${1:-help} in
     vulnscan)      shift; cmd_vulnscan "$@"      ;;
     scan-findings) shift; cmd_scanfindings "$@" ;;
     pipeline)      shift; cmd_pipeline "$@"     ;;
+    inventory)     shift; cmd_inventory "$@"    ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;

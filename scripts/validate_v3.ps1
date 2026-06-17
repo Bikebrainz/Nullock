@@ -1511,6 +1511,32 @@ Test-Endpoint "report html: structured, enriched, and XSS-safe" {
        -and ($html -match "&lt;script&gt;") -and (-not ($html -match "<script>alert\(9\)"))
 }
 
+Write-Host "`n=== Asset inventory ===" -ForegroundColor Cyan
+# Seed two hosts via nmap import + bridge, then assert the host-centric rollup
+# (open ports, severity rollup, risk-descending order). GET endpoint.
+Test-Endpoint "inventory rolls up ports + findings per host, risk-sorted" {
+    $ix = @'
+<?xml version="1.0"?>
+<nmaprun>
+  <host><address addr="198.51.100.21" addrtype="ipv4"/><ports>
+    <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+    <port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port>
+  </ports></host>
+  <host><address addr="198.51.100.22" addrtype="ipv4"/><ports>
+    <port protocol="tcp" portid="22"><state state="open"/><service name="ssh"/></port>
+  </ports></host>
+</nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $ix -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $inv = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/inventory" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    $a = @($inv.hosts | Where-Object { $_.host -eq "198.51.100.21" })[0]
+    return ($inv.ok -eq $true) -and ($inv.hostCount -ge 2) `
+       -and (@($a.openPorts).Count -eq 2) -and ($a.topSeverity -eq "high") -and ($a.maxCvss -ge 7.5) `
+       -and (@($a.kinds) -contains "exposed-database") `
+       -and (@($inv.hosts)[0].host -eq "198.51.100.21")
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

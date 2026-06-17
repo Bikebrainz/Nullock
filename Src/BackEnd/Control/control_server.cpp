@@ -1256,6 +1256,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/cookies"
             || p == "/api/project/templates"
             || p == "/api/findings/grouped"
+            || p == "/api/inventory"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -2997,6 +2998,121 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         QJsonObject root; root["groups"] = arr;
         return httpJson(200, root);
+    }
+
+    // ---- Asset inventory ---------------------------------------------
+    // GET /api/inventory -- host-centric attack-surface rollup. Merges the
+    // port scanner's open ports/services with the passive scanner's findings
+    // into one record per host (open ports, detected technologies, finding
+    // counts by severity, max CVSS, top severity, distinct kinds). Read-only
+    // aggregation of existing state -- no network, no probing. The natural
+    // "what do I know about each host" view after a scan + assessment.
+    if (path == "/api/inventory") {
+        struct HostAgg {
+            QMap<quint16, QString> ports;   // port -> service label
+            QSet<QString> services;
+            QSet<QString> techs;
+            int total = 0;
+            QMap<QString, int> bySev;
+            double maxCvss = 0.0;
+            QSet<QString> kinds;
+        };
+        QMap<QString, HostAgg> hosts;
+
+        // Merge key is the lower-cased host: DNS hostnames are case-insensitive,
+        // and the port scanner and passive scanner may differ in case. (Full
+        // IP<->hostname unification would need a resolver -- out of scope here.)
+        if (m_wiring.portScanner) {
+            for (const auto &r : m_wiring.portScanner->results()) {
+                if (r.status.toLower() != QLatin1String("open")) continue;
+                if (r.host.isEmpty()) continue;
+                HostAgg &a = hosts[r.host.toLower()];
+                a.ports.insert(r.port, r.service);
+                if (!r.service.isEmpty()) a.services.insert(r.service);
+            }
+        }
+        if (m_wiring.scanner) {
+            for (const auto &f : m_wiring.scanner->findings(0)) {
+                if (f.host.isEmpty()) continue;
+                HostAgg &a = hosts[f.host.toLower()];
+                ++a.total;
+                // Coalesce empty/blank severity to "info" so topSeverity is
+                // never empty for a host that has findings.
+                const QString sev = f.severity.trimmed().isEmpty()
+                    ? QStringLiteral("info") : f.severity.toLower();
+                a.bySev[sev]++;
+                if (f.cvssScore > a.maxCvss) a.maxCvss = f.cvssScore;
+                if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
+                if (f.kind == QLatin1String("tech-detected")) {
+                    QString s = f.summary;
+                    if (s.startsWith(QLatin1String("Detected "))) s = s.mid(9);
+                    if (!s.isEmpty()) a.techs.insert(s);
+                }
+            }
+        }
+
+        auto sevRank = [](const QString &s) -> int {
+            if (s == "critical") return 5;
+            if (s == "high")     return 4;
+            if (s == "medium")   return 3;
+            if (s == "low")      return 2;
+            if (s == "info")     return 1;
+            return 0;
+        };
+
+        // Sort hosts by risk (max CVSS desc, then finding count desc). Precompute
+        // the sort keys so the comparator does read-only lookups (no QMap
+        // operator[] inserting a default into the map mid-sort).
+        QHash<QString, double> cvssOf;
+        QHash<QString, int> totalOf;
+        for (auto it = hosts.constBegin(); it != hosts.constEnd(); ++it) {
+            cvssOf[it.key()] = it.value().maxCvss;
+            totalOf[it.key()] = it.value().total;
+        }
+        QStringList hostKeys = hosts.keys();
+        std::sort(hostKeys.begin(), hostKeys.end(), [&](const QString &x, const QString &y) {
+            if (cvssOf.value(x) != cvssOf.value(y)) return cvssOf.value(x) > cvssOf.value(y);
+            return totalOf.value(x) > totalOf.value(y);
+        });
+
+        QJsonArray arr;
+        int totalFindings = 0, totalOpenPorts = 0;
+        for (const QString &hk : hostKeys) {
+            const HostAgg &a = hosts[hk];
+            QJsonArray ports;
+            for (auto it = a.ports.begin(); it != a.ports.end(); ++it)
+                ports.append(QJsonObject{{ "port", it.key() }, { "service", it.value() }});
+            QJsonObject bySev;
+            QString topSev; int topR = 0;
+            for (auto it = a.bySev.begin(); it != a.bySev.end(); ++it) {
+                bySev[it.key()] = it.value();
+                if (sevRank(it.key()) > topR) { topR = sevRank(it.key()); topSev = it.key(); }
+            }
+            QStringList svc = a.services.values();  svc.sort();
+            QStringList tech = a.techs.values();    tech.sort();
+            QStringList kinds = a.kinds.values();   kinds.sort();
+            arr.append(QJsonObject{
+                { "host", hk },
+                { "openPorts", ports },
+                { "services", QJsonArray::fromStringList(svc) },
+                { "technologies", QJsonArray::fromStringList(tech) },
+                { "findingsTotal", a.total },
+                { "bySeverity", bySev },
+                { "maxCvss", a.maxCvss },
+                { "topSeverity", topSev },
+                { "kinds", QJsonArray::fromStringList(kinds) },
+            });
+            totalFindings += a.total;
+            totalOpenPorts += a.ports.size();
+        }
+
+        return httpJson(200, QJsonObject{
+            { "ok", true },
+            { "hostCount", hostKeys.size() },
+            { "totalOpenPorts", totalOpenPorts },
+            { "totalFindings", totalFindings },
+            { "hosts", arr },
+        });
     }
 
     // ---- AI payload generator ----------------------------------------
