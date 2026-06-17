@@ -5971,6 +5971,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QUrl u(url);
         if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
             return okJson({{ "ok", false }, { "error", "valid url required" }});
+        if (u.scheme() != "http" && u.scheme() != "https")
+            return okJson({{ "ok", false }, { "error", "url scheme must be http or https" }});
 
         Nullock::Core::RobotsRecon::Request rr;
         rr.host = u.host();
