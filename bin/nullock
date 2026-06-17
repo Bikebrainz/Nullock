@@ -707,6 +707,12 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_assess() {
+    # nullock assess <url>
+    [[ -n ${1-} ]] || die "usage: nullock assess <url>"
+    post /api/assess "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_takeover() {
     # nullock takeover <host-or-url>
     [[ -n ${1-} ]] || die "usage: nullock takeover <host-or-url>"
@@ -1463,6 +1469,9 @@ Above-Burp features (v4/v5):
   nullock takeover <host>                subdomain-takeover -- matches dangling
                                          service fingerprints (GitHub Pages, S3,
                                          Heroku, Azure, Fastly, Shopify...)
+  nullock assess <url>                   one-call host assessment -- tech
+                                         fingerprint+CVE, header/CSP audit, HTTP
+                                         method audit, TLS inspect; aggregated
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1545,6 +1554,7 @@ case ${1:-help} in
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;
     takeover)      shift; cmd_takeover "$@"      ;;
+    assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

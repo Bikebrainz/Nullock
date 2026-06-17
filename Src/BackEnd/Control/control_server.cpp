@@ -2348,6 +2348,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
+        "/api/assess",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4811,6 +4812,88 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- One-call host assessment ------------------------------------
+    // POST /api/assess { url }
+    //   Runs the safe identification battery against a host -- tech
+    //   fingerprint (+CVE), security-header/CSP audit, HTTP method audit, and
+    //   (for https) TLS inspection -- and aggregates the findings. Read-only
+    //   recon/assessment; the active injection battery stays opt-in via /audit.
+    if (path == "/api/assess") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        const QString host = u.host();
+        const int port = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool tls = (u.scheme() == "https");
+        const QString basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                                 ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QString query = u.query(QUrl::FullyEncoded);
+
+        auto sevFor = [](double cvss) {
+            if (cvss >= 9.0) return QStringLiteral("critical");
+            if (cvss >= 7.0) return QStringLiteral("high");
+            if (cvss >= 4.0) return QStringLiteral("medium");
+            return QStringLiteral("low");
+        };
+        QJsonArray findings;
+        QMap<QString, int> bySeverity;
+        auto addF = [&](const QString &sev, const QString &kind, const QString &title, const QString &detail) {
+            findings.append(QJsonObject{{ "severity", sev }, { "kind", kind }, { "title", title }});
+            bySeverity[sev] = bySeverity.value(sev) + 1;
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, sev, kind, title, detail, host, url);
+        };
+
+        // 1) tech fingerprint (+ CVE correlation)
+        QJsonArray techs;
+        {
+            Nullock::Core::HttpFingerprint::Request fr;
+            fr.host = host; fr.port = port; fr.tls = tls; fr.basePath = basePath; fr.query = query;
+            const auto fres = Nullock::Core::HttpFingerprint::fingerprint(fr);
+            for (const auto &t : fres.tech) {
+                techs.append(t.name + (t.version.isEmpty() ? "" : " " + t.version));
+                addF("info", "tech-detected",
+                     "Detected " + t.name + (t.version.isEmpty() ? "" : " " + t.version),
+                     "fingerprint source: " + t.source);
+                if (!t.cveKind.isEmpty() && !t.version.isEmpty())
+                    for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + " " + t.version))
+                        addF(sevFor(m.cvss), "cve-correlated",
+                             QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
+                             "fix " + m.fixVersion + " | " + m.reference);
+            }
+        }
+        // 2) security headers / CSP
+        {
+            Nullock::Core::HeaderAudit::Request hr;
+            hr.host = host; hr.port = port; hr.tls = tls; hr.basePath = basePath; hr.query = query;
+            for (const auto &f : Nullock::Core::HeaderAudit::test(hr).findings)
+                addF(f.severity, f.key, f.title, f.detail);
+        }
+        // 3) HTTP methods
+        {
+            Nullock::Core::MethodAudit::Request mr;
+            mr.host = host; mr.port = port; mr.tls = tls; mr.basePath = basePath; mr.query = query;
+            for (const auto &f : Nullock::Core::MethodAudit::audit(mr).findings)
+                addF(f.severity, f.kind, "HTTP methods -- " + f.detail, f.detail);
+        }
+        // 4) TLS (https only)
+        if (tls) {
+            Nullock::Core::TlsInspect::Request tir;
+            tir.host = host; tir.port = port; tir.probeLegacyProtocols = false;
+            for (const auto &f : Nullock::Core::TlsInspect::inspect(tir).findings)
+                addF(f.severity, f.kind, "TLS -- " + f.detail, f.detail);
+        }
+
+        QJsonObject sevCounts;
+        for (auto it = bySeverity.begin(); it != bySeverity.end(); ++it) sevCounts[it.key()] = it.value();
+        return okJson({{ "ok", true }, { "host", host },
+                       { "tech", techs },
+                       { "findingCount", findings.size() },
+                       { "bySeverity", sevCounts },
+                       { "findings", findings }});
     }
 
     // ---- Subdomain-takeover detection --------------------------------

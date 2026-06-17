@@ -473,6 +473,31 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== One-call host assessment ===" -ForegroundColor Cyan
+Test-Endpoint "assess aggregates fingerprint + header + method findings in one call" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 40;$i++){ try{
+            $c=$l.GetContext(); $m=$c.Request.HttpMethod; $r=$c.Response; $b="ok"
+            if($m -eq "OPTIONS"){ try { $r.Headers["Allow"]="GET, POST, PUT, DELETE, TRACE" } catch {}; $b="" }
+            elseif($m -eq "TRACE"){ $hdrs=""; foreach($k in $c.Request.Headers.AllKeys){ $hdrs += "$k`: $($c.Request.Headers[$k])`r`n" }; $b="TRACE / HTTP/1.1`r`n$hdrs"; $r.ContentType="message/http" }
+            else { try { $r.Headers["X-Powered-By"]="PHP/7.4.3" } catch {}; try { $r.Headers.Add("Set-Cookie","wordpress_logged_in=x") } catch {}; $b="<html><head><meta name=`"generator`" content=`"WordPress 5.8.1`"></head><body>/wp-content/</body></html>"; $r.ContentType="text/html" }
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=200; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/assess" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        $k = $r.findings.kind
+        return ($r.findingCount -ge 5) -and ($k -contains 'tech-detected') -and ($k -contains 'dangerous-http-methods') -and (($k -contains 'csp-missing') -or ($k -contains 'clickjacking-missing'))
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Subdomain takeover ===" -ForegroundColor Cyan
 Test-Endpoint "takeover flags a dangling GitHub Pages fingerprint, clean on a real site" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000
