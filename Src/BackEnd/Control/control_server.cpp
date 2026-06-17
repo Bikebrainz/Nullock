@@ -739,6 +739,10 @@ QByteArray ControlServer::staticResponse(const QString &path) const {
     return httpResponse(200, mimeFor(path), f.readAll());
 }
 
+bool ControlServer::blocksScope(const QString &host) const {
+    return m_wiring.proxy && !host.isEmpty() && !m_wiring.proxy->isInScope(host);
+}
+
 QByteArray ControlServer::buildSnapshot() const {
     QJsonObject root;
     root["seq"] = static_cast<qint64>(m_seq);
@@ -2321,6 +2325,37 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
 
+    // ---- ScopeGuard: one authorization gate for every ACTIVE endpoint ----
+    // Active tests fire payloads / scans at a target host. Refuse any whose
+    // host the project marks out of scope, so a malicious local page can't
+    // pivot through us to attack arbitrary hosts, and an operator can't
+    // accidentally scan a host they aren't authorized for. No behaviour change
+    // when no scope is configured (isInScope allows an empty in-scope list);
+    // it bites only once in/out-of-scope rules exist. Multi-target and stateful
+    // endpoints (portscan, audit/all, chain/run, intruder, repeater, authz-test)
+    // each apply blocksScope() at their own target sites below.
+    static const QSet<QString> kActivePaths = {
+        "/api/sqli/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
+        "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
+        "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
+        "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
+        "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
+        "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
+        "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
+    };
+    if (kActivePaths.contains(path)) {
+        QString tgtHost = bodyJson.value("host").toString();
+        if (tgtHost.isEmpty()) {
+            const QUrl tu(bodyJson.value("url").toString());
+            if (tu.isValid()) tgtHost = tu.host();
+        }
+        if (blocksScope(tgtHost))
+            return okJson({
+                { "ok", false }, { "scopeBlocked", true },
+                { "error", "host '" + tgtHost + "' is out of scope; add it via "
+                           "/api/scope/in/add (or clear out-of-scope rules) to run active tests" } });
+    }
+
     if (path == "/api/proxy/toggle") {
         if (m_wiring.proxy) {
             if (m_wiring.proxy->isRunning()) m_wiring.proxy->stop();
@@ -2430,6 +2465,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
     if (path == "/api/repeater/send") {
+        if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))
+            return okJson({{ "ok", false }, { "scopeBlocked", true },
+                { "error", "repeater target '" + m_wiring.repeater->host() + "' is out of scope" }});
         // Defer: Repeater::send blocks on network. Run it via singleShot so
         // the HTTP response returns immediately and the UI's snapshot poll
         // picks up the result when it's ready.
@@ -2498,6 +2536,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson();
     }
     if (path == "/api/intruder/start") {
+        if (m_wiring.intruder && blocksScope(m_wiring.intruder->host()))
+            return okJson({{ "ok", false }, { "scopeBlocked", true },
+                { "error", "intruder target '" + m_wiring.intruder->host() + "' is out of scope" }});
         if (m_wiring.intruder) m_wiring.intruder->start();
         return okJson();
     }
@@ -2991,6 +3032,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         if (baseReq.host.isEmpty())
             return okJson({{ "ok", false }, { "error", "row not found" }});
+        if (blocksScope(baseReq.host))   // ScopeGuard: no authz replay off-scope
+            return okJson({{ "ok", false }, { "scopeBlocked", true },
+                           { "error", "row's host '" + baseReq.host + "' is out of scope" }});
 
         const QJsonArray ids = bodyJson.value("identities").toArray();
         if (ids.isEmpty())
@@ -4498,9 +4542,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         limit = qBound(1, limit, 200);
 
         QList<AuditTarget> targets;
+        int scopeSkipped = 0;
         auto fromUrl = [&](const QString &urlStr) {
             const QUrl uu(urlStr);
             if (!uu.isValid() || uu.host().isEmpty()) return;
+            // ScopeGuard: never run the active battery against an out-of-scope host.
+            if (blocksScope(uu.host())) { ++scopeSkipped; return; }
             AuditTarget t;
             t.host = uu.host();
             t.port = uu.port(uu.scheme() == "https" ? 443 : 80);
@@ -4525,6 +4572,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 const bool hasQuery = r->path.contains('?');
                 const bool hasBody  = !r->body.isEmpty();
                 if (!hasQuery && !hasBody) continue;
+                if (blocksScope(r->host)) { ++scopeSkipped; continue; }   // ScopeGuard
                 AuditTarget t;
                 t.host = r->host; t.port = r->port;
                 // Use the captured response's real TLS flag, not a port guess.
@@ -4557,7 +4605,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             }
             auditAllInFlight.storeRelease(0);          // sweep done; allow the next
         });
-        return okJson({{ "queued", static_cast<int>(targets.size()) }});
+        return okJson({{ "queued", static_cast<int>(targets.size()) },
+                       { "scopeSkipped", scopeSkipped }});
     }
 
     // ---- Parameter mining --------------------------------------------
@@ -5746,6 +5795,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (st.host.isEmpty() || st.request.isEmpty())
                 return okJson({{ "ok", false },
                                { "error", "each step needs host + request" }});
+            if (blocksScope(st.host))   // ScopeGuard: no chained requests off-scope
+                return okJson({{ "ok", false }, { "scopeBlocked", true },
+                               { "error", "step host '" + st.host + "' is out of scope" }});
             for (const QJsonValue &ev : so.value("extract").toArray()) {
                 const QJsonObject eo = ev.toObject();
                 Nullock::Core::ChainRunner::Extract ex;
@@ -5911,6 +5963,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         // Hard cap on total work. host * port can blow up fast: a /16
         // (~65k hosts) with full1024 = ~67M probes. Refuse anything past
         // 100k tasks; user can re-issue smaller chunks.
+        // ScopeGuard: drop out-of-scope hosts so a scan can't be aimed off-scope.
+        // Partial overlap proceeds with the in-scope subset; all-out is refused.
+        {
+            const bool hadTarget = !sr.host.isEmpty() || !sr.hosts.isEmpty();
+            if (blocksScope(sr.host)) sr.host.clear();
+            QStringList kept;
+            for (const QString &h : sr.hosts) if (!blocksScope(h)) kept.append(h);
+            sr.hosts = kept;
+            if (hadTarget && sr.host.isEmpty() && sr.hosts.isEmpty())
+                return okJson({{ "ok", false }, { "scopeBlocked", true },
+                    { "error", "all scan targets are out of scope; add them to Scope first" }});
+        }
+
         constexpr int kMaxScanTasks = 100'000;
         const qint64 tasks = static_cast<qint64>(sr.hosts.size()) * sr.ports.size();
         if (tasks > kMaxScanTasks) {

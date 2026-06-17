@@ -60,6 +60,23 @@ Test-Endpoint "snapshot has .oast field with port" {
     return ($j.oast -and $j.oast.port -gt 0)
 }
 
+Write-Host "`n=== ScopeGuard ===" -ForegroundColor Cyan
+Test-Endpoint "active tests + scans refuse out-of-scope hosts, run again once back in scope" {
+    function Sc($p,$g){ Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/$p" -Headers $hdr -Body (@{glob=$g}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10 | Out-Null }
+    function Sqli { (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/sqli/test" -Headers $hdr -Body (@{url="http://127.0.0.1:59999/x";param="id"}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 15).Content | ConvertFrom-Json }
+    function Psn { (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/portscan/start" -Headers $hdr -Body (@{host="127.0.0.1";preset="discovery"}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 15).Content | ConvertFrom-Json }
+    try {
+        $allow = Sqli                                  # no scope -> allowed (runs, fails to connect)
+        Sc "scope/out/add" "127.0.0.1"; Start-Sleep -Milliseconds 400
+        $blkSqli = Sqli
+        $blkPsn  = Psn
+        return ($allow.scopeBlocked -ne $true) -and ($blkSqli.scopeBlocked -eq $true) -and ($blkPsn.scopeBlocked -eq $true)
+    } finally {
+        # MUST restore -- every other test targets 127.0.0.1.
+        Sc "scope/out/remove" "127.0.0.1"; Start-Sleep -Milliseconds 300
+    }
+}
+
 Write-Host "`n=== /api/project/templates ===" -ForegroundColor Cyan
 Test-Endpoint "templates endpoint lists templates" {
     $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/project/templates" -Headers $hdr -TimeoutSec 5
