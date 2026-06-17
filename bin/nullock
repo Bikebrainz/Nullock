@@ -707,6 +707,12 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_methods() {
+    # nullock methods <url>
+    [[ -n ${1-} ]] || die "usage: nullock methods <url>"
+    post /api/methods/test "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_fingerprint() {
     # nullock fingerprint <url>
     [[ -n ${1-} ]] || die "usage: nullock fingerprint <url>"
@@ -1444,6 +1450,8 @@ Above-Burp features (v4/v5):
   nullock fingerprint <url>              active tech detection -- server/CMS/
                                          framework/JS-lib + version from headers,
                                          cookies, body; CVE-correlates versions
+  nullock methods <url>                  HTTP method audit -- flags dangerous
+                                         write/WebDAV methods + TRACE/XST (read-only)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1524,6 +1532,7 @@ case ${1:-help} in
     vulnscan)      shift; cmd_vulnscan "$@"      ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
+    methods)       shift; cmd_methods "$@"       ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

@@ -38,6 +38,7 @@
 #include "service_vulns.hpp"
 #include "tls_inspect.hpp"
 #include "http_fingerprint.hpp"
+#include "method_audit.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2345,7 +2346,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
-        "/api/tls/inspect", "/api/fingerprint",
+        "/api/tls/inspect", "/api/fingerprint", "/api/methods/test",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4809,6 +4810,47 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- HTTP method audit -------------------------------------------
+    // POST /api/methods/test { url, headers? }
+    //   Reads OPTIONS Allow + a TRACE echo probe; flags dangerous write/WebDAV
+    //   methods and Cross-Site Tracing. Read-only. CWE-650.
+    if (path == "/api/methods/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::MethodAudit::Request mr;
+        mr.host = u.host();
+        mr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        mr.tls  = (u.scheme() == "https");
+        mr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        mr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject mhdrs = bodyJson.value("headers").toObject();
+        for (auto it = mhdrs.begin(); it != mhdrs.end(); ++it)
+            mr.headers.append({ it.key(), it.value().toString() });
+
+        const auto mres = Nullock::Core::MethodAudit::audit(mr);
+
+        QJsonArray findings;
+        for (const auto &f : mres.findings) {
+            findings.append(QJsonObject{
+                { "kind", f.kind }, { "severity", f.severity }, { "detail", f.detail } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, f.severity, f.kind,
+                    QString("HTTP methods on %1 -- %2").arg(mr.basePath, f.detail),
+                    "allowed: " + mres.allowed.join(", "), mr.host, url);
+        }
+        return okJson({{ "ok", mres.error.isEmpty() },
+                       { "error", mres.error },
+                       { "optionsStatus", mres.optionsStatus },
+                       { "allowed", QJsonArray::fromStringList(mres.allowed) },
+                       { "traceEnabled", mres.traceEnabled },
+                       { "findingCount", static_cast<int>(mres.findings.size()) },
+                       { "findings", findings }});
     }
 
     // ---- HTTP technology fingerprint ---------------------------------

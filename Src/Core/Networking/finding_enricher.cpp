@@ -185,6 +185,11 @@ const QHash<QString, Mapping> &table() {
         // ---- CRLF / HTTP response splitting --------------------------
         { "crlf-injection", { "CWE-113", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip or reject CR/LF in any user input that reaches a response header; use the framework's header API, never string concatenation." } },
 
+        // ---- HTTP method exposure ------------------------------------
+        { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Disable write methods (PUT/DELETE/PATCH) unless required; enforce auth + an allow-list per route." } },
+        { "webdav-enabled",         { "CWE-650", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:N", "", "Disable WebDAV if unused; it often allows file upload/overwrite." } },
+        { "http-trace-enabled",     { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Disable the TRACE method to prevent Cross-Site Tracing." } },
+
         // ---- TLS / certificate weaknesses ----------------------------
         { "tls-expired",              { "CWE-298", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Renew the certificate; automate renewal so it can't lapse." } },
         { "tls-cert-expiring-soon",   { "CWE-298", "A02:2021-Cryptographic Failures", 2.0, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Renew before expiry; automate renewal." } },

@@ -473,6 +473,32 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== HTTP method audit ===" -ForegroundColor Cyan
+Test-Endpoint "method audit flags write/WebDAV methods + TRACE (XST)" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 30;$i++){ try{
+            $c=$l.GetContext(); $m=$c.Request.HttpMethod; $r=$c.Response; $b="ok"
+            if($m -eq "OPTIONS"){ try { $r.Headers["Allow"]="GET, POST, PUT, DELETE, TRACE, PROPFIND" } catch {}; $b="" }
+            elseif($m -eq "TRACE"){
+                $hdrs=""; foreach($k in $c.Request.Headers.AllKeys){ $hdrs += "$k`: $($c.Request.Headers[$k])`r`n" }
+                $b="TRACE $($c.Request.Url.AbsolutePath) HTTP/1.1`r`n$hdrs"; $r.ContentType="message/http"
+            }
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=200; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/methods/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        return ($r.findings.kind -contains 'dangerous-http-methods') -and ($r.findings.kind -contains 'webdav-enabled') -and ($r.findings.kind -contains 'http-trace-enabled')
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== HTTP technology fingerprint ===" -ForegroundColor Cyan
 Test-Endpoint "fingerprint detects server/CMS/lang/lib + upgrades WordPress version from meta" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000
