@@ -18,6 +18,8 @@ add_library(Networking STATIC
     http_fingerprint.hpp
     method_audit.cpp
     method_audit.hpp
+    takeover_scan.cpp
+    takeover_scan.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp

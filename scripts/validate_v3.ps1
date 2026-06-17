@@ -473,6 +473,29 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Subdomain takeover ===" -ForegroundColor Cyan
+Test-Endpoint "takeover flags a dangling GitHub Pages fingerprint, clean on a real site" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 30;$i++){ try{
+            $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $r=$c.Response
+            $b = if($p -eq "/vuln"){ "<html><body>There isn't a GitHub Pages site here.</body></html>" } else { "<html><body>Welcome to my real website</body></html>" }
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=404; $r.ContentType="text/html"; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        $v = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/takeover/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/vuln" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        $s = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/takeover/test" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/safe" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        return ($v.hitCount -ge 1) -and ($v.hits[0].service -eq 'GitHub Pages') -and ($s.hitCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== HTTP method audit ===" -ForegroundColor Cyan
 Test-Endpoint "method audit flags write/WebDAV methods + TRACE (XST)" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000

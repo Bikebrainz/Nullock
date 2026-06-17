@@ -707,6 +707,14 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_takeover() {
+    # nullock takeover <host-or-url>
+    [[ -n ${1-} ]] || die "usage: nullock takeover <host-or-url>"
+    local t=$1
+    if [[ $t == http*://* ]]; then post /api/takeover/test "{\"url\":$(jsonq "$t")}" | pp
+    else post /api/takeover/test "{\"host\":$(jsonq "$t")}" | pp; fi
+}
+
 cmd_methods() {
     # nullock methods <url>
     [[ -n ${1-} ]] || die "usage: nullock methods <url>"
@@ -1452,6 +1460,9 @@ Above-Burp features (v4/v5):
                                          cookies, body; CVE-correlates versions
   nullock methods <url>                  HTTP method audit -- flags dangerous
                                          write/WebDAV methods + TRACE/XST (read-only)
+  nullock takeover <host>                subdomain-takeover -- matches dangling
+                                         service fingerprints (GitHub Pages, S3,
+                                         Heroku, Azure, Fastly, Shopify...)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1533,6 +1544,7 @@ case ${1:-help} in
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;
+    takeover)      shift; cmd_takeover "$@"      ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

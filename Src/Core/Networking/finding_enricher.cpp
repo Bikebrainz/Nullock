@@ -185,6 +185,9 @@ const QHash<QString, Mapping> &table() {
         // ---- CRLF / HTTP response splitting --------------------------
         { "crlf-injection", { "CWE-113", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip or reject CR/LF in any user input that reaches a response header; use the framework's header API, never string concatenation." } },
 
+        // ---- Subdomain takeover --------------------------------------
+        { "subdomain-takeover", { "CWE-284", "A05:2021-Security Misconfiguration", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N", "", "Remove the dangling DNS record, or re-claim the referenced service; audit CNAMEs for de-provisioned targets." } },
+
         // ---- HTTP method exposure ------------------------------------
         { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Disable write methods (PUT/DELETE/PATCH) unless required; enforce auth + an allow-list per route." } },
         { "webdav-enabled",         { "CWE-650", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:N", "", "Disable WebDAV if unused; it often allows file upload/overwrite." } },

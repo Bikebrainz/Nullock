@@ -39,6 +39,7 @@
 #include "tls_inspect.hpp"
 #include "http_fingerprint.hpp"
 #include "method_audit.hpp"
+#include "takeover_scan.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2346,7 +2347,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
-        "/api/tls/inspect", "/api/fingerprint", "/api/methods/test",
+        "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4809,6 +4810,43 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Subdomain-takeover detection --------------------------------
+    // POST /api/takeover/test { url | host }
+    //   Fetches the host and matches dangling-service fingerprints. CWE-284.
+    if (path == "/api/takeover/test") {
+        QString host = bodyJson.value("host").toString();
+        Nullock::Core::TakeoverScan::Request tr;
+        if (!host.isEmpty()) { tr.host = host; tr.tls = bodyJson.value("tls").toBool(true);
+                               tr.port = bodyJson.value("port").toInt(tr.tls ? 443 : 80); }
+        else {
+            const QUrl u(bodyJson.value("url").toString());
+            if (!u.isValid() || u.host().isEmpty())
+                return okJson({{ "ok", false }, { "error", "valid url or host required" }});
+            tr.host = u.host(); tr.tls = (u.scheme() != "http");
+            tr.port = u.port(tr.tls ? 443 : 80);
+            tr.basePath = u.path(QUrl::FullyEncoded).isEmpty() ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+            host = tr.host;
+        }
+
+        const auto tres = Nullock::Core::TakeoverScan::scan(tr);
+        QJsonArray hits;
+        for (const auto &h : tres.hits) {
+            hits.append(QJsonObject{
+                { "service", h.service }, { "evidence", h.evidence }, { "confidence", h.confidence } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, h.confidence == "high" ? "high" : "medium",
+                    "subdomain-takeover",
+                    QString("Possible subdomain takeover on %1 -- dangling %2").arg(host, h.service),
+                    "matched fingerprint: " + h.evidence + " (confirm the CNAME points to the unclaimed service)",
+                    host, host);
+        }
+        return okJson({{ "ok", tres.error.isEmpty() },
+                       { "error", tres.error },
+                       { "status", tres.status },
+                       { "hitCount", static_cast<int>(tres.hits.size()) },
                        { "hits", hits }});
     }
 
