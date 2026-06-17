@@ -42,14 +42,12 @@ const QList<Sig> &sigs() {
         { "Citrix NetScaler",   "lb",    "via", "NS-CACHE", "" },
         { "Citrix NetScaler",   "lb",    "", "", "citrix_ns_id" },
         { "Citrix NetScaler",   "lb",    "", "", "NSC_" },
-        { "Fastly",             "cdn",   "x-served-by", "cache-", "" },
         { "Fastly",             "cdn",   "x-fastly-request-id", "", "" },
         { "Varnish",            "cache", "x-varnish", "", "" },
         { "Barracuda",          "waf",   "", "", "barra_counter_session" },
         { "Azure Front Door",   "cdn",   "x-azure-ref", "", "" },
         { "Microsoft Edge/CDN", "cdn",   "x-msedge-ref", "", "" },
         { "Google Frontend",    "cdn",   "server", "Google Frontend", "" },
-        { "Google Frontend",    "cdn",   "server", "gws", "" },
         { "DDoS-Guard",         "waf",   "server", "ddos-guard", "" },
         { "StackPath",          "cdn",   "x-hw", "", "" },
         { "ModSecurity",        "waf",   "server", "mod_security", "" },
@@ -58,9 +56,15 @@ const QList<Sig> &sigs() {
 }
 
 QByteArray buildGet(const Request &req) {
-    QByteArray out = "GET " + (req.basePath.isEmpty() ? QByteArray("/") : req.basePath.toUtf8())
-                   + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
+    // Self-protect the request line + Host against CR/LF regardless of caller
+    // (the endpoint already FullyEncodes the path, but the helper shouldn't rely
+    // on that).
+    QString path = req.basePath.isEmpty() ? QStringLiteral("/") : req.basePath;
+    path.remove('\r'); path.remove('\n');
+    QString host = req.host;
+    host.remove('\r'); host.remove('\n');
+    QByteArray out = "GET " + path.toUtf8() + " HTTP/1.1\r\n";
+    out += "Host: " + host.toUtf8() + "\r\n";
     out += "User-Agent: Nullock/waf-detect\r\n";
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
@@ -76,8 +80,6 @@ QByteArray buildGet(const Request &req) {
 } // namespace
 
 QList<Detection> detectFromHeaders(const QList<QPair<QString, QString>> &headers) {
-    // Collect Set-Cookie values + a name->joinedValue map (case-insensitive).
-    QStringList cookies;
     auto headerVal = [&](const QString &name) -> QString {
         QStringList vals;
         for (const auto &h : headers)
@@ -89,13 +91,20 @@ QList<Detection> detectFromHeaders(const QList<QPair<QString, QString>> &headers
             if (h.first.compare(name, Qt::CaseInsensitive) == 0) return true;
         return false;
     };
+    // Match cookie NAMES only (substring before the first '='), not the whole
+    // Set-Cookie line -- so a needle like "NSC_" can't false-match a cookie
+    // *value* or attribute.
+    QStringList cookieNames;
     for (const auto &h : headers)
-        if (h.first.compare(QLatin1String("set-cookie"), Qt::CaseInsensitive) == 0)
-            cookies << h.second;
-    const QString cookieBlob = cookies.join("\n");
+        if (h.first.compare(QLatin1String("set-cookie"), Qt::CaseInsensitive) == 0) {
+            const QString name = h.second.section('=', 0, 0).trimmed();
+            if (!name.isEmpty()) cookieNames << name;
+        }
 
     QList<Detection> out;
     QSet<QString> seen;
+    // Rows are ordered strongest-evidence-first per product; the seen-check
+    // dedups by product name and keeps that first (strongest) match's evidence.
     for (const Sig &s : sigs()) {
         if (seen.contains(QString::fromLatin1(s.name))) continue;  // already detected this product
         bool matched = false;
@@ -115,9 +124,12 @@ QList<Detection> detectFromHeaders(const QList<QPair<QString, QString>> &headers
             }
         } else if (s.cookieNeedle && *s.cookieNeedle) {
             const QString needle = QString::fromLatin1(s.cookieNeedle);
-            if (cookieBlob.contains(needle, Qt::CaseInsensitive)) {
-                matched = true;
-                evidence = "Set-Cookie " + needle;
+            for (const QString &cn : cookieNames) {
+                if (cn.contains(needle, Qt::CaseInsensitive)) {
+                    matched = true;
+                    evidence = "cookie " + cn.left(40);
+                    break;
+                }
             }
         }
         if (matched) {
