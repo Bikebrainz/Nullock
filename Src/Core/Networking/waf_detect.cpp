@@ -51,6 +51,21 @@ const QList<Sig> &sigs() {
         { "DDoS-Guard",         "waf",   "server", "ddos-guard", "" },
         { "StackPath",          "cdn",   "x-hw", "", "" },
         { "ModSecurity",        "waf",   "server", "mod_security", "" },
+        // --- extended coverage (vendor-unique header/cookie sigs) ---
+        { "FortiWeb",           "waf",   "", "", "FORTIWAFSID" },
+        { "Reblaze",            "waf",   "", "", "rbzid" },
+        { "PerimeterX / HUMAN", "waf",   "", "", "_pxhd" },
+        { "DataDome",           "waf",   "", "", "datadome" },
+        { "Yundun",             "waf",   "", "", "yd_cookie" },
+        { "Qrator",             "waf",   "server", "QRATOR", "" },
+        { "Cloudbric",          "waf",   "server", "Cloudbric", "" },
+        { "Netlify",            "cdn",   "x-nf-request-id", "", "" },
+        { "Vercel",             "cdn",   "x-vercel-id", "", "" },
+        { "Section.io",         "cdn",   "section-io-id", "", "" },
+        { "KeyCDN",             "cdn",   "server", "keycdn-engine", "" },
+        { "BunnyCDN",           "cdn",   "server", "BunnyCDN", "" },
+        { "Edgecast",           "cdn",   "server", "ECAcc", "" },
+        { "CacheFly",           "cdn",   "server", "CacheFly", "" },
     };
     return t;
 }
