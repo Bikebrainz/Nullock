@@ -125,6 +125,41 @@ struct AuditTarget {
     QString url;            // display URL for findings
 };
 
+// Severity-weighted security posture grade. Shared by /api/posture and the HTML
+// report so the score/grade can't drift between them. Blank severity is
+// coalesced to "info" (matching the read-only reporting endpoints).
+struct PostureGrade {
+    QString grade;
+    int score = 100;
+    int penalty = 0;
+    int total = 0;
+    QMap<QString, int> bySeverity;
+};
+PostureGrade computePostureGrade(const QList<Nullock::Core::Finding> &findings) {
+    auto penaltyFor = [](const QString &s) -> int {
+        if (s == "critical") return 40;
+        if (s == "high")     return 15;
+        if (s == "medium")   return 5;
+        if (s == "low")      return 1;
+        return 0; // info / unknown
+    };
+    PostureGrade g;
+    g.total = static_cast<int>(findings.size());
+    for (const auto &f : findings) {
+        const QString t = f.severity.trimmed().toLower();  // trim too, so " high " weights as high
+        const QString sev = t.isEmpty() ? QStringLiteral("info") : t;
+        g.bySeverity[sev]++;
+        g.penalty += penaltyFor(sev);
+    }
+    g.score = qMax(0, 100 - g.penalty);
+    g.grade = g.score >= 90 ? QStringLiteral("A")
+            : g.score >= 80 ? QStringLiteral("B")
+            : g.score >= 70 ? QStringLiteral("C")
+            : g.score >= 60 ? QStringLiteral("D")
+                            : QStringLiteral("F");
+    return g;
+}
+
 // Shared "safe identification" battery for one web target: tech fingerprint
 // (+CVE correlation), security-header/CSP audit, HTTP-method audit, and (for
 // https) TLS inspection. Emits each finding into the passive scanner and
@@ -3284,12 +3319,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QList<Nullock::Core::Finding> findings;
         if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
 
-        auto penaltyFor = [](const QString &sev) -> int {
-            if (sev == "critical") return 40;
-            if (sev == "high")     return 15;
-            if (sev == "medium")   return 5;
-            if (sev == "low")      return 1;
-            return 0; // info / unknown
+        const PostureGrade pg = computePostureGrade(findings);
+
+        auto canonSev = [](const QString &s) -> QString {
+            const QString t = s.trimmed().toLower();
+            return t.isEmpty() ? QStringLiteral("info") : t;
         };
         auto sevRank = [](const QString &s) -> int {
             if (s == "critical") return 5;
@@ -3299,29 +3333,6 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (s == "info")     return 1;
             return 0;
         };
-        // Canonicalize severity ONCE (trim + lowercase + coalesce blank to info)
-        // and use it everywhere -- so bySeverity keys, penalty weighting, sort
-        // rank, and the emitted topRisks severity all agree even for a padded /
-        // mixed-case / blank value (e.g. from an imported finding).
-        auto canonSev = [](const QString &s) -> QString {
-            const QString t = s.trimmed().toLower();
-            return t.isEmpty() ? QStringLiteral("info") : t;
-        };
-
-        QMap<QString, int> bySev;
-        int penalty = 0;
-        for (const auto &f : findings) {
-            const QString sev = canonSev(f.severity);
-            bySev[sev]++;
-            penalty += penaltyFor(sev);
-        }
-        const int score = qMax(0, 100 - penalty);
-        const QString grade = score >= 90 ? QStringLiteral("A")
-                            : score >= 80 ? QStringLiteral("B")
-                            : score >= 70 ? QStringLiteral("C")
-                            : score >= 60 ? QStringLiteral("D")
-                                          : QStringLiteral("F");
-
         // Worst findings first: by severity rank, then CVSS.
         QList<Nullock::Core::Finding> sorted = findings;
         std::sort(sorted.begin(), sorted.end(),
@@ -3341,15 +3352,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
 
         QJsonObject sevCounts;
-        for (auto it = bySev.constBegin(); it != bySev.constEnd(); ++it)
+        for (auto it = pg.bySeverity.constBegin(); it != pg.bySeverity.constEnd(); ++it)
             sevCounts[it.key()] = it.value();
 
         return httpJson(200, QJsonObject{
             { "ok", true },
-            { "grade", grade },
-            { "score", score },
+            { "grade", pg.grade },
+            { "score", pg.score },
             { "totalFindings", findings.size() },
-            { "penalty", penalty },
+            { "penalty", pg.penalty },
             { "bySeverity", sevCounts },
             { "topRisks", topRisks },
         });
@@ -4218,13 +4229,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
         QList<Nullock::Core::Finding> findings;
         if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
+        const PostureGrade pg = computePostureGrade(findings);  // shared with /api/posture
         const QStringList order = { "critical", "high", "medium", "low", "info" };
         QMap<QString, QList<Nullock::Core::Finding>> bySev;
         for (const auto &f : findings) {
             // Coalesce empty/blank severity to "info" so it never renders as a
-            // nameless group, and group case-insensitively.
-            const QString k = f.severity.trimmed().isEmpty()
-                ? QStringLiteral("info") : f.severity.toLower();
+            // nameless group, and group case-insensitively (trim too, so the
+            // cards/bar agree with the grade badge for padded severities).
+            const QString t = f.severity.trimmed().toLower();
+            const QString k = t.isEmpty() ? QStringLiteral("info") : t;
             bySev[k].append(f);
         }
         // The render order: the five standard severities first, then any
@@ -4262,12 +4275,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
              ".ev{color:var(--muted);font-size:12px;max-width:340px;word-break:break-word}"
              ".tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:4px;"
              "padding:1px 6px;font-size:11px;margin:1px 2px 1px 0}"
+             ".grade{display:inline-flex;align-items:baseline;gap:10px;margin:6px 0 2px;"
+             "padding:10px 18px;border-radius:10px;color:#fff;font-weight:700}"
+             ".grade .g{font-size:30px;line-height:1}.grade .s{font-size:13px;font-weight:600;opacity:.92}"
              "footer{margin-top:36px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:14px}"
              "</style></head><body><div class=\"wrap\">";
 
         h += "<h1>Nullock engagement report</h1>";
         h += "<p class=\"sub\">Project <strong>" + esc(proj) + "</strong> &middot; generated "
              + esc(QDateTime::currentDateTime().toString(Qt::ISODate)) + "</p>";
+
+        // Security posture grade badge (shared scoring with /api/posture).
+        auto gradeColor = [](const QString &g) -> QString {
+            if (g == "A") return QStringLiteral("#15803d");
+            if (g == "B") return QStringLiteral("#3f8f29");
+            if (g == "C") return QStringLiteral("#d97706");
+            if (g == "D") return QStringLiteral("#ea580c");
+            return QStringLiteral("#b91c1c"); // F
+        };
+        h += "<div class=\"grade\" style=\"background:" + gradeColor(pg.grade) + "\">"
+             "<span class=\"g\">" + pg.grade + "</span>"
+             "<span class=\"s\">security posture &mdash; " + QString::number(pg.score)
+             + "/100</span></div>";
 
         // Severity summary cards + stacked bar.
         h += "<div class=\"cards\">";

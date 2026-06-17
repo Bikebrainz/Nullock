@@ -1508,6 +1508,7 @@ Test-Endpoint "report html: structured, enriched, and XSS-safe" {
        -and ($html -match "(?i)<!doctype html") `
        -and ($html -match "Nullock engagement report") `
        -and ($html -match "exposed-database") -and ($html -match "CWE-668") `
+       -and ($html -match 'class="grade"') `
        -and ($html -match "&lt;script&gt;") -and (-not ($html -match "<script>alert\(9\)"))
 }
 
