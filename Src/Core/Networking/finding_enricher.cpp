@@ -251,6 +251,7 @@ const QHash<QString, Mapping> &table() {
 
         // ---- CVE correlation ----------------------------------------
         { "cve-correlated", { "CWE-1395", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Upgrade the component to the fixed version named in the advisory." } },
+        { "tech-detected", { "CWE-200", "A05:2021-Security Misconfiguration", 1.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Suppress version banners (Server, X-Powered-By, generator meta) to slow version-specific attacks." } },
 
         // ---- Information disclosure -- secondary --------------------
         { "git-head-exposed", { "CWE-538", "A05:2021-Security Misconfiguration", 9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.5", "Block .git/ at the reverse proxy; redeploy without VCS metadata." } },

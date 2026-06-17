@@ -37,6 +37,8 @@
 #include "smuggling.hpp"
 #include "service_vulns.hpp"
 #include "tls_inspect.hpp"
+#include "http_fingerprint.hpp"
+#include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -2343,7 +2345,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
-        "/api/tls/inspect",
+        "/api/tls/inspect", "/api/fingerprint",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4807,6 +4809,66 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- HTTP technology fingerprint ---------------------------------
+    // POST /api/fingerprint { url, headers? }
+    //   Active tech detection from headers/cookies/body; versioned server/CMS
+    //   detections are correlated against the CVE database.
+    if (path == "/api/fingerprint") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::HttpFingerprint::Request fr;
+        fr.host = u.host();
+        fr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        fr.tls  = (u.scheme() == "https");
+        fr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        fr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject fhdrs = bodyJson.value("headers").toObject();
+        for (auto it = fhdrs.begin(); it != fhdrs.end(); ++it)
+            fr.headers.append({ it.key(), it.value().toString() });
+
+        const auto fres = Nullock::Core::HttpFingerprint::fingerprint(fr);
+
+        auto sevFor = [](double cvss) {
+            if (cvss >= 9.0) return QStringLiteral("critical");
+            if (cvss >= 7.0) return QStringLiteral("high");
+            if (cvss >= 4.0) return QStringLiteral("medium");
+            return QStringLiteral("low");
+        };
+        QJsonArray techs, cves;
+        for (const auto &t : fres.tech) {
+            techs.append(QJsonObject{
+                { "name", t.name }, { "version", t.version },
+                { "source", t.source }, { "cveKind", t.cveKind } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, "info", "tech-detected",
+                    QString("Detected %1%2").arg(t.name, t.version.isEmpty() ? "" : " " + t.version),
+                    "fingerprint source: " + t.source, fr.host, url);
+            // Correlate versioned, CVE-trackable tech against the CVE database.
+            if (!t.cveKind.isEmpty() && !t.version.isEmpty()) {
+                for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + " " + t.version)) {
+                    cves.append(QJsonObject{
+                        { "cveId", m.cveId }, { "tech", t.name + " " + t.version },
+                        { "cvss", m.cvss }, { "summary", m.summary } });
+                    if (m_wiring.scanner)
+                        m_wiring.scanner->reportFinding(0, sevFor(m.cvss), "cve-correlated",
+                            QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
+                            QString("affected %1 | fix %2 | %3").arg(m.affectedRange, m.fixVersion, m.reference),
+                            fr.host, url);
+                }
+            }
+        }
+        return okJson({{ "ok", fres.error.isEmpty() },
+                       { "error", fres.error },
+                       { "status", fres.status },
+                       { "techCount", static_cast<int>(fres.tech.size()) },
+                       { "tech", techs },
+                       { "cves", cves }});
     }
 
     // ---- TLS / certificate inspection --------------------------------

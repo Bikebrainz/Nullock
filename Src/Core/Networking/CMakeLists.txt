@@ -14,6 +14,8 @@ add_library(Networking STATIC
     service_vulns.hpp
     tls_inspect.cpp
     tls_inspect.hpp
+    http_fingerprint.cpp
+    http_fingerprint.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp

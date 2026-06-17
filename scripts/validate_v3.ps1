@@ -473,6 +473,31 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== HTTP technology fingerprint ===" -ForegroundColor Cyan
+Test-Endpoint "fingerprint detects server/CMS/lang/lib + upgrades WordPress version from meta" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 30;$i++){ try{
+            $c=$l.GetContext(); $r=$c.Response
+            try { $r.Headers["X-Powered-By"]="PHP/7.4.3" } catch {}
+            try { $r.Headers.Add("Set-Cookie","wordpress_logged_in=abc; path=/") } catch {}
+            $b="<html><head><meta name=`"generator`" content=`"WordPress 5.8.1`"><script src=`"/wp-content/jquery-3.4.1.min.js`"></script></head><body>/wp-content/</body></html>"
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=200; $r.ContentType="text/html"; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/fingerprint" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/app" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+        $wp = $r.tech | Where-Object { $_.name -eq 'WordPress' } | Select-Object -First 1
+        return ($r.tech.name -contains 'WordPress') -and ($r.tech.name -contains 'jQuery') -and ($r.tech.name -contains 'PHP') -and ($wp.version -eq '5.8.1')
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== TLS / certificate inspection ===" -ForegroundColor Cyan
 Test-Endpoint "tls inspect flags a self-signed certificate" {
     $tlsPort = Get-Random -Minimum 20000 -Maximum 45000

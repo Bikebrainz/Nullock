@@ -707,6 +707,12 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_fingerprint() {
+    # nullock fingerprint <url>
+    [[ -n ${1-} ]] || die "usage: nullock fingerprint <url>"
+    post /api/fingerprint "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_tls() {
     # nullock tls <host> [port]
     [[ -n ${1-} ]] || die "usage: nullock tls <host> [port]"
@@ -1435,6 +1441,9 @@ Above-Burp features (v4/v5):
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
+  nullock fingerprint <url>              active tech detection -- server/CMS/
+                                         framework/JS-lib + version from headers,
+                                         cookies, body; CVE-correlates versions
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1514,6 +1523,7 @@ case ${1:-help} in
     smuggle)       shift; cmd_smuggle "$@"       ;;
     vulnscan)      shift; cmd_vulnscan "$@"      ;;
     tls)           shift; cmd_tls "$@"           ;;
+    fingerprint)   shift; cmd_fingerprint "$@"   ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
