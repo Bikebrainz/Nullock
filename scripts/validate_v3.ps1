@@ -1694,6 +1694,35 @@ Test-Endpoint "report/json bundles posture+coverage+inventory+findings" {
        -and ($rj.findingsTotal -ge 2) -and (@($rj.findings).Count -eq $rj.findingsTotal)
 }
 
+Write-Host "`n=== robots.txt / sitemap recon ===" -ForegroundColor Cyan
+Test-Endpoint "robots scan surfaces Disallow paths + sitemap URLs" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        $robots="User-agent: *`nDisallow: /admin/`nDisallow: /`nSitemap: http://127.0.0.1:$port/sitemap.xml`n"
+        $smap='<?xml version="1.0"?><urlset><url><loc>http://127.0.0.1:'+$port+'/a</loc></url></urlset>'
+        for ($i=0; $i -lt 50; $i++) {
+            try {
+                $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $ct="text/plain"; $b="home"
+                if ($p -eq '/robots.txt') { $b=$robots }
+                elseif ($p -eq '/sitemap.xml') { $ct="application/xml"; $b=$smap }
+                $c.Response.ContentType=$ct
+                $buf=[Text.Encoding]::UTF8.GetBytes($b); $c.Response.OutputStream.Write($buf,0,$buf.Length); $c.Response.Close()
+            } catch { break }
+        }
+        try { $l.Stop() } catch {}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 700
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/robots/scan" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($r.robotsFound -eq $true) -and ($r.disallowedCount -eq 1) -and (@($r.disallowed) -contains "/admin/") `
+           -and ($r.sitemapFound -eq $true) -and ($r.sitemapUrlCount -eq 1) -and ($r.findingsEmitted -eq 1)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

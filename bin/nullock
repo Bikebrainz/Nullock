@@ -777,6 +777,12 @@ cmd_exposure() {
     post /api/exposure/scan "{\"url\":$(jsonq "$1")}" | pp
 }
 
+cmd_robots() {
+    # nullock robots <url>  -- robots.txt Disallow paths + sitemap recon
+    [[ -n ${1-} ]] || die "usage: nullock robots <url>"
+    post /api/robots/scan "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_takeover() {
     # nullock takeover <host-or-url>
     [[ -n ${1-} ]] || die "usage: nullock takeover <host-or-url>"
@@ -1590,6 +1596,8 @@ Above-Burp features (v4/v5):
   nullock assess <url>                   one-call host assessment -- tech
                                          fingerprint+CVE, header/CSP audit, HTTP
                                          method audit, TLS inspect; aggregated
+  nullock robots <url>                   robots.txt Disallow paths + sitemap recon
+                                         (surfaces crawler-hidden attack surface)
   nullock exposure <url>                 sensitive-file scan -- .git/.env/actuator/
                                          phpinfo/config-backups, confirmed by
                                          content signature
@@ -1685,6 +1693,7 @@ case ${1:-help} in
     methods)       shift; cmd_methods "$@"       ;;
     takeover)      shift; cmd_takeover "$@"      ;;
     exposure)      shift; cmd_exposure "$@"      ;;
+    robots)        shift; cmd_robots "$@"        ;;
     cachedeception) shift; cmd_cachedeception "$@" ;;
     assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;

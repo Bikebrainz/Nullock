@@ -43,6 +43,7 @@
 #include "exposure_scan.hpp"
 #include "cache_deception.hpp"
 #include "scan_bridge.hpp"
+#include "robots_recon.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2651,7 +2652,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
-        "/api/pipeline/run",
+        "/api/pipeline/run", "/api/robots/scan",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -5959,6 +5960,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "probed", eres.probed },
                        { "hitCount", static_cast<int>(eres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- robots.txt / sitemap recon ----------------------------------
+    // POST /api/robots/scan { url }
+    //   Fetches /robots.txt + /sitemap.xml and surfaces Disallow paths (hidden
+    //   attack surface) as recon findings, plus sitemap URLs. Read-only.
+    if (path == "/api/robots/scan") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::RobotsRecon::Request rr;
+        rr.host = u.host();
+        rr.tls  = (u.scheme() == "https");
+        rr.port = u.port(rr.tls ? 443 : 80);
+        const QJsonObject rhdrs = bodyJson.value("headers").toObject();
+        for (auto it = rhdrs.begin(); it != rhdrs.end(); ++it)
+            rr.headers.append({ it.key(), it.value().toString() });
+
+        const auto res = Nullock::Core::RobotsRecon::scan(rr);
+        const QString scheme = rr.tls ? QStringLiteral("https") : QStringLiteral("http");
+        const bool defPort = (rr.tls && rr.port == 443) || (!rr.tls && rr.port == 80);
+        const QString origin = scheme + "://" + rr.host
+            + (defPort ? QString() : ":" + QString::number(rr.port));
+
+        int emitted = 0;
+        const int kCap = 50;   // don't flood the findings list
+        for (const QString &p : res.disallowed) {
+            if (emitted >= kCap) break;
+            ++emitted;
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, "info", "robots-disallowed-path",
+                    "robots.txt Disallow: " + p,
+                    "Crawler-hidden path -- review for unlinked admin/backup/internal content.",
+                    rr.host, origin + (p.startsWith('/') ? p : "/" + p));
+        }
+
+        return okJson({
+            { "ok", res.error.isEmpty() },
+            { "error", res.error },
+            { "host", res.host },
+            { "robotsFound", res.robotsFound },
+            { "sitemapFound", res.sitemapFound },
+            { "disallowedCount", res.disallowed.size() },
+            { "disallowed", QJsonArray::fromStringList(res.disallowed) },
+            { "sitemapRefs", QJsonArray::fromStringList(res.sitemapRefs) },
+            { "sitemapUrlCount", res.sitemapUrls.size() },
+            { "sitemapUrls", QJsonArray::fromStringList(res.sitemapUrls) },
+            { "findingsEmitted", emitted },
+        });
     }
 
     // ---- Subdomain-takeover detection --------------------------------

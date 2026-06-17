@@ -26,6 +26,8 @@ add_library(Networking STATIC
     cache_deception.hpp
     scan_bridge.cpp
     scan_bridge.hpp
+    robots_recon.cpp
+    robots_recon.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp
