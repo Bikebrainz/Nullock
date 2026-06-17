@@ -12,6 +12,8 @@ add_library(Networking STATIC
     port_scanner.hpp
     service_vulns.cpp
     service_vulns.hpp
+    tls_inspect.cpp
+    tls_inspect.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp

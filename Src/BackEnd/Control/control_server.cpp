@@ -36,6 +36,7 @@
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
 #include "service_vulns.hpp"
+#include "tls_inspect.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -2342,6 +2343,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
+        "/api/tls/inspect",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4805,6 +4807,52 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- TLS / certificate inspection --------------------------------
+    // POST /api/tls/inspect { host, port?, timeoutMs? }
+    //   Reads the peer cert + negotiated protocol/cipher and flags weak TLS
+    //   config (expired/self-signed/weak-key/hostname/legacy proto). CWE-295.
+    if (path == "/api/tls/inspect") {
+        const QString host = bodyJson.value("host").toString();
+        if (host.isEmpty())
+            return okJson({{ "ok", false }, { "error", "host required" }});
+
+        Nullock::Core::TlsInspect::Request tr;
+        tr.host = host;
+        tr.port = bodyJson.value("port").toInt(443);
+        tr.timeoutMs = bodyJson.value("timeoutMs").toInt(6000);
+        tr.probeLegacyProtocols = bodyJson.value("probeLegacy").toBool(true);
+
+        const auto tres = Nullock::Core::TlsInspect::inspect(tr);
+
+        QJsonArray findings;
+        for (const auto &f : tres.findings) {
+            findings.append(QJsonObject{
+                { "kind", f.kind }, { "severity", f.severity }, { "detail", f.detail } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, f.severity, f.kind,
+                    QString("TLS on %1:%2 -- %3").arg(host).arg(tr.port).arg(f.detail),
+                    QString("subject=%1 issuer=%2 proto=%3 cipher=%4")
+                        .arg(tres.subject, tres.issuer, tres.negotiatedProtocol, tres.cipher),
+                    host, host + ":" + QString::number(tr.port));
+        }
+        return okJson({{ "ok", tres.error.isEmpty() },
+                       { "error", tres.error },
+                       { "connected", tres.connected },
+                       { "protocol", tres.negotiatedProtocol },
+                       { "cipher", tres.cipher },
+                       { "subject", tres.subject },
+                       { "issuer", tres.issuer },
+                       { "selfSigned", tres.selfSigned },
+                       { "notAfter", tres.notAfter },
+                       { "daysToExpiry", tres.daysToExpiry },
+                       { "keyBits", tres.keyBits },
+                       { "hostnameMatch", tres.hostnameMatch },
+                       { "sans", QJsonArray::fromStringList(tres.sans) },
+                       { "legacyProtocolsEnabled", QJsonArray::fromStringList(tres.legacyProtocolsEnabled) },
+                       { "findingCount", static_cast<int>(tres.findings.size()) },
+                       { "findings", findings }});
     }
 
     // ---- Service-version vulnerability matching ----------------------

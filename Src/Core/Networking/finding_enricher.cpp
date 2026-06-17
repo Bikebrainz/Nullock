@@ -185,6 +185,16 @@ const QHash<QString, Mapping> &table() {
         // ---- CRLF / HTTP response splitting --------------------------
         { "crlf-injection", { "CWE-113", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip or reject CR/LF in any user input that reaches a response header; use the framework's header API, never string concatenation." } },
 
+        // ---- TLS / certificate weaknesses ----------------------------
+        { "tls-expired",              { "CWE-298", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Renew the certificate; automate renewal so it can't lapse." } },
+        { "tls-cert-expiring-soon",   { "CWE-298", "A02:2021-Cryptographic Failures", 2.0, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L", "", "Renew before expiry; automate renewal." } },
+        { "tls-not-yet-valid",        { "CWE-298", "A02:2021-Cryptographic Failures", 4.0, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Check the server clock and certificate validity window." } },
+        { "tls-self-signed",          { "CWE-295", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Use a certificate from a trusted CA so clients can verify it." } },
+        { "tls-weak-key",             { "CWE-326", "A02:2021-Cryptographic Failures", 7.5, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N", "", "Reissue with at least a 2048-bit RSA (or ECDSA P-256) key." } },
+        { "tls-hostname-mismatch",    { "CWE-295", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Issue a certificate whose CN/SAN covers this host." } },
+        { "tls-deprecated-protocol",  { "CWE-327", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Disable TLS 1.0/1.1; require TLS 1.2+." } },
+        { "tls-legacy-protocol-enabled", { "CWE-327", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Disable TLS 1.0/1.1 at the server/load-balancer; require TLS 1.2+." } },
+
         // ---- Exposed secrets in client code --------------------------
         { "secret-exposed", { "CWE-798", "A07:2021-Identification and Authentication Failures", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Move the credential server-side; rotate it immediately (assume compromised) and scope front-end keys to least privilege." } },
 

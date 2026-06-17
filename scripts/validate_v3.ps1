@@ -473,6 +473,36 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== TLS / certificate inspection ===" -ForegroundColor Cyan
+Test-Endpoint "tls inspect flags a self-signed certificate" {
+    $tlsPort = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+        $req = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            "CN=nullock.test", $rsa, [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+            [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $tmp = $req.CreateSelfSigned([DateTimeOffset]::UtcNow.AddDays(-1), [DateTimeOffset]::UtcNow.AddDays(60))
+        $pfx = $tmp.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, "pw")
+        $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx, "pw",
+            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        $l=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$port); $l.Start()
+        for($i=0;$i -lt 8;$i++){ try{
+            $cl=$l.AcceptTcpClient(); $ssl=[System.Net.Security.SslStream]::new($cl.GetStream(),$false)
+            try { $ssl.AuthenticateAsServer($cert,$false,[System.Security.Authentication.SslProtocols]::Tls12,$false) } catch {}
+            Start-Sleep -Milliseconds 150; try { $ssl.Close() } catch {}; try { $cl.Close() } catch {}
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $tlsPort
+    Start-Sleep -Seconds 1
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/tls/inspect" -Headers $hdr -Body (@{ host="127.0.0.1"; port=$tlsPort; probeLegacy=$false } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($r.connected -eq $true) -and ($r.selfSigned -eq $true) -and ($r.findings.kind -contains 'tls-self-signed') -and ($r.keyBits -eq 2048)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Service-version CVE matching ===" -ForegroundColor Cyan
 Test-Endpoint "vulnscan flags a known-vulnerable service banner, ignores a patched version" {
     # Two raw-TCP banner servers: vulnerable vsftpd 2.3.4 + patched OpenSSH 9.8p1.
