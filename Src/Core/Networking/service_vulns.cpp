@@ -69,6 +69,18 @@ const QList<ServiceCve> &table() {
           "3.5.0", "4.6.4", false, "3.5.0 - 4.6.3 (SambaCry)",
           "A writable share + this version lets a client load and run a shared library as root.",
           "4.6.4", "https://nvd.nist.gov/vuln/detail/CVE-2017-7494" },
+        { "openssh", "CVE-2023-38408", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "5.5", "9.3.2", false, "5.5 - 9.3p1 (ssh-agent PKCS#11)",
+          "Remote code execution in ssh-agent's PKCS#11 provider loading; exploitable when an agent is forwarded to an attacker-controlled host.",
+          "9.3p2", "https://nvd.nist.gov/vuln/detail/CVE-2023-38408" },
+        { "apache", "CVE-2023-25690", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "2.4.0", "2.4.56", false, "2.4.0 - 2.4.55 (mod_proxy)",
+          "HTTP request smuggling via mod_proxy with certain RewriteRule/ProxyPassMatch patterns (config-dependent).",
+          "2.4.56", "https://nvd.nist.gov/vuln/detail/CVE-2023-25690" },
+        { "apache", "CVE-2021-44790", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "2.4.0", "2.4.52", false, "2.4.0 - 2.4.51 (mod_lua)",
+          "Buffer overflow in mod_lua multipart parsing -> possible RCE (requires a mod_lua script calling r:parsebody).",
+          "2.4.52", "https://nvd.nist.gov/vuln/detail/CVE-2021-44790" },
     };
     return t;
 }

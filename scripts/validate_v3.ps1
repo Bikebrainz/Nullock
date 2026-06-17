@@ -1655,6 +1655,22 @@ Test-Endpoint "cve overlay sync extends detection (Apache 2.4.99)" {
     return $r
 }
 
+Write-Host "`n=== Expanded service-CVE coverage ===" -ForegroundColor Cyan
+# Apache 2.4.41 should flag the newly-added CVE-2023-25690 (mod_proxy), and a
+# patched 2.4.58 should flag neither new CVE (no false positive).
+Test-Endpoint "service-CVE: Apache 2.4.41 flags CVE-2023-25690, 2.4.58 does not" {
+    function ApacheCves($ver) {
+        Invoke-WebRequest -UseBasicParsing -Uri "$base/api/findings/clear" -Method POST -Headers $hdr -TimeoutSec 10 | Out-Null
+        $xml = "<?xml version=`"1.0`"?><nmaprun><host><address addr=`"198.51.100.55`" addrtype=`"ipv4`"/><ports><port protocol=`"tcp`" portid=`"80`"><state state=`"open`"/><service name=`"http`" banner=`"Apache/$ver (Unix)`"/></port></ports></host></nmaprun>"
+        Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $xml -TimeoutSec 10 | Out-Null
+        $sf = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10).Content | ConvertFrom-Json
+        return (@($sf.findings | Where-Object { $_.kind -eq "cve-correlated" } | ForEach-Object { $_.summary }) -join '|')
+    }
+    $vuln = ApacheCves "2.4.41"
+    $patched = ApacheCves "2.4.58"
+    return ($vuln -match "CVE-2023-25690") -and (-not ($patched -match "CVE-2023-25690|CVE-2021-44790"))
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
