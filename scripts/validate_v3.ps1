@@ -1561,6 +1561,37 @@ Test-Endpoint "export sbom: CycloneDX with component + linked CVE" {
        -and ($vuln.ratings[0].severity -eq "critical")
 }
 
+Write-Host "`n=== Findings baseline / diff ===" -ForegroundColor Cyan
+# Seed findings, save a baseline, add a new finding -> diff reports it as NEW.
+Test-Endpoint "baseline save + diff detects a new finding" {
+    $bx1 = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.71" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $bx1 -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $sv = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/baseline/save" -Method POST -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    if (-not ($sv.ok -and $sv.saved -ge 1)) { return $false }
+    $d0 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/baseline/diff" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    if ($d0.newCount -ne 0 -or $d0.fixedCount -ne 0) { return $false }
+    # Add an RDP port -> a new exposed-remote-admin finding.
+    $bx2 = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.71" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="3389"><state state="open"/><service name="ms-wbt-server"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $bx2 -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $d1 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/baseline/diff" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    $r = ($d1.ok -and $d1.hasBaseline -and $d1.newCount -eq 1 -and $d1.fixedCount -eq 0 -and (@($d1.new)[0].kind -eq "exposed-remote-admin"))
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/baseline/clear" -Method POST -Headers $hdr -TimeoutSec 10 | Out-Null
+    return $r
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

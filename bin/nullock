@@ -634,6 +634,17 @@ cmd_inventory() {
     curl -sS --max-time 10 "$API/api/inventory" | pp
 }
 
+cmd_baseline() {
+    # nullock baseline {save|diff|status|clear}
+    case ${1:-} in
+        save)   post /api/baseline/save | pp ;;
+        diff)   curl -sS --max-time 10 "$API/api/baseline/diff" | pp ;;
+        status) curl -sS --max-time 10 "$API/api/baseline/status" | pp ;;
+        clear)  post /api/baseline/clear | pp ;;
+        *) die "usage: nullock baseline {save|diff|status|clear}" ;;
+    esac
+}
+
 cmd_audit() {
     # nullock audit <url> [method] [body-file|-] [Header:Value ...]
     # nullock audit all [url1 url2 ...]      # sweep history + given urls
@@ -1526,6 +1537,9 @@ Above-Burp features (v4/v5):
   nullock inventory                      host-centric attack-surface rollup: open
                                          ports/services, technologies, and finding
                                          counts (by severity + max CVSS) per host
+  nullock baseline save|diff|status      repeat-engagement deltas: snapshot current
+                |clear                   findings, then diff -> new / fixed /
+                                         unchanged (persists to <project>/baseline.json)
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1626,6 +1640,7 @@ case ${1:-help} in
     scan-findings) shift; cmd_scanfindings "$@" ;;
     pipeline)      shift; cmd_pipeline "$@"     ;;
     inventory)     shift; cmd_inventory "$@"    ;;
+    baseline)      shift; cmd_baseline "$@"     ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;

@@ -63,6 +63,7 @@
 #include <QPointer>
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
+#include <QSaveFile>
 #include <QThread>
 #include <QRandomGenerator>
 #include <QFileInfo>
@@ -1259,6 +1260,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/project/templates"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
+            || p == "/api/baseline/diff"
+            || p == "/api/baseline/status"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -3115,6 +3118,155 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "totalFindings", totalFindings },
             { "hosts", arr },
         });
+    }
+
+    // ---- Findings baseline / diff ------------------------------------
+    // Repeat-engagement delta detection. Save a baseline snapshot of the
+    // current findings, then diff later: NEW (regressions) / FIXED (resolved)
+    // / UNCHANGED. Identity key = kind+host+url+summary (a stable per-issue id,
+    // the same key used for dedup elsewhere). Persisted to <project>/baseline.json
+    // so it survives restarts. Read-only over findings; no network/probing.
+    if (path.startsWith("/api/baseline/")) {
+        const QString projDir = m_wiring.projectStore
+            ? m_wiring.projectStore->currentPath() : QString();
+        const QString baseFile = projDir.isEmpty()
+            ? QString() : projDir + "/baseline.json";
+        const QChar sep(QChar(0x1f));
+        auto keyOf = [&](const QString &kind, const QString &host,
+                         const QString &url, const QString &summary) {
+            return kind + sep + host + sep + url + sep + summary;
+        };
+        auto findingObj = [](const Nullock::Core::Finding &f) {
+            return QJsonObject{
+                { "kind", f.kind }, { "host", f.host }, { "url", f.url },
+                { "summary", f.summary }, { "severity", f.severity },
+                // Carry enrichment so the diff's new/fixed lists are directly
+                // reportable (and the "fixed" list, rebuilt from the stored
+                // baseline, keeps it too). Identity key ignores these fields.
+                { "cwe", f.cwe }, { "owasp", f.owasp },
+                { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary },
+            };
+        };
+
+        if (path == "/api/baseline/save") {
+            if (!m_wiring.scanner)
+                return okJson({{ "ok", false }, { "error", "no scanner wired" }});
+            if (baseFile.isEmpty())
+                return okJson({{ "ok", false }, { "error", "no project open to store the baseline" }});
+            // Dedup by identity key at save time so the stored count matches the
+            // deduped count /diff computes (the scanner can hold duplicates).
+            QJsonArray arr;
+            QSet<QString> seen;
+            for (const auto &f : m_wiring.scanner->findings(0)) {
+                const QString k = keyOf(f.kind, f.host, f.url, f.summary);
+                if (seen.contains(k)) continue;
+                seen.insert(k);
+                arr.append(findingObj(f));
+            }
+            const QString savedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+            const QJsonObject root{
+                { "savedAt", savedAt }, { "count", arr.size() }, { "findings", arr },
+            };
+            // Atomic write: QSaveFile writes to a temp and only replaces the prior
+            // baseline on a fully-flushed, successful commit. A crash / disk-full /
+            // torn write therefore never destroys the existing good baseline, and
+            // we report failure honestly instead of a false ok:true.
+            QSaveFile fh(baseFile);
+            if (!fh.open(QIODevice::WriteOnly))
+                return okJson({{ "ok", false }, { "error", "cannot write baseline file" }});
+            const QByteArray out = QJsonDocument(root).toJson(QJsonDocument::Compact);
+            if (fh.write(out) != out.size() || !fh.commit())
+                return okJson({{ "ok", false }, { "error", "failed to write baseline file" }});
+            return okJson({{ "ok", true }, { "saved", arr.size() },
+                           { "savedAt", savedAt }, { "path", baseFile }});
+        }
+
+        // exists = a valid baseline was loaded; corrupt = the file is present but
+        // unreadable/unparseable (distinct from simply absent, so the UI can warn
+        // instead of silently showing "no baseline").
+        auto loadBaseline = [&](bool &exists, bool &corrupt) -> QJsonObject {
+            exists = false; corrupt = false;
+            if (baseFile.isEmpty()) return {};
+            QFile fh(baseFile);
+            if (!fh.open(QIODevice::ReadOnly)) {
+                corrupt = QFile::exists(baseFile);  // present but unreadable
+                return {};
+            }
+            const QByteArray raw = fh.readAll();
+            fh.close();
+            QJsonParseError pe;
+            const QJsonDocument doc = QJsonDocument::fromJson(raw, &pe);
+            if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+                corrupt = true;
+                return {};
+            }
+            exists = true;
+            return doc.object();
+        };
+
+        if (path == "/api/baseline/status") {
+            bool exists = false, corrupt = false;
+            const QJsonObject b = loadBaseline(exists, corrupt);
+            return okJson({
+                { "ok", true },
+                { "hasBaseline", exists },
+                { "corrupt", corrupt },
+                { "savedAt", exists ? b.value("savedAt").toString() : QString() },
+                { "baselineCount", exists ? b.value("count").toInt() : 0 },
+            });
+        }
+
+        if (path == "/api/baseline/clear") {
+            if (!baseFile.isEmpty()) QFile::remove(baseFile);
+            return okJson({{ "ok", true }});
+        }
+
+        if (path == "/api/baseline/diff") {
+            if (!m_wiring.scanner)
+                return okJson({{ "ok", false }, { "error", "no scanner wired" }});
+            bool exists = false, corrupt = false;
+            const QJsonObject b = loadBaseline(exists, corrupt);
+            if (!exists)
+                return okJson({{ "ok", true }, { "hasBaseline", false }, { "corrupt", corrupt }});
+
+            // Baseline: distinct keys -> object (for the "fixed" list).
+            QHash<QString, QJsonObject> baseByKey;
+            for (const auto &v : b.value("findings").toArray()) {
+                const QJsonObject o = v.toObject();
+                baseByKey.insert(keyOf(o.value("kind").toString(), o.value("host").toString(),
+                                       o.value("url").toString(), o.value("summary").toString()), o);
+            }
+            // Current: distinct keys; collect NEW (current keys absent from baseline).
+            QSet<QString> curKeys, addedNew;
+            QJsonArray newArr;
+            for (const auto &f : m_wiring.scanner->findings(0)) {
+                const QString k = keyOf(f.kind, f.host, f.url, f.summary);
+                curKeys.insert(k);
+                if (!baseByKey.contains(k) && !addedNew.contains(k)) {
+                    addedNew.insert(k);
+                    newArr.append(findingObj(f));
+                }
+            }
+            // FIXED = baseline keys absent from current.
+            QJsonArray fixedArr;
+            for (auto it = baseByKey.constBegin(); it != baseByKey.constEnd(); ++it)
+                if (!curKeys.contains(it.key())) fixedArr.append(it.value());
+
+            return okJson({
+                { "ok", true },
+                { "hasBaseline", true },
+                { "savedAt", b.value("savedAt").toString() },
+                { "baselineCount", baseByKey.size() },
+                { "currentCount", curKeys.size() },
+                { "newCount", newArr.size() },
+                { "fixedCount", fixedArr.size() },
+                { "unchangedCount", curKeys.size() - newArr.size() },
+                { "new", newArr },
+                { "fixed", fixedArr },
+            });
+        }
+
+        return okJson({{ "ok", false }, { "error", "unknown baseline action" }});
     }
 
     // ---- AI payload generator ----------------------------------------
