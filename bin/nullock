@@ -644,6 +644,21 @@ cmd_compliance() {
     curl -sS --max-time 10 "$API/api/compliance" | pp
 }
 
+cmd_cvefeed() {
+    # nullock cvefeed {sync <url> | load <file.json> | status | clear}
+    case ${1:-} in
+        sync)   [[ -n ${2-} ]] || die "usage: nullock cvefeed sync <url>"
+                post /api/cve/sync "{\"url\":$(jsonq "$2")}" | pp ;;
+        load)   [[ -f ${2-} ]] || die "usage: nullock cvefeed load <file.json>"
+                # POST the file's JSON array as {entries:[...]}.
+                local body; body=$(cat "$2")
+                post /api/cve/sync "{\"entries\":$body}" | pp ;;
+        status) curl -sS --max-time 10 "$API/api/cve/overlay" | pp ;;
+        clear)  post /api/cve/overlay/clear | pp ;;
+        *) die "usage: nullock cvefeed {sync <url>|load <file.json>|status|clear}" ;;
+    esac
+}
+
 cmd_baseline() {
     # nullock baseline {save|diff|status|clear}
     case ${1:-} in
@@ -1554,6 +1569,9 @@ Above-Burp features (v4/v5):
                                          severity breakdown + top risks
   nullock compliance                     OWASP Top-10 + compliance (PCI-DSS...)
                                          coverage matrix from findings
+  nullock cvefeed sync <url>|load <f>    extend CVE detection at runtime: sync a
+                |status|clear            JSON CVE feed (URL) or load a local file;
+                                         overlays onto the service-CVE matcher
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1656,6 +1674,7 @@ case ${1:-help} in
     inventory)     shift; cmd_inventory "$@"    ;;
     posture)       shift; cmd_posture "$@"      ;;
     compliance)    shift; cmd_compliance "$@"   ;;
+    cvefeed)       shift; cmd_cvefeed "$@"      ;;
     baseline)      shift; cmd_baseline "$@"     ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;

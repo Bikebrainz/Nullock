@@ -1,6 +1,8 @@
 #include "service_vulns.hpp"
 
+#include <QMutex>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStringList>
 #include <QTcpSocket>
 
@@ -96,6 +98,11 @@ bool isHttpPort(int port) {
         || port == 443 || port == 8888 || port == 9200;
 }
 
+// Runtime overlay store (cve_feed_sync). Guarded by a mutex because
+// matchVersion runs on scan worker threads.
+QMutex            g_overlayMutex;
+QList<OverlayCve> g_overlay;
+
 } // namespace
 
 QList<int> serviceProbePorts() {
@@ -143,7 +150,50 @@ QList<CveHit> matchVersion(const QString &product, const QString &version) {
         h.summary = c.summary; h.affected = c.affected; h.fix = c.fix; h.reference = c.reference;
         out.append(h);
     }
+    // Also consult the runtime overlay (same range semantics, reusing verCmp).
+    // Dedup by cveId (static table wins) so a feed re-publishing a curated CVE,
+    // or listing one twice, doesn't double-count downstream.
+    QSet<QString> seenCve;
+    for (const CveHit &h : out) seenCve.insert(h.cveId.toLower());
+    {
+        QMutexLocker lk(&g_overlayMutex);
+        for (const OverlayCve &c : g_overlay) {
+            if (product.compare(c.product, Qt::CaseInsensitive) != 0) continue;
+            if (seenCve.contains(c.cveId.toLower())) continue;
+            bool affected;
+            if (c.exact) {
+                affected = verCmp(version, c.minVer) == 0;
+            } else {
+                const bool aboveMin = c.minVer.isEmpty() || verCmp(version, c.minVer) >= 0;
+                const bool belowMax = c.maxVer.isEmpty() || verCmp(version, c.maxVer) < 0;
+                affected = aboveMin && belowMax;
+            }
+            if (!affected) continue;
+            seenCve.insert(c.cveId.toLower());
+            CveHit h;
+            h.product = product; h.version = version;
+            h.cveId = c.cveId; h.cvss = c.cvss; h.cvssVector = c.cvssVector;
+            h.summary = c.summary; h.affected = c.affected; h.fix = c.fix; h.reference = c.reference;
+            out.append(h);
+        }
+    }
     return out;
+}
+
+int setOverlay(const QList<OverlayCve> &entries) {
+    QMutexLocker lk(&g_overlayMutex);
+    g_overlay = entries;
+    return g_overlay.size();
+}
+
+void clearOverlay() {
+    QMutexLocker lk(&g_overlayMutex);
+    g_overlay.clear();
+}
+
+int overlayCount() {
+    QMutexLocker lk(&g_overlayMutex);
+    return g_overlay.size();
 }
 
 namespace {

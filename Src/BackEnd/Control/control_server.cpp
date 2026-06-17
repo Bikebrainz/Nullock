@@ -64,6 +64,7 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
 #include <QSaveFile>
+#include <QHostAddress>
 #include <QThread>
 #include <QRandomGenerator>
 #include <QFileInfo>
@@ -144,7 +145,7 @@ QJsonObject assessWebTarget(Nullock::Core::PassiveScanner *scanner,
         if (cvss >= 9.0) return QStringLiteral("critical");
         if (cvss >= 7.0) return QStringLiteral("high");
         if (cvss >= 4.0) return QStringLiteral("medium");
-        return QStringLiteral("low");
+        return cvss > 0.0 ? QStringLiteral("low") : QStringLiteral("medium");  // unscored-but-known -> medium
     };
     QJsonArray findings;
     QMap<QString, int> bySeverity;
@@ -1262,6 +1263,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/inventory"
             || p == "/api/posture"
             || p == "/api/compliance"
+            || p == "/api/cve/overlay"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
             || p.startsWith("/api/export/")
@@ -3457,6 +3459,154 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "byOwasp", byOwaspArr },
             { "owaspTop10", top10 },
             { "byCompliance", complianceArr },
+        });
+    }
+
+    // ---- CVE feed overlay (cve_feed_sync) ----------------------------
+    // Extend ServiceVulns detection at runtime with extra service CVEs:
+    //   POST /api/cve/sync { entries: [...] }  -- push directly (air-gapped)
+    //   POST /api/cve/sync { url: "https://..." } -- fetch + parse a JSON feed
+    //   GET  /api/cve/overlay        -> { ok, count }
+    //   POST /api/cve/overlay/clear  -> clears the overlay
+    // Each entry matches like the curated table (product + version range/exact).
+    if (path == "/api/cve/overlay") {
+        return httpJson(200, QJsonObject{
+            { "ok", true },
+            { "count", Nullock::Core::ServiceVulns::overlayCount() },
+        });
+    }
+    if (path == "/api/cve/overlay/clear") {
+        Nullock::Core::ServiceVulns::clearOverlay();
+        return okJson({{ "ok", true }, { "count", 0 }});
+    }
+    if (path == "/api/cve/sync") {
+        constexpr int kMaxOverlayEntries = 50000;
+        // Real-world CVE feeds encode numbers as strings ("cvss":"9.8") or
+        // bounds as numbers ("minVer":2.4); coerce loosely so a mistype fails
+        // loudly (rejected) rather than silently widening the match.
+        auto loose = [](const QJsonValue &v) -> QString {
+            if (v.isString()) return v.toString();
+            if (v.isDouble()) return QString::number(v.toDouble());
+            return QString();
+        };
+        auto looseBool = [](const QJsonValue &v) -> bool {
+            if (v.isBool()) return v.toBool();
+            const QString s = v.toString().trimmed().toLower();
+            return s == "true" || s == "1";
+        };
+        auto parseEntries = [&](const QJsonArray &arr) {
+            QList<Nullock::Core::ServiceVulns::OverlayCve> out;
+            for (const auto &v : arr) {
+                if (out.size() >= kMaxOverlayEntries) break;
+                if (!v.isObject()) continue;
+                const QJsonObject o = v.toObject();
+                const QString product = o.value("product").toString().trimmed();
+                const QString cveId   = o.value("cveId").toString().trimmed();
+                if (product.isEmpty() || cveId.isEmpty()) continue;  // skip malformed rows
+                Nullock::Core::ServiceVulns::OverlayCve e;
+                e.product    = product;
+                e.cveId      = cveId;
+                const QJsonValue cv = o.value("cvss");
+                e.cvss       = qBound(0.0, cv.isDouble() ? cv.toDouble() : cv.toString().toDouble(), 10.0);
+                e.cvssVector = o.value("cvssVector").toString();
+                e.minVer     = loose(o.value("minVer")).trimmed();
+                e.maxVer     = loose(o.value("maxVer")).trimmed();
+                e.exact      = looseBool(o.value("exact"));
+                e.affected   = o.value("affected").toString();
+                e.summary    = o.value("summary").toString();
+                e.fix        = o.value("fix").toString();
+                e.reference  = o.value("reference").toString();
+                // Reject "matches every version" rows: a non-exact entry needs at
+                // least one bound; an exact entry needs a pin. Otherwise an
+                // untrusted/typo'd feed row flags every version of the product.
+                if (e.exact) { if (e.minVer.isEmpty()) continue; }
+                else if (e.minVer.isEmpty() && e.maxVer.isEmpty()) continue;
+                out.append(e);
+            }
+            return out;
+        };
+
+        QString source;
+        QJsonArray feedArr;
+        if (bodyJson.contains("entries")) {
+            feedArr = bodyJson.value("entries").toArray();
+            source = QStringLiteral("direct");
+        } else {
+            const QString url = bodyJson.value("url").toString();
+            const QUrl u(url);
+            if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+                return okJson({{ "ok", false }, { "error", "provide entries[] or a valid url" }});
+            // SSRF guard: this fetches an operator-supplied URL, so restrict the
+            // scheme to http/https and refuse loopback/link-local/private/reserved
+            // destinations -- a feed URL must not become a probe of internal
+            // services (127.0.0.1, 169.254.169.254 metadata, RFC1918, localhost).
+            if (u.scheme() != "http" && u.scheme() != "https")
+                return okJson({{ "ok", false }, { "error", "feed url must be http(s)" }});
+            {
+                const QString h = u.host().toLower();
+                bool blocked = (h == "localhost" || h.endsWith(".localhost"));
+                QHostAddress addr(u.host());
+                if (!addr.isNull()) {
+                    if (addr.isLoopback() || addr.isLinkLocal() || addr.isMulticast())
+                        blocked = true;
+                    if (addr.protocol() == QAbstractSocket::IPv4Protocol) {
+                        const quint32 ip = addr.toIPv4Address();
+                        const quint8 a = (ip >> 24) & 0xFF, b = (ip >> 16) & 0xFF;
+                        if (a == 10 || a == 127 || a == 0
+                            || (a == 172 && b >= 16 && b <= 31)
+                            || (a == 192 && b == 168)
+                            || (a == 169 && b == 254)) blocked = true;
+                    } else if (addr.protocol() == QAbstractSocket::IPv6Protocol) {
+                        const Q_IPV6ADDR v6 = addr.toIPv6Address();
+                        if ((v6[0] & 0xFE) == 0xFC) blocked = true;  // fc00::/7 unique-local
+                    }
+                }
+                if (blocked)
+                    return okJson({{ "ok", false }, { "scopeBlocked", true },
+                                   { "error", "feed host is a private/loopback/link-local address (SSRF blocked)" }});
+            }
+            const bool tls = (u.scheme() == "https");
+            const int port = u.port(tls ? 443 : 80);
+            QString reqPath = u.path(QUrl::FullyEncoded);
+            if (reqPath.isEmpty()) reqPath = QStringLiteral("/");
+            const QString q = u.query(QUrl::FullyEncoded);
+            if (!q.isEmpty()) reqPath += "?" + q;
+            QByteArray req;
+            req += "GET " + reqPath.toUtf8() + " HTTP/1.1\r\n";
+            req += "Host: " + u.host().toUtf8() + "\r\n";
+            req += "User-Agent: nullock-cve-sync/1.0\r\n";
+            req += "Accept: application/json\r\n";
+            req += "Connection: close\r\n\r\n";
+            Nullock::Core::HttpClient client;
+            auto res = client.send(u.host(), static_cast<quint16>(port), tls, req);
+            if (!res.ok)
+                return okJson({{ "ok", false }, { "error", "fetch failed: " + res.errorMessage }});
+            if (res.parsed.statusCode != 200)
+                return okJson({{ "ok", false }, { "error", QString("HTTP %1 from feed").arg(res.parsed.statusCode) }});
+            if (res.parsed.body.size() > 8 * 1024 * 1024)
+                return okJson({{ "ok", false }, { "error", "feed too large (>8MB)" }});
+            QJsonParseError pe;
+            const QJsonDocument doc = QJsonDocument::fromJson(res.parsed.body, &pe);
+            if (pe.error != QJsonParseError::NoError)
+                return okJson({{ "ok", false }, { "error", "feed is not valid JSON" }});
+            // Accept a bare array, or { entries:[...] } / { cves:[...] }.
+            if (doc.isArray()) feedArr = doc.array();
+            else if (doc.isObject()) {
+                const QJsonObject o = doc.object();
+                feedArr = o.contains("entries") ? o.value("entries").toArray()
+                                                : o.value("cves").toArray();
+            }
+            source = u.host();
+        }
+
+        const auto entries = parseEntries(feedArr);
+        const int n = Nullock::Core::ServiceVulns::setOverlay(entries);
+        return okJson({
+            { "ok", true },
+            { "synced", n },
+            { "received", feedArr.size() },
+            { "dropped", static_cast<int>(feedArr.size()) - n },
+            { "source", source },
         });
     }
 
@@ -5877,7 +6027,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (cvss >= 9.0) return QStringLiteral("critical");
             if (cvss >= 7.0) return QStringLiteral("high");
             if (cvss >= 4.0) return QStringLiteral("medium");
-            return QStringLiteral("low");
+            return cvss > 0.0 ? QStringLiteral("low") : QStringLiteral("medium");  // unscored-but-known -> medium
         };
         QJsonArray techs, cves;
         for (const auto &t : fres.tech) {
@@ -5977,7 +6127,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (cvss >= 9.0) return QStringLiteral("critical");
             if (cvss >= 7.0) return QStringLiteral("high");
             if (cvss >= 4.0) return QStringLiteral("medium");
-            return QStringLiteral("low");
+            return cvss > 0.0 ? QStringLiteral("low") : QStringLiteral("medium");  // unscored-but-known -> medium
         };
         QJsonArray hits;
         for (const auto &h : sres.hits) {

@@ -1631,6 +1631,30 @@ Test-Endpoint "compliance groups by OWASP Top-10 + compliance tag" {
        -and ($null -ne $pci -and $pci.count -ge 2)
 }
 
+Write-Host "`n=== CVE feed overlay (cve_feed_sync) ===" -ForegroundColor Cyan
+# Push an overlay CVE matching Apache 2.4.99 (outside every static apache CVE),
+# then a scan with that banner must surface it -- proving the overlay drives detection.
+Test-Endpoint "cve overlay sync extends detection (Apache 2.4.99)" {
+    $body = (@{ entries = @(@{ product="apache"; cveId="CVE-2099-9999"; cvss=8.8; minVer="2.4.0"; maxVer="2.5.0"; summary="overlay test"; fix="2.5.0" }) } | ConvertTo-Json -Depth 6)
+    $sy = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/cve/sync" -Method POST -Headers $hdr -Body $body -ContentType "application/json" -TimeoutSec 10).Content | ConvertFrom-Json
+    if (-not ($sy.ok -and $sy.synced -eq 1)) { return $false }
+    $ov = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/cve/overlay" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    if ($ov.count -ne 1) { return $false }
+    $cx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.99" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="80"><state state="open"/><service name="http" banner="Apache/2.4.99"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $cx -TimeoutSec 10 | Out-Null
+    $sf = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10).Content | ConvertFrom-Json
+    $hit = @($sf.findings | Where-Object { $_.kind -eq "cve-correlated" -and $_.summary -match "CVE-2099-9999" })
+    $r = ($hit.Count -ge 1)
+    # cleanup so other tests start clean.
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/cve/overlay/clear" -Method POST -Headers $hdr -TimeoutSec 10 | Out-Null
+    return $r
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

@@ -54,6 +54,31 @@ QList<int> serviceProbePorts();
 void parseBanner(const QString &banner, int port, QString &product, QString &version);
 
 // Exposed for tests: CVE matches for an already-parsed product+version.
+// Consults the curated static table AND the runtime overlay (see below).
 QList<CveHit> matchVersion(const QString &product, const QString &version);
+
+// ---- Runtime CVE overlay (cve_feed_sync) -------------------------------
+// The static table ships a curated set of high-signal service CVEs. The
+// overlay lets an operator extend detection coverage at runtime by syncing an
+// external CVE feed (or pushing entries directly) -- matchVersion checks both,
+// reusing the same product/version-range semantics. Thread-safe.
+struct OverlayCve {
+    QString product;      // matched case-insensitively
+    QString cveId;
+    double  cvss = 0.0;
+    QString cvssVector;
+    QString minVer;       // "" = no lower bound (inclusive)
+    QString maxVer;       // "" = no upper bound (exclusive)
+    bool    exact = false; // true => match only version == minVer
+    QString affected;
+    QString summary;
+    QString fix;
+    QString reference;
+};
+
+// Replace the overlay with `entries`; returns how many were stored.
+int  setOverlay(const QList<OverlayCve> &entries);
+void clearOverlay();
+int  overlayCount();
 
 } // namespace Nullock::Core::ServiceVulns
