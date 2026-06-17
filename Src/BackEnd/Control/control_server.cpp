@@ -3586,6 +3586,168 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return hdr + body;
     }
 
+    // ---- HTML report composer ----------------------------------------
+    // POST /api/report/html -- a self-contained, styled HTML engagement
+    // report (exec summary + severity breakdown + per-finding CWE/OWASP/
+    // CVSS/fix table). No network, operates on existing findings + project
+    // metadata. EVERY piece of server/target-derived text is HTML-escaped --
+    // a security tool's own report must not become an XSS vector when the
+    // operator opens it in a browser.
+    if (path == "/api/report/html") {
+        auto esc = [](const QString &s) -> QString { return s.toHtmlEscaped(); };
+        auto sevColor = [](const QString &s) -> QString {
+            if (s == "critical") return QStringLiteral("#b91c1c");
+            if (s == "high")     return QStringLiteral("#ea580c");
+            if (s == "medium")   return QStringLiteral("#d97706");
+            if (s == "low")      return QStringLiteral("#3f8f29");
+            return QStringLiteral("#0891b2"); // info
+        };
+        const QString proj = m_wiring.projectStore
+            ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
+
+        QList<Nullock::Core::Finding> findings;
+        if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
+        const QStringList order = { "critical", "high", "medium", "low", "info" };
+        QMap<QString, QList<Nullock::Core::Finding>> bySev;
+        for (const auto &f : findings) {
+            // Coalesce empty/blank severity to "info" so it never renders as a
+            // nameless group, and group case-insensitively.
+            const QString k = f.severity.trimmed().isEmpty()
+                ? QStringLiteral("info") : f.severity.toLower();
+            bySev[k].append(f);
+        }
+        // The render order: the five standard severities first, then any
+        // non-standard severity present -- used for the cards, the bar, AND the
+        // findings table so all three are consistent and nothing is undercounted.
+        QStringList renderOrder = order;
+        for (const QString &kk : bySev.keys())
+            if (!order.contains(kk)) renderOrder.append(kk);
+
+        QString h;
+        h += "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">";
+        h += "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">";
+        h += "<title>Nullock report &mdash; " + esc(proj) + "</title><style>"
+             ":root{--fg:#1f2933;--muted:#6b7280;--line:#e5e7eb;--bg:#fff}"
+             "*{box-sizing:border-box}"
+             "body{font:14px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
+             "color:var(--fg);background:#f3f4f6;margin:0;padding:32px}"
+             ".wrap{max-width:980px;margin:0 auto;background:var(--bg);border:1px solid var(--line);"
+             "border-radius:12px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,.06)}"
+             "h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 12px;"
+             "border-bottom:2px solid var(--line);padding-bottom:6px}"
+             ".sub{color:var(--muted);font-size:13px;margin:0 0 24px}"
+             ".cards{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}"
+             ".card{flex:1;min-width:90px;border:1px solid var(--line);border-radius:10px;"
+             "padding:14px;text-align:center}.card .n{font-size:26px;font-weight:700}"
+             ".card .l{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}"
+             ".bar{display:flex;height:14px;border-radius:7px;overflow:hidden;margin:6px 0 24px;background:var(--line)}"
+             ".bar span{display:block}"
+             "table{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:13px}"
+             "th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}"
+             "th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}"
+             "code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}"
+             ".pill{display:inline-block;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;"
+             "border-radius:10px;text-transform:uppercase}"
+             ".ev{color:var(--muted);font-size:12px;max-width:340px;word-break:break-word}"
+             ".tag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:4px;"
+             "padding:1px 6px;font-size:11px;margin:1px 2px 1px 0}"
+             "footer{margin-top:36px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:14px}"
+             "</style></head><body><div class=\"wrap\">";
+
+        h += "<h1>Nullock engagement report</h1>";
+        h += "<p class=\"sub\">Project <strong>" + esc(proj) + "</strong> &middot; generated "
+             + esc(QDateTime::currentDateTime().toString(Qt::ISODate)) + "</p>";
+
+        // Severity summary cards + stacked bar.
+        h += "<div class=\"cards\">";
+        h += "<div class=\"card\"><div class=\"n\">" + QString::number(findings.size())
+             + "</div><div class=\"l\">total</div></div>";
+        for (const QString &sev : renderOrder) {
+            const int n = bySev.value(sev).size();
+            h += "<div class=\"card\"><div class=\"n\" style=\"color:" + sevColor(sev) + "\">"
+                 + QString::number(n) + "</div><div class=\"l\">" + esc(sev) + "</div></div>";
+        }
+        h += "</div>";
+        if (!findings.isEmpty()) {
+            h += "<div class=\"bar\">";
+            for (const QString &sev : renderOrder) {
+                const int n = bySev.value(sev).size();
+                if (n <= 0) continue;
+                const double pct = 100.0 * n / findings.size();
+                h += "<span style=\"width:" + QString::number(pct, 'f', 2) + "%;background:"
+                     + sevColor(sev) + "\" title=\"" + sev + ": " + QString::number(n) + "\"></span>";
+            }
+            h += "</div>";
+        }
+
+        // Scope.
+        if (m_wiring.projectStore) {
+            const auto meta = m_wiring.projectStore->metadata();
+            h += "<h2>Scope</h2><p class=\"sub\" style=\"margin:0\">In-scope: ";
+            if (meta.inScope.isEmpty()) h += "<em>none configured</em>";
+            else { QStringList s; for (const auto &x : meta.inScope) s << "<code>" + esc(x) + "</code>"; h += s.join(" "); }
+            if (!meta.outOfScope.isEmpty()) {
+                QStringList s; for (const auto &x : meta.outOfScope) s << "<code>" + esc(x) + "</code>";
+                h += "<br>Out-of-scope: " + s.join(" ");
+            }
+            h += "</p>";
+        }
+
+        // Findings, grouped by severity. Uses the same renderOrder as the
+        // cards/bar so every finding appears exactly once.
+        h += "<h2>Findings</h2>";
+        if (findings.isEmpty()) {
+            h += "<p class=\"sub\">No findings recorded.</p>";
+        } else {
+            for (const QString &sev : renderOrder) {
+                const auto &group = bySev.value(sev);
+                if (group.isEmpty()) continue;
+                h += "<h3 style=\"margin:22px 0 6px\"><span class=\"pill\" style=\"background:"
+                     + sevColor(sev) + "\">" + esc(sev) + "</span> &nbsp;" + QString::number(group.size())
+                     + " finding" + (group.size() == 1 ? "" : "s") + "</h3>";
+                h += "<table><thead><tr><th>Issue</th><th>Host / location</th>"
+                     "<th>CVSS</th><th>Mapping</th><th>Evidence &amp; fix</th></tr></thead><tbody>";
+                for (const auto &f : group) {
+                    h += "<tr>";
+                    h += "<td><strong>" + esc(f.kind) + "</strong><br><span class=\"ev\">"
+                         + esc(f.summary) + "</span></td>";
+                    h += "<td><code>" + esc(f.host) + "</code>";
+                    if (!f.url.isEmpty()) h += "<br><code>" + esc(f.url) + "</code>";
+                    h += "</td>";
+                    h += "<td>" + (f.cvssScore > 0.0 ? QString::number(f.cvssScore, 'f', 1)
+                                                     : QStringLiteral("&mdash;")) + "</td>";
+                    QString mapping;
+                    if (!f.cwe.isEmpty())   mapping += "<span class=\"tag\">" + esc(f.cwe) + "</span>";
+                    if (!f.owasp.isEmpty()) mapping += "<span class=\"tag\">" + esc(f.owasp) + "</span>";
+                    for (const auto &c : f.compliance) mapping += "<span class=\"tag\">" + esc(c) + "</span>";
+                    h += "<td>" + (mapping.isEmpty() ? QStringLiteral("&mdash;") : mapping) + "</td>";
+                    QString last;
+                    if (!f.evidence.isEmpty())
+                        last += "<span class=\"ev\">" + esc(f.evidence.left(300)) + "</span>";
+                    if (!f.fixSummary.isEmpty())
+                        last += "<br><span class=\"ev\" style=\"color:#3f8f29\">Fix: " + esc(f.fixSummary) + "</span>";
+                    h += "<td>" + (last.isEmpty() ? QStringLiteral("&mdash;") : last) + "</td>";
+                    h += "</tr>";
+                }
+                h += "</tbody></table>";
+            }
+        }
+
+        h += "<footer>Auto-generated by <a href=\"https://github.com/Bikebrainz/Nullock\">Nullock</a>. "
+             "Passive scanner active throughout; active probes applied to in-scope targets; "
+             "OAST callbacks monitored for blind SSRF/XSS/OOB-DNS. Review before distribution.</footer>";
+        h += "</div></body></html>";
+
+        QByteArray hdr;
+        hdr += "HTTP/1.1 200 OK\r\n";
+        hdr += "Content-Type: text/html; charset=utf-8\r\n";
+        hdr += "Content-Disposition: attachment; filename=\"nullock-report.html\"\r\n";
+        const QByteArray body = h.toUtf8();
+        hdr += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+        hdr += "Connection: close\r\n\r\n";
+        return hdr + body;
+    }
+
     // ---- Built-in extensions install ---------------------------------
     // POST /api/extensions/install-builtins -- copies the extensions
     // shipped with the repo (extensions/*.js) into the user's

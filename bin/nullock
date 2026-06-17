@@ -570,7 +570,13 @@ cmd_report() {
                 "$API/api/report/build" -o "$out"
             echo "wrote $out"
             ;;
-        *) die "usage: nullock report build [output.md]" ;;
+        html)
+            local out=${2:-nullock-report.html}
+            curl -sS --max-time 30 -X POST -H "Origin: $API" -H "X-Nullock-UI: 1" \
+                "$API/api/report/html" -o "$out"
+            echo "wrote $out"
+            ;;
+        *) die "usage: nullock report build [output.md] | nullock report html [output.html]" ;;
     esac
 }
 

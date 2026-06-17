@@ -1487,6 +1487,30 @@ Test-Endpoint "pipeline bridges network findings + honors scope" {
     }
 }
 
+Write-Host "`n=== HTML report composer ===" -ForegroundColor Cyan
+# Seed a finding whose host carries a <script> payload (XML-decoded by the nmap
+# import), bridge it to a finding, then generate the HTML report and assert the
+# payload is escaped -- the report must not be an XSS vector.
+Test-Endpoint "report html: structured, enriched, and XSS-safe" {
+    $hx = @'
+<?xml version="1.0"?>
+<nmaprun><host>
+  <hostname name="x&lt;script&gt;alert(9)&lt;/script&gt;" type="user"/>
+  <address addr="203.0.113.7" addrtype="ipv4"/>
+  <ports><port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port></ports>
+</host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $hx -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $r = Invoke-WebRequest -UseBasicParsing -Uri "$base/api/report/html" -Method POST -Headers $hdr -TimeoutSec 15
+    $html = $r.Content
+    return ($r.Headers["Content-Type"] -match "text/html") `
+       -and ($html -match "(?i)<!doctype html") `
+       -and ($html -match "Nullock engagement report") `
+       -and ($html -match "exposed-database") -and ($html -match "CWE-668") `
+       -and ($html -match "&lt;script&gt;") -and (-not ($html -match "<script>alert\(9\)"))
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
