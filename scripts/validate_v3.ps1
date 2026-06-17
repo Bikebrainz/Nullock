@@ -1458,6 +1458,35 @@ Test-Endpoint "portscan/to-findings classifies exposed services + CVE, is idempo
        -and ($r2.emitted -eq 0) -and ($r2.skippedDuplicates -gt 0)
 }
 
+Write-Host "`n=== Recon -> vuln pipeline ===" -ForegroundColor Cyan
+# Inject scan results (no real scan), then orchestrate: network bridge +
+# scope handling. assessWeb=false keeps it fast (web layer reuses the
+# assess battery, covered above). Then verify the scope pre-filter.
+Test-Endpoint "pipeline bridges network findings + honors scope" {
+    $px = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.9" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="6379"><state state="open"/><service name="redis"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $px -TimeoutSec 10 | Out-Null
+    $r = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/pipeline/run" -Method POST -Headers $hdr -Body '{"host":"198.51.100.9","assessWeb":false}' -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+    if (-not ($r.ok -and $r.networkFindings -ge 2 -and $r.webTargetsAssessed -eq 0)) { return $false }
+    # Re-run -> idempotent (no new network findings).
+    $r2 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/pipeline/run" -Method POST -Headers $hdr -Body '{"host":"198.51.100.9","assessWeb":false}' -ContentType "application/json" -TimeoutSec 20).Content | ConvertFrom-Json
+    if ($r2.networkFindings -ne 0) { return $false }
+    # Out-of-scope host -> central gate refuses.
+    try {
+        Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/scope/out/add" -Headers $hdr -Body (@{glob="198.51.100.9"}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10 | Out-Null
+        Start-Sleep -Milliseconds 300
+        $blk = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/pipeline/run" -Method POST -Headers $hdr -Body '{"host":"198.51.100.9","assessWeb":false}' -ContentType "application/json" -TimeoutSec 15).Content | ConvertFrom-Json
+        return ($blk.scopeBlocked -eq $true)
+    } finally {
+        Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/scope/out/remove" -Headers $hdr -Body (@{glob="198.51.100.9"}|ConvertTo-Json) -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    }
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

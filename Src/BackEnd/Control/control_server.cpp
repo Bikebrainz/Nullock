@@ -121,6 +121,93 @@ struct AuditTarget {
     QString url;            // display URL for findings
 };
 
+// Shared "safe identification" battery for one web target: tech fingerprint
+// (+CVE correlation), security-header/CSP audit, HTTP-method audit, and (for
+// https) TLS inspection. Emits each finding into the passive scanner and
+// returns an aggregate {host,port,tls,url,tech,findingCount,bySeverity,findings}.
+// Read-only recon -- no injection. Shared by /api/assess (one host) and
+// /api/pipeline/run (every web port a scan discovered).
+// `seen` (optional): when non-null, findings whose dedup key (kind+url+title)
+// is already present are skipped (not emitted, not returned) and the key of
+// each new finding is inserted -- this makes a caller idempotent across runs.
+// /api/assess passes nullptr (no dedup, unchanged behavior); the pipeline
+// passes its shared set so a re-run doesn't duplicate web findings.
+QJsonObject assessWebTarget(Nullock::Core::PassiveScanner *scanner,
+                            const QString &host, int port, bool tls,
+                            const QString &basePath, const QString &query,
+                            const QString &displayUrl,
+                            QSet<QString> *seen = nullptr) {
+    auto sevFor = [](double cvss) {
+        if (cvss >= 9.0) return QStringLiteral("critical");
+        if (cvss >= 7.0) return QStringLiteral("high");
+        if (cvss >= 4.0) return QStringLiteral("medium");
+        return QStringLiteral("low");
+    };
+    QJsonArray findings;
+    QMap<QString, int> bySeverity;
+    auto addF = [&](const QString &sev, const QString &kind, const QString &title, const QString &detail) {
+        if (seen) {
+            const QString k = kind + QChar(0x1f) + displayUrl + QChar(0x1f) + title;
+            if (seen->contains(k)) return;   // already known -- skip emit + return
+            seen->insert(k);
+        }
+        findings.append(QJsonObject{{ "severity", sev }, { "kind", kind }, { "title", title }});
+        bySeverity[sev] = bySeverity.value(sev) + 1;
+        if (scanner)
+            scanner->reportFinding(0, sev, kind, title, detail, host, displayUrl);
+    };
+
+    // 1) tech fingerprint (+ CVE correlation)
+    QJsonArray techs;
+    {
+        Nullock::Core::HttpFingerprint::Request fr;
+        fr.host = host; fr.port = port; fr.tls = tls; fr.basePath = basePath; fr.query = query;
+        const auto fres = Nullock::Core::HttpFingerprint::fingerprint(fr);
+        for (const auto &t : fres.tech) {
+            techs.append(t.name + (t.version.isEmpty() ? "" : " " + t.version));
+            addF("info", "tech-detected",
+                 "Detected " + t.name + (t.version.isEmpty() ? "" : " " + t.version),
+                 "fingerprint source: " + t.source);
+            if (!t.cveKind.isEmpty() && !t.version.isEmpty())
+                for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + " " + t.version))
+                    addF(sevFor(m.cvss), "cve-correlated",
+                         QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
+                         "fix " + m.fixVersion + " | " + m.reference);
+        }
+    }
+    // 2) security headers / CSP
+    {
+        Nullock::Core::HeaderAudit::Request hr;
+        hr.host = host; hr.port = port; hr.tls = tls; hr.basePath = basePath; hr.query = query;
+        for (const auto &f : Nullock::Core::HeaderAudit::test(hr).findings)
+            addF(f.severity, f.key, f.title, f.detail);
+    }
+    // 3) HTTP methods
+    {
+        Nullock::Core::MethodAudit::Request mr;
+        mr.host = host; mr.port = port; mr.tls = tls; mr.basePath = basePath; mr.query = query;
+        for (const auto &f : Nullock::Core::MethodAudit::audit(mr).findings)
+            addF(f.severity, f.kind, "HTTP methods -- " + f.detail, f.detail);
+    }
+    // 4) TLS (https only)
+    if (tls) {
+        Nullock::Core::TlsInspect::Request tir;
+        tir.host = host; tir.port = port; tir.probeLegacyProtocols = false;
+        for (const auto &f : Nullock::Core::TlsInspect::inspect(tir).findings)
+            addF(f.severity, f.kind, "TLS -- " + f.detail, f.detail);
+    }
+
+    QJsonObject sevCounts;
+    for (auto it = bySeverity.begin(); it != bySeverity.end(); ++it) sevCounts[it.key()] = it.value();
+    return QJsonObject{
+        { "host", host }, { "port", port }, { "tls", tls }, { "url", displayUrl },
+        { "tech", techs },
+        { "findingCount", findings.size() },
+        { "bySeverity", sevCounts },
+        { "findings", findings },
+    };
+}
+
 int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
                  const QSet<QString> &include, QJsonArray &reportsOut) {
     int total = 0;
@@ -2352,6 +2439,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
+        "/api/pipeline/run",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4835,68 +4923,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                  ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         const QString query = u.query(QUrl::FullyEncoded);
 
-        auto sevFor = [](double cvss) {
-            if (cvss >= 9.0) return QStringLiteral("critical");
-            if (cvss >= 7.0) return QStringLiteral("high");
-            if (cvss >= 4.0) return QStringLiteral("medium");
-            return QStringLiteral("low");
-        };
-        QJsonArray findings;
-        QMap<QString, int> bySeverity;
-        auto addF = [&](const QString &sev, const QString &kind, const QString &title, const QString &detail) {
-            findings.append(QJsonObject{{ "severity", sev }, { "kind", kind }, { "title", title }});
-            bySeverity[sev] = bySeverity.value(sev) + 1;
-            if (m_wiring.scanner)
-                m_wiring.scanner->reportFinding(0, sev, kind, title, detail, host, url);
-        };
-
-        // 1) tech fingerprint (+ CVE correlation)
-        QJsonArray techs;
-        {
-            Nullock::Core::HttpFingerprint::Request fr;
-            fr.host = host; fr.port = port; fr.tls = tls; fr.basePath = basePath; fr.query = query;
-            const auto fres = Nullock::Core::HttpFingerprint::fingerprint(fr);
-            for (const auto &t : fres.tech) {
-                techs.append(t.name + (t.version.isEmpty() ? "" : " " + t.version));
-                addF("info", "tech-detected",
-                     "Detected " + t.name + (t.version.isEmpty() ? "" : " " + t.version),
-                     "fingerprint source: " + t.source);
-                if (!t.cveKind.isEmpty() && !t.version.isEmpty())
-                    for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + " " + t.version))
-                        addF(sevFor(m.cvss), "cve-correlated",
-                             QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
-                             "fix " + m.fixVersion + " | " + m.reference);
-            }
-        }
-        // 2) security headers / CSP
-        {
-            Nullock::Core::HeaderAudit::Request hr;
-            hr.host = host; hr.port = port; hr.tls = tls; hr.basePath = basePath; hr.query = query;
-            for (const auto &f : Nullock::Core::HeaderAudit::test(hr).findings)
-                addF(f.severity, f.key, f.title, f.detail);
-        }
-        // 3) HTTP methods
-        {
-            Nullock::Core::MethodAudit::Request mr;
-            mr.host = host; mr.port = port; mr.tls = tls; mr.basePath = basePath; mr.query = query;
-            for (const auto &f : Nullock::Core::MethodAudit::audit(mr).findings)
-                addF(f.severity, f.kind, "HTTP methods -- " + f.detail, f.detail);
-        }
-        // 4) TLS (https only)
-        if (tls) {
-            Nullock::Core::TlsInspect::Request tir;
-            tir.host = host; tir.port = port; tir.probeLegacyProtocols = false;
-            for (const auto &f : Nullock::Core::TlsInspect::inspect(tir).findings)
-                addF(f.severity, f.kind, "TLS -- " + f.detail, f.detail);
-        }
-
-        QJsonObject sevCounts;
-        for (auto it = bySeverity.begin(); it != bySeverity.end(); ++it) sevCounts[it.key()] = it.value();
-        return okJson({{ "ok", true }, { "host", host },
-                       { "tech", techs },
-                       { "findingCount", findings.size() },
-                       { "bySeverity", sevCounts },
-                       { "findings", findings }});
+        QJsonObject out = assessWebTarget(m_wiring.scanner, host, port, tls,
+                                          basePath, query, url);
+        out["ok"] = true;
+        return okJson(out);
     }
 
     // ---- Web cache deception -----------------------------------------
@@ -6424,6 +6454,115 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "skippedDuplicates", skipped },
             { "bySeverity", bySev },
             { "findings", findingsArr },
+        });
+    }
+
+    // ---- recon -> vuln pipeline orchestrator -------------------------
+    // POST /api/pipeline/run
+    //   { host?, assessWeb?: bool=true, includeOpenPorts?, correlateCves? }
+    // The "point at a host, get a report" capstone. Takes the port scanner's
+    // current results (optionally filtered to one host), bridges them into
+    // network findings (exposed services + banner->CVE), then runs the safe
+    // web-identification battery (fingerprint+headers+methods+TLS) against
+    // every open HTTP/HTTPS port discovered -- aggregating everything into one
+    // report. It probes the discovered web ports, so it is ScopeGuard-gated:
+    // each web target is checked against scope and out-of-scope hosts skipped.
+    if (path == "/api/pipeline/run") {
+        if (!m_wiring.portScanner)
+            return okJson({{ "ok", false }, { "error", "no port scanner" }});
+        if (!m_wiring.scanner)
+            return okJson({{ "ok", false }, { "error", "no passive scanner wired" }});
+
+        const QString filterHost = bodyJson.value("host").toString();
+        const bool assessWeb = bodyJson.value("assessWeb").toBool(true);
+
+        Nullock::Core::ScanBridge::Options opt;
+        if (bodyJson.contains("includeOpenPorts"))
+            opt.includeOpenPorts = bodyJson.value("includeOpenPorts").toBool(true);
+        if (bodyJson.contains("correlateCves"))
+            opt.correlateCves = bodyJson.value("correlateCves").toBool(true);
+
+        // Gather in-scope results (filtered to the requested host if any). The
+        // scan was scope-gated at start, but /api/pipeline/run also fires live
+        // web probes AND emits findings, so an unfiltered run must not act on
+        // hosts the project marks out of scope -- one pre-filter covers both
+        // the network-bridge and web-assess layers. (With no scope configured,
+        // blocksScope is always false, so this is non-breaking.)
+        QList<Nullock::Core::PortResult> results;
+        QSet<QString> scopeSkippedHosts;
+        for (const auto &r : m_wiring.portScanner->results()) {
+            if (!filterHost.isEmpty() && r.host != filterHost) continue;
+            if (blocksScope(r.host)) { scopeSkippedHosts.insert(r.host); continue; }
+            results.append(r);
+        }
+
+        // 1) Network layer: bridge port-scan results -> findings (idempotent).
+        const QChar sep(QChar(0x1f));
+        QSet<QString> seen;
+        for (const auto &ex : m_wiring.scanner->findings(0))
+            seen.insert(ex.kind + sep + ex.url + sep + ex.summary);
+        QJsonObject bySev;
+        int netEmitted = 0;
+        for (const auto &f : Nullock::Core::ScanBridge::fromPortResults(results, opt)) {
+            const QString key = f.kind + sep + f.url + sep + f.summary;
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            m_wiring.scanner->reportFinding(0, f.severity, f.kind, f.summary, f.evidence, f.host, f.url);
+            bySev[f.severity] = bySev.value(f.severity).toInt() + 1;
+            ++netEmitted;
+        }
+
+        // 2) Web layer: assess every open HTTP/HTTPS port discovered. Shares
+        // the `seen` set so web findings dedup across runs too (and use the
+        // same kind+url+title key the snapshot seed above primed).
+        QJsonArray webTargets;
+        int webFindings = 0, openPorts = 0;
+        for (const auto &r : results) {
+            if (r.status.toLower() != QLatin1String("open")) continue;
+            ++openPorts;
+            if (!assessWeb) continue;
+
+            const QString svc = r.service.toLower();
+            const quint16 p = r.port;
+            bool tls = false, isWeb = false;
+            // Explicit TLS signals (any port).
+            if (p == 443 || p == 8443 || svc.contains("https") || svc == "ssl"
+                || svc == "tls" || svc.contains("ssl/http")) { tls = true; isWeb = true; }
+            // Explicit cleartext-HTTP service labels (any port).
+            else if (svc == "http" || svc.contains("http-proxy")
+                     || svc.contains("http-alt") || svc.contains("www")) { isWeb = true; }
+            // Hard HTTP ports we trust by number.
+            else if (p == 80 || p == 8080) { isWeb = true; }
+            // Soft HTTP ports: only when the service is unknown or http-ish, so
+            // we don't fire HTTP probes at a confirmed non-HTTP service.
+            else if ((p == 8000 || p == 8888 || p == 8008 || p == 3000 || p == 5000)
+                     && (svc.isEmpty() || svc.contains("http"))) { isWeb = true; }
+            if (!isWeb) continue;
+
+            const QString scheme = tls ? QStringLiteral("https") : QStringLiteral("http");
+            const bool defaultPort = (tls && p == 443) || (!tls && p == 80);
+            const QString displayUrl = scheme + "://" + r.host
+                + (defaultPort ? QString() : ":" + QString::number(p)) + "/";
+
+            QJsonObject one = assessWebTarget(m_wiring.scanner, r.host, p, tls,
+                                              QStringLiteral("/"), QString(), displayUrl, &seen);
+            webFindings += one.value("findingCount").toInt();
+            const QJsonObject ws = one.value("bySeverity").toObject();
+            for (auto it = ws.begin(); it != ws.end(); ++it)
+                bySev[it.key()] = bySev.value(it.key()).toInt() + it.value().toInt();
+            webTargets.append(one);
+        }
+
+        return okJson({
+            { "ok", true },
+            { "host", filterHost.isEmpty() ? QStringLiteral("(all scanned)") : filterHost },
+            { "openPorts", openPorts },
+            { "networkFindings", netEmitted },
+            { "webTargetsAssessed", webTargets.size() },
+            { "webFindings", webFindings },
+            { "scopeSkippedHosts", scopeSkippedHosts.size() },
+            { "bySeverity", bySev },
+            { "webTargets", webTargets },
         });
     }
 

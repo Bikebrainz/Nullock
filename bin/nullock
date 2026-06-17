@@ -783,6 +783,24 @@ cmd_scanfindings() {
     post /api/portscan/to-findings "{\"includeOpenPorts\":$inc,\"correlateCves\":$cve}" | pp
 }
 
+cmd_pipeline() {
+    # nullock pipeline [host] [--no-web]
+    # Recon->vuln orchestrator: bridges the current port-scan results into
+    # findings + CVEs, then assesses every open web port (run `nullock scan` first).
+    local host="" web=true
+    while [[ -n ${1-} ]]; do
+        case $1 in
+            --no-web) web=false ;;
+            *) host=$1 ;;
+        esac
+        shift
+    done
+    local body="{\"assessWeb\":$web"
+    [[ -n $host ]] && body+=",\"host\":$(jsonq "$host")"
+    body+="}"
+    post /api/pipeline/run "$body" | pp
+}
+
 cmd_smuggle() {
     # nullock smuggle <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock smuggle <url> [hdr:val ...]"
@@ -1489,6 +1507,10 @@ Above-Burp features (v4/v5):
                        [--no-cve]        findings: exposed DB / remote-admin / mgmt
                                          API / cleartext / file-share + banner CVEs
                                          (run `nullock scan <host>` first)
+  nullock pipeline [host] [--no-web]     recon->vuln orchestrator: bridge scan
+                                         results to findings + CVEs, then assess
+                                         every open web port (fingerprint, headers,
+                                         methods, TLS) -- one point-at-host report
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1587,6 +1609,7 @@ case ${1:-help} in
     smuggle)       shift; cmd_smuggle "$@"       ;;
     vulnscan)      shift; cmd_vulnscan "$@"      ;;
     scan-findings) shift; cmd_scanfindings "$@" ;;
+    pipeline)      shift; cmd_pipeline "$@"     ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;
