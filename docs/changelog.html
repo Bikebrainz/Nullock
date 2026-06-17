@@ -42,12 +42,12 @@
 
       <article class="rel">
         <div class="rel-meta">
-          <span class="rel-ver">v3.5.0</span>
-          <span class="caption">Jun 11, 2026</span>
+          <span class="rel-ver">v3.6.0</span>
+          <span class="caption">Jun 17, 2026</span>
           <span class="badge ok"><span class="dot"></span>latest</span>
         </div>
         <div class="rel-body">
-          <p class="rel-note">More scanners that find real, exploitable bugs the free tools can't — each shipped with adversarial code review, a regression test, and built-in false-positive guards. Plus a tool-wide HTTP client correctness fix.</p>
+          <p class="rel-note">The platform release. The scanner grew a network layer and a full reporting + recon suite: a port-scan&rarr;findings bridge, a point-at-a-host recon&rarr;vuln pipeline, WAF/CDN and robots/sitemap recon, a live CVE-feed overlay, and engagement reporting (HTML with an A&ndash;F grade, JSON bundle, CycloneDX SBOM, OWASP/compliance coverage, asset inventory, posture grade, baseline diff). Each feature shipped with a multi-lens adversarial review and a regression test.</p>
           <ul>
             <li><span class="tag add">add</span> <strong>WAF / CDN detection.</strong> <code class="inline">nullock waf &lt;url&gt;</code> identifies the protective infrastructure fronting a target — Cloudflare, Akamai, Imperva, AWS WAF/CloudFront, F5 BIG-IP, Fastly, Sucuri, NetScaler, … — from response header/cookie signatures (wafw00f-class). Passive: it reads what the infra announces, sends no attack payload. Recon context Burp doesn't surface.</li>
             <li><span class="tag add">add</span> <strong>robots.txt / sitemap recon.</strong> <code class="inline">nullock robots &lt;url&gt;</code> pulls <code class="inline">/robots.txt</code> and <code class="inline">/sitemap.xml</code> and surfaces the <code class="inline">Disallow</code> paths — the unlinked admin/backup/internal endpoints owners hide from crawlers — as recon findings, plus the sitemap URL set. Hidden attack surface, in one call.</li>
@@ -64,6 +64,18 @@
             <li><span class="tag add">add</span> <strong>Recon &rarr; vuln pipeline.</strong> <code class="inline">nullock pipeline [host]</code> is the point-at-a-host capstone: it bridges the port-scan results into network findings (exposed services + CVEs), then runs the safe web-identification battery — tech fingerprint (+CVE), security-header/CSP audit, HTTP-method audit, TLS inspection — against every open HTTP/HTTPS port discovered, and aggregates both layers into one severity-bucketed report. Scope-gated (out-of-scope hosts are skipped, not probed), idempotent across both layers, and web ports are classified so it won't fire HTTP probes at a confirmed non-HTTP service.</li>
             <li><span class="tag add">add</span> <strong>Scan &rarr; findings bridge.</strong> <code class="inline">nullock scan-findings</code> turns the port scanner's results into first-class findings — exposed databases (MySQL/Postgres/Mongo/Redis/Elastic…), remote-admin (RDP/VNC/Telnet), management APIs (Docker/etcd/Kubernetes/Consul/Webmin), file shares (SMB/NFS), and cleartext protocols — plus banner&rarr;CVE correlation, so the network layer rides into the same findings list, report, SARIF export, and CWE/OWASP enrichment as every web finding. Pure transform: no extra packets (the scan was already scope-gated), idempotent on re-run, and severity is calibrated to each finding's CVSS.</li>
             <li><span class="tag fix">fix</span> The engagement report builder (<code class="inline">/api/report/build</code>) and the grouped-findings view returned <em>zero</em> findings due to an off-by-one in the "return all" code path — both now include the full finding set.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
+          <span class="rel-ver">v3.5.0</span>
+          <span class="caption">Jun 11, 2026</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">The active-testing climb: a full battery of injection, access-control, and misconfiguration scanners, plus the offensive-expansion identification modules (service&rarr;CVE, ScopeGuard, TLS inspection, fingerprint, HTTP methods, subdomain takeover, exposure, cache deception) — each with adversarial review, a regression test, and built-in false-positive guards. Plus a tool-wide HTTP client correctness fix.</p>
+          <ul>
             <li><span class="tag add">add</span> <strong>Hidden parameter mining</strong>, <strong>IDOR/BOLA</strong> (API #1), <strong>mass-assignment</strong> (API #6), and <strong>active CORS</strong> exploitability — the API-security battery.</li>
             <li><span class="tag add">add</span> <strong>JS recon.</strong> Mines same-origin bundles for API endpoints (real attack surface, including unlinked routes) and flags exposed source maps that leak original source.</li>
             <li><span class="tag add">add</span> <strong>Race-condition tester.</strong> Fires N synchronized concurrent copies and flags a limited-use operation that leaked extra successes — distinguishing a real race from rate-limiting / overload.</li>
