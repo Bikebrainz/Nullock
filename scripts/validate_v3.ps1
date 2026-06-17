@@ -498,6 +498,30 @@ Test-Endpoint "assess aggregates fingerprint + header + method findings in one c
     }
 }
 
+Write-Host "`n=== Sensitive file exposure ===" -ForegroundColor Cyan
+Test-Endpoint "exposure flags .git/.env by content signature, no FP on a 200-everything server" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 40;$i++){ try{
+            $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $r=$c.Response
+            if($p -eq "/.git/config"){ $b="[core]`n`trepositoryformatversion = 0" }
+            elseif($p -eq "/.env"){ $b="APP_KEY=base64stuff`nDB_PASSWORD=hunter2" }
+            else { $b="<html><body>generic catch-all page</body></html>" }
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=200; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/exposure/scan" -Headers $hdr -Body (@{ url="http://127.0.0.1:$oport/" } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($r.hits.path -contains '/.git/config') -and ($r.hits.path -contains '/.env') -and ($r.hitCount -eq 2)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Subdomain takeover ===" -ForegroundColor Cyan
 Test-Endpoint "takeover flags a dangling GitHub Pages fingerprint, clean on a real site" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000

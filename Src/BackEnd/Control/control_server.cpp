@@ -40,6 +40,7 @@
 #include "http_fingerprint.hpp"
 #include "method_audit.hpp"
 #include "takeover_scan.hpp"
+#include "exposure_scan.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2348,7 +2349,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
-        "/api/assess",
+        "/api/assess", "/api/exposure/scan",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4894,6 +4895,45 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "findingCount", findings.size() },
                        { "bySeverity", sevCounts },
                        { "findings", findings }});
+    }
+
+    // ---- Sensitive file / path exposure ------------------------------
+    // POST /api/exposure/scan { url }
+    //   Probes curated sensitive paths (.git/.env/actuator/...), confirmed by
+    //   content signature. CWE-538/552. Read-only.
+    if (path == "/api/exposure/scan") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::ExposureScan::Request er;
+        er.host = u.host();
+        er.port = u.port(u.scheme() == "https" ? 443 : 80);
+        er.tls  = (u.scheme() == "https");
+        const QString p = u.path(QUrl::FullyEncoded);
+        if (p.length() > 1) er.basePrefix = p.endsWith('/') ? p.left(p.length() - 1) : p;
+        const QJsonObject ehdrs = bodyJson.value("headers").toObject();
+        for (auto it = ehdrs.begin(); it != ehdrs.end(); ++it)
+            er.headers.append({ it.key(), it.value().toString() });
+
+        const auto eres = Nullock::Core::ExposureScan::scan(er);
+        QJsonArray hits;
+        for (const auto &h : eres.hits) {
+            hits.append(QJsonObject{
+                { "path", h.path }, { "severity", h.severity },
+                { "summary", h.summary }, { "status", h.status }, { "evidence", h.evidence } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, h.severity, "sensitive-file-exposure",
+                    QString("Exposed %1 -- %2").arg(h.path, h.summary),
+                    "confirmed by content signature: " + h.evidence,
+                    er.host, url + h.path.mid(h.path.startsWith('/') ? 1 : 0));
+        }
+        return okJson({{ "ok", eres.error.isEmpty() },
+                       { "error", eres.error },
+                       { "probed", eres.probed },
+                       { "hitCount", static_cast<int>(eres.hits.size()) },
+                       { "hits", hits }});
     }
 
     // ---- Subdomain-takeover detection --------------------------------

@@ -713,6 +713,12 @@ cmd_assess() {
     post /api/assess "{\"url\":$(jsonq "$1")}" | pp
 }
 
+cmd_exposure() {
+    # nullock exposure <url>
+    [[ -n ${1-} ]] || die "usage: nullock exposure <url>"
+    post /api/exposure/scan "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_takeover() {
     # nullock takeover <host-or-url>
     [[ -n ${1-} ]] || die "usage: nullock takeover <host-or-url>"
@@ -1472,6 +1478,9 @@ Above-Burp features (v4/v5):
   nullock assess <url>                   one-call host assessment -- tech
                                          fingerprint+CVE, header/CSP audit, HTTP
                                          method audit, TLS inspect; aggregated
+  nullock exposure <url>                 sensitive-file scan -- .git/.env/actuator/
+                                         phpinfo/config-backups, confirmed by
+                                         content signature
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1554,6 +1563,7 @@ case ${1:-help} in
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;
     takeover)      shift; cmd_takeover "$@"      ;;
+    exposure)      shift; cmd_exposure "$@"      ;;
     assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;

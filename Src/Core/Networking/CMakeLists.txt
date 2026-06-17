@@ -20,6 +20,8 @@ add_library(Networking STATIC
     method_audit.hpp
     takeover_scan.cpp
     takeover_scan.hpp
+    exposure_scan.cpp
+    exposure_scan.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp
