@@ -768,6 +768,21 @@ cmd_vulnscan() {
     post /api/servicevulns/scan "{\"host\":$(jsonq "$host"),\"ports\":$ports}" | pp
 }
 
+cmd_scanfindings() {
+    # nullock scan-findings [--no-open] [--no-cve]
+    # Turns the current port-scan results into findings (run `nullock scan` first).
+    local inc=true cve=true
+    while [[ -n ${1-} ]]; do
+        case $1 in
+            --no-open) inc=false ;;
+            --no-cve)  cve=false ;;
+            *) die "usage: nullock scan-findings [--no-open] [--no-cve]" ;;
+        esac
+        shift
+    done
+    post /api/portscan/to-findings "{\"includeOpenPorts\":$inc,\"correlateCves\":$cve}" | pp
+}
+
 cmd_smuggle() {
     # nullock smuggle <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock smuggle <url> [hdr:val ...]"
@@ -1470,6 +1485,10 @@ Above-Burp features (v4/v5):
                                          network services (SSH/FTP/SMTP/HTTP...) and
                                          flags vulnerable versions (vsftpd, OpenSSH,
                                          Apache, ProFTPd, Exim, IIS, Samba...)
+  nullock scan-findings [--no-open]      turn the current port-scan results into
+                       [--no-cve]        findings: exposed DB / remote-admin / mgmt
+                                         API / cleartext / file-share + banner CVEs
+                                         (run `nullock scan <host>` first)
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1567,6 +1586,7 @@ case ${1:-help} in
     nosqli)        shift; cmd_nosqli "$@"        ;;
     smuggle)       shift; cmd_smuggle "$@"       ;;
     vulnscan)      shift; cmd_vulnscan "$@"      ;;
+    scan-findings) shift; cmd_scanfindings "$@" ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;
     methods)       shift; cmd_methods "$@"       ;;

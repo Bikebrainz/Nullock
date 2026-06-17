@@ -194,6 +194,14 @@ const QHash<QString, Mapping> &table() {
         // ---- Subdomain takeover --------------------------------------
         { "subdomain-takeover", { "CWE-284", "A05:2021-Security Misconfiguration", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N", "", "Remove the dangling DNS record, or re-claim the referenced service; audit CNAMEs for de-provisioned targets." } },
 
+        // ---- Exposed network services (port-scan -> findings bridge) --
+        { "exposed-database",             { "CWE-668", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-1.3.1", "A database/data-store port is internet-reachable. Bind it to localhost or a private subnet, firewall the port, and require authentication." } },
+        { "exposed-remote-admin",         { "CWE-668", "A05:2021-Security Misconfiguration", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-1.3.1", "A remote-administration service (RDP/VNC/Telnet) is reachable. Put it behind a VPN/bastion, restrict source IPs, and enforce MFA; replace cleartext protocols." } },
+        { "exposed-management-interface", { "CWE-668", "A05:2021-Security Misconfiguration", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N", "", "An orchestration/management API (Docker/etcd/Kubernetes/Consul/Webmin) is exposed and is often unauthenticated. Firewall it to an admin network and require auth/mTLS." } },
+        { "exposed-file-share",           { "CWE-668", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", "", "A file-share/RPC service (SMB/NFS/MSRPC/portmapper) faces the internet. Restrict it to the LAN/VPN and require authentication." } },
+        { "exposed-cleartext-service",    { "CWE-319", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "A cleartext protocol (FTP/Telnet/POP3/IMAP/SNMP/LDAP) is reachable; credentials and data travel unencrypted. Switch to the TLS variant and disable the plaintext port." } },
+        { "open-port",                    { "CWE-200", "A05:2021-Security Misconfiguration", 1.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "An open TCP port was found. Confirm the service is meant to be reachable; close or firewall it if not (reduce attack surface)." } },
+
         // ---- HTTP method exposure ------------------------------------
         { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Disable write methods (PUT/DELETE/PATCH) unless required; enforce auth + an allow-list per route." } },
         { "webdav-enabled",         { "CWE-650", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:N", "", "Disable WebDAV if unused; it often allows file upload/overwrite." } },

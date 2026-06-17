@@ -40,7 +40,10 @@ int PassiveScanner::count() const {
 
 QList<Finding> PassiveScanner::findings(int limit) const {
     QMutexLocker lock(&m_mutex);
-    if (limit >= m_findings.size()) return m_findings;
+    // limit <= 0 means "all" -- callers like the report builder and the
+    // grouped view pass 0 to get the full set. (A literal 0 limit would
+    // otherwise fall through to the slice loop and return an empty list.)
+    if (limit <= 0 || limit >= m_findings.size()) return m_findings;
     // Return the newest-first slice so the UI list is interesting at the
     // top without sorting client-side.
     QList<Finding> out;

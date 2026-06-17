@@ -1425,6 +1425,39 @@ Test-Endpoint "jwt forge hs256 produces a token that re-validates" {
     return ($vj.secretRecovered -eq $true) -and ($vj.payload.role -eq "superadmin")
 }
 
+Write-Host "`n=== Scan -> findings bridge ===" -ForegroundColor Cyan
+# Inject synthetic port-scan results (via nmap import -- no real scan), then
+# bridge them into findings: exposed services + banner->CVE. Deterministic.
+Test-Endpoint "portscan/to-findings classifies exposed services + CVE, is idempotent" {
+    $sbx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="192.0.2.77" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="21"><state state="open"/><service name="ftp" banner="220 (vsFTPd 2.3.4)"/></port>
+  <port protocol="tcp" portid="10000"><state state="open"/><service name="snet-sensor-mgmt"/></port>
+  <port protocol="tcp" portid="443"><state state="open"/><service name="https"/></port>
+  <port protocol="tcp" portid="9999"><state state="closed"/><service name="x"/></port>
+</ports></host></nmaprun>
+'@
+    $imp = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $sbx -TimeoutSec 10).Content | ConvertFrom-Json
+    if ($imp.imported -ne 5) { return $false }
+    $r = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{"includeOpenPorts":true,"correlateCves":true}' -ContentType "application/json" -TimeoutSec 10).Content | ConvertFrom-Json
+    $kinds = @($r.findings | ForEach-Object { $_.kind })
+    $mgmt  = @($r.findings | Where-Object { $_.kind -eq "exposed-management-interface" })[0]
+    $cve   = @($r.findings | Where-Object { $_.kind -eq "cve-correlated" })[0]
+    $f443  = @($r.findings | Where-Object { $_.url -match ":443$" })
+    # Re-POST must be idempotent.
+    $r2 = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{"includeOpenPorts":true,"correlateCves":true}' -ContentType "application/json" -TimeoutSec 10).Content | ConvertFrom-Json
+    return ($r.openPorts -eq 4) `
+       -and ($kinds -contains "exposed-database") `
+       -and ($kinds -contains "exposed-cleartext-service") `
+       -and ($kinds -contains "exposed-management-interface") `
+       -and ($mgmt.severity -eq "high") `
+       -and ($cve -and $cve.severity -eq "critical" -and $cve.summary -match "CVE-2011-2523") `
+       -and (($f443 | Where-Object { $_.kind -like "exposed-*" }).Count -eq 0) `
+       -and ($r2.emitted -eq 0) -and ($r2.skippedDuplicates -gt 0)
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

@@ -42,6 +42,7 @@
 #include "takeover_scan.hpp"
 #include "exposure_scan.hpp"
 #include "cache_deception.hpp"
+#include "scan_bridge.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -6355,6 +6356,75 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/portscan/clear") {
         if (m_wiring.portScanner) m_wiring.portScanner->clear();
         return okJson();
+    }
+
+    // ---- scan -> findings bridge -------------------------------------
+    // POST /api/portscan/to-findings
+    //   { includeOpenPorts?: bool=true, correlateCves?: bool=true }
+    // Turns the port scanner's *current* results into first-class findings
+    // (exposed database / remote-admin / management API / cleartext /
+    // file-share, plus banner->CVE correlation) so the network layer rides
+    // into the same findings list, report, SARIF export, and enrichment as
+    // every web finding. Makes NO network requests -- it only classifies
+    // results already gathered (the scan was scope-gated at start), so it
+    // needs no ScopeGuard entry of its own.
+    if (path == "/api/portscan/to-findings") {
+        if (!m_wiring.portScanner)
+            return okJson({{ "ok", false }, { "error", "no port scanner" }});
+        if (!m_wiring.scanner)
+            return okJson({{ "ok", false }, { "error", "no passive scanner wired" }});
+
+        Nullock::Core::ScanBridge::Options opt;
+        if (bodyJson.contains("includeOpenPorts"))
+            opt.includeOpenPorts = bodyJson.value("includeOpenPorts").toBool(true);
+        if (bodyJson.contains("correlateCves"))
+            opt.correlateCves = bodyJson.value("correlateCves").toBool(true);
+
+        const auto results = m_wiring.portScanner->results();
+        const auto bridged = Nullock::Core::ScanBridge::fromPortResults(results, opt);
+
+        // Idempotency: a re-POST (UI double-click, retry, or a re-scan that
+        // re-includes the same host) must not duplicate findings. Key on
+        // kind+url+summary -- summary carries the CVE id / service label, so
+        // two distinct CVEs on the same host:port still both emit, but an
+        // identical re-run is a no-op.
+        const QChar sep(QChar(0x1f));
+        QSet<QString> seen;
+        for (const auto &ex : m_wiring.scanner->findings(0))
+            seen.insert(ex.kind + sep + ex.url + sep + ex.summary);
+
+        QJsonObject bySev;
+        QJsonArray findingsArr;
+        int skipped = 0;
+        for (const auto &f : bridged) {
+            const QString key = f.kind + sep + f.url + sep + f.summary;
+            if (seen.contains(key)) { ++skipped; continue; }
+            seen.insert(key);
+            // rowId 0 -- these don't originate from a captured history row.
+            m_wiring.scanner->reportFinding(0, f.severity, f.kind,
+                                            f.summary, f.evidence, f.host, f.url);
+            bySev[f.severity] = bySev.value(f.severity).toInt() + 1;
+            findingsArr.append(QJsonObject{
+                { "severity", f.severity },
+                { "kind", f.kind },
+                { "summary", f.summary },
+                { "host", f.host },
+                { "url", f.url },
+            });
+        }
+
+        int openPorts = 0;
+        for (const auto &r : results)
+            if (r.status.toLower() == QLatin1String("open")) ++openPorts;
+
+        return okJson({
+            { "ok", true },
+            { "openPorts", openPorts },
+            { "emitted", findingsArr.size() },
+            { "skippedDuplicates", skipped },
+            { "bySeverity", bySev },
+            { "findings", findingsArr },
+        });
     }
 
     // ---- recon engine ------------------------------------------------
