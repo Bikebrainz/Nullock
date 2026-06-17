@@ -498,6 +498,32 @@ Test-Endpoint "assess aggregates fingerprint + header + method findings in one c
     }
 }
 
+Write-Host "`n=== Web cache deception ===" -ForegroundColor Cyan
+Test-Endpoint "cache deception flags a dynamic page served at a static-extension URL, clean when 404'd" {
+    $oport = Get-Random -Minimum 20000 -Maximum 45000
+    $job = Start-Job -ScriptBlock {
+        param($port)
+        $l=[System.Net.HttpListener]::new(); $l.Prefixes.Add("http://127.0.0.1:$port/"); $l.Start()
+        for($i=0;$i -lt 40;$i++){ try{
+            $c=$l.GetContext(); $p=$c.Request.Url.AbsolutePath; $r=$c.Response; $code=200
+            if($p -eq "/safe"){ $b="safe page content here" }
+            elseif($p -like "/safe/*"){ $code=404; $b="not found" }
+            elseif($p -like "/account*"){ $b="USER DATA: profile for alice, balance 1000, prefs xyz"; try { $r.Headers["Cache-Control"]="public, max-age=60" } catch {} }
+            else { $b="home" }
+            $buf=[Text.Encoding]::UTF8.GetBytes($b); $r.StatusCode=$code; $r.OutputStream.Write($buf,0,$buf.Length); $r.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    } -ArgumentList $oport
+    Start-Sleep -Milliseconds 800
+    try {
+        function Cd($path){ (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/cachedeception/test" -Headers $hdr -Body (@{ url=("http://127.0.0.1:{0}{1}" -f $oport,$path) } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json }
+        $v = Cd "/account"; $s = Cd "/safe"
+        return ($v.hitCount -ge 1) -and ($v.anyCacheable -eq $true) -and ($s.hitCount -eq 0)
+    } finally {
+        Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== Sensitive file exposure ===" -ForegroundColor Cyan
 Test-Endpoint "exposure flags .git/.env by content signature, no FP on a 200-everything server" {
     $oport = Get-Random -Minimum 20000 -Maximum 45000

@@ -185,6 +185,9 @@ const QHash<QString, Mapping> &table() {
         // ---- CRLF / HTTP response splitting --------------------------
         { "crlf-injection", { "CWE-113", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip or reject CR/LF in any user input that reaches a response header; use the framework's header API, never string concatenation." } },
 
+        // ---- Web cache deception -------------------------------------
+        { "web-cache-deception", { "CWE-525", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:N/A:N", "", "Make the cache honor Cache-Control (don't cache by extension alone), and have the app reject unexpected path suffixes (404 instead of serving the page)." } },
+
         // ---- Sensitive file exposure ---------------------------------
         { "sensitive-file-exposure", { "CWE-538", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Remove the file from the web root / block the path at the server; rotate any leaked secrets." } },
 

@@ -713,6 +713,12 @@ cmd_assess() {
     post /api/assess "{\"url\":$(jsonq "$1")}" | pp
 }
 
+cmd_cachedeception() {
+    # nullock cachedeception <url>
+    [[ -n ${1-} ]] || die "usage: nullock cachedeception <url>"
+    post /api/cachedeception/test "{\"url\":$(jsonq "$1")}" | pp
+}
+
 cmd_exposure() {
     # nullock exposure <url>
     [[ -n ${1-} ]] || die "usage: nullock exposure <url>"
@@ -1481,6 +1487,8 @@ Above-Burp features (v4/v5):
   nullock exposure <url>                 sensitive-file scan -- .git/.env/actuator/
                                          phpinfo/config-backups, confirmed by
                                          content signature
+  nullock cachedeception <url>           web cache deception -- path-confusion at
+                                         a static-extension URL a cache would store
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1564,6 +1572,7 @@ case ${1:-help} in
     methods)       shift; cmd_methods "$@"       ;;
     takeover)      shift; cmd_takeover "$@"      ;;
     exposure)      shift; cmd_exposure "$@"      ;;
+    cachedeception) shift; cmd_cachedeception "$@" ;;
     assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;

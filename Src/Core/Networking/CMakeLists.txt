@@ -22,6 +22,8 @@ add_library(Networking STATIC
     takeover_scan.hpp
     exposure_scan.cpp
     exposure_scan.hpp
+    cache_deception.cpp
+    cache_deception.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp

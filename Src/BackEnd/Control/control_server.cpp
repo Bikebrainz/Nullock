@@ -41,6 +41,7 @@
 #include "method_audit.hpp"
 #include "takeover_scan.hpp"
 #include "exposure_scan.hpp"
+#include "cache_deception.hpp"
 #include "cve_database.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -2349,7 +2350,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/servicevulns/scan", "/api/oast/blast", "/api/headers/audit",
         "/api/secrets/scan", "/api/jsrecon/scan", "/api/audit/run",
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
-        "/api/assess", "/api/exposure/scan",
+        "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -4895,6 +4896,52 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "findingCount", findings.size() },
                        { "bySeverity", sevCounts },
                        { "findings", findings }});
+    }
+
+    // ---- Web cache deception -----------------------------------------
+    // POST /api/cachedeception/test { url }
+    //   Detects path-confusion where a dynamic/sensitive page is served at a
+    //   static-extension URL a cache would store. CWE-525. Read-only.
+    if (path == "/api/cachedeception/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::CacheDeception::Request cr;
+        cr.host = u.host();
+        cr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cr.tls  = (u.scheme() == "https");
+        cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        cr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject chdrs = bodyJson.value("headers").toObject();
+        for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
+            cr.headers.append({ it.key(), it.value().toString() });
+
+        const auto cres = Nullock::Core::CacheDeception::test(cr);
+        QJsonArray hits; bool anyCacheable = false;
+        for (const auto &h : cres.hits) {
+            if (h.cacheable) anyCacheable = true;
+            hits.append(QJsonObject{
+                { "extension", h.extension }, { "probePath", h.probePath },
+                { "cacheable", h.cacheable }, { "detail", h.detail } });
+        }
+        if (m_wiring.scanner && !cres.hits.isEmpty())
+            m_wiring.scanner->reportFinding(0, anyCacheable ? "high" : "medium",
+                "web-cache-deception",
+                QString("Web cache deception on %1 -- the page is served at a static-extension URL%2")
+                    .arg(cr.basePath, anyCacheable ? " with cache headers" : ""),
+                "path confusion: " + cres.hits.first().detail
+                    + " (a cache keyed on extension would store this per-user page)",
+                cr.host, url);
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "baselineStatus", cres.baselineStatus },
+                       { "requestsSent", cres.requestsSent },
+                       { "anyCacheable", anyCacheable },
+                       { "hitCount", static_cast<int>(cres.hits.size()) },
+                       { "hits", hits }});
     }
 
     // ---- Sensitive file / path exposure ------------------------------
