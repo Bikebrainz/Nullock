@@ -456,6 +456,32 @@ Test-Endpoint "cache poisoning confirms a keyed-cache hit, refuses to inject on 
     }
 }
 
+Write-Host "`n=== Service-version CVE matching ===" -ForegroundColor Cyan
+Test-Endpoint "vulnscan flags a known-vulnerable service banner, ignores a patched version" {
+    # Two raw-TCP banner servers: vulnerable vsftpd 2.3.4 + patched OpenSSH 9.8p1.
+    $p1 = Get-Random -Minimum 20000 -Maximum 45000
+    $p2 = Get-Random -Minimum 20000 -Maximum 45000
+    $mk = {
+        param($port,$banner)
+        $l=[System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback,$port); $l.Start()
+        for($i=0;$i -lt 20;$i++){ try{
+            $cl=$l.AcceptTcpClient(); $ns=$cl.GetStream()
+            $b=[Text.Encoding]::ASCII.GetBytes($banner + "`r`n"); $ns.Write($b,0,$b.Length); $ns.Flush()
+            Start-Sleep -Milliseconds 250; $cl.Close()
+        }catch{break} }
+        try{$l.Stop()}catch{}
+    }
+    $j1 = Start-Job -ScriptBlock $mk -ArgumentList $p1,"220 (vsFTPd 2.3.4)"
+    $j2 = Start-Job -ScriptBlock $mk -ArgumentList $p2,"SSH-2.0-OpenSSH_9.8p1"
+    Start-Sleep -Milliseconds 800
+    try {
+        $r = (Invoke-WebRequest -UseBasicParsing -Method POST -Uri "$base/api/servicevulns/scan" -Headers $hdr -Body (@{ host="127.0.0.1"; ports=@($p1,$p2) } | ConvertTo-Json) -ContentType "application/json" -TimeoutSec 30).Content | ConvertFrom-Json
+        return ($r.hits.cveId -contains 'CVE-2011-2523') -and (-not ($r.hits.cveId -contains 'CVE-2024-6387'))
+    } finally {
+        $j1,$j2 | Stop-Job -ErrorAction SilentlyContinue; $j1,$j2 | Remove-Job -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Write-Host "`n=== HTTP request smuggling ===" -ForegroundColor Cyan
 Test-Endpoint "smuggling flags a CL.TE desync by reproducible timing, clean on a fast server" {
     # Raw-TCP mock: /clte stalls 6s on the CL.TE desync probe (desync); /safe never stalls.

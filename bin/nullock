@@ -707,6 +707,22 @@ cmd_ssti() {
     post /api/ssti/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$loc"),\"method\":$(jsonq "$method"),\"headers\":$headers}" | pp
 }
 
+cmd_vulnscan() {
+    # nullock vulnscan <host> [port,port,...]
+    [[ -n ${1-} ]] || die "usage: nullock vulnscan <host> [port,port,...]"
+    local host=$1; shift
+    local ports="[]"
+    if [[ -n ${1-} ]]; then
+        ports="["; local first=1
+        local IFS=','; for p in $1; do
+            if (( first )); then first=0; else ports+=","; fi
+            ports+="$p"
+        done
+        ports+="]"
+    fi
+    post /api/servicevulns/scan "{\"host\":$(jsonq "$host"),\"ports\":$ports}" | pp
+}
+
 cmd_smuggle() {
     # nullock smuggle <url> [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock smuggle <url> [hdr:val ...]"
@@ -1405,6 +1421,10 @@ Above-Burp features (v4/v5):
                                          TE.CL desync probes; flags a variant
                                          whose response is reproducibly delayed
                                          (slow: blocks until back-end timeout)
+  nullock vulnscan <host> [p,p,...]      service-version CVE match -- banner-grabs
+                                         network services (SSH/FTP/SMTP/HTTP...) and
+                                         flags vulnerable versions (vsftpd, OpenSSH,
+                                         Apache, ProFTPd, Exim, IIS, Samba...)
   nullock audit <url> [method] [body-file|-] [hdr:val ...]
                                          deep scan -- runs the whole battery
                                          (param mining, verb-tampering, CORS,
@@ -1482,6 +1502,7 @@ case ${1:-help} in
     xxe)           shift; cmd_xxe "$@"           ;;
     nosqli)        shift; cmd_nosqli "$@"        ;;
     smuggle)       shift; cmd_smuggle "$@"       ;;
+    vulnscan)      shift; cmd_vulnscan "$@"      ;;
     audit)         shift; cmd_audit "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;

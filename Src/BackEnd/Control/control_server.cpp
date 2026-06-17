@@ -35,6 +35,7 @@
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
+#include "service_vulns.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -4753,6 +4754,53 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "engines", sres.engines },
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Service-version vulnerability matching ----------------------
+    // POST /api/servicevulns/scan { host, ports?, timeoutMs? }
+    //   Banner-grabs network services and matches their version against a
+    //   curated CVE table (nmap `vulners` class). Read-only. CWE-1395.
+    if (path == "/api/servicevulns/scan") {
+        const QString host = bodyJson.value("host").toString();
+        if (host.isEmpty())
+            return okJson({{ "ok", false }, { "error", "host required" }});
+
+        Nullock::Core::ServiceVulns::Request svr;
+        svr.host = host;
+        svr.timeoutMs = bodyJson.value("timeoutMs").toInt(1200);
+        for (const QJsonValue &v : bodyJson.value("ports").toArray())
+            svr.ports << v.toInt();
+
+        const auto sres = Nullock::Core::ServiceVulns::scan(svr);
+
+        auto sevFor = [](double cvss) {
+            if (cvss >= 9.0) return QStringLiteral("critical");
+            if (cvss >= 7.0) return QStringLiteral("high");
+            if (cvss >= 4.0) return QStringLiteral("medium");
+            return QStringLiteral("low");
+        };
+        QJsonArray hits;
+        for (const auto &h : sres.hits) {
+            hits.append(QJsonObject{
+                { "port", h.port }, { "product", h.product }, { "version", h.version },
+                { "cveId", h.cveId }, { "cvss", h.cvss }, { "summary", h.summary },
+                { "affected", h.affected }, { "fix", h.fix }, { "reference", h.reference },
+                { "banner", h.banner } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, sevFor(h.cvss), "cve-correlated",
+                    QString("%1 on %2:%3 (%4) -- %5")
+                        .arg(h.cveId, host).arg(h.port).arg(h.product + " " + h.version, h.summary),
+                    QString("banner: %1 | affected %2 | fix %3 | %4")
+                        .arg(h.banner, h.affected, h.fix, h.reference),
+                    host, host + ":" + QString::number(h.port));
+        }
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "host", sres.host },
+                       { "portsProbed", sres.portsProbed },
+                       { "banners", sres.banners },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
     }

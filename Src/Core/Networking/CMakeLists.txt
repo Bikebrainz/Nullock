@@ -10,6 +10,8 @@ add_library(Networking STATIC
     passive_scanner.hpp
     port_scanner.cpp
     port_scanner.hpp
+    service_vulns.cpp
+    service_vulns.hpp
     recon_engine.cpp
     recon_engine.hpp
     session_manager.cpp
