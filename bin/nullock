@@ -634,6 +634,11 @@ cmd_inventory() {
     curl -sS --max-time 10 "$API/api/inventory" | pp
 }
 
+cmd_posture() {
+    # Executive security grade (A-F) + score + top risks from current findings.
+    curl -sS --max-time 10 "$API/api/posture" | pp
+}
+
 cmd_baseline() {
     # nullock baseline {save|diff|status|clear}
     case ${1:-} in
@@ -1540,6 +1545,8 @@ Above-Burp features (v4/v5):
   nullock baseline save|diff|status      repeat-engagement deltas: snapshot current
                 |clear                   findings, then diff -> new / fixed /
                                          unchanged (persists to <project>/baseline.json)
+  nullock posture                        executive security grade (A-F) + score +
+                                         severity breakdown + top risks
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1640,6 +1647,7 @@ case ${1:-help} in
     scan-findings) shift; cmd_scanfindings "$@" ;;
     pipeline)      shift; cmd_pipeline "$@"     ;;
     inventory)     shift; cmd_inventory "$@"    ;;
+    posture)       shift; cmd_posture "$@"      ;;
     baseline)      shift; cmd_baseline "$@"     ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;

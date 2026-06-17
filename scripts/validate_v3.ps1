@@ -1592,6 +1592,24 @@ Test-Endpoint "baseline save + diff detects a new finding" {
     return $r
 }
 
+Write-Host "`n=== Security posture grade ===" -ForegroundColor Cyan
+# Seed a high + a critical finding -> the grade/score reflects the severity weight.
+Test-Endpoint "posture grades findings (severity-weighted A-F)" {
+    $qx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.81" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="21"><state state="open"/><service name="ftp" banner="220 (vsFTPd 2.3.4)"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $qx -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $p = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/posture" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    # critical(-40) + high(-15) + medium(-5) = 60 -> score 40 -> F, critical on top.
+    return ($p.ok -eq $true) -and ($p.grade -eq "F") -and ($p.score -eq 40) `
+       -and ($p.penalty -eq 60) -and (@($p.topRisks)[0].severity -eq "critical")
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue

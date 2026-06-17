@@ -1260,6 +1260,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/project/templates"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
+            || p == "/api/posture"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
             || p.startsWith("/api/export/")
@@ -3267,6 +3268,88 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
 
         return okJson({{ "ok", false }, { "error", "unknown baseline action" }});
+    }
+
+    // ---- Security posture / grade ------------------------------------
+    // GET /api/posture -- an executive one-number view of the engagement.
+    // Starts at 100 and deducts a severity-weighted penalty per finding
+    // (critical -40, high -15, medium -5, low -1, info 0), floored at 0, then
+    // maps the score to a letter grade. Returns the breakdown + the worst few
+    // findings. Read-only aggregation; no network. The posture summary Burp
+    // doesn't surface.
+    if (path == "/api/posture") {
+        QList<Nullock::Core::Finding> findings;
+        if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
+
+        auto penaltyFor = [](const QString &sev) -> int {
+            if (sev == "critical") return 40;
+            if (sev == "high")     return 15;
+            if (sev == "medium")   return 5;
+            if (sev == "low")      return 1;
+            return 0; // info / unknown
+        };
+        auto sevRank = [](const QString &s) -> int {
+            if (s == "critical") return 5;
+            if (s == "high")     return 4;
+            if (s == "medium")   return 3;
+            if (s == "low")      return 2;
+            if (s == "info")     return 1;
+            return 0;
+        };
+        // Canonicalize severity ONCE (trim + lowercase + coalesce blank to info)
+        // and use it everywhere -- so bySeverity keys, penalty weighting, sort
+        // rank, and the emitted topRisks severity all agree even for a padded /
+        // mixed-case / blank value (e.g. from an imported finding).
+        auto canonSev = [](const QString &s) -> QString {
+            const QString t = s.trimmed().toLower();
+            return t.isEmpty() ? QStringLiteral("info") : t;
+        };
+
+        QMap<QString, int> bySev;
+        int penalty = 0;
+        for (const auto &f : findings) {
+            const QString sev = canonSev(f.severity);
+            bySev[sev]++;
+            penalty += penaltyFor(sev);
+        }
+        const int score = qMax(0, 100 - penalty);
+        const QString grade = score >= 90 ? QStringLiteral("A")
+                            : score >= 80 ? QStringLiteral("B")
+                            : score >= 70 ? QStringLiteral("C")
+                            : score >= 60 ? QStringLiteral("D")
+                                          : QStringLiteral("F");
+
+        // Worst findings first: by severity rank, then CVSS.
+        QList<Nullock::Core::Finding> sorted = findings;
+        std::sort(sorted.begin(), sorted.end(),
+                  [&](const Nullock::Core::Finding &a, const Nullock::Core::Finding &b) {
+            const int ra = sevRank(canonSev(a.severity)), rb = sevRank(canonSev(b.severity));
+            if (ra != rb) return ra > rb;
+            return a.cvssScore > b.cvssScore;
+        });
+        QJsonArray topRisks;
+        for (int i = 0; i < sorted.size() && i < 5; ++i) {
+            const auto &f = sorted[i];
+            topRisks.append(QJsonObject{
+                { "severity", canonSev(f.severity) }, { "kind", f.kind },
+                { "host", f.host }, { "url", f.url },
+                { "cvssScore", f.cvssScore }, { "summary", f.summary },
+            });
+        }
+
+        QJsonObject sevCounts;
+        for (auto it = bySev.constBegin(); it != bySev.constEnd(); ++it)
+            sevCounts[it.key()] = it.value();
+
+        return httpJson(200, QJsonObject{
+            { "ok", true },
+            { "grade", grade },
+            { "score", score },
+            { "totalFindings", findings.size() },
+            { "penalty", penalty },
+            { "bySeverity", sevCounts },
+            { "topRisks", topRisks },
+        });
     }
 
     // ---- AI payload generator ----------------------------------------
