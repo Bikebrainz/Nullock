@@ -1261,6 +1261,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
+            || p == "/api/compliance"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
             || p.startsWith("/api/export/")
@@ -3349,6 +3350,113 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "penalty", penalty },
             { "bySeverity", sevCounts },
             { "topRisks", topRisks },
+        });
+    }
+
+    // ---- OWASP / compliance coverage ---------------------------------
+    // GET /api/compliance -- groups findings by OWASP Top-10 2021 category and
+    // by compliance tag (PCI-DSS, etc., from the enricher) into a coverage
+    // matrix: which categories the engagement hit, with counts + top severity.
+    // Read-only aggregation; no network. The compliance reporting view Burp
+    // gates behind Enterprise.
+    if (path == "/api/compliance") {
+        QList<Nullock::Core::Finding> findings;
+        if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);
+
+        auto sevRank = [](const QString &s) -> int {
+            if (s == "critical") return 5;
+            if (s == "high")     return 4;
+            if (s == "medium")   return 3;
+            if (s == "low")      return 2;
+            if (s == "info")     return 1;
+            return 0;
+        };
+
+        // OWASP Top 10 2021 -- the enricher tags findings with these exact
+        // "A03:2021-Injection"-style labels, so we group on the "Axx" prefix.
+        static const QList<QPair<QString, QString>> kOwaspTop10 = {
+            { "A01", "Broken Access Control" },
+            { "A02", "Cryptographic Failures" },
+            { "A03", "Injection" },
+            { "A04", "Insecure Design" },
+            { "A05", "Security Misconfiguration" },
+            { "A06", "Vulnerable and Outdated Components" },
+            { "A07", "Identification and Authentication Failures" },
+            { "A08", "Software and Data Integrity Failures" },
+            { "A09", "Security Logging and Monitoring Failures" },
+            { "A10", "Server-Side Request Forgery" },
+        };
+
+        struct Agg { int count = 0; int topRank = 0; QString topSev; QSet<QString> kinds; QString label; };
+        QMap<QString, Agg> byOwaspFull;   // keyed by full owasp label
+        QMap<QString, int> byOwaspId;     // keyed by "Axx"
+        QMap<QString, int> byCompliance;
+        int mapped = 0;
+        for (const auto &f : findings) {
+            if (!f.owasp.isEmpty()) {
+                ++mapped;
+                Agg &a = byOwaspFull[f.owasp];
+                a.label = f.owasp;
+                ++a.count;
+                // Coalesce blank severity to "info" (matching /inventory and
+                // /posture) so topSeverity is never empty for a non-empty group.
+                const QString sev = f.severity.trimmed().isEmpty()
+                    ? QStringLiteral("info") : f.severity.toLower();
+                if (sevRank(sev) > a.topRank) { a.topRank = sevRank(sev); a.topSev = sev; }
+                if (!f.kind.isEmpty()) a.kinds.insert(f.kind);
+                const int colon = f.owasp.indexOf(':');
+                const QString id = colon > 0 ? f.owasp.left(colon) : f.owasp;
+                byOwaspId[id]++;
+            }
+            for (const QString &c : f.compliance)
+                if (!c.isEmpty()) byCompliance[c]++;
+        }
+
+        // byOwasp: present categories, sorted by count desc.
+        QList<QString> okeys = byOwaspFull.keys();
+        std::sort(okeys.begin(), okeys.end(), [&](const QString &x, const QString &y) {
+            return byOwaspFull.value(x).count > byOwaspFull.value(y).count;  // .value(): read-only, no insert-on-miss
+        });
+        QJsonArray byOwaspArr;
+        for (const QString &k : okeys) {
+            const Agg &a = byOwaspFull[k];
+            QStringList kinds = a.kinds.values(); kinds.sort();
+            byOwaspArr.append(QJsonObject{
+                { "category", a.label }, { "count", a.count },
+                { "topSeverity", a.topSev },
+                { "kinds", QJsonArray::fromStringList(kinds) },
+            });
+        }
+
+        // owaspTop10: all 10, count each (0 = no findings in that category).
+        QJsonArray top10;
+        int categoriesHit = 0;
+        for (const auto &cat : kOwaspTop10) {
+            const int n = byOwaspId.value(cat.first, 0);
+            if (n > 0) ++categoriesHit;
+            top10.append(QJsonObject{
+                { "id", cat.first }, { "name", cat.second }, { "count", n },
+            });
+        }
+
+        // byCompliance: sorted by count desc.
+        QList<QString> ckeys = byCompliance.keys();
+        std::sort(ckeys.begin(), ckeys.end(), [&](const QString &x, const QString &y) {
+            return byCompliance.value(x) > byCompliance.value(y);  // .value(): read-only, no insert-on-miss
+        });
+        QJsonArray complianceArr;
+        for (const QString &k : ckeys)
+            complianceArr.append(QJsonObject{{ "tag", k }, { "count", byCompliance[k] }});
+
+        return httpJson(200, QJsonObject{
+            { "ok", true },
+            { "totalFindings", findings.size() },
+            { "mappedFindings", mapped },
+            { "owaspCategoriesHit", categoriesHit },
+            { "complianceTagsHit", complianceArr.size() },
+            { "byOwasp", byOwaspArr },
+            { "owaspTop10", top10 },
+            { "byCompliance", complianceArr },
         });
     }
 

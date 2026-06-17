@@ -639,6 +639,11 @@ cmd_posture() {
     curl -sS --max-time 10 "$API/api/posture" | pp
 }
 
+cmd_compliance() {
+    # OWASP Top-10 + compliance (PCI-DSS...) coverage matrix from findings.
+    curl -sS --max-time 10 "$API/api/compliance" | pp
+}
+
 cmd_baseline() {
     # nullock baseline {save|diff|status|clear}
     case ${1:-} in
@@ -1547,6 +1552,8 @@ Above-Burp features (v4/v5):
                                          unchanged (persists to <project>/baseline.json)
   nullock posture                        executive security grade (A-F) + score +
                                          severity breakdown + top risks
+  nullock compliance                     OWASP Top-10 + compliance (PCI-DSS...)
+                                         coverage matrix from findings
   nullock tls <host> [port]              TLS/cert inspection -- flags expired,
                                          self-signed, weak-key, hostname-mismatch
                                          certs + deprecated TLS 1.0/1.1
@@ -1648,6 +1655,7 @@ case ${1:-help} in
     pipeline)      shift; cmd_pipeline "$@"     ;;
     inventory)     shift; cmd_inventory "$@"    ;;
     posture)       shift; cmd_posture "$@"      ;;
+    compliance)    shift; cmd_compliance "$@"   ;;
     baseline)      shift; cmd_baseline "$@"     ;;
     tls)           shift; cmd_tls "$@"           ;;
     fingerprint)   shift; cmd_fingerprint "$@"   ;;

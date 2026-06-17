@@ -1610,6 +1610,27 @@ Test-Endpoint "posture grades findings (severity-weighted A-F)" {
        -and ($p.penalty -eq 60) -and (@($p.topRisks)[0].severity -eq "critical")
 }
 
+Write-Host "`n=== OWASP / compliance coverage ===" -ForegroundColor Cyan
+# Seed findings across OWASP categories + a shared PCI-DSS tag -> coverage matrix.
+Test-Endpoint "compliance groups by OWASP Top-10 + compliance tag" {
+    $cx = @'
+<?xml version="1.0"?>
+<nmaprun><host><address addr="198.51.100.91" addrtype="ipv4"/><ports>
+  <port protocol="tcp" portid="3306"><state state="open"/><service name="mysql"/></port>
+  <port protocol="tcp" portid="3389"><state state="open"/><service name="ms-wbt-server"/></port>
+</ports></host></nmaprun>
+'@
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/import-nmap" -Method POST -Headers $hdr -Body $cx -TimeoutSec 10 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "$base/api/portscan/to-findings" -Method POST -Headers $hdr -Body '{}' -ContentType "application/json" -TimeoutSec 10 | Out-Null
+    $c = (Invoke-WebRequest -UseBasicParsing -Uri "$base/api/compliance" -Headers $hdr -TimeoutSec 10).Content | ConvertFrom-Json
+    $a05 = @($c.byOwasp | Where-Object { $_.category -match "^A05" })[0]
+    $pci = @($c.byCompliance | Where-Object { $_.tag -eq "PCI-DSS-1.3.1" })[0]
+    # exposed-database + exposed-remote-admin are both A05 + PCI-DSS-1.3.1.
+    return ($c.ok -eq $true) -and (@($c.owaspTop10).Count -eq 10) `
+       -and ($null -ne $a05 -and $a05.count -ge 2) `
+       -and ($null -ne $pci -and $pci.count -ge 2)
+}
+
 # Cleanup: the instance plus any mock-listener jobs a test's finally may have
 # missed, so a later run starts from a clean slate.
 Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue
