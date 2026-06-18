@@ -296,6 +296,29 @@ const QHash<QString, Mapping> &table() {
         { "cms-magento",    { "CWE-200", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Check Magento version against Adobe Commerce security bulletins." } },
         { "cms-sitecore",   { "CWE-200", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Check Sitecore version against Sitecore Knowledge Base advisories." } },
         { "cms-confluence", { "CWE-200", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Check Confluence version against Atlassian advisories." } },
+
+        // ---- Disclosure / misc passive findings ----------------------
+        { "tech-detected",        { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Technology fingerprint -- recon only; keep components patched and suppress banners." } },
+        { "server-version-leak",  { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Suppress the version in the Server header (ServerTokens Prod / server_tokens off)." } },
+        { "x-powered-by",         { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Remove the X-Powered-By header." } },
+        { "server-timing-leak",   { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Strip Server-Timing in production -- it leaks backend internals." } },
+        { "etag-predictable",     { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Use opaque ETags; the inode-based default can leak file metadata." } },
+        { "html-comment-leak",    { "CWE-615", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Strip developer/debug comments from delivered HTML." } },
+        { "internal-ip-leak",     { "CWE-200", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Don't expose internal IPs in responses/headers." } },
+        { "internal-hostname-leak",{ "CWE-200", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Don't expose internal hostnames in responses/headers." } },
+        { "robots-discloses-paths",{ "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "robots.txt is public -- don't list sensitive paths; protect them with auth instead." } },
+        { "mixed-content",        { "CWE-319", "A02:2021-Cryptographic Failures", 4.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N", "PCI-DSS-4.2.1", "Serve all subresources over HTTPS; add upgrade-insecure-requests." } },
+        { "secret-in-url",        { "CWE-598", "A01:2021-Broken Access Control", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-6.5.3", "Keep secrets/tokens out of URLs (logs, history, Referer leak); use headers/body." } },
+        { "storage-of-secrets",   { "CWE-312", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-3.4", "Don't store secrets in client-accessible storage / delivered source." } },
+        { "csv-formula-injection",{ "CWE-1236", "A03:2021-Injection", 6.5, "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:N", "", "Prefix risky leading chars (= + - @) when exporting user data to CSV." } },
+        { "reflected-file-download",{ "CWE-494", "A08:2021-Software and Data Integrity Failures", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Set Content-Disposition + safe filename; don't reflect user input into downloads." } },
+        { "host-header-reflected-location",{ "CWE-644", "A03:2021-Injection", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Build absolute URLs from a configured host, not the Host header." } },
+        { "options-mutation-methods",{ "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N", "", "Disable write/mutation HTTP methods you don't serve." } },
+        { "debug-method-allowed", { "CWE-489", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Disable TRACE/TRACK and debug methods in production." } },
+        { "ws-cross-origin-accepted",{ "CWE-1385", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N", "", "Validate the Origin on the WebSocket handshake (prevent CSWSH)." } },
+        { "cache-vary-missing-cookie",{ "CWE-525", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Add Vary: Cookie (or mark private) so per-user responses aren't shared-cached." } },
+        { "graphql-introspection",{ "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Disable GraphQL introspection in production." } },
+        { "authz-divergence",     { "CWE-285", "A01:2021-Broken Access Control", 6.5, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N", "SOC2-CC6.3", "Enforce consistent authorization across identities, roles and HTTP methods." } },
     };
     return m;
 }
@@ -310,35 +333,77 @@ double defaultScoreForSeverity(const QString &s) {
     return 0.0;
 }
 
+// Family fallback: a kind with no exact entry but a known prefix still gets a
+// class-appropriate CWE/OWASP/fix (better than empty CWE/OWASP, which degrades
+// reports + SARIF + OWASP-coverage grouping) and auto-covers future kinds in
+// that family. Exact table entries always win over this.
+const Mapping *familyMapping(const QString &kind) {
+    struct Fam { const char *prefix; Mapping m; };
+    static const QList<Fam> fams = {
+        { "cookie-",  { "CWE-1004", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N", "PCI-DSS-6.5.10", "Harden the cookie: Secure, HttpOnly, SameSite (and the __Host- prefix where applicable)." } },
+        { "csp-",     { "CWE-1021", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N", "PCI-DSS-6.5.7", "Tighten the Content-Security-Policy (avoid wildcards/unsafe-*; set the missing directive)." } },
+        { "hsts-",    { "CWE-319", "A02:2021-Cryptographic Failures", 4.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-4.2.1,SOC2-CC6.6", "Strengthen Strict-Transport-Security: long max-age + includeSubDomains + preload." } },
+        { "cors-",    { "CWE-942", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-6.5.9", "Restrict CORS: allow-list trusted origins; never reflect Origin with Allow-Credentials." } },
+        { "missing-", { "CWE-693", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "PCI-DSS-6.5.7", "Add the missing security response header." } },
+        { "jwt-",     { "CWE-345", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "OWASP-ASVS-3.5", "Validate the JWT (algorithm, signature, expiry); never expose tokens in URLs or bodies." } },
+        { "auth-",    { "CWE-287", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "SOC2-CC6.1", "Enforce authentication and transport security on this surface." } },
+        { "exposed-", { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "SOC2-CC6.1", "Restrict network/auth access to this exposed resource or service." } },
+        { "graphql-", { "CWE-200", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Disable GraphQL introspection in production; add query depth/complexity limits." } },
+        { "deser-",   { "CWE-502", "A08:2021-Software and Data Integrity Failures", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.1", "Never deserialize untrusted data; use a safe format / type allow-list." } },
+        { "ssti-",    { "CWE-1336", "A03:2021-Injection", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "", "Don't render user input as a template; sandbox the engine." } },
+        { "sqli-",    { "CWE-89", "A03:2021-Injection", 8.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.1", "Use parameterized queries / prepared statements." } },
+        { "tls-",     { "CWE-295", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-4.2.1", "Fix the TLS configuration (valid cert, modern protocols/ciphers)." } },
+        { "leaked-",  { "CWE-798", "A07:2021-Identification and Authentication Failures", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-6.5.3", "Rotate the exposed secret and remove it from client-delivered content." } },
+        { "dom-taint-",{ "CWE-79", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Sanitize/encode untrusted data before it reaches DOM sinks." } },
+        { "ssrf-",    { "CWE-918", "A10:2021-Server-Side Request Forgery", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:L/A:N", "", "Allow-list outbound destinations; block loopback/link-local/RFC1918." } },
+        { "oast-",    { "CWE-918", "A10:2021-Server-Side Request Forgery", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Investigate the confirmed out-of-band interaction." } },
+        { "fw-",      { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Technology fingerprint -- keep the framework patched and suppress version banners." } },
+        { "cms-",     { "CWE-200", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Technology fingerprint -- keep the platform patched and check it against vendor advisories." } },
+        { "protocol-",{ "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Protocol/technology fingerprint (informational)." } },
+    };
+    for (const auto &fa : fams)
+        if (kind.startsWith(QLatin1String(fa.prefix))) return &fa.m;
+    return nullptr;
+}
+
+// Last-resort mapping so NO finding ever ships with an empty CWE/OWASP
+// (which would degrade reports, SARIF, and OWASP-coverage grouping). Used
+// only when neither the exact table nor a family prefix matches.
+const Mapping &genericMapping() {
+    static const Mapping g = {
+        "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "",
+        "Review this finding; no class-specific mapping is available yet."
+    };
+    return g;
+}
+
 } // namespace
 
 bool hasMapping(const QString &kind) {
-    return table().contains(kind);
+    return table().contains(kind) || familyMapping(kind) != nullptr;
 }
 
 void enrich(Finding &f) {
+    const Mapping *m = nullptr;
     auto it = table().constFind(f.kind);
-    if (it == table().constEnd()) {
-        // Unknown kind -- give a generic severity-derived score so the
-        // finding still has a CVSS number for sorting / SARIF.
-        f.cvssScore = defaultScoreForSeverity(f.severity);
-        return;
-    }
-    const Mapping &m = *it;
-    f.cwe        = QString::fromLatin1(m.cwe);
-    f.owasp      = QString::fromLatin1(m.owasp);
-    // A 0.0 table score is a placeholder meaning "score isn't fixed for
-    // this kind" -- e.g. cve-correlated carries a per-CVE CVSS, CMS tags
-    // are informational. Fall back to a severity-derived number rather
-    // than forcing 0.0 onto a critical finding.
-    if (m.cvssScore > 0.0) {
-        f.cvssScore  = m.cvssScore;
-        f.cvssVector = QString::fromLatin1(m.cvssVector);
+    if (it != table().constEnd())                m = &*it;          // exact wins
+    else if (const Mapping *fam = familyMapping(f.kind)) m = fam;   // family prefix
+    else                                         m = &genericMapping();  // never empty
+
+    f.cwe   = QString::fromLatin1(m->cwe);
+    f.owasp = QString::fromLatin1(m->owasp);
+    // A 0.0 table score is a placeholder meaning "score isn't fixed for this
+    // kind" -- e.g. cve-correlated carries a per-CVE CVSS, tech tags are
+    // informational. Fall back to a severity-derived number rather than
+    // forcing 0.0 onto a higher-severity finding.
+    if (m->cvssScore > 0.0) {
+        f.cvssScore  = m->cvssScore;
+        f.cvssVector = QString::fromLatin1(m->cvssVector);
     } else if (f.cvssScore <= 0.0) {
         f.cvssScore  = defaultScoreForSeverity(f.severity);
     }
-    f.fixSummary = QString::fromLatin1(m.fix);
-    const QString comp = QString::fromLatin1(m.compliance);
+    f.fixSummary = QString::fromLatin1(m->fix);
+    const QString comp = QString::fromLatin1(m->compliance);
     f.compliance.clear();
     if (!comp.isEmpty())
         f.compliance = comp.split(',', Qt::SkipEmptyParts);

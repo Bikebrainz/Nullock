@@ -28,3 +28,7 @@ add_subdirectory(scanner_regression)
 # CVE-correlation corpus -- locks in version->CVE accuracy (per-branch
 # ranges, CVSS scores, removed entries). Run via: ctest -R cve_database -V
 add_subdirectory(cve_database)
+
+# Finding-enricher coverage -- every emitted finding kind must map to a
+# non-empty CWE/OWASP. Run via: ctest -R finding_enricher -V
+add_subdirectory(finding_enricher)
