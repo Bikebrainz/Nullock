@@ -188,6 +188,32 @@ cmd_rule() {
     esac
 }
 
+cmd_scope() {
+    # Scope is the authorization gate for every active probe -- nothing is
+    # tested out of scope. Globs look like http://host/* or host or *.host.
+    case ${1:-list} in
+        add)
+            [[ -n ${2-} ]] || die "usage: nullock scope add <glob>   (e.g. http://localhost:5043/*)"
+            post /api/scope/in/add "{\"glob\":$(jsonq "$2")}" | pp ;;
+        rm|remove)
+            [[ -n ${2-} ]] || die "usage: nullock scope rm <glob>"
+            post /api/scope/in/remove "{\"glob\":$(jsonq "$2")}" | pp ;;
+        exclude)
+            [[ -n ${2-} ]] || die "usage: nullock scope exclude <glob>   (add an out-of-scope rule)"
+            post /api/scope/out/add "{\"glob\":$(jsonq "$2")}" | pp ;;
+        unexclude)
+            [[ -n ${2-} ]] || die "usage: nullock scope unexclude <glob>   (drop an out-of-scope rule)"
+            post /api/scope/out/remove "{\"glob\":$(jsonq "$2")}" | pp ;;
+        notes)
+            shift
+            [[ -n ${1-} ]] || die "usage: nullock scope notes <text...>"
+            post /api/scope/notes "{\"notes\":$(jsonq "$*")}" | pp ;;
+        list|show)
+            snapshot | pp '.scope' ;;
+        *) die "usage: nullock scope {add|rm|exclude|unexclude|notes|list} [glob]" ;;
+    esac
+}
+
 cmd_intercept() {
     case ${1:-} in
         on|toggle) post /api/intercept/toggle | pp ;;
@@ -1337,6 +1363,14 @@ Status / inspection:
   nullock history-show <id>      raw request + response for row <id>
   nullock findings [severity]    findings list (filter: high|medium|low|info)
 
+Scope (authorization gate -- active probes only run in scope):
+  nullock scope add <glob>       add an in-scope rule (e.g. http://localhost:5043/*)
+  nullock scope rm <glob>        remove an in-scope rule
+  nullock scope exclude <glob>   add an out-of-scope (excluded) rule
+  nullock scope unexclude <glob> drop an out-of-scope rule
+  nullock scope notes <text...>  set engagement scope notes
+  nullock scope list             show current in/out scope + notes
+
 Scanning:
   nullock scan <target> [preset] target = host / CIDR (1.2.3.0/24) / a,b,c
                                  preset = discovery|top100|web|full1024
@@ -1706,6 +1740,7 @@ case ${1:-help} in
     cachedeception) shift; cmd_cachedeception "$@" ;;
     assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
+    scope)         shift; cmd_scope "$@"         ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
