@@ -36,6 +36,12 @@ labs/
   28-business-logic-price/ # client-controlled price / negative qty      (5028)
   29-verbose-errors/  # stack-trace info disclosure on bad input          (5029)
   30-rate-limit-bypass/    # X-Forwarded-For resets the login limiter     (5030)
+  31-directory-listing/    # autoindex leaks file names + serves them     (5031)
+  32-csv-injection/   # =formula survives into the CSV export             (5032)
+  33-weak-reset-token/     # reset token = md5(username), predictable     (5033)
+  34-2fa-bypass/      # dashboard never checks the 2FA flag               (5034)
+  35-reset-token-reuse/    # reset token never invalidated (replayable)   (5035)
+  36-http-param-pollution/ # check uses first dup param, action uses last (5036)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
