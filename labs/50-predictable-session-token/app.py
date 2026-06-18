@@ -6,7 +6,7 @@ can predict (and hijack) every other user's session. Nullock's sequencer
 scores the randomness of a captured corpus of tokens.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5050/*
+    1. nullock scope add http://localhost:5050/*
     2. Collect a handful of session cookies (log in repeatedly, or replay in
        Repeater), then: nullock sequencer analyze <tok1> <tok2> ...
        -- the verdict comes back "predictable" (sequential, low entropy).

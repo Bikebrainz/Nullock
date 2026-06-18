@@ -9,7 +9,7 @@ Run:
     python app.py
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5001/*
+    1. nullock scope add http://localhost:5001/*
     2. Browse http://localhost:5001/search?q=hello
     3. Right-click the captured row -> Send to Repeater
     4. Change q to: <img src=x onerror=alert(1)>

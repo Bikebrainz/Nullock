@@ -7,7 +7,7 @@ simply by changing the request method (a HEAD slips the gate too, returning
 200 -- though with the body stripped, per the HTTP spec).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5046/*
+    1. nullock scope add http://localhost:5046/*
     2. nullock verbtamper http://localhost:5046/admin
        -- GET is denied (403); Nullock retries with alternate verbs and
        method-override headers and flags the ones that flip to 200.

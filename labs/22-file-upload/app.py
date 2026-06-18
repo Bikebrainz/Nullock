@@ -7,7 +7,7 @@ guessed content-type. Upload an .html (or .svg) carrying <script> and you
 have stored XSS; the unsanitized name is also a traversal risk on save.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5022/*
+    1. nullock scope add http://localhost:5022/*
     2. POST /upload a file 'x.html' containing <script>alert(1)</script>
     3. Browse /uploads/x.html -- the script executes (stored XSS).
 

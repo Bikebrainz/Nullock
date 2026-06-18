@@ -6,7 +6,7 @@ history, server access logs, and the Referer header sent to any third-party
 resource the page loads.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5042/*
+    1. nullock scope add http://localhost:5042/*
     2. GET /login?user=alice&password=hunter2 -- works, but the password is
        now in the URL (history / logs / Referer leakage).
     3. Note the welcome page loads an off-site image, leaking the full URL

@@ -6,7 +6,7 @@ to decide that IP -- so an attacker rotates X-Forwarded-For to reset the
 counter and brute-force the password freely.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5030/*
+    1. nullock scope add http://localhost:5030/*
     2. POST /login repeatedly -> after 5 tries: 429 "rate limited".
     3. In Repeater/Intruder add header  X-Forwarded-For: 1.2.3.<n>  and vary
        <n> per request -- the limit never trips.

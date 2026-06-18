@@ -6,7 +6,7 @@ so it's readable by JavaScript (XSS -> session theft), sent over plaintext
 HTTP (sniffing), and attached cross-site (CSRF).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5038/*
+    1. nullock scope add http://localhost:5038/*
     2. nullock headeraudit http://localhost:5038/
        -- raises cookie-insecure (missing HttpOnly / Secure / SameSite).
 

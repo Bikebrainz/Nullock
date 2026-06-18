@@ -6,7 +6,7 @@ Lab 15 -- Open redirect.
 phishing and OAuth token theft.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5015/*
+    1. nullock scope add http://localhost:5015/*
     2. Browse http://localhost:5015/go?next=/welcome   (intended)
     3. Send to Repeater, set next to:  https://evil.example/
     4. The response is 302 Location: https://evil.example/ -- off origin.

@@ -6,7 +6,7 @@ runs it with shell=True, returning stdout. Shell metacharacters (';', '|',
 '$( )', backticks) let you run arbitrary commands.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5013/*
+    1. nullock scope add http://localhost:5013/*
     2. Browse http://localhost:5013/ping?host=localhost
     3. Right-click the captured row -> Send to Repeater
     4. Set host to:  localhost;echo $((6*7))

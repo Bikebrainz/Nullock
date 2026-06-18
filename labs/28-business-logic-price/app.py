@@ -6,7 +6,7 @@ buyer can set their own price (price=0.01) or a negative quantity to invert
 the charge. The server never re-derives the total from a trusted catalog.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5028/*
+    1. nullock scope add http://localhost:5028/*
     2. POST /checkout item=widget&price=99.00&qty=1   (legit)
     3. Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you.
 

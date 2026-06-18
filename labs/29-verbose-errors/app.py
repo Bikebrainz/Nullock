@@ -6,7 +6,7 @@ traceback -- leaking file paths, the framework version, and internal types
 an attacker can use to tailor the next step.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5029/*
+    1. nullock scope add http://localhost:5029/*
     2. /calc?n=21    -> 42
     3. /calc?n=oops  -> a stack trace with absolute paths is returned.
 

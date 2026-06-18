@@ -7,7 +7,7 @@ the password was already changed (an attacker who once saw the link keeps
 control).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5035/*
+    1. nullock scope add http://localhost:5035/*
     2. POST /reset token=abc123 password=new1   -> success
     3. Replay the SAME request with password=attacker -- still succeeds.
 

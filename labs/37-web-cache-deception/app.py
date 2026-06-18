@@ -7,7 +7,7 @@ CDN/proxy that caches by extension will store the victim's private page at a
 static-looking URL the attacker can then fetch.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5037/*
+    1. nullock scope add http://localhost:5037/*
     2. nullock cachedeception http://localhost:5037/account
        -- it probes /account/<rand>.css, sees the same private content with a
        cacheable response, and flags web-cache-deception.

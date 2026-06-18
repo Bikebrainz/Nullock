@@ -6,7 +6,7 @@ on login. An attacker who plants a known `sid` in the victim's browser
 (via a link/script) ends up authenticated as the victim once they log in.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5021/*
+    1. nullock scope add http://localhost:5021/*
     2. GET / -- note the `sid` the server assigns.
     3. In Repeater, POST /login carrying that same `sid` -- after login the
        SAME `sid` is authenticated (no rotation). GET /whoami with it.

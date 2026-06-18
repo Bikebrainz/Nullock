@@ -6,7 +6,7 @@ credential, and the app also serves /.env with database creds. Both are
 client-reachable -- classic secret leakage.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5025/*
+    1. nullock scope add http://localhost:5025/*
     2. nullock secrets http://localhost:5025/   -- flags the AWS key in app.js
     3. nullock exposure http://localhost:5025/  -- flags the readable /.env
 

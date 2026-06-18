@@ -6,7 +6,7 @@ in the request body -- including privileged fields the UI never exposes,
 like "role" or "is_admin". An attacker adds those keys to escalate.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5018/*
+    1. nullock scope add http://localhost:5018/*
     2. PATCH /api/profile  body {"name":"alice"}   -> is_admin stays false
     3. Send to Repeater, body:  {"name":"alice","is_admin":true,"role":"admin"}
     4. The response shows is_admin: true -- privilege escalated.

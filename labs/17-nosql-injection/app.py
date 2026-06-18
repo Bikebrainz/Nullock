@@ -7,7 +7,7 @@ any user, bypassing the password check entirely (the classic
 {"$ne": null} trick).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5017/*
+    1. nullock scope add http://localhost:5017/*
     2. POST /login with  username=admin&password=wrong   -> 401 denied
     3. Send to Repeater, change the body to:
            username=admin&password[$ne]=x

@@ -6,7 +6,7 @@ or X-Content-Type-Options -- leaving it open to XSS escalation, TLS
 stripping, and MIME sniffing.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5039/*
+    1. nullock scope add http://localhost:5039/*
     2. nullock headeraudit http://localhost:5039/
        -- raises csp-missing, hsts-missing, xcto-missing (and more).
 

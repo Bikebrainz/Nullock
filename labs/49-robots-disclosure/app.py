@@ -6,7 +6,7 @@ is exactly a map of the unlinked, sensitive areas (admin, backups, internal
 APIs) for an attacker. The sitemap enumerates still more.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5049/*
+    1. nullock scope add http://localhost:5049/*
     2. nullock robots http://localhost:5049/
        -- parses robots.txt + sitemap.xml and surfaces every Disallow path
        as recon (robots-disallowed-path findings).

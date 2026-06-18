@@ -7,7 +7,7 @@ victim a link with redirect_uri=https://evil.example gets the victim's code
 (and any token exchanged with it).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5041/*
+    1. nullock scope add http://localhost:5041/*
     2. /authorize?client_id=app&redirect_uri=https://app.example/cb  (intended)
     3. Send to Repeater, set redirect_uri=https://evil.example/cb -- the 302
        Location carries ?code=... to evil.example. (The open-redirect probe

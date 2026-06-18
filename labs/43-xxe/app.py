@@ -6,7 +6,7 @@ resolution enabled, so a SYSTEM entity pointing at a local file is expanded
 into the response -- letting an attacker read arbitrary files off the host.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5043/*
+    1. nullock scope add http://localhost:5043/*
     2. nullock xxe http://localhost:5043/
        -- POSTs an entity targeting /etc/passwd (or c:/windows/win.ini on
        Windows); Nullock confirms XXE when the file's content comes back.

@@ -6,7 +6,7 @@ file contents with no canonicalization, so '../' escapes the directory and
 reads arbitrary files (e.g. /etc/passwd).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5014/*
+    1. nullock scope add http://localhost:5014/*
     2. Browse http://localhost:5014/download?file=note.txt   (normal)
     3. Send to Repeater, set file to:  ../../../../etc/passwd
     4. The response leaks the file outside the base dir.

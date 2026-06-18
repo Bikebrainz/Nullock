@@ -6,7 +6,7 @@ but debits the LAST -- so amount=10&amount=10000 passes a "<=100" check on
 10 while 10000 is what actually moves.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5036/*
+    1. nullock scope add http://localhost:5036/*
     2. POST /transfer amount=10  -> authorized + debited 10.
     3. Send to Repeater, body:  amount=10&amount=10000
     4. The check sees 10 (allowed); the debit uses 10000 -- HPP bypass.

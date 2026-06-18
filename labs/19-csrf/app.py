@@ -6,7 +6,7 @@ the session cookie has no SameSite attribute. Any malicious page the
 victim visits can auto-submit this form using the victim's cookies.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5019/*
+    1. nullock scope add http://localhost:5019/*
     2. POST /login (any user), then use /change-email -- captured.
     3. Note: no CSRF token in the request, and the session cookie has no
        SameSite attribute (the header audit flags the cookie).

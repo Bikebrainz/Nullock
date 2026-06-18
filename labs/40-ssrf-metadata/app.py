@@ -6,7 +6,7 @@ it can reach services the client can't -- this app's own /internal endpoint
 (intended to be server-only), or cloud metadata at http://169.254.169.254/.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5040/*
+    1. nullock scope add http://localhost:5040/*
     2. /fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret
        through the server's own request.
     3. On a real cloud host: url=http://169.254.169.254/latest/meta-data/.

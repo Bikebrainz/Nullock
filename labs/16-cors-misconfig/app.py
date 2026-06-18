@@ -7,7 +7,7 @@ true -- so ANY website can read this authenticated response cross-origin
 using the victim's cookies.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5016/*
+    1. nullock scope add http://localhost:5016/*
     2. Send /api/me to Repeater with header:  Origin: https://evil.example
     3. The response echoes ACAO: https://evil.example + ACAC: true.
     4. Run the active probe (cors): it flags the reflected-credentialed

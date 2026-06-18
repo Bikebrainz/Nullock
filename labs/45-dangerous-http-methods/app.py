@@ -6,7 +6,7 @@ Allow header -- surface for unauthenticated file upload/deletion if those
 handlers aren't separately access-controlled.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5045/*
+    1. nullock scope add http://localhost:5045/*
     2. nullock methods http://localhost:5045/
        -- reads OPTIONS Allow and flags dangerous-http-methods.
 

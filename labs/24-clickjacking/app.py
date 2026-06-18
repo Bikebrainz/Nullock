@@ -7,7 +7,7 @@ it transparently and trick the victim into clicking a hidden control
 (UI redress).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5024/*
+    1. nullock scope add http://localhost:5024/*
     2. Browse /dashboard -- captured.
     3. Run the header audit:  nullock headeraudit http://localhost:5024/dashboard
        It raises 'clickjacking-missing' (no XFO / frame-ancestors).

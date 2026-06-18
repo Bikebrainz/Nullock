@@ -6,7 +6,7 @@ output, but the response differs when the injected condition is true vs
 false ("in stock" vs "no such product"), so data leaks one bit at a time.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5026/*
+    1. nullock scope add http://localhost:5026/*
     2. Send /product?id=1 to Repeater.
     3. id=1 AND 1=1  -> shown;  id=1 AND 1=2 -> not shown (boolean oracle).
     4. Automate with Intruder, e.g.

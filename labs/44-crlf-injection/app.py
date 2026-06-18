@@ -7,7 +7,7 @@ whole second response) into the reply -- header injection, cookie fixation,
 reflected XSS via an injected body, cache poisoning.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5044/*
+    1. nullock scope add http://localhost:5044/*
     2. nullock crlf http://localhost:5044/
        -- injects %0d%0a<header> into the redirect params; Nullock confirms
        when its marker header appears as a real header in the response.

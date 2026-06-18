@@ -6,7 +6,7 @@ session["mfa"]=True, but /dashboard only checks that you're logged in --
 not that 2FA completed -- so you can skip /verify entirely.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5034/*
+    1. nullock scope add http://localhost:5034/*
     2. POST /login user=alice (you now have a session, mfa=false).
     3. GET /dashboard directly -- it loads WITHOUT completing 2FA.
 

@@ -7,7 +7,7 @@ of the cache key, so an attacker can poison the cached copy (e.g. point the
 canonical / asset URL at their host) for every later visitor.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5047/*
+    1. nullock scope add http://localhost:5047/*
     2. nullock cachepoison http://localhost:5047/
        -- injects X-Forwarded-Host and confirms it reflects into a cacheable
        response (the poisoning primitive).

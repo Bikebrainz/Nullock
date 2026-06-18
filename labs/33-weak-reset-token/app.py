@@ -6,7 +6,7 @@ username -- md5("reset-" + user) -- so anyone can recompute a victim's token
 and reset their password.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5033/*
+    1. nullock scope add http://localhost:5033/*
     2. POST /forgot user=victim -- note the token.
     3. The token == md5("reset-victim"); GET /reset?user=victim&token=<that>
        succeeds for anyone who knows the username.

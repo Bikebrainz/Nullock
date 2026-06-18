@@ -7,7 +7,7 @@ formula when the CSV is opened in Excel/Sheets (data exfil or command
 execution via DDE).
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5032/*
+    1. nullock scope add http://localhost:5032/*
     2. POST /feedback  msg==HYPERLINK("http://evil","click")
     3. GET /export -- the cell starts with '=' (live formula on open).
 

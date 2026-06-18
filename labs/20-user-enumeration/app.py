@@ -6,7 +6,7 @@ password" for a real one -- so an attacker can enumerate valid usernames
 without ever logging in.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5020/*
+    1. nullock scope add http://localhost:5020/*
     2. Send /login to Intruder; fuzz the `user` field with a wordlist.
     3. Filter responses: a "Wrong password" body means the user exists.
 

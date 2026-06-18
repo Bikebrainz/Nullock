@@ -6,7 +6,7 @@ WITHOUT escaping, so a comment containing <script> executes for every later
 visitor.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5027/*
+    1. nullock scope add http://localhost:5027/*
     2. POST /comment  text=<script>alert(document.domain)</script>
     3. GET / -- the script is served inline and runs for all visitors.
 

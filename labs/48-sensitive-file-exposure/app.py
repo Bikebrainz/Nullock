@@ -6,7 +6,7 @@ live secrets, the .git/ metadata (full source + history), and a *.bak
 config. Each is fetchable by anyone who guesses the path.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5048/*
+    1. nullock scope add http://localhost:5048/*
     2. nullock exposure http://localhost:5048/
        -- probes curated sensitive paths and confirms each by content
        signature (sensitive-file-exposure findings).

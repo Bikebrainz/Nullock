@@ -6,7 +6,7 @@ an attacker would never have guessed (backups, internal notes). /files/<name>
 then serves any listed file.
 
 In Nullock:
-    1. nullock scope ... add http://localhost:5031/*
+    1. nullock scope add http://localhost:5031/*
     2. Browse /files -- the listing reveals secret-notes.txt and backup.zip.
     3. Fetch /files/secret-notes.txt directly.
 
