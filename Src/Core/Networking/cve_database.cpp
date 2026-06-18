@@ -334,6 +334,11 @@ const QList<Entry> &table() {
           7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
           "<1.25.3", "1.25.3",
           "https://nvd.nist.gov/vuln/detail/CVE-2023-44487" },
+        { "server-nginx", "CVE-2021-23017",
+          "nginx resolver off-by-one heap write (0.6.18-1.20.0) -> worker crash / potential RCE",
+          7.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:L/I:L/A:H",
+          "<1.20.1", "1.20.1",
+          "https://nvd.nist.gov/vuln/detail/CVE-2021-23017" },
     };
     return t;
 }
