@@ -18,7 +18,18 @@ labs/
   10-deserialization/ # Pickle untrusted -> RCE                          (5010)
   11-prototype-pollution/  # Deep-merge __class__ poisoning             (5011)
   12-broken-access/   # Admin endpoint without auth check                (5012)
+  13-command-injection/    # Shell metachars in a ping diagnostics tool (5013)
+  14-path-traversal/  # ../ escapes the download base dir (LFI)          (5014)
+  15-open-redirect/   # /go?next= redirects off-origin, unvalidated      (5015)
+  16-cors-misconfig/  # Reflected Origin + Allow-Credentials: true       (5016)
+  17-nosql-injection/ # password[$ne]= operator auth bypass             (5017)
+  18-mass-assignment/ # over-post is_admin/role onto the profile         (5018)
 ```
+
+Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
+`cors`, `nosqli`, `massassign`, ...), so you learn the bug class *and*
+how to confirm it with the tool. Working toward the v4 roadmap goal of a
+50+-lab Web Security Academy clone.
 
 ## Why labs?
 
