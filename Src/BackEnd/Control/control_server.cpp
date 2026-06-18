@@ -709,6 +709,102 @@ QByteArray httpJson(int status, const QJsonArray &a) {
                         QJsonDocument(a).toJson(QJsonDocument::Compact));
 }
 
+// ---- CSRF PoC generator (Burp Pro "Generate CSRF PoC" equivalent) ------
+// Pure transform: a captured request -> a self-contained, auto-submitting
+// HTML PoC. Attribute values are HTML-escaped; the fetch-PoC body is
+// JS-string escaped (incl. '<' -> <) so the PoC cannot be malformed or
+// break out of the <script>. No network. CWE-352.
+namespace CsrfPoc {
+
+QList<QPair<QString, QString>> parseUrlencoded(const QString &s) {
+    QList<QPair<QString, QString>> out;
+    for (const QString &kv : s.split('&', Qt::SkipEmptyParts)) {
+        const int eq = kv.indexOf('=');
+        const QString k = eq >= 0 ? kv.left(eq) : kv;
+        const QString v = eq >= 0 ? kv.mid(eq + 1) : QString();
+        out.append({ QUrl::fromPercentEncoding(k.toUtf8()),
+                     QUrl::fromPercentEncoding(v.toUtf8()) });
+    }
+    return out;
+}
+
+// Produce a safe JS string literal (quoted) for embedding in <script>.
+QString jsStr(const QString &s) {
+    QString q = QString::fromUtf8(
+        QJsonDocument(QJsonArray{ s }).toJson(QJsonDocument::Compact));
+    q = q.mid(1, q.size() - 2);            // strip the [ ] around the string
+    q.replace("<", "\\u003c");             // neutralize </script> and <!--
+    return q;
+}
+
+bool looksUrlencoded(const QString &body) {
+    const QString t = body.trimmed();
+    if (t.isEmpty() || t.startsWith('{') || t.startsWith('[')) return false;
+    if (t.contains(' ') || t.contains('\n') || t.contains('\t')) return false;
+    return t.contains('=');
+}
+
+QString build(const QString &methodIn, const QString &url,
+              const QString &contentType, const QString &body, QString &note) {
+    QString method = methodIn.toUpper();
+    if (method.isEmpty()) method = QStringLiteral("GET");
+    const QUrl u(url);
+    const QString action =
+        u.adjusted(QUrl::RemoveQuery | QUrl::RemoveFragment).toString();
+    const QString ct = contentType.toLower();
+
+    auto fields = [](const QList<QPair<QString, QString>> &ps) {
+        QString s;
+        for (const auto &p : ps)
+            s += "  <input type=\"hidden\" name=\"" + p.first.toHtmlEscaped()
+               + "\" value=\"" + p.second.toHtmlEscaped() + "\">\n";
+        return s;
+    };
+
+    QString h;
+    h += "<!doctype html>\n<html>\n<head><meta charset=\"utf-8\"><title>CSRF PoC</title></head>\n<body>\n";
+    h += "<!-- Nullock CSRF PoC -- auto-submits on load; host on an attacker-controlled page. -->\n";
+
+    if (method == "GET") {
+        h += "<form id=\"nlk\" action=\"" + action.toHtmlEscaped() + "\" method=\"GET\">\n";
+        h += fields(parseUrlencoded(u.query(QUrl::FullyEncoded)));
+        h += "</form>\n";
+        note = "GET request -- auto-submitting form.";
+    } else if (ct.contains("application/x-www-form-urlencoded")
+               || (ct.isEmpty() && looksUrlencoded(body))) {
+        h += "<form id=\"nlk\" action=\"" + action.toHtmlEscaped() + "\" method=\""
+           + method.toHtmlEscaped() + "\">\n";
+        h += fields(parseUrlencoded(body));
+        h += "</form>\n";
+        note = "Form-urlencoded body -- classic auto-submitting form CSRF.";
+    } else if (ct.contains("multipart/form-data")) {
+        h += "<form id=\"nlk\" action=\"" + action.toHtmlEscaped() + "\" method=\""
+           + method.toHtmlEscaped() + "\" enctype=\"multipart/form-data\">\n</form>\n";
+        note = "multipart/form-data -- form scaffold only; re-add the individual "
+               "parts/files manually (the raw multipart body cannot be split reliably).";
+    } else {
+        const QString ctype = contentType.isEmpty()
+            ? QStringLiteral("text/plain;charset=UTF-8") : contentType;
+        h += "<script>\nfetch(" + jsStr(url) + ", {\n"
+             "  method: " + jsStr(method) + ",\n"
+             "  credentials: 'include',\n"
+             "  headers: { 'Content-Type': " + jsStr(ctype) + " },\n"
+             "  body: " + jsStr(body) + "\n"
+             "});\n</script>\n";
+        note = QString("Body content-type '%1' -- emitted a credentialed fetch() PoC. "
+                       "A non-simple Content-Type triggers a CORS preflight the target "
+                       "must permit; JSON endpoints that reject text/plain may not be "
+                       "exploitable cross-site.").arg(ctype);
+    }
+
+    if (h.contains("id=\"nlk\""))
+        h += "<script>document.getElementById('nlk').submit();</script>\n";
+    h += "</body>\n</html>\n";
+    return h;
+}
+
+} // namespace CsrfPoc
+
 QString safeJoin(const QString &dir, const QString &rel) {
     // Strip leading slashes, refuse "..", normalize separators.
     QString r = rel;
@@ -3121,6 +3217,45 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         o["rawRequest"]  = req.isEmpty() ? idx->loadFullRequestRaw(id)  : req;
         o["rawResponse"] = rsp.isEmpty() ? idx->loadFullResponseRaw(id) : rsp;
         return httpJson(200, o);
+    }
+
+    // ---- CSRF PoC generator ------------------------------------------
+    // POST /api/csrf/poc { id } | { method, url, contentType?, body? }
+    //   Generates an auto-submitting HTML CSRF PoC from a captured request
+    //   (by history id) or from explicit fields. Pure transform. CWE-352.
+    if (path == "/api/csrf/poc") {
+        QString method      = bodyJson.value("method").toString();
+        QString url         = bodyJson.value("url").toString();
+        QString contentType = bodyJson.value("contentType").toString();
+        QString body        = bodyJson.value("body").toString();
+        const int id        = bodyJson.value("id").toInt(0);
+        if (id > 0) {
+            if (!m_wiring.projectStore)
+                return okJson({{ "ok", false }, { "error", "no project store" }});
+            auto *idx = m_wiring.projectStore->historyIndex();
+            if (!idx || !idx->isOpen())
+                return okJson({{ "ok", false }, { "error", "history index not ready" }});
+            const auto fr = idx->loadFullRow(id);
+            if (!fr.ok)
+                return okJson({{ "ok", false }, { "error", "row not found" }});
+            method = fr.request.method;
+            const QString scheme = fr.response.wasTls ? "https" : "http";
+            const bool defPort = (fr.response.wasTls && fr.request.port == 443)
+                              || (!fr.response.wasTls && fr.request.port == 80);
+            url = scheme + "://" + fr.request.host
+                + (defPort ? QString() : ":" + QString::number(fr.request.port))
+                + fr.request.path;
+            for (const auto &hh : fr.request.headers)
+                if (hh.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
+                    contentType = hh.second;
+            body = QString::fromUtf8(fr.request.body);
+        }
+        if (url.isEmpty())
+            return okJson({{ "ok", false }, { "error", "need a history id or a url" }});
+        QString note;
+        const QString html = CsrfPoc::build(method, url, contentType, body, note);
+        return okJson({{ "ok", true }, { "method", method.toUpper() },
+                       { "url", url }, { "note", note }, { "html", html }});
     }
 
     // ---- SQLite-backed history find ----------------------------------

@@ -216,6 +216,27 @@ cmd_scope() {
     esac
 }
 
+cmd_csrfpoc() {
+    # nullock csrf-poc <row-id>
+    #   or: nullock csrf-poc url <METHOD> <url> [contentType] [body|-]
+    # Emits an auto-submitting HTML CSRF PoC for a captured (or described) request.
+    local jqp='if (.ok // false) then .html else ("error: " + (.error // "unknown")) end'
+    case ${1:-} in
+        ""|-h|--help)
+            die "usage: nullock csrf-poc <row-id>   |   nullock csrf-poc url <METHOD> <url> [contentType] [body|-]" ;;
+        url)
+            [[ $# -ge 3 ]] || die "usage: nullock csrf-poc url <METHOD> <url> [contentType] [body|-]"
+            local m=$2 u=$3 ct=${4-} b=""
+            if [[ -n ${5-} ]]; then if [[ $5 == "-" ]]; then b=$(cat); else b=$5; fi; fi
+            post /api/csrf/poc "{\"method\":$(jsonq "$m"),\"url\":$(jsonq "$u"),\"contentType\":$(jsonq "$ct"),\"body\":$(jsonq "$b")}" \
+                | { if have "$JQ"; then "$JQ" -r "$jqp"; else cat; fi; } ;;
+        *)
+            [[ $1 =~ ^[0-9]+$ ]] || die "usage: nullock csrf-poc <row-id>   or   nullock csrf-poc url <METHOD> <url> [contentType] [body|-]"
+            post /api/csrf/poc "{\"id\":$1}" \
+                | { if have "$JQ"; then "$JQ" -r "$jqp"; else cat; fi; } ;;
+    esac
+}
+
 cmd_intercept() {
     case ${1:-} in
         on|toggle) post /api/intercept/toggle | pp ;;
@@ -1373,6 +1394,12 @@ Scope (authorization gate -- active probes only run in scope):
   nullock scope notes <text...>  set engagement scope notes
   nullock scope list             show current in/out scope + notes
 
+PoC:
+  nullock csrf-poc <row-id>      generate an auto-submitting HTML CSRF PoC
+                                 from a captured request
+  nullock csrf-poc url <METHOD> <url> [contentType] [body|-]
+                                 same, from an explicitly described request
+
 Scanning:
   nullock scan <target> [preset] target = host / CIDR (1.2.3.0/24) / a,b,c
                                  preset = discovery|top100|web|full1024
@@ -1743,6 +1770,7 @@ case ${1:-help} in
     assess)        shift; cmd_assess "$@"        ;;
     audit)         shift; cmd_audit "$@"         ;;
     scope)         shift; cmd_scope "$@"         ;;
+    csrf-poc)      shift; cmd_csrfpoc "$@"       ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
