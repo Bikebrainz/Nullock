@@ -185,6 +185,26 @@ const QList<Entry> &table() {
           ">=8.3.0,<8.3.1", "8.3.1",
           "https://grafana.com/security/security-advisories/cve-2021-43798/" },
 
+        // ---- jQuery (version from script-src filename) --------------
+        // jQuery's full version is reliably exposed in the asset path
+        // (jquery-X.Y.Z.min.js), so these correlate cleanly. All three are
+        // single clean ranges fixed in a known release.
+        { "lib-jquery", "CVE-2019-11358",
+          "jQuery < 3.4.0: prototype pollution via jQuery.extend(true, {}, ...)",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          "<3.4.0", "3.4.0",
+          "https://blog.jquery.com/2019/04/10/jquery-3-4-0-released/" },
+        { "lib-jquery", "CVE-2020-11022",
+          "jQuery >=1.2 <3.5.0: XSS -- untrusted HTML passed to .html()/.append() etc. can execute",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          ">=1.2.0,<3.5.0", "3.5.0",
+          "https://blog.jquery.com/2020/04/10/jquery-3-5-0-released/" },
+        { "lib-jquery", "CVE-2020-11023",
+          "jQuery >=1.0.3 <3.5.0: XSS -- HTML containing <option> elements passed to DOM methods can execute",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          ">=1.0.3,<3.5.0", "3.5.0",
+          "https://blog.jquery.com/2020/04/10/jquery-3-5-0-released/" },
+
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
           "Sitecore XP/XM: insecure deserialization in ItemService leading to unauthenticated RCE",
