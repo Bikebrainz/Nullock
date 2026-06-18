@@ -24,6 +24,12 @@ labs/
   16-cors-misconfig/  # Reflected Origin + Allow-Credentials: true       (5016)
   17-nosql-injection/ # password[$ne]= operator auth bypass             (5017)
   18-mass-assignment/ # over-post is_admin/role onto the profile         (5018)
+  19-csrf/            # state-changing POST, no token, no SameSite        (5019)
+  20-user-enumeration/     # login error reveals which usernames exist   (5020)
+  21-session-fixation/     # sid cookie not rotated on login             (5021)
+  22-file-upload/     # unrestricted upload -> stored XSS                 (5022)
+  23-host-header-poisoning/ # reset link built from Host header          (5023)
+  24-clickjacking/    # sensitive page with no frame protections          (5024)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
