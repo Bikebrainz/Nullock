@@ -24,3 +24,7 @@ moc_*.cpp
 moc_*.h
 qrc_*.cpp
 ui_*.h
+
+# Python bytecode (e.g. from py_compile-ing the labs)
+__pycache__/
+*.pyc

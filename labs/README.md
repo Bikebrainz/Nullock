@@ -30,6 +30,12 @@ labs/
   22-file-upload/     # unrestricted upload -> stored XSS                 (5022)
   23-host-header-poisoning/ # reset link built from Host header          (5023)
   24-clickjacking/    # sensitive page with no frame protections          (5024)
+  25-secret-exposure/ # AWS key in app.js + readable /.env                (5025)
+  26-blind-sqli/      # boolean-based blind SQLi (no error output)        (5026)
+  27-stored-xss/      # persistent XSS in a comment feed                  (5027)
+  28-business-logic-price/ # client-controlled price / negative qty      (5028)
+  29-verbose-errors/  # stack-trace info disclosure on bad input          (5029)
+  30-rate-limit-bypass/    # X-Forwarded-For resets the login limiter     (5030)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
