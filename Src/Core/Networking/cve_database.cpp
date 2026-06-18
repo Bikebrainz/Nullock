@@ -175,6 +175,35 @@ const QList<Entry> &table() {
           5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
           "<8.4.0", "8.4.0",
           "https://jira.atlassian.com/browse/JRASERVER-69242" },
+        // CVE-2019-11581: server-side template injection in ContactAdministrators
+        // / SendBulkMail -> RCE (unauthenticated when the Contact Administrators
+        // form is enabled). Web-verified per-branch ranges (fixes 7.6.14 /
+        // 7.13.5 / 8.0.3 / 8.1.2 / 8.2.3).
+        { "cms-jira", "CVE-2019-11581",
+          "Jira 4.4-7.6.x < 7.6.14: server-side template injection -> RCE (unauth via Contact Administrators form)",
+          8.8, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+          ">=4.4.0,<7.6.14", "7.6.14",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html" },
+        { "cms-jira", "CVE-2019-11581",
+          "Jira 7.7-7.13.x < 7.13.5: server-side template injection -> RCE (unauth via Contact Administrators form)",
+          8.8, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.7.0,<7.13.5", "7.13.5",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html" },
+        { "cms-jira", "CVE-2019-11581",
+          "Jira 8.0.x < 8.0.3: server-side template injection -> RCE (unauth via Contact Administrators form)",
+          8.8, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.0.0,<8.0.3", "8.0.3",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html" },
+        { "cms-jira", "CVE-2019-11581",
+          "Jira 8.1.x < 8.1.2: server-side template injection -> RCE (unauth via Contact Administrators form)",
+          8.8, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.1.0,<8.1.2", "8.1.2",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html" },
+        { "cms-jira", "CVE-2019-11581",
+          "Jira 8.2.x < 8.2.3: server-side template injection -> RCE (unauth via Contact Administrators form)",
+          8.8, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.2.0,<8.2.3", "8.2.3",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html" },
 
         // ---- Jenkins (X-Jenkins header version) ---------------------
         // CVE-2024-23897: unauthenticated arbitrary file read via the CLI
