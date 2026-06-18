@@ -127,6 +127,29 @@ const QList<Entry> &table() {
           "<8.4.0", "8.4.0",
           "https://jira.atlassian.com/browse/JRASERVER-69242" },
 
+        // ---- Jenkins (X-Jenkins header version) ---------------------
+        // CVE-2024-23897: unauthenticated arbitrary file read via the CLI
+        // args4j '@' expansion (readable->RCE; mass-exploited Jan 2024). Fixed
+        // in weekly 2.442 and LTS 2.426.3. Two fix points => three
+        // mutually-exclusive branches so a patched 2.426.3 / 2.442 isn't FP'd
+        // (the LTS 2.426 line is 3-part, weeklies 2-part -- both compare under
+        // the dotted-triple matcher).
+        { "app-jenkins", "CVE-2024-23897",
+          "Jenkins < 2.442 (weekly): unauthenticated arbitrary file read via CLI args4j '@' expansion (-> RCE)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "<2.426", "2.426.3 / 2.442",
+          "https://www.jenkins.io/security/advisory/2024-01-24/" },
+        { "app-jenkins", "CVE-2024-23897",
+          "Jenkins LTS 2.426.x < 2.426.3: unauthenticated arbitrary file read via CLI args4j '@' expansion (-> RCE)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=2.426,<2.426.3", "2.426.3",
+          "https://www.jenkins.io/security/advisory/2024-01-24/" },
+        { "app-jenkins", "CVE-2024-23897",
+          "Jenkins weekly 2.427-2.441 < 2.442: unauthenticated arbitrary file read via CLI args4j '@' expansion (-> RCE)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=2.427,<2.442", "2.442",
+          "https://www.jenkins.io/security/advisory/2024-01-24/" },
+
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
           "Sitecore XP/XM: insecure deserialization in ItemService leading to unauthenticated RCE",

@@ -94,6 +94,10 @@ Result fingerprint(const Request &req) {
     }
     const QString aspVer = headerValue(r.parsed, "X-AspNet-Version");
     if (!aspVer.isEmpty()) add("ASP.NET", aspVer, "header", "fw-aspnet");
+    // Jenkins puts its exact build in the X-Jenkins response header on every
+    // page -- a clean, reliable version signal for CVE correlation.
+    const QString jenkins = headerValue(r.parsed, "X-Jenkins");
+    if (!jenkins.isEmpty()) add("Jenkins", cap1(rx("([0-9][0-9.]*)"), jenkins), "header", "app-jenkins");
 
     // ---- cookies ----
     for (const QString &sc : allHeaderValues(r.parsed, "Set-Cookie")) {
