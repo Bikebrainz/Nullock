@@ -106,6 +106,47 @@ const QList<Entry> &table() {
           ">=8.6.0,<8.6.1", "8.6.1",
           "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
 
+        // CVE-2022-26134: OGNL injection -> unauthenticated RCE, exploited as a
+        // 0-day (June 2022). Per the Atlassian advisory / NVD, affected by
+        // maintenance branch: <7.4.17, 7.13.x<7.13.7, 7.14.x<7.14.3,
+        // 7.15.x<7.15.2, 7.16.x<7.16.4, 7.17.x<7.17.4, 7.18.x<7.18.1. (8.x
+        // postdates the fix and is unaffected.) Web-verified pins.
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "<7.4.17", "7.4.17",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.13.0,<7.13.7", "7.13.7",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.14.0,<7.14.3", "7.14.3",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.15.0,<7.15.2", "7.15.2",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.16.0,<7.16.4", "7.16.4",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.17.0,<7.17.4", "7.17.4",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+        { "cms-confluence", "CVE-2022-26134",
+          "Confluence Data Center/Server: OGNL injection -> unauthenticated remote code execution (0-day, June 2022)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.18.0,<7.18.1", "7.18.1",
+          "https://confluence.atlassian.com/doc/confluence-security-advisory-2022-06-02-1130377146.html" },
+
         // ---- Atlassian Jira -----------------------------------------
         // NB: CVE-2024-1597 (bundled pgjdbc <42.7.2) was removed -- it is a
         // dependency CVE not keyed to Jira's own version, and its "<42.7.2"
