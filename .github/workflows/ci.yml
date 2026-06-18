@@ -79,6 +79,10 @@ jobs:
             -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
       - name: build NullockApp
         run: cmake --build build --config Release --target NullockApp
+      - name: regression tests (scanner + CVE DB + enricher)
+        run: |
+          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test
+          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher" --output-on-failure
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |

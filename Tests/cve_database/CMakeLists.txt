@@ -22,9 +22,10 @@ add_test(NAME cve_database COMMAND cve_database_test)
 # build dir without a fresh windeployqt (mirrors scanner_regression).
 if(WIN32)
     set(_qt_bin "${Qt6_DIR}/../../../bin")
+    set(_d "$<$<CONFIG:Debug>:d>")   # debug Qt DLLs carry a 'd' suffix; release don't
     set(_qt_dlls
-        Qt6Cored.dll Qt6Networkd.dll Qt6Qmld.dll Qt6Sqld.dll
-        Qt6Concurrentd.dll
+        Qt6Core${_d}.dll Qt6Network${_d}.dll Qt6Qml${_d}.dll Qt6Sql${_d}.dll
+        Qt6Concurrent${_d}.dll
     )
     foreach(_dll IN LISTS _qt_dlls)
         add_custom_command(TARGET cve_database_test POST_BUILD
