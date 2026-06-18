@@ -117,6 +117,32 @@ Result fingerprint(const Request &req) {
     else if (body.contains("/sites/all/", Qt::CaseInsensitive) || body.contains("/sites/default/files", Qt::CaseInsensitive))
         add("Drupal", "", "body", "cms-drupal");
     if (body.contains("Joomla", Qt::CaseInsensitive)) add("Joomla", cap1(rx("Joomla!?\\s*([0-9][0-9.]*)"), body), "body", "cms-joomla");
+    // ---- Atlassian Confluence / Jira -------------------------------------
+    // Atlassian products expose their exact build through the
+    // <meta name="ajs-version-number" content="X.Y.Z"> tag. The product is
+    // told apart by product-specific markers so the version can be
+    // CVE-correlated (this is what makes the cms-confluence / cms-jira CVE
+    // entries reachable).
+    QString ajs = cap1(rx("name=[\"']ajs-version-number[\"'][^>]*content=[\"']([0-9][0-9.]*)"), body);
+    if (ajs.isEmpty())
+        ajs = cap1(rx("content=[\"']([0-9][0-9.]*)[\"'][^>]*name=[\"']ajs-version-number[\"']"), body);
+    if (!ajs.isEmpty()) {
+        const bool confMarker = body.contains("confluence-base-url", Qt::CaseInsensitive)
+                             || body.contains("confluence-context-path", Qt::CaseInsensitive)
+                             || body.contains("com.atlassian.confluence", Qt::CaseInsensitive);
+        const bool jiraMarker = body.contains("ajs-server-jira-version", Qt::CaseInsensitive)
+                             || body.contains("com.atlassian.jira", Qt::CaseInsensitive)
+                             || rx("application-name[\"']\\s+content=[\"']JIRA").match(body).hasMatch();
+        // Attach a product-specific cveKind ONLY on a reliable structural
+        // marker. A bare "confluence"/"jira" word elsewhere on the page (e.g.
+        // a footer link to confluence.atlassian.com on a Jira UI) would
+        // cross-label the product and misattribute its CVEs, so when the
+        // product is ambiguous we record the version under "Atlassian" with
+        // no kind (it shows in inventory but correlates no CVEs).
+        if (confMarker)      add("Confluence", ajs, "meta", "cms-confluence");
+        else if (jiraMarker) add("Jira", ajs, "meta", "cms-jira");
+        else                 add("Atlassian", ajs, "meta", "");
+    }
     if (!(v = cap1(rx("jquery[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.js"), body)).isEmpty())
         add("jQuery", v, "body", "lib-jquery");
     if (!(v = cap1(rx("bootstrap[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.(?:js|css)"), body)).isEmpty())

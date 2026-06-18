@@ -67,18 +67,65 @@ const QList<Entry> &table() {
           10.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
           ">=8.0.0,<8.5.2", "8.5.2",
           "https://confluence.atlassian.com/security/cve-2023-22515-1295682276.html" },
+        // CVE-2023-22518 affected ALL Confluence DC/Server before the
+        // per-branch fixes (7.19.16, 8.3.4, 8.4.4, 8.5.3, 8.6.1) -- the lone
+        // <7.19.16 range missed the entire 8.x line (the common DC line in
+        // late 2023). Modeled as mutually-exclusive branch ranges (same shape
+        // as CVE-2022-0540) so patched 8.x builds aren't false-positived.
         { "cms-confluence", "CVE-2023-22518",
-          "Confluence Data Center: unauthenticated authorization bypass (data destruction)",
+          "Confluence Data Center/Server: unauthenticated authorization bypass (data destruction)",
           9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
           "<7.19.16", "7.19.16",
           "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
+        { "cms-confluence", "CVE-2023-22518",
+          "Confluence Data Center/Server: unauthenticated authorization bypass (data destruction)",
+          9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+          ">=8.0.0,<8.3.4", "8.3.4",
+          "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
+        { "cms-confluence", "CVE-2023-22518",
+          "Confluence Data Center/Server: unauthenticated authorization bypass (data destruction)",
+          9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+          ">=8.4.0,<8.4.4", "8.4.4",
+          "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
+        { "cms-confluence", "CVE-2023-22518",
+          "Confluence Data Center/Server: unauthenticated authorization bypass (data destruction)",
+          9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+          ">=8.5.0,<8.5.3", "8.5.3",
+          "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
+        { "cms-confluence", "CVE-2023-22518",
+          "Confluence Data Center/Server: unauthenticated authorization bypass (data destruction)",
+          9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H",
+          ">=8.6.0,<8.6.1", "8.6.1",
+          "https://confluence.atlassian.com/security/cve-2023-22518-1311473907.html" },
 
         // ---- Atlassian Jira -----------------------------------------
-        { "cms-jira", "CVE-2024-1597",
-          "Jira (via pgjdbc < 42.7.2): JDBC URL parameter injection",
+        // NB: CVE-2024-1597 (bundled pgjdbc <42.7.2) was removed -- it is a
+        // dependency CVE not keyed to Jira's own version, and its "<42.7.2"
+        // text matches every real Jira version, so it false-positives once
+        // Jira version fingerprinting is enabled. Replaced with CVEs whose
+        // affected range IS Jira's own version. CVE-2022-0540 spans three
+        // mutually-exclusive maintenance branches (same pattern as PHP
+        // CVE-2024-4577) so a patched build on any branch isn't flagged.
+        { "cms-jira", "CVE-2022-0540",
+          "Jira / Jira Service Management: authentication bypass in Seraph -- affected web actions reachable unauthenticated",
           9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-          "via pgjdbc <42.7.2", "n/a",
-          "https://confluence.atlassian.com/security/security-bulletin-april-2024-1408879771.html" },
+          "<8.13.18", "8.13.18",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2022-04-20-1115127899.html" },
+        { "cms-jira", "CVE-2022-0540",
+          "Jira / Jira Service Management: authentication bypass in Seraph -- affected web actions reachable unauthenticated",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.14.0,<8.20.6", "8.20.6",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2022-04-20-1115127899.html" },
+        { "cms-jira", "CVE-2022-0540",
+          "Jira / Jira Service Management: authentication bypass in Seraph -- affected web actions reachable unauthenticated",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.21.0,<8.22.0", "8.22.0",
+          "https://confluence.atlassian.com/jira/jira-security-advisory-2022-04-20-1115127899.html" },
+        { "cms-jira", "CVE-2019-8449",
+          "Jira < 8.4.0: user/group enumeration via /rest/api/latest/groupuserpicker (information disclosure)",
+          5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+          "<8.4.0", "8.4.0",
+          "https://jira.atlassian.com/browse/JRASERVER-69242" },
 
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
