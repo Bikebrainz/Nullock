@@ -141,6 +141,38 @@ const QList<Entry> &table() {
           "<5.4.46", "5.4.46",
           "https://symfony.com/blog/cve-2024-50345-account-takeover-via-the-remember-me-cookie" },
 
+        // ---- Joomla --------------------------------------------------
+        { "cms-joomla", "CVE-2023-23752",
+          "Joomla! 4.0.0-4.2.7: improper access check on webservice endpoints -- unauthenticated disclosure of config incl. DB credentials",
+          5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+          ">=4.0.0,<4.2.8", "4.2.8",
+          "https://developer.joomla.org/security-centre/894-20230201-core-improper-access-check-in-webservice-endpoints.html" },
+        { "cms-joomla", "CVE-2015-8562",
+          "Joomla! 1.5-3.4.5: PHP object injection via crafted User-Agent / X-Forwarded-For -> unauthenticated RCE",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          "<3.4.6", "3.4.6",
+          "https://nvd.nist.gov/vuln/detail/CVE-2015-8562" },
+
+        // ---- PHP (language runtime) ---------------------------------
+        // CVE-2024-4577 is multi-branch -- one mutually-exclusive range per
+        // maintained branch so a given version matches exactly one (no FP on
+        // a patched older-branch build). Config-dependent (PHP-CGI on Windows).
+        { "lang-php", "CVE-2024-4577",
+          "PHP-CGI argument injection -> unauthenticated RCE (Windows / certain locales+configs); 8.3.x before 8.3.8",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.3.0,<8.3.8", "8.3.8",
+          "https://nvd.nist.gov/vuln/detail/CVE-2024-4577" },
+        { "lang-php", "CVE-2024-4577",
+          "PHP-CGI argument injection -> unauthenticated RCE (Windows / certain locales+configs); 8.2.x before 8.2.20",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.2.0,<8.2.20", "8.2.20",
+          "https://nvd.nist.gov/vuln/detail/CVE-2024-4577" },
+        { "lang-php", "CVE-2024-4577",
+          "PHP-CGI argument injection -> unauthenticated RCE (Windows / certain locales+configs); 8.1.x before 8.1.29",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.1.0,<8.1.29", "8.1.29",
+          "https://nvd.nist.gov/vuln/detail/CVE-2024-4577" },
+
         // ---- Generic web servers (Server: header) -------------------
         // We add a synthetic kind "server-version" -- the scanner can
         // emit this when it parses Server with a version number.
