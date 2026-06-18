@@ -9,20 +9,33 @@
 ## What's in the box
 
 ```
-Proxy             HTTP/1.1 + HTTP/2 + WebSocket, all with native frame visibility
-Repeater          Multi-tab, send-to-Repeater from history, edit-and-resend
+Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue
+Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
 Intruder          Sniper mode, custom payloads, rate-limit-aware
-Scanner           Passive (10 finding types) + active (XSS/SQLi/SSRF/SSTI/cmd-i/CRLF/traversal/cloud-metadata)
-Intercept         Pause/forward/drop with queue management
+Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
+Active scanner    SQLi (error + blind/time), NoSQLi, XXE, SSTI, OS cmd-i, CRLF, path traversal,
+                  reflected/stored XSS, IDOR, verb tampering, open redirect, CORS, mass assignment,
+                  security-header/CSP audit, web cache poisoning + deception, dangerous HTTP methods,
+                  sensitive-file exposure, HTTP request smuggling, race conditions
+Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
+                  database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/PHP/...), with
+                  multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay
+Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
+                  WAF/CDN detection, subdomain-takeover fingerprints, scope-gated BFS crawler
+TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto)
 OAST              In-process HTTP callback sink for blind-bug detection
+Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
+Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
+                  asset inventory, findings baseline/diff for repeat engagements
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
-Crawler           BFS link-follower, scope-gated, feeds scanner
-Port scan + recon CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum
+Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
-Decoders          JWT (with security annotations), GraphQL, gRPC, CBOR, SAML, base64, hex, JSON
+Decoders          JWT (security-annotated) + forge, GraphQL, gRPC, CBOR, SAML, base64, hex, JSON
+Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy
 AI triage         Local Ollama for impact/fix/FP-likelihood per finding
-Scriptable CLI    25+ subcommands -- drive every panel from your shell
+Scriptable CLI    Drive every panel from your shell
+Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/)
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 ```
 
@@ -65,7 +78,9 @@ Full quickstart: <https://bikebrainz.github.io/Nullock/docs/getting-started.html
 | | Nullock | Burp Community | Burp Pro | mitmproxy |
 |---|---|---|---|---|
 | Price | Free | Free | $475/yr | Free |
-| Active scanner | ✓ | — | ✓ | — |
+| Active scanner | ✓ (20+ classes) | — | ✓ | — |
+| Version→CVE correlation | built-in | — | addon | — |
+| Reporting (HTML/SARIF/SBOM) | ✓ | — | partial | — |
 | OAST (Collaborator) | in-process | — | hosted | — |
 | Session handling rules | ✓ | — | ✓ | — |
 | CLI control of every panel | ✓ | — | jython | ✓ |
@@ -87,7 +102,7 @@ Full honest comparison: <https://bikebrainz.github.io/Nullock/#compare>
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    6 vuln classes                 │         │  9 tabs:      │
+   │  ActiveProbe    20+ vuln classes               │         │  9 tabs:      │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
