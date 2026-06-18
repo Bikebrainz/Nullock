@@ -42,6 +42,12 @@ labs/
   34-2fa-bypass/      # dashboard never checks the 2FA flag               (5034)
   35-reset-token-reuse/    # reset token never invalidated (replayable)   (5035)
   36-http-param-pollution/ # check uses first dup param, action uses last (5036)
+  37-web-cache-deception/  # dynamic page at a cacheable static-style URL  (5037)
+  38-insecure-cookie-flags/ # session cookie w/o Secure/HttpOnly/SameSite (5038)
+  39-missing-security-headers/ # no CSP / nosniff / framing protections   (5039)
+  40-ssrf-metadata/   # /fetch reaches internal-only + cloud metadata     (5040)
+  41-oauth-redirect-uri/    # redirect_uri unvalidated -> auth-code theft  (5041)
+  42-credentials-in-url/    # password in query string (logs/history/Referer) (5042)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
