@@ -173,18 +173,25 @@ const QList<Entry> &table() {
           ">=8.1.0,<8.1.29", "8.1.29",
           "https://nvd.nist.gov/vuln/detail/CVE-2024-4577" },
 
-        // ---- Generic web servers (Server: header) -------------------
-        // We add a synthetic kind "server-version" -- the scanner can
-        // emit this when it parses Server with a version number.
-        { "server-version", "CVE-2024-38473",
-          "Apache HTTP Server < 2.4.59: encoding-issue + mod_proxy SSRF",
+        // ---- Web servers (Server: header) ---------------------------
+        // Keyed to the kinds http_fingerprint actually emits (server-apache /
+        // server-nginx) with clean version pins, so a fingerprinted Server
+        // version correlates. (These were previously filed under a synthetic
+        // "server-version" kind that nothing looks up -- i.e. dead entries.)
+        { "server-apache", "CVE-2024-38473",
+          "Apache httpd < 2.4.59: mod_proxy encoding issue -> SSRF / auth bypass",
           8.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
-          "Apache HTTP Server <2.4.59", "2.4.59",
+          "<2.4.59", "2.4.59",
           "https://httpd.apache.org/security/vulnerabilities_24.html" },
-        { "server-version", "CVE-2023-44487",
-          "HTTP/2 Rapid Reset attack (multi-vendor): DoS against h2 servers via RST_STREAM flood",
+        { "server-apache", "CVE-2023-44487",
+          "HTTP/2 Rapid Reset DoS via RST_STREAM flood (Apache added mitigations in 2.4.58)",
           7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
-          "many web servers pre-Oct 2023", "various",
+          "<2.4.58", "2.4.58",
+          "https://nvd.nist.gov/vuln/detail/CVE-2023-44487" },
+        { "server-nginx", "CVE-2023-44487",
+          "HTTP/2 Rapid Reset DoS via RST_STREAM flood (nginx added mitigations in 1.25.3)",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "<1.25.3", "1.25.3",
           "https://nvd.nist.gov/vuln/detail/CVE-2023-44487" },
     };
     return t;
