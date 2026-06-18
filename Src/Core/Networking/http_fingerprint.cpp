@@ -154,6 +154,17 @@ Result fingerprint(const Request &req) {
     if (body.contains("__NEXT_DATA__")) add("Next.js", "", "body", "fw-nextjs");
     if (body.contains("ng-version", Qt::CaseInsensitive)) add("Angular", cap1(rx("ng-version=[\"']([0-9][0-9.]*)"), body), "body", "");
     if (body.contains("data-reactroot") || body.contains("react.production.min.js")) add("React", "", "body", "");
+    // Grafana ships its build in window.grafanaBootData.settings.buildInfo.version.
+    // Gate on the grafanaBootData marker (Grafana-specific) -- NOT a bare
+    // "grafana" word -- so an unrelated page that merely mentions Grafana isn't
+    // mislabeled. Version pulled from the buildInfo object only.
+    if (body.contains("grafanaBootData"))
+        // First "version":"X" after the buildInfo key. [\s\S]*? (not [^}]*) so a
+        // nested object inside buildInfo before the version field doesn't abort
+        // the match; the "version" key can't match "latestVersion" (no leading
+        // quote before `version` there), so it lands on the build version.
+        add("Grafana", cap1(rx("buildInfo\"[\\s\\S]*?\"version\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
+            "body", "app-grafana");
     if (body.contains("data-v-app") || body.contains("/vue.runtime")) add("Vue.js", "", "body", "");
 
     return result;

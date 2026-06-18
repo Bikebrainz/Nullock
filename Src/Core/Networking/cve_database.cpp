@@ -150,6 +150,33 @@ const QList<Entry> &table() {
           ">=2.427,<2.442", "2.442",
           "https://www.jenkins.io/security/advisory/2024-01-24/" },
 
+        // ---- Grafana (grafanaBootData buildInfo version) ------------
+        // CVE-2021-43798: unauthenticated directory traversal -> arbitrary file
+        // read via /public/plugins/<id>/../../  -- affected 8.0.0-8.3.0, fixed
+        // 8.3.1 with backports 8.0.7 / 8.1.8 / 8.2.7. Branch-modeled so a
+        // patched build on any line isn't false-positived; 7.x and >=8.3.1 are
+        // unaffected (no range matches them).
+        { "app-grafana", "CVE-2021-43798",
+          "Grafana 8.0.x < 8.0.7: unauthenticated path traversal -> arbitrary file read via plugin assets",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=8.0.0,<8.0.7", "8.0.7",
+          "https://grafana.com/security/security-advisories/cve-2021-43798/" },
+        { "app-grafana", "CVE-2021-43798",
+          "Grafana 8.1.x < 8.1.8: unauthenticated path traversal -> arbitrary file read via plugin assets",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=8.1.0,<8.1.8", "8.1.8",
+          "https://grafana.com/security/security-advisories/cve-2021-43798/" },
+        { "app-grafana", "CVE-2021-43798",
+          "Grafana 8.2.x < 8.2.7: unauthenticated path traversal -> arbitrary file read via plugin assets",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=8.2.0,<8.2.7", "8.2.7",
+          "https://grafana.com/security/security-advisories/cve-2021-43798/" },
+        { "app-grafana", "CVE-2021-43798",
+          "Grafana 8.3.0 < 8.3.1: unauthenticated path traversal -> arbitrary file read via plugin assets",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=8.3.0,<8.3.1", "8.3.1",
+          "https://grafana.com/security/security-advisories/cve-2021-43798/" },
+
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
           "Sitecore XP/XM: insecure deserialization in ItemService leading to unauthenticated RCE",
