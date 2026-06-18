@@ -370,6 +370,21 @@ const QList<Entry> &table() {
           7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
           "<2.4.58", "2.4.58",
           "https://nvd.nist.gov/vuln/detail/CVE-2023-44487" },
+        // Oct-2021 path-traversal pair (mass-exploited). 41773 affects 2.4.49
+        // ONLY (fixed 2.4.50); 42013 -- the incomplete-fix follow-up -- affects
+        // 2.4.49 AND 2.4.50 (fixed 2.4.51). Modeled as half-open ranges, not a
+        // bare "2.4.49" exact (rangeMatches only honors </> bounds; a bare
+        // version has no bound and would match every version).
+        { "server-apache", "CVE-2021-41773",
+          "Apache httpd 2.4.49: path traversal -> file disclosure / RCE (when mod_cgi enabled on aliased paths)",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=2.4.49,<2.4.50", "2.4.50",
+          "https://httpd.apache.org/security/vulnerabilities_24.html" },
+        { "server-apache", "CVE-2021-42013",
+          "Apache httpd 2.4.49-2.4.50: path traversal -> unauthenticated RCE (incomplete fix for CVE-2021-41773)",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=2.4.49,<2.4.51", "2.4.51",
+          "https://httpd.apache.org/security/vulnerabilities_24.html" },
         { "server-nginx", "CVE-2023-44487",
           "HTTP/2 Rapid Reset DoS via RST_STREAM flood (nginx added mitigations in 1.25.3)",
           7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
@@ -423,7 +438,18 @@ bool rangeMatches(const QString &range, const QString &version) {
         if (!b.valid) continue;
         bounds.append({ m.captured(1), b });
     }
-    if (bounds.isEmpty()) return true;
+    if (bounds.isEmpty()) {
+        // No </> bound parsed. A bare dotted version ("2.4.49") means an
+        // EXACT-version match (as the struct doc promises) -- compare for
+        // equality rather than silently matching every version. Anything else
+        // (free-text / "n/a") we surface rather than drop.
+        static const QRegularExpression bare(R"(^\s*\d+(?:\.\d+){0,3}\s*$)");
+        if (bare.match(range).hasMatch()) {
+            const Triple want = parseVersion(range);
+            return want.valid && cmpTriple(have, want) == 0;
+        }
+        return true;
+    }
     for (const auto &[oper, bound] : bounds) {
         const int c = cmpTriple(have, bound);
         if (oper == "<"  && !(c <  0)) return false;
