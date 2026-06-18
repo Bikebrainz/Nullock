@@ -205,6 +205,22 @@ const QList<Entry> &table() {
           ">=1.0.3,<3.5.0", "3.5.0",
           "https://blog.jquery.com/2020/04/10/jquery-3-5-0-released/" },
 
+        // ---- Bootstrap (version from asset filename) ----------------
+        // CVE-2019-8331: XSS in tooltip/popover data-template -- the canonical
+        // outdated-Bootstrap finding. Fixed in 3.4.1 (3.x line) and 4.3.1 (4.x
+        // line); two clean branches so a patched build on either line and 5.x
+        // aren't false-positived.
+        { "lib-bootstrap", "CVE-2019-8331",
+          "Bootstrap < 3.4.1: XSS in tooltip/popover via the data-template attribute",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          "<3.4.1", "3.4.1",
+          "https://github.com/twbs/bootstrap/releases/tag/v3.4.1" },
+        { "lib-bootstrap", "CVE-2019-8331",
+          "Bootstrap 4.x < 4.3.1: XSS in tooltip/popover via the data-template attribute",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          ">=4.0.0,<4.3.1", "4.3.1",
+          "https://github.com/twbs/bootstrap/releases/tag/v4.3.1" },
+
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
           "Sitecore XP/XM: insecure deserialization in ItemService leading to unauthenticated RCE",

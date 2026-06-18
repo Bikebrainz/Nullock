@@ -150,7 +150,7 @@ Result fingerprint(const Request &req) {
     if (!(v = cap1(rx("jquery[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.js"), body)).isEmpty())
         add("jQuery", v, "body", "lib-jquery");
     if (!(v = cap1(rx("bootstrap[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.(?:js|css)"), body)).isEmpty())
-        add("Bootstrap", v, "body", "");
+        add("Bootstrap", v, "body", "lib-bootstrap");
     if (body.contains("__NEXT_DATA__")) add("Next.js", "", "body", "fw-nextjs");
     if (body.contains("ng-version", Qt::CaseInsensitive)) add("Angular", cap1(rx("ng-version=[\"']([0-9][0-9.]*)"), body), "body", "");
     if (body.contains("data-reactroot") || body.contains("react.production.min.js")) add("React", "", "body", "");
