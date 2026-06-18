@@ -67,8 +67,12 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          modules: 'qtquickcontrols2 qtwebsockets'
-          # Sql + Network + Concurrent are in the base install.
+          # qtwebsockets is the only add-on module we need. qtquickcontrols2 is
+          # NOT a separate aqt module in Qt6 -- it ships in the base qtdeclarative
+          # install -- and requesting it made aqt fail ("packages not found"),
+          # which broke the whole Windows build. Sql / Network / Concurrent /
+          # Quick Controls are all in the base install.
+          modules: 'qtwebsockets'
       - name: install nghttp2 (vcpkg)
         run: |
           vcpkg install nghttp2:x64-windows
