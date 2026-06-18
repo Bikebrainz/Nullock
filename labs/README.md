@@ -48,12 +48,21 @@ labs/
   40-ssrf-metadata/   # /fetch reaches internal-only + cloud metadata     (5040)
   41-oauth-redirect-uri/    # redirect_uri unvalidated -> auth-code theft  (5041)
   42-credentials-in-url/    # password in query string (logs/history/Referer) (5042)
+  43-xxe/             # external entity resolves a local file into the reply (5043)
+  44-crlf-injection/  # redirect param splits the Location header (CWE-113)   (5044)
+  45-dangerous-http-methods/ # OPTIONS Allow advertises PUT/DELETE/PATCH      (5045)
+  46-verb-tampering/  # /admin gated for GET only; POST/HEAD sail through      (5046)
+  47-cache-poisoning/ # unkeyed X-Forwarded-Host reflected, cacheable         (5047)
+  48-sensitive-file-exposure/ # .env / .git / *.bak served from web root      (5048)
+  49-robots-disclosure/    # robots.txt Disallow maps hidden attack surface   (5049)
+  50-predictable-session-token/ # sequential session ids (sequencer verdict)  (5050)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
-`cors`, `nosqli`, `massassign`, ...), so you learn the bug class *and*
-how to confirm it with the tool. Working toward the v4 roadmap goal of a
-50+-lab Web Security Academy clone.
+`cors`, `nosqli`, `massassign`, `xxe`, `crlf`, `verbtamper`, ...), so you
+learn the bug class *and* how to confirm it with the tool. This hits the
+v4 roadmap goal of a 50-lab Web Security Academy clone -- every lab here
+is verified end-to-end against its Nullock detector.
 
 ## Why labs?
 
