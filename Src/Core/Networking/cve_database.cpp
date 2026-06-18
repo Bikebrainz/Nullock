@@ -67,6 +67,14 @@ const QList<Entry> &table() {
           10.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
           ">=8.0.0,<8.5.2", "8.5.2",
           "https://confluence.atlassian.com/security/cve-2023-22515-1295682276.html" },
+        // CVE-2023-22527: OGNL template injection -> unauthenticated RCE
+        // (10.0, mass-exploited early 2024). Affected 8.0.0-8.5.3, fixed 8.5.4
+        // (and all 8.6+); a single clean range -- no per-branch backports.
+        { "cms-confluence", "CVE-2023-22527",
+          "Confluence Data Center/Server: OGNL template injection -> unauthenticated remote code execution",
+          10.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+          ">=8.0.0,<8.5.4", "8.5.4",
+          "https://confluence.atlassian.com/security/cve-2023-22527-1333990257.html" },
         // CVE-2023-22518 affected ALL Confluence DC/Server before the
         // per-branch fixes (7.19.16, 8.3.4, 8.4.4, 8.5.3, 8.6.1) -- the lone
         // <7.19.16 range missed the entire 8.x line (the common DC line in
