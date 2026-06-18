@@ -1,8 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/marketplace.schema.json",
   "version": 1,
-  "updated": "2026-06-08",
+  "updated": "2026-06-09",
   "extensions": [
+    {
+      "id": "dom_taint",
+      "name": "DOM Taint Tracker",
+      "summary": "Static DOM-XSS taint analysis on served HTML/JS with one-hop dataflow: connects sources (location.*, referrer, window.name, postMessage, storage) to sinks (innerHTML, eval, document.write, setTimeout, location-nav) and emits findings. The proxy-side answer to Burp DOM Invader.",
+      "version": "0.2.0",
+      "author": "nullock-builtin",
+      "categories": ["scanner", "xss", "dom", "passive"],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/dom_taint.js",
+      "hooks": ["nullock.onResponse", "nullock.reportFinding"],
+      "config": {}
+    },
     {
       "id": "aws_sigv4",
       "name": "AWS SigV4 Signer",
