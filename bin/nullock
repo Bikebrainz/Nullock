@@ -104,9 +104,11 @@ cmd_recon() {
     [[ -n ${1-} ]] || die "usage: nullock recon <domain>"
     local d=$1
     post /api/recon/dns      "{\"domain\":\"$d\"}" > /dev/null
+    post /api/recon/crt      "{\"domain\":\"$d\"}" > /dev/null
     post /api/recon/wordlist "{\"domain\":\"$d\",\"subdomains\":[\"www\",\"mail\",\"api\",\"admin\",\"dev\",\"staging\",\"vpn\",\"portal\",\"login\",\"git\",\"docs\",\"app\",\"ns1\",\"ns2\",\"mx\"]}" > /dev/null
-    # Wait a few seconds for async lookups.
-    sleep 4
+    # Wait for async lookups: DNS + the crt.sh cert-transparency round-trip
+    # (crt.sh needs outbound HTTPS; subdomains tagged source="crt" when reachable).
+    sleep 6
     curl -sS --max-time 5 "$API/api/snapshot" | "$JQ" '{
         target: .recon.target,
         dns: [.recon.dns[] | {type, value, priority}],
