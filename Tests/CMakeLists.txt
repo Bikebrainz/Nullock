@@ -24,3 +24,7 @@ add_test(NAME NullockTests COMMAND NullockTests)
 # Scanner regression corpus -- exercises every passive detector with
 # positive + negative cases. Run via: ctest -R scanner_regression -V
 add_subdirectory(scanner_regression)
+
+# CVE-correlation corpus -- locks in version->CVE accuracy (per-branch
+# ranges, CVSS scores, removed entries). Run via: ctest -R cve_database -V
+add_subdirectory(cve_database)

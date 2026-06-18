@@ -1,0 +1,158 @@
+// Regression corpus for the version -> CVE correlation database.
+//
+// Each case asserts that CveDatabase::lookup(kind, "<name> <version>")
+// does (or does NOT) return a given CVE for a given product version, and
+// optionally that its CVSS base score matches. This locks in the accuracy
+// established by the web-verification audit so future edits to
+// cve_database.cpp can't silently reintroduce:
+//   * false positives on PATCHED builds (the per-branch range bug),
+//   * wrong CVSS scores,
+//   * resurrected bogus / removed entries.
+//
+// Run via:  ctest -R cve_database -V
+// or:       ./Tests/cve_database/cve_database_test
+//
+// Two-sided per CVE: a just-vulnerable version must match; the fix version
+// (and out-of-range versions) must NOT.
+
+#include "cve_database.hpp"
+
+#include <QCoreApplication>
+#include <QString>
+#include <QStringList>
+
+#include <cmath>
+#include <cstdio>
+
+using namespace Nullock::Core;
+
+namespace {
+
+struct Case {
+    const char *label;
+    const char *kind;
+    const char *version;      // "<Name> <ver>" as the fingerprinter passes it
+    const char *cveId;        // "" => assert the kind returns NO matches at all
+    bool        negative;     // true => assert cveId is NOT present
+    double      expectCvss;   // >0 => assert the matched CVE's cvss equals this (only when present)
+};
+
+bool hasCve(const QList<CveDatabase::Match> &m, const QString &id, double &cvssOut) {
+    for (const auto &x : m)
+        if (x.cveId == id) { cvssOut = x.cvss; return true; }
+    return false;
+}
+
+const QList<Case> &corpus() {
+    static const QList<Case> c = {
+        // ---- Confluence: per-branch FP fix + corrected CVSS -------------
+        { "Confluence 8.4.1 -> 22515",                "cms-confluence", "Confluence 8.4.1", "CVE-2023-22515", false, 9.8 },
+        { "Confluence 8.4.5 (patched 8.4) -> NOT 22515 (FP fix)", "cms-confluence", "Confluence 8.4.5", "CVE-2023-22515", true, 0 },
+        { "Confluence 8.5.1 -> 22518 @ 9.8",          "cms-confluence", "Confluence 8.5.1", "CVE-2023-22518", false, 9.8 },
+        { "Confluence 8.5.4 (patched) -> NOT 22527",  "cms-confluence", "Confluence 8.5.4", "CVE-2023-22527", true, 0 },
+        { "Confluence 7.13.5 -> 26134",               "cms-confluence", "Confluence 7.13.5", "CVE-2022-26134", false, 9.8 },
+        { "Confluence 7.19.16 (patched) -> NOT 26134","cms-confluence", "Confluence 7.19.16", "CVE-2022-26134", true, 0 },
+
+        // ---- Jira: corrected CVSS + ranges ------------------------------
+        { "Jira 8.0.1 -> 11581 @ 9.8",                "cms-jira", "Jira 8.0.1", "CVE-2019-11581", false, 9.8 },
+        { "Jira 8.22.0 (patched) -> NOT 0540",        "cms-jira", "Jira 8.22.0", "CVE-2022-0540", true, 0 },
+
+        // ---- Jenkins / Grafana ------------------------------------------
+        { "Jenkins 2.426.1 -> 23897",                 "app-jenkins", "Jenkins 2.426.1", "CVE-2024-23897", false, 9.8 },
+        { "Jenkins 2.426.3 (patched) -> NOT 23897",   "app-jenkins", "Jenkins 2.426.3", "CVE-2024-23897", true, 0 },
+        { "Grafana 8.2.0 -> 43798",                   "app-grafana", "Grafana 8.2.0", "CVE-2021-43798", false, 7.5 },
+        { "Grafana 8.5.0 -> NOT 43798",               "app-grafana", "Grafana 8.5.0", "CVE-2021-43798", true, 0 },
+
+        // ---- Apache: the 41773/42013 pair + 38473 fix-version fix -------
+        { "Apache 2.4.49 -> 41773",                   "server-apache", "Apache/2.4.49", "CVE-2021-41773", false, 0 },
+        { "Apache 2.4.49 -> 42013",                   "server-apache", "Apache/2.4.49", "CVE-2021-42013", false, 9.8 },
+        { "Apache 2.4.50 (41773 fixed) -> NOT 41773", "server-apache", "Apache/2.4.50", "CVE-2021-41773", true, 0 },
+        { "Apache 2.4.50 -> still 42013",             "server-apache", "Apache/2.4.50", "CVE-2021-42013", false, 0 },
+        { "Apache 2.4.59 -> 38473 (still vuln)",      "server-apache", "Apache/2.4.59", "CVE-2024-38473", false, 0 },
+        { "Apache 2.4.60 (patched) -> NOT 38473",     "server-apache", "Apache/2.4.60", "CVE-2024-38473", true, 0 },
+
+        // ---- nginx / jQuery / Bootstrap / PHP ---------------------------
+        { "nginx 1.18.0 -> 23017",                    "server-nginx", "nginx/1.18.0", "CVE-2021-23017", false, 0 },
+        { "nginx 1.20.1 (patched) -> NOT 23017",      "server-nginx", "nginx/1.20.1", "CVE-2021-23017", true, 0 },
+        { "jQuery 3.3.1 -> 11358",                    "lib-jquery", "jQuery 3.3.1", "CVE-2019-11358", false, 0 },
+        { "jQuery 3.5.1 (patched) -> NOT 11022",      "lib-jquery", "jQuery 3.5.1", "CVE-2020-11022", true, 0 },
+        { "Bootstrap 4.2.0 -> 8331",                  "lib-bootstrap", "Bootstrap 4.2.0", "CVE-2019-8331", false, 0 },
+        { "Bootstrap 4.3.1 (patched) -> NOT 8331",    "lib-bootstrap", "Bootstrap 4.3.1", "CVE-2019-8331", true, 0 },
+        { "PHP 8.1.10 -> 4577",                       "lang-php", "PHP 8.1.10", "CVE-2024-4577", false, 0 },
+        { "PHP 8.1.29 (patched) -> NOT 4577",         "lang-php", "PHP 8.1.29", "CVE-2024-4577", true, 0 },
+
+        // ---- WordPress: mislabel + CVSS fix -----------------------------
+        { "WordPress 6.4.1 -> 31210 @ 8.8 (was XSS/5.4)", "cms-wordpress", "WordPress 6.4.1", "CVE-2024-31210", false, 8.8 },
+        { "WordPress 6.4.3 (patched) -> NOT 31210",   "cms-wordpress", "WordPress 6.4.3", "CVE-2024-31210", true, 0 },
+
+        // ---- Spring4Shell re-key (spring-actuator -> fw-spring) ---------
+        { "Spring 5.3.10 -> 22965 (re-keyed)",        "fw-spring", "Spring 5.3.10", "CVE-2022-22965", false, 9.8 },
+        { "Spring 5.3.20 (patched) -> NOT 22965",     "fw-spring", "Spring 5.3.20", "CVE-2022-22965", true, 0 },
+        { "Symfony 5.4.40 -> 50345 (open-redirect)",  "fw-symfony", "Symfony 5.4.40", "CVE-2024-50345", false, 6.1 },
+
+        // ---- Removed bogus entries must stay gone -----------------------
+        { "cms-drupal entries removed -> none",       "cms-drupal", "Drupal 10.1.0", "", false, 0 },
+        { "SharePoint CVE-2024-30043 removed -> NOT on ASP.NET", "fw-aspnet", "ASP.NET 4.0.30319", "CVE-2024-30043", true, 0 },
+    };
+    return c;
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+    QCoreApplication app(argc, argv);
+    QCoreApplication::setOrganizationName("Nullock");
+    QCoreApplication::setApplicationName("cve-database-regression");
+
+    int pass = 0, fail = 0;
+    QStringList failures;
+
+    for (const auto &t : corpus()) {
+        const auto matches = CveDatabase::lookup(QString::fromLatin1(t.kind),
+                                                 QString::fromLatin1(t.version));
+        bool ok = false;
+        QString detail;
+
+        if (t.cveId[0] == '\0') {
+            // Expect NO matches at all for this kind+version.
+            ok = matches.isEmpty();
+            detail = QString("got %1 matches").arg(matches.size());
+        } else {
+            double cvss = -1;
+            const bool present = hasCve(matches, QString::fromLatin1(t.cveId), cvss);
+            if (t.negative) {
+                ok = !present;
+                detail = present ? "unexpectedly present" : "absent (ok)";
+            } else {
+                ok = present;
+                detail = present ? "present" : "MISSING";
+                if (ok && t.expectCvss > 0.0 && std::fabs(cvss - t.expectCvss) > 0.05) {
+                    ok = false;
+                    detail = QString("present but CVSS %1 != expected %2")
+                                 .arg(cvss).arg(t.expectCvss);
+                }
+            }
+        }
+
+        if (ok) {
+            std::fprintf(stderr, "  PASS  %s\n", t.label);
+            ++pass;
+        } else {
+            std::fprintf(stderr, "  FAIL  %s  (%s)\n", t.label, detail.toLocal8Bit().constData());
+            ++fail;
+            failures << QString::fromLatin1(t.label);
+        }
+    }
+
+    std::fprintf(stderr,
+        "\n========================================\n"
+        "CVE database regression: %d passed, %d failed\n"
+        "========================================\n",
+        pass, fail);
+    if (fail > 0) {
+        std::fprintf(stderr, "Failures:\n");
+        for (const QString &f : failures)
+            std::fprintf(stderr, "  - %s\n", f.toLocal8Bit().constData());
+    }
+    return fail == 0 ? 0 : 1;
+}
