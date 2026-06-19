@@ -1250,6 +1250,23 @@ cmd_http3() {
     post /api/http3/detect "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
 }
 
+cmd_hostheader() {
+    # nullock hostheader <url> [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock hostheader <url> [hdr:val ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/hostheader/test "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_race() {
     # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
@@ -1711,6 +1728,8 @@ Above-Burp features (v4/v5):
                                          indented-by-7 -> reverted on cleanup
   nullock http3 <url> [hdr:val ...]      HTTP/3 (QUIC) readiness -- parses
                                          Alt-Svc for advertised h3 versions
+  nullock hostheader <url> [hdr:val ...] host-header injection -- sentinel host
+                                         reflected into a URL (reset poisoning)
   nullock openredirect <url> [param] [hdr:val ...]
                                          open redirect -- fires parser-confusion
                                          bypass payloads and confirms by the
@@ -1869,6 +1888,7 @@ case ${1:-help} in
     cachepoison)   shift; cmd_cachepoison "$@"   ;;
     protopollution) shift; cmd_protopollution "$@" ;;
     http3)         shift; cmd_http3 "$@"         ;;
+    hostheader)    shift; cmd_hostheader "$@"    ;;
     openredirect)  shift; cmd_openredirect "$@"  ;;
     headeraudit)   shift; cmd_headeraudit "$@"   ;;
     secrets)       shift; cmd_secrets "$@"       ;;

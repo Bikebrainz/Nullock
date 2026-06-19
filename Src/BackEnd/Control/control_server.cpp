@@ -25,6 +25,7 @@
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
 #include "proto_pollution.hpp"
+#include "host_header.hpp"
 #include "http3_detect.hpp"
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
@@ -2675,6 +2676,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
         "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
         "/api/intruder/multi", "/api/protopollution/test", "/api/http3/detect",
+        "/api/hostheader/test",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -7166,6 +7168,61 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "altSvc", hres.altSvcRaw },
                        { "protocols", protos },
                        { "baselineStatus", hres.baselineStatus }});
+    }
+
+    // ---- Host-header injection ---------------------------------------
+    // POST /api/hostheader/test { url, method?, headers? }
+    //   Injects a unique sentinel host via Host / X-Forwarded-Host / ... and
+    //   reports it reflecting into a URL context (Location or //sentinel in the
+    //   body) -- the password-reset/redirect-poisoning class. CWE-20. Scope-gated.
+    if (path == "/api/hostheader/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::HostHeader::Request hr;
+        hr.host = u.host();
+        hr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        hr.tls  = (u.scheme() == "https");
+        hr.method = bodyJson.value("method").toString("GET").toUpper();
+        hr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        hr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject hhdrs = bodyJson.value("headers").toObject();
+        for (auto it = hhdrs.begin(); it != hhdrs.end(); ++it)
+            hr.headers.append({ it.key(), it.value().toString() });
+
+        const auto hres = Nullock::Core::HostHeader::test(hr);
+
+        QJsonArray hits;
+        for (const auto &h : hres.hits) {
+            hits.append(QJsonObject{
+                { "header", h.header }, { "sentinel", h.sentinel },
+                { "where", h.where }, { "inLocation", h.inLocation },
+                { "inUrlContext", h.inUrlContext }, { "reflected", h.reflected } });
+            if (!m_wiring.scanner) continue;
+            if (h.inLocation || h.inUrlContext)
+                m_wiring.scanner->reportFinding(0, "high", "host-header-injection",
+                    QString("Host-header injection via %1 -- reflected into %2")
+                        .arg(h.header, h.where),
+                    QString("injected sentinel %1 reached a URL context; password-reset/redirect poisoning vector")
+                        .arg(h.sentinel),
+                    hr.host, url);
+            else if (h.reflected)
+                m_wiring.scanner->reportFinding(0, "info", "host-header-reflected",
+                    QString("Host-header value via %1 reflected in the body").arg(h.header),
+                    QString("injected sentinel %1 echoed (not in a URL context)").arg(h.sentinel),
+                    hr.host, url);
+        }
+        return okJson({{ "ok", hres.error.isEmpty() },
+                       { "error", hres.error },
+                       { "anyInjection", hres.anyInjection },
+                       { "anyReflected", hres.anyReflected },
+                       { "hitCount", static_cast<int>(hres.hits.size()) },
+                       { "baselineStatus", hres.baselineStatus },
+                       { "requestsSent", hres.requestsSent },
+                       { "hits", hits }});
     }
 
     // ---- Race-condition tester ---------------------------------------
