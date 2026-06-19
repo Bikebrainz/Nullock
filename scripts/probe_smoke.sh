@@ -29,7 +29,7 @@ fi
 
 MOCK="$(mktemp /tmp/nullock-probe-mock.XXXXXX.py)"
 cat > "$MOCK" <<'PY'
-import http.server, socketserver, sys, threading, time, json, gzip
+import http.server, socketserver, sys, threading, time, json, gzip, re
 from urllib.parse import urlparse, parse_qs
 def make(mode):
     state = {'spaces': 0}
@@ -152,6 +152,16 @@ def make(mode):
                 # the stdlib 501, the non-2xx control the probe needs. Safe mock
                 # allows GET (200) so the probe sees nothing to bypass.
                 self._send(403 if mode == 'verb-vuln' else 200, b'<html>x</html>'); return
+            if mode.startswith('ssti'):
+                # Reflect the param; the vulnerable mock additionally EVALUATES a
+                # Jinja-style {{N*N}} (one of the probe's delimiter families) to
+                # the product, so the text between the probe's sentinels equals
+                # a*b -- its confirmation signal. Safe mock reflects raw.
+                val = q.get('q', [''])[0]
+                if mode == 'ssti-vuln':
+                    val = re.sub(r'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',
+                                 lambda m: str(int(m.group(1)) * int(m.group(2))), val)
+                self._send(200, ('<html>' + val + '</html>').encode()); return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -176,6 +186,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        pathtrav-vuln pathtrav-safe
        cors-vuln cors-safe
        verb-vuln verb-safe
+       ssti-vuln ssti-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -263,6 +274,10 @@ chk "cors safe -> no reflection"        "$(post /api/cors/test "{\"url\":\"$(url
 echo "== verb tampering (core) =="
 chk "verb tampering bypass found"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-vuln]} 'admin')\"}")" "d.get('bypassCount',0)>=1"
 chk "verb tampering safe -> none"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-safe]} 'admin')\"}")" "d.get('ok') and d.get('bypassCount',0)==0"
+
+echo "== SSTI (core) =="
+chk "ssti vulnerable -> confirmed"      "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-vuln]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed')"
+chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-safe]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
