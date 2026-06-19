@@ -805,6 +805,36 @@ QString build(const QString &methodIn, const QString &url,
 
 } // namespace CsrfPoc
 
+// ---- "Copy as curl" -- reproduce a captured request as a curl command ---
+// Pure transform: faithful replay/share of a request outside Nullock.
+namespace CurlExport {
+
+QString shq(const QString &s) {                 // POSIX single-quote escape
+    QString out = s;
+    out.replace("'", "'\\''");
+    return "'" + out + "'";
+}
+
+QString build(const QString &methodIn, const QString &url,
+              const QList<QPair<QString, QString>> &headers, const QString &body) {
+    QString method = methodIn.toUpper();
+    if (method.isEmpty()) method = QStringLiteral("GET");
+    QString c = "curl";
+    if (method != "GET" || !body.isEmpty()) c += " -X " + method;
+    c += " " + shq(url);
+    for (const auto &h : headers) {
+        const QString &n = h.first;
+        if (n.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;  // curl sets it
+        if (n.compare("Host", Qt::CaseInsensitive) == 0) continue;            // derived from URL
+        if (n.startsWith(':')) continue;                                      // HTTP/2 pseudo-headers
+        c += " -H " + shq(n + ": " + h.second);
+    }
+    if (!body.isEmpty()) c += " --data-raw " + shq(body);
+    return c;
+}
+
+} // namespace CurlExport
+
 QString safeJoin(const QString &dir, const QString &rel) {
     // Strip leading slashes, refuse "..", normalize separators.
     QString r = rel;
@@ -3256,6 +3286,45 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QString html = CsrfPoc::build(method, url, contentType, body, note);
         return okJson({{ "ok", true }, { "method", method.toUpper() },
                        { "url", url }, { "note", note }, { "html", html }});
+    }
+
+    // ---- Copy a captured request as a curl command -------------------
+    // POST /api/request/curl { id } | { method, url, headers?, body? }
+    //   Reproduces a request (by history id, or explicit fields) as a
+    //   runnable curl command for replay / sharing. Pure transform.
+    if (path == "/api/request/curl") {
+        QString method = bodyJson.value("method").toString();
+        QString url    = bodyJson.value("url").toString();
+        QString body   = bodyJson.value("body").toString();
+        QList<QPair<QString, QString>> headers;
+        const int id   = bodyJson.value("id").toInt(0);
+        if (id > 0) {
+            if (!m_wiring.projectStore)
+                return okJson({{ "ok", false }, { "error", "no project store" }});
+            auto *idx = m_wiring.projectStore->historyIndex();
+            if (!idx || !idx->isOpen())
+                return okJson({{ "ok", false }, { "error", "history index not ready" }});
+            const auto fr = idx->loadFullRow(id);
+            if (!fr.ok)
+                return okJson({{ "ok", false }, { "error", "row not found" }});
+            method = fr.request.method;
+            const QString scheme = fr.response.wasTls ? "https" : "http";
+            const bool defPort = (fr.response.wasTls && fr.request.port == 443)
+                              || (!fr.response.wasTls && fr.request.port == 80);
+            url = scheme + "://" + fr.request.host
+                + (defPort ? QString() : ":" + QString::number(fr.request.port))
+                + fr.request.path;
+            headers = fr.request.headers;
+            body = QString::fromUtf8(fr.request.body);
+        } else {
+            const QJsonObject hh = bodyJson.value("headers").toObject();
+            for (auto it = hh.begin(); it != hh.end(); ++it)
+                headers.append({ it.key(), it.value().toString() });
+        }
+        if (url.isEmpty())
+            return okJson({{ "ok", false }, { "error", "need a history id or a url" }});
+        return okJson({{ "ok", true },
+                       { "curl", CurlExport::build(method, url, headers, body) }});
     }
 
     // ---- SQLite-backed history find ----------------------------------

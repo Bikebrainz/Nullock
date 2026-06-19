@@ -237,6 +237,17 @@ cmd_csrfpoc() {
     esac
 }
 
+cmd_curl() {
+    # nullock curl <row-id> -- reproduce a captured request as a curl command
+    case ${1:-} in
+        ""|-h|--help) die "usage: nullock curl <row-id>   (reproduce a captured request as a curl command)" ;;
+        *)
+            [[ $1 =~ ^[0-9]+$ ]] || die "usage: nullock curl <row-id>   (numeric history id)"
+            post /api/request/curl "{\"id\":$1}" \
+                | { if have "$JQ"; then "$JQ" -r 'if (.ok // false) then .curl else ("error: " + (.error // "unknown")) end'; else cat; fi; } ;;
+    esac
+}
+
 cmd_intercept() {
     case ${1:-} in
         on|toggle) post /api/intercept/toggle | pp ;;
@@ -1384,6 +1395,7 @@ Status / inspection:
   nullock status                 quick summary (proxy / project / counts)
   nullock history [N]            last N captured rows (default 20)
   nullock history-show <id>      raw request + response for row <id>
+  nullock curl <id>              reproduce a captured request as a curl command
   nullock findings [severity]    findings list (filter: high|medium|low|info)
 
 Scope (authorization gate -- active probes only run in scope):
@@ -1771,6 +1783,7 @@ case ${1:-help} in
     audit)         shift; cmd_audit "$@"         ;;
     scope)         shift; cmd_scope "$@"         ;;
     csrf-poc)      shift; cmd_csrfpoc "$@"       ;;
+    curl)          shift; cmd_curl "$@"          ;;
     help|-h|--help) cmd_help ;;
     *) die "unknown subcommand: $1. Try 'nullock help'." ;;
 esac
