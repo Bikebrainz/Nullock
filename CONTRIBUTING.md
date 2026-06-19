@@ -78,10 +78,10 @@ reliable go-to over the flakier `scripts/validate_v3.ps1`.
 `scripts/probe_smoke.sh` is the deterministic **active-probe** regression: it
 drives the headless server against reliable Python `http.server` mocks and
 asserts each probe both fires on a vulnerable target and stays quiet on a safe
-one (SQLi, reflected XSS, SSTI, open redirect, path traversal, CORS, verb
-tampering, LDAP, XPath, server-side prototype pollution, host-header injection,
-content discovery, HTTP/3 detection). Run it after touching any probe -- and add
-a mock mode + assertion when you add one:
+one (SQLi, reflected XSS, SSTI, OS command injection, open redirect, path
+traversal, CORS, verb tampering, LDAP, XPath, server-side prototype pollution,
+host-header injection, content discovery, HTTP/3 detection). Run it after
+touching any probe -- and add a mock mode + assertion when you add one:
 
 ```sh
 scripts/probe_smoke.sh            # auto-finds the Release build, or pass the exe path

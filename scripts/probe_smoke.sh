@@ -162,6 +162,15 @@ def make(mode):
                     val = re.sub(r'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
+            if mode.startswith('cmdi'):
+                # Same idea as SSTI but the shell arithmetic $((N*N)): the
+                # vulnerable mock evaluates it (as a shell would in the injected
+                # `echo`), so the sentinel-delimited region equals the product.
+                val = q.get('cmd', [''])[0]
+                if mode == 'cmdi-vuln':
+                    val = re.sub(r'\$\(\((\d+)\*(\d+)\)\)',
+                                 lambda m: str(int(m.group(1)) * int(m.group(2))), val)
+                self._send(200, ('<html>' + val + '</html>').encode()); return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -187,6 +196,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        cors-vuln cors-safe
        verb-vuln verb-safe
        ssti-vuln ssti-safe
+       cmdi-vuln cmdi-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -278,6 +288,10 @@ chk "verb tampering safe -> none"       "$(post /api/verbtamper/test "{\"url\":\
 echo "== SSTI (core) =="
 chk "ssti vulnerable -> confirmed"      "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-vuln]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed')"
 chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-safe]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
+
+echo "== OS command injection (core) =="
+chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"
+chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-safe]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
