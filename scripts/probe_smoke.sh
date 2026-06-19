@@ -138,6 +138,20 @@ def make(mode):
                 else:
                     self._send(200, b'<html>file not found</html>')
                 return
+            if mode.startswith('cors'):
+                # Vulnerable mock reflects the request Origin into ACAO (with
+                # credentials); the probe flags reflecting its attacker origin.
+                o = self.headers.get('Origin', '')
+                extra = ([('Access-Control-Allow-Origin', o),
+                          ('Access-Control-Allow-Credentials', 'true')]
+                         if (mode == 'cors-vuln' and o) else [])
+                self._send(200, b'{"ok":1}', 'application/json', extra); return
+            if mode.startswith('verb'):
+                # Vulnerable mock denies GET (403) but allows POST (the do_POST
+                # 200 below) -- a verb-tampering bypass; an undefined method gets
+                # the stdlib 501, the non-2xx control the probe needs. Safe mock
+                # allows GET (200) so the probe sees nothing to bypass.
+                self._send(403 if mode == 'verb-vuln' else 200, b'<html>x</html>'); return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -160,6 +174,8 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        xss-vuln xss-safe
        openredir-vuln openredir-safe
        pathtrav-vuln pathtrav-safe
+       cors-vuln cors-safe
+       verb-vuln verb-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -239,6 +255,14 @@ chk "open-redirect safe -> not vulnerable"  "$(post /api/openredirect/test "{\"u
 echo "== path traversal (core) =="
 chk "path-traversal vulnerable -> confirmed" "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-vuln]} '?file=test')\"}")" "d.get('vulnerable')"
 chk "path-traversal safe -> not vulnerable"  "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-safe]} '?file=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== CORS (core) =="
+chk "cors reflects attacker origin"     "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-vuln]} '')\"}")" "d.get('findingCount',0)>=1"
+chk "cors safe -> no reflection"        "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-safe]} '')\"}")" "d.get('ok') and d.get('findingCount',0)==0"
+
+echo "== verb tampering (core) =="
+chk "verb tampering bypass found"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-vuln]} 'admin')\"}")" "d.get('bypassCount',0)>=1"
+chk "verb tampering safe -> none"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-safe]} 'admin')\"}")" "d.get('ok') and d.get('bypassCount',0)==0"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
