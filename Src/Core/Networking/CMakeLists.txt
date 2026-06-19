@@ -74,6 +74,8 @@ add_library(Networking STATIC
     ssti_tester.hpp
     cache_poison.cpp
     cache_poison.hpp
+    proto_pollution.cpp
+    proto_pollution.hpp
     open_redirect.cpp
     open_redirect.hpp
     header_audit.cpp

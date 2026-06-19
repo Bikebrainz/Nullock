@@ -24,6 +24,7 @@
 #include "verb_tamper.hpp"
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
+#include "proto_pollution.hpp"
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
 #include "secret_scanner.hpp"
@@ -2672,7 +2673,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
         "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
-        "/api/intruder/multi",
+        "/api/intruder/multi", "/api/protopollution/test",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -7064,6 +7065,64 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "anyCacheable", cres.anyCacheable },
                        { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- Server-side prototype pollution -----------------------------
+    // POST /api/protopollution/test { url, polluteUrl?, headers? }
+    //   Confirms server-side prototype pollution via the benign json-spaces
+    //   gadget: baseline-compact -> POST {"__proto__":{"json spaces":7}} ->
+    //   the JSON endpoint indents by exactly 7 -> cleanup reverts to compact.
+    //   Mutates only response formatting; scope-gated. CWE-1321.
+    //   `url` is the JSON observation endpoint AND the scope-gated target.
+    //   `polluteUrl` is optional: only its PATH is used (the merge route),
+    //   always on `url`'s host/port/scheme; its query string is ignored.
+    //   ok=false (with a WARNING error) if pollution succeeded but the probe
+    //   could not confirm the target was reverted.
+    if (path == "/api/protopollution/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::ProtoPollution::Request pr;
+        pr.host = u.host();
+        pr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        pr.tls  = (u.scheme() == "https");
+        pr.jsonPath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        pr.jsonQuery = u.query(QUrl::FullyEncoded);
+        // Optional separate merge endpoint. We take ONLY its path: the request
+        // is always sent to url's host/port/scheme (which is what scope gates
+        // on), so polluteUrl can't redirect the probe off-target; its host and
+        // query are intentionally ignored.
+        const QString polluteUrl = bodyJson.value("polluteUrl").toString();
+        if (!polluteUrl.isEmpty()) {
+            const QUrl pu(polluteUrl);
+            pr.pollutePath = pu.path(QUrl::FullyEncoded).isEmpty()
+                             ? QStringLiteral("/") : pu.path(QUrl::FullyEncoded);
+        }
+        const QJsonObject phdrs = bodyJson.value("headers").toObject();
+        for (auto it = phdrs.begin(); it != phdrs.end(); ++it)
+            pr.headers.append({ it.key(), it.value().toString() });
+
+        const auto pres = Nullock::Core::ProtoPollution::test(pr);
+        if (pres.vulnerable && m_wiring.scanner)
+            m_wiring.scanner->reportFinding(0, "high", "proto-pollution-reflected",
+                QString("Server-side prototype pollution on %1 -- %2")
+                    .arg(pr.jsonPath, pres.evidence),
+                QString("gadget: Object.prototype[%1]; %2 requests").arg(pres.gadget).arg(pres.requestsSent),
+                u.host(), url);
+        return okJson({{ "ok", pres.error.isEmpty() },
+                       { "error", pres.error },
+                       { "vulnerable", pres.vulnerable },
+                       { "gadget", pres.gadget },
+                       { "evidence", pres.evidence },
+                       { "observedJson", pres.observedJson },
+                       { "baselineCompact", pres.baselineCompact },
+                       { "indentedAfterPollute", pres.indentedAfterPollute },
+                       { "revertedAfterCleanup", pres.revertedAfterCleanup },
+                       { "baselineStatus", pres.baselineStatus },
+                       { "requestsSent", pres.requestsSent }});
     }
 
     // ---- Race-condition tester ---------------------------------------

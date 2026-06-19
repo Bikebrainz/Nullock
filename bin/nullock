@@ -1204,6 +1204,35 @@ cmd_cachepoison() {
     post /api/cache/poison "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
 }
 
+cmd_protopollution() {
+    # nullock protopollution <json-url> [pollute-url] [Header:Value ...]
+    #   <json-url>    a GET endpoint that returns a JSON object (the watch point)
+    #   [pollute-url] optional POST endpoint that merges the JSON body (default:
+    #                 same as json-url); pass "-" to keep the default and still
+    #                 supply headers after it
+    [[ -n ${1-} ]] || die "usage: nullock protopollution <json-url> [pollute-url] [hdr:val ...]"
+    local url=$1; shift
+    local polluteUrl=""
+    if (( $# > 0 )) && [[ $1 == http* || $1 == - ]]; then
+        [[ $1 != - ]] && polluteUrl=$1
+        shift
+    fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    local body="{\"url\":$(jsonq "$url"),\"headers\":$headers"
+    [[ -n $polluteUrl ]] && body+=",\"polluteUrl\":$(jsonq "$polluteUrl")"
+    body+="}"
+    post /api/protopollution/test "$body" | pp
+}
+
 cmd_race() {
     # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
@@ -1659,6 +1688,10 @@ Above-Burp features (v4/v5):
                                          web cache poisoning -- reflects unkeyed
                                          headers behind a cache-buster and proves
                                          a clean request is served the poison
+  nullock protopollution <json-url> [pollute-url] [hdr:val ...]
+                                         server-side prototype pollution -- the
+                                         benign json-spaces gadget: compact ->
+                                         indented-by-7 -> reverted on cleanup
   nullock openredirect <url> [param] [hdr:val ...]
                                          open redirect -- fires parser-confusion
                                          bypass payloads and confirms by the
@@ -1815,6 +1848,7 @@ case ${1:-help} in
     verbtamper)    shift; cmd_verbtamper "$@"    ;;
     ssti)          shift; cmd_ssti "$@"          ;;
     cachepoison)   shift; cmd_cachepoison "$@"   ;;
+    protopollution) shift; cmd_protopollution "$@" ;;
     openredirect)  shift; cmd_openredirect "$@"  ;;
     headeraudit)   shift; cmd_headeraudit "$@"   ;;
     secrets)       shift; cmd_secrets "$@"       ;;
