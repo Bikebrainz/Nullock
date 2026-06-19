@@ -30,11 +30,35 @@ developer-facing record.
   turns a captured request into an auto-submitting HTML PoC.
 - **Copy as curl** — `/api/request/curl` + `nullock curl <row-id>`
   reproduces a captured request as a runnable curl command.
-- Permanent regression suites for the CVE database, the finding enricher,
-  and the request-export transforms; all four test suites now run in CI on
-  every push.
+- **Multi-mode Intruder** — Sniper / Battering Ram / Pitchfork / Cluster Bomb
+  (`/api/intruder/multi`, `nullock intruder multi`), wired through the GUI.
+- **Server-side prototype pollution** — `/api/protopollution/test` +
+  `nullock protopollution`, the benign json-spaces gadget proven with a
+  four-step causal (mutate → observe → revert) check.
+- **Host-header injection** — `/api/hostheader/test` + `nullock hostheader`,
+  detecting reset/redirect poisoning via sentinel-host reflection into a URL.
+- **LDAP injection** — `/api/ldapi/test` + `nullock ldapi`, error-based with
+  safe-value corroboration; completes the OWASP injection family.
+- **HTTP/3 readiness** — `/api/http3/detect` + `nullock http3`, Alt-Svc h3
+  advertisement detection.
+- **Version → CVE** for Elasticsearch, Kibana (CVE-2019-7609), and Apache
+  Tomcat (Ghostcat, CVE-2020-1938).
+- **nullock-oast** — a deployable standalone OAST callback sink (Docker +
+  `DEPLOY_OAST.md`) for a public / hosted tier.
+- **Release signing** — the release workflow code-signs Windows builds and
+  codesigns + notarizes the macOS app when cert secrets are present
+  (`RELEASE_SIGNING.md`).
+- Permanent regression suites for the CVE database, the finding enricher, the
+  request-export transforms, and the Intruder engine — five suites run in CI on
+  every push, alongside `scripts/probe_smoke.sh` (active-probe regression
+  against in-process mocks).
+- Design docs for team workspaces and enterprise SSO (`design/`).
 
 ### Changed / Fixed
+- **Release workflow startup failure fixed.** The optional signing steps had
+  referenced the `secrets` context in a step `if:` (not permitted), which made
+  GitHub reject the workflow at parse time on every push; they now no-op
+  in-script when the secret is absent.
 - **CVE database accuracy audit.** Web-verified every entry against
   NVD/vendor advisories; corrected ~11 entries (per-branch ranges that
   false-positived patched builds, wrong CVSS scores, mislabeled vulns) and
