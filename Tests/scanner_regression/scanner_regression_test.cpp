@@ -98,6 +98,23 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/", {}, {}, 80, false),
         makeResp(200, "text/html", "<html>x</html>", {}, /*wasTls=*/false) });
 
+    // ---- Subresource Integrity (cross-origin scripts) ------------------
+    tc.append({ "cross-origin script without SRI", "sri-missing", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><head><script src=\"https://cdn.other.test/lib.js\"></script></head></html>") });
+
+    tc.append({ "cross-origin script WITH integrity -> no sri-missing", "sri-missing", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><head><script src=\"https://cdn.other.test/lib.js\" "
+                 "integrity=\"sha384-abc\" crossorigin=\"anonymous\"></script></head></html>") });
+
+    tc.append({ "same-origin script -> no sri-missing", "sri-missing", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><head><script src=\"https://example.test/app.js\"></script></head></html>") });
+
     // ---- Cookie hardening ----------------------------------------------
     tc.append({ "cookie missing HttpOnly", "cookie-no-httponly", false,
         makeReq("GET", "example.test", "/"),

@@ -495,6 +495,36 @@ void PassiveScanner::checkResponse(int rowId,
         }
     }
 
+    // ---- Missing Subresource Integrity on cross-origin scripts ----------
+    // A third-party <script src> with no integrity= lets a compromised CDN or
+    // dependency execute arbitrary code in this origin (supply-chain risk).
+    // Only cross-origin (different host) scripts are flagged -- SRI is not
+    // expected for first-party scripts, so requiring it there would be noise.
+    if (html) {
+        const QString bodyText = QString::fromUtf8(resp.body.left(256 * 1024));
+        static const QRegularExpression rxScript(
+            R"#(<script\b[^>]*\bsrc\s*=\s*['"](https?://[^'"]+)['"][^>]*>)#",
+            QRegularExpression::CaseInsensitiveOption);
+        auto it = rxScript.globalMatch(bodyText);
+        int hits = 0;
+        QString firstHit;
+        while (it.hasNext() && hits < 5) {
+            const auto m = it.next();
+            if (m.captured(0).contains("integrity", Qt::CaseInsensitive)) continue;  // has SRI
+            const QString srcHost = QUrl(m.captured(1)).host();
+            if (srcHost.isEmpty() || srcHost.compare(req.host, Qt::CaseInsensitive) == 0)
+                continue;   // same-origin script -> SRI not expected
+            if (firstHit.isEmpty()) firstHit = m.captured(1).left(160);
+            ++hits;
+        }
+        if (hits > 0) {
+            addFinding(rowId, req, resp, "low", "sri-missing",
+                       QString("%1 cross-origin <script> without Subresource Integrity").arg(hits),
+                       "first: " + firstHit + " -- add an integrity= (with crossorigin) "
+                       "attribute so a compromised third party cannot inject code");
+        }
+    }
+
     // ---- Source map exposure --------------------------------------------
     // Production JS shipping with sourcemaps leaks original symbols, file
     // names, and often comments + local paths.

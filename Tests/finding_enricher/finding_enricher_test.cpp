@@ -54,6 +54,7 @@ const QStringList &emittedKinds() {
         // active probes added in the above-Burp climb
         "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
         "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
+        "sri-missing",
     };
     return k;
 }
