@@ -358,7 +358,7 @@ cmd_repeater() {
 }
 
 cmd_intruder() {
-    # nullock intruder {set|start|stop|clear|status|results|resend}
+    # nullock intruder {set|multi|start|stop|clear|status|results|resend}
     case ${1:-} in
         set)
             # nullock intruder set <host> <port> <tls> <template-file|-> <payloads-file|-|>
@@ -381,6 +381,32 @@ cmd_intruder() {
             if [[ -n $payloads ]]; then body+=",\"payloads\":$(jsonq "$payloads")"; fi
             body+="}"
             post /api/intruder/set "$body" | pp
+            ;;
+        multi)
+            # nullock intruder multi <host> <port> <tls> <attackType> <template-file|-> <payloadset-file>...
+            #   attackType: sniper | battering-ram | pitchfork | cluster-bomb
+            #   one payloadset-file per marker position (newline-separated payloads);
+            #   mark fuzz positions in the template with paired § (U+00A7).
+            [[ $# -ge 6 ]] || die "usage: nullock intruder multi <host> <port> <tls> <attackType> <template-file|-> <payloadset-file>..."
+            have "$JQ" || die "nullock intruder multi requires jq"
+            local host=$2 port=$3 tls=$4 atype=$5 tmplarg=$6 tmpl=""
+            if [[ $tmplarg == "-" ]]; then tmpl=$(cat); else tmpl=$(cat "$tmplarg"); fi
+            shift 6
+            local sets="[]" f arr
+            for f in "$@"; do
+                if [[ $f == "-" ]]; then arr=$(cat | "$JQ" -Rs 'split("\n")|map(select(length>0))')
+                else arr=$("$JQ" -Rs 'split("\n")|map(select(length>0))' "$f"); fi
+                sets=$("$JQ" -n --argjson s "$sets" --argjson a "$arr" '$s + [$a]')
+            done
+            local body
+            body=$("$JQ" -n --arg h "$host" --argjson p "$port" --argjson t "$tls" \
+                   --arg tm "$tmpl" --arg at "$atype" --argjson ps "$sets" \
+                   '{host:$h, port:$p, tls:$t, template:$tm, attackType:$at, payloadSets:$ps}')
+            post /api/intruder/multi "$body" \
+                | "$JQ" -r 'if (.ok // false)
+                    then "attackType=\(.attackType) positions=\(.positions) requests=\(.requests)",
+                         (.results[] | "  \(.status)  \(.size)b  \(.ms)ms  \(.payloads|join(" | "))")
+                    else "error: " + (.error // "unknown") end'
             ;;
         start)
             post /api/intruder/start | pp ;;
@@ -1448,6 +1474,9 @@ Repeater:
 Intruder:
   nullock intruder set <host> <port> <tls> [template-file|-] [payloads-file|-]
                                  payloads = one per line; \xC2\xA7marker\xC2\xA7 in template
+  nullock intruder multi <host> <port> <tls> <attackType> <template-file|-> <set-file>...
+                                 attackType = sniper|battering-ram|pitchfork|cluster-bomb;
+                                 one payload-set file per \xC2\xA7...\xC2\xA7 position
   nullock intruder start         fire the attack (returns immediately)
   nullock intruder stop          interrupt a running attack
   nullock intruder clear         drop results + loaded state

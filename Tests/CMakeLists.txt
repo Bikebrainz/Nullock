@@ -36,3 +36,7 @@ add_subdirectory(finding_enricher)
 # RequestExport -- CSRF PoC + copy-as-curl transforms (escaping/structure).
 # Run via: ctest -R request_export -V
 add_subdirectory(request_export)
+
+# Intruder engine -- attack-type combination generation + marker substitution.
+# Run via: ctest -R intruder_engine -V
+add_subdirectory(intruder_engine)

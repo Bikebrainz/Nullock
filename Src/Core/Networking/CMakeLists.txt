@@ -50,6 +50,8 @@ add_library(Networking STATIC
     cve_database.hpp
     request_export.cpp
     request_export.hpp
+    intruder_engine.cpp
+    intruder_engine.hpp
     chain_runner.cpp
     chain_runner.hpp
     jwt_tool.cpp

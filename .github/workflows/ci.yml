@@ -85,8 +85,8 @@ jobs:
         run: cmake --build build --config Release --target NullockApp
       - name: regression tests (scanner + CVE DB + enricher)
         run: |
-          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test
-          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export" --output-on-failure
+          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test
+          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine" --output-on-failure
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |

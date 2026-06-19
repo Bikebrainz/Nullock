@@ -47,6 +47,7 @@
 #include "waf_detect.hpp"
 #include "cve_database.hpp"
 #include "request_export.hpp"
+#include "intruder_engine.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
@@ -2655,6 +2656,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
         "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
+        "/api/intruder/multi",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -2867,6 +2869,65 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         bool ok = m_wiring.intruder
                && m_wiring.intruder->resend(bodyJson.value("row").toInt(-1));
         return okJson({{ "ok", ok }});
+    }
+
+    // POST /api/intruder/multi { host, port, tls, template, attackType,
+    //                            payloadSets: [[...],[...]], maxRequests? }
+    //   Multi-mode Intruder (Sniper / Battering Ram / Pitchfork / Cluster
+    //   Bomb) over a raw request template with §...§ markers. Fires each
+    //   generated combination and returns the result rows. Scope-gated above.
+    if (path == "/api/intruder/multi") {
+        namespace IE = Nullock::Core::IntruderEngine;
+        const QString host = bodyJson.value("host").toString();
+        if (host.isEmpty())
+            return okJson({{ "ok", false }, { "error", "host required" }});
+        const bool tls = bodyJson.value("tls").toBool();
+        const quint16 port = static_cast<quint16>(
+            bodyJson.value("port").toInt(tls ? 443 : 80));
+        const QString templ = bodyJson.value("template").toString();
+        if (templ.isEmpty())
+            return okJson({{ "ok", false }, { "error", "template required" }});
+        const int positions = IE::countMarkers(templ);
+        if (positions == 0)
+            return okJson({{ "ok", false },
+                           { "error", "template has no marker pairs (wrap each fuzz "
+                                      "position in \xC2\xA7...\xC2\xA7)" }});
+        const auto type = IE::parseAttackType(bodyJson.value("attackType").toString("sniper"));
+        QList<QStringList> sets;
+        for (const QJsonValue &sv : bodyJson.value("payloadSets").toArray()) {
+            QStringList s;
+            for (const QJsonValue &pv : sv.toArray()) s << pv.toString();
+            sets.append(s);
+        }
+        const int cap = qBound(1, bodyJson.value("maxRequests").toInt(2000), 5000);
+        const auto combos = IE::generateCombinations(type, positions, sets, cap);
+        if (combos.isEmpty())
+            return okJson({{ "ok", false },
+                           { "error", "no payloads -- supply payloadSets" }});
+
+        Nullock::Core::HttpClient client;
+        QJsonArray results;
+        for (const QStringList &combo : combos) {
+            QString req = IE::applyPayloads(templ, combo);
+            req.replace("\r\n", "\n");
+            req.replace("\n", "\r\n");
+            if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";
+            QElapsedTimer t; t.start();
+            const auto r = client.send(host, port, tls, req.toUtf8());
+            QJsonArray payloads;
+            for (const QString &p : combo) payloads.append(p.isNull() ? QStringLiteral("(default)") : p);
+            results.append(QJsonObject{
+                { "payloads", payloads },
+                { "status", r.ok ? r.parsed.statusCode : 0 },
+                { "size", static_cast<int>(r.parsed.body.size()) },
+                { "ms", static_cast<int>(t.elapsed()) },
+                { "error", r.ok ? QString() : r.errorMessage } });
+        }
+        return okJson({{ "ok", true },
+                       { "attackType", IE::attackTypeName(type) },
+                       { "positions", positions },
+                       { "requests", results.size() },
+                       { "results", results }});
     }
 
     // POST /api/oast/mint -- mints a new token + URL.
