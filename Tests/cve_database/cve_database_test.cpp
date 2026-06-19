@@ -91,6 +91,13 @@ const QList<Case> &corpus() {
         { "Tomcat 7.0.100 (patched) -> NOT 1938",     "app-tomcat", "Apache Tomcat 7.0.100", "CVE-2020-1938", true, 0 },
         { "Tomcat 10.0.0 (modern) -> NOT 1938",       "app-tomcat", "Apache Tomcat 10.0.0", "CVE-2020-1938", true, 0 },
 
+        // ---- Adminer (AdminerRead arbitrary file read) ------------------
+        { "Adminer 4.6.2 -> 43008 @ 7.5",             "app-adminer", "Adminer 4.6.2", "CVE-2021-43008", false, 7.5 },
+        { "Adminer 4.6.3 (patched) -> NOT 43008",     "app-adminer", "Adminer 4.6.3", "CVE-2021-43008", true, 0 },
+        { "Adminer 4.2.0 -> 43008",                   "app-adminer", "Adminer 4.2.0", "CVE-2021-43008", false, 7.5 },
+        { "Adminer 4.8.1 (modern) -> NOT 43008",      "app-adminer", "Adminer 4.8.1", "CVE-2021-43008", true, 0 },
+        { "Adminer 1.11.0 (pre-range) -> NOT 43008",  "app-adminer", "Adminer 1.11.0", "CVE-2021-43008", true, 0 },
+
         // ---- Apache: the 41773/42013 pair + 38473 fix-version fix -------
         { "Apache 2.4.49 -> 41773",                   "server-apache", "Apache/2.4.49", "CVE-2021-41773", false, 0 },
         { "Apache 2.4.49 -> 42013",                   "server-apache", "Apache/2.4.49", "CVE-2021-42013", false, 9.8 },

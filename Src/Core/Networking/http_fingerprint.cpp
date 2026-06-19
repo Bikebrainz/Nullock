@@ -193,6 +193,13 @@ Result fingerprint(const Request &req) {
         const QString tv = cap1(rx("Apache Tomcat/([0-9]+\\.[0-9][0-9.]*)"), body);
         if (!tv.isEmpty()) add("Apache Tomcat", tv, "body", "app-tomcat");
     }
+    // Adminer (single-file DB admin) stamps "Adminer X.Y.Z" with a link to
+    // adminer.org in its footer. Gate on the adminer.org link (distinctive) so
+    // a page that merely says "adminer" isn't mislabeled, then read the version.
+    if (body.contains("adminer.org")) {
+        const QString av = cap1(rx("Adminer\\s+([0-9]+\\.[0-9][0-9.]*)"), body);
+        if (!av.isEmpty()) add("Adminer", av, "body", "app-adminer");
+    }
     if (body.contains("data-v-app") || body.contains("/vue.runtime")) add("Vue.js", "", "body", "");
 
     return result;

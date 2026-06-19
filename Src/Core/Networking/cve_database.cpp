@@ -345,6 +345,17 @@ const QList<Entry> &table() {
           ">=9.0.0,<9.0.31", "9.0.31",
           "https://tomcat.apache.org/security-9.html" },
 
+        // ---- Adminer (footer "Adminer X.Y.Z" + adminer.org link) -------
+        // CVE-2021-43008 (AdminerRead): an attacker who can make Adminer connect
+        // to a MySQL server they control reads arbitrary files on the Adminer
+        // host. NVD-verified: 1.12.0-4.6.2, fixed 4.6.3. Adminer is a single PHP
+        // file often dropped on a server and forgotten, so exposure is common.
+        { "app-adminer", "CVE-2021-43008",
+          "Adminer 1.12.0-4.6.2: arbitrary file read via a malicious MySQL server (AdminerRead)",
+          7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+          ">=1.12.0,<4.6.3", "4.6.3",
+          "https://nvd.nist.gov/vuln/detail/CVE-2021-43008" },
+
         // ---- jQuery (version from script-src filename) --------------
         // jQuery's full version is reliably exposed in the asset path
         // (jquery-X.Y.Z.min.js), so these correlate cleanly. All three are
