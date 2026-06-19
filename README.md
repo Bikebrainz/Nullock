@@ -151,8 +151,15 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
 - [x] v1.1: TLS fingerprint shaping, browser extension, 8 labs, marketplace catalog
 - [x] v2: native h2/gRPC/GraphQL/CBOR/SAML, reverse OpenAPI, AI triage, cookie tomography, 12 labs, CI
 - [x] v2-ship: installers, marketing site, docs portal, crash reporter, update checker, project templates, report builder
-- [ ] v3: HTTP/3/QUIC, hosted OAST tier, team workspaces, Apple notarization, code signing
-- [ ] v4: SOC2, enterprise SSO, Web Security Academy clone (50+ labs)
+- [ ] v3:
+  - [x] HTTP/3 detection — Alt-Svc `h3` readiness probe (`nullock http3`); full QUIC client transport still pending a QUIC dependency
+  - [x] code signing + Apple notarization — release CI wired (activates on cert secrets); see [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)
+  - [ ] hosted OAST tier (needs a public domain + server)
+  - [ ] team workspaces
+- [ ] v4:
+  - [x] Web Security Academy clone — **50/50 labs** under [`labs/`](labs/)
+  - [ ] enterprise SSO
+  - [ ] SOC2 (organizational/audit process)
 
 ## Contributing
 
