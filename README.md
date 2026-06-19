@@ -154,11 +154,11 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
 - [ ] v3:
   - [x] HTTP/3 detection — Alt-Svc `h3` readiness probe (`nullock http3`); full QUIC client transport still pending a QUIC dependency
   - [x] code signing + Apple notarization — release CI wired (activates on cert secrets); see [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)
-  - [ ] hosted OAST tier (needs a public domain + server)
-  - [ ] team workspaces
+  - [x] hosted OAST tier — deployable `nullock-oast` server + Docker + [`DEPLOY_OAST.md`](DEPLOY_OAST.md) (you supply the host + DNS)
+  - [ ] team workspaces — design: [`design/team-workspaces.md`](design/team-workspaces.md)
 - [ ] v4:
   - [x] Web Security Academy clone — **50/50 labs** under [`labs/`](labs/)
-  - [ ] enterprise SSO
+  - [ ] enterprise SSO — design: [`design/enterprise-sso.md`](design/enterprise-sso.md)
   - [ ] SOC2 (organizational/audit process)
 
 ## Contributing
