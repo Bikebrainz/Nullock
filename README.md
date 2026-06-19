@@ -11,14 +11,14 @@
 ```
 Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
-Intruder          Sniper mode, custom payloads, rate-limit-aware
+Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb, custom payloads, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
 Active scanner    SQLi (error + blind/time), NoSQLi, XXE, SSTI, OS cmd-i, CRLF, path traversal,
                   reflected/stored XSS, IDOR, verb tampering, open redirect, CORS, mass assignment,
                   security-header/CSP audit, web cache poisoning + deception, dangerous HTTP methods,
                   sensitive-file exposure, HTTP request smuggling, race conditions
 Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
-                  database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/PHP/...), with
+                  database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/Elasticsearch/Kibana/PHP/...), with
                   multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay
 Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
                   WAF/CDN detection, subdomain-takeover fingerprints, scope-gated BFS crawler
@@ -106,7 +106,7 @@ Full honest comparison: <https://bikebrainz.github.io/Nullock/#compare>
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
-   │  Intruder       sniper + rate-limit-aware      │         │  stats / repr │
+   │  Intruder       4 modes + rate-limit-aware     │         │  stats / repr │
    │  OastServer     in-process callback sink       │         │  intercept    │
    │  Crawler        BFS link-follower              │         │  intruder     │
    │  SessionRules   extract/inject variables       │         │  settings     │
