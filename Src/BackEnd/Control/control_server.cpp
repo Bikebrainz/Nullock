@@ -7404,6 +7404,91 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "hits", hits }});
     }
 
+    // ---- Team workspace sync (client side) ---------------------------
+    // POST /api/workspace/push { url, key, engagement, author? }
+    // POST /api/workspace/pull { url, key, engagement, since? }
+    //   The client half of the nullock-workspace server: push this instance's
+    //   local findings to a shared workspace, or pull teammates' findings and
+    //   import them. The workspace URL/key are the user's own infrastructure
+    //   (not a scan target), so these are NOT scope-gated.
+    if (path == "/api/workspace/push" || path == "/api/workspace/pull") {
+        const QString wsUrl = bodyJson.value("url").toString();
+        const QString key   = bodyJson.value("key").toString();
+        const QString eng   = bodyJson.value("engagement").toString();
+        const QUrl u(wsUrl);
+        if (wsUrl.isEmpty() || !u.isValid() || u.host().isEmpty() || eng.isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url and engagement required" }});
+        // The key goes into an outbound request header -- a CR/LF would let it
+        // inject extra headers into the request to the workspace.
+        if (key.contains('\r') || key.contains('\n'))
+            return okJson({{ "ok", false }, { "error", "key contains illegal characters" }});
+        if (!m_wiring.scanner)
+            return okJson({{ "ok", false }, { "error", "no scanner wired" }});
+        const QString wsHost = u.host();
+        const quint16 wsPort = static_cast<quint16>(u.port(u.scheme() == "https" ? 443 : 80));
+        const bool wsTls = (u.scheme() == "https");
+        Nullock::Core::HttpClient client;
+
+        if (path == "/api/workspace/push") {
+            // Serialize local findings, deduped by the shared identity key.
+            QJsonArray arr; QSet<QString> seen; const QChar sep(QChar(0x1f));
+            for (const auto &f : m_wiring.scanner->findings(0)) {
+                const QString k = f.kind + sep + f.host + sep + f.url + sep + f.summary;
+                if (seen.contains(k)) continue; seen.insert(k);
+                arr.append(QJsonObject{
+                    { "kind", f.kind }, { "host", f.host }, { "url", f.url },
+                    { "summary", f.summary }, { "severity", f.severity },
+                    { "cwe", f.cwe }, { "owasp", f.owasp },
+                    { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary } });
+            }
+            if (arr.isEmpty())
+                return okJson({{ "ok", false }, { "error", "no local findings to push" }});
+            const QByteArray payload = QJsonDocument(QJsonObject{
+                { "engagement", eng }, { "author", bodyJson.value("author").toString() },
+                { "findings", arr } }).toJson(QJsonDocument::Compact);
+            QByteArray rq = "POST /api/ws/push HTTP/1.1\r\n";
+            rq += "Host: " + wsHost.toUtf8() + "\r\n";
+            rq += "Content-Type: application/json\r\nAccept-Encoding: identity\r\n";
+            rq += "X-Workspace-Key: " + key.toUtf8() + "\r\n";
+            rq += "Content-Length: " + QByteArray::number(payload.size()) + "\r\n";
+            rq += "Connection: close\r\n\r\n"; rq += payload;
+            const auto r = client.send(wsHost, wsPort, wsTls, rq);
+            if (!r.ok) return okJson({{ "ok", false }, { "error", "workspace unreachable: " + r.errorMessage }});
+            const QJsonObject resp = QJsonDocument::fromJson(r.parsed.body).object();
+            return okJson({{ "ok", resp.value("ok").toBool() && r.parsed.statusCode == 200 },
+                           { "status", r.parsed.statusCode }, { "pushed", arr.size() },
+                           { "accepted", resp.value("accepted").toInt() },
+                           { "newSeq", resp.value("newSeq") },
+                           { "workspaceError", resp.value("error") }});
+        }
+
+        // pull
+        const qint64 since = static_cast<qint64>(bodyJson.value("since").toDouble(0));
+        QByteArray rq = "GET /api/ws/pull?engagement=" + QUrl::toPercentEncoding(eng)
+                      + "&since=" + QByteArray::number(since) + " HTTP/1.1\r\n";
+        rq += "Host: " + wsHost.toUtf8() + "\r\n";
+        rq += "Accept-Encoding: identity\r\nX-Workspace-Key: " + key.toUtf8() + "\r\n";
+        rq += "Connection: close\r\n\r\n";
+        const auto r = client.send(wsHost, wsPort, wsTls, rq);
+        if (!r.ok) return okJson({{ "ok", false }, { "error", "workspace unreachable: " + r.errorMessage }});
+        const QJsonObject resp = QJsonDocument::fromJson(r.parsed.body).object();
+        if (r.parsed.statusCode != 200 || !resp.value("ok").toBool())
+            return okJson({{ "ok", false }, { "status", r.parsed.statusCode },
+                           { "error", resp.value("error").toString("workspace rejected the pull") }});
+        int imported = 0;
+        for (const QJsonValue &fv : resp.value("findings").toArray()) {
+            const QJsonObject f = fv.toObject();
+            if (f.value("kind").toString().isEmpty()) continue;
+            m_wiring.scanner->reportFinding(0, f.value("severity").toString("info"),
+                f.value("kind").toString(), f.value("summary").toString(),
+                "imported from workspace engagement '" + eng + "'",
+                f.value("host").toString(), f.value("url").toString());
+            ++imported;
+        }
+        return okJson({{ "ok", true }, { "imported", imported },
+                       { "seq", resp.value("seq") }});
+    }
+
     // ---- Race-condition tester ---------------------------------------
     // POST /api/race/test { url, method?, body?, contentType?, headers?,
     //                       count?, successStatusMin?, successStatusMax?,

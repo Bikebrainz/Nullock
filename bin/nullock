@@ -1447,6 +1447,20 @@ cmd_content() {
     post /api/content/discover "$body" | pp
 }
 
+cmd_workspace() {
+    # nullock workspace push|pull <ws-url> <key> <engagement> [author|since]
+    local action=${1-}; [[ -n $action ]] && shift
+    case "$action" in
+        push)
+            [[ -n ${3-} ]] || die "usage: nullock workspace push <ws-url> <key> <engagement> [author]"
+            post /api/workspace/push "{\"url\":$(jsonq "$1"),\"key\":$(jsonq "$2"),\"engagement\":$(jsonq "$3"),\"author\":$(jsonq "${4-}")}" | pp ;;
+        pull)
+            [[ -n ${3-} ]] || die "usage: nullock workspace pull <ws-url> <key> <engagement> [since]"
+            post /api/workspace/pull "{\"url\":$(jsonq "$1"),\"key\":$(jsonq "$2"),\"engagement\":$(jsonq "$3"),\"since\":${4:-0}}" | pp ;;
+        *) die "usage: nullock workspace {push|pull} <ws-url> <key> <engagement> [author|since]" ;;
+    esac
+}
+
 cmd_jwt() {
     # nullock jwt analyze <token> [wordlist-file]
     # nullock jwt forge   <token> none|hs256 [secret] [claim=val ...]
@@ -1745,6 +1759,10 @@ Above-Burp features (v4/v5):
   nullock content <url> [wordlist]       content/directory discovery -- soft-404
                                          calibrated path brute-force (admin/api/
                                          backup/VCS); reports paths off-baseline
+  nullock workspace push|pull <ws-url> <key> <engagement> [author|since]
+                                         sync findings with a shared
+                                         nullock-workspace server (push local /
+                                         pull + import teammates')
   nullock idor <url> [idParam] [hdr:val ...]
                                          IDOR/BOLA test -- replays neighboring
                                          object ids under your session; reports
@@ -1942,6 +1960,7 @@ case ${1:-help} in
     jwt)           shift; cmd_jwt "$@"           ;;
     paramminer)    shift; cmd_paramminer "$@"    ;;
     content)       shift; cmd_content "$@"       ;;
+    workspace)     shift; cmd_workspace "$@"     ;;
     idor)          shift; cmd_idor "$@"          ;;
     massassign)    shift; cmd_massassign "$@"    ;;
     cors)          shift; cmd_cors "$@"          ;;
