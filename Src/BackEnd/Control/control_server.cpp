@@ -546,6 +546,20 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
              res.error.isEmpty() ? hdrs2.join(", ") : res.error,
              sev, kind, "Deep audit: unkeyed header(s) " + hdrs2.join(", "));
     }
+    if (wants("hostheader") || wants("host-header")) {
+        Nullock::Core::HostHeader::Request hhr;
+        hhr.host = t.host; hhr.port = t.port; hhr.tls = t.tls;
+        hhr.method = QStringLiteral("GET"); hhr.headers = t.headers;
+        hhr.basePath = auditPath; hhr.query = auditQuery;
+        const auto res = Nullock::Core::HostHeader::test(hhr);
+        // Report the confirmed URL-context injections (the high-impact ones);
+        // bare reflections stay to the standalone /api/hostheader/test endpoint.
+        int inj = 0; QStringList hdrs3;
+        for (const auto &h : res.hits) if (h.inLocation || h.inUrlContext) { ++inj; hdrs3 << h.header; }
+        note("host-header-injection", inj,
+             res.error.isEmpty() ? hdrs3.join(", ") : res.error,
+             "high", "host-header-injection", "Deep audit: host-header injection via " + hdrs3.join(", "));
+    }
     // Smuggling is slow (timing probes block until the back-end's socket
     // timeout), so it runs ONLY when explicitly opted in -- never in the
     // default-all sweep.
@@ -595,6 +609,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("sql-injection", res.hits.size(),
              res.error.isEmpty() ? where.join(", ") : res.error,
              specific ? "critical" : "high", "sql-injection", "Deep audit: SQL injection " + where.join(", "));
+    }
+    if (wants("ldapi") || wants("ldap-injection")) {
+        Nullock::Core::LdapInjection::Request lrr;
+        lrr.host = t.host; lrr.port = t.port; lrr.tls = t.tls; lrr.method = t.method;
+        lrr.basePath = auditPath; lrr.query = auditQuery; lrr.headers = t.headers;
+        const auto res = Nullock::Core::LdapInjection::test(lrr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.engine + ")";
+        note("ldap-injection", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "high", "ldap-injection", "Deep audit: LDAP injection " + where.join(", "));
     }
     if (wants("xss")) {
         Nullock::Core::XssReflected::Request xrr;
