@@ -180,6 +180,18 @@ def make(mode):
                     val = re.sub(r'\$\(\((\d+)\*(\d+)\)\)',
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
+            if mode.startswith('nosqli'):
+                # The probe injects a literal (stable across two shots) and a
+                # q[$ne]= operator. The vulnerable mock returns a LONG body for
+                # the $ne operator (matches everything) and a short, stable body
+                # for the literal / $eq control -- the length divergence the probe
+                # keys on. Safe mock ignores the operator (always short).
+                has_ne = any(k.endswith('[$ne]') for k in q.keys())
+                if mode == 'nosqli-vuln' and has_ne:
+                    self._send(200, b'<html>' + b'<li>record</li>\n' * 60 + b'</html>')
+                else:
+                    self._send(200, b'<html>1 result</html>')
+                return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -206,6 +218,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        verb-vuln verb-safe
        ssti-vuln ssti-safe
        cmdi-vuln cmdi-safe
+       nosqli-vuln nosqli-safe
        xxe-vuln xxe-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
@@ -302,6 +315,10 @@ chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url
 echo "== OS command injection (core) =="
 chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"
 chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-safe]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== NoSQL injection (core) =="
+chk "nosqli vulnerable -> confirmed"    "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
+chk "nosqli safe -> not vulnerable"     "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
