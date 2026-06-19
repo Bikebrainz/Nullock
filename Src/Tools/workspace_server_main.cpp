@@ -287,13 +287,33 @@ int main(int argc, char **argv) {
                 continue;
             }
 
+            if (method == "GET" && path == "/api/ws/engagements") {
+                // Let a client discover what engagements exist (and how big they
+                // are) before pulling -- you can't pull what you can't name.
+                QSqlQuery q(db);
+                q.exec("SELECT e.id, e.name, e.seq, e.created_ms, "
+                       "       (SELECT COUNT(*) FROM findings f WHERE f.engagement=e.id) "
+                       "FROM engagements e ORDER BY e.id");
+                QJsonArray out;
+                while (q.next())
+                    out.append(QJsonObject{
+                        { "id", q.value(0).toString() }, { "name", q.value(1).toString() },
+                        { "seq", static_cast<double>(q.value(2).toLongLong()) },
+                        { "createdMs", static_cast<double>(q.value(3).toLongLong()) },
+                        { "findings", q.value(4).toInt() } });
+                sendJson(s, 200, "OK", {{ "ok", true }, { "count", out.size() },
+                                        { "engagements", out }});
+                continue;
+            }
+
             sendJson(s, 404, "Not Found", {{ "error", "unknown endpoint" }});
         }
     });
 
     std::fprintf(stdout,
         "nullock-workspace listening\n"
-        "  api  : http://%s:%u/  (POST /api/ws/push, GET /api/ws/pull, GET /healthz)\n"
+        "  api  : http://%s:%u/  (POST /api/ws/push, GET /api/ws/pull,\n"
+        "         GET /api/ws/engagements, GET /healthz)\n"
         "  db   : %s\n",
         bind.toUtf8().constData(), port, dbPath.toUtf8().constData());
     if (generatedKey)

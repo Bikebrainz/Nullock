@@ -56,6 +56,8 @@ POST /api/ws/push   { engagement, name?, author?, findings: [ {kind,host,url,sum
        -> { ok, engagement, newSeq, accepted }
 GET  /api/ws/pull?engagement=<id>&since=<seq>
        -> { ok, engagement, seq, count, findings: [...] }
+GET  /api/ws/engagements
+       -> { ok, count, engagements: [ {id, name, seq, createdMs, findings}, ... ] }
 ```
 
 Typical client loop: `pull?since=<last seq>` to fetch teammates' changes, then
