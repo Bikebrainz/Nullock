@@ -90,38 +90,53 @@ def make(mode):
                        'h3-clear': 'clear'}.get(mode)
                 extra = [('Alt-Svc', alt)] if alt is not None else []
                 self._send(200, b'ok\n', 'text/plain', extra); return
+            if mode.startswith('content'):
+                # 404 everything (incl. the random calibration paths) except a
+                # single real path, so discovery surfaces exactly /admin.
+                p = urlparse(self.path).path.rstrip('/')
+                if p == '/admin': self._send(200, b'<html>Admin Panel login</html>')
+                else:             self._send(404, b'<html>404 not found</html>')
+                return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
-args = sys.argv[1:]
-for i in range(0, len(args), 2):
-    port, mode = int(args[i]), args[i + 1]
-    threading.Thread(target=socketserver.TCPServer(('127.0.0.1', port), make(mode)).serve_forever,
-                     daemon=True).start()
+socketserver.TCPServer.allow_reuse_address = True
+# Bind each mode to an OS-assigned ephemeral port and report the actual port,
+# so we never collide with a busy or Windows-reserved port (WinError 10013).
+for mode in sys.argv[1:]:
+    srv = socketserver.TCPServer(('127.0.0.1', 0), make(mode))
+    print("PORT %s %d" % (mode, srv.server_address[1]), flush=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+print("READY", flush=True)
 while True: time.sleep(1)
 PY
 
-# Assign a port per mock mode.
-BASE=$(( (RANDOM % 2000) + 5300 ))
+# Start the mocks on OS-assigned ports; read the actual port map back from the
+# mock's stdout (avoids any reserved/busy-port collision).
+MODES=(sspp-vuln sspp-safe sspp-gzip
+       hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
+       ldap-vuln ldap-safe ldap-baseline
+       xpath-vuln xpath-safe
+       content-found
+       h3-adv h3-h2only h3-none h3-clear)
+MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
+python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
+for _ in $(seq 1 60); do grep -q '^READY' "$MOCK_OUT" 2>/dev/null && break; sleep 0.25; done
 declare -A P
-i=0
-for m in sspp-vuln sspp-safe sspp-gzip \
-         hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie \
-         ldap-vuln ldap-safe ldap-baseline \
-         xpath-vuln xpath-safe \
-         h3-adv h3-h2only h3-none h3-clear; do
-  P[$m]=$(( BASE + i )); i=$(( i + 1 ))
-done
-
-MOCK_ARGS=()
-for m in "${!P[@]}"; do MOCK_ARGS+=( "${P[$m]}" "$m" ); done
-python "$MOCK" "${MOCK_ARGS[@]}" & MOCK_PID=$!
+while read -r tag mode pport; do
+  pport="${pport%$'\r'}"; mode="${mode%$'\r'}"   # Windows python prints CRLF
+  [ "$tag" = "PORT" ] && [ -n "$pport" ] && P["$mode"]="$pport"
+done < "$MOCK_OUT"
+if [ "${#P[@]}" -ne "${#MODES[@]}" ]; then
+  echo "FATAL: mocks did not all start (got ${#P[@]}/${#MODES[@]})"; sed -n '1,20p' "$MOCK_OUT"
+  kill "$MOCK_PID" 2>/dev/null; rm -f "$MOCK" "$MOCK_OUT"; exit 2
+fi
 
 CTL=$(( (RANDOM % 4000) + 21000 ))
 PROJ="$(mktemp -d /tmp/nullock-probe-proj.XXXXXX)"
 "$EXE" --headless --control-port="$CTL" --proxy-port="$(( CTL + 1 ))" --project="$PROJ" --no-update-check &
 APP_PID=$!
-cleanup() { kill "$MOCK_PID" "$APP_PID" 2>/dev/null; rm -f "$MOCK"; rm -rf "$PROJ"; }
+cleanup() { kill "$MOCK_PID" "$APP_PID" 2>/dev/null; rm -f "$MOCK" "$MOCK_OUT"; rm -rf "$PROJ"; }
 trap cleanup EXIT
 
 BASEURL="http://127.0.0.1:$CTL"
@@ -172,6 +187,10 @@ chk "ldap baseline-errors -> not flagged" "$(post /api/ldapi/test "{\"url\":\"$(
 echo "== XPath injection =="
 chk "xpath vulnerable -> confirmed"     "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
 chk "xpath safe -> not vulnerable"      "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== content discovery =="
+CB="$(post /api/content/discover "{\"url\":\"$(url ${P[content-found]} '')\"}")"
+chk "content finds /admin, soft-404 calibrated" "$CB" "d.get('softNotFoundStatus')==404 and any(h['path'].endswith('/admin') and h['status']==200 for h in d.get('hits',[]))"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

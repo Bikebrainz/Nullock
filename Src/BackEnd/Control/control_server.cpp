@@ -27,6 +27,7 @@
 #include "proto_pollution.hpp"
 #include "host_header.hpp"
 #include "http3_detect.hpp"
+#include "content_discovery.hpp"
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
 #include "secret_scanner.hpp"
@@ -2712,7 +2713,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
         "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
         "/api/intruder/multi", "/api/protopollution/test", "/api/http3/detect",
-        "/api/hostheader/test",
+        "/api/hostheader/test", "/api/content/discover",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -7352,6 +7353,54 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "hitCount", static_cast<int>(hres.hits.size()) },
                        { "baselineStatus", hres.baselineStatus },
                        { "requestsSent", hres.requestsSent },
+                       { "hits", hits }});
+    }
+
+    // ---- Content / directory discovery -------------------------------
+    // POST /api/content/discover { url, wordlist?: [...], max?, headers? }
+    //   Brute-forces a wordlist of paths under the URL, soft-404-calibrated so
+    //   a catch-all 200 server doesn't flag everything. Emits info findings for
+    //   discovered paths. CWE-538. Scope-gated.
+    if (path == "/api/content/discover") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::ContentDiscovery::Request cr;
+        cr.host = u.host();
+        cr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        cr.tls  = (u.scheme() == "https");
+        cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const int mx = bodyJson.value("max").toInt(300);
+        cr.maxRequests = qBound(1, mx, 2000);
+        for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
+            if (!v.toString().isEmpty()) cr.wordlist.append(v.toString());
+        const QJsonObject chdrs = bodyJson.value("headers").toObject();
+        for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
+            cr.headers.append({ it.key(), it.value().toString() });
+
+        const auto cres = Nullock::Core::ContentDiscovery::discover(cr);
+
+        QJsonArray hits;
+        for (const auto &h : cres.hits) {
+            hits.append(QJsonObject{
+                { "path", h.path }, { "status", h.status }, { "size", h.size },
+                { "location", h.location }, { "note", h.note } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, "info", "content-discovered",
+                    QString("Discovered path %1 (%2 %3)").arg(h.path).arg(h.status).arg(h.note),
+                    QString("wordlist brute-force; %1 bytes%2").arg(h.size)
+                        .arg(h.location.isEmpty() ? QString() : " -> " + h.location),
+                    cr.host, url);
+        }
+        return okJson({{ "ok", cres.error.isEmpty() },
+                       { "error", cres.error },
+                       { "softNotFoundStatus", cres.softNotFoundStatus },
+                       { "softNotFoundIs200", cres.softNotFoundIs200 },
+                       { "requestsSent", cres.requestsSent },
+                       { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }
 

@@ -53,7 +53,7 @@ const QStringList &emittedKinds() {
         "sensitive-file-exposure",
         // active probes added in the above-Burp climb
         "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
-        "http3-advertised", "ldap-injection", "xpath-injection",
+        "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
     };
     return k;
 }

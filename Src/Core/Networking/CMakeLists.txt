@@ -100,6 +100,8 @@ add_library(Networking STATIC
     ldap_injection.hpp
     xpath_injection.cpp
     xpath_injection.hpp
+    content_discovery.cpp
+    content_discovery.hpp
     xxe_injection.cpp
     xxe_injection.hpp
     nosql_injection.cpp

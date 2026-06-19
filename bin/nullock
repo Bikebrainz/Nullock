@@ -1433,6 +1433,20 @@ cmd_paramminer() {
     post /api/paramminer "$body" | pp
 }
 
+cmd_content() {
+    # nullock content <url> [wordlist-file]
+    [[ -n ${1-} ]] || die "usage: nullock content <url> [wordlist-file]"
+    local url=$1 body
+    if [[ -n ${2-} ]]; then
+        local words
+        words=$(grep -v '^[[:space:]]*$' "$2" | "$JQ" -R . | "$JQ" -s -c .)
+        body="{\"url\":$(jsonq "$url"),\"wordlist\":$words}"
+    else
+        body="{\"url\":$(jsonq "$url")}"
+    fi
+    post /api/content/discover "$body" | pp
+}
+
 cmd_jwt() {
     # nullock jwt analyze <token> [wordlist-file]
     # nullock jwt forge   <token> none|hs256 [secret] [claim=val ...]
@@ -1728,6 +1742,9 @@ Above-Burp features (v4/v5):
                                          discover hidden params -- response-diffs
                                          a candidate wordlist, reports the ones
                                          reflected or that flip the HTTP status
+  nullock content <url> [wordlist]       content/directory discovery -- soft-404
+                                         calibrated path brute-force (admin/api/
+                                         backup/VCS); reports paths off-baseline
   nullock idor <url> [idParam] [hdr:val ...]
                                          IDOR/BOLA test -- replays neighboring
                                          object ids under your session; reports
@@ -1924,6 +1941,7 @@ case ${1:-help} in
     chain)         shift; cmd_chain "$@"         ;;
     jwt)           shift; cmd_jwt "$@"           ;;
     paramminer)    shift; cmd_paramminer "$@"    ;;
+    content)       shift; cmd_content "$@"       ;;
     idor)          shift; cmd_idor "$@"          ;;
     massassign)    shift; cmd_massassign "$@"    ;;
     cors)          shift; cmd_cors "$@"          ;;
