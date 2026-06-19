@@ -83,6 +83,11 @@ jobs:
             -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
       - name: build NullockApp
         run: cmake --build build --config Release --target NullockApp
+      - name: build standalone tools (nullock-oast, nullock-workspace)
+        # Compile-coverage for the deployable Src/Tools binaries -- they're not
+        # part of NullockApp, so without this a build regression in them would
+        # go unnoticed (as a stale test target once did).
+        run: cmake --build build --config Release --target nullock-oast nullock-workspace
       - name: regression tests (scanner + CVE DB + enricher)
         run: |
           cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test
