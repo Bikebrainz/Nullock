@@ -1,7 +1,9 @@
 # Design: Team Workspaces
 
-Status: draft / design-only (no code yet). Target: v3.
-Companion: [enterprise-sso.md](enterprise-sso.md) (workspaces authenticate through it).
+Status: **Phase 1 (MVP) shipped** — `nullock-workspace` (findings push/pull
+sync over SQLite + a shared bearer key); see [DEPLOY_WORKSPACE.md](../DEPLOY_WORKSPACE.md).
+Phases 2-3 below are still design-only. Target: v3.
+Companion: [enterprise-sso.md](enterprise-sso.md) (the per-user-auth upgrade).
 
 ## Goal
 

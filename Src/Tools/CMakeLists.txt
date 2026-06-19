@@ -17,3 +17,16 @@ target_link_libraries(nullock-oast PRIVATE
     Qt6::Core
     Qt6::Network
 )
+
+# nullock-workspace: the deployable team-workspace sync server (findings push/
+# pull over SQLite + a shared bearer key). Self-contained -- Qt Core + Network +
+# Sql only. See design/team-workspaces.md and DEPLOY_WORKSPACE.md.
+qt_add_executable(nullock-workspace
+    workspace_server_main.cpp
+)
+
+target_link_libraries(nullock-workspace PRIVATE
+    Qt6::Core
+    Qt6::Network
+    Qt6::Sql
+)
