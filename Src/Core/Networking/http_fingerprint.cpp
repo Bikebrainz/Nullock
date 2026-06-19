@@ -184,6 +184,15 @@ Result fingerprint(const Request &req) {
         add("Kibana",
             cap1(rx("version\"[\\s\\S]*?\"number\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
             "header", "app-kibana");
+    // Apache Tomcat stamps its full version into the default ROOT page and the
+    // default error pages as "Apache Tomcat/X.Y.Z". The Server header is
+    // version-less ("Apache-Coyote/1.1") by default, so the body marker is the
+    // reliable signal; gate on the exact "Apache Tomcat/<version>" shape so an
+    // unrelated mention of Tomcat can't mislabel a version.
+    if (body.contains("Apache Tomcat/")) {
+        const QString tv = cap1(rx("Apache Tomcat/([0-9]+\\.[0-9][0-9.]*)"), body);
+        if (!tv.isEmpty()) add("Apache Tomcat", tv, "body", "app-tomcat");
+    }
     if (body.contains("data-v-app") || body.contains("/vue.runtime")) add("Vue.js", "", "body", "");
 
     return result;

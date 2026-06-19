@@ -319,6 +319,32 @@ const QList<Entry> &table() {
           ">=6.0.0,<6.6.1", "6.6.1",
           "https://nvd.nist.gov/vuln/detail/CVE-2019-7609" },
 
+        // ---- Apache Tomcat (version from default/error page banner) -----
+        // CVE-2020-1938 (Ghostcat): the AJP connector -- enabled by DEFAULT in
+        // 6/7/8/9 -- allows reading/including arbitrary webapp files, escalating
+        // to RCE when an upload dir is reachable. Web-verified fix points
+        // 7.0.100 / 8.5.51 / 9.0.31; branch-modeled (the 8.0.x line has no
+        // separate fix, so upgrade target is 8.5.51). NOTE: Tomcat's other RCEs
+        // (CVE-2017-12617 PUT-JSP, CVE-2020-9484 FileStore deser, CVE-2019-0232
+        // CGI) are config-gated rather than default-config, so they are
+        // deliberately NOT version-correlated here -- doing so would false-
+        // positive on the common default install.
+        { "app-tomcat", "CVE-2020-1938",
+          "Apache Tomcat 7.0.x < 7.0.100 (Ghostcat): AJP connector arbitrary file read/include -> RCE",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=7.0.0,<7.0.100", "7.0.100",
+          "https://tomcat.apache.org/security-7.html" },
+        { "app-tomcat", "CVE-2020-1938",
+          "Apache Tomcat 8.x < 8.5.51 (Ghostcat): AJP connector arbitrary file read/include -> RCE",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=8.0.0,<8.5.51", "8.5.51",
+          "https://tomcat.apache.org/security-8.html" },
+        { "app-tomcat", "CVE-2020-1938",
+          "Apache Tomcat 9.0.x < 9.0.31 (Ghostcat): AJP connector arbitrary file read/include -> RCE",
+          9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          ">=9.0.0,<9.0.31", "9.0.31",
+          "https://tomcat.apache.org/security-9.html" },
+
         // ---- jQuery (version from script-src filename) --------------
         // jQuery's full version is reliably exposed in the asset path
         // (jquery-X.Y.Z.min.js), so these correlate cleanly. All three are

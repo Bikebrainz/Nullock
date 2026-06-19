@@ -81,6 +81,16 @@ const QList<Case> &corpus() {
         { "Kibana 6.6.1 (patched) -> NOT 7609",       "app-kibana", "Kibana 6.6.1", "CVE-2019-7609", true, 0 },
         { "Kibana 7.5.0 (modern) -> NOT 7609",        "app-kibana", "Kibana 7.5.0", "CVE-2019-7609", true, 0 },
 
+        // ---- Apache Tomcat (Ghostcat, default-config AJP) ---------------
+        { "Tomcat 9.0.30 -> 1938 @ 9.8",              "app-tomcat", "Apache Tomcat 9.0.30", "CVE-2020-1938", false, 9.8 },
+        { "Tomcat 9.0.31 (patched) -> NOT 1938",      "app-tomcat", "Apache Tomcat 9.0.31", "CVE-2020-1938", true, 0 },
+        { "Tomcat 8.5.50 -> 1938",                    "app-tomcat", "Apache Tomcat 8.5.50", "CVE-2020-1938", false, 9.8 },
+        { "Tomcat 8.0.53 (8.0 line) -> 1938",         "app-tomcat", "Apache Tomcat 8.0.53", "CVE-2020-1938", false, 9.8 },
+        { "Tomcat 8.5.51 (patched) -> NOT 1938",      "app-tomcat", "Apache Tomcat 8.5.51", "CVE-2020-1938", true, 0 },
+        { "Tomcat 7.0.99 -> 1938",                    "app-tomcat", "Apache Tomcat 7.0.99", "CVE-2020-1938", false, 9.8 },
+        { "Tomcat 7.0.100 (patched) -> NOT 1938",     "app-tomcat", "Apache Tomcat 7.0.100", "CVE-2020-1938", true, 0 },
+        { "Tomcat 10.0.0 (modern) -> NOT 1938",       "app-tomcat", "Apache Tomcat 10.0.0", "CVE-2020-1938", true, 0 },
+
         // ---- Apache: the 41773/42013 pair + 38473 fix-version fix -------
         { "Apache 2.4.49 -> 41773",                   "server-apache", "Apache/2.4.49", "CVE-2021-41773", false, 0 },
         { "Apache 2.4.49 -> 42013",                   "server-apache", "Apache/2.4.49", "CVE-2021-42013", false, 9.8 },
