@@ -1,8 +1,7 @@
 name: release
 
-# Builds installer artifacts on every tag matching v*.*.* and uploads
-# them to a GitHub Release. Provides the download targets the docs
-# portal links to.
+# Builds installer artifacts on every tag matching v*.*.* and uploads them to a
+# GitHub Release. Provides the download targets the docs portal links to.
 #
 # Tag a release:
 #   git tag v1.0.0 && git push origin v1.0.0
@@ -15,9 +14,12 @@ name: release
 #             Nullock-x86_64.AppImage
 #   macOS   : Nullock-1.0.0-Darwin.dmg
 #
-# No code signing here (free engineering only). When we have certs,
-# add a signing step BEFORE the artifact upload and notarization for
-# macOS BETWEEN build and dmg-pack.
+# CODE SIGNING + NOTARIZATION are wired but OPTIONAL: every signing step is
+# guarded by `if: ${{ secrets.* != '' }}`, so with no certs configured the
+# release builds and uploads UNSIGNED exactly as before. Add the repo secrets
+# documented in RELEASE_SIGNING.md and the same workflow signs Windows builds
+# and codesigns + notarizes the macOS app -- no YAML change required to turn it
+# on. See RELEASE_SIGNING.md for the exact secret names and how to mint them.
 
 on:
   push:
@@ -36,7 +38,10 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          modules: 'qtquickcontrols2 qtwebsockets'
+          # qtwebsockets is the only add-on module we need; Quick Controls ship
+          # in the base qtdeclarative install (qtquickcontrols2 is NOT a separate
+          # Qt6 aqt module -- requesting it makes aqt fail and breaks the build).
+          modules: 'qtwebsockets'
       - name: install nghttp2
         run: vcpkg install nghttp2:x64-windows
       - name: install NSIS
@@ -47,9 +52,38 @@ jobs:
             -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows"
       - name: build
         run: cmake --build build --config Release --target NullockApp
+      - name: sign app (optional -- needs WINDOWS_CERT_* secrets)
+        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP nullock-cert.pfx
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+                      Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+          $exe = Get-ChildItem build -Recurse -Filter NullockApp.exe | Select-Object -First 1 -ExpandProperty FullName
+          & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
+          Remove-Item $pfx
       - name: package
         working-directory: build
         run: cpack -G "NSIS;ZIP" -C Release
+      - name: sign installer (optional -- needs WINDOWS_CERT_* secrets)
+        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP nullock-cert.pfx
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
+                      Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
+          Get-ChildItem build\Nullock-*-win64.exe | ForEach-Object {
+            & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $_.FullName
+          }
+          Remove-Item $pfx
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -64,7 +98,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          modules: 'qtquickcontrols2 qtwebsockets'
+          modules: 'qtwebsockets'
       - name: install build deps
         run: |
           sudo apt-get update
@@ -100,16 +134,54 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          modules: 'qtquickcontrols2 qtwebsockets'
+          modules: 'qtwebsockets'
       - name: install nghttp2
         run: brew install nghttp2
       - name: configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
         run: cmake --build build -j
+      - name: import signing cert (optional -- needs MACOS_CERT_* secrets)
+        if: ${{ secrets.MACOS_CERT_BASE64 != '' }}
+        env:
+          CERT_B64: ${{ secrets.MACOS_CERT_BASE64 }}
+          CERT_PW: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/build.keychain"
+          KC_PW="ci-$RANDOM"
+          echo "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KC_PW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security default-keychain -s "$KC"
+          security unlock-keychain -p "$KC_PW" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KC"
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: codesign app (optional)
+        if: ${{ secrets.MACOS_CERT_BASE64 != '' }}
+        env:
+          SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          APP=$(find build -maxdepth 6 -name '*.app' -type d | head -1)
+          echo "signing $APP"
+          codesign --deep --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
       - name: cpack -- DMG
         working-directory: build
         run: cpack -G "DragNDrop"
+      - name: notarize + staple dmg (optional -- needs AC_API_* secrets)
+        if: ${{ secrets.MACOS_CERT_BASE64 != '' && secrets.AC_API_KEY_ID != '' }}
+        env:
+          AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_ISSUER: ${{ secrets.AC_API_ISSUER }}
+          AC_KEY: ${{ secrets.AC_API_KEY }}
+        run: |
+          echo "$AC_KEY" > "$RUNNER_TEMP/ac_key.p8"
+          DMG=$(find build -name 'Nullock-*-Darwin.dmg' | head -1)
+          xcrun notarytool submit "$DMG" \
+            --key "$RUNNER_TEMP/ac_key.p8" --key-id "$AC_KEY_ID" --issuer "$AC_ISSUER" --wait
+          xcrun stapler staple "$DMG"
+          rm "$RUNNER_TEMP/ac_key.p8"
       - uses: actions/upload-artifact@v4
         with:
           name: macos
