@@ -98,6 +98,8 @@ add_library(Networking STATIC
     sql_injection.hpp
     ldap_injection.cpp
     ldap_injection.hpp
+    xpath_injection.cpp
+    xpath_injection.hpp
     xxe_injection.cpp
     xxe_injection.hpp
     nosql_injection.cpp

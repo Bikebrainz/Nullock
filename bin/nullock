@@ -1077,6 +1077,25 @@ cmd_ldapi() {
     post /api/ldapi/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
 }
 
+cmd_xpathi() {
+    # nullock xpathi <url> [param] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock xpathi <url> [param] [hdr:val ...]"
+    local url=$1; shift
+    local param=""
+    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/xpathi/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+}
+
 cmd_xss() {
     # nullock xss <url> [param] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock xss <url> [param] [hdr:val ...]"
@@ -1784,6 +1803,10 @@ Above-Burp features (v4/v5):
                                          LDAP injection -- filter-breaking
                                          metacharacter triggers an LDAP error the
                                          baseline lacks (absent under a safe value)
+  nullock xpathi <url> [param] [hdr:val ...]
+                                         XPath injection -- expression-breaking
+                                         metacharacter triggers an XPath error the
+                                         baseline lacks (absent under a safe value)
   nullock xxe <url> [hdr:val ...]        XXE -- POSTs an XML body whose external
                                          entity reads a local file; confirmed by
                                          the file's content signature
@@ -1921,6 +1944,7 @@ case ${1:-help} in
     xss)           shift; cmd_xss "$@"           ;;
     sqli)          shift; cmd_sqli "$@"          ;;
     ldapi)         shift; cmd_ldapi "$@"         ;;
+    xpathi)        shift; cmd_xpathi "$@"        ;;
     xxe)           shift; cmd_xxe "$@"           ;;
     nosqli)        shift; cmd_nosqli "$@"        ;;
     smuggle)       shift; cmd_smuggle "$@"       ;;

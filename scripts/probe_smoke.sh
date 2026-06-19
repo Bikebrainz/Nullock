@@ -78,6 +78,12 @@ def make(mode):
                 if mode == 'ldap-baseline': self._send(200, err); return
                 if mode == 'ldap-vuln':     self._send(200, err if ('(' in val or ')' in val) else ok); return
                 self._send(200, ok); return
+            if mode.startswith('xpath'):
+                err = b'<html>javax.xml.xpath.XPathExpressionException: invalid XPath expression</html>'
+                ok  = b'<html>0 nodes</html>'
+                val = q.get('q', [''])[0]
+                brk = any(c in val for c in "'\"])")
+                self._send(200, err if (mode == 'xpath-vuln' and brk) else ok); return
             if mode.startswith('h3'):
                 alt = {'h3-adv': 'h3=":443"; ma=86400, h3-29=":443", h2=":443"',
                        'h3-h2only': 'h2=":443"; ma=3600',
@@ -102,6 +108,7 @@ i=0
 for m in sspp-vuln sspp-safe sspp-gzip \
          hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie \
          ldap-vuln ldap-safe ldap-baseline \
+         xpath-vuln xpath-safe \
          h3-adv h3-h2only h3-none h3-clear; do
   P[$m]=$(( BASE + i )); i=$(( i + 1 ))
 done
@@ -121,6 +128,13 @@ BASEURL="http://127.0.0.1:$CTL"
 HDR=(-H "Content-Type: application/json" -H "Origin: $BASEURL" -H "X-Nullock-UI: 1")
 for _ in $(seq 1 40); do curl -sS --max-time 2 "$BASEURL/api/snapshot" >/dev/null 2>&1 && break; sleep 0.5; done
 sleep 1
+# Fail fast + clearly if the control server never came up on the expected port
+# (e.g. the requested port was busy and the app fell back to another), rather
+# than emitting a wall of confusing per-probe connection failures.
+if ! curl -sS --max-time 3 "$BASEURL/api/snapshot" >/dev/null 2>&1; then
+  echo "FATAL: control server not reachable on $CTL (port busy / app failed to start)"
+  exit 2
+fi
 
 PASS=0; FAIL=0
 # chk <label> <json> <python-bool-expr over `d`>
@@ -154,6 +168,10 @@ echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
 chk "ldap safe -> not vulnerable"       "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "ldap baseline-errors -> not flagged" "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-baseline]} 'search?q=test')\"}")" "not d.get('vulnerable')"
+
+echo "== XPath injection =="
+chk "xpath vulnerable -> confirmed"     "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
+chk "xpath safe -> not vulnerable"      "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

@@ -36,6 +36,7 @@
 #include "xss_reflected.hpp"
 #include "sql_injection.hpp"
 #include "ldap_injection.hpp"
+#include "xpath_injection.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -619,6 +620,16 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("ldap-injection", res.hits.size(),
              res.error.isEmpty() ? where.join(", ") : res.error,
              "high", "ldap-injection", "Deep audit: LDAP injection " + where.join(", "));
+    }
+    if (wants("xpathi") || wants("xpath-injection")) {
+        Nullock::Core::XpathInjection::Request xrr;
+        xrr.host = t.host; xrr.port = t.port; xrr.tls = t.tls; xrr.method = t.method;
+        xrr.basePath = auditPath; xrr.query = auditQuery; xrr.headers = t.headers;
+        const auto res = Nullock::Core::XpathInjection::test(xrr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.engine + ")";
+        note("xpath-injection", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "high", "xpath-injection", "Deep audit: XPath injection " + where.join(", "));
     }
     if (wants("xss")) {
         Nullock::Core::XssReflected::Request xrr;
@@ -2690,7 +2701,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // endpoints (portscan, audit/all, chain/run, intruder, repeater, authz-test)
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
-        "/api/sqli/test", "/api/ldapi/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
+        "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
         "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
@@ -6735,6 +6746,53 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", lres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(lres.testedParams) },
                        { "hitCount", static_cast<int>(lres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- XPath injection ---------------------------------------------
+    // POST /api/xpathi/test { url, param?, method?, headers? }
+    //   Injects expression-breaking metacharacters; confirms by an XPath error
+    //   absent from the baseline and absent under a benign value. CWE-643.
+    if (path == "/api/xpathi/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::XpathInjection::Request xr;
+        xr.host = u.host();
+        xr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        xr.tls  = (u.scheme() == "https");
+        xr.method = bodyJson.value("method").toString("GET").toUpper();
+        xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        xr.query = u.query(QUrl::FullyEncoded);
+        xr.param = bodyJson.value("param").toString();
+        const QJsonObject xhdrs = bodyJson.value("headers").toObject();
+        for (auto it = xhdrs.begin(); it != xhdrs.end(); ++it)
+            xr.headers.append({ it.key(), it.value().toString() });
+
+        const auto xres = Nullock::Core::XpathInjection::test(xr);
+
+        QJsonArray hits;
+        for (const auto &h : xres.hits)
+            hits.append(QJsonObject{
+                { "param", h.param }, { "engine", h.engine },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+        if (m_wiring.scanner && xres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "high", "xpath-injection",
+                QString("XPath injection in '%1' (%2) -- a metacharacter broke the XPath expression")
+                    .arg(xres.hits.first().param, xres.hits.first().engine),
+                "the XPath engine returned an expression error on an injected metacharacter, "
+                "absent under a benign value: " + xres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", xres.error.isEmpty() },
+                       { "error", xres.error },
+                       { "vulnerable", xres.vulnerable },
+                       { "baselineStatus", xres.baselineStatus },
+                       { "requestsSent", xres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(xres.testedParams) },
+                       { "hitCount", static_cast<int>(xres.hits.size()) },
                        { "hits", hits }});
     }
 

@@ -53,7 +53,7 @@ const QStringList &emittedKinds() {
         "sensitive-file-exposure",
         // active probes added in the above-Burp climb
         "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
-        "http3-advertised", "ldap-injection",
+        "http3-advertised", "ldap-injection", "xpath-injection",
     };
     return k;
 }
@@ -78,6 +78,7 @@ const QList<Spot> &spotChecks() {
         { "ldap-injection",              "CWE-90" },    // exact (new)
         { "host-header-injection",       "CWE-20" },    // exact (new)
         { "proto-pollution-reflected",   "CWE-1321" },  // exact (new)
+        { "xpath-injection",             "CWE-643" },   // exact (new)
     };
     return s;
 }

@@ -173,6 +173,7 @@ const QHash<QString, Mapping> &table() {
         // ---- SQL injection -------------------------------------------
         { "sql-injection", { "CWE-89", "A03:2021-Injection", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.1", "Use parameterized queries / prepared statements everywhere; never concatenate input into SQL, and apply least-privilege DB accounts." } },
         { "ldap-injection", { "CWE-90", "A03:2021-Injection", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.1", "Escape user input per RFC 4515 before placing it in an LDAP search filter (or use a filter-builder API); allow-list expected characters and never concatenate raw input into the filter or DN." } },
+        { "xpath-injection", { "CWE-643", "A03:2021-Injection", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.1", "Never concatenate user input into an XPath expression; use parameterized/precompiled XPath with variable binding, and allow-list expected characters." } },
 
         // ---- Reflected XSS -------------------------------------------
         { "reflected-xss", { "CWE-79", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "PCI-DSS-6.5.7", "Context-encode all reflected input (HTML-entity in body, attribute-encode in attributes, JS-encode in script); add a strict CSP as defense in depth." } },
