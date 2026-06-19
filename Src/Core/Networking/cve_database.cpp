@@ -303,6 +303,22 @@ const QList<Entry> &table() {
           ">=1.0.0,<1.6.1", "1.6.1 / 1.7.0",
           "https://nvd.nist.gov/vuln/detail/CVE-2015-5531" },
 
+        // ---- Kibana (kbn-name header; version from /api/status banner) --
+        // CVE-2019-7609: Timelion prototype-pollution -> arbitrary code
+        // execution, unauthenticated against a default-open Kibana. NVD-
+        // verified: before 5.6.15, and the 6.0.0-6.6.0 line fixed in 6.6.1.
+        // Branch-modeled so a patched 5.6.15/6.6.1 and all 7.x are clean.
+        { "app-kibana", "CVE-2019-7609",
+          "Kibana < 5.6.15: Timelion prototype-pollution -> arbitrary code execution (RCE)",
+          10.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+          "<5.6.15", "5.6.15",
+          "https://nvd.nist.gov/vuln/detail/CVE-2019-7609" },
+        { "app-kibana", "CVE-2019-7609",
+          "Kibana 6.0.0-6.6.0 < 6.6.1: Timelion prototype-pollution -> arbitrary code execution (RCE)",
+          10.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+          ">=6.0.0,<6.6.1", "6.6.1",
+          "https://nvd.nist.gov/vuln/detail/CVE-2019-7609" },
+
         // ---- jQuery (version from script-src filename) --------------
         // jQuery's full version is reliably exposed in the asset path
         // (jquery-X.Y.Z.min.js), so these correlate cleanly. All three are

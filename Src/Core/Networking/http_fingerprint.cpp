@@ -175,6 +175,15 @@ Result fingerprint(const Request &req) {
         add("Elasticsearch",
             cap1(rx("\"number\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
             "body", "app-elasticsearch");
+    // Kibana stamps a kbn-name response header on virtually every response --
+    // a rock-solid marker (ES has no such header, so this stays mutually
+    // exclusive with the Elasticsearch branch above). Presence alone is worth
+    // surfacing; the full build version lives in the /api/status JSON banner
+    // (version.number), so CVE correlation fires when pointed at /api/status.
+    if (!headerValue(r.parsed, "kbn-name").isEmpty())
+        add("Kibana",
+            cap1(rx("version\"[\\s\\S]*?\"number\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
+            "header", "app-kibana");
     if (body.contains("data-v-app") || body.contains("/vue.runtime")) add("Vue.js", "", "body", "");
 
     return result;

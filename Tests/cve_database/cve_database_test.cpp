@@ -74,6 +74,13 @@ const QList<Case> &corpus() {
         { "ES 1.6.1 (patched) -> NOT 5531",           "app-elasticsearch", "Elasticsearch 1.6.1", "CVE-2015-5531", true, 0 },
         { "ES 2.4.0 (modern) -> NOT 5531",            "app-elasticsearch", "Elasticsearch 2.4.0", "CVE-2015-5531", true, 0 },
 
+        // ---- Kibana (Timelion prototype-pollution RCE) ------------------
+        { "Kibana 5.6.14 -> 7609 @ 10.0",             "app-kibana", "Kibana 5.6.14", "CVE-2019-7609", false, 10.0 },
+        { "Kibana 5.6.15 (patched) -> NOT 7609",      "app-kibana", "Kibana 5.6.15", "CVE-2019-7609", true, 0 },
+        { "Kibana 6.5.4 (6.x branch) -> 7609",        "app-kibana", "Kibana 6.5.4", "CVE-2019-7609", false, 10.0 },
+        { "Kibana 6.6.1 (patched) -> NOT 7609",       "app-kibana", "Kibana 6.6.1", "CVE-2019-7609", true, 0 },
+        { "Kibana 7.5.0 (modern) -> NOT 7609",        "app-kibana", "Kibana 7.5.0", "CVE-2019-7609", true, 0 },
+
         // ---- Apache: the 41773/42013 pair + 38473 fix-version fix -------
         { "Apache 2.4.49 -> 41773",                   "server-apache", "Apache/2.4.49", "CVE-2021-41773", false, 0 },
         { "Apache 2.4.49 -> 42013",                   "server-apache", "Apache/2.4.49", "CVE-2021-42013", false, 9.8 },
