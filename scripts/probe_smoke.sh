@@ -117,6 +117,27 @@ def make(mode):
                     val = val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
                 return
+            if mode.startswith('openredir'):
+                # Vulnerable mock reflects the redirect param straight into the
+                # Location header; the probe flags it resolving to its sentinel.
+                val = q.get('url', [''])[0]
+                if mode == 'openredir-vuln' and '\n' not in val and '\r' not in val:
+                    self.send_response(302); self.send_header('Location', val)
+                    self.send_header('Content-Length', '0'); self.end_headers()
+                else:
+                    self._send(200, b'<html>home</html>')
+                return
+            if mode.startswith('pathtrav'):
+                # Vulnerable mock returns a passwd-shaped body when the param
+                # carries a traversal/passwd payload; the probe matches the
+                # root:x:0:0: signature.
+                val = q.get('file', [''])[0]
+                if mode == 'pathtrav-vuln' and ('..' in val or 'passwd' in val):
+                    self._send(200, b'root:x:0:0:root:/root:/bin/bash\n'
+                                    b'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n', 'text/plain')
+                else:
+                    self._send(200, b'<html>file not found</html>')
+                return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -137,6 +158,8 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
        sqli-vuln sqli-safe
        xss-vuln xss-safe
+       openredir-vuln openredir-safe
+       pathtrav-vuln pathtrav-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -208,6 +231,14 @@ chk "sqli safe -> not vulnerable"       "$(post /api/sqli/test "{\"url\":\"$(url
 echo "== reflected XSS (core) =="
 chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== open redirect (core) =="
+chk "open-redirect vulnerable -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-vuln]} '?url=test')\"}")" "d.get('vulnerable')"
+chk "open-redirect safe -> not vulnerable"  "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-safe]} '?url=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== path traversal (core) =="
+chk "path-traversal vulnerable -> confirmed" "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-vuln]} '?file=test')\"}")" "d.get('vulnerable')"
+chk "path-traversal safe -> not vulnerable"  "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-safe]} '?file=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
