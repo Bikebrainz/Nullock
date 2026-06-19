@@ -165,6 +165,16 @@ Result fingerprint(const Request &req) {
         // quote before `version` there), so it lands on the build version.
         add("Grafana", cap1(rx("buildInfo\"[\\s\\S]*?\"version\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
             "body", "app-grafana");
+    // Elasticsearch root (GET /) returns a JSON banner whose tagline is a
+    // rock-solid, unmistakable marker: "You Know, for Search". Gate on that
+    // (NOT a bare "elasticsearch" word, which appears in unrelated client
+    // pages) so this never false-positives, then pull the full build version
+    // from "version":{ ... "number":"X.Y.Z" ... }. [\s\S]*? keeps the match
+    // anchored to the number inside the version object.
+    if (body.contains("You Know, for Search"))
+        add("Elasticsearch",
+            cap1(rx("\"number\"\\s*:\\s*\"([0-9]+\\.[0-9][0-9.]*)\""), body),
+            "body", "app-elasticsearch");
     if (body.contains("data-v-app") || body.contains("/vue.runtime")) add("Vue.js", "", "body", "");
 
     return result;

@@ -276,6 +276,33 @@ const QList<Entry> &table() {
           ">=8.3.0,<8.3.1", "8.3.1",
           "https://grafana.com/security/security-advisories/cve-2021-43798/" },
 
+        // ---- Elasticsearch (version from GET / JSON banner number) ---
+        // All three are 1.x-era flaws (only fire on ancient, internet-exposed
+        // clusters), but they're version-keyed and web-verified, and an
+        // exposed Elasticsearch is itself worth surfacing. Scores are the NVD
+        // CVSS v2 base values (these predate v3) kept verbatim. Patched 1.x
+        // and every 2.x+ build fall outside the ranges -> no false positives.
+        { "app-elasticsearch", "CVE-2014-3120",
+          "Elasticsearch < 1.2.0: remote code execution via the dynamic-scripting 'source' parameter of /_search (default config)",
+          6.8, "CVSS:2.0/AV:N/AC:M/Au:N/C:P/I:P/A:P",
+          "<1.2.0", "1.2.0",
+          "https://nvd.nist.gov/vuln/detail/CVE-2014-3120" },
+        { "app-elasticsearch", "CVE-2015-1427",
+          "Elasticsearch < 1.3.8: Groovy scripting-engine sandbox bypass -> arbitrary shell command execution",
+          7.5, "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P",
+          "<1.3.8", "1.3.8 / 1.4.3",
+          "https://nvd.nist.gov/vuln/detail/CVE-2015-1427" },
+        { "app-elasticsearch", "CVE-2015-1427",
+          "Elasticsearch 1.4.x < 1.4.3: Groovy scripting-engine sandbox bypass -> arbitrary shell command execution",
+          7.5, "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P",
+          ">=1.4.0,<1.4.3", "1.4.3",
+          "https://nvd.nist.gov/vuln/detail/CVE-2015-1427" },
+        { "app-elasticsearch", "CVE-2015-5531",
+          "Elasticsearch 1.0.0-1.6.0: directory traversal -> read files readable by the Elasticsearch JVM via the snapshot API",
+          5.0, "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:N/A:N",
+          ">=1.0.0,<1.6.1", "1.6.1 / 1.7.0",
+          "https://nvd.nist.gov/vuln/detail/CVE-2015-5531" },
+
         // ---- jQuery (version from script-src filename) --------------
         // jQuery's full version is reliably exposed in the asset path
         // (jquery-X.Y.Z.min.js), so these correlate cleanly. All three are

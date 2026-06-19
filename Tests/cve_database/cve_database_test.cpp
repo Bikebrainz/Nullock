@@ -63,6 +63,17 @@ const QList<Case> &corpus() {
         { "Grafana 8.2.0 -> 43798",                   "app-grafana", "Grafana 8.2.0", "CVE-2021-43798", false, 7.5 },
         { "Grafana 8.5.0 -> NOT 43798",               "app-grafana", "Grafana 8.5.0", "CVE-2021-43798", true, 0 },
 
+        // ---- Elasticsearch (1.x banner version) -------------------------
+        { "ES 1.1.0 -> 3120 @ 6.8",                   "app-elasticsearch", "Elasticsearch 1.1.0", "CVE-2014-3120", false, 6.8 },
+        { "ES 1.2.0 (patched) -> NOT 3120",           "app-elasticsearch", "Elasticsearch 1.2.0", "CVE-2014-3120", true, 0 },
+        { "ES 1.3.7 -> 1427 @ 7.5",                   "app-elasticsearch", "Elasticsearch 1.3.7", "CVE-2015-1427", false, 7.5 },
+        { "ES 1.4.2 (1.4.x branch) -> 1427",          "app-elasticsearch", "Elasticsearch 1.4.2", "CVE-2015-1427", false, 7.5 },
+        { "ES 1.4.3 (patched) -> NOT 1427",           "app-elasticsearch", "Elasticsearch 1.4.3", "CVE-2015-1427", true, 0 },
+        { "ES 1.5.0 -> 5531 @ 5.0",                   "app-elasticsearch", "Elasticsearch 1.5.0", "CVE-2015-5531", false, 5.0 },
+        { "ES 1.5.0 (>=1.4.3) -> NOT 1427",           "app-elasticsearch", "Elasticsearch 1.5.0", "CVE-2015-1427", true, 0 },
+        { "ES 1.6.1 (patched) -> NOT 5531",           "app-elasticsearch", "Elasticsearch 1.6.1", "CVE-2015-5531", true, 0 },
+        { "ES 2.4.0 (modern) -> NOT 5531",            "app-elasticsearch", "Elasticsearch 2.4.0", "CVE-2015-5531", true, 0 },
+
         // ---- Apache: the 41773/42013 pair + 38473 fix-version fix -------
         { "Apache 2.4.49 -> 41773",                   "server-apache", "Apache/2.4.49", "CVE-2021-41773", false, 0 },
         { "Apache 2.4.49 -> 42013",                   "server-apache", "Apache/2.4.49", "CVE-2021-42013", false, 9.8 },
