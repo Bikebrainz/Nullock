@@ -1336,24 +1336,40 @@ QByteArray ControlServer::buildSnapshot() const {
     // intruder
     QJsonObject intruder;
     if (m_wiring.intruder) {
-        intruder["host"]     = m_wiring.intruder->host();
-        intruder["port"]     = m_wiring.intruder->port();
-        intruder["tls"]      = m_wiring.intruder->useTls();
-        intruder["template"] = m_wiring.intruder->requestTemplate();
-        intruder["payloads"] = QJsonArray::fromStringList(
+        using Nullock::Core::Intruder;
+        intruder["host"]       = m_wiring.intruder->host();
+        intruder["port"]       = m_wiring.intruder->port();
+        intruder["tls"]        = m_wiring.intruder->useTls();
+        intruder["template"]   = m_wiring.intruder->requestTemplate();
+        intruder["attackType"] = m_wiring.intruder->attackType();
+        intruder["positions"]  = m_wiring.intruder->positionCount();
+        intruder["payloads"]   = QJsonArray::fromStringList(
             m_wiring.intruder->payloads().split('\n', Qt::SkipEmptyParts));
-        intruder["running"]  = m_wiring.intruder->running();
+        // payloadSets: one array of lines per marker position.
+        QJsonArray setsArr;
+        for (const QString &block : m_wiring.intruder->payloadSets())
+            setsArr.append(QJsonArray::fromStringList(block.split('\n', Qt::SkipEmptyParts)));
+        intruder["payloadSets"] = setsArr;
+        intruder["running"]     = m_wiring.intruder->running();
         QJsonArray results;
         const int n = m_wiring.intruder->rowCount();
         for (int i = 0; i < n; ++i) {
             const QModelIndex idx = m_wiring.intruder->index(i, 0);
             QJsonObject r;
-            const int status = m_wiring.intruder->data(idx, Nullock::Core::Intruder::StatusRole).toInt();
-            const bool complete = m_wiring.intruder->data(idx, Nullock::Core::Intruder::CompleteRole).toBool();
+            const int status = m_wiring.intruder->data(idx, Intruder::StatusRole).toInt();
+            const bool complete = m_wiring.intruder->data(idx, Intruder::CompleteRole).toBool();
+            const int size = m_wiring.intruder->data(idx, Intruder::SizeRole).toInt();
+            const int ms   = m_wiring.intruder->data(idx, Intruder::TimeRole).toInt();
+            r["row"]      = i;
+            r["payload"]  = m_wiring.intruder->data(idx, Intruder::PayloadRole).toString();
+            r["payloads"] = QJsonArray::fromStringList(
+                m_wiring.intruder->data(idx, Intruder::PayloadsRole).toStringList());
             r["status"] = complete ? QJsonValue(status) : QJsonValue(QJsonValue::Null);
-            r["size"]   = m_wiring.intruder->data(idx, Nullock::Core::Intruder::SizeRole).toInt();
-            r["ms"]     = m_wiring.intruder->data(idx, Nullock::Core::Intruder::TimeRole).toInt();
-            r["err"]    = m_wiring.intruder->data(idx, Nullock::Core::Intruder::ErrorRole).toString();
+            r["size"]   = size;
+            r["length"] = size;   // alias
+            r["ms"]     = ms;
+            r["time"]   = ms;      // alias
+            r["err"]    = m_wiring.intruder->data(idx, Intruder::ErrorRole).toString();
             results.append(r);
         }
         intruder["results"] = results;
@@ -2836,8 +2852,37 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (bodyJson.contains("port"))     m_wiring.intruder->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))      m_wiring.intruder->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("template")) m_wiring.intruder->setRequestTemplate(bodyJson.value("template").toString());
+            // attackType: an int (0..3) or a name ("sniper" / "battering-ram"
+            // / "pitchfork" / "cluster-bomb", hyphen/space tolerant).
+            if (bodyJson.contains("attackType")) {
+                const QJsonValue at = bodyJson.value("attackType");
+                const int t = at.isDouble()
+                    ? at.toInt()
+                    : static_cast<int>(
+                        Nullock::Core::IntruderEngine::parseAttackType(at.toString()));
+                m_wiring.intruder->setAttackType(t);
+            }
+            // payloadSets: one entry per marker position. Each entry is an
+            // array of strings or a newline-joined string. Pitchfork /
+            // Cluster bomb consume one set per position; Sniper / Battering
+            // ram only use the first.
+            if (bodyJson.contains("payloadSets")) {
+                QStringList sets;
+                for (const QJsonValue &sv : bodyJson.value("payloadSets").toArray()) {
+                    if (sv.isArray()) {
+                        QStringList lines;
+                        for (const QJsonValue &v : sv.toArray()) lines.append(v.toString());
+                        sets.append(lines.join('\n'));
+                    } else {
+                        sets.append(sv.toString());
+                    }
+                }
+                m_wiring.intruder->setPayloadSets(sets);
+            }
             if (bodyJson.contains("payloads")) {
-                // payloads can be an array of strings or a newline-joined string
+                // payloads is the set-0 alias: an array of strings or a
+                // newline-joined string. Applied after payloadSets so a
+                // caller can override just the first set.
                 const QJsonValue p = bodyJson.value("payloads");
                 if (p.isArray()) {
                     QStringList parts;

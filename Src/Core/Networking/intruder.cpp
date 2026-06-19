@@ -1,23 +1,37 @@
 #include "intruder.hpp"
 
+#include "intruder_engine.hpp"
 #include "Proxy/proxy_model.hpp"
 
 #include <QElapsedTimer>
 #include <QMetaObject>
-#include <QRegularExpression>
 #include <QThread>
 #include <QtConcurrent/QtConcurrent>
 
 namespace Nullock::Core {
 
+namespace IE = Nullock::Core::IntruderEngine;
+
 namespace {
 
-// Burp-style position marker: a paired § (U+00A7). The text between the
-// two §s is the placeholder for the original/default value; we replace
-// the whole match (markers and their content) with the payload.
-QRegularExpression markerRegex() {
-    static const QRegularExpression rx(QStringLiteral("§[^§]*§"));
-    return rx;
+// Split a newline-separated payload block into trimmed, non-empty entries.
+QStringList parseSet(const QString &block) {
+    QStringList out;
+    for (const QString &line : block.split('\n')) {
+        const QString trimmed = line.trimmed();
+        if (!trimmed.isEmpty()) out.append(trimmed);
+    }
+    return out;
+}
+
+// Per-position display values for a result row -- engine nulls (a marker left
+// at its default, e.g. Sniper's non-active positions) render as "(default)".
+QStringList displayValues(const QStringList &combo) {
+    QStringList out;
+    out.reserve(combo.size());
+    for (const QString &v : combo)
+        out.append(v.isNull() ? QStringLiteral("(default)") : v);
+    return out;
 }
 
 } // namespace
@@ -42,6 +56,7 @@ QVariant Intruder::data(const QModelIndex &index, int role) const {
     switch (role) {
         case IdRole:       return a->m_id;
         case PayloadRole:  return a->m_payload;
+        case PayloadsRole: return a->m_payloadValues;
         case StatusRole:   return a->m_statusCode;
         case SizeRole:     return a->m_responseSize;
         case TimeRole:     return a->m_elapsedMs;
@@ -55,6 +70,7 @@ QHash<int, QByteArray> Intruder::roleNames() const {
     return {
         { IdRole,       "rowId"        },
         { PayloadRole,  "payload"      },
+        { PayloadsRole, "payloads"     },
         { StatusRole,   "statusCode"   },
         { SizeRole,     "responseSize" },
         { TimeRole,     "elapsedMs"    },
@@ -73,7 +89,49 @@ void Intruder::setUseTls(bool tls) {
     emit targetChanged();
 }
 void Intruder::setRequestTemplate(const QString &t) { if (t == m_template) return; m_template = t; emit templateChanged(); }
-void Intruder::setPayloads(const QString &p)        { if (p == m_payloads) return; m_payloads = p; emit payloadsChanged(); }
+
+void Intruder::setPayloads(const QString &p) {
+    if (!m_payloadSets.isEmpty() && m_payloadSets.constFirst() == p) return;
+    if (m_payloadSets.isEmpty()) m_payloadSets.append(p);
+    else                         m_payloadSets[0] = p;
+    emit payloadsChanged();
+}
+
+void Intruder::setPayloadSets(const QStringList &s) {
+    if (s == m_payloadSets) return;
+    m_payloadSets = s;
+    emit payloadsChanged();
+}
+
+void Intruder::setAttackType(int t) {
+    if (t < Sniper || t > ClusterBomb || t == m_attackType) return;
+    m_attackType = t;
+    emit attackTypeChanged();
+}
+
+int Intruder::positionCount() const {
+    return IE::countMarkers(m_template);
+}
+
+QString Intruder::payloadSetAt(int i) const {
+    return (i >= 0 && i < m_payloadSets.size()) ? m_payloadSets[i] : QString();
+}
+
+void Intruder::setPayloadSetAt(int i, const QString &v) {
+    if (i < 0) return;
+    while (m_payloadSets.size() <= i) m_payloadSets.append(QString());
+    if (m_payloadSets[i] == v) return;
+    m_payloadSets[i] = v;
+    emit payloadsChanged();
+}
+
+void Intruder::syncSetsToPositions() {
+    const int want = qMax(1, positionCount());
+    if (m_payloadSets.size() == want) return;
+    while (m_payloadSets.size() < want) m_payloadSets.append(QString());
+    while (m_payloadSets.size() > want) m_payloadSets.removeLast();
+    emit payloadsChanged();
+}
 
 void Intruder::loadFromHistory(int row) {
     if (!m_model) return;
@@ -104,10 +162,12 @@ void Intruder::clearAll() {
     m_port = 443;
     m_useTls = true;
     m_template.clear();
-    m_payloads.clear();
+    m_payloadSets.clear();
+    m_attackType = Sniper;
     emit targetChanged();
     emit templateChanged();
     emit payloadsChanged();
+    emit attackTypeChanged();
 }
 
 void Intruder::stop() {
@@ -119,23 +179,29 @@ void Intruder::start() {
     if (m_running) return;
     if (m_host.isEmpty() || m_template.isEmpty()) return;
 
-    QStringList payloads;
-    for (const QString &line : m_payloads.split('\n')) {
-        const QString trimmed = line.trimmed();
-        if (!trimmed.isEmpty()) payloads.append(trimmed);
-    }
-    if (payloads.isEmpty()) return;
+    const int positions = IE::countMarkers(m_template);
+    if (positions == 0) return;
 
-    // Build the result rows up front so the table populates immediately
-    // and each individual attack just has to fill its slot.
+    QList<QStringList> sets;
+    sets.reserve(m_payloadSets.size());
+    for (const QString &block : m_payloadSets) sets.append(parseSet(block));
+
+    const QList<QStringList> combos = IE::generateCombinations(
+        static_cast<IE::AttackType>(m_attackType), positions, sets);
+    if (combos.isEmpty()) return;
+
+    // Build the result rows up front so the table populates immediately and
+    // each individual attack just has to fill its slot.
     beginResetModel();
     qDeleteAll(m_attacks);
     m_attacks.clear();
     m_completedCount = 0;
-    for (int i = 0; i < payloads.size(); ++i) {
+    for (int i = 0; i < combos.size(); ++i) {
         auto *a = new IntruderAttack(this);
         a->m_id = i + 1;
-        a->m_payload = payloads[i];
+        a->m_combo = combos[i];
+        a->m_payloadValues = displayValues(combos[i]);
+        a->m_payload = a->m_payloadValues.join(QStringLiteral(" / "));
         m_attacks.append(a);
     }
     endResetModel();
@@ -149,25 +215,23 @@ void Intruder::start() {
     const QString hostCopy = m_host;
     const int portCopy = m_port;
     const bool tlsCopy = m_useTls;
-    QStringList payloadsCopy = payloads;
+    const QList<QStringList> combosCopy = combos;
 
-    (void)QtConcurrent::run([this, payloadsCopy, templateCopy,
+    (void)QtConcurrent::run([this, combosCopy, templateCopy,
                              hostCopy, portCopy, tlsCopy]() {
-        runWorker(payloadsCopy, templateCopy, hostCopy, portCopy, tlsCopy);
+        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy);
     });
 }
 
-void Intruder::runWorker(const QStringList &payloadsCopy,
+void Intruder::runWorker(const QList<QStringList> &combos,
                          const QString &templateCopy,
                          const QString &host, int port, bool useTls) {
     HttpClient client;
-    const QRegularExpression rx = markerRegex();
 
-    for (int i = 0; i < payloadsCopy.size(); ++i) {
+    for (int i = 0; i < combos.size(); ++i) {
         if (m_stopRequested) break;
 
-        QString req = templateCopy;
-        req.replace(rx, payloadsCopy[i]);
+        QString req = IE::applyPayloads(templateCopy, combos[i]);
         // Normalize line endings for the wire.
         req.replace("\r\n", "\n");
         req.replace("\n", "\r\n");
@@ -235,7 +299,7 @@ bool Intruder::resend(int row) {
 
     // Reset the target row so the UI shows it as pending again.
     auto *a = m_attacks[row];
-    const QString payload = a->m_payload;
+    const QStringList combo = a->m_combo;
     a->m_statusCode   = 0;
     a->m_responseSize = 0;
     a->m_elapsedMs    = 0;
@@ -249,13 +313,11 @@ bool Intruder::resend(int row) {
     const QString hostCopy = m_host;
     const int     portCopy = m_port;
     const bool    tlsCopy  = m_useTls;
-    const QRegularExpression rx = markerRegex();
 
-    (void)QtConcurrent::run([this, row, payload, templateCopy,
-                             hostCopy, portCopy, tlsCopy, rx]() {
+    (void)QtConcurrent::run([this, row, combo, templateCopy,
+                             hostCopy, portCopy, tlsCopy]() {
         HttpClient client;
-        QString req = templateCopy;
-        req.replace(rx, payload);
+        QString req = IE::applyPayloads(templateCopy, combo);
         req.replace("\r\n", "\n");
         req.replace("\n", "\r\n");
         if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";

@@ -940,6 +940,16 @@ ApplicationWindow {
                                 label: intruder.useTls ? "TLS on" : "TLS off"
                                 onClicked: intruder.useTls = !intruder.useTls
                             }
+                            AccentButton {
+                                // Cycle Sniper → Battering ram → Pitchfork → Cluster bomb.
+                                label: ["Sniper", "Battering ram", "Pitchfork", "Cluster bomb"][intruder.attackType]
+                                onClicked: {
+                                    intruder.attackType = (intruder.attackType + 1) % 4
+                                    // Entering a multi-set mode? Make sure there's
+                                    // one editable payload set per marker position.
+                                    if (intruder.attackType >= 2) intruder.syncSetsToPositions()
+                                }
+                            }
                             Item { Layout.fillWidth: true }
                             Cell {
                                 text: intruder.running
@@ -992,8 +1002,25 @@ ApplicationWindow {
                             Layout.preferredWidth: 320
                             Layout.fillHeight: true
                             spacing: 2
-                            HeaderCell { text: "Payloads (one per line)" }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                HeaderCell {
+                                    text: intruder.attackType >= 2
+                                          ? ("Payload sets — one per position (" + intruder.positionCount
+                                             + " marker" + (intruder.positionCount === 1 ? "" : "s") + ")")
+                                          : "Payloads (one per line)"
+                                }
+                                Item { Layout.fillWidth: true }
+                                AccentButton {
+                                    visible: intruder.attackType >= 2
+                                    label: "Sync sets → " + intruder.positionCount
+                                    onClicked: intruder.syncSetsToPositions()
+                                }
+                            }
+
+                            // Sniper / Battering ram: a single payload list (set 0).
                             ScrollView {
+                                visible: intruder.attackType < 2
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
@@ -1005,6 +1032,38 @@ ApplicationWindow {
                                     background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
                                     text: intruder.payloads
                                     onEditingFinished: intruder.payloads = text
+                                }
+                            }
+
+                            // Pitchfork / Cluster bomb: one payload set per marker
+                            // position, stacked. Each commits to its own set index.
+                            ScrollView {
+                                visible: intruder.attackType >= 2
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                ColumnLayout {
+                                    width: parent.width
+                                    spacing: 4
+                                    Repeater {
+                                        model: intruder.payloadSets
+                                        delegate: ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 1
+                                            HeaderCell { text: "Set " + (index + 1) }
+                                            TextArea {
+                                                Layout.fillWidth: true
+                                                Layout.minimumHeight: 64
+                                                wrapMode: TextArea.NoWrap
+                                                font.family: "Consolas"
+                                                font.pixelSize: 12
+                                                color: root.text
+                                                background: Rectangle { color: "#080808"; border.color: root.line; border.width: 1 }
+                                                text: modelData
+                                                onEditingFinished: intruder.setPayloadSetAt(index, text)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1029,8 +1088,8 @@ ApplicationWindow {
                                 RowLayout {
                                     anchors.fill: parent
                                     spacing: 0
-                                    HeaderCell { text: "#";       Layout.preferredWidth: 50 }
-                                    HeaderCell { text: "Payload"; Layout.fillWidth: true; Layout.minimumWidth: 200 }
+                                    HeaderCell { text: "#";          Layout.preferredWidth: 50 }
+                                    HeaderCell { text: "Payload(s)";  Layout.fillWidth: true; Layout.minimumWidth: 200 }
                                     HeaderCell { text: "Status";  Layout.preferredWidth: 70 }
                                     HeaderCell { text: "Length";  Layout.preferredWidth: 90 }
                                     HeaderCell { text: "Time ms"; Layout.preferredWidth: 80 }

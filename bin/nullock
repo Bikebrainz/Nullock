@@ -358,7 +358,17 @@ cmd_repeater() {
 }
 
 cmd_intruder() {
-    # nullock intruder {set|multi|start|stop|clear|status|results|resend}
+    # nullock intruder {set|type|sets|multi|start|stop|clear|status|results|resend}
+    #
+    # Attack types (Burp parity):
+    #   sniper        one payload set, each §marker§ fuzzed one at a time
+    #   battering-ram one payload set, same payload in every marker
+    #   pitchfork     one set per marker, zipped by index (min length)
+    #   cluster-bomb  one set per marker, cartesian product (NxM...)
+    #
+    # Two ways to run: the stateful model path (set/type/sets -> start, polled
+    # via status/results, mirrored in the GUI) or the stateless one-shot
+    # `multi` (fires every combination and returns the rows inline).
     case ${1:-} in
         set)
             # nullock intruder set <host> <port> <tls> <template-file|-> <payloads-file|-|>
@@ -381,6 +391,27 @@ cmd_intruder() {
             if [[ -n $payloads ]]; then body+=",\"payloads\":$(jsonq "$payloads")"; fi
             body+="}"
             post /api/intruder/set "$body" | pp
+            ;;
+        type)
+            # nullock intruder type <sniper|battering-ram|pitchfork|cluster-bomb>
+            # Sets the attack type on the stateful model (used by `start`).
+            [[ -n ${2-} ]] || die "usage: nullock intruder type <sniper|battering-ram|pitchfork|cluster-bomb>"
+            post /api/intruder/set "{\"attackType\":$(jsonq "$2")}" | pp
+            ;;
+        sets)
+            # nullock intruder sets <set-file|-> [set-file|-] ...
+            # One payload set per marker position (Pitchfork / Cluster bomb).
+            # Each file is one payload per line; "-" reads stdin (first only).
+            shift
+            [[ -n ${1-} ]] || die "usage: nullock intruder sets <set-file|-> [set-file|-] ..."
+            local arr="[" first=1 content
+            for f in "$@"; do
+                if [[ $f == "-" ]]; then content=$(cat); else content=$(cat "$f"); fi
+                if (( first )); then first=0; else arr+=","; fi
+                arr+=$(jsonq "$content")
+            done
+            arr+="]"
+            post /api/intruder/set "{\"payloadSets\":$arr}" | pp
             ;;
         multi)
             # nullock intruder multi <host> <port> <tls> <attackType> <template-file|-> <payloadset-file>...
@@ -417,13 +448,16 @@ cmd_intruder() {
         status)
             snapshot | "$JQ" '{
                 host: .intruder.host, port: .intruder.port, tls: .intruder.tls,
+                attackType: .intruder.attackType,
+                positions: .intruder.positions,
                 running: .intruder.running,
+                sets: (.intruder.payloadSets | length),
                 payloads: (.intruder.payloads | length),
                 results: (.intruder.results | length)
             }'
             ;;
         results)
-            # Optional filter on status code or length.
+            # Optional filter on status code.
             local filter='.'
             if [[ -n ${2-} ]]; then
                 # Treat numeric arg as status code filter.
@@ -434,12 +468,12 @@ cmd_intruder() {
                 fi
             fi
             snapshot \
-                | "$JQ" "[.intruder.results[] | {row: .row, payload, status, length, time}] | map($filter)"
+                | "$JQ" "[.intruder.results[] | {row, payload, payloads, status, length, time}] | map($filter)"
             ;;
         resend)
             [[ -n ${2-} ]] || die "usage: nullock intruder resend <row-index>"
             post /api/intruder/resend "{\"row\":$2}" | pp ;;
-        *) die "usage: nullock intruder {set|start|stop|clear|status|results|resend}" ;;
+        *) die "usage: nullock intruder {set|type|sets|multi|start|stop|clear|status|results|resend}" ;;
     esac
 }
 
