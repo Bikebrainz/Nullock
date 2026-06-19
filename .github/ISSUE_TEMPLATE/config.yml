@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability in Nullock
+    url: https://github.com/Bikebrainz/Nullock/blob/Nullock/SECURITY.md
+    about: Do not file security issues publicly — follow the disclosure process in SECURITY.md.
+  - name: Question / discussion
+    url: https://github.com/Bikebrainz/Nullock/discussions
+    about: For usage questions and open-ended discussion.

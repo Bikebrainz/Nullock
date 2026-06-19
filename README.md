@@ -156,7 +156,11 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
 
 ## Contributing
 
-PRs welcome. Read [`SECURITY.md`](SECURITY.md) for the threat model first if you're touching the proxy or control server.
+PRs welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for build/test setup and
+the patterns for adding a scanner, lab, or extension, and
+[`INSTALL.md`](INSTALL.md) for per-platform install/build. Read
+[`SECURITY.md`](SECURITY.md) for the threat model first if you're touching the
+proxy or control server. Changes are recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
