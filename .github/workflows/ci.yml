@@ -94,6 +94,13 @@ jobs:
           $out | Out-String
           $fails = ($out | Select-String "^FAIL").Count
           if ($fails -gt 1) { exit 1 }
+      - name: active-probe smoke
+        # Deterministic active-probe regression (SSPP / host-header / LDAP /
+        # HTTP/3) against in-process Python mocks. Reliable (randomized ports,
+        # threaded) unlike the PS-HttpListener validate_v3. shell:bash uses the
+        # git-bash that ships on the windows runner; python is on PATH there.
+        shell: bash
+        run: bash scripts/probe_smoke.sh "build/Src/App/Release/NullockApp.exe"
 
   fuzz-corpus-replay:
     name: replay fuzz corpus (standalone)
