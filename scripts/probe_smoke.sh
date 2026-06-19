@@ -97,6 +97,26 @@ def make(mode):
                 if p == '/admin': self._send(200, b'<html>Admin Panel login</html>')
                 else:             self._send(404, b'<html>404 not found</html>')
                 return
+            if mode.startswith('sqli'):
+                # Error-based: an unbalanced quote (odd count) breaks the query;
+                # the breaker has 1 quote (odd), the balanced control has 2 (even).
+                val = q.get('q', [''])[0]
+                vuln = (mode == 'sqli-vuln' and val.count("'") % 2 == 1)
+                if vuln:
+                    self._send(200, b'<html>You have an error in your SQL syntax; check the '
+                                    b'manual that corresponds to your MySQL server version</html>')
+                else:
+                    self._send(200, b'<html>0 results</html>')
+                return
+            if mode.startswith('xss'):
+                # Reflected: echo the param into element content. Vulnerable mock
+                # reflects it raw (the <marker> stays an executable tag); the safe
+                # mock HTML-escapes it.
+                val = q.get('q', [''])[0]
+                if mode != 'xss-vuln':
+                    val = val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
+                return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -115,6 +135,8 @@ PY
 # mock's stdout (avoids any reserved/busy-port collision).
 MODES=(sspp-vuln sspp-safe sspp-gzip
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
+       sqli-vuln sqli-safe
+       xss-vuln xss-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -178,6 +200,14 @@ chk "hh bare -> reflected only"         "$(post /api/hostheader/test "{\"url\":\
 chk "hh safe -> nothing"                "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-safe]} '')\"}")" "d.get('ok') and not d.get('anyInjection') and not d.get('anyReflected')"
 chk "hh comment -> not injection (FP)"  "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-comment]} '')\"}")" "not d.get('anyInjection')"
 chk "hh cookie -> reflected"            "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-cookie]} '')\"}")" "d.get('anyReflected')"
+
+echo "== SQL injection (core) =="
+chk "sqli vulnerable -> confirmed"      "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
+chk "sqli safe -> not vulnerable"       "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== reflected XSS (core) =="
+chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
+chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
