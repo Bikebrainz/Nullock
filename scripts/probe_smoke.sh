@@ -57,6 +57,21 @@ def make(mode):
                 else:
                     self._send(200, b'<r>ok</r>', 'application/xml')
                 return
+            if mode.startswith('massassign'):
+                # Vulnerable mock binds known model fields (echoes their marker
+                # values) but drops unknown ones -- including the probe's random
+                # control field, so reflection stays a usable discriminator. Safe
+                # mock binds nothing. (role/isAdmin/... are canonical, so echoing
+                # a couple is enough for the probe to find a mass-assignable one.)
+                try: o = json.loads(raw)
+                except Exception: o = {}
+                known = {'role', 'roles', 'is_admin', 'isAdmin', 'admin', 'is_superuser',
+                         'superuser', 'user_id', 'userId', 'owner', 'balance', 'credit',
+                         'price', 'status', 'plan', 'tier', 'is_active', 'active',
+                         'enabled', 'verified', 'is_verified', 'permissions'}
+                out = {k: v for k, v in o.items()
+                       if mode == 'massassign-vuln' and k in known} if isinstance(o, dict) else {}
+                self._send(200, json.dumps(out).encode(), 'application/json'); return
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
@@ -237,6 +252,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        nosqli-vuln nosqli-safe
        idor-vuln idor-safe
        xxe-vuln xxe-safe
+       massassign-vuln massassign-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -344,6 +360,10 @@ chk "idor safe -> no finding"           "$(post /api/idor/test "{\"url\":\"$(url
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
 chk "xxe safe -> not vulnerable"        "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== mass assignment (core) =="
+chk "mass-assign vulnerable -> field bound" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-vuln]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('foundCount',0)>=1 and d.get('reflectionUsable')"
+chk "mass-assign safe -> nothing bound"     "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-safe]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('ok') and d.get('foundCount',0)==0 and d.get('reflectionUsable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
