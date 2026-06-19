@@ -48,6 +48,8 @@ add_library(Networking STATIC
     finding_enricher.hpp
     cve_database.cpp
     cve_database.hpp
+    request_export.cpp
+    request_export.hpp
     chain_runner.cpp
     chain_runner.hpp
     jwt_tool.cpp

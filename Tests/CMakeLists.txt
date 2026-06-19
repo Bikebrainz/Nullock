@@ -32,3 +32,7 @@ add_subdirectory(cve_database)
 # Finding-enricher coverage -- every emitted finding kind must map to a
 # non-empty CWE/OWASP. Run via: ctest -R finding_enricher -V
 add_subdirectory(finding_enricher)
+
+# RequestExport -- CSRF PoC + copy-as-curl transforms (escaping/structure).
+# Run via: ctest -R request_export -V
+add_subdirectory(request_export)
