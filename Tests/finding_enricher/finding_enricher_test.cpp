@@ -51,6 +51,9 @@ const QStringList &emittedKinds() {
         "web-cache-poisoning", "web-cache-poisoning-confirmed", "web-cache-unkeyed-reflected", "ws-cross-origin-accepted",
         "x-powered-by", "xxe-injection", "cve-correlated", "secret-exposed",
         "sensitive-file-exposure",
+        // active probes added in the above-Burp climb
+        "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
+        "http3-advertised", "ldap-injection",
     };
     return k;
 }
@@ -72,6 +75,9 @@ const QList<Spot> &spotChecks() {
         { "authz-divergence",            "CWE-285" },   // exact
         { "ws-cross-origin-accepted",    "CWE-1385" },  // exact
         { "cookie-no-httponly",          "CWE-1004" },  // pre-existing exact
+        { "ldap-injection",              "CWE-90" },    // exact (new)
+        { "host-header-injection",       "CWE-20" },    // exact (new)
+        { "proto-pollution-reflected",   "CWE-1321" },  // exact (new)
     };
     return s;
 }
