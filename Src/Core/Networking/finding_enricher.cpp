@@ -203,6 +203,7 @@ const QHash<QString, Mapping> &table() {
         { "open-port",                    { "CWE-200", "A05:2021-Security Misconfiguration", 1.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "An open TCP port was found. Confirm the service is meant to be reachable; close or firewall it if not (reduce attack surface)." } },
         { "robots-disallowed-path",       { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "robots.txt Disallow points crawlers away from this path -- often an unlinked admin/backup/internal endpoint. Review it (and don't rely on robots.txt for access control)." } },
         { "waf-detected",                 { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Protective infrastructure (WAF/CDN/LB) identified in front of the target -- informational context for the engagement (expect rate-limiting/blocking; consider origin-IP discovery)." } },
+        { "http3-advertised",             { "CWE-200", "A05:2021-Security Misconfiguration", 0.0, "", "", "Host advertises HTTP/3 (QUIC) via Alt-Svc -- a distinct attack surface from the TCP path (separate stack/edge, sometimes different routing). Test the h3 path too and ensure it enforces the same controls as HTTP/1.1 and HTTP/2." } },
 
         // ---- HTTP method exposure ------------------------------------
         { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Disable write methods (PUT/DELETE/PATCH) unless required; enforce auth + an allow-list per route." } },

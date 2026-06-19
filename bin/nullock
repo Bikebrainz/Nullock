@@ -1233,6 +1233,23 @@ cmd_protopollution() {
     post /api/protopollution/test "$body" | pp
 }
 
+cmd_http3() {
+    # nullock http3 <url> [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock http3 <url> [hdr:val ...]"
+    local url=$1; shift
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/http3/detect "{\"url\":$(jsonq "$url"),\"headers\":$headers}" | pp
+}
+
 cmd_race() {
     # nullock race <url> [count] [method] [body-file|-] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock race <url> [count] [method] [body-file|-] [Header:Value ...]"
@@ -1692,6 +1709,8 @@ Above-Burp features (v4/v5):
                                          server-side prototype pollution -- the
                                          benign json-spaces gadget: compact ->
                                          indented-by-7 -> reverted on cleanup
+  nullock http3 <url> [hdr:val ...]      HTTP/3 (QUIC) readiness -- parses
+                                         Alt-Svc for advertised h3 versions
   nullock openredirect <url> [param] [hdr:val ...]
                                          open redirect -- fires parser-confusion
                                          bypass payloads and confirms by the
@@ -1849,6 +1868,7 @@ case ${1:-help} in
     ssti)          shift; cmd_ssti "$@"          ;;
     cachepoison)   shift; cmd_cachepoison "$@"   ;;
     protopollution) shift; cmd_protopollution "$@" ;;
+    http3)         shift; cmd_http3 "$@"         ;;
     openredirect)  shift; cmd_openredirect "$@"  ;;
     headeraudit)   shift; cmd_headeraudit "$@"   ;;
     secrets)       shift; cmd_secrets "$@"       ;;

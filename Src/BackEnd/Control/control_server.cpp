@@ -25,6 +25,7 @@
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
 #include "proto_pollution.hpp"
+#include "http3_detect.hpp"
 #include "open_redirect.hpp"
 #include "header_audit.hpp"
 #include "secret_scanner.hpp"
@@ -2673,7 +2674,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         "/api/tls/inspect", "/api/fingerprint", "/api/methods/test", "/api/takeover/test",
         "/api/assess", "/api/exposure/scan", "/api/cachedeception/test",
         "/api/pipeline/run", "/api/robots/scan", "/api/waf/detect",
-        "/api/intruder/multi", "/api/protopollution/test",
+        "/api/intruder/multi", "/api/protopollution/test", "/api/http3/detect",
     };
     if (kActivePaths.contains(path)) {
         QString tgtHost = bodyJson.value("host").toString();
@@ -7123,6 +7124,48 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "revertedAfterCleanup", pres.revertedAfterCleanup },
                        { "baselineStatus", pres.baselineStatus },
                        { "requestsSent", pres.requestsSent }});
+    }
+
+    // ---- HTTP/3 (QUIC) readiness detection ---------------------------
+    // POST /api/http3/detect { url, headers? }
+    //   One GET, then parse Alt-Svc (RFC 7838) for advertised h3* versions.
+    //   Read-only discovery -- it does not speak QUIC. Emits an info finding
+    //   when HTTP/3 is advertised (a distinct attack surface). Scope-gated.
+    if (path == "/api/http3/detect") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::Http3Detect::Request hr;
+        hr.host = u.host();
+        hr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        hr.tls  = (u.scheme() == "https");
+        hr.path = u.path(QUrl::FullyEncoded).isEmpty()
+                  ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        hr.query = u.query(QUrl::FullyEncoded);
+        const QJsonObject hhdrs = bodyJson.value("headers").toObject();
+        for (auto it = hhdrs.begin(); it != hhdrs.end(); ++it)
+            hr.headers.append({ it.key(), it.value().toString() });
+
+        const auto hres = Nullock::Core::Http3Detect::detect(hr);
+
+        QJsonArray protos;
+        for (const auto &p : hres.protocols)
+            protos.append(QJsonObject{
+                { "id", p.id }, { "authority", p.authority },
+                { "maxAge", p.maxAge }, { "isHttp3", p.isHttp3 } });
+        if (hres.advertisesHttp3 && m_wiring.scanner)
+            m_wiring.scanner->reportFinding(0, "info", "http3-advertised",
+                QString("HTTP/3 advertised (%1)").arg(hres.http3Versions.join(", ")),
+                "via Alt-Svc: " + hres.altSvcRaw, hr.host, url);
+        return okJson({{ "ok", hres.error.isEmpty() },
+                       { "error", hres.error },
+                       { "advertisesHttp3", hres.advertisesHttp3 },
+                       { "http3Versions", QJsonArray::fromStringList(hres.http3Versions) },
+                       { "altSvc", hres.altSvcRaw },
+                       { "protocols", protos },
+                       { "baselineStatus", hres.baselineStatus }});
     }
 
     // ---- Race-condition tester ---------------------------------------

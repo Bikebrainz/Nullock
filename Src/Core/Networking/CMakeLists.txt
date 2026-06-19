@@ -76,6 +76,8 @@ add_library(Networking STATIC
     cache_poison.hpp
     proto_pollution.cpp
     proto_pollution.hpp
+    http3_detect.cpp
+    http3_detect.hpp
     open_redirect.cpp
     open_redirect.hpp
     header_audit.cpp
