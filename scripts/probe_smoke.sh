@@ -48,6 +48,15 @@ def make(mode):
                 if isinstance(p, dict) and isinstance(p.get('__proto__'), dict) and 'json spaces' in p['__proto__']:
                     try: state['spaces'] = int(p['__proto__']['json spaces'])
                     except Exception: pass
+            if mode.startswith('xxe'):
+                # Vulnerable mock "resolves" an external entity to /etc/passwd by
+                # echoing a passwd-shaped body when the XML declares one; the safe
+                # mock never does. The probe matches the root:x:0:0: signature.
+                if mode == 'xxe-vuln' and b'SYSTEM' in raw and b'passwd' in raw:
+                    self._send(200, b'<r>root:x:0:0:root:/root:/bin/bash</r>', 'application/xml')
+                else:
+                    self._send(200, b'<r>ok</r>', 'application/xml')
+                return
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
@@ -197,6 +206,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        verb-vuln verb-safe
        ssti-vuln ssti-safe
        cmdi-vuln cmdi-safe
+       xxe-vuln xxe-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
@@ -292,6 +302,10 @@ chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url
 echo "== OS command injection (core) =="
 chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"
 chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-safe]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== XXE (core) =="
+chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
+chk "xxe safe -> not vulnerable"        "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
