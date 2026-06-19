@@ -9,3 +9,6 @@ add_subdirectory(FrontEnd)
 
 # Add main application executable
 add_subdirectory(App)
+
+# Standalone headless tools (e.g. nullock-oast, the deployable OAST sink)
+add_subdirectory(Tools)
