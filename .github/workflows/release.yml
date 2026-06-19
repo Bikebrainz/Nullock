@@ -14,12 +14,13 @@ name: release
 #             Nullock-x86_64.AppImage
 #   macOS   : Nullock-1.0.0-Darwin.dmg
 #
-# CODE SIGNING + NOTARIZATION are wired but OPTIONAL: every signing step is
-# guarded by `if: ${{ secrets.* != '' }}`, so with no certs configured the
-# release builds and uploads UNSIGNED exactly as before. Add the repo secrets
-# documented in RELEASE_SIGNING.md and the same workflow signs Windows builds
-# and codesigns + notarizes the macOS app -- no YAML change required to turn it
-# on. See RELEASE_SIGNING.md for the exact secret names and how to mint them.
+# CODE SIGNING + NOTARIZATION are wired but OPTIONAL: each signing step runs
+# unconditionally and no-ops inside its own script when the relevant secret is
+# empty (the secrets context is NOT allowed in step `if:`, so a script guard is
+# used instead). With no certs configured the release builds and uploads
+# UNSIGNED exactly as before. Add the repo secrets documented in
+# RELEASE_SIGNING.md and the same workflow signs Windows builds and codesigns +
+# notarizes the macOS app -- no YAML change required to turn it on.
 
 on:
   push:
@@ -52,13 +53,13 @@ jobs:
             -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows"
       - name: build
         run: cmake --build build --config Release --target NullockApp
-      - name: sign app (optional -- needs WINDOWS_CERT_* secrets)
-        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+      - name: sign app (no-op without WINDOWS_CERT_* secrets)
         shell: pwsh
         env:
           CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
+          if (-not $env:CERT_B64) { Write-Host "no WINDOWS_CERT_BASE64; skipping signing"; exit 0 }
           $pfx = Join-Path $env:RUNNER_TEMP nullock-cert.pfx
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
@@ -69,13 +70,13 @@ jobs:
       - name: package
         working-directory: build
         run: cpack -G "NSIS;ZIP" -C Release
-      - name: sign installer (optional -- needs WINDOWS_CERT_* secrets)
-        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+      - name: sign installer (no-op without WINDOWS_CERT_* secrets)
         shell: pwsh
         env:
           CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           CERT_PW: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
+          if (-not $env:CERT_B64) { Write-Host "no WINDOWS_CERT_BASE64; skipping signing"; exit 0 }
           $pfx = Join-Path $env:RUNNER_TEMP nullock-cert.pfx
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
@@ -141,12 +142,12 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
         run: cmake --build build -j
-      - name: import signing cert (optional -- needs MACOS_CERT_* secrets)
-        if: ${{ secrets.MACOS_CERT_BASE64 != '' }}
+      - name: import signing cert (no-op without MACOS_CERT_* secrets)
         env:
           CERT_B64: ${{ secrets.MACOS_CERT_BASE64 }}
           CERT_PW: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
+          if [ -z "$CERT_B64" ]; then echo "no MACOS_CERT_BASE64; skipping signing"; exit 0; fi
           KC="$RUNNER_TEMP/build.keychain"
           KC_PW="ci-$RANDOM"
           echo "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
@@ -157,11 +158,12 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PW" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KC"
           rm "$RUNNER_TEMP/cert.p12"
-      - name: codesign app (optional)
-        if: ${{ secrets.MACOS_CERT_BASE64 != '' }}
+      - name: codesign app (no-op without MACOS_CERT_* secrets)
         env:
+          CERT_B64: ${{ secrets.MACOS_CERT_BASE64 }}
           SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
+          if [ -z "$CERT_B64" ]; then echo "no MACOS_CERT_BASE64; skipping codesign"; exit 0; fi
           APP=$(find build -maxdepth 6 -name '*.app' -type d | head -1)
           echo "signing $APP"
           codesign --deep --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
@@ -169,13 +171,13 @@ jobs:
       - name: cpack -- DMG
         working-directory: build
         run: cpack -G "DragNDrop"
-      - name: notarize + staple dmg (optional -- needs AC_API_* secrets)
-        if: ${{ secrets.MACOS_CERT_BASE64 != '' && secrets.AC_API_KEY_ID != '' }}
+      - name: notarize + staple dmg (no-op without AC_API_* secrets)
         env:
           AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
           AC_ISSUER: ${{ secrets.AC_API_ISSUER }}
           AC_KEY: ${{ secrets.AC_API_KEY }}
         run: |
+          if [ -z "$AC_KEY" ]; then echo "no AC_API_KEY; skipping notarization"; exit 0; fi
           echo "$AC_KEY" > "$RUNNER_TEMP/ac_key.p8"
           DMG=$(find build -name 'Nullock-*-Darwin.dmg' | head -1)
           xcrun notarytool submit "$DMG" \
