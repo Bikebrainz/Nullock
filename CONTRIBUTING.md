@@ -54,12 +54,12 @@ Linux/macOS builds use the same CMake project with the platform Qt; see
 
 ## Test
 
-Four regression suites run in CI on every push and locally via ctest:
+Five regression suites run in CI on every push and locally via ctest:
 
 ```sh
 cmake --build build --config Release ^
-  --target scanner_regression_test cve_database_test finding_enricher_test request_export_test
-ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export" --output-on-failure
+  --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test
+ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine" --output-on-failure
 ```
 
 - `scanner_regression` — every passive detector, positive + negative cases.
@@ -68,10 +68,22 @@ ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_en
 - `finding_enricher` — every emitted finding kind maps to a non-empty
   CWE/OWASP.
 - `request_export` — CSRF-PoC + copy-as-curl transforms (escaping/structure).
+- `intruder_engine` — the four attack-type combination generators + marker
+  substitution.
 
 `scripts/integration_smoke.ps1` is the whole-system check (import → CVE
 feed → bridge → reports → ScopeGuard) against one headless instance — the
 reliable go-to over the flakier `scripts/validate_v3.ps1`.
+
+`scripts/probe_smoke.sh` is the deterministic **active-probe** regression: it
+drives the headless server against reliable Python `http.server` mocks and
+asserts each probe both fires on a vulnerable target and stays quiet on a safe
+one (server-side prototype pollution, host-header injection, LDAP injection,
+HTTP/3 detection). Run it after touching any probe:
+
+```sh
+scripts/probe_smoke.sh            # auto-finds the Release build, or pass the exe path
+```
 
 ## Adding a scanner / probe
 
