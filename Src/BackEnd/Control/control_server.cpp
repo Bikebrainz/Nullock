@@ -35,6 +35,7 @@
 #include "cmd_injection.hpp"
 #include "xss_reflected.hpp"
 #include "sql_injection.hpp"
+#include "ldap_injection.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -2665,7 +2666,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // endpoints (portscan, audit/all, chain/run, intruder, repeater, authz-test)
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
-        "/api/sqli/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
+        "/api/sqli/test", "/api/ldapi/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
         "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
@@ -6663,6 +6664,53 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", sres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(sres.testedParams) },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- LDAP injection ----------------------------------------------
+    // POST /api/ldapi/test { url, param?, method?, headers? }
+    //   Injects filter-breaking metacharacters; confirms by an LDAP error
+    //   absent from the baseline and absent under a benign value. CWE-90.
+    if (path == "/api/ldapi/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::LdapInjection::Request lr;
+        lr.host = u.host();
+        lr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        lr.tls  = (u.scheme() == "https");
+        lr.method = bodyJson.value("method").toString("GET").toUpper();
+        lr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        lr.query = u.query(QUrl::FullyEncoded);
+        lr.param = bodyJson.value("param").toString();
+        const QJsonObject lhdrs = bodyJson.value("headers").toObject();
+        for (auto it = lhdrs.begin(); it != lhdrs.end(); ++it)
+            lr.headers.append({ it.key(), it.value().toString() });
+
+        const auto lres = Nullock::Core::LdapInjection::test(lr);
+
+        QJsonArray hits;
+        for (const auto &h : lres.hits)
+            hits.append(QJsonObject{
+                { "param", h.param }, { "engine", h.engine },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+        if (m_wiring.scanner && lres.vulnerable)
+            m_wiring.scanner->reportFinding(0, "high", "ldap-injection",
+                QString("LDAP injection in '%1' (%2) -- a filter metacharacter broke the search filter")
+                    .arg(lres.hits.first().param, lres.hits.first().engine),
+                "the directory returned a filter error on an injected metacharacter, "
+                "absent under a benign value: " + lres.hits.first().evidence,
+                u.host(), url);
+        return okJson({{ "ok", lres.error.isEmpty() },
+                       { "error", lres.error },
+                       { "vulnerable", lres.vulnerable },
+                       { "baselineStatus", lres.baselineStatus },
+                       { "requestsSent", lres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(lres.testedParams) },
+                       { "hitCount", static_cast<int>(lres.hits.size()) },
                        { "hits", hits }});
     }
 

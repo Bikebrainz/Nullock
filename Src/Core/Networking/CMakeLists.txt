@@ -96,6 +96,8 @@ add_library(Networking STATIC
     xss_reflected.hpp
     sql_injection.cpp
     sql_injection.hpp
+    ldap_injection.cpp
+    ldap_injection.hpp
     xxe_injection.cpp
     xxe_injection.hpp
     nosql_injection.cpp
