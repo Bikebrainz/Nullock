@@ -192,6 +192,22 @@ def make(mode):
                 else:
                     self._send(200, b'<html>1 result</html>')
                 return
+            if mode.startswith('idor'):
+                # Vulnerable mock serves a distinct object per id (so a neighbor
+                # id returns a real OTHER object: 200, body != yours, length !=
+                # the not-found control) -- BOLA. Out-of-range control ids 404.
+                # Safe mock ignores the id (same body for all -> not "someone
+                # else's object").
+                try: n = int(q.get('id', [''])[0])
+                except Exception: n = -1
+                if mode == 'idor-vuln' and 0 <= n <= 1000000:
+                    self._send(200, ('<html>Account %d: balance $%d, owner user_%d, '
+                                     'email user%d@corp.test</html>' % (n, n * 7, n, n)).encode())
+                elif mode == 'idor-vuln':
+                    self._send(404, b'<html>not found</html>')
+                else:
+                    self._send(200, b'<html>your dashboard</html>')
+                return
             self._send(200, b'ok\n', 'text/plain')
         def log_message(self, *a): pass
     return H
@@ -219,6 +235,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ssti-vuln ssti-safe
        cmdi-vuln cmdi-safe
        nosqli-vuln nosqli-safe
+       idor-vuln idor-safe
        xxe-vuln xxe-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
@@ -319,6 +336,10 @@ chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url
 echo "== NoSQL injection (core) =="
 chk "nosqli vulnerable -> confirmed"    "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
 chk "nosqli safe -> not vulnerable"     "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== IDOR / BOLA (core) =="
+chk "idor vulnerable -> finding"        "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-vuln]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('findingCount',0)>=1"
+chk "idor safe -> no finding"           "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-safe]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('ok') and d.get('findingCount',0)==0"
 
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
