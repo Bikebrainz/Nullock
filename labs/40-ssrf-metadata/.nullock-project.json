@@ -1,0 +1,6 @@
+{
+  "name": "Lab 40 -- SSRF to internal-only services (cloud-metadata pattern).",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5040/*", "http://127.0.0.1:5040/*"],
+  "outOfScope": []
+}

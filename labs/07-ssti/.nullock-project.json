@@ -1,0 +1,6 @@
+{
+  "name": "Lab 07 -- Server-Side Template Injection (Jinja2).",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5007/*", "http://127.0.0.1:5007/*"],
+  "outOfScope": []
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Lab 11 -- Prototype pollution via deep-merge.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5011/*", "http://127.0.0.1:5011/*"],
+  "outOfScope": []
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Lab 42 -- Sensitive data in the URL (credentials/token in query string).",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5042/*", "http://127.0.0.1:5042/*"],
+  "outOfScope": []
+}

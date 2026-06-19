@@ -1,0 +1,6 @@
+{
+  "name": "Lab 46 -- HTTP verb tampering (method-based access-control bypass).",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5046/*", "http://127.0.0.1:5046/*"],
+  "outOfScope": []
+}

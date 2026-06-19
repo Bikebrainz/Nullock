@@ -79,23 +79,31 @@ category, end-to-end, with Nullock.
 
 ## Run
 
-Each lab has its own `app.py`. From the lab dir:
+Each lab is its own `app.py` on a fixed port (`50NN` for lab NN, e.g. lab 43
+is on `5043`). From the lab dir:
 
 ```sh
-pip install flask
+pip install flask          # + requests for the few labs that need it
 python app.py
-# in another shell -- with Nullock running on 8080:
-HTTP_PROXY=http://127.0.0.1:8080 curl http://localhost:5000/
 ```
+
+Every lab ships a `.nullock-project.json` that pins scope to the lab host, so
+you don't have to `nullock scope add` by hand — point Nullock at it (or just
+run the steps in `app.py`'s docstring, which set scope for you). The docstring
+is the walkthrough: the vulnerability, the exact `nullock` commands to confirm
+it, and the upstream fix.
 
 ## Add a lab
 
-PRs welcome. Keep them under 100 lines of Python. Each lab needs:
+PRs welcome. Keep them under 100 lines of Python (Flask + `requests` only).
+Each lab is:
 
-1. `app.py` -- runs on `localhost:5000` (or another fixed port noted
-   in its README).
-2. `README.md` with: vulnerability description, expected exploit,
-   step-by-step Nullock walkthrough (which tab, which click, what to
-   expect), and the one-line fix you'd PR upstream.
-3. (Optional) a `.nullock-project.json` -- pre-set scope to the lab
-   host so the user doesn't have to configure scope manually.
+1. `app.py` -- runs on a fixed port (`50NN`), with a **module docstring that
+   IS the walkthrough**: the vulnerability, the step-by-step `nullock`
+   commands to confirm it, and the one-line fix you'd PR upstream.
+2. `.nullock-project.json` -- a project preset pinning scope to the lab host
+   (`inScope: ["http://localhost:50NN/*", ...]`), so opening the lab is
+   pre-scoped. Every lab ships one.
+
+Each lab should map to a Nullock probe (`xxe`, `crlf`, `verbtamper`,
+`sequencer`, ...) so the learner confirms the bug with the tool.
