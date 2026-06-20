@@ -121,6 +121,23 @@ constexpr qint64  kBodyDeadlineMs   = 30'000;
 // 4 GB POST can't OOM us. Returns 413 above this.
 constexpr qint64  kMaxBodyBytes  = 64LL * 1024 * 1024;
 
+// HTTP method from a JSON "method" field: defaulted and upper-cased, with CR/LF
+// STRIPPED. This is the single choke point for every probe that builds an
+// outbound request line from an operator-supplied method: QString::toUpper()
+// does NOT remove CR/LF, so a "method" like "GET / HTTP/1.1\r\nX-Injected: 1"
+// would otherwise splice a request line / extra headers into the request the
+// probe sends to the chosen target (a request-line injection a soundness audit
+// found across the probe set). Host/path/query already arrive CRLF-safe from
+// QUrl, so neutralizing method here closes the class for all probes at the
+// source (probe-level buildRequest guards remain as defense-in-depth). CR/LF is
+// stripped (not the whole token rejected) so the Repeater's custom methods keep
+// working; a residual odd method just yields a malformed-but-unsplit request.
+QString httpMethodFromJson(const QJsonObject &body, const char *dflt) {
+    QString m = body.value(QStringLiteral("method")).toString(QString::fromUtf8(dflt)).toUpper();
+    m.remove('\r').remove('\n');
+    return m.isEmpty() ? QString::fromUtf8(dflt).toUpper() : m;
+}
+
 // ---- Deep-scan audit helper --------------------------------------------
 // Runs the active-testing battery against one target and emits one summary
 // finding per tester that hit. Shared by /api/audit/run (single URL, sync)
@@ -5853,7 +5870,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         jr.host = u.host();
         jr.port = u.port(u.scheme() == "https" ? 443 : 80);
         jr.tls  = (u.scheme() == "https");
-        jr.method = bodyJson.value("method").toString("GET").toUpper();
+        jr.method = httpMethodFromJson(bodyJson, "GET");
         jr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         jr.query = u.query(QUrl::FullyEncoded);
@@ -5911,7 +5928,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                            ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         const QString rawQuery = u.query(QUrl::FullyEncoded);
         if (!rawQuery.isEmpty()) basePath += "?" + rawQuery;
-        const QString method = bodyJson.value("method").toString("GET").toUpper();
+        const QString method = httpMethodFromJson(bodyJson, "GET");
         const QByteArray body = bodyJson.value("body").toString().toUtf8();
         QList<QPair<QString, QString>> headers;
         const QJsonObject hdrs = bodyJson.value("headers").toObject();
@@ -6052,7 +6069,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         mreq.host   = u.host();
         mreq.port   = u.port(u.scheme() == "https" ? 443 : 80);
         mreq.tls    = (u.scheme() == "https");
-        mreq.method = bodyJson.value("method").toString("GET").toUpper();
+        mreq.method = httpMethodFromJson(bodyJson, "GET");
         mreq.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                         ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
@@ -6128,7 +6145,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         vr.host = u.host();
         vr.port = u.port(u.scheme() == "https" ? 443 : 80);
         vr.tls  = (u.scheme() == "https");
-        vr.method = bodyJson.value("method").toString("GET").toUpper();
+        vr.method = httpMethodFromJson(bodyJson, "GET");
         vr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
@@ -6184,7 +6201,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.host = u.host();
         sr.port = u.port(u.scheme() == "https" ? 443 : 80);
         sr.tls  = (u.scheme() == "https");
-        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.method = httpMethodFromJson(bodyJson, "GET");
         sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         sr.query = u.query(QUrl::FullyEncoded);
@@ -6723,7 +6740,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         nr.host = u.host();
         nr.port = u.port(u.scheme() == "https" ? 443 : 80);
         nr.tls  = (u.scheme() == "https");
-        nr.method = bodyJson.value("method").toString("GET").toUpper();
+        nr.method = httpMethodFromJson(bodyJson, "GET");
         nr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         nr.query = u.query(QUrl::FullyEncoded);
@@ -6770,7 +6787,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         xr.host = u.host();
         xr.port = u.port(u.scheme() == "https" ? 443 : 80);
         xr.tls  = (u.scheme() == "https");
-        xr.method = bodyJson.value("method").toString("POST").toUpper();
+        xr.method = httpMethodFromJson(bodyJson, "POST");
         xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         xr.contentType = bodyJson.value("contentType").toString();
@@ -6814,7 +6831,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.host = u.host();
         sr.port = u.port(u.scheme() == "https" ? 443 : 80);
         sr.tls  = (u.scheme() == "https");
-        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.method = httpMethodFromJson(bodyJson, "GET");
         sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         sr.query = u.query(QUrl::FullyEncoded);
@@ -6870,7 +6887,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         lr.host = u.host();
         lr.port = u.port(u.scheme() == "https" ? 443 : 80);
         lr.tls  = (u.scheme() == "https");
-        lr.method = bodyJson.value("method").toString("GET").toUpper();
+        lr.method = httpMethodFromJson(bodyJson, "GET");
         lr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         lr.query = u.query(QUrl::FullyEncoded);
@@ -6917,7 +6934,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         xr.host = u.host();
         xr.port = u.port(u.scheme() == "https" ? 443 : 80);
         xr.tls  = (u.scheme() == "https");
-        xr.method = bodyJson.value("method").toString("GET").toUpper();
+        xr.method = httpMethodFromJson(bodyJson, "GET");
         xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         xr.query = u.query(QUrl::FullyEncoded);
@@ -6965,7 +6982,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         sr.host = u.host();
         sr.port = u.port(u.scheme() == "https" ? 443 : 80);
         sr.tls  = (u.scheme() == "https");
-        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.method = httpMethodFromJson(bodyJson, "GET");
         sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         sr.query = u.query(QUrl::FullyEncoded);
@@ -7016,7 +7033,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         dr.host = u.host();
         dr.port = u.port(u.scheme() == "https" ? 443 : 80);
         dr.tls  = (u.scheme() == "https");
-        dr.method = bodyJson.value("method").toString("GET").toUpper();
+        dr.method = httpMethodFromJson(bodyJson, "GET");
         dr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         dr.query = u.query(QUrl::FullyEncoded);
@@ -7108,7 +7125,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         xr.host = u.host();
         xr.port = u.port(u.scheme() == "https" ? 443 : 80);
         xr.tls  = (u.scheme() == "https");
-        xr.method = bodyJson.value("method").toString("GET").toUpper();
+        xr.method = httpMethodFromJson(bodyJson, "GET");
         xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         xr.query = u.query(QUrl::FullyEncoded);
@@ -7157,7 +7174,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         cir.host = u.host();
         cir.port = u.port(u.scheme() == "https" ? 443 : 80);
         cir.tls  = (u.scheme() == "https");
-        cir.method = bodyJson.value("method").toString("GET").toUpper();
+        cir.method = httpMethodFromJson(bodyJson, "GET");
         cir.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                        ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         cir.query = u.query(QUrl::FullyEncoded);
@@ -7208,7 +7225,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         pr.host = u.host();
         pr.port = u.port(u.scheme() == "https" ? 443 : 80);
         pr.tls  = (u.scheme() == "https");
-        pr.method = bodyJson.value("method").toString("GET").toUpper();
+        pr.method = httpMethodFromJson(bodyJson, "GET");
         pr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         pr.query = u.query(QUrl::FullyEncoded);
@@ -7258,7 +7275,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         cr.host = u.host();
         cr.port = u.port(u.scheme() == "https" ? 443 : 80);
         cr.tls  = (u.scheme() == "https");
-        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.method = httpMethodFromJson(bodyJson, "GET");
         cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         cr.query = u.query(QUrl::FullyEncoded);
@@ -7394,7 +7411,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         orq.host = u.host();
         orq.port = u.port(u.scheme() == "https" ? 443 : 80);
         orq.tls  = (u.scheme() == "https");
-        orq.method = bodyJson.value("method").toString("GET").toUpper();
+        orq.method = httpMethodFromJson(bodyJson, "GET");
         orq.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                        ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         orq.query = u.query(QUrl::FullyEncoded);
@@ -7456,7 +7473,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         cr.host = u.host();
         cr.port = u.port(u.scheme() == "https" ? 443 : 80);
         cr.tls  = (u.scheme() == "https");
-        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.method = httpMethodFromJson(bodyJson, "GET");
         cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         cr.query = u.query(QUrl::FullyEncoded);
@@ -7618,7 +7635,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         hr.host = u.host();
         hr.port = u.port(u.scheme() == "https" ? 443 : 80);
         hr.tls  = (u.scheme() == "https");
-        hr.method = bodyJson.value("method").toString("GET").toUpper();
+        hr.method = httpMethodFromJson(bodyJson, "GET");
         hr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         hr.query = u.query(QUrl::FullyEncoded);
@@ -7821,7 +7838,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         rr.host = u.host();
         rr.port = u.port(u.scheme() == "https" ? 443 : 80);
         rr.tls  = (u.scheme() == "https");
-        rr.method = bodyJson.value("method").toString("POST").toUpper();
+        rr.method = httpMethodFromJson(bodyJson, "POST");
         rr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
@@ -7944,7 +7961,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         cr.host = u.host();
         cr.port = u.port(u.scheme() == "https" ? 443 : 80);
         cr.tls  = (u.scheme() == "https");
-        cr.method = bodyJson.value("method").toString("GET").toUpper();
+        cr.method = httpMethodFromJson(bodyJson, "GET");
         cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
@@ -8001,7 +8018,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         mr.host = u.host();
         mr.port = u.port(u.scheme() == "https" ? 443 : 80);
         mr.tls  = (u.scheme() == "https");
-        mr.method = bodyJson.value("method").toString("POST").toUpper();
+        mr.method = httpMethodFromJson(bodyJson, "POST");
         mr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
@@ -8067,7 +8084,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         ir.host = u.host();
         ir.port = u.port(u.scheme() == "https" ? 443 : 80);
         ir.tls  = (u.scheme() == "https");
-        ir.method = bodyJson.value("method").toString("GET").toUpper();
+        ir.method = httpMethodFromJson(bodyJson, "GET");
         ir.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         if (!u.query(QUrl::FullyEncoded).isEmpty())
