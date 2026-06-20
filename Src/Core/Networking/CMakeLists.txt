@@ -75,6 +75,7 @@ add_library(Networking STATIC
     ssti_logic.cpp
     ssti_tester.hpp
     cache_poison.cpp
+    cache_poison_logic.cpp
     cache_poison.hpp
     proto_pollution.cpp
     proto_pollution.hpp

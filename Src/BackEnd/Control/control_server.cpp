@@ -7478,8 +7478,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     //   Injects unkeyed headers (X-Forwarded-Host, X-Original-URL, ...) with
     //   a random sentinel and a per-probe cache-buster, then re-requests the
     //   same key with no header; a sentinel served from cache proves the
-    //   poisoning end to end. CWE-349. Verifies the buster is cache-keyed
-    //   before injecting and aborts otherwise, so it can't poison real users.
+    //   poisoning end to end. CWE-349. Fail-closed: injects only after it
+    //   positively proves the cache keys on the buster (a same-buster hit and a
+    //   different-buster miss); a silent or unconfirmable cache aborts without
+    //   injecting, so it can't poison the key real users are served.
     if (path == "/api/cache/poison") {
         const QString url = bodyJson.value("url").toString();
         const QUrl u(url);

@@ -171,6 +171,36 @@ def make(mode):
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
+            if mode.startswith('cache'):
+                # Stateful shared-cache simulation for the cache-poisoning probe.
+                #   cache-keyed-vuln: keys on path+ncb (correct partitioning) and
+                #     emits X-Cache HIT/MISS -> the gate confirms the buster is
+                #     keyed, the injected X-Forwarded-Host is stored under the
+                #     busted key and re-served to a header-less re-request ->
+                #     cacheConfirmed (the true-positive critical path).
+                #   cache-unkeyed: keys on path only (ignores ncb) but DOES emit
+                #     hit signals -> the gate's different-buster probe still hits
+                #     -> ABORT (unkeyed); no header is ever injected.
+                #   cache-silent: keys on path only AND emits NO hit-signal
+                #     header -> the same-buster repeat shows no signal -> the
+                #     FAIL-CLOSED gate aborts (keying unprovable) instead of
+                #     poisoning the real key. Regression-locks the headline bug:
+                #     old code treated "no signal" as "safe to inject".
+                path = urlparse(self.path).path
+                ncb = (q.get('ncb') or [''])[0]
+                xfh = self.headers.get('X-Forwarded-Host', '')
+                silent = (mode == 'cache-silent')
+                keyed = (mode == 'cache-keyed-vuln')
+                store = state.setdefault('cache', {})
+                key = path + ('|' + ncb if keyed else '')
+                cc = [('Cache-Control', 'public, max-age=60')]
+                if key in store:
+                    extra = cc + ([] if silent else [('X-Cache', 'HIT'), ('Age', '7')])
+                    self._send(200, store[key], 'text/html', extra); return
+                body = ('<html><body>home ' + xfh + '</body></html>').encode()
+                store[key] = body
+                extra = cc + ([] if silent else [('X-Cache', 'MISS')])
+                self._send(200, body, 'text/html', extra); return
             if mode.startswith('sspp'):
                 obj = {'user': 'alice', 'role': 'admin', 'id': 1}
                 if mode == 'sspp-gzip':
@@ -630,6 +660,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
        jwt-body-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
+       cache-keyed-vuln cache-unkeyed cache-silent
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -823,6 +854,11 @@ chk "jwt RS->HS confusion -> bypass"    "$(post /api/jwt/test "{\"url\":\"$(url 
 chk "jwt RS verifier safe -> not vulnerable" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-rs-safe]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "jwt carrier fan-out finds cookie bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-cookie-noverify]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('carrier','').startswith('cookie:jwt') for h in d.get('hits',[]))"
 chk "jwt body-bearing POST route -> bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-body-noverify]} '')\",\"token\":\"$JTOK\",\"method\":\"POST\",\"body\":\"x=1\",\"contentType\":\"application/x-www-form-urlencoded\"}")" "d.get('vulnerable') and d.get('calibrated') and any(h.get('attack')=='signature-not-verified' for h in d.get('hits',[]))"
+
+echo "== web cache poisoning =="
+chk "cache keyed+reflected -> confirmed" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-keyed-vuln]} '')\"}")" "d.get('ok') and d.get('anyConfirmed')"
+chk "cache unkeyed buster -> ABORT, no inject" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-unkeyed]} '')\"}")" "not d.get('anyConfirmed') and 'unkeyed' in (d.get('error') or '') and d.get('hitCount',0)==0 and d.get('requestsSent')==3"
+chk "cache silent (no hit signal) -> fail-closed ABORT (headline FP/safety fix)" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-silent]} '')\"}")" "not d.get('anyConfirmed') and 'cache-hit signal' in (d.get('error') or '') and d.get('hitCount',0)==0 and d.get('requestsSent')==2"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

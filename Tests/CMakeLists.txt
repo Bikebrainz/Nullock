@@ -80,3 +80,10 @@ add_subdirectory(sql_injection)
 # (pure logic; the shaped-control FP guard is covered live in probe_smoke).
 # Run via: ctest -R path_traversal -V
 add_subdirectory(path_traversal)
+
+# Cache poisoning -- the FAIL-CLOSED safety gate (silent cache / failed-confirm
+# / unkeyed buster all abort), reflection-surface filtering (Set-Cookie
+# excluded), the Vary-on-injected-header cacheability downgrade, and
+# buildRequest's CR/LF guards (pure logic; live flow covered in probe_smoke).
+# Run via: ctest -R cache_poison -V
+add_subdirectory(cache_poison)
