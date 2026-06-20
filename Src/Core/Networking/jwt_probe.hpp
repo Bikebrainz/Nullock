@@ -53,6 +53,8 @@ struct Request {
     QString token;                          // a captured, currently-valid JWT
     QString location;                       // ""/"bearer" (default) | "header:Name" | "cookie:name"
     QString publicKeyPem;                   // server public key, for RS256->HS256 confusion (optional)
+    QByteArray body;                        // request body to send on EVERY shot (write routes)
+    QString contentType;                    // body Content-Type (default application/json)
     QStringList secretWordlist;             // HS256 crack candidates (empty -> a small built-in list)
     QList<QPair<QString, QString>> headers; // extra request headers (cookies, etc.)
 };

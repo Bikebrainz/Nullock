@@ -145,6 +145,15 @@ def make(mode):
                         self._send(200, b'<html>java.io.StreamCorruptedException: bad stream</html>'); return
                     self._send(200, b'<html>invalid stream header</html>'); return
                 self._send(200, b'<html>ok</html>'); return    # deser-field-safe
+            if mode == 'jwt-body-noverify':
+                # A write route that REQUIRES a body (400 without it) and gates on
+                # a Bearer token's presence but never verifies it -- so the probe
+                # must send the body on every shot to calibrate, then the bypass
+                # is found.
+                if not raw: self._send(400, b'body required'); return
+                auth = self.headers.get('Authorization', '')
+                tok = auth[7:] if auth.lower().startswith('bearer ') else ''
+                self._send(200 if tok else 401, b'ok' if tok else b'no'); return
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
@@ -526,6 +535,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        content-found
        cswsh-vuln cswsh-safe
        jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
+       jwt-body-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
@@ -703,6 +713,7 @@ JPUB='nullock-fake-rsa-public-key-for-confusion-test'
 chk "jwt RS->HS confusion -> bypass"    "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-algconfusion]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('vulnerable') and any(h.get('attack')=='alg-confusion' for h in d.get('hits',[]))"
 chk "jwt RS verifier safe -> not vulnerable" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-rs-safe]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "jwt carrier fan-out finds cookie bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-cookie-noverify]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('carrier','').startswith('cookie:jwt') for h in d.get('hits',[]))"
+chk "jwt body-bearing POST route -> bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-body-noverify]} '')\",\"token\":\"$JTOK\",\"method\":\"POST\",\"body\":\"x=1\",\"contentType\":\"application/x-www-form-urlencoded\"}")" "d.get('vulnerable') and d.get('calibrated') and any(h.get('attack')=='signature-not-verified' for h in d.get('hits',[]))"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

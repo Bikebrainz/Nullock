@@ -69,6 +69,8 @@ QByteArray buildRequest(const Request &req, const QString &token) {
         out += "Cookie: " + cookieName.toUtf8() + "=" + token.toUtf8() + "\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (!req.body.isEmpty() && h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (!authHeaderName.isEmpty()
             && h.first.compare(authHeaderName, Qt::CaseInsensitive) == 0) continue;
         // On the no-token shot, drop secondary credentials so they don't keep
@@ -78,7 +80,18 @@ QByteArray buildRequest(const Request &req, const QString &token) {
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }
-    out += "Connection: close\r\n\r\n";
+    // A body rides on EVERY shot (only the token varies) so write/POST routes
+    // that validate a body still calibrate.
+    if (!req.body.isEmpty()) {
+        const QString ct = req.contentType.isEmpty()
+            ? QStringLiteral("application/json") : req.contentType;
+        out += "Content-Type: " + ct.toUtf8() + "\r\n";
+        out += "Content-Length: " + QByteArray::number(req.body.size()) + "\r\n";
+        out += "Connection: close\r\n\r\n";
+        out += req.body;
+    } else {
+        out += "Connection: close\r\n\r\n";
+    }
     return out;
 }
 
@@ -129,37 +142,49 @@ static Result testOneCarrier(const Request &req) {
     Request r = req;
     if (r.basePath.isEmpty()) r.basePath = QStringLiteral("/");
     if (r.method.isEmpty())   r.method = QStringLiteral("GET");
-    auto send = [&](const QString &token) -> int {
+    // Each response is (status, body length) so acceptance can be content-aware
+    // -- a generic/cached 200 that differs from the real authorized page is not
+    // mistaken for acceptance.
+    struct Resp { int status; int len; };
+    auto send = [&](const QString &token) -> Resp {
         const QByteArray bytes = buildRequest(r, token);
-        if (bytes.isEmpty()) return -1;
+        if (bytes.isEmpty()) return { -1, -1 };
         ++result.requestsSent;
         const auto res = client.send(r.host, port, r.tls, bytes);
-        return res.ok ? res.parsed.statusCode : -1;
+        return res.ok ? Resp{ res.parsed.statusCode, static_cast<int>(res.parsed.body.size()) }
+                      : Resp{ -1, -1 };
     };
 
-    // Calibration: no-token must be a REAL response that differs from the valid
-    // token's (so the endpoint actually authenticates). A dropped (-1) no-token
-    // probe must NOT pass calibration.
-    const int noAuthStatus = send(QString());
-    result.authStatus   = send(req.token);
-    result.rejectStatus = noAuthStatus;
-    const bool authOk = result.authStatus >= 200 && result.authStatus < 400;
-    result.calibrated = authOk && noAuthStatus >= 0 && noAuthStatus != result.authStatus;
+    // Calibration: no-token must be a REAL response distinct from the valid
+    // token's (so the endpoint actually authenticates) -- distinct in status OR
+    // body, so body-only auth gates still calibrate. A dropped (-1) probe fails.
+    const Resp noAuth = send(QString());
+    const Resp valid  = send(req.token);
+    result.authStatus   = valid.status;
+    result.rejectStatus = noAuth.status;
+    const bool authOk = valid.status >= 200 && valid.status < 400;
+    result.calibrated = authOk && noAuth.status >= 0
+        && (noAuth.status != valid.status || noAuth.len != valid.len);
     if (!result.calibrated) {
-        result.error = (result.authStatus < 0 || noAuthStatus < 0)
+        result.error = (valid.status < 0 || noAuth.status < 0)
             ? "baseline request failed (transport error)"
             : QString("inconclusive: endpoint isn't auth-gated or the token isn't valid "
                       "(no-token status %1, valid-token status %2)")
-                  .arg(noAuthStatus).arg(result.authStatus);
+                  .arg(noAuth.status).arg(valid.status);
         return result;
     }
-    const int accepted = result.authStatus;
 
-    // A forgery counts as accepted only if it matches the valid baseline AND
-    // does so on a re-send -- so a transient throttle/drop can't flip a verdict.
+    // A forgery is accepted iff its response looks like the VALID baseline (same
+    // status, and -- tolerant of dynamic content -- a body closer to the valid
+    // page than to the rejection page) AND it re-confirms on a second send, so a
+    // transient throttle/drop or a generic 200 can't flip the verdict.
+    auto accepted = [&](const Resp &x) -> bool {
+        return x.status == valid.status
+            && qAbs(x.len - valid.len) <= qAbs(x.len - noAuth.len);
+    };
     auto acceptedStably = [&](const QString &token) -> bool {
-        if (send(token) != accepted) return false;
-        return send(token) == accepted;
+        if (!accepted(send(token))) return false;
+        return accepted(send(token));
     };
 
     // All three attack classes are independent -- run each regardless of the
