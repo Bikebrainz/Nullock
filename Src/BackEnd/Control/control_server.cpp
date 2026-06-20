@@ -2000,39 +2000,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                             // (SSRF). Highest-value cloud finding -- usually
                             // leads to credential theft.
                             {
+                                // Mirrors the dedicated ssrf_scan probe: response-only
+                                // signatures (never in the URL we sent), decimal/hex
+                                // IP-encoding denylist bypasses, and a same-shape
+                                // non-fetchable shaped-control URL so an error/WAF/echo
+                                // template keyed on the input SHAPE can't false-positive.
+                                // Case-SENSITIVE; JSON-key signatures quoted.
                                 struct MetaProbe {
                                     const char *url;
+                                    const char *control;
                                     const char *signature;
                                     const char *label;
                                 };
                                 static const MetaProbe kCloudMeta[] = {
                                     { "http://169.254.169.254/latest/meta-data/",
-                                      "instance-id", "aws-imds-v1" },
-                                    { "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
-                                      "AccessKeyId", "aws-imds-iam" },
-                                    { "http://metadata.google.internal/computeMetadata/v1/",
-                                      "computeMetadata", "gcp-metadata" },
-                                    { "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
-                                      "compute", "azure-imds" },
+                                      "http://169.254.169.254/nullock-ssrf-zzq/", "ami-id", "aws-imds-v1" },
+                                    { "http://2852039166/latest/meta-data/",
+                                      "http://2852039166/nullock-ssrf-zzq/", "ami-id", "aws-imds-decimal" },
+                                    { "http://0xA9FEA9FE/latest/meta-data/",
+                                      "http://0xA9FEA9FE/nullock-ssrf-zzq/", "ami-id", "aws-imds-hex" },
                                     { "http://100.100.100.200/latest/meta-data/",
-                                      "instance-id", "aliyun-imds" },
+                                      "http://100.100.100.200/nullock-ssrf-zzq/", "ami-id", "aliyun-imds" },
+                                    { "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+                                      "http://169.254.169.254/metadata/nullock-ssrf-zzq?api-version=2021-02-01",
+                                      "\"subscriptionId\"", "azure-imds" },
+                                    { "http://metadata.google.internal/computeMetadata/v1/instance/",
+                                      "http://metadata.google.internal/computeMetadata/v1/nullock-ssrf-zzq/",
+                                      "service-accounts", "gcp-metadata" },
                                 };
                                 for (const auto &mp : kCloudMeta) {
                                     const auto res = fire(i, QString::fromLatin1(mp.url));
                                     if (!res.ok) continue;
+                                    const QString sig = QString::fromLatin1(mp.signature);
                                     const QString body = QString::fromUtf8(
                                         res.parsed.body.left(64 * 1024));
-                                    if (body.contains(QString::fromLatin1(mp.signature),
-                                                      Qt::CaseInsensitive)) {
-                                        report("critical", "ssrf-cloud-metadata",
-                                               QString("Param '%1' triggers fetch of %2 metadata endpoint")
-                                                   .arg(key, QString::fromLatin1(mp.label)),
-                                               QString("param=%1 · payload=%2 · response contained \"%3\"")
-                                                   .arg(key,
-                                                        QString::fromLatin1(mp.url),
-                                                        QString::fromLatin1(mp.signature)));
-                                        break;  // one finding per param is enough
-                                    }
+                                    if (!body.contains(sig)) continue;       // case-sensitive
+                                    // Shaped control: same host/scheme, non-fetchable
+                                    // path. If the signature is here too, it tracks the
+                                    // input shape, not a fetch -- suppress.
+                                    const auto ctl = fire(i, QString::fromLatin1(mp.control));
+                                    if (ctl.ok && QString::fromUtf8(ctl.parsed.body.left(64 * 1024))
+                                                      .contains(sig))
+                                        break;
+                                    report("critical", "ssrf-cloud-metadata",
+                                           QString("Param '%1' triggers fetch of %2 metadata endpoint")
+                                               .arg(key, QString::fromLatin1(mp.label)),
+                                           QString("param=%1 · payload=%2 · response contained \"%3\" "
+                                                   "(absent from a same-shape control)")
+                                               .arg(key,
+                                                    QString::fromLatin1(mp.url),
+                                                    sig));
+                                    break;  // one finding per param is enough
                                 }
                             }
 
