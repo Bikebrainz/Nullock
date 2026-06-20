@@ -30,9 +30,29 @@ fi
 MOCK="$(mktemp /tmp/nullock-probe-mock.XXXXXX.py)"
 cat > "$MOCK" <<'PY'
 import http.server, socketserver, sys, threading, time, json, gzip, re
-import urllib.request, socket, struct, hashlib, base64
+import urllib.request, socket, struct, hashlib, base64, hmac
 from urllib.parse import urlparse, parse_qs
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+# Shared with the JWT test harness below -- a strong HS256 secret NOT in the
+# probe's crack wordlist, so only the deliberately-weak mock is crackable.
+JWT_STRONG = 'Zx9-strong-test-secret-not-in-any-wordlist-8f3a1b2c'
+def _b64u_dec(s):
+    s += '=' * (-len(s) % 4)
+    try: return base64.urlsafe_b64decode(s.encode())
+    except Exception: return b''
+def _b64u_enc(b):
+    return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+def jwt_check(token, secret):
+    # returns (sig_valid, alg). alg=='none' flags the alg:none case.
+    parts = token.split('.')
+    if len(parts) < 2: return (False, '')
+    try: alg = json.loads(_b64u_dec(parts[0]).decode('utf-8', 'replace')).get('alg', '')
+    except Exception: return (False, '')
+    if alg.lower() == 'none': return (False, 'none')
+    if len(parts) < 3 or not parts[2]: return (False, alg)
+    want = hmac.new(secret.encode(), (parts[0] + '.' + parts[1]).encode(),
+                    hashlib.sha256).digest()
+    return (_b64u_dec(parts[2]) == want, alg)   # byte compare, like a real verifier
 def fire_dns(qname, server, port):
     # Minimal UDP A-query -- simulates a vulnerable JNDI resolver looking up the
     # Log4Shell callback host, landing the token on Nullock's DNS sink.
@@ -278,6 +298,25 @@ def make(mode):
                                 try: urllib.request.urlopen(mm.group(0), timeout=3).read()
                                 except Exception: pass
                 self._send(200, b'<html>ok</html>'); return
+            if mode.startswith('jwt'):
+                # An auth-gated endpoint behind a JWT. All modes 401 a missing
+                # token (so the probe can calibrate "gated"). They differ in how
+                # they (mis)handle the signature:
+                #   jwt-safe     : verifies HS256 (strong secret), pins the alg
+                #   jwt-algnone  : verifies HS256 but ALSO accepts alg:none (bug)
+                #   jwt-noverify : gates on token PRESENCE, never verifies (bug)
+                #   jwt-weak     : verifies HS256 with a guessable secret (bug)
+                auth = self.headers.get('Authorization', '')
+                tok = auth[7:] if auth.lower().startswith('bearer ') else ''
+                if not tok:
+                    self._send(401, b'unauthorized'); return
+                if mode == 'jwt-noverify':
+                    self._send(200, b'ok'); return
+                secret = 'secret' if mode == 'jwt-weak' else JWT_STRONG
+                valid, alg = jwt_check(tok, secret)
+                if mode == 'jwt-algnone' and alg == 'none':
+                    self._send(200, b'ok'); return
+                self._send(200 if valid else 401, b'ok' if valid else b'unauthorized'); return
             if mode.startswith('cswsh'):
                 # WebSocket upgrade endpoint. Compute the RFC-6455 accept token so
                 # the probe sees a genuine handshake. The vuln endpoint completes
@@ -460,6 +499,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        xpath-vuln xpath-safe
        content-found
        cswsh-vuln cswsh-safe
+       jwt-safe jwt-algnone jwt-noverify jwt-weak
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
@@ -611,6 +651,21 @@ chk "content finds /admin, soft-404 calibrated" "$CB" "d.get('softNotFoundStatus
 echo "== cross-site WebSocket hijacking (CSWSH) =="
 chk "cswsh vulnerable -> cross-origin accepted" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\"}")" "d.get('vulnerable') and d.get('isWebSocket')"
 chk "cswsh safe -> origin validated"            "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originValidated')"
+
+echo "== active JWT attacks =="
+# Mint a valid HS256 token signed with the given secret (matches the mock).
+mint_jwt() { python -c "import hmac,hashlib,base64,json,sys
+def e(b): return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+h=e(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())
+p=e(json.dumps({'sub':'alice','role':'user'},separators=(',',':')).encode())
+s=e(hmac.new(sys.argv[1].encode(),(h+'.'+p).encode(),hashlib.sha256).digest())
+print(h+'.'+p+'.'+s)" "$1"; }
+JTOK="$(mint_jwt 'Zx9-strong-test-secret-not-in-any-wordlist-8f3a1b2c')"   # matches JWT_STRONG
+JTOK_WEAK="$(mint_jwt 'secret')"
+chk "jwt safe -> not vulnerable"        "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-safe]} '')\",\"token\":\"$JTOK\"}")" "d.get('ok') and d.get('calibrated') and not d.get('vulnerable')"
+chk "jwt alg:none accepted -> bypass"   "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-algnone]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('attack')=='alg-none' for h in d.get('hits',[]))"
+chk "jwt signature-not-verified -> bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-noverify]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('attack')=='signature-not-verified' for h in d.get('hits',[]))"
+chk "jwt weak-secret -> bypass"         "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-weak]} '')\",\"token\":\"$JTOK_WEAK\"}")" "d.get('vulnerable') and any(h.get('attack')=='weak-secret' for h in d.get('hits',[]))"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

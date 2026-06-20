@@ -56,6 +56,7 @@ const QStringList &emittedKinds() {
         "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
         "sri-missing", "ssrf-cloud-metadata", "ssrf-internal",
         "deser-java", "deser-php", "deser-pickle", "deser-ruby", "deser-dotnet",
+        "jwt-alg-none", "jwt-signature-not-verified", "jwt-weak-secret",
     };
     return k;
 }
@@ -85,6 +86,8 @@ const QList<Spot> &spotChecks() {
         { "ssrf-internal",               "CWE-918" },   // ssrf- family (new)
         { "deser-java",                  "CWE-502" },   // exact (new)
         { "deser-dotnet",                "CWE-502" },   // exact (new)
+        { "jwt-signature-not-verified",  "CWE-347" },   // exact (new)
+        { "jwt-weak-secret",             "CWE-347" },   // exact (new)
     };
     return s;
 }

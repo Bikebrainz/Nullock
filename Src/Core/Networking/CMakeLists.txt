@@ -106,6 +106,8 @@ add_library(Networking STATIC
     deser_probe.hpp
     ws_probe.cpp
     ws_probe.hpp
+    jwt_probe.cpp
+    jwt_probe.hpp
     content_discovery.cpp
     content_discovery.hpp
     xxe_injection.cpp

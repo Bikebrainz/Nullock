@@ -41,6 +41,7 @@
 #include "ssrf_scan.hpp"
 #include "deser_probe.hpp"
 #include "ws_probe.hpp"
+#include "jwt_probe.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -2752,7 +2753,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
         "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/ssrf/test", "/api/deser/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
-        "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test", "/api/cswsh/test",
+        "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test", "/api/cswsh/test", "/api/jwt/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
@@ -5822,6 +5823,56 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         return httpJson(200, QJsonObject{
             { "ok", true }, { "attack", attack }, { "token", forged } });
+    }
+
+    // ---- Active JWT attack (send forgeries, check acceptance) ---------
+    // POST /api/jwt/test { url, token, location?, method?, headers?, wordlist?: [...] }
+    //   Sends the valid token (baseline), a corrupted one (calibration), then
+    //   alg:none / tampered-claim / weak-secret forgeries; flags a forgery the
+    //   server accepts as the valid baseline. CWE-347.
+    if (path == "/api/jwt/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        const QString token = bodyJson.value("token").toString();
+        if (token.isEmpty())
+            return okJson({{ "ok", false }, { "error", "token (a captured JWT) required" }});
+
+        Nullock::Core::JwtProbe::Request jr;
+        jr.host = u.host();
+        jr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        jr.tls  = (u.scheme() == "https");
+        jr.method = bodyJson.value("method").toString("GET").toUpper();
+        jr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        jr.query = u.query(QUrl::FullyEncoded);
+        jr.token = token;
+        jr.location = bodyJson.value("location").toString();
+        for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
+            jr.secretWordlist << v.toString();
+        const QJsonObject jhdrs = bodyJson.value("headers").toObject();
+        for (auto it = jhdrs.begin(); it != jhdrs.end(); ++it)
+            jr.headers.append({ it.key(), it.value().toString() });
+
+        const auto jres = Nullock::Core::JwtProbe::test(jr);
+        QJsonArray hits;
+        for (const auto &h : jres.hits)
+            hits.append(QJsonObject{{ "attack", h.attack }, { "kind", h.kind },
+                                    { "detail", h.detail }});
+        if (m_wiring.scanner && jres.vulnerable)
+            for (const auto &h : jres.hits)
+                m_wiring.scanner->reportFinding(0, "critical", h.kind,
+                    "JWT auth bypass via " + h.attack, h.detail, u.host(), url);
+        return okJson({{ "ok", jres.error.isEmpty() },
+                       { "error", jres.error },
+                       { "vulnerable", jres.vulnerable },
+                       { "calibrated", jres.calibrated },
+                       { "authStatus", jres.authStatus },
+                       { "rejectStatus", jres.rejectStatus },
+                       { "requestsSent", jres.requestsSent },
+                       { "hitCount", static_cast<int>(jres.hits.size()) },
+                       { "hits", hits }});
     }
 
     // ---- Deep-scan orchestrator --------------------------------------

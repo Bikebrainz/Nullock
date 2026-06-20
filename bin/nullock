@@ -1568,7 +1568,14 @@ cmd_jwt() {
             body+="}"
             post /api/jwt/forge "$body" | pp
             ;;
-        *) die "usage: nullock jwt {analyze <token> [wordlist]|forge <token> none|hs256 [secret] [claim=val ...]}" ;;
+        test)
+            # nullock jwt test <url> <token> [location]
+            #   location: bearer (default) | header:Name | cookie:name
+            [[ $# -ge 3 ]] || die "usage: nullock jwt test <url> <token> [location]"
+            local url=$2 token=$3 location=${4:-}
+            post /api/jwt/test "{\"url\":$(jsonq "$url"),\"token\":$(jsonq "$token"),\"location\":$(jsonq "$location")}" | pp
+            ;;
+        *) die "usage: nullock jwt {analyze <token> [wordlist]|forge <token> none|hs256 [secret] [claim=val ...]|test <url> <token> [location]}" ;;
     esac
 }
 
@@ -1819,6 +1826,10 @@ Above-Burp features (v4/v5):
                                          forge alg:none (signature stripped) or
                                          re-sign HS256 with secret, applying any
                                          claim overrides (e.g. admin=true)
+  nullock jwt test <url> <token> [location]
+                                         ACTIVE: send the valid token + forgeries
+                                         (alg:none, tampered-claim, weak-secret)
+                                         and flag any the server accepts as valid
   nullock paramminer <url> [GET|POST] [wordlist]
                                          discover hidden params -- response-diffs
                                          a candidate wordlist, reports the ones
