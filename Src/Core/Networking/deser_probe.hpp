@@ -27,11 +27,12 @@
 // PHP's O: token does look up the named -- nonexistent -- canary class and
 // build an incomplete-class object, but still errors before __wakeup.)
 //
-// Scope (in-band, error-based): payloads ride the QUERY STRING by default, or
-// the RAW REQUEST BODY when location="body" (the classic
-// application/x-java-serialized-object sink). Blobs carried in COOKIES
-// (remember-me/session) or a named body FIELD (.NET __VIEWSTATE) aren't actively
-// confirmed yet (flagged passively), and a deserializer that SWALLOWS errors (display_
+// Scope (in-band, error-based): payloads ride the QUERY STRING (default), the
+// RAW REQUEST BODY (location="body", the application/x-java-serialized-object
+// sink), or a named COOKIE (location="cookie", the Shiro/Spring rememberMe and
+// Ruby Marshal-session class). A serialized blob in a named body FIELD (.NET
+// __VIEWSTATE) isn't actively confirmed yet (flagged passively), and a
+// deserializer that SWALLOWS errors (display_
 // errors off, custom 500) or a Java readObject gadget that fires server-side
 // with no trace is missed -- blind/OOB deserialization (URLDNS gadget -> OAST
 // callback) is a separate OAST-backed probe. A clean result does not rule out

@@ -99,6 +99,41 @@ QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QS
     return out;
 }
 
+// Cookie names that classically carry a base64 serialized blob.
+QStringList knownCookieNames() {
+    return { "rememberMe", "remember_me", "remember-me", "remember_token",
+             "_session", "session", "rack.session", "_rails_session",
+             "auth", "sso", "user" };
+}
+
+// A GET carrying the serialized stub in a named cookie (the Shiro rememberMe /
+// Ruby Marshal-session class of sink).
+QByteArray buildCookieRequest(const Request &req, const QString &cookieName,
+                              const QString &value) {
+    if (req.method.contains('\r') || req.method.contains('\n')) return {};
+    if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
+    if (cookieName.contains('\r') || cookieName.contains('\n')) return {};
+    const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
+    QString safeVal = value;
+    safeVal.remove('\r'); safeVal.remove('\n'); safeVal.remove(';');  // cookie-value-safe
+    QByteArray out;
+    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
+    out += "Host: " + req.host.toUtf8() + "\r\n";
+    out += "User-Agent: Nullock/deser\r\n";
+    out += "Accept: */*\r\n";
+    out += "Accept-Encoding: identity\r\n";
+    out += "Cookie: " + cookieName.toUtf8() + "=" + safeVal.toUtf8() + "\r\n";
+    for (const auto &h : req.headers) {
+        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Cookie", Qt::CaseInsensitive) == 0) continue;  // we set it
+        if (h.first.contains('\r') || h.first.contains('\n')) continue;
+        if (h.second.contains('\r') || h.second.contains('\n')) continue;
+        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
+    }
+    out += "Connection: close\r\n\r\n";
+    return out;
+}
+
 QString queryWith(const QString &existing, const QString &param, const QString &value) {
     const QByteArray enc = QUrl::toPercentEncoding(value);
     QStringList parts;
@@ -180,6 +215,49 @@ Result test(const Request &reqIn) {
                                  QString::fromUtf8(p.mf), err.second });
             result.vulnerable = true;
             break;
+        }
+        return result;
+    }
+
+    // Cookie injection: serialized blobs classically ride in auth/session
+    // cookies (Shiro/Spring rememberMe, Ruby Marshal _session). Inject each
+    // binary format's base64 well-formed/malformed object into a candidate
+    // cookie; same differential. (PHP's text form doesn't fit a cookie value.)
+    if (req.location.compare("cookie", Qt::CaseInsensitive) == 0) {
+        HttpClient cclient;
+        const quint16 cport = static_cast<quint16>(req.port);
+        struct Ck { const char *format; const char *wf; const char *mf; };
+        static const QList<Ck> cprobes = {
+            { "Java",   "rO0ABXQAA2FiYw==", "rO0ABXNyABFOdWxsb2NrRGVzZXJDYW5hcnk=" },
+            { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ" },
+            { "Ruby",   "BAhpBg==", "BAhbBg==" },
+        };
+        QStringList cookies;
+        if (!req.param.isEmpty()) cookies << req.param;
+        else cookies = knownCookieNames();
+        while (cookies.size() > 8) cookies.removeLast();
+        result.testedParams = cookies;
+        auto sendCookie = [&](const QString &name, const QString &val) {
+            ++result.requestsSent;
+            return cclient.send(req.host, cport, req.tls, buildCookieRequest(req, name, val));
+        };
+        for (const QString &ck : cookies) {
+            if (result.requestsSent >= kMaxSends) break;
+            for (const Ck &p : cprobes) {
+                if (result.requestsSent >= kMaxSends) break;
+                const auto wf = sendCookie(ck, QString::fromUtf8(p.wf));
+                if (!wf.ok) continue;
+                result.baselineStatus = wf.parsed.statusCode;
+                if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / not a deser
+                const auto mf = sendCookie(ck, QString::fromUtf8(p.mf));
+                if (!mf.ok) continue;
+                const auto err = matchError(mf.parsed.body);
+                if (err.first.isEmpty()) continue;
+                result.hits.append({ "cookie:" + ck, err.first,
+                                     QString::fromUtf8(p.mf), err.second });
+                result.vulnerable = true;
+                return result;     // one confirmed cookie sink is enough
+            }
         }
         return result;
     }
