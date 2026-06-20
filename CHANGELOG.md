@@ -60,6 +60,12 @@ developer-facing record.
   requires a response-only signature that's absent from the baseline AND from a
   same-shape non-fetchable shaped-control URL, so reflection/WAF templates can't
   false-positive.
+- **Active JWT attacks** — `/api/jwt/test` + `nullock jwt test <url> <token>`,
+  the active complement to the offline `jwt` toolkit: it sends forged tokens to a
+  live endpoint and confirms acceptance (alg:none + case/empty/absent variants,
+  signature-not-verified, weak-HMAC-secret). Sound via a no-token/valid/forgery
+  calibration with a second-send re-confirm. (Burp does JWT testing only via a
+  paid extension.)
 - **Cross-site WebSocket hijacking (CSWSH)** — `/api/cswsh/test` + `nullock
   cswsh`, an active probe that sends a cross-origin WebSocket upgrade and
   confirms only on `101` + a valid `Sec-WebSocket-Accept` (RFC 6455), with a
