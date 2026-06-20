@@ -35,3 +35,8 @@ add_subdirectory(cors_tester)
 # (meta/JS) detector, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R open_redirect -V
 add_subdirectory(open_redirect)
+
+# SSTI -- the two-expression confirmation (template vs calculator), locale
+# digit-grouping, all-region scan, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R ssti_tester -V
+add_subdirectory(ssti_tester)

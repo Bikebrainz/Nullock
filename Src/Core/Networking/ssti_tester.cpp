@@ -11,8 +11,9 @@ namespace Nullock::Core::Ssti {
 namespace {
 
 // Each delimiter family, with the wrapper either side of the arithmetic.
-// The candidate engines are the ones that evaluate that exact syntax, so
-// the family that fires is a real fingerprint, not a guess.
+// The candidate engines are the ones that evaluate that exact INFIX syntax, so
+// the family that fires is a real fingerprint, not a guess. (Go text/template
+// uses {{mul a b}} function-call form, not infix a*b -- tracked as a follow-up.)
 struct Family {
     const char *wrapL;
     const char *wrapR;
@@ -20,7 +21,7 @@ struct Family {
 };
 const QList<Family> &families() {
     static const QList<Family> f = {
-        { "{{",   "}}",  "Jinja2, Twig, Nunjucks, Liquid, Django" },
+        { "{{",   "}}",  "Jinja2, Twig, Nunjucks, Liquid, Pebble" },
         { "${{",  "}}",  "Tornado" },
         { "${",    "}",  "Freemarker, JSP EL, Mako, Thymeleaf" },
         { "<%= ", " %>", "ERB, EJS" },
@@ -43,37 +44,15 @@ QString randToken() {
     return s;
 }
 
-QByteArray buildRequest(const Request &req, const QString &path,
-                        const QString &query, const QByteArray &body) {
-    const QString target = query.isEmpty() ? path : path + "?" + query;
-    const bool bodyMethod = req.method.compare("POST",  Qt::CaseInsensitive) == 0
-                         || req.method.compare("PUT",   Qt::CaseInsensitive) == 0
-                         || req.method.compare("PATCH", Qt::CaseInsensitive) == 0;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/ssti\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    if (!body.isEmpty() || bodyMethod) {
-        const QString ct = req.contentType.isEmpty()
-            ? (req.paramIn == "json" ? QStringLiteral("application/json")
-                                     : QStringLiteral("application/x-www-form-urlencoded"))
-            : req.contentType;
-        out += "Content-Type: " + ct.toUtf8() + "\r\n";
-        out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    out += body;
-    return out;
+// A letters-only literal separator placed BETWEEN the two delimited
+// expressions; a template renders it verbatim while evaluating both sides, but
+// a single-expression calculator cannot reproduce "<productA><sep><productB>".
+QString randAlpha(int n) {
+    static const char alpha[] = "abcdefghijklmnopqrstuvwxyz";
+    QString s;
+    for (int i = 0; i < n; ++i)
+        s += alpha[QRandomGenerator::global()->bounded(int(sizeof(alpha) - 1))];
+    return s;
 }
 
 // Place `value` into the named parameter, returning the (query, body) pair
@@ -126,20 +105,23 @@ Result test(const Request &req) {
                            buildRequest(req, req.basePath, query, body));
     };
 
-    // Operands: randomized unless caller pinned them (clamped to a sane size
-    // so the product stays a recognizable 7-10 digit number).
+    // Two independent operand pairs (a*b, c*d). a,b honor caller seeds; clamped
+    // so the products stay recognizable multi-digit numbers.
     auto pick = [] { return QRandomGenerator::global()->bounded(1000u, 9999u); };
     const quint64 a = req.seedA ? qBound(1000u, req.seedA, 999999u) : pick();
     const quint64 b = req.seedB ? qBound(1000u, req.seedB, 999999u) : pick();
-    const QString expr    = QStringLiteral("%1*%2").arg(a).arg(b);
-    const QString product = QString::number(a * b);
-    // Bracket the expression with random sentinels. Evaluation yields
-    // "<pre><product><suf>"; plain reflection yields "<pre>{{<expr>}}<suf>".
-    // Matching the sentinel-delimited region -- not the bare product -- is
-    // what makes confirmation immune to coincidental digits elsewhere on the
-    // page and to engines that group/format the number.
+    const quint64 c = pick();
+    const quint64 d = pick();
+    const QString exprA = QStringLiteral("%1*%2").arg(a).arg(b);
+    const QString exprB = QStringLiteral("%1*%2").arg(c).arg(d);
+    const QString productA = QString::number(a * b);
+    const QString productB = QString::number(c * d);
+    // Random sentinels bracket the whole construct; a letters-only separator
+    // sits between the two delimited expressions. Evaluation yields
+    // "<pre><productA><sep><productB><suf>"; reflection yields the literals.
     const QString pre = "z" + randToken();
     const QString suf = randToken() + "z";
+    const QString sep = randAlpha(5);
 
     // Baseline with a benign value: establishes status and that the param is
     // actually rendered (the sentinels come back) without any template syntax.
@@ -149,51 +131,39 @@ Result test(const Request &req) {
     result.baselineStatus = base.parsed.statusCode;
     result.injected = true;
 
-    // Pull the text the server placed between our sentinels, if any. Bounded
-    // so a stray suffix far down the page can't make us scan a huge span.
-    auto rendered = [&](const QString &body) -> QString {
-        int p = body.indexOf(pre);
-        while (p >= 0) {
-            const int from = p + pre.size();
-            const int s = body.indexOf(suf, from);
-            if (s < 0) break;
-            if (s - from <= 64) return body.mid(from, s - from);
-            p = body.indexOf(pre, from);
-        }
-        return QString();
-    };
-
     for (const Family &fam : families()) {
-        const QString payload = pre + QString::fromUtf8(fam.wrapL) + expr
-                              + QString::fromUtf8(fam.wrapR) + suf;
+        const QString wL = QString::fromUtf8(fam.wrapL);
+        const QString wR = QString::fromUtf8(fam.wrapR);
+        const QString payload = pre + wL + exprA + wR + sep + wL + exprB + wR + suf;
         const auto pr = withParam(req, payload);
         const auto r = send(pr.first, pr.second);
         if (!r.ok) continue;
-        const QString region = rendered(QString::fromUtf8(r.parsed.body));
-        if (region.isEmpty()) continue;
-        // Evaluated iff the rendered region carries the product (after
-        // stripping locale grouping/space) and is NOT the literal expression.
-        QString norm = region; norm.remove(',').remove(' ');
-        if (norm.contains(product) && !region.contains(expr)) {
-            const QString fired = QString::fromUtf8(fam.wrapL) + " "
-                                + QString::fromUtf8(fam.wrapR);
+        const auto regions = renderedRegions(QString::fromUtf8(r.parsed.body), pre, suf);
+        // Confirmed only when BOTH delimited expressions evaluated with the
+        // literal separator preserved between them -- template behavior, not a
+        // calculator computing a single a*b.
+        if (confirmsArithmetic(regions, productA, sep, productB, exprA, exprB)) {
+            const QString fired = wL.trimmed() + " " + wR.trimmed();
             result.hits.append({ fired.trimmed(), QString::fromUtf8(fam.engines),
-                QStringLiteral("evaluated %1 to %2").arg(expr, product) });
+                QStringLiteral("evaluated %1 and %2 to %3 / %4")
+                    .arg(exprA, exprB, productA, productB) });
             result.confirmed = true;
         }
     }
     if (!result.hits.isEmpty()) result.engines = result.hits.first().engines;
 
     // Secondary, weaker signal: a template syntax break that 5xx's a
-    // previously-OK endpoint. To avoid flagging servers that simply 500 on
-    // any odd input, require a control payload with the *same* special chars
-    // but no template delimiters to come back clean.
+    // previously-OK endpoint. The control is a TRUE minimal pair -- the same
+    // length and the same multiset of special characters, with ONLY the
+    // template-delimiter bigrams (${{, {{, <%, }}) broken up -- so a WAF or a
+    // char/length-sensitive 500 fires on BOTH and cancels, leaving only a
+    // genuine template-parse 5xx to credit.
     if (!result.confirmed && result.baselineStatus < 500) {
         const auto bp = withParam(req, pre + QStringLiteral("${{<%[%'\"}}%\\") + suf);
         const auto br = send(bp.first, bp.second);
         const bool delimBroke = br.ok && br.parsed.statusCode >= 500;
         if (delimBroke) {
-            const auto cp = withParam(req, pre + QStringLiteral("[%'\"\\]abc") + suf);
+            const auto cp = withParam(req, pre + QStringLiteral("{%{%<[%$'\"}\\}") + suf);
             const auto cr = send(cp.first, cp.second);
             const bool ctrlBroke = cr.ok && cr.parsed.statusCode >= 500;
             if (!ctrlBroke) result.engineLikely = true;

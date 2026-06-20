@@ -471,6 +471,15 @@ def make(mode):
                 if mode == 'ssti-vuln':
                     val = re.sub(r'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val)
+                elif mode == 'ssti-calc':
+                    # A calculator / inline-math endpoint (NOT a template engine):
+                    # substitutes the FIRST N*N it finds with the product. The old
+                    # single-expression probe false-positived here at CRITICAL; the
+                    # two-expression confirmation must NOT -- a calculator cannot
+                    # evaluate two delimited sub-expressions and keep the literal
+                    # separator between them.
+                    val = re.sub(r'(\d+)\*(\d+)',
+                                 lambda m: str(int(m.group(1)) * int(m.group(2))), val, count=1)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
             if mode.startswith('cmdi'):
                 # Same idea as SSTI but the shell arithmetic $((N*N)): the
@@ -533,7 +542,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        pathtrav-vuln pathtrav-safe
        cors-vuln cors-safe
        verb-vuln verb-safe
-       ssti-vuln ssti-safe
+       ssti-vuln ssti-safe ssti-calc
        cmdi-vuln cmdi-safe
        nosqli-vuln nosqli-safe
        idor-vuln idor-safe
@@ -646,6 +655,7 @@ chk "verb tampering safe -> none"       "$(post /api/verbtamper/test "{\"url\":\
 echo "== SSTI (core) =="
 chk "ssti vulnerable -> confirmed"      "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-vuln]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed')"
 chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-safe]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
+chk "ssti calculator -> NOT confirmed (FP fix)" "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-calc]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
 
 echo "== OS command injection (core) =="
 chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"

@@ -16,6 +16,7 @@
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 
 namespace Nullock::Core::Ssti {
 
@@ -52,10 +53,28 @@ struct Result {
     QString error;
 };
 
-// Inject an arithmetic-bearing polyglot per delimiter family into the named
-// parameter and flag any that the server evaluates. Only a value the server
-// computed -- present in the response, with the literal expression absent --
-// counts; pure reflection and coincidental matches are suppressed.
+// Inject a TWO-expression polyglot per delimiter family into the named
+// parameter and flag any the server evaluates. Confirmation requires both
+// delimited expressions to evaluate with a literal separator preserved between
+// them ("<productA><sep><productB>") -- which a template engine does but a
+// single-expression calculator cannot -- so pure reflection, coincidental
+// matches, and plain arithmetic/eval APIs are all suppressed.
 Result test(const Request &req);
+
+// --- Pure helpers, exposed for the unit test (no network I/O) ---------------
+// Remove every locale digit-grouping separator (, . ' space NBSP NNBSP).
+QString stripGroupingDigits(const QString &s);
+// All sentinel-bracketed regions (pre...suf, <= 64 chars) in the body.
+QStringList renderedRegions(const QString &body, const QString &pre, const QString &suf);
+// True iff some region shows both products bracketing the literal separator and
+// echoes neither raw expression.
+bool confirmsArithmetic(const QStringList &regions,
+                        const QString &productA, const QString &sep,
+                        const QString &productB,
+                        const QString &exprA, const QString &exprB);
+// Build the raw request, CR/LF-guarding method/host/path/Content-Type (returns
+// {} if any is tainted) and dropping any CR/LF-bearing header.
+QByteArray buildRequest(const Request &req, const QString &path,
+                        const QString &query, const QByteArray &body);
 
 } // namespace Nullock::Core::Ssti
