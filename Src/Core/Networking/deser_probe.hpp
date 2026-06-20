@@ -27,10 +27,11 @@
 // PHP's O: token does look up the named -- nonexistent -- canary class and
 // build an incomplete-class object, but still errors before __wakeup.)
 //
-// Scope (in-band, error-based): payloads ride the QUERY STRING only, so blobs
-// carried in COOKIES (remember-me/session) or request BODIES (.NET __VIEWSTATE,
-// raw application/x-java-serialized-object) are flagged passively but not yet
-// actively confirmed here, and a deserializer that SWALLOWS errors (display_
+// Scope (in-band, error-based): payloads ride the QUERY STRING by default, or
+// the RAW REQUEST BODY when location="body" (the classic
+// application/x-java-serialized-object sink). Blobs carried in COOKIES
+// (remember-me/session) or a named body FIELD (.NET __VIEWSTATE) aren't actively
+// confirmed yet (flagged passively), and a deserializer that SWALLOWS errors (display_
 // errors off, custom 500) or a Java readObject gadget that fires server-side
 // with no trace is missed -- blind/OOB deserialization (URLDNS gadget -> OAST
 // callback) is a separate OAST-backed probe. A clean result does not rule out
@@ -59,6 +60,8 @@ struct Request {
     QString basePath;
     QString query;                              // existing query (encoded)
     QString param;                              // param to test; empty = auto-detect
+    QString location;                           // "" / "query" (default) | "body" (raw request body)
+    QString contentType;                        // body mode: override the per-format Content-Type
     QList<QPair<QString, QString>> headers;
 };
 

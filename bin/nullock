@@ -1117,11 +1117,13 @@ cmd_ssrf() {
 }
 
 cmd_deser() {
-    # nullock deser <url> [param] [Header:Value ...]
-    [[ -n ${1-} ]] || die "usage: nullock deser <url> [param] [hdr:val ...]"
+    # nullock deser <url> [param|body] [Header:Value ...]
+    #   'body' tests the raw request body (application/x-java-serialized-object class)
+    [[ -n ${1-} ]] || die "usage: nullock deser <url> [param|body] [hdr:val ...]"
     local url=$1; shift
-    local param=""
-    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local param="" location=""
+    if [[ ${1-} == body ]]; then location="body"; shift
+    elif [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
     local headers="{}"
     if (( $# > 0 )); then
         headers="{"; local first=1
@@ -1132,7 +1134,7 @@ cmd_deser() {
         done
         headers+="}"
     fi
-    post /api/deser/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+    post /api/deser/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"location\":$(jsonq "$location"),\"headers\":$headers}" | pp
 }
 
 cmd_cswsh() {

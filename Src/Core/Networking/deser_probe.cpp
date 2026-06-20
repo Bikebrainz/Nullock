@@ -69,6 +69,36 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     return out;
 }
 
+// A POST (or the caller's write method) carrying the serialized stub as the raw
+// request body -- the application/x-java-serialized-object class of sink.
+QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QString &ct) {
+    QString method = req.method;
+    if (method.isEmpty() || method.compare("GET", Qt::CaseInsensitive) == 0)
+        method = QStringLiteral("POST");
+    if (method.contains('\r') || method.contains('\n')) return {};
+    if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
+    const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
+    QByteArray out;
+    out  = method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
+    out += "Host: " + req.host.toUtf8() + "\r\n";
+    out += "User-Agent: Nullock/deser\r\n";
+    out += "Accept: */*\r\n";
+    out += "Accept-Encoding: identity\r\n";
+    out += "Content-Type: " + ct.toUtf8() + "\r\n";
+    for (const auto &h : req.headers) {
+        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.contains('\r') || h.first.contains('\n')) continue;
+        if (h.second.contains('\r') || h.second.contains('\n')) continue;
+        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
+    }
+    out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+    out += "Connection: close\r\n\r\n";
+    out += body;
+    return out;
+}
+
 QString queryWith(const QString &existing, const QString &param, const QString &value) {
     const QByteArray enc = QUrl::toPercentEncoding(value);
     QStringList parts;
@@ -108,6 +138,51 @@ Result test(const Request &reqIn) {
     if (reqIn.host.isEmpty()) { result.error = "host required"; return result; }
     Request req = reqIn;
     if (req.basePath.isEmpty()) req.basePath = QStringLiteral("/");
+
+    // Raw-body injection: send each format's well-formed/malformed serialized
+    // object as the REQUEST BODY (the application/x-java-serialized-object class
+    // of sink). Same well-formed-vs-malformed differential as the query path.
+    if (req.location.compare("body", Qt::CaseInsensitive) == 0) {
+        HttpClient bclient;
+        const quint16 bport = static_cast<quint16>(req.port);
+        struct BodyProbe { const char *format; const char *wf; const char *mf;
+                           const char *ct; bool b64; };
+        static const QList<BodyProbe> bprobes = {
+            { "Java",   "rO0ABXQAA2FiYw==", "rO0ABXNyABFOdWxsb2NrRGVzZXJDYW5hcnk=",
+              "application/x-java-serialized-object", true },
+            { "PHP",    "O:8:\"stdClass\":1:{s:1:\"a\";i:1;}",
+              "O:18:\"NullockDeserCanary\":9:{s:1:\"x\";i:1;}",
+              "application/x-www-form-urlencoded", false },
+            { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ", "application/python-pickle", true },
+            { "Ruby",   "BAhpBg==", "BAhbBg==", "application/octet-stream", true },
+        };
+        result.testedParams = QStringList{ QStringLiteral("(request body)") };
+        auto raw = [](const char *s, bool b64) {
+            return b64 ? QByteArray::fromBase64(QByteArray(s)) : QByteArray(s);
+        };
+        auto sendBody = [&](const QByteArray &b, const QString &ct) {
+            ++result.requestsSent;
+            return bclient.send(req.host, bport, req.tls, buildBodyRequest(req, b, ct));
+        };
+        for (const BodyProbe &p : bprobes) {
+            if (result.requestsSent >= kMaxSends) break;
+            const QString ct = req.contentType.isEmpty()
+                ? QString::fromUtf8(p.ct) : req.contentType;
+            const auto wf = sendBody(raw(p.wf, p.b64), ct);
+            if (!wf.ok) continue;
+            result.baselineStatus = wf.parsed.statusCode;
+            if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / strict / not a deser
+            const auto mf = sendBody(raw(p.mf, p.b64), ct);
+            if (!mf.ok) continue;
+            const auto err = matchError(mf.parsed.body);
+            if (err.first.isEmpty()) continue;
+            result.hits.append({ QStringLiteral("(body)"), err.first,
+                                 QString::fromUtf8(p.mf), err.second });
+            result.vulnerable = true;
+            break;
+        }
+        return result;
+    }
 
     // Build the param set: the named param, else the query keys MERGED with the
     // curated carriers (so a URL that already has one query param doesn't shut

@@ -6937,6 +6937,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         dr.query = u.query(QUrl::FullyEncoded);
         dr.param = bodyJson.value("param").toString();
+        dr.location = bodyJson.value("location").toString();        // ""/"query" | "body"
+        dr.contentType = bodyJson.value("contentType").toString();
         const QJsonObject dhdrs = bodyJson.value("headers").toObject();
         for (auto it = dhdrs.begin(); it != dhdrs.end(); ++it)
             dr.headers.append({ it.key(), it.value().toString() });
