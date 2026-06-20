@@ -41,7 +41,7 @@ const QStringList &emittedKinds() {
         "fw-spa-state-leak", "fw-symfony", "fw-vue", "graphql-dangerous-mutation",
         "graphql-introspection", "graphql-introspection-active", "graphql-sensitive-field", "host-header-reflected-location",
         "hsts-no-preload", "hsts-no-subdomains", "hsts-short-max-age", "html-comment-leak",
-        "idor-horizontal", "internal-hostname-leak", "internal-ip-leak", "jwt-echoed-in-body",
+        "idor-enumerable", "internal-hostname-leak", "internal-ip-leak", "jwt-echoed-in-body",
         "jwt-in-url", "mass-assignment", "missing-coep", "missing-coop",
         "missing-corp", "missing-permissions-policy", "mixed-content", "nosql-injection",
         "open-redirect", "options-mutation-methods", "path-traversal", "phpinfo-output",

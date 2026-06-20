@@ -3,24 +3,34 @@
 // IDOR / BOLA auto-detection. Burp has no native scanner for this -- the
 // #1 API vulnerability class (OWASP API #1: Broken Object Level
 // Authorization) is left to manual work or extensions. We automate the
-// common case:
+// discovery half:
 //
 //   Given a request that carries a numeric object id (in a path segment
 //   like /api/orders/1043 or a param like ?user_id=7), replay it with
 //   the SAME session but neighboring ids. If a neighbor returns a valid,
-//   *distinct* object (not your own, not the not-found template), you
-//   just read someone else's record -- a horizontal IDOR lead.
+//   *distinct* object (not your own, not the not-found template), the id
+//   space is enumerable under your session -- a horizontal IDOR LEAD.
+//
+// IMPORTANT: a single session can only prove objects are ENUMERABLE, not
+// that the access is UNAUTHORIZED -- a public catalog (/product/124) is
+// enumerable by design. So a hit here is a lead graded low, not a confirmed
+// break; confirmation needs a multi-identity replay (see /api/authz-test),
+// which fetches the same object under a second (lower-privilege) identity and
+// flags only when access diverges.
 //
 // Discriminator: we first fetch a wildly-out-of-range id to learn what
 // "this object doesn't exist / you can't see it" looks like. A neighbor
 // only counts as accessible if its response differs from BOTH your own
 // object and that not-found template -- which kills the false positives
-// from endpoints that 200 everything or echo a static page.
+// from endpoints that 200 everything or echo a static page. If that
+// discriminator request FAILS we cannot tell a real object from a 404, so
+// we fail closed and skip the location rather than flag everything.
 
 #include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 
 namespace Nullock::Core::IdorTester {
 
@@ -61,10 +71,46 @@ struct Result {
 };
 
 // Find numeric id locations in the request, mutate each to neighbors, and
-// report neighbors that return distinct valid objects. If explicitIdParam
-// is set, only that param/segment is tested. mutationsPerId bounds the
-// neighbor count fired per location.
+// report neighbors that return distinct valid objects (enumeration leads). If
+// explicitIdParam is set, only that param/segment is tested. mutationsPerId
+// bounds the neighbor count fired per location.
 Result test(const Request &req, const QString &explicitIdParam = QString(),
             int mutationsPerId = 6);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// id discovery, mutation, padding, fail-closed control gate, and CR/LF guards
+// against Qt6::Core alone.
+
+bool looksLikeIdParam(const QString &name);
+bool looksLikeNonIdSegment(const QString &seg, const QString &prev);
+bool isNumeric(const QString &s);
+
+QString pathOnly(const QString &basePath);
+QString queryOnly(const QString &basePath);
+
+// Format a mutated id, preserving the original's zero-padding width so a
+// fixed-width id space (/doc/00042) yields valid padded neighbors, not "43".
+QString formatId(qint64 n, const QString &original);
+
+// Candidate neighbor ids for `original` (value v), nearest first, padded to
+// match `original`'s width.
+QStringList neighbors(const QString &original, qint64 v, int count);
+
+// Rebuild basePath with `loc`'s id replaced by `newId`.
+QString withMutatedId(const QString &basePath, const IdLocation &loc, const QString &newId);
+
+// Build the raw request. Returns empty if method/host/path or a carried header
+// carries a CR/LF (request-line / header injection guard).
+QByteArray buildRequest(const Request &req, const QString &path);
+
+// Fail-closed control gate: was the not-found discriminator usable? If the
+// control request failed (len < 0) we cannot distinguish a real object from a
+// 404, so the location must be skipped rather than flagging every 2xx.
+bool controlUsable(int controlLen);
+
+// A neighbor is an enumeration lead when it is 2xx, distinguishable from the
+// not-found template, and not byte-identical to your own baseline object.
+bool isAccessible(int status, bool differsFromNotFound, bool differsFromBaseline);
 
 } // namespace Nullock::Core::IdorTester

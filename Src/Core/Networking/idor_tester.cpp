@@ -1,109 +1,12 @@
 #include "idor_tester.hpp"
 #include "networking.hpp"
 
-#include <QRegularExpression>
-#include <QUrl>
-
 namespace Nullock::Core::IdorTester {
 
-namespace {
-
-// Param names that typically carry an object identifier worth probing.
-// Deliberately excludes pagination/cursor names (page, no, offset) and
-// vague ones (key, ref, node) -- those mutate fine but aren't object ids,
-// so probing them just yields different pages of YOUR OWN authorized data.
-bool looksLikeIdParam(const QString &name) {
-    static const QRegularExpression rx(
-        R"(^(id|.*_id|.*Id|uid|guid|pid|oid|account|order|doc|file|record|item|object|entity|user|customer|invoice|ticket|message|msg|post|comment)$)",
-        QRegularExpression::CaseInsensitiveOption);
-    return rx.match(name).hasMatch();
-}
-
-// A numeric path segment that is really an API version (/v1/2/...) or a
-// date/path component under a version root (/api/2024/...) -- not an
-// object id. `prev` is the preceding path segment (lowercased). We key
-// off the preceding segment rather than the value, so a legitimate
-// 4-digit object id like /orders/2024 is still tested.
-bool looksLikeNonIdSegment(const QString &seg, const QString &prev) {
-    Q_UNUSED(seg);
-    static const QRegularExpression verRx("^v\\d+$");
-    return verRx.match(prev).hasMatch() || prev == "api" || prev == "rest"
-        || prev == "graphql";
-}
-
-bool isNumeric(const QString &s) {
-    if (s.isEmpty() || s.size() > 18) return false;   // fits in qint64
-    for (QChar c : s) if (!c.isDigit()) return false;
-    return true;
-}
-
-QString pathOnly(const QString &basePath) {
-    const int q = basePath.indexOf('?');
-    return q < 0 ? basePath : basePath.left(q);
-}
-QString queryOnly(const QString &basePath) {
-    const int q = basePath.indexOf('?');
-    return q < 0 ? QString() : basePath.mid(q + 1);
-}
-
-// Rebuild basePath with `loc`'s id replaced by `newId`.
-QString withMutatedId(const QString &basePath, const IdLocation &loc,
-                      const QString &newId) {
-    QString path = pathOnly(basePath);
-    QString query = queryOnly(basePath);
-
-    if (loc.kind == IdLocation::PathSegment) {
-        QStringList segs = path.split('/');
-        if (loc.segIndex >= 0 && loc.segIndex < segs.size())
-            segs[loc.segIndex] = newId;
-        path = segs.join('/');
-    } else {
-        const QStringList pairs = query.split('&', Qt::SkipEmptyParts);
-        QStringList rebuilt;
-        for (const QString &p : pairs) {
-            const int eq = p.indexOf('=');
-            const QString k = eq > 0 ? p.left(eq) : p;
-            if (k == loc.paramName)
-                rebuilt << (k + "=" + newId);
-            else
-                rebuilt << p;
-        }
-        query = rebuilt.join('&');
-    }
-    return query.isEmpty() ? path : path + "?" + query;
-}
-
-QByteArray buildRequest(const Request &req, const QString &path) {
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + path.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/idor-tester\r\n";
-    out += "Accept: */*\r\n";
-    // Identity encoding so our length-based comparison sees real object
-    // sizes, not variable gzip output (compression ratio differs per body).
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
-// Candidate neighbor ids for a numeric id, nearest first.
-QStringList neighbors(qint64 v, int count) {
-    const qint64 deltas[] = { 1, -1, 2, -2, 5, 10, -5, 100 };
-    QStringList out;
-    for (qint64 d : deltas) {
-        if (out.size() >= count) break;
-        const qint64 n = v + d;
-        if (n < 0) continue;
-        out << QString::number(n);
-    }
-    return out;
-}
-
-} // namespace
+// (Pure helpers -- looksLikeIdParam, looksLikeNonIdSegment, isNumeric,
+// pathOnly, queryOnly, formatId, neighbors, withMutatedId, buildRequest,
+// controlUsable, isAccessible -- live in idor_logic.cpp so the regression test
+// can exercise them without the network stack.)
 
 Result test(const Request &req, const QString &explicitIdParam, int mutationsPerId) {
     Result result;
@@ -178,30 +81,33 @@ Result test(const Request &req, const QString &explicitIdParam, int mutationsPer
         // Discriminator: two wildly out-of-range ids teach us what
         // "no such object / forbidden" looks like AND how much its length
         // jitters (dynamic tokens again).
-        const auto ctrlA = fetch(withMutatedId(req.basePath, loc, QString::number(v + 1000000007LL)));
-        const auto ctrlB = fetch(withMutatedId(req.basePath, loc, QString::number(v + 999999937LL)));
+        const auto ctrlA = fetch(withMutatedId(req.basePath, loc, formatId(v + 1000000007LL, loc.originalValue)));
+        const auto ctrlB = fetch(withMutatedId(req.basePath, loc, formatId(v + 999999937LL, loc.originalValue)));
         const int ctrlLen    = ctrlA.ok ? ctrlA.parsed.body.size() : -1;
+        // FAIL CLOSED: if the discriminator request failed we cannot tell a
+        // real object from a not-found page, so every 2xx would otherwise be
+        // flagged. Skip the location rather than flag everything.
+        if (!controlUsable(ctrlLen)) continue;
         const int ctrlJitter = (ctrlA.ok && ctrlB.ok)
                                ? qAbs(ctrlB.parsed.body.size() - ctrlLen) : 0;
         const int tol = qMax(baseJitter, ctrlJitter) + 16;
 
         Finding finding;
         finding.loc = loc;
-        for (const QString &nid : neighbors(v, mutationsPerId)) {
+        for (const QString &nid : neighbors(loc.originalValue, v, mutationsPerId)) {
             const auto r = fetch(withMutatedId(req.basePath, loc, nid));
             if (!r.ok) continue;
             const int st  = r.parsed.statusCode;
             const QByteArray body = r.parsed.body;
             const int len = body.size();
-            // Accessible object = a 2xx response that is (a) not the
-            // not-found template -- its length is meaningfully different
-            // from the control -- and (b) not literally your own identical
-            // object (an endpoint that ignores the id / serves a static
-            // page returns body == baseBody for every neighbor).
-            const bool twoxx       = st >= 200 && st < 300;
-            const bool notNotFound = (ctrlLen < 0) || qAbs(len - ctrlLen) > tol;
+            // Accessible (enumeration lead) = a 2xx response that is (a) not the
+            // not-found template -- its length is meaningfully different from
+            // the control -- and (b) not literally your own identical object
+            // (an endpoint that ignores the id / serves a static page returns
+            // body == baseBody for every neighbor).
+            const bool notNotFound = qAbs(len - ctrlLen) > tol;
             const bool notMine     = body != baseBody;
-            if (twoxx && notNotFound && notMine)
+            if (isAccessible(st, notNotFound, notMine))
                 finding.accessible.append({ nid, st, len });
         }
         if (!finding.accessible.isEmpty())

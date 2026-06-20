@@ -630,8 +630,34 @@ def make(mode):
                 # the not-found control) -- BOLA. Out-of-range control ids 404.
                 # Safe mock ignores the id (same body for all -> not "someone
                 # else's object").
-                try: n = int(q.get('id', [''])[0])
+                raw = q.get('id', [''])[0]
+                try: n = int(raw)
                 except Exception: n = -1
+                if mode == 'idor-ctrlfail':
+                    # Distinct object per id, BUT the wildly-out-of-range
+                    # discriminator id (>1000000) drops the connection so the
+                    # control SEND fails -> the fail-closed gate must skip the
+                    # location (no finding), instead of flagging every 2xx.
+                    if n > 1000000:
+                        try: self.connection.close()
+                        except Exception: pass
+                        return
+                    if 0 <= n <= 1000000:
+                        self._send(200, ('<html>Account %d: owner user_%d</html>' % (n, n)).encode())
+                    else:
+                        self._send(404, b'<html>not found</html>')
+                    return
+                if mode == 'idor-padded':
+                    # Width-strict id space: only zero-padded width-5 ids resolve
+                    # (/?id=00042). Unpadded neighbors ("43") 404, so ONLY a
+                    # padding-preserving probe enumerates the neighbors.
+                    if re.match(r'^0\d{4}$', raw):
+                        self._send(200, ('<html>Doc %d: confidential record, owner user_%d, '
+                                         'balance $%d, email user%d@corp.test</html>'
+                                         % (n, n, n * 7, n)).encode())
+                    else:
+                        self._send(404, b'<html>not found</html>')
+                    return
                 if mode == 'idor-vuln' and 0 <= n <= 1000000:
                     self._send(200, ('<html>Account %d: balance $%d, owner user_%d, '
                                      'email user%d@corp.test</html>' % (n, n * 7, n, n)).encode())
@@ -667,7 +693,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ssti-vuln ssti-safe ssti-calc
        cmdi-vuln cmdi-safe cmdi-arith
        nosqli-vuln nosqli-safe nosqli-namedeny
-       idor-vuln idor-safe
+       idor-vuln idor-safe idor-ctrlfail idor-padded
        xxe-vuln xxe-safe xxe-xinclude xxe-doctype-reject
        ssrf-vuln ssrf-safe ssrf-fp ssrf-bypass ssrf-internal
        deser-vuln deser-php-vuln deser-python-vuln deser-ruby-vuln
@@ -798,7 +824,10 @@ chk "nosqli \$ne-name-deny -> NOT confirmed (2x2 FP fix)" "$(post /api/nosqli/te
 
 echo "== IDOR / BOLA (core) =="
 chk "idor vulnerable -> finding"        "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-vuln]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('findingCount',0)>=1"
+chk "idor finding graded as enumeration LEAD, not confirmed (FP fix)" "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-vuln]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('severity')=='low' and d.get('kind')=='idor-enumerable'"
 chk "idor safe -> no finding"           "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-safe]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('ok') and d.get('findingCount',0)==0"
+chk "idor control-fetch fails -> fail-closed, no finding (FP fix)" "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-ctrlfail]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('findingCount',0)==0"
+chk "idor zero-padded ids -> padding preserved -> finding (FN fix)" "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-padded]} '?id=00042')\",\"idParam\":\"id\"}")" "d.get('findingCount',0)>=1"
 
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"

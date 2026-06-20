@@ -93,3 +93,9 @@ add_subdirectory(cache_poison)
 # guards (pure logic; live flow covered in probe_smoke).
 # Run via: ctest -R cache_deception -V
 add_subdirectory(cache_deception)
+
+# IDOR / BOLA -- the fail-closed control gate, the enumeration-lead
+# classification, zero-padding-preserving neighbor generation, id substitution,
+# and buildRequest's CR/LF guards (pure logic; live flow covered in probe_smoke).
+# Run via: ctest -R idor_tester -V
+add_subdirectory(idor_tester)

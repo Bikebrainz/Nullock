@@ -527,10 +527,14 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         ir.method = t.method; ir.basePath = t.basePath; ir.headers = t.headers;
         const auto res = Nullock::Core::IdorTester::test(ir);
         QStringList locs; for (const auto &f : res.findings) locs << f.loc.descriptor;
+        // A single session can only prove the id space is ENUMERABLE, not that
+        // the access is unauthorized -- so this is a low-severity lead, not a
+        // confirmed break. Confirm with the multi-identity authz tester.
         note("idor", res.findings.size(),
-             QString("%1 id location(s) checked, %2 exposed ")
-                 .arg(res.idLocationsFound).arg(res.findings.size()) + locs.join(", "),
-             "high", "idor-horizontal", "Deep audit: IDOR at " + locs.join(", "));
+             QString("%1 id location(s) checked, %2 with enumerable neighbors ")
+                 .arg(res.idLocationsFound).arg(res.findings.size()) + locs.join(", ")
+                 + " (NOT confirmed unauthorized -- confirm via multi-identity replay)",
+             "low", "idor-enumerable", "Deep audit: enumerable object ids at " + locs.join(", "));
     }
     if ((wants("massassign") || wants("mass-assignment")) && !t.body.isEmpty()) {
         Nullock::Core::MassAssign::Request mr;
@@ -8136,12 +8140,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 { "location", f.loc.descriptor },
                 { "originalId", f.loc.originalValue },
                 { "accessible", accessible } });
-            // Each location with accessible neighbors is a real finding.
+            // A single session proves only that the id space is ENUMERABLE,
+            // not that the access is unauthorized (a public catalog is
+            // enumerable by design). So this is a low-severity LEAD, not a
+            // confirmed horizontal IDOR -- confirm with /api/authz-test, which
+            // replays under a second (lower-privilege) identity.
             if (m_wiring.scanner) {
-                m_wiring.scanner->reportFinding(0, "high", "idor-horizontal",
-                    QString("IDOR: %1 (id=%2) exposes neighboring objects %3")
+                m_wiring.scanner->reportFinding(0, "low", "idor-enumerable",
+                    QString("Enumerable object ids: %1 (id=%2) returns distinct objects for neighbors %3")
                         .arg(f.loc.descriptor, f.loc.originalValue, ids.join(", ")),
-                    "same-session replay of neighboring ids returned distinct valid objects",
+                    "same-session replay of neighboring ids returned distinct valid objects -- "
+                    "NOT confirmed unauthorized; confirm with a multi-identity replay (/api/authz-test)",
                     u.host(), url);
             }
         }
@@ -8150,6 +8159,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "idLocationsFound", tr.idLocationsFound },
                        { "requestsSent", tr.requestsSent },
                        { "findingCount", static_cast<int>(tr.findings.size()) },
+                       // Single-session leads grade low ("enumerable", not a
+                       // confirmed authorization break) -- empty when no lead.
+                       { "severity", tr.findings.isEmpty() ? QString() : QStringLiteral("low") },
+                       { "kind", tr.findings.isEmpty() ? QString() : QStringLiteral("idor-enumerable") },
                        { "findings", findings }});
     }
 

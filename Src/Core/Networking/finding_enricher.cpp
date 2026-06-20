@@ -143,7 +143,11 @@ const QHash<QString, Mapping> &table() {
         { "hidden-param",           { "CWE-200", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Undocumented param alters behavior -- review for hidden/debug functionality." } },
 
         // ---- IDOR / BOLA --------------------------------------------
-        { "idor-horizontal", { "CWE-639", "A01:2021-Broken Access Control", 8.1, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:L/A:N", "PCI-DSS-6.5.8", "Enforce per-object authorization server-side; don't trust client-supplied ids." } },
+        // Single-session enumeration lead: object ids are guessable and return
+        // distinct objects, but it is NOT proven the access is unauthorized
+        // (a public catalog is enumerable by design). Lower CVSS than a
+        // confirmed break; confirm with a multi-identity replay (authz-divergence).
+        { "idor-enumerable", { "CWE-639", "A01:2021-Broken Access Control", 5.3, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:N/A:N", "PCI-DSS-6.5.8", "Enforce per-object authorization server-side; don't trust client-supplied ids. Confirm whether enumerable neighbors are actually unauthorized via a second-identity replay." } },
 
         // ---- Mass assignment (OWASP API #6) -------------------------
         { "mass-assignment", { "CWE-915", "A08:2021-Software and Data Integrity Failures", 8.1, "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Bind an explicit allow-list of writable fields; never auto-bind the request body onto the model." } },
