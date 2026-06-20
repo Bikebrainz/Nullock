@@ -392,6 +392,22 @@ const QList<Entry> &table() {
           ">=4.0.0,<4.3.1", "4.3.1",
           "https://github.com/twbs/bootstrap/releases/tag/v4.3.1" },
 
+        // ---- jQuery UI (version from the jquery-ui-X.Y.Z asset path) -
+        // The three 2021 XSS CVEs are one clean range fixed in 1.13.0:
+        // 41182 (datepicker altField), 41183 (datepicker text options),
+        // 41184 (.position() `of`). A later checkboxradio XSS (CVE-2022-31160)
+        // is a separate range fixed in 1.13.2.
+        { "lib-jquery-ui", "CVE-2021-41182",
+          "jQuery UI < 1.13.0: XSS via the datepicker altField / text options and the .position() 'of' option",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          "<1.13.0", "1.13.0",
+          "https://github.com/jquery/jquery-ui/security/advisories/GHSA-9gj3-hwp5-pmwc" },
+        { "lib-jquery-ui", "CVE-2022-31160",
+          "jQuery UI >=1.13.0 <1.13.2: XSS in the checkboxradio widget via a non-string label",
+          6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          ">=1.13.0,<1.13.2", "1.13.2",
+          "https://github.com/jquery/jquery-ui/security/advisories/GHSA-h6gj-6jjq-h8g9" },
+
         // ---- Sitecore -----------------------------------------------
         { "cms-sitecore", "CVE-2025-27218",
           "Sitecore XP/XM: insecure deserialization in ItemService leading to unauthenticated RCE",

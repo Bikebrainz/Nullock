@@ -113,6 +113,10 @@ const QList<Case> &corpus() {
         { "jQuery 3.5.1 (patched) -> NOT 11022",      "lib-jquery", "jQuery 3.5.1", "CVE-2020-11022", true, 0 },
         { "Bootstrap 4.2.0 -> 8331",                  "lib-bootstrap", "Bootstrap 4.2.0", "CVE-2019-8331", false, 0 },
         { "Bootstrap 4.3.1 (patched) -> NOT 8331",    "lib-bootstrap", "Bootstrap 4.3.1", "CVE-2019-8331", true, 0 },
+        { "jQuery UI 1.12.1 -> 41182",                "lib-jquery-ui", "jQuery UI 1.12.1", "CVE-2021-41182", false, 0 },
+        { "jQuery UI 1.13.0 (patched) -> NOT 41182",  "lib-jquery-ui", "jQuery UI 1.13.0", "CVE-2021-41182", true, 0 },
+        { "jQuery UI 1.13.1 -> 31160",                "lib-jquery-ui", "jQuery UI 1.13.1", "CVE-2022-31160", false, 0 },
+        { "jQuery UI 1.13.2 (patched) -> NOT 31160",  "lib-jquery-ui", "jQuery UI 1.13.2", "CVE-2022-31160", true, 0 },
         { "PHP 8.1.10 -> 4577",                       "lang-php", "PHP 8.1.10", "CVE-2024-4577", false, 0 },
         { "PHP 8.1.29 (patched) -> NOT 4577",         "lang-php", "PHP 8.1.29", "CVE-2024-4577", true, 0 },
 

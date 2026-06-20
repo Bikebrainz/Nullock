@@ -149,6 +149,10 @@ Result fingerprint(const Request &req) {
     }
     if (!(v = cap1(rx("jquery[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.js"), body)).isEmpty())
         add("jQuery", v, "body", "lib-jquery");
+    // jQuery UI ships separately (jquery-ui-X.Y.Z[.custom][.min].js|css). The
+    // jQuery regex above can't match it -- no digit follows "jquery-ui".
+    if (!(v = cap1(rx("jquery-ui[.\\-]([0-9]+\\.[0-9][0-9.]*)(?:\\.custom)?(?:\\.min)?\\.(?:js|css)"), body)).isEmpty())
+        add("jQuery UI", v, "body", "lib-jquery-ui");
     if (!(v = cap1(rx("bootstrap[.\\-]?([0-9]+\\.[0-9][0-9.]*)(?:\\.min)?\\.(?:js|css)"), body)).isEmpty())
         add("Bootstrap", v, "body", "lib-bootstrap");
     if (body.contains("__NEXT_DATA__")) add("Next.js", "", "body", "fw-nextjs");
