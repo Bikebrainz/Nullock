@@ -429,6 +429,14 @@ def make(mode):
                     if secs > 0:
                         time.sleep(min(secs, 6))
                     self._send(200, b'<html>results</html>'); return
+                if mode == 'sqli-waf':
+                    # WAF blocks odd-quote inputs with a 403 page naming the attack
+                    # class (a GENERIC "SQL syntax error" string) -- the generic-
+                    # family block-status guard must reject it (no real backend
+                    # error; the even-quote balanced control is let through).
+                    if val.count("'") % 2 == 1:
+                        self._send(403, b'<html>Request blocked: SQL syntax error detected in input</html>'); return
+                    self._send(200, b'<html>0 results</html>'); return
                 # Error-based: an unbalanced quote (odd count) breaks the query;
                 # the breaker has 1 quote (odd), the balanced control has 2 (even).
                 vuln = (mode == 'sqli-vuln' and val.count("'") % 2 == 1)
@@ -588,7 +596,7 @@ PY
 # mock's stdout (avoids any reserved/busy-port collision).
 MODES=(sspp-vuln sspp-safe sspp-gzip
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
-       sqli-vuln sqli-safe sqli-blind
+       sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe
@@ -682,6 +690,7 @@ chk "sqli vulnerable -> confirmed"      "$(post /api/sqli/test "{\"url\":\"$(url
 chk "sqli safe -> not vulnerable"       "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "sqli blind -> time-based confirmed" "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-blind]} 'search?q=test')\",\"blind\":true}")" "d.get('vulnerable') and any(h.get('technique')=='time-based' for h in d.get('hits',[]))"
 chk "sqli blind safe -> not vulnerable" "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-safe]} 'search?q=test')\",\"blind\":true}")" "d.get('ok') and not d.get('vulnerable')"
+chk "sqli WAF block (generic+403) -> NOT confirmed (FP fix)" "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-waf]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== reflected XSS (core) =="
 chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-vuln]} '?q=test')\"}")" "d.get('vulnerable')"

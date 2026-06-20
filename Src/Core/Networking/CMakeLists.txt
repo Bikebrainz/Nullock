@@ -100,6 +100,7 @@ add_library(Networking STATIC
     xss_reflected.cpp
     xss_reflected.hpp
     sql_injection.cpp
+    sql_logic.cpp
     sql_injection.hpp
     ldap_injection.cpp
     ldap_logic.cpp
