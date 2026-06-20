@@ -16,9 +16,10 @@ Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/C
 Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
                   mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure
-                  deserialization (Java/PHP/Python/Ruby/.NET), host-header injection, server-side
-                  prototype pollution, security-header/CSP audit, web cache poisoning + deception,
-                  dangerous HTTP methods, sensitive-file exposure, HTTP request smuggling, race conditions
+                  deserialization (Java/PHP/Python/Ruby/.NET), cross-site WebSocket hijacking,
+                  host-header injection, server-side prototype pollution, security-header/CSP audit,
+                  web cache poisoning + deception, dangerous HTTP methods, sensitive-file exposure,
+                  HTTP request smuggling, race conditions
 Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
                   database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/Elasticsearch/Kibana/Tomcat/PHP/...),
                   with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay

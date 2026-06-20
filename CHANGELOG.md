@@ -60,6 +60,10 @@ developer-facing record.
   requires a response-only signature that's absent from the baseline AND from a
   same-shape non-fetchable shaped-control URL, so reflection/WAF templates can't
   false-positive.
+- **Cross-site WebSocket hijacking (CSWSH)** — `/api/cswsh/test` + `nullock
+  cswsh`, an active probe that sends a cross-origin WebSocket upgrade and
+  confirms only on `101` + a valid `Sec-WebSocket-Accept` (RFC 6455), with a
+  no-Origin control to tell an origin-validating endpoint from a non-WS one.
 - **Insecure deserialization** — `/api/deser/test` + `nullock deser`, an active
   probe for Java/PHP/Python/Ruby/.NET. Uses a well-formed-vs-malformed
   differential (a real deserializer accepts a benign well-formed object and errors
