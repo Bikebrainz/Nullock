@@ -105,6 +105,7 @@ add_library(Networking STATIC
     ldap_logic.cpp
     ldap_injection.hpp
     xpath_injection.cpp
+    xpath_logic.cpp
     xpath_injection.hpp
     ssrf_scan.cpp
     ssrf_scan.hpp

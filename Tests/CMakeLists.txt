@@ -65,3 +65,8 @@ add_subdirectory(nosql_injection)
 # block-status guard, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R ldap_injection -V
 add_subdirectory(ldap_injection)
+
+# XPath injection -- error signatures (generic vs engine-specific), the WAF
+# block-status guard, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R xpath_injection -V
+add_subdirectory(xpath_injection)

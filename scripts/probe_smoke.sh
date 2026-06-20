@@ -217,6 +217,13 @@ def make(mode):
                 ok  = b'<html>0 nodes</html>'
                 val = q.get('q', [''])[0]
                 brk = any(c in val for c in "'\"])")
+                if mode == 'xpath-waf':
+                    # WAF blocks XPath metacharacters with a 403 page naming the
+                    # attack class -- the generic-family block-status guard must
+                    # reject it (no real backend expression break).
+                    if brk:
+                        self._send(403, b'<html>Error: XPath injection blocked by WAF</html>'); return
+                    self._send(200, ok); return
                 self._send(200, err if (mode == 'xpath-vuln' and brk) else ok); return
             if mode.startswith('h3'):
                 alt = {'h3-adv': 'h3=":443"; ma=86400, h3-29=":443", h2=":443"',
@@ -600,7 +607,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        deser-field-vuln deser-field-safe
        massassign-vuln massassign-safe
        ldap-vuln ldap-safe ldap-baseline ldap-waf
-       xpath-vuln xpath-safe
+       xpath-vuln xpath-safe xpath-waf
        content-found
        cswsh-vuln cswsh-safe
        jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
@@ -761,6 +768,7 @@ chk "ldap WAF block (generic+403) -> NOT confirmed (FP fix)" "$(post /api/ldapi/
 echo "== XPath injection =="
 chk "xpath vulnerable -> confirmed"     "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
 chk "xpath safe -> not vulnerable"      "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "xpath WAF block (generic+403) -> NOT confirmed (FP fix)" "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-waf]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== content discovery =="
 CB="$(post /api/content/discover "{\"url\":\"$(url ${P[content-found]} '')\"}")"
