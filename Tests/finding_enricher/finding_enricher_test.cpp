@@ -55,6 +55,7 @@ const QStringList &emittedKinds() {
         "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
         "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
         "sri-missing", "ssrf-cloud-metadata", "ssrf-internal",
+        "deser-java", "deser-php", "deser-pickle", "deser-ruby", "deser-dotnet",
     };
     return k;
 }
@@ -82,6 +83,8 @@ const QList<Spot> &spotChecks() {
         { "xpath-injection",             "CWE-643" },   // exact (new)
         { "ssrf-cloud-metadata",         "CWE-918" },   // exact (new)
         { "ssrf-internal",               "CWE-918" },   // ssrf- family (new)
+        { "deser-java",                  "CWE-502" },   // exact (new)
+        { "deser-dotnet",                "CWE-502" },   // exact (new)
     };
     return s;
 }

@@ -1115,6 +1115,25 @@ cmd_ssrf() {
     post /api/ssrf/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
 }
 
+cmd_deser() {
+    # nullock deser <url> [param] [Header:Value ...]
+    [[ -n ${1-} ]] || die "usage: nullock deser <url> [param] [hdr:val ...]"
+    local url=$1; shift
+    local param=""
+    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local headers="{}"
+    if (( $# > 0 )); then
+        headers="{"; local first=1
+        for h in "$@"; do
+            local name=${h%%:*} val=${h#*:}; val=${val# }
+            if (( first )); then first=0; else headers+=","; fi
+            headers+="$(jsonq "$name"):$(jsonq "$val")"
+        done
+        headers+="}"
+    fi
+    post /api/deser/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+}
+
 cmd_xss() {
     # nullock xss <url> [param] [Header:Value ...]
     [[ -n ${1-} ]] || die "usage: nullock xss <url> [param] [hdr:val ...]"
@@ -1865,6 +1884,10 @@ Above-Burp features (v4/v5):
                                          SSRF -- injects cloud-metadata / file://
                                          URLs; confirmed by a fetch-only signature
                                          the baseline lacks (reflection-proof)
+  nullock deser <url> [param] [hdr:val ...]
+                                         Insecure deserialization -- injects a
+                                         malformed serialized stub; confirmed by a
+                                         deser parse error the baseline lacks
   nullock xxe <url> [hdr:val ...]        XXE -- POSTs an XML body whose external
                                          entity reads a local file; confirmed by
                                          the file's content signature
@@ -2006,6 +2029,7 @@ case ${1:-help} in
     ldapi)         shift; cmd_ldapi "$@"         ;;
     xpathi)        shift; cmd_xpathi "$@"        ;;
     ssrf)          shift; cmd_ssrf "$@"          ;;
+    deser)         shift; cmd_deser "$@"         ;;
     xxe)           shift; cmd_xxe "$@"           ;;
     nosqli)        shift; cmd_nosqli "$@"        ;;
     smuggle)       shift; cmd_smuggle "$@"       ;;

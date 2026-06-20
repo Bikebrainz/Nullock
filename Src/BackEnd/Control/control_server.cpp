@@ -39,6 +39,7 @@
 #include "ldap_injection.hpp"
 #include "xpath_injection.hpp"
 #include "ssrf_scan.hpp"
+#include "deser_probe.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -644,6 +645,19 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
              res.error.isEmpty() ? where.join(", ") : res.error,
              cloud ? "critical" : "high", res.hits.isEmpty() ? "ssrf-internal" : res.hits.first().kind,
              "Deep audit: SSRF " + where.join(", "));
+    }
+    if (wants("deser") || wants("deserialization")) {
+        Nullock::Core::DeserProbe::Request drr;
+        drr.host = t.host; drr.port = t.port; drr.tls = t.tls; drr.method = t.method;
+        drr.basePath = auditPath; drr.query = auditQuery; drr.headers = t.headers;
+        const auto res = Nullock::Core::DeserProbe::test(drr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.format + ")";
+        note("deserialization", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             "critical",
+             res.hits.isEmpty() ? "deser-java"
+                                : Nullock::Core::DeserProbe::kindForFormat(res.hits.first().format),
+             "Deep audit: insecure deserialization " + where.join(", "));
     }
     if (wants("xss")) {
         Nullock::Core::XssReflected::Request xrr;
@@ -2715,7 +2729,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // endpoints (portscan, audit/all, chain/run, intruder, repeater, authz-test)
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
-        "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/ssrf/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
+        "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/ssrf/test", "/api/deser/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
         "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
@@ -6858,6 +6872,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", sres.baselineStatus },
                        { "requestsSent", sres.requestsSent },
                        { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- Insecure deserialization (active, error-based) --------------
+    // POST /api/deser/test { url, param?, method?, headers? }
+    //   Injects malformed serialized stubs; confirms by a deserialization
+    //   error absent from the baseline and not reproduced by a benign
+    //   value. CWE-502.
+    if (path == "/api/deser/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::DeserProbe::Request dr;
+        dr.host = u.host();
+        dr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        dr.tls  = (u.scheme() == "https");
+        dr.method = bodyJson.value("method").toString("GET").toUpper();
+        dr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        dr.query = u.query(QUrl::FullyEncoded);
+        dr.param = bodyJson.value("param").toString();
+        const QJsonObject dhdrs = bodyJson.value("headers").toObject();
+        for (auto it = dhdrs.begin(); it != dhdrs.end(); ++it)
+            dr.headers.append({ it.key(), it.value().toString() });
+
+        const auto dres = Nullock::Core::DeserProbe::test(dr);
+
+        QJsonArray hits;
+        for (const auto &h : dres.hits)
+            hits.append(QJsonObject{
+                { "param", h.param }, { "format", h.format },
+                { "payload", h.payload }, { "evidence", h.evidence } });
+        if (m_wiring.scanner && dres.vulnerable) {
+            const auto &h0 = dres.hits.first();
+            m_wiring.scanner->reportFinding(0, "critical",
+                Nullock::Core::DeserProbe::kindForFormat(h0.format),
+                QString("Insecure deserialization in '%1' (%2) -- the endpoint deserializes attacker input")
+                    .arg(h0.param, h0.format),
+                "a malformed serialized stub triggered a deserialization parse error, "
+                "absent from the baseline and not reproduced by a benign value: " + h0.evidence,
+                u.host(), url);
+        }
+        return okJson({{ "ok", dres.error.isEmpty() },
+                       { "error", dres.error },
+                       { "vulnerable", dres.vulnerable },
+                       { "baselineStatus", dres.baselineStatus },
+                       { "requestsSent", dres.requestsSent },
+                       { "testedParams", QJsonArray::fromStringList(dres.testedParams) },
+                       { "hitCount", static_cast<int>(dres.hits.size()) },
                        { "hits", hits }});
     }
 

@@ -151,6 +151,44 @@ def make(mode):
                         body = b'{"name":"node-1","cluster_name":"nullock-es"}'
                 # ssrf-safe falls through to the static home page.
                 self._send(200, body); return
+            if mode.startswith('deser'):
+                # Confirmation is well-formed-vs-malformed: a real deserializer
+                # ACCEPTS a valid serialized object and ERRORS on a malformed one.
+                #   deser-<fmt>-vuln : a real deserializer for that format -- accepts
+                #                      ITS valid blob, errors on everything else
+                #   deser-safe       : echo/store -> never errors
+                #   deser-shapewaf   : a blocklist that errors on ANY serialized
+                #                      magic (incl. well-formed) -> must NOT flag
+                #   deser-baseline   : errors on everything -> must NOT flag
+                val = q.get('data', [''])[0]
+                # serialized-magic prefixes a real shape-WAF keys on: Java rO0,
+                # any pickle (\x80 -> gA), Ruby Marshal BAh, PHP object/array,
+                # .NET BinaryFormatter. Catches BOTH the well-formed and malformed
+                # control of each format (else the WAF case would not be modeled).
+                magic = (val.startswith('rO0') or val.startswith('gA')
+                         or val.startswith('BAh') or val.startswith('O:')
+                         or val.startswith('a:') or val.startswith('AAEAAAD'))
+                jerr = b'<html>java.io.StreamCorruptedException: bad stream</html>'
+                ok   = b'<html>ok</html>'
+                # one real deserializer per format: (well-formed blob it accepts,
+                # the engine-specific parse error it emits for anything else)
+                sinks = {
+                    'deser-vuln':        ('rO0ABXQAA2FiYw==',                 jerr),
+                    'deser-php-vuln':    ('O:8:"stdClass":1:{s:1:"a";i:1;}',
+                                          b'<html>unserialize(): Error at offset 0 of 11 bytes</html>'),
+                    'deser-python-vuln': ('gAJLAS4=',
+                                          b'<html>_pickle.UnpicklingError: pickle data was truncated</html>'),
+                    'deser-ruby-vuln':   ('BAhpBg==',
+                                          b'<html>ArgumentError: marshal data too short</html>'),
+                }
+                if mode == 'deser-baseline':
+                    self._send(200, jerr); return                     # always errors
+                if mode == 'deser-shapewaf':
+                    self._send(200, jerr if magic else ok); return    # blocks all magic, incl. well-formed
+                if mode in sinks:
+                    wf, ferr = sinks[mode]
+                    self._send(200, ok if val == wf else ferr); return  # accept own valid blob, else error
+                self._send(200, ok); return                           # deser-safe
             if mode.startswith('content'):
                 # 404 everything (incl. the random calibration paths) except a
                 # single real path, so discovery surfaces exactly /admin.
@@ -290,6 +328,8 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        idor-vuln idor-safe
        xxe-vuln xxe-safe
        ssrf-vuln ssrf-safe ssrf-fp ssrf-bypass ssrf-internal
+       deser-vuln deser-php-vuln deser-python-vuln deser-ruby-vuln
+       deser-safe deser-shapewaf deser-baseline
        massassign-vuln massassign-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
@@ -406,6 +446,15 @@ chk "ssrf safe -> no fetch"               "$(post /api/ssrf/test "{\"url\":\"$(u
 chk "ssrf shaped-control -> FP suppressed" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-fp]} '?url=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "ssrf decimal-IP bypass -> caught"    "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-bypass]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aws-imds-decimal' for h in d.get('hits',[]))"
 chk "ssrf internal service -> caught"     "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-internal]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('kind')=='ssrf-internal' for h in d.get('hits',[]))"
+
+echo "== insecure deserialization (core) =="
+chk "deser Java sink -> confirmed Java"     "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Java' for h in d.get('hits',[]))"
+chk "deser PHP sink -> confirmed PHP"       "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-php-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='PHP' for h in d.get('hits',[]))"
+chk "deser Python sink -> confirmed Python" "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-python-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Python' for h in d.get('hits',[]))"
+chk "deser Ruby sink -> confirmed Ruby"     "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-ruby-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Ruby' for h in d.get('hits',[]))"
+chk "deser safe -> not vulnerable"          "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-safe]} '?data=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "deser shape-WAF -> FP suppressed"      "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-shapewaf]} '?data=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "deser always-errors -> not flagged"    "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-baseline]} '?data=x')\"}")" "not d.get('vulnerable')"
 
 echo "== mass assignment (core) =="
 chk "mass-assign vulnerable -> field bound" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-vuln]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('foundCount',0)>=1 and d.get('reflectionUsable')"
