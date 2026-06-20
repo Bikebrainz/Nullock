@@ -56,7 +56,7 @@ const QStringList &emittedKinds() {
         "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
         "sri-missing", "ssrf-cloud-metadata", "ssrf-internal",
         "deser-java", "deser-php", "deser-pickle", "deser-ruby", "deser-dotnet",
-        "jwt-alg-none", "jwt-signature-not-verified", "jwt-weak-secret",
+        "jwt-alg-none", "jwt-signature-not-verified", "jwt-weak-secret", "jwt-alg-confusion",
     };
     return k;
 }

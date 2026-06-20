@@ -36,6 +36,11 @@ WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 # Shared with the JWT test harness below -- a strong HS256 secret NOT in the
 # probe's crack wordlist, so only the deliberately-weak mock is crackable.
 JWT_STRONG = 'Zx9-strong-test-secret-not-in-any-wordlist-8f3a1b2c'
+# RS256->HS256 confusion modeling (python stdlib has no RSA): the "valid RS256
+# signature" is a fixed placeholder the mock accepts, and the confusion bug is
+# modeled as HMAC-verifying with the public-key bytes (matches the probe forge).
+JWT_FAKE_RSSIG = 'ZmFrZXJzc2lnbmF0dXJlMTIz'
+JWT_FAKE_PUBKEY = 'nullock-fake-rsa-public-key-for-confusion-test'
 def _b64u_dec(s):
     s += '=' * (-len(s) % 4)
     try: return base64.urlsafe_b64decode(s.encode())
@@ -312,6 +317,20 @@ def make(mode):
                     self._send(401, b'unauthorized'); return
                 if mode == 'jwt-noverify':
                     self._send(200, b'ok'); return
+                if mode in ('jwt-algconfusion', 'jwt-rs-safe'):
+                    # An RS256 endpoint. Both accept the valid (placeholder-sig)
+                    # RS token and 401 a corrupted one; only -algconfusion has the
+                    # bug of HMAC-verifying an HS256 token with the public key.
+                    parts = tok.split('.')
+                    try: a = json.loads(_b64u_dec(parts[0]).decode('utf-8', 'replace')).get('alg', '')
+                    except Exception: a = ''
+                    if a[:2] in ('RS', 'ES', 'PS'):
+                        ok_ = len(parts) >= 3 and parts[2] == JWT_FAKE_RSSIG
+                        self._send(200 if ok_ else 401, b'ok' if ok_ else b'no'); return
+                    if a == 'HS256' and mode == 'jwt-algconfusion':
+                        v, _ = jwt_check(tok, JWT_FAKE_PUBKEY)
+                        self._send(200 if v else 401, b'ok' if v else b'no'); return
+                    self._send(401, b'no'); return
                 secret = 'secret' if mode == 'jwt-weak' else JWT_STRONG
                 valid, alg = jwt_check(tok, secret)
                 if mode == 'jwt-algnone' and alg == 'none':
@@ -499,7 +518,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        xpath-vuln xpath-safe
        content-found
        cswsh-vuln cswsh-safe
-       jwt-safe jwt-algnone jwt-noverify jwt-weak
+       jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
@@ -666,6 +685,16 @@ chk "jwt safe -> not vulnerable"        "$(post /api/jwt/test "{\"url\":\"$(url 
 chk "jwt alg:none accepted -> bypass"   "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-algnone]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('attack')=='alg-none' for h in d.get('hits',[]))"
 chk "jwt signature-not-verified -> bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-noverify]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('attack')=='signature-not-verified' for h in d.get('hits',[]))"
 chk "jwt weak-secret -> bypass"         "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-weak]} '')\",\"token\":\"$JTOK_WEAK\"}")" "d.get('vulnerable') and any(h.get('attack')=='weak-secret' for h in d.get('hits',[]))"
+# RS256 token (placeholder sig the mock treats as a valid RSA sig) + the fake pubkey.
+mint_rs() { python -c "import base64,json,sys
+def e(b): return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
+h=e(json.dumps({'alg':'RS256','typ':'JWT'},separators=(',',':')).encode())
+p=e(json.dumps({'sub':'alice','role':'user'},separators=(',',':')).encode())
+print(h+'.'+p+'.'+sys.argv[1])" "$1"; }
+JTOK_RS="$(mint_rs 'ZmFrZXJzc2lnbmF0dXJlMTIz')"
+JPUB='nullock-fake-rsa-public-key-for-confusion-test'
+chk "jwt RS->HS confusion -> bypass"    "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-algconfusion]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('vulnerable') and any(h.get('attack')=='alg-confusion' for h in d.get('hits',[]))"
+chk "jwt RS verifier safe -> not vulnerable" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-rs-safe]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

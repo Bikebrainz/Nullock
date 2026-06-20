@@ -266,6 +266,7 @@ const QHash<QString, Mapping> &table() {
         { "jwt-priv-claim", { "CWE-345", "A04:2021-Insecure Design", 3.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Don't trust client-presented role/privilege claims without server checks." } },
         { "jwt-signature-not-verified", { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Verify the JWT signature on every request; reject a token whose signature doesn't match its payload." } },
         { "jwt-weak-secret", { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Use a long random HMAC secret (or asymmetric keys); rotate any guessable/leaked secret." } },
+        { "jwt-alg-confusion", { "CWE-347", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Pin the expected algorithm server-side; never let the token's alg header pick the verification key (RS256->HS256 confusion)." } },
 
         // ---- DOM-XSS taint (from the dom_taint extension) ------------
         { "dom-taint-html", { "CWE-79", "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "PCI-DSS-6.5.7", "Sanitize before the markup sink; use textContent / a sanitizer." } },

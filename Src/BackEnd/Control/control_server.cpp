@@ -5849,6 +5849,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         jr.query = u.query(QUrl::FullyEncoded);
         jr.token = token;
         jr.location = bodyJson.value("location").toString();
+        jr.publicKeyPem = bodyJson.value("publicKey").toString();
         for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
             jr.secretWordlist << v.toString();
         const QJsonObject jhdrs = bodyJson.value("headers").toObject();

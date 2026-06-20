@@ -14,16 +14,19 @@
 // token is "accepted" only when its response matches the VALID baseline.
 //
 // Attacks: alg:none (and case/empty/absent variants), signature-not-verified
-// (a token with a genuinely-invalid signature is still accepted), and
-// weak-HMAC-secret (crack the HS256 secret against a wordlist, then re-sign a
-// tampered token). Each is run independently so a server with several flaws
-// reports them all, and every candidate hit is re-confirmed on a second send so
-// a transient throttle can't flip the verdict.
+// (a token with a genuinely-invalid signature is still accepted), weak-HMAC-
+// secret (crack the HS256 secret against a wordlist, then re-sign a tampered
+// token), and -- when the token is asymmetric (RS*/ES*/PS*) and a public key is
+// supplied -- RS256->HS256 algorithm confusion (re-sign as HS256 using the
+// public-key bytes as the HMAC secret). Each is run independently so a server
+// with several flaws reports them all, and every candidate hit is re-confirmed
+// on a second send so a transient throttle can't flip the verdict.
 //
-// Not yet covered (separate follow-up): RS256->HS256 algorithm confusion (needs
-// the server's public key / a JWKS endpoint), automatic fan-out across token
-// carriers (it tests the one `location` given), and non-GET/body-bearing
-// protected routes (status-only acceptance, no request body is sent).
+// Not yet covered (separate follow-up): automatic fan-out across token carriers
+// (it tests the one `location` given) and non-GET/body-bearing protected routes
+// (status-only acceptance, no request body is sent). An asymmetric token with no
+// public key supplied is surfaced as "algorithm-confusion not tested", not
+// silently passed.
 
 #include <QList>
 #include <QPair>
@@ -48,6 +51,7 @@ struct Request {
     QString query;
     QString token;                          // a captured, currently-valid JWT
     QString location;                       // ""/"bearer" (default) | "header:Name" | "cookie:name"
+    QString publicKeyPem;                   // server public key, for RS256->HS256 confusion (optional)
     QStringList secretWordlist;             // HS256 crack candidates (empty -> a small built-in list)
     QList<QPair<QString, QString>> headers; // extra request headers (cookies, etc.)
 };
