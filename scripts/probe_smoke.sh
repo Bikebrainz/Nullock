@@ -482,13 +482,23 @@ def make(mode):
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val, count=1)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
             if mode.startswith('cmdi'):
-                # Same idea as SSTI but the shell arithmetic $((N*N)): the
-                # vulnerable mock evaluates it (as a shell would in the injected
-                # `echo`), so the sentinel-delimited region equals the product.
+                # The vulnerable mock simulates a real shell: it performs BOTH
+                # arithmetic expansion $((N*N)) AND command substitution
+                # $(echo ...), so the injected $(echo $((a*b))) collapses to the
+                # product between the sentinels. The 'arith' mock is a RESTRICTED
+                # evaluator that only expands $((N*N)) and does NOT run $() -- it
+                # must NOT be confirmed (the audit's arithmetic-only false
+                # positive, now defeated by requiring command substitution).
                 val = q.get('cmd', [''])[0]
-                if mode == 'cmdi-vuln':
+                if mode in ('cmdi-vuln', 'cmdi-arith'):
                     val = re.sub(r'\$\(\((\d+)\*(\d+)\)\)',
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val)
+                if mode == 'cmdi-vuln':
+                    prev = None
+                    while prev != val:   # resolve nested $(echo ...) substitutions
+                        prev = val
+                        val = re.sub(r'\$\(\s*echo\s+([^()]*?)\s*\)',
+                                     lambda m: m.group(1), val)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
             if mode.startswith('nosqli'):
                 # The probe injects a literal (stable across two shots) and a
@@ -543,7 +553,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        cors-vuln cors-safe
        verb-vuln verb-safe
        ssti-vuln ssti-safe ssti-calc
-       cmdi-vuln cmdi-safe
+       cmdi-vuln cmdi-safe cmdi-arith
        nosqli-vuln nosqli-safe
        idor-vuln idor-safe
        xxe-vuln xxe-safe
@@ -659,6 +669,7 @@ chk "ssti calculator -> NOT confirmed (FP fix)" "$(post /api/ssti/test "{\"url\"
 
 echo "== OS command injection (core) =="
 chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"
+chk "cmdi arith-only -> NOT confirmed (FP fix)" "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-arith]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-safe]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== NoSQL injection (core) =="

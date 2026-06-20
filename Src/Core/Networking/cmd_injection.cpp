@@ -9,10 +9,12 @@ namespace Nullock::Core::CmdInjection {
 
 namespace {
 
-constexpr int kMaxSends = 90;
+constexpr int kMaxSends   = 130;
+constexpr int kMaxParams  = 12;
 
 // How the injected command is chained onto the original. `%1` is the echo
-// command body (already carrying the bracketed arithmetic).
+// command body (already carrying the command-substitution proof). POSIX shells;
+// cmd.exe / set-/a Windows coverage is tracked as a follow-up.
 struct Technique { const char *name; const char *tmpl; };
 const QList<Technique> &techniques() {
     static const QList<Technique> t = {
@@ -20,29 +22,13 @@ const QList<Technique> &techniques() {
         { "pipe",      "| echo %1" },
         { "and",       "&& echo %1" },
         { "or",        "|| echo %1" },
+        { "ampersand", "& echo %1" },          // single & (sequential on cmd, bg on POSIX)
         { "newline",   "\necho %1" },
+        { "ifs",       ";echo${IFS}%1" },       // space-filter bypass via $IFS
         { "subshell",  "$(echo %1)" },
         { "backtick",  "`echo %1`" },
     };
     return t;
-}
-
-QByteArray buildRequest(const Request &req, const QString &query) {
-    const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/cmdi\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
 }
 
 // Set `param` to the percent-encoded `value` (the shell metacharacters must be
@@ -58,19 +44,6 @@ QString queryWith(const QString &existing, const QString &param, const QString &
     return parts.join('&');
 }
 
-// The text the server placed between our sentinels, if any (bounded window).
-QString rendered(const QString &body, const QString &pre, const QString &suf) {
-    int p = body.indexOf(pre);
-    while (p >= 0) {
-        const int from = p + pre.size();
-        const int s = body.indexOf(suf, from);
-        if (s < 0) break;
-        if (s - from <= 32) return body.mid(from, s - from);
-        p = body.indexOf(pre, from);
-    }
-    return QString();
-}
-
 QString randTok() {
     static const char a[] = "abcdefghijklmnopqrstuvwxyz0123456789";
     QString s = QStringLiteral("z");
@@ -81,8 +54,10 @@ QString randTok() {
 } // namespace
 
 QStringList defaultParams() {
-    return { "cmd", "exec", "host", "ip", "ping", "domain", "name", "query",
-             "q", "search", "file", "path", "url", "target", "addr" };
+    // Ordered by command-injection yield so the cap keeps the highest-value
+    // names; the rest are reported in Result.droppedParams.
+    return { "host", "ip", "ping", "domain", "addr", "target", "url", "file",
+             "path", "cmd", "exec", "name", "query", "q", "search" };
 }
 
 Result test(const Request &reqIn) {
@@ -100,7 +75,10 @@ Result test(const Request &reqIn) {
             if (!params.contains(kv.first)) params << kv.first;
         if (params.isEmpty()) params = defaultParams();
     }
-    while (params.size() > 6) params.removeLast();
+    if (params.size() > kMaxParams) {
+        result.droppedParams = params.mid(kMaxParams);   // surfaced so a clean
+        params = params.mid(0, kMaxParams);              // result isn't silently partial
+    }
     result.testedParams = params;
 
     HttpClient client;
@@ -117,15 +95,14 @@ Result test(const Request &reqIn) {
     auto pick = [] { return QRandomGenerator::global()->bounded(1000u, 9999u); };
     const quint64 a = req.seedA ? req.seedA : pick();
     const quint64 b = req.seedB ? req.seedB : pick();
-    const QString expr = QStringLiteral("$((%1*%2))").arg(a).arg(b);
     const QString product = QString::number(a * b);
     const QString pre = randTok(), suf = randTok();
-    // echo body: <pre>$((a*b))<suf>  -> shell prints <pre><product><suf>
-    const QString echoBody = pre + expr + suf;
+    // echo body: <pre>$(echo $((a*b)))<suf> -> a real shell prints <pre><product><suf>
+    // (command substitution proves a command ran, not just arithmetic expansion).
+    const QString echoBody = commandProof(pre, suf, a, b);
 
     for (const QString &param : params) {
         if (result.requestsSent >= kMaxSends) break;
-        bool paramHit = false;
         for (const Technique &t : techniques()) {
             if (result.requestsSent >= kMaxSends) break;
             // Prefix a benign value so the original command still parses, then
@@ -133,21 +110,20 @@ Result test(const Request &reqIn) {
             const QString value = QStringLiteral("1") + QString::fromUtf8(t.tmpl).arg(echoBody);
             const auto r = send(queryWith(req.query, param, value));
             if (!r.ok) continue;
-            const QString region = rendered(QString::fromUtf8(r.parsed.body), pre, suf);
-            if (region.isEmpty()) continue;
-            // Executed iff what landed between our sentinels is EXACTLY the
-            // product -- the shell evaluated $((a*b)). Equality (not substring)
-            // rejects both literal reflection of the expression and a product
-            // that's merely a substring of unrelated reflected digits.
-            if (region.trimmed() == product) {
+            // Executed iff SOME sentinel region (scan ALL -- a raw reflection of
+            // the payload may precede the executed output) is EXACTLY the
+            // product. Equality rejects literal reflection and substring noise.
+            bool hit = false;
+            for (const QString &region : renderedRegions(QString::fromUtf8(r.parsed.body), pre, suf))
+                if (region.trimmed() == product) { hit = true; break; }
+            if (hit) {
                 result.hits.append({ param, QString::fromUtf8(t.name), value,
-                    QStringLiteral("executed %1 -> %2").arg(expr, product) });
+                    QStringLiteral("command executed: $(echo $((%1*%2))) -> %3")
+                        .arg(a).arg(b).arg(product) });
                 result.vulnerable = true;
-                paramHit = true;
-                break;
+                break;   // next param
             }
         }
-        if (paramHit) continue;
     }
 
     return result;

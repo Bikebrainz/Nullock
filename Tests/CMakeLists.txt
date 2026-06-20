@@ -40,3 +40,8 @@ add_subdirectory(open_redirect)
 # digit-grouping, all-region scan, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R ssti_tester -V
 add_subdirectory(ssti_tester)
+
+# Command injection -- the command-substitution proof (exec vs arithmetic),
+# all-region scan, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R cmd_injection -V
+add_subdirectory(cmd_injection)

@@ -7172,7 +7172,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             m_wiring.scanner->reportFinding(0, "critical", "command-injection",
                 QString("OS command injection in '%1' via %2 -- arbitrary commands execute")
                     .arg(cres.hits.first().param, cres.hits.first().technique),
-                "the server evaluated an injected shell arithmetic expression: " + cres.hits.first().evidence,
+                "the server executed an injected shell command (command substitution): "
+                    + cres.hits.first().evidence,
                 u.host(), url);
         return okJson({{ "ok", cres.error.isEmpty() },
                        { "error", cres.error },
@@ -7180,6 +7181,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", cres.baselineStatus },
                        { "requestsSent", cres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(cres.testedParams) },
+                       { "droppedParams", QJsonArray::fromStringList(cres.droppedParams) },
                        { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }
