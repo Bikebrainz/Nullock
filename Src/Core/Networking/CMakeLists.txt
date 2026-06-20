@@ -93,6 +93,7 @@ add_library(Networking STATIC
     crlf_injection.cpp
     crlf_injection.hpp
     path_traversal.cpp
+    path_traversal_logic.cpp
     path_traversal.hpp
     cmd_injection.cpp
     cmd_injection_logic.cpp

@@ -75,3 +75,8 @@ add_subdirectory(xpath_injection)
 # block-status guard, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R sql_injection -V
 add_subdirectory(sql_injection)
+
+# Path traversal -- file-content signatures and buildRequest's CR/LF guards
+# (pure logic; the shaped-control FP guard is covered live in probe_smoke).
+# Run via: ctest -R path_traversal -V
+add_subdirectory(path_traversal)

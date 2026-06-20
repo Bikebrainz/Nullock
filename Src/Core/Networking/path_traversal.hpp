@@ -6,10 +6,20 @@
 // directory and read arbitrary files -- /etc/passwd, app config, source,
 // secrets. We confirm by *content signature*: inject a battery of traversal
 // encodings aimed at well-known files and flag only when the response carries
-// that file's fingerprint (and the baseline did not). No reflection guessing.
+// that file's fingerprint (and the baseline did not). A SHAPED/INERT control --
+// the same encoding+depth pointing at a guaranteed-nonexistent name -- must NOT
+// carry the signature, ruling out a value-keyed error/docs/help template that
+// renders the fingerprint for any odd path (no real file read). No reflection
+// guessing.
+//
+// Scope: query-string params only (POST/form-body file selectors are a
+// follow-up). The traversal set is ../-family; bare-absolute, NUL-byte, and
+// overlong-UTF-8 encodings are a follow-up.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
+#include <QRegularExpression>
 #include <QString>
 
 namespace Nullock::Core::PathTraversal {
@@ -37,16 +47,25 @@ struct Result {
     bool    vulnerable = false;
     QList<Hit> hits;
     QStringList testedParams;
+    QStringList droppedParams;                  // candidates skipped past the cap
     int     requestsSent = 0;
     int     baselineStatus = 0;
     QString error;
 };
 
 // Inject traversal payloads into the target parameter(s) and flag any whose
-// response contains a known file's content signature. If `param` is empty,
-// existing query params are tried (capped), else a small default set.
+// response contains a known file's content signature (confirmed against a
+// shaped/inert control). If `param` is empty, existing query params are tried
+// (capped, overflow in droppedParams), else a default set.
 Result test(const Request &req);
 
 QStringList defaultParams();
+
+// --- Pure helpers, exposed for the unit test (no network I/O) ---------------
+// First match of a file-content signature in the body (bounded), or "".
+QString matchSig(const QRegularExpression &sig, const QByteArray &body);
+// Build the raw request, CR/LF-guarding method/host/path (returns {} if tainted)
+// and dropping any CR/LF-bearing carried header.
+QByteArray buildRequest(const Request &req, const QString &query);
 
 } // namespace Nullock::Core::PathTraversal

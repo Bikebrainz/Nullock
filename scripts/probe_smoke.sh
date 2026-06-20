@@ -481,13 +481,22 @@ def make(mode):
                     self._send(200, b'<html>home</html>')
                 return
             if mode.startswith('pathtrav'):
-                # Vulnerable mock returns a passwd-shaped body when the param
-                # carries a traversal/passwd payload; the probe matches the
-                # root:x:0:0: signature.
+                # Vulnerable mock = a REAL file read: returns the passwd body ONLY
+                # when the resolved path actually names etc/passwd, so the shaped
+                # control (a bogus nonexistent name) stays clean and the hit
+                # confirms. The 'template' mock = a value-keyed docs/error page
+                # that emits a passwd EXAMPLE line for ANY odd value (incl. the
+                # bogus control) -> the shaped control must suppress it.
                 val = q.get('file', [''])[0]
-                if mode == 'pathtrav-vuln' and ('..' in val or 'passwd' in val):
-                    self._send(200, b'root:x:0:0:root:/root:/bin/bash\n'
-                                    b'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n', 'text/plain')
+                passwd = (b'root:x:0:0:root:/root:/bin/bash\n'
+                          b'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n')
+                if mode == 'pathtrav-vuln' and 'passwd' in val:
+                    self._send(200, passwd, 'text/plain'); return
+                if mode == 'pathtrav-template' and ('..' in val or 'passwd' in val):
+                    # Renders an example passwd line for any traversal-shaped value
+                    # (a help/error template), NOT a real read.
+                    self._send(200, b'<html><pre>Example /etc/passwd entry: '
+                                    + passwd + b'</pre></html>'); return
                 else:
                     self._send(200, b'<html>file not found</html>')
                 return
@@ -599,7 +608,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
-       pathtrav-vuln pathtrav-safe
+       pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
        verb-vuln verb-safe
        ssti-vuln ssti-safe ssti-calc
@@ -706,6 +715,7 @@ chk "open-redirect prose echo -> NOT flagged (FP fix)" "$(post /api/openredirect
 echo "== path traversal (core) =="
 chk "path-traversal vulnerable -> confirmed" "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-vuln]} '?file=test')\"}")" "d.get('vulnerable')"
 chk "path-traversal safe -> not vulnerable"  "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-safe]} '?file=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "path-traversal value-keyed template -> NOT confirmed (shaped-control FP fix)" "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-template]} '?file=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== CORS (core) =="
 chk "cors reflects attacker origin"     "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-vuln]} '')\"}")" "d.get('findingCount',0)>=1"

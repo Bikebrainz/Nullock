@@ -7273,6 +7273,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", pres.baselineStatus },
                        { "requestsSent", pres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(pres.testedParams) },
+                       { "droppedParams", QJsonArray::fromStringList(pres.droppedParams) },
                        { "hitCount", static_cast<int>(pres.hits.size()) },
                        { "hits", hits }});
     }
