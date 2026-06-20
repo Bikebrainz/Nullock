@@ -8079,7 +8079,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             m_wiring.scanner->reportFinding(0, "high", "mass-assignment",
                 QString("Mass assignment: endpoint accepted privileged field(s) %1")
                     .arg(accepted.join(", ")),
-                "injected fields were echoed back in the response object",
+                "injected fields were echoed back in a successful (2xx) response object "
+                "(confirm persistence with a follow-up re-fetch)",
                 u.host(), url);
         }
         return okJson({{ "ok", ma.error.isEmpty() },

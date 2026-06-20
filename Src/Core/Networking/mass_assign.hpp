@@ -6,23 +6,26 @@
 // {"name":"x"} may silently also accept {"name":"x","role":"admin",
 // "is_verified":true,"balance":99999}. We probe a write request with a
 // battery of privileged field names and detect the ones the server
-// accepts by looking for our unique marker value echoed back in the
-// response (the object was stored with our injected field).
+// accepts by looking for our unique marker value echoed back in a
+// SUCCESSFUL (2xx) response (the object was serialized back with our value).
 //
 // A control field (a junk name no model has) runs first: if the server
 // echoes IT too, the endpoint reflects every field and the signal can't
 // discriminate -- so we disable it rather than flag the whole list, the
 // same guard the parameter miner uses.
 //
-// Scope / honest limits: markers are string values, so this confirms
-// string-typed privileged fields that bind and echo (role="admin",
-// plan="enterprise", status="active", owner=...). Strictly-typed bool/int
-// fields (is_admin:true, balance:99999) may be rejected or coerced and so
-// can't be confirmed by marker echo -- but a type-strict 4xx on one field
-// no longer masks the rest, because a rejected batch is retried one field
-// at a time. An endpoint that returns your full request body verbatim
-// (rather than a model serialization) trips the control and reports
-// reflectionUsable=false -- the honest "can't tell" signal.
+// Scope / honest limits:
+//  - Markers are string values, so this confirms string-typed privileged
+//    fields that bind and echo (role="admin", plan="enterprise", ...).
+//    Strictly-typed bool/int fields (is_admin:true, balance:99999) may be
+//    rejected/coerced and so can't be confirmed by string-marker echo.
+//  - Only the SUCCESS path counts: a marker echoed in a 4xx validation error
+//    ("invalid value X for role") is reflection, NOT binding, so we scan only
+//    2xx responses.
+//  - Echo in a 2xx is strong evidence but not proof of PERSISTENCE (a server
+//    could echo input it didn't store); a follow-up re-fetch would confirm.
+//  - An endpoint that returns your full request body verbatim trips the
+//    control and reports reflectionUsable=false -- the honest "can't tell".
 
 #include <QByteArray>
 #include <QList>
@@ -58,10 +61,27 @@ struct Result {
 };
 
 // Inject each candidate field (with a unique marker) into the request
-// body and report the ones echoed back. batchSize fields ride per request.
+// body and report the ones echoed back in a 2xx response. batchSize fields
+// ride per request.
 Result test(const Request &req, const QStringList &fields, int batchSize = 20);
 
 // Curated default list of privileged / sensitive field names.
 QStringList defaultFields();
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// build / classification logic against Qt6::Core alone.
+
+// Does this body look like JSON (vs form-urlencoded)? Honors an explicit
+// content-type, else sniffs the leading byte.
+bool looksJson(const QByteArray &body, const QString &contentType);
+
+// A response status that indicates the write was ACCEPTED (2xx). A marker
+// echoed in any other status is reflection, not binding.
+bool acceptedStatus(int status);
+
+// Build the raw write request. Returns empty if method/host/path or a carried
+// header carries a CR/LF (request-line / header injection guard).
+QByteArray buildRequest(const Request &req, bool json, const QByteArray &body);
 
 } // namespace Nullock::Core::MassAssign

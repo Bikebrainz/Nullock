@@ -15,38 +15,8 @@ QString markerFor(int idx) {
     return QString("max%1z%2").arg(idx).arg(r, 8, 16, QChar('0'));
 }
 
-bool looksJson(const QByteArray &body, const QString &contentType) {
-    if (contentType.contains("json", Qt::CaseInsensitive)) return true;
-    if (contentType.contains("x-www-form-urlencoded", Qt::CaseInsensitive)) return false;
-    const QByteArray t = body.trimmed();
-    return t.startsWith('{') || t.startsWith('[');
-}
-
-QByteArray buildRequest(const Request &req, bool json, const QByteArray &body) {
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/mass-assign\r\n";
-    out += "Accept: */*\r\n";
-    // Force an identity (uncompressed) response: we scan the body for our
-    // marker, and the HTTP client doesn't inflate gzip/deflate -- without
-    // this, every compressed endpoint would hide the marker (false clean).
-    out += "Accept-Encoding: identity\r\n";
-    bool haveCt = false;
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) haveCt = true;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    if (!haveCt)
-        out += QByteArray("Content-Type: ")
-             + (json ? "application/json" : "application/x-www-form-urlencoded") + "\r\n";
-    out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += body;
-    return out;
-}
+// (looksJson, acceptedStatus, buildRequest live in mass_assign_logic.cpp so the
+// regression test can exercise them without the network stack.)
 
 } // namespace
 
@@ -122,6 +92,13 @@ Result test(const Request &req, const QStringList &fields, int batchSize) {
     }
     if (!result.reflectionUsable) return result;
 
+    // A marker only proves binding if it comes back in a SUCCESS (2xx)
+    // response. A field echoed in a 4xx validation error ("invalid value X for
+    // role") was rejected, not bound -- scanning that would fabricate a finding.
+    auto accepted = [](const HttpClient::SendResult &x) {
+        return x.ok && acceptedStatus(x.parsed.statusCode);
+    };
+
     for (int start = 0; start < fields.size(); start += batchSize) {
         const QStringList names = fields.mid(start, batchSize);
         QList<QPair<QString, QString>> inject;
@@ -135,13 +112,13 @@ Result test(const Request &req, const QStringList &fields, int batchSize) {
         // may 4xx the whole batch over one mistyped string marker, masking
         // the string-typed fields that WOULD bind. On a rejection, fall
         // back to one field per request so a single bad field can't hide
-        // the rest.
+        // the rest -- but still only count a field accepted on its own 2xx.
         if (r.parsed.statusCode >= 400 && inject.size() > 1) {
             for (const auto &p : inject) {
                 const auto rr = send(makeBody({ p }));
-                if (rr.ok) scan(rr.parsed.body, { p });
+                if (accepted(rr)) scan(rr.parsed.body, { p });
             }
-        } else {
+        } else if (accepted(r)) {
             scan(r.parsed.body, inject);
         }
     }

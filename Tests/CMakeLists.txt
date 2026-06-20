@@ -105,3 +105,9 @@ add_subdirectory(idor_tester)
 # (pure logic; live flow covered in probe_smoke).
 # Run via: ctest -R verb_tamper -V
 add_subdirectory(verb_tamper)
+
+# Mass assignment -- the 2xx accepted-status gate (a marker echoed in a 4xx
+# validation error is not a bind), JSON/form sniffing, and buildRequest's CR/LF
+# guards (pure logic; live flow covered in probe_smoke).
+# Run via: ctest -R mass_assign -V
+add_subdirectory(mass_assign)

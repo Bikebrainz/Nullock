@@ -126,6 +126,18 @@ def make(mode):
                          'superuser', 'user_id', 'userId', 'owner', 'balance', 'credit',
                          'price', 'status', 'plan', 'tier', 'is_active', 'active',
                          'enabled', 'verified', 'is_verified', 'permissions'}
+                if mode == 'massassign-validecho':
+                    # Allow-list serializer that VALIDATES known fields and ECHOES
+                    # the bad value in a 4xx error, but binds NOTHING; drops
+                    # unknown fields (so the junk control passes -> reflectionUsable
+                    # stays true). The probe must NOT report these: reflection in a
+                    # validation error is not binding, so only 2xx echoes count.
+                    bad = {k: v for k, v in o.items() if k in known} if isinstance(o, dict) else {}
+                    if bad:
+                        echoed = ' '.join(str(v) for v in bad.values())
+                        self._send(422, ('{"error":"invalid value(s): %s"}' % echoed).encode(),
+                                   'application/json'); return
+                    self._send(200, b'{}', 'application/json'); return
                 out = {k: v for k, v in o.items()
                        if mode == 'massassign-vuln' and k in known} if isinstance(o, dict) else {}
                 self._send(200, json.dumps(out).encode(), 'application/json'); return
@@ -712,7 +724,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        deser-body-vuln deser-body-safe
        deser-cookie-vuln deser-cookie-safe
        deser-field-vuln deser-field-safe
-       massassign-vuln massassign-safe
+       massassign-vuln massassign-safe massassign-validecho
        ldap-vuln ldap-safe ldap-baseline ldap-waf
        xpath-vuln xpath-safe xpath-waf
        content-found
@@ -874,6 +886,7 @@ chk "deser form-field safe -> not vulnerable" "$(post /api/deser/test "{\"url\":
 echo "== mass assignment (core) =="
 chk "mass-assign vulnerable -> field bound" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-vuln]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('foundCount',0)>=1 and d.get('reflectionUsable')"
 chk "mass-assign safe -> nothing bound"     "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-safe]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('ok') and d.get('foundCount',0)==0 and d.get('reflectionUsable')"
+chk "mass-assign 4xx validation-echo -> NOT bound (2xx-gate FP fix)" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-validecho]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('ok') and d.get('foundCount',0)==0 and d.get('reflectionUsable')"
 
 echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
