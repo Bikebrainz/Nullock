@@ -154,6 +154,7 @@ const QHash<QString, Mapping> &table() {
         { "cors-null-origin",            { "CWE-942", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:N", "", "Never allow the 'null' origin -- it's reachable from sandboxed iframes / data URLs." } },
         { "cors-wildcard-credentials",   { "CWE-942", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "ACAO:* with Allow-Credentials is a broken policy; pin exact origins." } },
         { "cors-scheme-downgrade",       { "CWE-942", "A05:2021-Security Misconfiguration", 3.7, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Allowing the http origin of an https site enables credentialed reads from a MITM position; pin https only." } },
+        { "cors-origin-normalization",   { "CWE-942", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:N/A:N", "", "The Origin allow-list normalizes the host (e.g. strips a trailing FQDN dot) before comparing, then reflects the raw origin; compare the exact, byte-for-byte origin string." } },
 
         // ---- JS recon -----------------------------------------------
         { "source-map-exposed", { "CWE-540", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Don't deploy .map files to production; strip sourceMappingURL from prod bundles." } },

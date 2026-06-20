@@ -63,6 +63,7 @@ add_library(Networking STATIC
     mass_assign.cpp
     mass_assign.hpp
     cors_tester.cpp
+    cors_origin.cpp
     cors_tester.hpp
     js_recon.cpp
     js_recon.hpp

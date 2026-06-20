@@ -9,9 +9,16 @@
 //   - arbitrary attacker origin reflected + credentials -> critical: any
 //     site can make authenticated cross-origin reads of this endpoint.
 //   - "null" origin reflected -> sandboxed-iframe / data-URL bypass.
-//   - target-as-substring origins (https://target.attacker.com,
-//     http scheme) reflected -> naive allow-list (contains/startsWith)
-//     that an attacker-controlled hostname satisfies.
+//   - target-as-PREFIX origins (https://target.attacker.example) reflected
+//     -> naive contains/startsWith allow-list an attacker hostname satisfies.
+//   - target-as-SUFFIX origins (https://attacker-<regDomain>, e.g.
+//     attacker-target.com) reflected -> naive origin.endsWith("target.com")
+//     allow-list (no leading dot) that an attacker-registrable sibling domain
+//     satisfies. The registrable domain is a best-effort eTLD+1 guess; a wrong
+//     guess only misses, it cannot false-positive.
+//   - trailing-dot origin (https://attacker.example.) reflected -> a host
+//     parser that strips the FQDN root dot before its allow-list check then
+//     reflects the raw dotted origin (graded low/medium, narrow precondition).
 //   - ACAO:* with credentials -> a misconfiguration (browsers reject it,
 //     but it signals a broken policy worth flagging).
 //
@@ -24,6 +31,7 @@
 // the OPTIONS preflight (non-simple requests) aren't exercised here; for
 // those, replay the endpoint's real preflight through the Repeater.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -58,5 +66,13 @@ struct Result {
 
 // Fire the Origin battery against the target and classify each response.
 Result test(const Request &req);
+
+// Exposed for the unit test (pure logic, no I/O):
+//  - registrableDomain: best-effort eTLD+1 ("" for IPs / single-label hosts).
+//  - originSpecs: the (origin, label) battery for a target host.
+//  - buildRequest: the raw GET, with CR/LF guards on every tainted field.
+QString registrableDomain(const QString &host);
+QList<QPair<QString, QString>> originSpecs(const QString &host, bool tls);
+QByteArray buildRequest(const Request &req, const QString &origin);
 
 } // namespace Nullock::Core::CorsTester

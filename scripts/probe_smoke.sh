@@ -619,6 +619,7 @@ chk "path-traversal safe -> not vulnerable"  "$(post /api/pathtraversal/test "{\
 echo "== CORS (core) =="
 chk "cors reflects attacker origin"     "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-vuln]} '')\"}")" "d.get('findingCount',0)>=1"
 chk "cors safe -> no reflection"        "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-safe]} '')\"}")" "d.get('ok') and d.get('findingCount',0)==0"
+chk "cors trailing-dot flagged"         "$(post /api/cors/test "{\"url\":\"$(url ${P[cors-vuln]} '')\"}")" "any(p.get('label')=='trailing-dot' and p.get('severity') for p in d.get('probes',[]))"
 
 echo "== verb tampering (core) =="
 chk "verb tampering bypass found"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-vuln]} 'admin')\"}")" "d.get('bypassCount',0)>=1"

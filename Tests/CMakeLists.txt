@@ -25,3 +25,8 @@ add_subdirectory(request_export)
 # Intruder engine -- attack-type combination generation + marker substitution.
 # Run via: ctest -R intruder_engine -V
 add_subdirectory(intruder_engine)
+
+# CORS tester -- the registrable-domain heuristic, the suffix-domain /
+# trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R cors_tester -V
+add_subdirectory(cors_tester)
