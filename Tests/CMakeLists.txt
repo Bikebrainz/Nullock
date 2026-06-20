@@ -50,3 +50,8 @@ add_subdirectory(cmd_injection)
 # buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R host_header -V
 add_subdirectory(host_header)
+
+# XXE -- the inert-DOCTYPE-controlled confirmation (real read vs disallow-doctype
+# error page), file-content signatures, and buildRequest's CR/LF guards.
+# Run via: ctest -R xxe_injection -V
+add_subdirectory(xxe_injection)

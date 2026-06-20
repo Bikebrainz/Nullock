@@ -138,6 +138,18 @@ QString httpMethodFromJson(const QJsonObject &body, const char *dflt) {
     return m.isEmpty() ? QString::fromUtf8(dflt).toUpper() : m;
 }
 
+// Content-Type from a JSON "contentType" field with CR/LF STRIPPED. This is the
+// same request-line/header-injection vector as method, via a different field:
+// several probes write contentType straight into a "Content-Type:" header, so an
+// operator-supplied "application/xml\r\nX-Injected: 1" would splice extra
+// headers into the outbound request. Neutralizing it at the source closes the
+// class for every probe at once (probe-level guards remain defense-in-depth).
+QString contentTypeFromJson(const QJsonObject &body, const char *dflt = "") {
+    QString ct = body.value(QStringLiteral("contentType")).toString(QString::fromUtf8(dflt));
+    ct.remove('\r').remove('\n');
+    return ct;
+}
+
 // ---- Deep-scan audit helper --------------------------------------------
 // Runs the active-testing battery against one target and emits one summary
 // finding per tester that hit. Shared by /api/audit/run (single URL, sync)
@@ -3393,7 +3405,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/csrf/poc") {
         QString method      = bodyJson.value("method").toString();
         QString url         = bodyJson.value("url").toString();
-        QString contentType = bodyJson.value("contentType").toString();
+        QString contentType = contentTypeFromJson(bodyJson);
         QString body        = bodyJson.value("body").toString();
         const int id        = bodyJson.value("id").toInt(0);
         if (id > 0) {
@@ -5878,7 +5890,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         jr.location = bodyJson.value("location").toString();
         jr.publicKeyPem = bodyJson.value("publicKey").toString();
         jr.body = bodyJson.value("body").toString().toUtf8();
-        jr.contentType = bodyJson.value("contentType").toString();
+        jr.contentType = contentTypeFromJson(bodyJson);
         for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
             jr.secretWordlist << v.toString();
         const QJsonObject jhdrs = bodyJson.value("headers").toObject();
@@ -6206,7 +6218,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         sr.query = u.query(QUrl::FullyEncoded);
         sr.body = bodyJson.value("body").toString().toUtf8();
-        sr.contentType = bodyJson.value("contentType").toString();
+        sr.contentType = contentTypeFromJson(bodyJson);
         sr.paramName = param;
         sr.paramIn = bodyJson.value("in").toString("query");
         const QJsonObject shdrs = bodyJson.value("headers").toObject();
@@ -6790,7 +6802,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         xr.method = httpMethodFromJson(bodyJson, "POST");
         xr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
-        xr.contentType = bodyJson.value("contentType").toString();
+        xr.contentType = contentTypeFromJson(bodyJson);
         const QJsonObject xhdrs = bodyJson.value("headers").toObject();
         for (auto it = xhdrs.begin(); it != xhdrs.end(); ++it)
             xr.headers.append({ it.key(), it.value().toString() });
@@ -7039,7 +7051,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         dr.query = u.query(QUrl::FullyEncoded);
         dr.param = bodyJson.value("param").toString();
         dr.location = bodyJson.value("location").toString();        // ""/"query" | "body"
-        dr.contentType = bodyJson.value("contentType").toString();
+        dr.contentType = contentTypeFromJson(bodyJson);
         const QJsonObject dhdrs = bodyJson.value("headers").toObject();
         for (auto it = dhdrs.begin(); it != dhdrs.end(); ++it)
             dr.headers.append({ it.key(), it.value().toString() });
@@ -7844,7 +7856,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (!u.query(QUrl::FullyEncoded).isEmpty())
             rr.basePath += "?" + u.query(QUrl::FullyEncoded);
         rr.body = bodyJson.value("body").toString().toUtf8();
-        rr.contentType = bodyJson.value("contentType").toString("application/json");
+        rr.contentType = contentTypeFromJson(bodyJson, "application/json");
         const QJsonObject hdrs = bodyJson.value("headers").toObject();
         for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
             rr.headers.append({ it.key(), it.value().toString() });
@@ -8024,7 +8036,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (!u.query(QUrl::FullyEncoded).isEmpty())
             mr.basePath += "?" + u.query(QUrl::FullyEncoded);
         mr.body = bodyJson.value("body").toString().toUtf8();
-        mr.contentType = bodyJson.value("contentType").toString();
+        mr.contentType = contentTypeFromJson(bodyJson);
         const QJsonObject hdrs = bodyJson.value("headers").toObject();
         for (auto it = hdrs.begin(); it != hdrs.end(); ++it)
             mr.headers.append({ it.key(), it.value().toString() });

@@ -116,6 +116,7 @@ add_library(Networking STATIC
     content_discovery.cpp
     content_discovery.hpp
     xxe_injection.cpp
+    xxe_logic.cpp
     xxe_injection.hpp
     nosql_injection.cpp
     nosql_injection.hpp

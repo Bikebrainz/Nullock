@@ -93,8 +93,22 @@ def make(mode):
                 # Vulnerable mock "resolves" an external entity to /etc/passwd by
                 # echoing a passwd-shaped body when the XML declares one; the safe
                 # mock never does. The probe matches the root:x:0:0: signature.
+                passwd = b'<r>root:x:0:0:root:/root:/bin/bash</r>'
                 if mode == 'xxe-vuln' and b'SYSTEM' in raw and b'passwd' in raw:
-                    self._send(200, b'<r>root:x:0:0:root:/root:/bin/bash</r>', 'application/xml')
+                    self._send(200, passwd, 'application/xml')
+                elif mode == 'xxe-xinclude' and b'xi:include' in raw and b'passwd' in raw:
+                    # Disallow-DOCTYPE but processes XInclude: the SYSTEM/DOCTYPE
+                    # payloads are rejected, the XInclude one reads the file.
+                    self._send(200, passwd, 'application/xml')
+                elif mode == 'xxe-xinclude' and b'DOCTYPE' in raw:
+                    self._send(400, b'<error>DOCTYPE is disallowed</error>', 'application/xml')
+                elif mode == 'xxe-doctype-reject' and b'DOCTYPE' in raw:
+                    # Hardened: rejects every DOCTYPE, but the error page echoes a
+                    # passwd-shaped diagnostic line (the false-positive trap). The
+                    # inert-DOCTYPE control sees the SAME page, so it must NOT
+                    # confirm -- no external entity was ever resolved.
+                    self._send(400, b'<error>DOCTYPE disallowed; env root:x:0:0:root:/root:/bin/bash</error>',
+                               'application/xml')
                 else:
                     self._send(200, b'<r>ok</r>', 'application/xml')
                 return
@@ -563,7 +577,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        cmdi-vuln cmdi-safe cmdi-arith
        nosqli-vuln nosqli-safe
        idor-vuln idor-safe
-       xxe-vuln xxe-safe
+       xxe-vuln xxe-safe xxe-xinclude xxe-doctype-reject
        ssrf-vuln ssrf-safe ssrf-fp ssrf-bypass ssrf-internal
        deser-vuln deser-php-vuln deser-python-vuln deser-ruby-vuln
        deser-safe deser-shapewaf deser-baseline
@@ -693,6 +707,8 @@ chk "idor safe -> no finding"           "$(post /api/idor/test "{\"url\":\"$(url
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
 chk "xxe safe -> not vulnerable"        "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "xxe XInclude -> confirmed (FN fix)" "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-xinclude]} '')\"}")" "d.get('vulnerable')"
+chk "xxe doctype-reject error page -> NOT confirmed (FP fix)" "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-doctype-reject]} '')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== SSRF (core) =="
 chk "ssrf vulnerable -> fetch confirmed"  "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-vuln]} '?url=x')\"}")" "d.get('vulnerable') and d.get('hitCount',0)>=1"
