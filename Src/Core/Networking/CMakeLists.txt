@@ -119,6 +119,7 @@ add_library(Networking STATIC
     xxe_logic.cpp
     xxe_injection.hpp
     nosql_injection.cpp
+    nosql_logic.cpp
     nosql_injection.hpp
     smuggling.cpp
     smuggling.hpp

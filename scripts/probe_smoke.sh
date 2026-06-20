@@ -522,16 +522,23 @@ def make(mode):
                                      lambda m: m.group(1), val)
                 self._send(200, ('<html>' + val + '</html>').encode()); return
             if mode.startswith('nosqli'):
-                # The probe injects a literal (stable across two shots) and a
-                # q[$ne]= operator. The vulnerable mock returns a LONG body for
-                # the $ne operator (matches everything) and a short, stable body
-                # for the literal / $eq control -- the length divergence the probe
-                # keys on. Safe mock ignores the operator (always short).
-                has_ne = any(k.endswith('[$ne]') for k in q.keys())
-                if mode == 'nosqli-vuln' and has_ne:
-                    self._send(200, b'<html>' + b'<li>record</li>\n' * 60 + b'</html>')
+                # A real Mongo backend over-matches on BOTH always-true operators
+                # ($ne and $gt) -> LONG body, while the literal and the always-
+                # false $eq match nothing -> short body. The vuln mock simulates
+                # that. The 'namedeny' mock keys ONLY on the $ne NAME (a validator
+                # returning a verbose page) -- $gt is untouched, so the 2x2
+                # differential must REJECT it. Safe mock ignores operators.
+                keys = list(q.keys())
+                has_true = any(k.endswith('[$ne]') or k.endswith('[$gt]') for k in keys)
+                has_ne = any(k.endswith('[$ne]') for k in keys)
+                long_body = b'<html>' + b'<li>record</li>\n' * 60 + b'</html>'
+                short_body = b'<html>1 result</html>'
+                if mode == 'nosqli-vuln' and has_true:
+                    self._send(200, long_body)
+                elif mode == 'nosqli-namedeny' and has_ne:
+                    self._send(200, long_body)   # only $ne diverges; $gt does not
                 else:
-                    self._send(200, b'<html>1 result</html>')
+                    self._send(200, short_body)
                 return
             if mode.startswith('idor'):
                 # Vulnerable mock serves a distinct object per id (so a neighbor
@@ -575,7 +582,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        verb-vuln verb-safe
        ssti-vuln ssti-safe ssti-calc
        cmdi-vuln cmdi-safe cmdi-arith
-       nosqli-vuln nosqli-safe
+       nosqli-vuln nosqli-safe nosqli-namedeny
        idor-vuln idor-safe
        xxe-vuln xxe-safe xxe-xinclude xxe-doctype-reject
        ssrf-vuln ssrf-safe ssrf-fp ssrf-bypass ssrf-internal
@@ -699,6 +706,7 @@ chk "cmdi safe -> not vulnerable"       "$(post /api/cmdi/test "{\"url\":\"$(url
 echo "== NoSQL injection (core) =="
 chk "nosqli vulnerable -> confirmed"    "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
 chk "nosqli safe -> not vulnerable"     "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "nosqli \$ne-name-deny -> NOT confirmed (2x2 FP fix)" "$(post /api/nosqli/test "{\"url\":\"$(url ${P[nosqli-namedeny]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== IDOR / BOLA (core) =="
 chk "idor vulnerable -> finding"        "$(post /api/idor/test "{\"url\":\"$(url ${P[idor-vuln]} '?id=100')\",\"idParam\":\"id\"}")" "d.get('findingCount',0)>=1"

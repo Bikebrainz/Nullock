@@ -9,25 +9,8 @@ namespace Nullock::Core::NoSqlInjection {
 
 namespace {
 
-constexpr int kMaxSends = 90;
-
-QByteArray buildRequest(const Request &req, const QString &query) {
-    const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/nosqli\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
+constexpr int kMaxSends  = 90;
+constexpr int kMaxParams = 12;
 
 // Other params, preserved (excluding the one we're rewriting).
 QStringList otherParams(const QString &existing, const QString &param) {
@@ -57,14 +40,6 @@ QString queryOp(const QString &existing, const QString &param,
     return parts.join('&');
 }
 
-bool lenDiffers(int a, int b) {
-    const int mx = qMax(a, b), d = qAbs(a - b);
-    return mx > 0 && d > 40 && double(d) / mx > 0.25;
-}
-// Strict complement of lenDiffers -- every pair is classified exactly once,
-// so there's no dead zone where a response is neither similar nor different.
-bool lenSimilar(int a, int b) { return !lenDiffers(a, b); }
-
 QString randVal() {
     static const char hex[] = "0123456789abcdef";
     QString s = QStringLiteral("nlk");
@@ -75,8 +50,10 @@ QString randVal() {
 } // namespace
 
 QStringList defaultParams() {
-    return { "user", "username", "email", "login", "id", "name", "search",
-             "q", "query", "filter", "role", "account", "password" };
+    // Ordered by NoSQLi/auth-bypass yield so the cap keeps the highest-value
+    // names (the credential/privilege params first); the rest go to droppedParams.
+    return { "password", "account", "role", "login", "user", "username", "email",
+             "id", "name", "search", "query", "q", "filter" };
 }
 
 Result test(const Request &reqIn) {
@@ -96,7 +73,10 @@ Result test(const Request &reqIn) {
         }
         if (params.isEmpty()) params = defaultParams();
     }
-    while (params.size() > 6) params.removeLast();
+    if (params.size() > kMaxParams) {
+        result.droppedParams = params.mid(kMaxParams);   // surfaced so a clean
+        params = params.mid(0, kMaxParams);              // result isn't silently partial
+    }
     result.testedParams = params;
 
     HttpClient client;
@@ -111,46 +91,37 @@ Result test(const Request &reqIn) {
     result.baselineStatus = base.parsed.statusCode;
 
     for (const QString &param : params) {
-        if (result.requestsSent + 4 > kMaxSends) break;
+        if (result.requestsSent + 5 > kMaxSends) break;   // 2 literal + ne + gt + eq
         const QString rv = randVal();
         // TWO literal probes first: they must agree, or the page is dynamic and
         // the differential can't be trusted -- skip rather than false-positive.
         const auto lit1 = send(queryLiteral(req.query, param, rv));
         const auto lit2 = send(queryLiteral(req.query, param, rv));
         if (!lit1.ok || !lit2.ok) continue;
-        const int lit1Len = lit1.parsed.body.size();
-        const int lit2Len = lit2.parsed.body.size();
+        const int litLen = lit1.parsed.body.size();
         const int litStatus = lit1.parsed.statusCode;
-        if (litStatus != lit2.parsed.statusCode || !lenSimilar(lit1Len, lit2Len))
+        if (litStatus != lit2.parsed.statusCode || !lenSimilar(litLen, lit2.parsed.body.size()))
             continue;   // unstable baseline
 
-        // Then the always-true ($ne) and always-false ($eq) operators, same value.
+        // TWO always-true operators ($ne, $gt) + one always-false ($eq). $gt
+        // uses "!" -- a low-sorting NON-EMPTY value (an empty value is dropped by
+        // many query parsers), so {field:{$gt:"!"}} over-matches string fields.
         const auto ne = send(queryOp(req.query, param, "ne", rv));
+        const auto gt = send(queryOp(req.query, param, "gt", QStringLiteral("!")));
         const auto eq = send(queryOp(req.query, param, "eq", rv));
-        if (!ne.ok || !eq.ok) continue;
-        const int neLen = ne.parsed.body.size();
-        const int eqLen = eq.parsed.body.size();
+        if (!ne.ok || !gt.ok || !eq.ok) continue;
 
-        // An ERROR status on $ne over an OK literal is type-confusion (the app
-        // got an object where it wanted a string), NOT a NoSQL over-match.
-        if (ne.parsed.statusCode >= 400 && litStatus < 400) continue;
-
-        // $ne interpreted as an operator: it matched a different/larger set
-        // (length diverges beyond the baseline noise) or flipped to a *success*
-        // status the literal didn't have. $eq must track the literal (matched
-        // nothing, like the bogus value).
-        const bool neStatusSuccessDiverge = ne.parsed.statusCode != litStatus
-            && ne.parsed.statusCode >= 200 && ne.parsed.statusCode < 400;
-        const bool neDiverged = (lenDiffers(neLen, lit1Len) && lenDiffers(neLen, lit2Len))
-                             || neStatusSuccessDiverge;
-        const bool eqTracksLit = lenSimilar(eqLen, lit1Len)
-                             && (eq.parsed.statusCode == litStatus);
-        if (neDiverged && eqTracksLit) {
+        if (confirmsInjection(litLen, litStatus,
+                              eq.parsed.body.size(), eq.parsed.statusCode,
+                              ne.parsed.body.size(), ne.parsed.statusCode,
+                              gt.parsed.body.size(), gt.parsed.statusCode)) {
             result.hits.append({ param,
-                QStringLiteral("$ne len=%1/status=%2 vs literal len=%3/status=%4; "
-                               "$eq tracked literal (len=%5)")
-                    .arg(neLen).arg(ne.parsed.statusCode)
-                    .arg(lit1Len).arg(litStatus).arg(eqLen) });
+                QStringLiteral("always-true $ne(len=%1/%2) & $gt(len=%3/%4) agree and diverge "
+                               "from literal(len=%5/%6); $eq(len=%7/%8) tracked the literal")
+                    .arg(ne.parsed.body.size()).arg(ne.parsed.statusCode)
+                    .arg(gt.parsed.body.size()).arg(gt.parsed.statusCode)
+                    .arg(litLen).arg(litStatus)
+                    .arg(eq.parsed.body.size()).arg(eq.parsed.statusCode) });
             result.vulnerable = true;
         }
     }

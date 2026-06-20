@@ -55,3 +55,8 @@ add_subdirectory(host_header)
 # error page), file-content signatures, and buildRequest's CR/LF guards.
 # Run via: ctest -R xxe_injection -V
 add_subdirectory(xxe_injection)
+
+# NoSQL injection -- the 2x2 differential (two always-true ops agree while $eq
+# tracks the literal) and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R nosql_injection -V
+add_subdirectory(nosql_injection)
