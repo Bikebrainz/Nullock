@@ -13,11 +13,12 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb, custom payloads, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
-Active scanner    SQLi (error + blind/time), NoSQLi, LDAP injection, XXE, SSTI, OS cmd-i, CRLF,
-                  path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
-                  mass assignment, host-header injection, server-side prototype pollution,
-                  security-header/CSP audit, web cache poisoning + deception, dangerous HTTP
-                  methods, sensitive-file exposure, HTTP request smuggling, race conditions
+Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
+                  CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
+                  mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure
+                  deserialization (Java/PHP/Python/Ruby/.NET), host-header injection, server-side
+                  prototype pollution, security-header/CSP audit, web cache poisoning + deception,
+                  dangerous HTTP methods, sensitive-file exposure, HTTP request smuggling, race conditions
 Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
                   database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/Elasticsearch/Kibana/Tomcat/PHP/...),
                   with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay
@@ -25,8 +26,9 @@ Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum
                   WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness,
                   scope-gated BFS crawler
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto)
-OAST              In-process HTTP callback sink for blind-bug detection, plus a deployable
-                  standalone server (nullock-oast) for a public / hosted tier
+OAST              In-process HTTP + DNS callback sinks for out-of-band confirmation -- one blast
+                  confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
+                  plus a deployable standalone server (nullock-oast) for a public / hosted tier
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
 Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
                   asset inventory, findings baseline/diff for repeat engagements

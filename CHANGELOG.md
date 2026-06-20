@@ -52,6 +52,33 @@ developer-facing record.
   request-export transforms, and the Intruder engine — five suites run in CI on
   every push, alongside `scripts/probe_smoke.sh` (active-probe regression
   against in-process mocks).
+- **XPath injection** — `/api/xpathi/test` + `nullock xpathi`, error-based with
+  safe-value corroboration (mirrors the LDAP probe).
+- **SSRF** — `/api/ssrf/test` + `nullock ssrf`, a first-class **fetch-proven**
+  probe (cloud metadata incl. decimal/hex IP-encoding denylist bypasses, AWS IMDS
+  IAM two-step, `file://` reads, internal-service loopback banners). Confirmation
+  requires a response-only signature that's absent from the baseline AND from a
+  same-shape non-fetchable shaped-control URL, so reflection/WAF templates can't
+  false-positive.
+- **Insecure deserialization** — `/api/deser/test` + `nullock deser`, an active
+  probe for Java/PHP/Python/Ruby/.NET. Uses a well-formed-vs-malformed
+  differential (a real deserializer accepts a benign well-formed object and errors
+  on a malformed one; a shape-keyed WAF errors on both) so it's sound where a
+  naive error gate is not. Payloads are inert canaries that fail before any gadget.
+- **Out-of-band confirmation via OAST.** `nullock oast blast` now sprays blind
+  **SSRF**, **OS command injection (RCE)**, **XXE**, and **Log4Shell** payloads at
+  a target; a callback to the in-process HTTP sink (or the DNS sink, for the
+  jndi/DNS Log4Shell leg) auto-confirms the class via the correlator — a
+  true-positive-by-construction confirmation no response echo can give.
+- **Time-based blind SQLi** is now exercised in the deep-audit battery (opt-in,
+  `nullock sqli <url> blind`) with differential-timing confirmation.
+- **Content/directory discovery** — `/api/content/discover` + `nullock content`,
+  a soft-404-calibrated wordlist sweep.
+- **Subresource Integrity** passive check — flags cross-origin `<script>` without
+  `integrity=` (supply-chain risk, CWE-353).
+- **nullock-workspace** — a deployable standalone team-findings sync server
+  (SQLite, bearer-key auth, identity-key merge) with `nullock workspace push|pull`
+  CLI, completing team-workspaces Phase 1 (Docker + `DEPLOY_WORKSPACE.md`).
 - Design docs for team workspaces and enterprise SSO (`design/`).
 
 ### Changed / Fixed
