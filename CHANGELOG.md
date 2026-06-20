@@ -63,7 +63,8 @@ developer-facing record.
 - **Active JWT attacks** — `/api/jwt/test` + `nullock jwt test <url> <token>`,
   the active complement to the offline `jwt` toolkit: it sends forged tokens to a
   live endpoint and confirms acceptance (alg:none + case/empty/absent variants,
-  signature-not-verified, weak-HMAC-secret). Sound via a no-token/valid/forgery
+  signature-not-verified, weak-HMAC-secret, and RS256->HS256 algorithm confusion
+  when a public key is supplied). Sound via a no-token/valid/forgery
   calibration with a second-send re-confirm. (Burp does JWT testing only via a
   paid extension.)
 - **Cross-site WebSocket hijacking (CSWSH)** — `/api/cswsh/test` + `nullock

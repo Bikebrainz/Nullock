@@ -17,7 +17,7 @@ Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
                   mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure
                   deserialization (Java/PHP/Python/Ruby/.NET), active JWT attacks (alg:none /
-                  signature-not-verified / weak-secret), cross-site WebSocket hijacking,
+                  signature-not-verified / weak-secret / RS256->HS256 confusion), cross-site WebSocket hijacking,
                   host-header injection, server-side prototype pollution, security-header/CSP audit,
                   web cache poisoning + deception, dangerous HTTP methods, sensitive-file exposure,
                   HTTP request smuggling, race conditions
