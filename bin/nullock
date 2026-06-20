@@ -1117,14 +1117,17 @@ cmd_ssrf() {
 }
 
 cmd_deser() {
-    # nullock deser <url> [param|body|cookie [name]] [Header:Value ...]
+    # nullock deser <url> [param|body|cookie [name]|field [name]] [Header:Value ...]
     #   'body'   tests the raw request body (application/x-java-serialized-object class)
     #   'cookie' tests serialized auth/session cookies (Shiro rememberMe class)
-    [[ -n ${1-} ]] || die "usage: nullock deser <url> [param|body|cookie [name]] [hdr:val ...]"
+    #   'field'  tests a serialized POST form field (.NET __VIEWSTATE class)
+    [[ -n ${1-} ]] || die "usage: nullock deser <url> [param|body|cookie [name]|field [name]] [hdr:val ...]"
     local url=$1; shift
     local param="" location=""
     if [[ ${1-} == body ]]; then location="body"; shift
     elif [[ ${1-} == cookie ]]; then location="cookie"; shift
+        if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    elif [[ ${1-} == field ]]; then location="field"; shift
         if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
     elif [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
     local headers="{}"

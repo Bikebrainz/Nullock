@@ -109,6 +109,17 @@ def make(mode):
                     if raw[:4] == b'\xac\xed\x00\x05':   self._send(200, derr); return
                     self._send(200, b'<html>invalid stream header</html>'); return
                 self._send(200, b'<html>ok</html>'); return    # deser-body-safe
+            if mode.startswith('deser-field'):
+                # A form field deserializer: the POST body is field=<base64>;
+                # url-decode the value and apply the same Java differential.
+                fv = parse_qs(raw.decode('utf-8', 'replace'))
+                val = next((vs[0] for vs in fv.values() if vs), '')
+                if mode == 'deser-field-vuln':
+                    if val == 'rO0ABXQAA2FiYw==':  self._send(200, b'<html>ok</html>'); return
+                    if val.startswith('rO0'):
+                        self._send(200, b'<html>java.io.StreamCorruptedException: bad stream</html>'); return
+                    self._send(200, b'<html>invalid stream header</html>'); return
+                self._send(200, b'<html>ok</html>'); return    # deser-field-safe
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
@@ -443,6 +454,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        deser-safe deser-shapewaf deser-baseline
        deser-body-vuln deser-body-safe
        deser-cookie-vuln deser-cookie-safe
+       deser-field-vuln deser-field-safe
        massassign-vuln massassign-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
@@ -576,6 +588,8 @@ chk "deser raw-body sink -> confirmed Java"  "$(post /api/deser/test "{\"url\":\
 chk "deser raw-body safe -> not vulnerable"  "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-body-safe]} '')\",\"location\":\"body\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "deser cookie sink -> confirmed Java"    "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-cookie-vuln]} '')\",\"location\":\"cookie\"}")" "d.get('vulnerable') and any(h.get('format')=='Java' for h in d.get('hits',[]))"
 chk "deser cookie safe -> not vulnerable"    "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-cookie-safe]} '')\",\"location\":\"cookie\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "deser form-field sink -> confirmed Java" "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-field-vuln]} '')\",\"location\":\"field\"}")" "d.get('vulnerable') and any(h.get('format')=='Java' for h in d.get('hits',[]))"
+chk "deser form-field safe -> not vulnerable" "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-field-safe]} '')\",\"location\":\"field\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== mass assignment (core) =="
 chk "mass-assign vulnerable -> field bound" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-vuln]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('foundCount',0)>=1 and d.get('reflectionUsable')"

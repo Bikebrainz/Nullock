@@ -29,12 +29,12 @@
 //
 // Scope (in-band, error-based): payloads ride the QUERY STRING (default), the
 // RAW REQUEST BODY (location="body", the application/x-java-serialized-object
-// sink), or a named COOKIE (location="cookie", the Shiro/Spring rememberMe and
-// Ruby Marshal-session class). A serialized blob in a named body FIELD (.NET
-// __VIEWSTATE) isn't actively confirmed yet (flagged passively), and a
+// sink), a named COOKIE (location="cookie", the Shiro/Spring rememberMe and Ruby
+// Marshal-session class), or a named POST FORM FIELD (location="field", the .NET
+// __VIEWSTATE / unserialize($_POST[...]) class). What it still can't see: a
 // deserializer that SWALLOWS errors (display_
 // errors off, custom 500) or a Java readObject gadget that fires server-side
-// with no trace is missed -- blind/OOB deserialization (URLDNS gadget -> OAST
+// with no trace -- blind/OOB deserialization (URLDNS gadget -> OAST
 // callback) is a separate OAST-backed probe. A clean result does not rule out
 // CWE-502.
 

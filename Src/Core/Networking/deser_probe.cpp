@@ -134,6 +134,43 @@ QByteArray buildCookieRequest(const Request &req, const QString &cookieName,
     return out;
 }
 
+// Form-field names that classically carry a serialized blob in a POST body.
+QStringList knownFieldNames() {
+    return { "__VIEWSTATE", "viewstate", "data", "state", "payload",
+             "obj", "object", "ser", "input", "json" };
+}
+
+// A POST whose form-encoded body sets one field to the serialized stub (the
+// .NET __VIEWSTATE / unserialize($_POST[...]) class of sink).
+QByteArray buildFieldRequest(const Request &req, const QString &field, const QString &value) {
+    if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
+    QString method = req.method;
+    if (method.isEmpty() || method.compare("GET", Qt::CaseInsensitive) == 0)
+        method = QStringLiteral("POST");
+    if (method.contains('\r') || method.contains('\n')) return {};
+    const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
+    const QByteArray body = QUrl::toPercentEncoding(field) + "=" + QUrl::toPercentEncoding(value);
+    QByteArray out;
+    out  = method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
+    out += "Host: " + req.host.toUtf8() + "\r\n";
+    out += "User-Agent: Nullock/deser\r\n";
+    out += "Accept: */*\r\n";
+    out += "Accept-Encoding: identity\r\n";
+    out += "Content-Type: application/x-www-form-urlencoded\r\n";
+    for (const auto &h : req.headers) {
+        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.contains('\r') || h.first.contains('\n')) continue;
+        if (h.second.contains('\r') || h.second.contains('\n')) continue;
+        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
+    }
+    out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+    out += "Connection: close\r\n\r\n";
+    out += body;
+    return out;
+}
+
 QString queryWith(const QString &existing, const QString &param, const QString &value) {
     const QByteArray enc = QUrl::toPercentEncoding(value);
     QStringList parts;
@@ -257,6 +294,50 @@ Result test(const Request &reqIn) {
                                      QString::fromUtf8(p.mf), err.second });
                 result.vulnerable = true;
                 return result;     // one confirmed cookie sink is enough
+            }
+        }
+        return result;
+    }
+
+    // Named form-field injection: a serialized blob set as one POST body field
+    // (.NET __VIEWSTATE, unserialize($_POST[...])). Same differential; all four
+    // formats fit a url-encoded field value.
+    if (req.location.compare("field", Qt::CaseInsensitive) == 0) {
+        HttpClient fclient;
+        const quint16 fport = static_cast<quint16>(req.port);
+        struct Fp { const char *format; const char *wf; const char *mf; };
+        static const QList<Fp> fprobes = {
+            { "Java", "rO0ABXQAA2FiYw==", "rO0ABXNyABFOdWxsb2NrRGVzZXJDYW5hcnk=" },
+            { "PHP",  "O:8:\"stdClass\":1:{s:1:\"a\";i:1;}",
+              "O:18:\"NullockDeserCanary\":9:{s:1:\"x\";i:1;}" },
+            { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ" },
+            { "Ruby", "BAhpBg==", "BAhbBg==" },
+        };
+        QStringList fields;
+        if (!req.param.isEmpty()) fields << req.param;
+        else fields = knownFieldNames();
+        while (fields.size() > 8) fields.removeLast();
+        result.testedParams = fields;
+        auto sendField = [&](const QString &f, const QString &v) {
+            ++result.requestsSent;
+            return fclient.send(req.host, fport, req.tls, buildFieldRequest(req, f, v));
+        };
+        for (const QString &f : fields) {
+            if (result.requestsSent >= kMaxSends) break;
+            for (const Fp &p : fprobes) {
+                if (result.requestsSent >= kMaxSends) break;
+                const auto wf = sendField(f, QString::fromUtf8(p.wf));
+                if (!wf.ok) continue;
+                result.baselineStatus = wf.parsed.statusCode;
+                if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / not a deser
+                const auto mf = sendField(f, QString::fromUtf8(p.mf));
+                if (!mf.ok) continue;
+                const auto err = matchError(mf.parsed.body);
+                if (err.first.isEmpty()) continue;
+                result.hits.append({ "field:" + f, err.first,
+                                     QString::fromUtf8(p.mf), err.second });
+                result.vulnerable = true;
+                return result;     // one confirmed field sink is enough
             }
         }
         return result;
