@@ -40,6 +40,7 @@
 #include "xpath_injection.hpp"
 #include "ssrf_scan.hpp"
 #include "deser_probe.hpp"
+#include "ws_probe.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -2733,7 +2734,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
         "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/ssrf/test", "/api/deser/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
-        "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
+        "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test", "/api/cswsh/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
         "/api/graphql/probe", "/api/graphql/schema", "/api/smuggle/test",
@@ -6965,6 +6966,46 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "testedParams", QJsonArray::fromStringList(dres.testedParams) },
                        { "hitCount", static_cast<int>(dres.hits.size()) },
                        { "hits", hits }});
+    }
+
+    // ---- Cross-Site WebSocket Hijacking (active) ---------------------
+    // POST /api/cswsh/test { url, origin?, headers? }
+    //   Sends a cross-origin WS upgrade; confirms CSWSH on 101 + a valid
+    //   Sec-WebSocket-Accept. CWE-1385.
+    if (path == "/api/cswsh/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::WsProbe::Request wr;
+        wr.host = u.host();
+        const QString scheme = u.scheme().toLower();
+        wr.tls  = (scheme == "wss" || scheme == "https");
+        wr.port = u.port(wr.tls ? 443 : 80);
+        wr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        if (!u.query(QUrl::FullyEncoded).isEmpty())
+            wr.basePath += "?" + u.query(QUrl::FullyEncoded);
+        wr.attackerOrigin = bodyJson.value("origin").toString();
+        const QJsonObject whdrs = bodyJson.value("headers").toObject();
+        for (auto it = whdrs.begin(); it != whdrs.end(); ++it)
+            wr.headers.append({ it.key(), it.value().toString() });
+
+        const auto wres = Nullock::Core::WsProbe::test(wr);
+        if (m_wiring.scanner && wres.crossOriginAccepted)
+            m_wiring.scanner->reportFinding(0, "high", "ws-cross-origin-accepted",
+                "Cross-site WebSocket hijacking: upgrade accepted with a foreign Origin",
+                wres.detail, u.host(), url);
+        return okJson({{ "ok", wres.error.isEmpty() },
+                       { "error", wres.error },
+                       { "vulnerable", wres.crossOriginAccepted },
+                       { "isWebSocket", wres.isWebSocket },
+                       { "originValidated", wres.originValidated },
+                       { "attackerStatus", wres.attackerStatus },
+                       { "controlStatus", wres.controlStatus },
+                       { "attackerOrigin", wres.attackerOrigin },
+                       { "detail", wres.detail }});
     }
 
     // ---- Reflected XSS -----------------------------------------------

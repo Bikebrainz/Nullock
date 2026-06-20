@@ -30,8 +30,9 @@ fi
 MOCK="$(mktemp /tmp/nullock-probe-mock.XXXXXX.py)"
 cat > "$MOCK" <<'PY'
 import http.server, socketserver, sys, threading, time, json, gzip, re
-import urllib.request, socket, struct
+import urllib.request, socket, struct, hashlib, base64
 from urllib.parse import urlparse, parse_qs
+WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 def fire_dns(qname, server, port):
     # Minimal UDP A-query -- simulates a vulnerable JNDI resolver looking up the
     # Log4Shell callback host, landing the token on Nullock's DNS sink.
@@ -242,6 +243,27 @@ def make(mode):
                                 try: urllib.request.urlopen(mm.group(0), timeout=3).read()
                                 except Exception: pass
                 self._send(200, b'<html>ok</html>'); return
+            if mode.startswith('cswsh'):
+                # WebSocket upgrade endpoint. Compute the RFC-6455 accept token so
+                # the probe sees a genuine handshake. The vuln endpoint completes
+                # the upgrade for ANY Origin; the safe one rejects a cross-origin
+                # handshake (foreign Origin) but completes the no-Origin control.
+                up = self.headers.get('Upgrade', '')
+                key = self.headers.get('Sec-WebSocket-Key', '')
+                origin = self.headers.get('Origin', '')
+                if up.lower() != 'websocket' or not key:
+                    self._send(200, b'<html>not a websocket</html>'); return
+                foreign = bool(origin) and '127.0.0.1' not in origin
+                if mode == 'cswsh-safe' and foreign:
+                    self._send(403, b'cross-origin handshake refused'); return
+                accept = base64.b64encode(
+                    hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+                self.send_response(101)
+                self.send_header('Upgrade', 'websocket')
+                self.send_header('Connection', 'Upgrade')
+                self.send_header('Sec-WebSocket-Accept', accept)
+                self.end_headers()
+                return
             if mode.startswith('content'):
                 # 404 everything (incl. the random calibration paths) except a
                 # single real path, so discovery surfaces exactly /admin.
@@ -399,6 +421,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
+       cswsh-vuln cswsh-safe
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
@@ -540,6 +563,10 @@ chk "xpath safe -> not vulnerable"      "$(post /api/xpathi/test "{\"url\":\"$(u
 echo "== content discovery =="
 CB="$(post /api/content/discover "{\"url\":\"$(url ${P[content-found]} '')\"}")"
 chk "content finds /admin, soft-404 calibrated" "$CB" "d.get('softNotFoundStatus')==404 and any(h['path'].endswith('/admin') and h['status']==200 for h in d.get('hits',[]))"
+
+echo "== cross-site WebSocket hijacking (CSWSH) =="
+chk "cswsh vulnerable -> cross-origin accepted" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\"}")" "d.get('vulnerable') and d.get('isWebSocket')"
+chk "cswsh safe -> origin validated"            "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originValidated')"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

@@ -104,6 +104,8 @@ add_library(Networking STATIC
     ssrf_scan.hpp
     deser_probe.cpp
     deser_probe.hpp
+    ws_probe.cpp
+    ws_probe.hpp
     content_discovery.cpp
     content_discovery.hpp
     xxe_injection.cpp
