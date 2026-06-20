@@ -42,30 +42,6 @@ QString headerValue(const HttpResponse &r, const QString &name) {
     return QString();
 }
 
-// Build a GET/POST where the Host line is `hostLine` and one extra header is
-// appended (unless empty). Carried request headers are passed through, except
-// Host (we set it explicitly) and any header we are about to inject.
-QByteArray buildRequest(const Request &req, const QString &hostLine,
-                        const QString &extraHeader, const QString &extraValue) {
-    const QString path = req.basePath.isEmpty() ? QStringLiteral("/") : req.basePath;
-    const QString target = req.query.isEmpty() ? path : path + "?" + req.query;
-    QByteArray out = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + hostLine.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/host-header\r\n";
-    out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (!extraHeader.isEmpty() && h.first.compare(extraHeader, Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    if (!extraHeader.isEmpty())
-        out += extraHeader.toUtf8() + ": " + extraValue.toUtf8() + "\r\n";
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
 } // namespace
 
 Result test(const Request &reqIn) {
@@ -98,14 +74,8 @@ Result test(const Request &reqIn) {
         const QString location = headerValue(r.parsed, "Location");
         const QString body = QString::fromUtf8(r.parsed.body);
 
-        // URL-context = our host became the host of an absolute or quoted
-        // protocol-relative URL. In the body we REQUIRE a scheme ("://"+s) or a
-        // quoted "//"+s (href="//host) so a bare "//sentinel" inside a comment,
-        // JSON string, or prose can't be mistaken for a URL (false positive). A
-        // Location header value IS itself a URL, so "//"+s there does count.
-        const bool locUrl  = location.contains("://" + s) || location.contains("//" + s);
-        const bool bodyUrl = body.contains("://" + s)
-                          || body.contains("\"//" + s) || body.contains("'//" + s);
+        const bool locUrl  = locationIsUrl(location, s);
+        const bool bodyUrl = bodyHasUrl(body, s);
 
         // Reflection anywhere, including response headers (e.g. an injected host
         // echoed into a Set-Cookie Domain=), which a Location-only check misses.
@@ -116,6 +86,9 @@ Result test(const Request &reqIn) {
         Hit hit;
         hit.header = header;
         hit.sentinel = s;
+        hit.fromHostLine = p.replacesHost;   // the literal Host line (victim's
+                                             // browser sends it) vs a forwarding
+                                             // header (not victim-deliverable)
         hit.inLocation   = location.contains(s);
         hit.inUrlContext = locUrl || bodyUrl;
         hit.reflected    = body.contains(s) || !hdrHit.isEmpty() || hit.inLocation;

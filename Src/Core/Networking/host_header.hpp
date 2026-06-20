@@ -20,6 +20,18 @@
 // is "does an unkeyed header survive in a shared cache"; here it is "does the
 // app build security-relevant URLs from the Host", which is a vuln even with no
 // cache in front.
+//
+// Confidence tiers (the caller grades on these): a hit from the LITERAL Host
+// line reaching a Location is the unambiguous reset/redirect vector (the
+// victim's own browser sends Host) -> high. A forwarding-header (X-Forwarded-
+// Host, ...) reaching a URL, or any body-url reflection, is "needs confirmation"
+// (a fronting proxy may simply echo the forwarding header, and an attacker can't
+// make a victim send it) -> medium. A bare reflection -> info.
+//
+// SCOPE: this is reflection-based -- it only fires when the sentinel comes back
+// in THIS response. The headline impact, password-reset poisoning, is usually
+// BLIND (the poisoned link is emailed, never reflected): a clean result does
+// NOT rule it out. Pair with an OAST callback host for the blind case.
 
 #include <QList>
 #include <QPair>
@@ -30,7 +42,9 @@ namespace Nullock::Core::HostHeader {
 struct Hit {
     QString header;       // the header we injected (X-Forwarded-Host, Host, ...)
     QString sentinel;     // the random host we sent
-    QString where;        // "Location" | "body-url" | "body"
+    QString where;        // "Location" | "body-url" | "header:<name>" | "body"
+    bool    fromHostLine = false;  // injected via the literal Host line (high) vs
+                                   // a forwarding header (medium, not victim-sent)
     bool    inLocation = false;
     bool    inUrlContext = false;  // appeared as //sentinel (absolute/proto-rel URL)
     bool    reflected = false;     // appeared anywhere in the body
@@ -59,5 +73,16 @@ struct Result {
 // and record where it reflects. Sets Result::error (leaving hits empty) only if
 // the initial request fails outright.
 Result test(const Request &req);
+
+// --- Pure helpers, exposed for the unit test (no network I/O) ---------------
+// A Location value is itself a URL, so a bare //sentinel there counts.
+bool locationIsUrl(const QString &location, const QString &s);
+// The body must carry the sentinel as a real URL host: scheme, quoted //, or an
+// unquoted attribute-position //, but NOT bare // in prose/comments/JSON.
+bool bodyHasUrl(const QString &body, const QString &s);
+// Build the raw request, CR/LF-guarding method/path/query/hostLine (returns {}
+// if any is tainted) and dropping any CR/LF-bearing carried header.
+QByteArray buildRequest(const Request &req, const QString &hostLine,
+                        const QString &extraHeader, const QString &extraValue);
 
 } // namespace Nullock::Core::HostHeader

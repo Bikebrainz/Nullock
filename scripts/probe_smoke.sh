@@ -167,15 +167,22 @@ def make(mode):
                 self._send(200, body, 'application/json'); return
             if mode.startswith('hh'):
                 xfh = self.headers.get('X-Forwarded-Host', '')
+                if mode == 'hh-host-loc':
+                    # Echo the literal Host LINE into a redirect -> the HIGH tier
+                    # (the Host-replacement probe sends Host:<sentinel>).
+                    host = self.headers.get('Host', '')
+                    self._send(302, b'', 'text/html', [('Location', 'https://%s/welcome' % host)]); return
                 if mode == 'hh-location':
+                    # Forwarding header echoed into a redirect -> MEDIUM tier.
                     self._send(302, b'', 'text/html', [('Location', 'https://%s/welcome' % xfh)]); return
                 if mode == 'hh-cookie':
                     self._send(200, b'<html>ok</html>', 'text/html',
                                [('Set-Cookie', 'sid=1; Domain=%s; Path=/' % xfh)]); return
-                if mode == 'hh-urlbody':  b = ('<a href="https://%s/reset?token=abc">r</a>' % xfh).encode()
-                elif mode == 'hh-bare':   b = ('<p>requested host = %s</p>' % xfh).encode()
-                elif mode == 'hh-comment':b = ('<!-- proxied via //%s internal -->' % xfh).encode()
-                else:                     b = b'<a href="https://canonical.example/r">x</a>'
+                if mode == 'hh-urlbody':   b = ('<a href="https://%s/reset?token=abc">r</a>' % xfh).encode()
+                elif mode == 'hh-urlattr': b = ('<a href=//%s/reset>r</a>' % xfh).encode()  # UNQUOTED proto-rel
+                elif mode == 'hh-bare':    b = ('<p>requested host = %s</p>' % xfh).encode()
+                elif mode == 'hh-comment': b = ('<!-- proxied via //%s internal -->' % xfh).encode()
+                else:                      b = b'<a href="https://canonical.example/r">x</a>'
                 self._send(200, b, 'text/html'); return
             if mode.startswith('ldap'):
                 err = b'<html>javax.naming.directory.InvalidSearchFilterException: invalid search filter</html>'
@@ -545,7 +552,7 @@ PY
 # Start the mocks on OS-assigned ports; read the actual port map back from the
 # mock's stdout (avoids any reserved/busy-port collision).
 MODES=(sspp-vuln sspp-safe sspp-gzip
-       hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
+       hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind
        xss-vuln xss-safe
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
@@ -627,6 +634,9 @@ chk "sspp gzip -> inconclusive"         "$(post /api/protopollution/test "{\"url
 echo "== host-header injection =="
 chk "hh body-url -> injection"          "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-urlbody]} '')\"}")" "d.get('anyInjection')"
 chk "hh Location -> injection"          "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-location]} '')\"}")" "d.get('anyInjection')"
+chk "hh Host-line -> Location (HIGH tier)" "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-host-loc]} '')\"}")" "any(h.get('fromHostLine') and h.get('where')=='Location' for h in d.get('hits',[]))"
+chk "hh fwd-header Location -> medium tier" "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-location]} '')\"}")" "any(h.get('inUrlContext') and not h.get('fromHostLine') for h in d.get('hits',[]))"
+chk "hh unquoted // attr -> injection (FN fix)" "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-urlattr]} '')\"}")" "d.get('anyInjection')"
 chk "hh bare -> reflected only"         "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-bare]} '')\"}")" "(not d.get('anyInjection')) and d.get('anyReflected')"
 chk "hh safe -> nothing"                "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-safe]} '')\"}")" "d.get('ok') and not d.get('anyInjection') and not d.get('anyReflected')"
 chk "hh comment -> not injection (FP)"  "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-comment]} '')\"}")" "not d.get('anyInjection')"

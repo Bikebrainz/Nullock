@@ -79,6 +79,7 @@ add_library(Networking STATIC
     proto_pollution.cpp
     proto_pollution.hpp
     host_header.cpp
+    host_header_logic.cpp
     host_header.hpp
     http3_detect.cpp
     http3_detect.hpp

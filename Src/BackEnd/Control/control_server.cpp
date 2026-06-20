@@ -560,13 +560,21 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         hhr.method = QStringLiteral("GET"); hhr.headers = t.headers;
         hhr.basePath = auditPath; hhr.query = auditQuery;
         const auto res = Nullock::Core::HostHeader::test(hhr);
-        // Report the confirmed URL-context injections (the high-impact ones);
-        // bare reflections stay to the standalone /api/hostheader/test endpoint.
-        int inj = 0; QStringList hdrs3;
-        for (const auto &h : res.hits) if (h.inLocation || h.inUrlContext) { ++inj; hdrs3 << h.header; }
-        note("host-header-injection", inj,
-             res.error.isEmpty() ? hdrs3.join(", ") : res.error,
-             "high", "host-header-injection", "Deep audit: host-header injection via " + hdrs3.join(", "));
+        // High ONLY for the literal Host line -> Location (the unambiguous reset
+        // vector); a forwarding-header / body-url URL hit is medium "needs
+        // confirmation"; bare reflections stay to the standalone endpoint.
+        int hi = 0, med = 0; QStringList hiHdr, medHdr;
+        for (const auto &h : res.hits) {
+            if (h.fromHostLine && h.where == "Location") { ++hi; hiHdr << h.header; }
+            else if (h.inUrlContext)                     { ++med; medHdr << h.header; }
+        }
+        note("host-header-injection", hi,
+             res.error.isEmpty() ? hiHdr.join(", ") : res.error,
+             "high", "host-header-injection", "Deep audit: host-header injection via " + hiHdr.join(", "));
+        if (med)
+            note("host-header-reflected-location", med, medHdr.join(", "),
+                 "medium", "host-header-reflected-location",
+                 "Deep audit: host header reflected into a URL context (needs confirmation) via " + medHdr.join(", "));
     }
     // Smuggling is slow (timing probes block until the back-end's socket
     // timeout), so it runs ONLY when explicitly opted in -- never in the
@@ -7624,15 +7632,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         for (const auto &h : hres.hits) {
             hits.append(QJsonObject{
                 { "header", h.header }, { "sentinel", h.sentinel },
-                { "where", h.where }, { "inLocation", h.inLocation },
+                { "where", h.where }, { "fromHostLine", h.fromHostLine },
+                { "inLocation", h.inLocation },
                 { "inUrlContext", h.inUrlContext }, { "reflected", h.reflected } });
             if (!m_wiring.scanner) continue;
-            if (h.inLocation || h.inUrlContext)
+            // High ONLY for the literal Host line driving a Location redirect --
+            // the victim's browser sends Host, so this is the genuine reset/
+            // redirect poisoning vector. A forwarding-header URL hit, or any
+            // body-url echo, is "needs confirmation" (medium): a fronting proxy
+            // may just be echoing the forwarding header.
+            if (h.fromHostLine && h.where == "Location")
                 m_wiring.scanner->reportFinding(0, "high", "host-header-injection",
-                    QString("Host-header injection via %1 -- reflected into %2")
+                    QString("Host-header injection via %1 -- Host line reflected into the redirect %2")
                         .arg(h.header, h.where),
-                    QString("injected sentinel %1 reached a URL context; password-reset/redirect poisoning vector")
+                    QString("injected sentinel %1 became the Location host; password-reset/redirect poisoning vector")
                         .arg(h.sentinel),
+                    hr.host, url);
+            else if (h.inUrlContext)
+                m_wiring.scanner->reportFinding(0, "medium", "host-header-reflected-location",
+                    QString("Host-header value via %1 reflected into a URL context (%2) -- needs confirmation")
+                        .arg(h.header, h.where),
+                    QString("injected sentinel %1 reached a URL context; confirm the app (not a fronting proxy) "
+                            "builds this URL and that it reaches a victim-deliverable sink").arg(h.sentinel),
                     hr.host, url);
             else if (h.reflected)
                 m_wiring.scanner->reportFinding(0, "info", "host-header-reflected",

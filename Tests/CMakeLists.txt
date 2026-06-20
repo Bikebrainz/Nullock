@@ -45,3 +45,8 @@ add_subdirectory(ssti_tester)
 # all-region scan, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cmd_injection -V
 add_subdirectory(cmd_injection)
+
+# Host header -- URL-context detection (quoted/unquoted // vs prose) and
+# buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R host_header -V
+add_subdirectory(host_header)
