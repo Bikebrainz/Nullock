@@ -82,6 +82,7 @@ add_library(Networking STATIC
     cache_poison_logic.cpp
     cache_poison.hpp
     proto_pollution.cpp
+    proto_pollution_logic.cpp
     proto_pollution.hpp
     host_header.cpp
     host_header_logic.cpp

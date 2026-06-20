@@ -111,3 +111,10 @@ add_subdirectory(verb_tamper)
 # guards (pure logic; live flow covered in probe_smoke).
 # Run via: ctest -R mass_assign -V
 add_subdirectory(mass_assign)
+
+# Prototype pollution -- the structural exactly-N-space indent anchor, JSON
+# sniffing, the compressed-body inconclusive gate, and buildGet/buildPollute's
+# CR/LF guards (pure logic; the live causal proof + constructor.prototype
+# fallback are covered in probe_smoke).
+# Run via: ctest -R proto_pollution -V
+add_subdirectory(proto_pollution)

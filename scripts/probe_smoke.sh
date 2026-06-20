@@ -91,6 +91,19 @@ def make(mode):
                 if isinstance(p, dict) and isinstance(p.get('__proto__'), dict) and 'json spaces' in p['__proto__']:
                     try: state['spaces'] = int(p['__proto__']['json spaces'])
                     except Exception: pass
+            if mode == 'sspp-ctor':
+                # Merge guard BLOCKS the literal __proto__ key but still walks the
+                # ordinary constructor->prototype own keys -- the classic
+                # __proto__-only-blacklist bypass. Only the constructor.prototype
+                # pollute should reformat responses here.
+                try: p = json.loads(raw)
+                except Exception: p = {}
+                if isinstance(p, dict):
+                    cp = p.get('constructor')
+                    if isinstance(cp, dict) and isinstance(cp.get('prototype'), dict) \
+                       and 'json spaces' in cp['prototype']:
+                        try: state['spaces'] = int(cp['prototype']['json spaces'])
+                        except Exception: pass
             if mode.startswith('xxe'):
                 # Vulnerable mock "resolves" an external entity to /etc/passwd by
                 # echoing a passwd-shaped body when the XML declares one; the safe
@@ -705,7 +718,7 @@ PY
 
 # Start the mocks on OS-assigned ports; read the actual port map back from the
 # mock's stdout (avoids any reserved/busy-port collision).
-MODES=(sspp-vuln sspp-safe sspp-gzip
+MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe
@@ -786,6 +799,7 @@ echo "== server-side prototype pollution =="
 chk "sspp vulnerable -> confirmed"      "$(post /api/protopollution/test "{\"url\":\"$(url ${P[sspp-vuln]} api/me)\"}")" "d.get('vulnerable') and d.get('revertedAfterCleanup')"
 chk "sspp safe -> not vulnerable"       "$(post /api/protopollution/test "{\"url\":\"$(url ${P[sspp-safe]} api/me)\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "sspp gzip -> inconclusive"         "$(post /api/protopollution/test "{\"url\":\"$(url ${P[sspp-gzip]} api/me)\"}")" "not d.get('vulnerable') and 'compressed' in (d.get('error') or '')"
+chk "sspp constructor.prototype bypass -> confirmed (FN fix)" "$(post /api/protopollution/test "{\"url\":\"$(url ${P[sspp-ctor]} api/me)\"}")" "d.get('vulnerable') and d.get('polluteKey')=='constructor.prototype' and d.get('revertedAfterCleanup')"
 
 echo "== host-header injection =="
 chk "hh body-url -> injection"          "$(post /api/hostheader/test "{\"url\":\"$(url ${P[hh-urlbody]} '')\"}")" "d.get('anyInjection')"

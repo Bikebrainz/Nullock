@@ -7598,6 +7598,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineCompact", pres.baselineCompact },
                        { "indentedAfterPollute", pres.indentedAfterPollute },
                        { "revertedAfterCleanup", pres.revertedAfterCleanup },
+                       { "polluteKey", pres.polluteKey },
                        { "baselineStatus", pres.baselineStatus },
                        { "requestsSent", pres.requestsSent }});
     }

@@ -26,6 +26,7 @@
 // Only when all four hold do we report. This mutates one harmless server-side
 // setting (response indentation), so the probe is scope-gated and opt-in.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -53,18 +54,37 @@ struct Result {
     bool    indentedAfterPollute = false;
     bool    revertedAfterCleanup = false;
     QString gadget;                      // "json spaces" (the gadget we used)
+    QString polluteKey;                  // "__proto__" | "constructor.prototype" -- the key that worked
+    int     polluteStatus = 0;           // status of the last pollute POST (for the 4xx hint)
     QString evidence;                    // short human-readable note
     int     requestsSent = 0;
     int     baselineStatus = 0;
     QString error;
 };
 
-// Run the json-spaces causal proof. Sets Result::error (and leaves
+// Run the json-spaces causal proof, trying both the __proto__ and
+// constructor.prototype write keys (a merge that blocks __proto__ may still be
+// pollutable via the constructor walk). Sets Result::error (and leaves
 // vulnerable=false) when the observation endpoint isn't usable JSON, returns a
-// compressed body, is already indented (gadget inconclusive), or a request
-// fails -- and, importantly, when pollution succeeded but the revert could not
-// be confirmed after retries, so callers can treat ok=false as "target may be
-// left mutated" rather than silently trusting a clean result.
+// compressed body (on baseline OR re-observe), is already indented (gadget
+// inconclusive), or a request fails -- and, importantly, when pollution
+// succeeded but the revert could not be confirmed after retries, so callers can
+// treat ok=false as "target may be left mutated" rather than silently trusting
+// a clean result.
 Result test(const Request &req);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// build / detection logic against Qt6::Core alone.
+
+QString randTok();
+QString withBuster(const QString &query);
+bool    looksJsonObject(const QByteArray &body);
+// Is the TOP-LEVEL object indented by EXACTLY n spaces ({ newline n-spaces ")?
+bool    indentedByN(const QByteArray &body, int n);
+// A non-identity Content-Encoding whose body we cannot read as text.
+bool    encodingUnreadable(const QString &contentEncoding);
+QByteArray buildGet(const Request &req, const QString &path, const QString &query);
+QByteArray buildPollute(const Request &req, const QString &path, const QByteArray &body);
 
 } // namespace Nullock::Core::ProtoPollution
