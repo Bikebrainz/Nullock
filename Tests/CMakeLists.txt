@@ -118,3 +118,10 @@ add_subdirectory(mass_assign)
 # fallback are covered in probe_smoke).
 # Run via: ctest -R proto_pollution -V
 add_subdirectory(proto_pollution)
+
+# Insecure deserialization -- the engine-specific error signatures (and the
+# bare-API-name non-matches), the framework-carrier ordering that survives the
+# param cap, queryWith, and the four builders' CR/LF guards (pure logic; the
+# well-formed/malformed differential across transports is covered in probe_smoke).
+# Run via: ctest -R deser_probe -V
+add_subdirectory(deser_probe)

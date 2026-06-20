@@ -68,6 +68,7 @@ struct Request {
 
 struct Result {
     QStringList testedParams;
+    QStringList droppedParams;   // candidates shed by the per-mode cap (transparency)
     bool    vulnerable = false;
     QList<Hit> hits;
     int     requestsSent = 0;
@@ -80,10 +81,33 @@ struct Result {
 // error absent from the baseline and not reproduced by a benign value.
 Result test(const Request &req);
 
-// Parameter names commonly carrying a serialized blob.
+// Parameter names commonly carrying a serialized blob (framework carriers --
+// __VIEWSTATE / javax.faces.ViewState / rememberMe -- lead so they survive the
+// auto-detect param cap).
 QStringList defaultParams();
 
 // Map a confirmed engine label to its finding kind (deser-java, deser-php, ...).
 QString kindForFormat(const QString &format);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// detection + build logic against Qt6::Core alone.
+
+// Match a deserialization-SPECIFIC parse error; returns {engine, fragment} or empty.
+QPair<QString, QString> matchError(const QByteArray &body);
+
+// Cookie / form-field carrier names (framework sinks lead).
+QStringList knownCookieNames();
+QStringList knownFieldNames();
+
+// Request builders. Each returns empty if method/host/path (or a carried
+// header / cookie name) carries a CR/LF.
+QByteArray buildRequest(const Request &req, const QString &query);
+QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QString &ct);
+QByteArray buildCookieRequest(const Request &req, const QString &cookieName, const QString &value);
+QByteArray buildFieldRequest(const Request &req, const QString &field, const QString &value);
+
+// Rebuild `existing` query with `param` set to `value` (replacing any prior).
+QString queryWith(const QString &existing, const QString &param, const QString &value);
 
 } // namespace Nullock::Core::DeserProbe

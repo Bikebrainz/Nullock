@@ -884,6 +884,7 @@ chk "ssrf internal service -> caught"     "$(post /api/ssrf/test "{\"url\":\"$(u
 
 echo "== insecure deserialization (core) =="
 chk "deser Java sink -> confirmed Java"     "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Java' for h in d.get('hits',[]))"
+chk "deser param cap surfaces droppedParams (transparency fix)" "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-vuln]} '?data=x')\"}")" "len(d.get('droppedParams',[]))>=1"
 chk "deser PHP sink -> confirmed PHP"       "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-php-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='PHP' for h in d.get('hits',[]))"
 chk "deser Python sink -> confirmed Python" "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-python-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Python' for h in d.get('hits',[]))"
 chk "deser Ruby sink -> confirmed Ruby"     "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-ruby-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Ruby' for h in d.get('hits',[]))"

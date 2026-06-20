@@ -118,6 +118,7 @@ add_library(Networking STATIC
     ssrf_scan.cpp
     ssrf_scan.hpp
     deser_probe.cpp
+    deser_logic.cpp
     deser_probe.hpp
     ws_probe.cpp
     ws_probe.hpp
