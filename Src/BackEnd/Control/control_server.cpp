@@ -5860,11 +5860,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QJsonArray hits;
         for (const auto &h : jres.hits)
             hits.append(QJsonObject{{ "attack", h.attack }, { "kind", h.kind },
-                                    { "detail", h.detail }});
+                                    { "detail", h.detail }, { "carrier", h.carrier }});
         if (m_wiring.scanner && jres.vulnerable)
             for (const auto &h : jres.hits)
                 m_wiring.scanner->reportFinding(0, "critical", h.kind,
-                    "JWT auth bypass via " + h.attack, h.detail, u.host(), url);
+                    "JWT auth bypass via " + h.attack
+                        + (h.carrier.isEmpty() ? "" : " (" + h.carrier + ")"),
+                    h.detail, u.host(), url);
         return okJson({{ "ok", jres.error.isEmpty() },
                        { "error", jres.error },
                        { "vulnerable", jres.vulnerable },

@@ -311,6 +311,13 @@ def make(mode):
                 #   jwt-algnone  : verifies HS256 but ALSO accepts alg:none (bug)
                 #   jwt-noverify : gates on token PRESENCE, never verifies (bug)
                 #   jwt-weak     : verifies HS256 with a guessable secret (bug)
+                if mode == 'jwt-cookie-noverify':
+                    # Reads the JWT from a cookie (not Bearer) and never verifies
+                    # it -- so carrier fan-out must find the bypass via cookie:jwt
+                    # even though no location was specified.
+                    ck = self.headers.get('Cookie', '')
+                    m = re.search(r'(?:^|;\s*)jwt=([^;]+)', ck)
+                    self._send(200 if m else 401, b'ok' if m else b'unauthorized'); return
                 auth = self.headers.get('Authorization', '')
                 tok = auth[7:] if auth.lower().startswith('bearer ') else ''
                 if not tok:
@@ -518,7 +525,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        xpath-vuln xpath-safe
        content-found
        cswsh-vuln cswsh-safe
-       jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe
+       jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
@@ -695,6 +702,7 @@ JTOK_RS="$(mint_rs 'ZmFrZXJzc2lnbmF0dXJlMTIz')"
 JPUB='nullock-fake-rsa-public-key-for-confusion-test'
 chk "jwt RS->HS confusion -> bypass"    "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-algconfusion]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('vulnerable') and any(h.get('attack')=='alg-confusion' for h in d.get('hits',[]))"
 chk "jwt RS verifier safe -> not vulnerable" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-rs-safe]} '')\",\"token\":\"$JTOK_RS\",\"publicKey\":\"$JPUB\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "jwt carrier fan-out finds cookie bypass" "$(post /api/jwt/test "{\"url\":\"$(url ${P[jwt-cookie-noverify]} '')\",\"token\":\"$JTOK\"}")" "d.get('vulnerable') and any(h.get('carrier','').startswith('cookie:jwt') for h in d.get('hits',[]))"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

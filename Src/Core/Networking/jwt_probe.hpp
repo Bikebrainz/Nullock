@@ -36,10 +36,11 @@
 namespace Nullock::Core::JwtProbe {
 
 struct Hit {
-    QString attack;    // "alg-none" | "signature-not-verified" | "weak-secret"
-    QString kind;      // finding kind (jwt-alg-none | jwt-signature-not-verified | jwt-weak-secret)
+    QString attack;    // "alg-none" | "signature-not-verified" | "weak-secret" | "alg-confusion"
+    QString kind;      // finding kind (jwt-alg-none | jwt-signature-not-verified | jwt-weak-secret | jwt-alg-confusion)
     QString detail;
     QString forged;    // the forged token that was accepted
+    QString carrier;   // where the forgery was accepted (e.g. "Authorization: Bearer", "cookie:jwt")
 };
 
 struct Request {

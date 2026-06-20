@@ -116,7 +116,7 @@ QStringList algNoneVariants(const JwtTool::Decoded &d) {
 
 } // namespace
 
-Result test(const Request &req) {
+static Result testOneCarrier(const Request &req) {
     Result result;
     if (req.host.isEmpty())  { result.error = "host required"; return result; }
     if (req.token.isEmpty()) { result.error = "a captured JWT is required"; return result; }
@@ -237,6 +237,44 @@ Result test(const Request &req) {
                        "(supply the server public key via publicKey)";
 
     return result;
+}
+
+Result test(const Request &req) {
+    auto label = [](const QString &loc) {
+        return loc.isEmpty() ? QStringLiteral("Authorization: Bearer") : loc;
+    };
+    // Explicit carrier -> test just that one.
+    if (!req.location.isEmpty()) {
+        Result r = testOneCarrier(req);
+        for (Hit &h : r.hits) h.carrier = label(req.location);
+        return r;
+    }
+    // No carrier given -> fan out across the common JWT carriers. Only the one
+    // the server actually reads will calibrate (no-token vs valid differ); the
+    // rest self-skip as inconclusive, so this can't manufacture false positives.
+    static const char *kCarriers[] = {
+        "", "cookie:token", "cookie:jwt", "cookie:access_token", "cookie:auth",
+        "cookie:session", "cookie:remember-me", "cookie:remember_token",
+        "header:X-Auth-Token", "header:X-Access-Token",
+    };
+    Result agg;
+    bool anyCalibrated = false;
+    for (const char *c : kCarriers) {
+        Request rc = req;
+        rc.location = QString::fromLatin1(c);
+        const Result r = testOneCarrier(rc);
+        agg.requestsSent += r.requestsSent;
+        if (!r.calibrated) continue;
+        anyCalibrated = true;
+        if (agg.authStatus == 0) { agg.authStatus = r.authStatus; agg.rejectStatus = r.rejectStatus; }
+        for (Hit h : r.hits) { h.carrier = label(rc.location); agg.hits.append(h); }
+        if (r.vulnerable) agg.vulnerable = true;
+    }
+    agg.calibrated = anyCalibrated;
+    if (!anyCalibrated)
+        agg.error = "inconclusive: no token carrier (Authorization: Bearer, common "
+                    "cookies, or X-Auth-Token/X-Access-Token) was auth-gated with this token";
+    return agg;
 }
 
 } // namespace Nullock::Core::JwtProbe
