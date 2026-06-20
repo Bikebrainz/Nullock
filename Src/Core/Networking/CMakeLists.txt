@@ -82,6 +82,7 @@ add_library(Networking STATIC
     http3_detect.cpp
     http3_detect.hpp
     open_redirect.cpp
+    open_redirect_logic.cpp
     open_redirect.hpp
     header_audit.cpp
     header_audit.hpp

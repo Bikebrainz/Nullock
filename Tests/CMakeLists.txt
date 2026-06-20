@@ -30,3 +30,8 @@ add_subdirectory(intruder_engine)
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V
 add_subdirectory(cors_tester)
+
+# Open redirect -- browser-style host resolution, the hardened client-side
+# (meta/JS) detector, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R open_redirect -V
+add_subdirectory(open_redirect)

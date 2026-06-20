@@ -9,22 +9,13 @@ namespace Nullock::Core::OpenRedirect {
 
 namespace {
 
-// The external host every payload aims at. A redirect that resolves here --
-// or to any subdomain of it -- left the trusted origin.
-const QString kSentinel = QStringLiteral("nullock-oob.test");
-
-bool isSentinelHost(const QString &host) {
-    const QString h = host.toLower();
-    return h == kSentinel || h.endsWith("." + kSentinel);
-}
-
 struct Payload { const char *technique; QString value; };
 
 // Build the bypass battery against the sentinel. `targetHost` is the request's
 // own host, used for the whitelist-prefix and userinfo tricks that beat naive
 // "startswith our domain" / "contains our domain" validators.
 QList<Payload> payloads(const QString &targetHost) {
-    const QString s = kSentinel;
+    const QString s = sentinelHost();
     return {
         { "absolute-https",     "https://" + s },
         { "scheme-relative",    "//" + s },
@@ -40,70 +31,21 @@ QList<Payload> payloads(const QString &targetHost) {
     };
 }
 
-QByteArray buildRequest(const Request &req, const QString &query) {
-    const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/open-redirect\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
 QString headerValue(const Proxy::HttpResponse &r, const QString &name) {
     for (const auto &h : r.headers)
         if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
     return QString();
 }
 
-// The host a Location header actually navigates to, resolved against the
-// request URL the way a browser would: backslashes count as slashes, and a
-// "scheme:" with too few slashes ("https:/host", "https:host") is the
-// browser-normalized "scheme://host". We only touch the authority/path head,
-// never the query/fragment, so a backslash inside a same-origin query can't
-// be twisted into an off-origin authority.
-QString resolvedRedirectHost(const QUrl &base, QString loc) {
-    if (loc.isEmpty()) return QString();
-    const int cut = loc.indexOf(QRegularExpression(QStringLiteral("[?#]")));
-    QString head = cut < 0 ? loc : loc.left(cut);
-    const QString tail = cut < 0 ? QString() : loc.mid(cut);
-    head.replace('\\', '/');
-    static const QRegularExpression sch(QStringLiteral("^(https?):/*"),
-                                        QRegularExpression::CaseInsensitiveOption);
-    head.replace(sch, QStringLiteral("\\1://"));
-    return base.resolved(QUrl(head + tail, QUrl::TolerantMode)).host();
-}
-
-// A client-side redirect to the sentinel: meta-refresh URL or a JS location
-// assignment. The sentinel must sit as the host right after the scheme/slash
-// authority marker -- not arbitrary reflected text -- so a page that merely
-// echoes a rejected payload near the word "location" isn't mistaken for one.
-bool clientSideRedirect(const QByteArray &body) {
-    static const QRegularExpression re(
-        "(?:http-equiv\\s*=\\s*[\"']?refresh[\"']?[^>]*url\\s*=|"
-        "(?:window\\.)?location(?:\\.href|\\.replace)?\\s*[=(])"
-        "\\s*[\"']?\\s*(?:https?:)?[\\\\/]{1,2}(?:[^\"'>\\s/\\\\]*\\.)?nullock-oob\\.test",
-        QRegularExpression::CaseInsensitiveOption);
-    return re.match(QString::fromUtf8(body.left(256 * 1024))).hasMatch();
+// The url= target of a Refresh response header ("<delay>; url=TARGET").
+QString refreshHeaderUrl(const QString &refresh) {
+    static const QRegularExpression re(QStringLiteral("\\burl\\s*=\\s*[\"']?\\s*([^\"'>\\s]+)"),
+                                       QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(refresh);
+    return m.hasMatch() ? m.captured(1) : QString();
 }
 
 } // namespace
-
-QStringList knownRedirectParams() {
-    return { "url", "next", "redirect", "redirect_uri", "redirecturl", "return",
-             "returnurl", "return_to", "returnto", "dest", "destination",
-             "continue", "target", "to", "out", "view", "image_url", "go",
-             "u", "r", "link", "checkout_url", "callback", "redir" };
-}
 
 Result test(const Request &reqIn) {
     Result result;
@@ -111,74 +53,107 @@ Result test(const Request &reqIn) {
     Request req = reqIn;
     if (req.basePath.isEmpty()) req.basePath = QStringLiteral("/");
 
-    // Resolve which parameter to test.
-    QUrlQuery q(req.query);
-    if (req.param.isEmpty()) {
+    // Resolve which parameter(s) to test: the explicit one, or sweep EVERY known
+    // redirect param present in the query (sibling SQLi/XSS probes do the same).
+    QStringList params;
+    if (!req.param.isEmpty()) {
+        params << req.param;
+    } else {
+        QUrlQuery q(req.query);
         const QStringList known = knownRedirectParams();
         for (const auto &kv : q.queryItems())
-            if (known.contains(kv.first.toLower())) { req.param = kv.first; break; }
-        if (req.param.isEmpty()) {
+            if (known.contains(kv.first.toLower()) && !params.contains(kv.first))
+                params << kv.first;
+        if (params.size() > 6) params = params.mid(0, 6);   // bound the sweep
+        if (params.isEmpty()) {
             result.error = "no redirect parameter given or auto-detected in the query";
             return result;
         }
     }
-    result.testedParam = req.param;
 
     HttpClient client;
     const quint16 port = static_cast<quint16>(req.port);
-    auto sendWith = [&](const QString &value) {
+
+    // Base for resolving relative/scheme-relative redirect values (RFC-3986).
+    QUrl base;
+    base.setScheme(req.tls ? "https" : "http");
+    base.setHost(req.host);
+    base.setPort(req.port);
+    base.setPath(req.basePath);
+
+    auto sendWith = [&](const QString &param, const QString &value) {
         QUrlQuery qq(req.query);
-        qq.removeAllQueryItems(req.param);
-        qq.addQueryItem(req.param, value);
+        qq.removeAllQueryItems(param);
+        qq.addQueryItem(param, value);
         ++result.requestsSent;
         return client.send(req.host, port, req.tls,
                            buildRequest(req, qq.toString(QUrl::FullyEncoded)));
     };
 
-    // Base for resolving relative/scheme-relative Location values (RFC-3986).
-    QUrl base;
-    base.setScheme(req.tls ? "https" : "http");
-    base.setHost(req.host);
-    base.setPort(req.port);
-    base.setPath(req.basePath.isEmpty() ? "/" : req.basePath);
+    int inconclusive = 0;
+    bool baselineRecorded = false;
+    for (const QString &param : params) {
+        const auto baseResp = sendWith(param, QStringLiteral("/account"));
+        if (!baseResp.ok) continue;   // transport failure for this param -> skip
+        if (!baselineRecorded) {
+            result.baselineStatus = baseResp.parsed.statusCode;
+            baselineRecorded = true;
+        }
+        // If the endpoint already redirects to the sentinel with a benign value,
+        // the redirect isn't driven by our parameter -- skip it as noise rather
+        // than report a hit on every probe.
+        if (baseResp.parsed.statusCode >= 300 && baseResp.parsed.statusCode < 400
+            && isSentinelHost(resolvedRedirectHost(base, headerValue(baseResp.parsed, "Location")))) {
+            ++inconclusive;
+            continue;
+        }
+        result.testedParams << param;
 
-    const auto baseResp = sendWith(QStringLiteral("/account"));
-    if (!baseResp.ok) { result.error = "baseline failed: " + baseResp.errorMessage; return result; }
-    result.baselineStatus = baseResp.parsed.statusCode;
+        for (const Payload &p : payloads(req.host)) {
+            const auto r = sendWith(param, p.value);
+            if (!r.ok) continue;
+            const int sc = r.parsed.statusCode;
 
-    // If the endpoint already redirects to the sentinel with a benign value,
-    // the redirect isn't driven by our parameter -- every probe would "hit".
-    // Bail as inconclusive rather than report noise.
-    if (baseResp.parsed.statusCode >= 300 && baseResp.parsed.statusCode < 400
-        && isSentinelHost(resolvedRedirectHost(base, headerValue(baseResp.parsed, "Location")))) {
-        result.error = "inconclusive: the endpoint redirects to the sentinel "
-                       "independent of the parameter";
-        return result;
-    }
-
-    for (const Payload &p : payloads(req.host)) {
-        const auto r = sendWith(p.value);
-        if (!r.ok) continue;
-        const int sc = r.parsed.statusCode;
-
-        // Primary, high-confidence: a real redirect whose Location resolves to
-        // the sentinel host.
-        if (sc >= 300 && sc < 400) {
-            const QString host = resolvedRedirectHost(base, headerValue(r.parsed, "Location"));
+            // 1) High-confidence: a 3xx whose Location resolves to the sentinel.
+            if (sc >= 300 && sc < 400) {
+                const QString host = resolvedRedirectHost(base, headerValue(r.parsed, "Location"));
+                if (isSentinelHost(host)) {
+                    result.hits.append({ p.technique, p.value, "Location", host, param, sc });
+                    result.vulnerable = true;
+                    continue;
+                }
+            }
+            // 2) High-confidence: a Refresh RESPONSE header (browsers honor it
+            //    like Location / <meta refresh>), at any status code.
+            const QString refresh = headerValue(r.parsed, "Refresh");
+            if (!refresh.isEmpty()) {
+                const QString host = resolvedRedirectHost(base, refreshHeaderUrl(refresh));
+                if (isSentinelHost(host)) {
+                    result.hits.append({ p.technique, p.value, "refresh-header", host, param, sc });
+                    result.vulnerable = true;
+                    continue;
+                }
+            }
+            // 3) Lower-confidence: a client-side <meta refresh> / JS location
+            //    navigation in the body whose resolved host is the sentinel.
+            QString via;
+            const QString host = clientSideRedirectHost(r.parsed.body, base, &via);
             if (isSentinelHost(host)) {
-                result.hits.append({ p.technique, p.value, "Location", host, sc });
+                result.hits.append({ p.technique, p.value,
+                                     via.isEmpty() ? QStringLiteral("client-side") : via,
+                                     host, param, sc });
                 result.vulnerable = true;
-                continue;
             }
         }
-        // Secondary, lower-confidence: a client-side redirect to the sentinel.
-        if (clientSideRedirect(r.parsed.body)) {
-            result.hits.append({ p.technique, p.value, "client-side",
-                                 kSentinel, sc });
-            result.vulnerable = true;
-        }
     }
 
+    if (result.testedParams.isEmpty()) {
+        result.error = inconclusive
+            ? "inconclusive: the endpoint redirects to the sentinel "
+              "independent of the parameter"
+            : "baseline failed for all candidate parameters";
+    }
+    result.testedParam = result.testedParams.value(0);
     return result;
 }
 

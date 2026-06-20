@@ -413,12 +413,27 @@ def make(mode):
                 self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
                 return
             if mode.startswith('openredir'):
-                # Vulnerable mock reflects the redirect param straight into the
-                # Location header; the probe flags it resolving to its sentinel.
+                # Vulnerable mock reflects the redirect param into a redirect
+                # sink; the probe flags it resolving to its sentinel.
                 val = q.get('url', [''])[0]
-                if mode == 'openredir-vuln' and '\n' not in val and '\r' not in val:
+                clean = ('\n' not in val and '\r' not in val)
+                if mode == 'openredir-vuln' and clean:
+                    # Location header (3xx).
                     self.send_response(302); self.send_header('Location', val)
                     self.send_header('Content-Length', '0'); self.end_headers()
+                elif mode == 'openredir-refresh' and clean:
+                    # Refresh RESPONSE header -- browsers honor it like Location.
+                    self.send_response(200); self.send_header('Refresh', '0;url=' + val)
+                    self.send_header('Content-Length', '0'); self.end_headers()
+                elif mode == 'openredir-js' and clean:
+                    # Client-side JS navigation via location.assign(...).
+                    body = ('<html><script>location.assign("%s")</script></html>' % val).encode()
+                    self._send(200, body)
+                elif mode == 'openredir-echo' and clean:
+                    # SAFE: merely ECHOES the rejected payload as inert prose --
+                    # the naive-reflection false positive the probe must avoid.
+                    body = ('<html><body><p>Invalid location=%s</p></body></html>' % val).encode()
+                    self._send(200, body)
                 else:
                     self._send(200, b'<html>home</html>')
                 return
@@ -514,7 +529,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
        sqli-vuln sqli-safe sqli-blind
        xss-vuln xss-safe
-       openredir-vuln openredir-safe
+       openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe
        cors-vuln cors-safe
        verb-vuln verb-safe
@@ -611,6 +626,9 @@ chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url 
 echo "== open redirect (core) =="
 chk "open-redirect vulnerable -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-vuln]} '?url=test')\"}")" "d.get('vulnerable')"
 chk "open-redirect safe -> not vulnerable"  "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-safe]} '?url=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "open-redirect Refresh header -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-refresh]} '?url=test')\"}")" "d.get('vulnerable') and any(h.get('via')=='refresh-header' for h in d.get('hits',[]))"
+chk "open-redirect JS location.assign -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-js]} '?url=test')\"}")" "d.get('vulnerable') and any(h.get('via')=='js-location' for h in d.get('hits',[]))"
+chk "open-redirect prose echo -> NOT flagged (FP fix)" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-echo]} '?url=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== path traversal (core) =="
 chk "path-traversal vulnerable -> confirmed" "$(post /api/pathtraversal/test "{\"url\":\"$(url ${P[pathtrav-vuln]} '?file=test')\"}")" "d.get('vulnerable')"

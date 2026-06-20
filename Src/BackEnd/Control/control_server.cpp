@@ -527,15 +527,17 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         orq.basePath = auditPath; orq.query = auditQuery;   // param auto-detected
         const auto res = Nullock::Core::OpenRedirect::test(orq);
         QStringList techs; for (const auto &h : res.hits) techs << h.technique;
-        // Header-confirmed (Location) is high; client-side-only is medium.
+        // Server-confirmed (Location / Refresh header) is high; client-side
+        // (meta/JS body) only is medium.
         bool headerConfirmed = false;
-        for (const auto &h : res.hits) if (h.via == "Location") headerConfirmed = true;
+        for (const auto &h : res.hits)
+            if (h.via == "Location" || h.via == "refresh-header") headerConfirmed = true;
         note("open-redirect", res.hits.size(),
              res.error.isEmpty()
-                 ? QString("param %1: %2").arg(res.testedParam, techs.join(", "))
+                 ? QString("param(s) %1: %2").arg(res.testedParams.join(", "), techs.join(", "))
                  : res.error,
              headerConfirmed ? "high" : "medium", "open-redirect",
-             "Deep audit: open redirect in '" + res.testedParam + "'");
+             "Deep audit: open redirect in '" + res.testedParams.join("', '") + "'");
     }
     if (wants("cache") || wants("cachepoison")) {
         Nullock::Core::CachePoison::Request cpr;
@@ -7399,13 +7401,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             hits.append(QJsonObject{
                 { "technique", h.technique }, { "payload", h.payload },
                 { "via", h.via }, { "resolvedHost", h.resolvedHost },
-                { "status", h.status } });
+                { "param", h.param }, { "status", h.status } });
             techniques << h.technique;
         }
         if (m_wiring.scanner && ores.vulnerable) {
-            // Header-confirmed (Location) is high; client-side-only is medium.
+            // Server-confirmed (Location / Refresh header) is high; client-side
+            // (meta/JS body) only is medium.
             bool headerConfirmed = false;
-            for (const auto &h : ores.hits) if (h.via == "Location") headerConfirmed = true;
+            for (const auto &h : ores.hits)
+                if (h.via == "Location" || h.via == "refresh-header") headerConfirmed = true;
             m_wiring.scanner->reportFinding(0, headerConfirmed ? "high" : "medium",
                 "open-redirect",
                 QString("Open redirect in '%1' -- %2 redirect(s) leave the origin (%3)")
@@ -7417,6 +7421,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "ok", ores.error.isEmpty() },
                        { "error", ores.error },
                        { "testedParam", ores.testedParam },
+                       { "testedParams", QJsonArray::fromStringList(ores.testedParams) },
                        { "vulnerable", ores.vulnerable },
                        { "baselineStatus", ores.baselineStatus },
                        { "requestsSent", ores.requestsSent },
