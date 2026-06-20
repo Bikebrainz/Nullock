@@ -73,6 +73,15 @@ def make(mode):
                 out = {k: v for k, v in o.items()
                        if mode == 'massassign-vuln' and k in known} if isinstance(o, dict) else {}
                 self._send(200, json.dumps(out).encode(), 'application/json'); return
+            if mode.startswith('oast'):
+                # Blind-XXE-vulnerable parser: the blast POSTs an XML body with an
+                # external entity SYSTEM "<sink-url>"; a victim parser fetches it.
+                if mode == 'oast-vuln':
+                    mm = re.search(rb'https?://[^\s;|&)`\'">]+', raw)
+                    if mm:
+                        try: urllib.request.urlopen(mm.group(0).decode(), timeout=3).read()
+                        except Exception: pass
+                self._send(200, b'<r>ok</r>', 'application/xml'); return
             self._send(200, b'{"ok":true}', 'application/json')
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
@@ -190,13 +199,14 @@ def make(mode):
                     wf, ferr = sinks[mode]
                     self._send(200, ok if val == wf else ferr); return  # accept own valid blob, else error
                 self._send(200, ok); return                           # deser-safe
-            if mode.startswith('oast-rce'):
-                # Simulate a command-injection-vulnerable endpoint: when a param
-                # value carries a shell command fetching a URL (the blast's
-                # ;curl/$(curl)/`curl` payloads), "execute" it by firing the
-                # callback to our OAST sink -- exactly what a vulnerable shell
-                # would do out-of-band. The safe variant ignores the command.
-                if mode == 'oast-rce':
+            if mode.startswith('oast'):
+                # A server vulnerable to the OAST blast's GET vectors: it acts on
+                # an attacker-controlled URL in a param -- whether the value is a
+                # bare URL (SSRF param) or a shell command fetching one (RCE
+                # ;curl/$(curl)/`curl`). Either way a real victim makes the
+                # out-of-band request, so the mock fires the callback to our sink.
+                # The -safe variant ignores it.
+                if mode == 'oast-vuln':
                     for vals in q.values():
                         for v in vals:
                             mm = re.search(r'https?://[^\s;|&)`\'"]+', v)
@@ -361,7 +371,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
        content-found
-       oast-rce oast-rce-safe
+       oast-vuln oast-safe
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -509,32 +519,36 @@ chk "h3 h2-only -> not advertised"      "$(post /api/http3/detect "{\"url\":\"$(
 chk "h3 no Alt-Svc -> not advertised"   "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-none]} '')\"}")" "d.get('ok') and not d.get('advertisesHttp3')"
 chk "h3 clear -> not advertised"        "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-clear]} '')\"}")" "not d.get('advertisesHttp3')"
 
-echo "== blind RCE via OAST (out-of-band) =="
-# The blast mints a token, injects ;curl <sink> command-injection payloads, and
-# fires them at the target. The vulnerable mock "executes" the curl (callback to
-# the OAST sink), the correlator matches the registered token and confirms a
-# critical rce-oast-confirmed finding -- snapshot.oast.confirmed climbs.
-oast_confirmed() { curl -sS "${HDR[@]}" "$BASEURL/api/snapshot" 2>/dev/null | python -c "import json,sys
-try: print(json.load(sys.stdin).get('oast',{}).get('confirmed',0))
-except Exception: print(-1)"; }
-# Negative FIRST -- a safe (non-executing) target must produce no callbacks, so
-# confirmed stays put. (Run before the positive so its async callback tail can't
-# bleed into this window.)
-safe_before="$(oast_confirmed)"
-post /api/oast/blast "{\"url\":\"$(url ${P[oast-rce-safe]} '')\",\"rce\":true,\"ssrf\":false,\"xxe\":false,\"log4shell\":false}" >/dev/null
-sleep 2
-chk "oast rce-safe -> no new confirm" "{\"a\":$(oast_confirmed),\"b\":$safe_before}" "d.get('a')==d.get('b')"
-# Positive -- the vulnerable mock executes the injected curl, the callback lands
-# on the sink, and the correlator confirms (snapshot.oast.confirmed climbs).
-rce_before="$(oast_confirmed)"
-post /api/oast/blast "{\"url\":\"$(url ${P[oast-rce]} '')\",\"rce\":true,\"ssrf\":false,\"xxe\":false,\"log4shell\":false}" >/dev/null
-rce_got=0
-for _ in $(seq 1 16); do
-  now="$(oast_confirmed)"
-  if [ "$now" -gt "$rce_before" ] 2>/dev/null; then rce_got=1; break; fi
-  sleep 0.5
-done
-chk "oast blind-rce -> callback confirmed" "{\"got\":$rce_got}" "d.get('got')==1"
+echo "== OAST out-of-band confirmation (SSRF / RCE / XXE) =="
+# Each blast mints fresh random tokens, injects one battery's OOB payloads, and
+# fires them. A vulnerable mock makes the out-of-band request to our sink; the
+# correlator confirms by matching the pre-registered token. We assert a callback
+# arrived for a token from THIS blast (token-precise -> immune to other
+# batteries' async callback tails) and that a safe target yields none. (Log4Shell
+# confirms via the DNS sink, a different channel -- not covered by this HTTP mock.)
+oast_battery() {  # $1=port-key  $2=flags  -> echoes 1 if a callback for one of this blast's tokens landed
+  local resp toks i
+  resp="$(post /api/oast/blast "{\"url\":\"$(url ${P[$1]} '')\",$2}")"
+  toks="$(printf '%s' "$resp" | python -c "import json,sys
+try: print('|'.join(v.get('token','') for v in json.load(sys.stdin).get('vectors',[])))
+except Exception: print('')")"
+  [ -z "$toks" ] && { echo 0; return; }
+  for i in $(seq 1 16); do
+    if curl -sS "${HDR[@]}" "$BASEURL/api/oast/poll?since=0" 2>/dev/null | TOKS="$toks" python -c "import json,sys,os
+toks=set(os.environ['TOKS'].split('|'))
+hits={h.get('token','') for h in json.load(sys.stdin).get('hits',[])}
+sys.exit(0 if (toks & hits) else 1)"; then echo 1; return; fi
+    sleep 0.5
+  done
+  echo 0
+}
+RCEFLAGS='"ssrf":false,"xxe":false,"log4shell":false,"rce":true'
+SSRFLAGS='"ssrf":true,"xxe":false,"log4shell":false,"rce":false'
+XXEFLAGS='"ssrf":false,"xxe":true,"log4shell":false,"rce":false'
+chk "oast SSRF OOB -> callback confirmed"      "{\"v\":$(oast_battery oast-vuln "$SSRFLAGS")}" "d.get('v')==1"
+chk "oast blind-RCE OOB -> callback confirmed" "{\"v\":$(oast_battery oast-vuln "$RCEFLAGS")}" "d.get('v')==1"
+chk "oast blind-XXE OOB -> callback confirmed" "{\"v\":$(oast_battery oast-vuln "$XXEFLAGS")}" "d.get('v')==1"
+chk "oast safe target -> no callback"          "{\"v\":$(oast_battery oast-safe "$RCEFLAGS")}" "d.get('v')==0"
 
 echo ""
 echo "probe_smoke: $PASS passed, $FAIL failed"
