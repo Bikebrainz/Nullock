@@ -54,7 +54,7 @@ const QStringList &emittedKinds() {
         // active probes added in the above-Burp climb
         "proto-pollution-reflected", "host-header-injection", "host-header-reflected",
         "http3-advertised", "ldap-injection", "xpath-injection", "content-discovered",
-        "sri-missing",
+        "sri-missing", "ssrf-cloud-metadata", "ssrf-internal",
     };
     return k;
 }
@@ -80,6 +80,8 @@ const QList<Spot> &spotChecks() {
         { "host-header-injection",       "CWE-20" },    // exact (new)
         { "proto-pollution-reflected",   "CWE-1321" },  // exact (new)
         { "xpath-injection",             "CWE-643" },   // exact (new)
+        { "ssrf-cloud-metadata",         "CWE-918" },   // exact (new)
+        { "ssrf-internal",               "CWE-918" },   // ssrf- family (new)
     };
     return s;
 }

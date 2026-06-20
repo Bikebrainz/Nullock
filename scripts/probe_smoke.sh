@@ -114,6 +114,43 @@ def make(mode):
                        'h3-clear': 'clear'}.get(mode)
                 extra = [('Alt-Svc', alt)] if alt is not None else []
                 self._send(200, b'ok\n', 'text/plain', extra); return
+            if mode.startswith('ssrf'):
+                # Each mode simulates one server behaviour the probe must judge.
+                # The probe confirms only on fetch-only signatures (never in the
+                # URL it sent) that are absent from the baseline AND absent from
+                # a same-shape non-fetchable "shaped control" URL (tag below).
+                val = q.get('url', [''])[0]
+                ctl = 'nullock-ssrf-zq9x1k7p'   # shaped-control marker -> non-fetchable
+                body = b'<html>home</html>'
+                if mode == 'ssrf-vuln':
+                    # Fully vulnerable cloud host: IMDS v1 listing, the IAM
+                    # two-step (role listing then credential doc), and file read.
+                    if '/iam/security-credentials/' in val and ctl not in val:
+                        if val.rstrip('/').endswith('/iam/security-credentials'):
+                            body = b'nullock-role\n'                       # role listing
+                        elif val.endswith('/iam/security-credentials/nullock-role'):
+                            body = b'{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":"redacted-fake"}'
+                    elif '169.254.169.254/latest/meta-data/' in val and ctl not in val:
+                        body = b'ami-id\ninstance-id\nplacement/\n'
+                    elif val.startswith('file:///etc/passwd'):
+                        body = b'root:x:0:0:root:/root:/bin/bash\n'
+                elif mode == 'ssrf-fp':
+                    # An error/WAF template that echoes a passwd EXAMPLE for ANY
+                    # file:// value (real path or the shaped control). The shaped
+                    # control must catch this and suppress the hit (no fetch).
+                    if val.startswith('file://'):
+                        body = b'root:x:0:0:example-shown-by-error-page\n'
+                elif mode == 'ssrf-bypass':
+                    # Denylist blocks the literal 169.254.169.254, but the
+                    # decimal-encoded host still reaches IMDS.
+                    if '2852039166/latest/meta-data/' in val and ctl not in val:
+                        body = b'ami-id\ninstance-id\n'
+                elif mode == 'ssrf-internal':
+                    # The fetcher reaches an internal Elasticsearch on loopback.
+                    if '127.0.0.1:9200' in val and ctl not in val:
+                        body = b'{"name":"node-1","cluster_name":"nullock-es"}'
+                # ssrf-safe falls through to the static home page.
+                self._send(200, body); return
             if mode.startswith('content'):
                 # 404 everything (incl. the random calibration paths) except a
                 # single real path, so discovery surfaces exactly /admin.
@@ -252,6 +289,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        nosqli-vuln nosqli-safe
        idor-vuln idor-safe
        xxe-vuln xxe-safe
+       ssrf-vuln ssrf-safe ssrf-fp ssrf-bypass ssrf-internal
        massassign-vuln massassign-safe
        ldap-vuln ldap-safe ldap-baseline
        xpath-vuln xpath-safe
@@ -360,6 +398,14 @@ chk "idor safe -> no finding"           "$(post /api/idor/test "{\"url\":\"$(url
 echo "== XXE (core) =="
 chk "xxe vulnerable -> confirmed"       "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-vuln]} '')\"}")" "d.get('vulnerable')"
 chk "xxe safe -> not vulnerable"        "$(post /api/xxe/test "{\"url\":\"$(url ${P[xxe-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== SSRF (core) =="
+chk "ssrf vulnerable -> fetch confirmed"  "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-vuln]} '?url=x')\"}")" "d.get('vulnerable') and d.get('hitCount',0)>=1"
+chk "ssrf vuln -> IAM two-step confirms"  "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-vuln]} '?url=x')\"}")" "any(h.get('technique')=='aws-imds-iam' for h in d.get('hits',[]))"
+chk "ssrf safe -> no fetch"               "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-safe]} '?url=x')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('hitCount',0)==0"
+chk "ssrf shaped-control -> FP suppressed" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-fp]} '?url=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "ssrf decimal-IP bypass -> caught"    "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-bypass]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aws-imds-decimal' for h in d.get('hits',[]))"
+chk "ssrf internal service -> caught"     "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-internal]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('kind')=='ssrf-internal' for h in d.get('hits',[]))"
 
 echo "== mass assignment (core) =="
 chk "mass-assign vulnerable -> field bound" "$(post /api/massassign/test "{\"url\":\"$(url ${P[massassign-vuln]} '')\",\"body\":\"{\\\"username\\\":\\\"x\\\"}\",\"contentType\":\"application/json\"}")" "d.get('foundCount',0)>=1 and d.get('reflectionUsable')"

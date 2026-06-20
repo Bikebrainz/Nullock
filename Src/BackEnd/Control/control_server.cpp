@@ -38,6 +38,7 @@
 #include "sql_injection.hpp"
 #include "ldap_injection.hpp"
 #include "xpath_injection.hpp"
+#include "ssrf_scan.hpp"
 #include "xxe_injection.hpp"
 #include "nosql_injection.hpp"
 #include "smuggling.hpp"
@@ -631,6 +632,18 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         note("xpath-injection", res.hits.size(),
              res.error.isEmpty() ? where.join(", ") : res.error,
              "high", "xpath-injection", "Deep audit: XPath injection " + where.join(", "));
+    }
+    if (wants("ssrf")) {
+        Nullock::Core::SsrfScan::Request srr;
+        srr.host = t.host; srr.port = t.port; srr.tls = t.tls; srr.method = t.method;
+        srr.basePath = auditPath; srr.query = auditQuery; srr.headers = t.headers;
+        const auto res = Nullock::Core::SsrfScan::test(srr);
+        QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.technique + ")";
+        const bool cloud = !res.hits.isEmpty() && res.hits.first().kind == "ssrf-cloud-metadata";
+        note("ssrf", res.hits.size(),
+             res.error.isEmpty() ? where.join(", ") : res.error,
+             cloud ? "critical" : "high", res.hits.isEmpty() ? "ssrf-internal" : res.hits.first().kind,
+             "Deep audit: SSRF " + where.join(", "));
     }
     if (wants("xss")) {
         Nullock::Core::XssReflected::Request xrr;
@@ -2702,7 +2715,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // endpoints (portscan, audit/all, chain/run, intruder, repeater, authz-test)
     // each apply blocksScope() at their own target sites below.
     static const QSet<QString> kActivePaths = {
-        "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
+        "/api/sqli/test", "/api/ldapi/test", "/api/xpathi/test", "/api/ssrf/test", "/api/nosqli/test", "/api/xxe/test", "/api/ssti/test",
         "/api/cmdi/test", "/api/xss/test", "/api/crlf/test", "/api/pathtraversal/test",
         "/api/openredirect/test", "/api/cache/poison", "/api/cors/test", "/api/idor/test",
         "/api/massassign/test", "/api/verbtamper/test", "/api/race/test", "/api/paramminer",
@@ -6794,6 +6807,57 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "requestsSent", xres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(xres.testedParams) },
                        { "hitCount", static_cast<int>(xres.hits.size()) },
+                       { "hits", hits }});
+    }
+
+    // ---- SSRF (in-band: cloud metadata + file / internal) ------------
+    // POST /api/ssrf/test { url, param?, method?, headers? }
+    //   Injects metadata/file URLs; confirms only on a response-only
+    //   signature absent from the baseline (reflection-proof). CWE-918.
+    //   Blind/OOB SSRF is the parameter-sweep + OAST correlator's job.
+    if (path == "/api/ssrf/test") {
+        const QString url = bodyJson.value("url").toString();
+        const QUrl u(url);
+        if (url.isEmpty() || !u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+
+        Nullock::Core::SsrfScan::Request sr;
+        sr.host = u.host();
+        sr.port = u.port(u.scheme() == "https" ? 443 : 80);
+        sr.tls  = (u.scheme() == "https");
+        sr.method = bodyJson.value("method").toString("GET").toUpper();
+        sr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                      ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        sr.query = u.query(QUrl::FullyEncoded);
+        sr.param = bodyJson.value("param").toString();
+        const QJsonObject shdrs = bodyJson.value("headers").toObject();
+        for (auto it = shdrs.begin(); it != shdrs.end(); ++it)
+            sr.headers.append({ it.key(), it.value().toString() });
+
+        const auto sres = Nullock::Core::SsrfScan::test(sr);
+
+        QJsonArray hits;
+        for (const auto &h : sres.hits)
+            hits.append(QJsonObject{
+                { "param", h.param }, { "technique", h.technique },
+                { "payload", h.payload }, { "signal", h.signal },
+                { "severity", h.severity }, { "kind", h.kind } });
+        if (m_wiring.scanner && sres.vulnerable) {
+            const auto &h0 = sres.hits.first();
+            m_wiring.scanner->reportFinding(0, h0.severity, h0.kind,
+                QString("SSRF in '%1' (%2) -- the server fetched an attacker-controlled URL")
+                    .arg(h0.param, h0.technique),
+                QString("payload=%1 · response contained the fetch-only signature \"%2\", "
+                        "absent from the baseline").arg(h0.payload, h0.signal),
+                u.host(), url);
+        }
+        return okJson({{ "ok", sres.error.isEmpty() },
+                       { "error", sres.error },
+                       { "vulnerable", sres.vulnerable },
+                       { "testedParam", sres.testedParam },
+                       { "baselineStatus", sres.baselineStatus },
+                       { "requestsSent", sres.requestsSent },
+                       { "hitCount", static_cast<int>(sres.hits.size()) },
                        { "hits", hits }});
     }
 
