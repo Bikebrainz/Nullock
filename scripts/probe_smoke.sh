@@ -83,6 +83,8 @@ def make(mode):
         def do_POST(self):
             n = int(self.headers.get('Content-Length', '0') or 0)
             raw = self.rfile.read(n) if n else b''
+            if mode == 'verb-case':   # POST denied too; only lower-cased "get" flips
+                self._send(403, b'<html>x</html>'); return
             if mode == 'sspp-vuln':
                 try: p = json.loads(raw)
                 except Exception: p = {}
@@ -566,7 +568,10 @@ def make(mode):
                 # 200 below) -- a verb-tampering bypass; an undefined method gets
                 # the stdlib 501, the non-2xx control the probe needs. Safe mock
                 # allows GET (200) so the probe sees nothing to bypass.
-                self._send(403 if mode == 'verb-vuln' else 200, b'<html>x</html>'); return
+                # verb-case denies BOTH GET and POST (403), but the lower-cased
+                # "get" (do_get below) flips to 200 -- a case-variation bypass.
+                self._send(403 if mode in ('verb-vuln', 'verb-case') else 200,
+                           b'<html>x</html>'); return
             if mode.startswith('ssti'):
                 # Reflect the param; the vulnerable mock additionally EVALUATES a
                 # Jinja-style {{N*N}} (one of the probe's delimiter families) to
@@ -667,6 +672,12 @@ def make(mode):
                     self._send(200, b'<html>your dashboard</html>')
                 return
             self._send(200, b'ok\n', 'text/plain')
+        def do_get(self):   # lower-cased GET -- the verb-case bypass vector
+            if mode == 'verb-case':
+                self._send(200, ('<html>confidential report: revenue $5.2M, headcount '
+                                 '312, runway 18mo, board notes attached</html>').encode())
+            else:
+                self._send(404, b'<html>not found</html>')
         def log_message(self, *a): pass
     return H
 socketserver.TCPServer.allow_reuse_address = True
@@ -689,7 +700,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
-       verb-vuln verb-safe
+       verb-vuln verb-safe verb-case
        ssti-vuln ssti-safe ssti-calc
        cmdi-vuln cmdi-safe cmdi-arith
        nosqli-vuln nosqli-safe nosqli-namedeny
@@ -805,7 +816,9 @@ chk "cors trailing-dot flagged"         "$(post /api/cors/test "{\"url\":\"$(url
 
 echo "== verb tampering (core) =="
 chk "verb tampering bypass found"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-vuln]} 'admin')\"}")" "d.get('bypassCount',0)>=1"
+chk "verb ignored override NOT double-counted (FP fix)" "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-vuln]} 'admin')\"}")" "not any(b.get('technique','').startswith('override') for b in d.get('bypasses',[]))"
 chk "verb tampering safe -> none"       "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-safe]} 'admin')\"}")" "d.get('ok') and d.get('bypassCount',0)==0"
+chk "verb case-variation bypass found (FN fix)" "$(post /api/verbtamper/test "{\"url\":\"$(url ${P[verb-case]} 'admin')\"}")" "any(b.get('technique','').startswith('method-case') for b in d.get('bypasses',[]))"
 
 echo "== SSTI (core) =="
 chk "ssti vulnerable -> confirmed"      "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-vuln]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed')"

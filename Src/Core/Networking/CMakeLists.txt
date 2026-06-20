@@ -72,6 +72,7 @@ add_library(Networking STATIC
     race_tester.cpp
     race_tester.hpp
     verb_tamper.cpp
+    verb_tamper_logic.cpp
     verb_tamper.hpp
     ssti_tester.cpp
     ssti_logic.cpp

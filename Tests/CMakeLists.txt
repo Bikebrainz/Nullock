@@ -99,3 +99,9 @@ add_subdirectory(cache_deception)
 # and buildRequest's CR/LF guards (pure logic; live flow covered in probe_smoke).
 # Run via: ctest -R idor_tester -V
 add_subdirectory(idor_tester)
+
+# Verb tampering -- the override-redundancy de-dup, HEAD Content-Length
+# corroboration, case-variant generation, and buildRequest's CR/LF guards
+# (pure logic; live flow covered in probe_smoke).
+# Run via: ctest -R verb_tamper -V
+add_subdirectory(verb_tamper)
