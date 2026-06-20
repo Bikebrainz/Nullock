@@ -6929,6 +6929,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", lres.baselineStatus },
                        { "requestsSent", lres.requestsSent },
                        { "testedParams", QJsonArray::fromStringList(lres.testedParams) },
+                       { "droppedParams", QJsonArray::fromStringList(lres.droppedParams) },
                        { "hitCount", static_cast<int>(lres.hits.size()) },
                        { "hits", hits }});
     }

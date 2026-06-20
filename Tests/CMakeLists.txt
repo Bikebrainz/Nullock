@@ -60,3 +60,8 @@ add_subdirectory(xxe_injection)
 # tracks the literal) and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R nosql_injection -V
 add_subdirectory(nosql_injection)
+
+# LDAP injection -- error signatures (generic vs engine-specific), the WAF
+# block-status guard, and buildRequest's CR/LF guards (pure logic).
+# Run via: ctest -R ldap_injection -V
+add_subdirectory(ldap_injection)

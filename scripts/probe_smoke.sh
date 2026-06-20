@@ -204,6 +204,13 @@ def make(mode):
                 val = q.get('q', [''])[0]
                 if mode == 'ldap-baseline': self._send(200, err); return
                 if mode == 'ldap-vuln':     self._send(200, err if ('(' in val or ')' in val) else ok); return
+                if mode == 'ldap-waf':
+                    # WAF blocks LDAP metacharacters with a 403 page that mentions
+                    # a GENERIC LDAP error string -- the generic-family block-status
+                    # guard must reject it (no real backend filter break).
+                    if ('(' in val or ')' in val or '*' in val):
+                        self._send(403, b'<html>Request blocked: possible LDAP: error code injection</html>'); return
+                    self._send(200, ok); return
                 self._send(200, ok); return
             if mode.startswith('xpath'):
                 err = b'<html>javax.xml.xpath.XPathExpressionException: invalid XPath expression</html>'
@@ -592,7 +599,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        deser-cookie-vuln deser-cookie-safe
        deser-field-vuln deser-field-safe
        massassign-vuln massassign-safe
-       ldap-vuln ldap-safe ldap-baseline
+       ldap-vuln ldap-safe ldap-baseline ldap-waf
        xpath-vuln xpath-safe
        content-found
        cswsh-vuln cswsh-safe
@@ -749,6 +756,7 @@ echo "== LDAP injection =="
 chk "ldap vulnerable -> confirmed"      "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
 chk "ldap safe -> not vulnerable"       "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "ldap baseline-errors -> not flagged" "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-baseline]} 'search?q=test')\"}")" "not d.get('vulnerable')"
+chk "ldap WAF block (generic+403) -> NOT confirmed (FP fix)" "$(post /api/ldapi/test "{\"url\":\"$(url ${P[ldap-waf]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== XPath injection =="
 chk "xpath vulnerable -> confirmed"     "$(post /api/xpathi/test "{\"url\":\"$(url ${P[xpath-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
