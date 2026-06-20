@@ -607,6 +607,9 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         Nullock::Core::SqlInjection::Request srr;
         srr.host = t.host; srr.port = t.port; srr.tls = t.tls; srr.method = t.method;
         srr.basePath = auditPath; srr.query = auditQuery; srr.headers = t.headers;
+        // Time-based blind is slow (each confirmed param sleeps for seconds), so
+        // it runs only when explicitly opted in -- never in the default sweep.
+        srr.timeBased = include.contains("blind") || include.contains("sqli-blind");
         const auto res = Nullock::Core::SqlInjection::test(srr);
         QStringList where; for (const auto &h : res.hits) where << h.param + "(" + h.dbms + ")";
         const bool specific = !res.hits.isEmpty() && res.hits.first().dbms != "generic";

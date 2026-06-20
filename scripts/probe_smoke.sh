@@ -197,9 +197,21 @@ def make(mode):
                 else:             self._send(404, b'<html>404 not found</html>')
                 return
             if mode.startswith('sqli'):
+                val = q.get('q', [''])[0]
+                if mode == 'sqli-blind':
+                    # Blind-only sink: leaks NO SQL error, but an injected
+                    # SLEEP(N>0) actually stalls the response by N seconds (a
+                    # SLEEP(0) control stays fast) -- so only the time-based phase
+                    # can confirm it. Parse N from each DBMS sleep primitive.
+                    m = (re.search(r'(?:SLEEP|pg_sleep)\((\d+)\)', val)
+                         or re.search(r"WAITFOR DELAY '0:0:(\d+)'", val)
+                         or re.search(r"receive_message\('a',(\d+)\)", val))
+                    secs = int(m.group(1)) if m else 0
+                    if secs > 0:
+                        time.sleep(min(secs, 6))
+                    self._send(200, b'<html>results</html>'); return
                 # Error-based: an unbalanced quote (odd count) breaks the query;
                 # the breaker has 1 quote (odd), the balanced control has 2 (even).
-                val = q.get('q', [''])[0]
                 vuln = (mode == 'sqli-vuln' and val.count("'") % 2 == 1)
                 if vuln:
                     self._send(200, b'<html>You have an error in your SQL syntax; check the '
@@ -316,7 +328,7 @@ PY
 # mock's stdout (avoids any reserved/busy-port collision).
 MODES=(sspp-vuln sspp-safe sspp-gzip
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie
-       sqli-vuln sqli-safe
+       sqli-vuln sqli-safe sqli-blind
        xss-vuln xss-safe
        openredir-vuln openredir-safe
        pathtrav-vuln pathtrav-safe
@@ -398,6 +410,8 @@ chk "hh cookie -> reflected"            "$(post /api/hostheader/test "{\"url\":\
 echo "== SQL injection (core) =="
 chk "sqli vulnerable -> confirmed"      "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-vuln]} 'search?q=test')\"}")" "d.get('vulnerable')"
 chk "sqli safe -> not vulnerable"       "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-safe]} 'search?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "sqli blind -> time-based confirmed" "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-blind]} 'search?q=test')\",\"blind\":true}")" "d.get('vulnerable') and any(h.get('technique')=='time-based' for h in d.get('hits',[]))"
+chk "sqli blind safe -> not vulnerable" "$(post /api/sqli/test "{\"url\":\"$(url ${P[sqli-safe]} 'search?q=test')\",\"blind\":true}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== reflected XSS (core) =="
 chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
