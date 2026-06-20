@@ -22,11 +22,13 @@
 // with several flaws reports them all, and every candidate hit is re-confirmed
 // on a second send so a transient throttle can't flip the verdict.
 //
-// Not yet covered (separate follow-up): automatic fan-out across token carriers
-// (it tests the one `location` given) and non-GET/body-bearing protected routes
-// (status-only acceptance, no request body is sent). An asymmetric token with no
-// public key supplied is surfaced as "algorithm-confusion not tested", not
-// silently passed.
+// When no `location` is given it FANS OUT across the common carriers
+// (Authorization: Bearer, the usual cookie names, X-Auth-Token/X-Access-Token),
+// testing each independently and tagging hits with the carrier. A request body
+// (Request.body) rides on every shot so body-bearing POST/PUT routes calibrate,
+// and acceptance is content-aware (status + body length) so a generic 200 isn't
+// mistaken for a real authorized one. An asymmetric token with no public key is
+// surfaced as "algorithm-confusion not tested", not silently passed.
 
 #include <QList>
 #include <QPair>
