@@ -87,3 +87,9 @@ add_subdirectory(path_traversal)
 # buildRequest's CR/LF guards (pure logic; live flow covered in probe_smoke).
 # Run via: ctest -R cache_poison -V
 add_subdirectory(cache_poison)
+
+# Cache deception -- the inert catch-all control that suppresses SPA / soft-200
+# false positives, the tightened length-similarity test, and buildGet's CR/LF
+# guards (pure logic; live flow covered in probe_smoke).
+# Run via: ctest -R cache_deception -V
+add_subdirectory(cache_deception)

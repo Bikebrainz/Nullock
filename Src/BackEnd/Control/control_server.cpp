@@ -6328,6 +6328,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "baselineStatus", cres.baselineStatus },
                        { "requestsSent", cres.requestsSent },
                        { "anyCacheable", anyCacheable },
+                       { "catchAll", cres.catchAll },
                        { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});
     }

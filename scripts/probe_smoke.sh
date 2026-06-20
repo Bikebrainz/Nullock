@@ -201,6 +201,29 @@ def make(mode):
                 store[key] = body
                 extra = cc + ([] if silent else [('X-Cache', 'MISS')])
                 self._send(200, body, 'text/html', extra); return
+            if mode.startswith('cd-'):
+                # Web cache-deception mock. A fixed-length "account" page stands
+                # in for per-user sensitive content.
+                #   cd-vuln: serves the account page for ANY path under /account
+                #     (the .css suffix is ignored = path confusion) and 404s any
+                #     other base (incl the probe's bogus catch-all control) -> a
+                #     real, cacheable (public,max-age=300) deception -> hit/high.
+                #   cd-catchall: SPA history-fallback -- serves the SAME shell at
+                #     EVERY path incl the bogus control -> the inert control fires
+                #     -> all hits suppressed (catchAll), no false finding.
+                #   cd-maxage0: like cd-vuln but Cache-Control: max-age=0 (store-
+                #     but-revalidate, NOT a shareable hit) -> hit but NOT cacheable
+                #     -> medium not high (locks the ccSeconds reuse).
+                path = urlparse(self.path).path
+                page = (b'<html><body>account dashboard: user=alice '
+                        b'balance=12345 ssn=xxx-xx-6789 apikey=sk-live-abcdef0123'
+                        b'</body></html>')
+                if mode == 'cd-catchall':
+                    self._send(200, page, 'text/html', [('Cache-Control', 'public, max-age=300')]); return
+                if path.startswith('/account'):
+                    ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
+                    self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
+                self._send(404, b'<html>not found</html>'); return
             if mode.startswith('sspp'):
                 obj = {'user': 'alice', 'role': 'admin', 'id': 1}
                 if mode == 'sspp-gzip':
@@ -661,6 +684,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip
        jwt-body-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        cache-keyed-vuln cache-unkeyed cache-silent
+       cd-vuln cd-catchall cd-maxage0
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -859,6 +883,11 @@ echo "== web cache poisoning =="
 chk "cache keyed+reflected -> confirmed" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-keyed-vuln]} '')\"}")" "d.get('ok') and d.get('anyConfirmed')"
 chk "cache unkeyed buster -> ABORT, no inject" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-unkeyed]} '')\"}")" "not d.get('anyConfirmed') and 'unkeyed' in (d.get('error') or '') and d.get('hitCount',0)==0 and d.get('requestsSent')==3"
 chk "cache silent (no hit signal) -> fail-closed ABORT (headline FP/safety fix)" "$(post /api/cache/poison "{\"url\":\"$(url ${P[cache-silent]} '')\"}")" "not d.get('anyConfirmed') and 'cache-hit signal' in (d.get('error') or '') and d.get('hitCount',0)==0 and d.get('requestsSent')==2"
+
+echo "== web cache deception =="
+chk "cache-deception path confusion -> hit (cacheable/high)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-vuln]} 'account')\"}")" "d.get('hitCount',0)>=1 and d.get('anyCacheable') and not d.get('catchAll')"
+chk "cache-deception catch-all SPA -> suppressed (FP fix)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-catchall]} 'account')\"}")" "d.get('catchAll') and d.get('hitCount',0)==0"
+chk "cache-deception max-age=0 -> hit but NOT cacheable (severity FP fix)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-maxage0]} 'account')\"}")" "d.get('hitCount',0)>=1 and not d.get('anyCacheable') and not d.get('catchAll')"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

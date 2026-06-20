@@ -1,0 +1,83 @@
+// Regression corpus for the cache-deception probe's pure logic (no network):
+//   - isCatchAll: the inert-control decision that suppresses catch-all / SPA
+//     false positives (a bogus base also serving a length-similar 2xx).
+//   - lenSimilar: the tightened body-length similarity test.
+//   - buildGet: CR/LF guards on host / path / carried headers.
+//   - randTok: sentinel shape.
+//
+// Run via:  ctest -R cache_deception -V
+
+#include "cache_deception.hpp"
+
+#include <QByteArray>
+#include <QCoreApplication>
+#include <QString>
+
+#include <cstdio>
+
+using namespace Nullock::Core::CacheDeception;
+
+namespace {
+int pass = 0, fail = 0;
+void chk(const char *label, bool ok) {
+    if (ok) ++pass;
+    else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; }
+}
+} // namespace
+
+int main(int argc, char **argv) {
+    QCoreApplication app(argc, argv);
+
+    // ---- isCatchAll: the FP-suppression core ----------------------------
+    // Bogus base ALSO returns a length-similar 2xx -> catch-all -> suppress.
+    chk("catchAll: bogus 200 length-similar -> true",
+        isCatchAll(/*ok*/true, /*status*/200, /*ctrlLen*/5000, /*baseLen*/5000));
+    chk("catchAll: bogus 200 near length -> true",
+        isCatchAll(true, 200, 5010, 5000));
+    // Bogus base 404s -> NOT catch-all -> a real /<path>/x.css hit is meaningful.
+    chk("catchAll: bogus 404 -> false (real deception possible)",
+        !isCatchAll(true, 404, 80, 5000));
+    chk("catchAll: bogus 200 but very different length -> false",
+        !isCatchAll(true, 200, 200, 5000));
+    chk("catchAll: control request failed -> false",
+        !isCatchAll(false, 0, 0, 5000));
+    chk("catchAll: bogus 301 redirect -> false",
+        !isCatchAll(true, 301, 5000, 5000));
+
+    // ---- lenSimilar: tightened threshold --------------------------------
+    chk("len: identical", lenSimilar(5000, 5000));
+    chk("len: small drift within 16 bytes", lenSimilar(5000, 5012));
+    chk("len: <5% relative on large page", lenSimilar(10000, 9600));
+    chk("len: >5% relative -> not similar", !lenSimilar(10000, 9000));
+    // Two coincidentally-near short pages must NOT match (old 40-byte floor bug).
+    chk("len: short pages 30 apart -> not similar (FP fix)", !lenSimilar(300, 330));
+    chk("len: short pages within 16 -> similar", lenSimilar(300, 312));
+
+    // ---- buildGet: CR/LF guards -----------------------------------------
+    {
+        Request req;
+        req.host = "victim.tld";
+        const QByteArray ok = buildGet(req, "/account/nlk123.css");
+        chk("build: request line", ok.startsWith("GET /account/nlk123.css HTTP/1.1\r\n"));
+        chk("build: Host", ok.contains("Host: victim.tld\r\n"));
+
+        Request injHdr = req;
+        injHdr.headers.append(qMakePair(QString("Cookie"), QString("a=1\r\nX-Smuggled: 1")));
+        chk("build: drops CRLF carried header",
+            !buildGet(injHdr, "/account").contains("X-Smuggled"));
+
+        Request badHost = req; badHost.host = "victim.tld\r\nX: y";
+        chk("build: CRLF host -> empty", buildGet(badHost, "/account").isEmpty());
+        chk("build: CRLF path -> empty",
+            buildGet(req, "/account\r\nX-Smuggled: 1").isEmpty());
+    }
+
+    // ---- randTok --------------------------------------------------------
+    {
+        const QString t = randTok();
+        chk("tok: nlk prefix + 9 chars", t.startsWith("nlk") && t.size() == 9);
+    }
+
+    std::fprintf(stderr, "cache_deception_test: %d passed, %d failed\n", pass, fail);
+    return fail == 0 ? 0 : 1;
+}

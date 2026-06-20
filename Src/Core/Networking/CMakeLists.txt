@@ -23,6 +23,7 @@ add_library(Networking STATIC
     exposure_scan.cpp
     exposure_scan.hpp
     cache_deception.cpp
+    cache_deception_logic.cpp
     cache_deception.hpp
     scan_bridge.cpp
     scan_bridge.hpp
