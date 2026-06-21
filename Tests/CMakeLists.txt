@@ -137,3 +137,9 @@ add_subdirectory(takeover_scan)
 # and buildRequest's CR/LF guards (pure logic; the concurrent burst is I/O).
 # Run via: ctest -R race_tester -V
 add_subdirectory(race_tester)
+
+# Param miner -- the status-flip re-confirmation (defeats a transient flap),
+# reflection in body OR header, and buildRequest's CR/LF + duplicate-header
+# guards (pure logic; the batch/bisection walk is I/O, covered in probe_smoke).
+# Run via: ctest -R param_miner -V
+add_subdirectory(param_miner)

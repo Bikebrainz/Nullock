@@ -59,6 +59,7 @@ add_library(Networking STATIC
     jwt_tool.cpp
     jwt_tool.hpp
     param_miner.cpp
+    param_logic.cpp
     param_miner.hpp
     idor_tester.cpp
     idor_logic.cpp

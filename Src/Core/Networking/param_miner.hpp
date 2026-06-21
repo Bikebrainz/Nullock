@@ -61,4 +61,27 @@ Result mine(const Request &req, const QStringList &candidates,
 // Curated default list of commonly-hidden parameter names.
 QStringList defaultWordlist();
 
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// build / detection logic against Qt6::Core alone.
+
+// A unique, regex-inert canary value for candidate `idx`.
+QString canaryFor(int idx);
+
+// Build the request adding `params` as query (GET) or form body (POST).
+// Returns empty if method/host/path or a carried header carries a CR/LF.
+QByteArray buildRequest(const Request &req, const QList<QPair<QString, QString>> &params);
+
+// Is `canary` reflected anywhere a handled param would surface -- the response
+// body OR any response header value?
+bool canaryReflected(const QByteArray &body,
+                     const QList<QPair<QString, QString>> &headers,
+                     const QString &canary);
+
+// Confirm a param-driven status flip: it flipped first, reproduced on re-send,
+// AND the re-fetched baseline still equals the original (no drift). Defeats a
+// transient flap mis-attributed to a random wordlist name.
+bool statusFlipConfirmed(int firstStatus, int reBaselineStatus,
+                         int reSendStatus, int baseStatus);
+
 } // namespace Nullock::Core::ParamMiner

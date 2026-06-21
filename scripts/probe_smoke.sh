@@ -268,6 +268,23 @@ def make(mode):
                     ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
                     self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
                 self._send(404, b'<html>not found</html>'); return
+            if mode.startswith('paramminer'):
+                qd = parse_qs(urlparse(self.path).query)
+                if mode == 'paramminer-reflect':
+                    # Only the real param 'q' is echoed; the junk control name is
+                    # not, so reflectionSignalUsable stays true.
+                    v = (qd.get('q') or [''])[0]
+                    self._send(200, ('<html>results for ' + v + '</html>').encode()); return
+                if mode == 'paramminer-status':
+                    # 'admin' flips status to 500 deterministically (re-confirm
+                    # reproduces); everything else stays 200.
+                    self._send(500 if 'admin' in qd else 200, b'<html>ok</html>'); return
+                if mode == 'paramminer-echoall':
+                    # Reflects EVERY param value incl the junk control -> the
+                    # junk-control must disable the reflection signal (FP guard).
+                    vals = ' '.join(x for vs in qd.values() for x in vs)
+                    self._send(200, ('<html>' + vals + '</html>').encode()); return
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('takeover'):
                 # takeover-vuln serves a BRANDED dangling-service page (a real
                 # candidate); takeover-apache404 serves the stock Apache 404 body
@@ -778,6 +795,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        cd-vuln cd-catchall cd-maxage0
        takeover-vuln takeover-apache404
        race-vuln race-atomic race-overgrant race-noise
+       paramminer-reflect paramminer-status paramminer-echoall
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -999,6 +1017,11 @@ chk "race limited-use leak (wins + 409s) -> suspected" "$(post /api/race/test "{
 chk "race atomic (1 win + 409s) -> NOT suspected" "$(post /api/race/test "{\"url\":\"$(url ${P[race-atomic]} 'redeem')\",\"count\":10}")" "not d.get('raceSuspected') and d.get('successCount')==1"
 chk "race over-grant (all writes win) -> over-grant suspected (FN fix)" "$(post /api/race/test "{\"url\":\"$(url ${P[race-overgrant]} 'redeem')\",\"count\":10}")" "d.get('overGrantSuspected') and not d.get('raceSuspected')"
 chk "race unrelated 403s -> NOT a race (rejection-bucket FP fix)" "$(post /api/race/test "{\"url\":\"$(url ${P[race-noise]} 'redeem')\",\"count\":10}")" "not d.get('raceSuspected') and d.get('otherClientError',0)>0"
+
+echo "== parameter mining =="
+chk "param reflected -> found" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-reflect]} '')\",\"wordlist\":[\"q\",\"foo\",\"bar\",\"baz\"]}")" "any(f.get('name')=='q' and f.get('reflected') for f in d.get('found',[])) and d.get('reflectionSignalUsable')"
+chk "param status-flip -> found (re-confirmed, FP-hardened)" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-status]} '')\",\"wordlist\":[\"admin\",\"foo\",\"bar\",\"baz\"]}")" "any(f.get('name')=='admin' and f.get('signal')=='status-change' for f in d.get('found',[]))"
+chk "param echo-all -> reflection signal disabled (junk-control)" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-echoall]} '')\",\"wordlist\":[\"q\",\"x\"]}")" "not d.get('reflectionSignalUsable')"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

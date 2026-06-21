@@ -1,69 +1,12 @@
 #include "param_miner.hpp"
 #include "networking.hpp"
 
-#include <QRandomGenerator>
-#include <QUrl>
 #include <functional>
 
 namespace Nullock::Core::ParamMiner {
 
-namespace {
-
-// A short, unique, regex-inert canary for one candidate. Collisions
-// would mis-attribute reflection, so include the index + random bits.
-QString canaryFor(int idx) {
-    const quint32 r = QRandomGenerator::global()->generate();
-    return QString("qm%1z%2").arg(idx).arg(r, 6, 16, QChar('0'));
-}
-
-// Percent-encode minimally for a query/body value.
-QString enc(const QString &s) {
-    return QString::fromUtf8(QUrl::toPercentEncoding(s));
-}
-
-// Build a raw HTTP request that adds `params` (name -> canary value) to
-// the target, as query (GET) or x-www-form-urlencoded body (POST).
-QByteArray buildRequest(const Request &req,
-                        const QList<QPair<QString, QString>> &params) {
-    const bool post = req.method.compare("POST", Qt::CaseInsensitive) == 0;
-    QString path = req.basePath.isEmpty() ? QStringLiteral("/") : req.basePath;
-
-    QString extra;
-    for (const auto &p : params) {
-        if (!extra.isEmpty()) extra += "&";
-        extra += enc(p.first) + "=" + enc(p.second);
-    }
-
-    QByteArray body;
-    if (post) {
-        body = extra.toUtf8();
-    } else if (!extra.isEmpty()) {
-        path += (path.contains('?') ? "&" : "?") + extra;
-    }
-
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + path.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/param-miner\r\n";
-    out += "Accept: */*\r\n";
-    // Identity encoding: we scan the body for our canary and the HTTP
-    // client doesn't inflate gzip/deflate, so a compressed response would
-    // hide reflections (false clean).
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    if (post) {
-        out += "Content-Type: application/x-www-form-urlencoded\r\n";
-        out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    out += body;
-    return out;
-}
-
-} // namespace
+// (canaryFor, enc, buildRequest, canaryReflected, statusFlipConfirmed live in
+// param_logic.cpp so the regression test can exercise them without the network.)
 
 Result mine(const Request &req, const QStringList &candidates, int batchSize) {
     Result result;
@@ -103,7 +46,7 @@ Result mine(const Request &req, const QStringList &candidates, int batchSize) {
         const auto ctrl = send({{ junkName, junkCanary }});
         if (ctrl.ok) {
             if (ctrl.parsed.statusCode != baseStatus) statusUsable = false;
-            if (QString::fromUtf8(ctrl.parsed.body).contains(junkCanary))
+            if (canaryReflected(ctrl.parsed.body, ctrl.parsed.headers, junkCanary))
                 reflectionUsable = false;
         }
     }
@@ -117,10 +60,16 @@ Result mine(const Request &req, const QStringList &candidates, int batchSize) {
             if (batch.isEmpty()) return;
             if (batch.size() == 1) {
                 const auto r = send(batch);
-                if (r.ok && r.parsed.statusCode != baseStatus) {
+                if (!r.ok || r.parsed.statusCode == baseStatus) return;
+                // Re-confirm before reporting: re-fetch the baseline (catch
+                // drift) and re-send the single param (catch a transient flap).
+                const auto reBase = send({});
+                const auto r2 = send(batch);
+                if (!reBase.ok || !r2.ok) return;
+                if (statusFlipConfirmed(r.parsed.statusCode, reBase.parsed.statusCode,
+                                        r2.parsed.statusCode, baseStatus))
                     result.found.append({ batch[0].first, "status-change", false,
-                                          baseStatus, r.parsed.statusCode });
-                }
+                                          baseStatus, r2.parsed.statusCode });
                 return;
             }
             const int mid = batch.size() / 2;
@@ -149,12 +98,12 @@ Result mine(const Request &req, const QStringList &candidates, int batchSize) {
         const auto r = send(params);
         if (!r.ok) continue;
 
-        // Reflection: a candidate's canary echoed back = reflected param.
-        // Skipped when the control proved the target echoes any param.
+        // Reflection: a candidate's canary echoed back (body OR a response
+        // header) = reflected param. Skipped when the control proved the
+        // target echoes any param.
         if (reflectionUsable) {
-            const QString body = QString::fromUtf8(r.parsed.body);
             for (int i = 0; i < names.size(); ++i) {
-                if (body.contains(canaries[i])) {
+                if (canaryReflected(r.parsed.body, r.parsed.headers, canaries[i])) {
                     result.found.append({ names[i], "reflected", true,
                                           baseStatus, r.parsed.statusCode });
                 }
