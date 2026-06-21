@@ -156,3 +156,10 @@ add_subdirectory(exposure_scan)
 # fetch + same-origin script follow is I/O).
 # Run via: ctest -R secret_scanner -V
 add_subdirectory(secret_scanner)
+
+# HTTP fingerprint -- the detect() table: a CVE-bearing version attaches ONLY
+# from a distinctive marker (Joomla/Drupal generator-meta, not free body text),
+# Django requires both cookies, and buildGet's CR/LF guards (pure logic;
+# the single GET is I/O).
+# Run via: ctest -R http_fingerprint -V
+add_subdirectory(http_fingerprint)

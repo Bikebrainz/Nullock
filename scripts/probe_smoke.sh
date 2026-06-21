@@ -268,6 +268,18 @@ def make(mode):
                     ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
                     self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
                 self._send(404, b'<html>not found</html>'); return
+            if mode.startswith('fp-'):
+                # fp-prose merely MENTIONS Joomla/Drupal versions in body text
+                # (no generator meta, no product path) -> must NOT be detected
+                # with a version (that would CVE-correlate the scanned site);
+                # fp-real has a real Joomla generator meta -> detected w/ version.
+                if mode == 'fp-prose':
+                    self._send(200, b'<html><body>A flaw in Joomla! 3.4.5 and Drupal 7.58 '
+                                    b'was disclosed; see the advisory.</body></html>'); return
+                if mode == 'fp-real':
+                    self._send(200, b'<html><head><meta name="generator" content="Joomla! 3.9.28">'
+                                    b'</head><body>home</body></html>'); return
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('secrets'):
                 # secrets-vuln embeds a high-entropy assigned secret (a generic
                 # shape, NOT a provider key, to avoid any real-key concern);
@@ -826,6 +838,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        paramminer-reflect paramminer-status paramminer-echoall
        exposure-vuln exposure-env exposure-catchall
        secrets-vuln secrets-example
+       fp-prose fp-real
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1061,6 +1074,10 @@ chk "exposure catch-all 200 shell -> NOTHING flagged (soft-404 + rejectHtml FP f
 echo "== client-side secret exposure =="
 chk "secret high-entropy assigned -> found" "$(post /api/secrets/scan "{\"url\":\"$(url ${P[secrets-vuln]} '')\",\"followScripts\":false}")" "any(h.get('type')=='assigned-secret' for h in d.get('hits',[]))"
 chk "secret placeholder/example value -> NOT flagged (looksPlaceholder FP fix)" "$(post /api/secrets/scan "{\"url\":\"$(url ${P[secrets-example]} '')\",\"followScripts\":false}")" "d.get('ok') and d.get('hitCount',0)==0"
+
+echo "== HTTP fingerprint =="
+chk "fingerprint prose mention -> NO false Joomla/Drupal tech (CVE-FP fix)" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-prose]} '')\"}")" "not any(t.get('name') in ('Joomla','Drupal') for t in d.get('tech',[]))"
+chk "fingerprint Joomla generator meta -> detected with version" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-real]} '')\"}")" "any(t.get('name')=='Joomla' and t.get('version')=='3.9.28' for t in d.get('tech',[]))"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

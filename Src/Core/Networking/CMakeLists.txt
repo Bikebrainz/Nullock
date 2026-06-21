@@ -15,6 +15,7 @@ add_library(Networking STATIC
     tls_inspect.cpp
     tls_inspect.hpp
     http_fingerprint.cpp
+    http_fingerprint_logic.cpp
     http_fingerprint.hpp
     method_audit.cpp
     method_audit.hpp

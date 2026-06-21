@@ -8,6 +8,7 @@
 // Versioned server/CMS detections are correlated against the CVE database.
 // Read-only -- a single GET; identification, not attack.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -38,5 +39,19 @@ struct Result {
 
 // GET the URL and return the detected technologies (deduped by name).
 Result fingerprint(const Request &req);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// whole detection table against Qt6::Core alone.
+using Headers = QList<QPair<QString, QString>>;
+
+// Detect technologies from a response's headers + body. Version + cveKind are
+// only attached from DISTINCTIVE structural markers (generator meta, product
+// paths, server-specific headers) -- never a CVE-bearing version from free body
+// text -- so a page that merely mentions a product+version isn't CVE-correlated.
+QList<Tech> detect(const Headers &headers, const QByteArray &body);
+
+// Build the GET. Returns empty if host or path carries a CR/LF.
+QByteArray buildGet(const Request &req);
 
 } // namespace Nullock::Core::HttpFingerprint
