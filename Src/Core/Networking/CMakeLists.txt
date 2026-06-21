@@ -19,6 +19,7 @@ add_library(Networking STATIC
     method_audit.cpp
     method_audit.hpp
     takeover_scan.cpp
+    takeover_logic.cpp
     takeover_scan.hpp
     exposure_scan.cpp
     exposure_scan.hpp

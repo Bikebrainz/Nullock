@@ -251,6 +251,18 @@ def make(mode):
                     ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
                     self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
                 self._send(404, b'<html>not found</html>'); return
+            if mode.startswith('takeover'):
+                # takeover-vuln serves a BRANDED dangling-service page (a real
+                # candidate); takeover-apache404 serves the stock Apache 404 body
+                # -- which must NOT flag now that the generic "Unbounce" = Apache
+                # fingerprint is pruned (the headline false-positive fix).
+                if mode == 'takeover-vuln':
+                    self._send(404, b'<html>Fastly error: unknown domain: x.example.com</html>'); return
+                if mode == 'takeover-apache404':
+                    self._send(404, b'<html><head><title>404 Not Found</title></head><body>'
+                                    b'<h1>Not Found</h1><p>The requested URL was not found on '
+                                    b'this server.</p></body></html>'); return
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('sspp'):
                 obj = {'user': 'alice', 'role': 'admin', 'id': 1}
                 if mode == 'sspp-gzip':
@@ -747,6 +759,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
        cache-keyed-vuln cache-unkeyed cache-silent
        cd-vuln cd-catchall cd-maxage0
+       takeover-vuln takeover-apache404
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -958,6 +971,10 @@ echo "== web cache deception =="
 chk "cache-deception path confusion -> hit (cacheable/high)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-vuln]} 'account')\"}")" "d.get('hitCount',0)>=1 and d.get('anyCacheable') and not d.get('catchAll')"
 chk "cache-deception catch-all SPA -> suppressed (FP fix)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-catchall]} 'account')\"}")" "d.get('catchAll') and d.get('hitCount',0)==0"
 chk "cache-deception max-age=0 -> hit but NOT cacheable (severity FP fix)" "$(post /api/cachedeception/test "{\"url\":\"$(url ${P[cd-maxage0]} 'account')\"}")" "d.get('hitCount',0)>=1 and not d.get('anyCacheable') and not d.get('catchAll')"
+
+echo "== subdomain takeover =="
+chk "takeover branded fingerprint -> candidate" "$(post /api/takeover/test "{\"url\":\"$(url ${P[takeover-vuln]} '')\"}")" "d.get('hitCount',0)>=1 and any(h.get('service')=='Fastly' for h in d.get('hits',[]))"
+chk "takeover stock Apache 404 -> NOT flagged (FP fix)" "$(post /api/takeover/test "{\"url\":\"$(url ${P[takeover-apache404]} '')\"}")" "d.get('ok') and d.get('hitCount',0)==0"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

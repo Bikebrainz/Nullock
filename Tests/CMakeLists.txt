@@ -125,3 +125,9 @@ add_subdirectory(proto_pollution)
 # well-formed/malformed differential across transports is covered in probe_smoke).
 # Run via: ctest -R deser_probe -V
 add_subdirectory(deser_probe)
+
+# Subdomain takeover -- branded fingerprints fire while the pruned generic 404
+# strings (stock Apache 404, bare "Repository not found", "project not found")
+# do NOT, and buildGet's CR/LF guards (pure logic; live flow in probe_smoke).
+# Run via: ctest -R takeover_scan -V
+add_subdirectory(takeover_scan)

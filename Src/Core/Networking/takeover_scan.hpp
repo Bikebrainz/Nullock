@@ -8,6 +8,7 @@
 // takeover *candidate* -- the operator should confirm the CNAME and claim path.
 // Read-only HTTP GET; identification, not exploitation.
 
+#include <QByteArray>
 #include <QList>
 #include <QString>
 
@@ -34,7 +35,16 @@ struct Result {
 
 // GET the host and match the response body/headers against the fingerprint
 // table. Exposed for tests: match() runs the table over a body string.
+//
+// Fingerprints are deliberately BRANDED/service-specific: a generic 404 phrase
+// (the stock Apache "The requested URL was not found on this server", a bare
+// "Repository not found" / "project not found") is NOT a takeover signal -- it
+// fires on healthy owned servers -- so only unambiguous, vendor-named pages are
+// matched. A body match is still a *candidate*: confirm the dangling CNAME.
 Result scan(const Request &req);
 QList<Hit> match(const QString &body);
+
+// Build the GET. Returns empty if host or basePath carries a CR/LF.
+QByteArray buildGet(const Request &req);
 
 } // namespace Nullock::Core::TakeoverScan
