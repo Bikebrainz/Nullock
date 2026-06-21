@@ -149,3 +149,10 @@ add_subdirectory(param_miner)
 # guards (pure logic; the live soft-404 calibration is covered in probe_smoke).
 # Run via: ctest -R exposure_scan -V
 add_subdirectory(exposure_scan)
+
+# Secret scanner -- the placeholder/entropy filter now applied to EVERY match
+# (documented example keys dropped), the assigned-secret '=' fix, severity
+# downgrades, masking, and buildGet's CR/LF guards (pure logic; the live
+# fetch + same-origin script follow is I/O).
+# Run via: ctest -R secret_scanner -V
+add_subdirectory(secret_scanner)

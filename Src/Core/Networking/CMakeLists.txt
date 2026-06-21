@@ -99,6 +99,7 @@ add_library(Networking STATIC
     header_audit.cpp
     header_audit.hpp
     secret_scanner.cpp
+    secret_logic.cpp
     secret_scanner.hpp
     crlf_injection.cpp
     crlf_injection.hpp

@@ -268,6 +268,16 @@ def make(mode):
                     ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
                     self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
                 self._send(404, b'<html>not found</html>'); return
+            if mode.startswith('secrets'):
+                # secrets-vuln embeds a high-entropy assigned secret (a generic
+                # shape, NOT a provider key, to avoid any real-key concern);
+                # secrets-example embeds a placeholder value that must be
+                # filtered now that looksPlaceholder applies to every match.
+                if mode == 'secrets-vuln':
+                    self._send(200, b'<html><script>var apikey="aB3xK9mQ2pL7vR4nT8wZ";</script></html>'); return
+                if mode == 'secrets-example':
+                    self._send(200, b'<html><script>var apikey="your_api_key_example_here";</script></html>'); return
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('exposure'):
                 path = urlparse(self.path).path
                 if mode == 'exposure-vuln':
@@ -815,6 +825,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        race-vuln race-atomic race-overgrant race-noise
        paramminer-reflect paramminer-status paramminer-echoall
        exposure-vuln exposure-env exposure-catchall
+       secrets-vuln secrets-example
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1046,6 +1057,10 @@ echo "== sensitive-file exposure =="
 chk "exposure git/config -> found" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-vuln]} '')\"}")" "any(h.get('path')=='/.git/config' for h in d.get('hits',[])) and not d.get('catchAll')"
 chk "exposure real .env -> found (redacted)" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-env]} '')\"}")" "any(h.get('path')=='/.env' and 'redacted' in (h.get('evidence') or '') for h in d.get('hits',[]))"
 chk "exposure catch-all 200 shell -> NOTHING flagged (soft-404 + rejectHtml FP fix)" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-catchall]} '')\"}")" "d.get('catchAll') and d.get('hitCount',0)==0"
+
+echo "== client-side secret exposure =="
+chk "secret high-entropy assigned -> found" "$(post /api/secrets/scan "{\"url\":\"$(url ${P[secrets-vuln]} '')\",\"followScripts\":false}")" "any(h.get('type')=='assigned-secret' for h in d.get('hits',[]))"
+chk "secret placeholder/example value -> NOT flagged (looksPlaceholder FP fix)" "$(post /api/secrets/scan "{\"url\":\"$(url ${P[secrets-example]} '')\",\"followScripts\":false}")" "d.get('ok') and d.get('hitCount',0)==0"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"
