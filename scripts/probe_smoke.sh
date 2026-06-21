@@ -85,6 +85,23 @@ def make(mode):
             raw = self.rfile.read(n) if n else b''
             if mode == 'verb-case':   # POST denied too; only lower-cased "get" flips
                 self._send(403, b'<html>x</html>'); return
+            if mode.startswith('race-'):
+                # Single-threaded TCPServer handles the burst SERIALLY, so a
+                # counter is deterministic. race-vuln leaks (first 3 win, rest
+                # 409 Conflict); race-atomic grants exactly 1 (rest 409);
+                # race-overgrant has no limit (every write wins); race-noise
+                # returns 200 then UNRELATED 403 (not a contention status -> must
+                # NOT read as a race, the rejection-bucket FP fix).
+                st = state.setdefault('race', {'n': 0}); st['n'] += 1; rn = st['n']
+                if mode == 'race-vuln':
+                    self._send(200 if rn <= 3 else 409, b'ok' if rn <= 3 else b'conflict'); return
+                if mode == 'race-atomic':
+                    self._send(200 if rn <= 1 else 409, b'ok' if rn <= 1 else b'conflict'); return
+                if mode == 'race-overgrant':
+                    self._send(200, b'ok'); return
+                if mode == 'race-noise':
+                    self._send(200 if rn <= 3 else 403, b'ok' if rn <= 3 else b'forbidden'); return
+                self._send(200, b'ok'); return
             if mode == 'sspp-vuln':
                 try: p = json.loads(raw)
                 except Exception: p = {}
@@ -760,6 +777,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        cache-keyed-vuln cache-unkeyed cache-silent
        cd-vuln cd-catchall cd-maxage0
        takeover-vuln takeover-apache404
+       race-vuln race-atomic race-overgrant race-noise
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -975,6 +993,12 @@ chk "cache-deception max-age=0 -> hit but NOT cacheable (severity FP fix)" "$(po
 echo "== subdomain takeover =="
 chk "takeover branded fingerprint -> candidate" "$(post /api/takeover/test "{\"url\":\"$(url ${P[takeover-vuln]} '')\"}")" "d.get('hitCount',0)>=1 and any(h.get('service')=='Fastly' for h in d.get('hits',[]))"
 chk "takeover stock Apache 404 -> NOT flagged (FP fix)" "$(post /api/takeover/test "{\"url\":\"$(url ${P[takeover-apache404]} '')\"}")" "d.get('ok') and d.get('hitCount',0)==0"
+
+echo "== race conditions =="
+chk "race limited-use leak (wins + 409s) -> suspected" "$(post /api/race/test "{\"url\":\"$(url ${P[race-vuln]} 'redeem')\",\"count\":10}")" "d.get('raceSuspected') and d.get('successCount',0)>1"
+chk "race atomic (1 win + 409s) -> NOT suspected" "$(post /api/race/test "{\"url\":\"$(url ${P[race-atomic]} 'redeem')\",\"count\":10}")" "not d.get('raceSuspected') and d.get('successCount')==1"
+chk "race over-grant (all writes win) -> over-grant suspected (FN fix)" "$(post /api/race/test "{\"url\":\"$(url ${P[race-overgrant]} 'redeem')\",\"count\":10}")" "d.get('overGrantSuspected') and not d.get('raceSuspected')"
+chk "race unrelated 403s -> NOT a race (rejection-bucket FP fix)" "$(post /api/race/test "{\"url\":\"$(url ${P[race-noise]} 'redeem')\",\"count\":10}")" "not d.get('raceSuspected') and d.get('otherClientError',0)>0"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

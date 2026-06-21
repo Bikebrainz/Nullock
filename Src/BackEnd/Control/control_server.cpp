@@ -7889,10 +7889,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             hist.insert(QString::number(it.key()), it.value());
         if (m_wiring.scanner && rres.raceSuspected) {
             m_wiring.scanner->reportFinding(0, "high", "race-condition-suspect",
-                QString("Race condition: %1 of %2 concurrent requests succeeded "
-                        "(a single-use operation leaked extra successes)")
+                QString("Race condition: %1 of %2 concurrent requests succeeded alongside "
+                        "409/422 contention rejections -- a limited-use operation appears to "
+                        "have granted extra successes under concurrency")
                     .arg(rres.successCount).arg(rres.count),
+                "confirm the action is single-use (one request should win, the rest 409); "
                 "status histogram: " + QString::fromUtf8(QJsonDocument(hist).toJson(QJsonDocument::Compact)),
+                u.host(), url);
+        } else if (m_wiring.scanner && rres.overGrantSuspected) {
+            // Every concurrent write won and none was rejected -- a possible
+            // unguarded over-grant, but only a race if the action SHOULD be
+            // single-use (a normal non-limited write also all-succeeds). Lead.
+            m_wiring.scanner->reportFinding(0, "medium", "race-condition-suspect",
+                QString("Possible over-grant race: all %1 concurrent %2 requests succeeded "
+                        "with no rejection -- if this is a single-use action, it admitted "
+                        "every concurrent attempt")
+                    .arg(rres.count).arg(rr.method),
+                "NOT confirmed: a non-limited write also all-succeeds. Confirm the action is "
+                "single-use (sequentially, request #2 should be rejected); status histogram: "
+                + QString::fromUtf8(QJsonDocument(hist).toJson(QJsonDocument::Compact)),
                 u.host(), url);
         }
         return okJson({{ "ok", rres.error.isEmpty() },
@@ -7900,10 +7915,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "count", rres.count },
                        { "successCount", rres.successCount },
                        { "rejectionCount", rres.rejectionCount },
+                       { "otherClientError", rres.otherClientError },
                        { "rateLimited", rres.rateLimited },
                        { "serverError", rres.serverError },
                        { "transportFail", rres.transportFail },
                        { "raceSuspected", rres.raceSuspected },
+                       { "overGrantSuspected", rres.overGrantSuspected },
                        { "inconclusive", rres.inconclusive },
                        { "allSucceeded", rres.allSucceeded },
                        { "statusHistogram", hist }});

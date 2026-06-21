@@ -72,6 +72,7 @@ add_library(Networking STATIC
     js_recon.cpp
     js_recon.hpp
     race_tester.cpp
+    race_logic.cpp
     race_tester.hpp
     verb_tamper.cpp
     verb_tamper_logic.cpp

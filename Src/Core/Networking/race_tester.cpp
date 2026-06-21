@@ -8,33 +8,8 @@
 
 namespace Nullock::Core::RaceTester {
 
-namespace {
-
-QByteArray buildRequest(const Request &req) {
-    const bool hasBody = !req.body.isEmpty();
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/race-tester\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    bool haveCt = false;
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) haveCt = true;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    if (hasBody && !haveCt && !req.contentType.isEmpty())
-        out += "Content-Type: " + req.contentType.toUtf8() + "\r\n";
-    if (hasBody)
-        out += "Content-Length: " + QByteArray::number(req.body.size()) + "\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += req.body;
-    return out;
-}
-
-} // namespace
+// (buildRequest, classify, isSafeMethod live in race_logic.cpp so the
+// regression test can exercise the verdict + builder without the network.)
 
 Result test(const Request &req, int count, int successMin, int successMax,
             const QString &successMatch) {
@@ -84,24 +59,26 @@ Result test(const Request &req, int count, int successMin, int successMax,
         const Outcome o = f.result();  // blocks until finished
         if (!o.ok) { ++result.transportFail; continue; }
         result.statusHistogram[o.status]++;
-        if (o.success)               ++result.successCount;
-        else if (o.status == 429)    ++result.rateLimited;
-        else if (o.status >= 500)    ++result.serverError;
-        else if (o.status >= 400)    ++result.rejectionCount;   // app "already used"
+        if (o.success)                          ++result.successCount;
+        else if (o.status == 429)               ++result.rateLimited;
+        else if (o.status >= 500)               ++result.serverError;
+        // Only genuine CONTENTION rejections count as "lost the race": 409
+        // Conflict / 422 Unprocessable / 423 Locked. An unrelated 4xx (400 bad
+        // request, 401/403 auth, 404) is noise -- it does NOT imply a consumed
+        // resource and must not satisfy the raceSuspected gate.
+        else if (o.status == 409 || o.status == 422 || o.status == 423)
+                                                ++result.rejectionCount;
+        else if (o.status >= 400)               ++result.otherClientError;
     }
 
-    // Verdict. A real limited-use race shows MULTIPLE wins alongside
-    // application-level rejections ("already redeemed", 409/422) -- not
-    // just a rate-limit or overload split, which we must not misread as a
-    // vuln. If infra noise (drops / 429 / 5xx) dominated, the test didn't
-    // actually exercise contention -> inconclusive, not "clean".
-    const int infraNoise = result.transportFail + result.rateLimited + result.serverError;
-    result.inconclusive  = (infraNoise * 2 > count);
-    result.allSucceeded  = (result.successCount == count);
-    result.raceSuspected = !result.inconclusive
-                        && result.successCount > 1
-                        && result.successCount < count
-                        && result.rejectionCount > 0;
+    const Verdict v = classify(count, result.successCount, result.rejectionCount,
+                               result.otherClientError, result.rateLimited,
+                               result.serverError, result.transportFail,
+                               isSafeMethod(req.method));
+    result.inconclusive       = v.inconclusive;
+    result.allSucceeded       = v.allSucceeded;
+    result.raceSuspected      = v.raceSuspected;
+    result.overGrantSuspected = v.overGrantSuspected;
     return result;
 }
 

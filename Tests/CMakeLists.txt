@@ -131,3 +131,9 @@ add_subdirectory(deser_probe)
 # do NOT, and buildGet's CR/LF guards (pure logic; live flow in probe_smoke).
 # Run via: ctest -R takeover_scan -V
 add_subdirectory(takeover_scan)
+
+# Race tester -- the burst verdict (raceSuspected needs a 409/422 contention
+# rejection, not any 4xx; over-grant when all writes win; noise-inconclusive)
+# and buildRequest's CR/LF guards (pure logic; the concurrent burst is I/O).
+# Run via: ctest -R race_tester -V
+add_subdirectory(race_tester)
