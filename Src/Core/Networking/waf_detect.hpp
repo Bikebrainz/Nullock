@@ -6,6 +6,7 @@
 // AkamaiGHost, BIGipServer cookies, ...). Knowing what's in front of a target
 // shapes the rest of the engagement. Identification only.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -38,5 +39,9 @@ Result detect(const Request &req);
 // Exposed for tests: match the signature table against a response's headers
 // (Set-Cookie entries included). Deduplicated by product name.
 QList<Detection> detectFromHeaders(const QList<QPair<QString, QString>> &headers);
+
+// Exposed for tests: build the GET. Strips CR/LF from host/path and drops any
+// CR/LF-bearing carried header (self-protecting against header injection).
+QByteArray buildGet(const Request &req);
 
 } // namespace Nullock::Core::WafDetect

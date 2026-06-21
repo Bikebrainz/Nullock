@@ -163,3 +163,12 @@ add_subdirectory(secret_scanner)
 # the single GET is I/O).
 # Run via: ctest -R http_fingerprint -V
 add_subdirectory(http_fingerprint)
+
+# WAF / CDN / LB detection -- the passive signature matcher: per-vendor
+# positives across all three match styles (header-presence / header-value
+# substring / cookie-NAME), strongest-first dedup-by-name (cf-ray beats
+# Server: cloudflare), cookie matching on NAME only (a needle in a cookie
+# value/attribute must NOT fire), case-insensitivity, and buildGet's CR/LF
+# guards (pure logic; the single GET is I/O).
+# Run via: ctest -R waf_detect -V
+add_subdirectory(waf_detect)

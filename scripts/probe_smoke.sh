@@ -280,6 +280,25 @@ def make(mode):
                     self._send(200, b'<html><head><meta name="generator" content="Joomla! 3.9.28">'
                                     b'</head><body>home</body></html>'); return
                 self._send(200, b'<html>ok</html>'); return
+            if mode.startswith('waf-'):
+                # Passive WAF/CDN/LB detection mock.
+                #   waf-detect: a site fronted by Cloudflare AND Imperva Incapsula.
+                #     cf-ray (presence) + Server: cloudflare (value) both point at
+                #     Cloudflare -> must dedup to ONE Cloudflare row (cf-ray wins);
+                #     x-iinfo + an incap_ses cookie add Imperva Incapsula. The
+                #     'session=BIGipServer...' cookie has the F5 needle in its
+                #     VALUE only -> must NOT add an F5 row (cookie NAME-only match).
+                #   waf-clean: plain nginx + a generic cookie -> zero detections.
+                if mode == 'waf-detect':
+                    self._send(200, b'<html>home</html>', 'text/html', [
+                        ('cf-ray', '8abc1234def-DFW'),
+                        ('Server', 'cloudflare'),
+                        ('x-iinfo', '1-23456789-12345678 ABC'),
+                        ('Set-Cookie', 'incap_ses_1234_5678=abc; path=/'),
+                        ('Set-Cookie', 'session=BIGipServer_lookalike_value; path=/'),
+                    ]); return
+                self._send(200, b'<html>home</html>', 'text/html', [
+                    ('Server', 'nginx'), ('Set-Cookie', 'sid=plain; path=/')]); return
             if mode.startswith('secrets'):
                 # secrets-vuln embeds a high-entropy assigned secret (a generic
                 # shape, NOT a provider key, to avoid any real-key concern);
@@ -839,6 +858,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        exposure-vuln exposure-env exposure-catchall
        secrets-vuln secrets-example
        fp-prose fp-real
+       waf-detect waf-clean
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1078,6 +1098,12 @@ chk "secret placeholder/example value -> NOT flagged (looksPlaceholder FP fix)" 
 echo "== HTTP fingerprint =="
 chk "fingerprint prose mention -> NO false Joomla/Drupal tech (CVE-FP fix)" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-prose]} '')\"}")" "not any(t.get('name') in ('Joomla','Drupal') for t in d.get('tech',[]))"
 chk "fingerprint Joomla generator meta -> detected with version" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-real]} '')\"}")" "any(t.get('name')=='Joomla' and t.get('version')=='3.9.28' for t in d.get('tech',[]))"
+
+echo "== WAF / CDN / LB detection =="
+chk "waf Cloudflare + Incapsula detected (multi-vendor)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "any(x['name']=='Cloudflare' for x in d.get('detections',[])) and any(x['name']=='Imperva Incapsula' for x in d.get('detections',[]))"
+chk "waf Cloudflare deduped to one row (cf-ray beats Server)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "len([x for x in d.get('detections',[]) if x['name']=='Cloudflare'])==1"
+chk "waf BIGipServer in cookie VALUE -> NOT F5 (cookie NAME-only)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "not any(x['name']=='F5 BIG-IP' for x in d.get('detections',[]))"
+chk "waf clean origin -> zero detections (no FP)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-clean]} '')\"}")" "d.get('ok') and d.get('detectionCount')==0"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

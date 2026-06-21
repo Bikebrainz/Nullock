@@ -33,6 +33,7 @@ add_library(Networking STATIC
     robots_recon.cpp
     robots_recon.hpp
     waf_detect.cpp
+    waf_detect_logic.cpp
     waf_detect.hpp
     recon_engine.cpp
     recon_engine.hpp
