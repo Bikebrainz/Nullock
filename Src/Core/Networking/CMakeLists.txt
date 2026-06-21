@@ -22,6 +22,7 @@ add_library(Networking STATIC
     takeover_logic.cpp
     takeover_scan.hpp
     exposure_scan.cpp
+    exposure_logic.cpp
     exposure_scan.hpp
     cache_deception.cpp
     cache_deception_logic.cpp

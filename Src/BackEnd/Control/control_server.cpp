@@ -6372,6 +6372,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "ok", eres.error.isEmpty() },
                        { "error", eres.error },
                        { "probed", eres.probed },
+                       { "catchAll", eres.catchAll },
                        { "hitCount", static_cast<int>(eres.hits.size()) },
                        { "hits", hits }});
     }

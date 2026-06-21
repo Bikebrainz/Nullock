@@ -268,6 +268,24 @@ def make(mode):
                     ccv = 'max-age=0' if mode == 'cd-maxage0' else 'public, max-age=300'
                     self._send(200, page, 'text/html', [('Cache-Control', ccv)]); return
                 self._send(404, b'<html>not found</html>'); return
+            if mode.startswith('exposure'):
+                path = urlparse(self.path).path
+                if mode == 'exposure-vuln':
+                    # only /.git/config exists (real git config text); all else 404
+                    if path.endswith('/.git/config'):
+                        self._send(200, b'[core]\n\trepositoryformatversion = 0\n\tbare = false\n'); return
+                    self._send(404, b'not found'); return
+                if mode == 'exposure-env':
+                    # real .env (text/plain, >=2 UPPERCASE= lines)
+                    if path.endswith('/.env'):
+                        self._send(200, b'DB_PASSWORD=hunter2\nAPI_KEY=abcdef\nDEBUG=true\n'); return
+                    self._send(404, b'not found'); return
+                if mode == 'exposure-catchall':
+                    # 200 SPA shell at EVERY path incl /.env and the bogus control
+                    # -> rejectHtml + soft-404 calibration must suppress every hit.
+                    self._send(200, b'<!doctype html><html><head><script>var APP_VERSION=1;'
+                                    b'MODE_PROD=2;</script></head><body>app</body></html>'); return
+                self._send(404, b'not found'); return
             if mode.startswith('paramminer'):
                 qd = parse_qs(urlparse(self.path).query)
                 if mode == 'paramminer-reflect':
@@ -796,6 +814,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        takeover-vuln takeover-apache404
        race-vuln race-atomic race-overgrant race-noise
        paramminer-reflect paramminer-status paramminer-echoall
+       exposure-vuln exposure-env exposure-catchall
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1022,6 +1041,11 @@ echo "== parameter mining =="
 chk "param reflected -> found" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-reflect]} '')\",\"wordlist\":[\"q\",\"foo\",\"bar\",\"baz\"]}")" "any(f.get('name')=='q' and f.get('reflected') for f in d.get('found',[])) and d.get('reflectionSignalUsable')"
 chk "param status-flip -> found (re-confirmed, FP-hardened)" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-status]} '')\",\"wordlist\":[\"admin\",\"foo\",\"bar\",\"baz\"]}")" "any(f.get('name')=='admin' and f.get('signal')=='status-change' for f in d.get('found',[]))"
 chk "param echo-all -> reflection signal disabled (junk-control)" "$(post /api/paramminer "{\"url\":\"$(url ${P[paramminer-echoall]} '')\",\"wordlist\":[\"q\",\"x\"]}")" "not d.get('reflectionSignalUsable')"
+
+echo "== sensitive-file exposure =="
+chk "exposure git/config -> found" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-vuln]} '')\"}")" "any(h.get('path')=='/.git/config' for h in d.get('hits',[])) and not d.get('catchAll')"
+chk "exposure real .env -> found (redacted)" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-env]} '')\"}")" "any(h.get('path')=='/.env' and 'redacted' in (h.get('evidence') or '') for h in d.get('hits',[]))"
+chk "exposure catch-all 200 shell -> NOTHING flagged (soft-404 + rejectHtml FP fix)" "$(post /api/exposure/scan "{\"url\":\"$(url ${P[exposure-catchall]} '')\"}")" "d.get('catchAll') and d.get('hitCount',0)==0"
 
 echo "== HTTP/3 detection =="
 chk "h3 advertised -> detected"         "$(post /api/http3/detect "{\"url\":\"$(url ${P[h3-adv]} '')\"}")" "d.get('advertisesHttp3') and 'h3' in d.get('http3Versions',[])"

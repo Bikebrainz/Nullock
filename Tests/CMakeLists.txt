@@ -143,3 +143,9 @@ add_subdirectory(race_tester)
 # guards (pure logic; the batch/bisection walk is I/O, covered in probe_smoke).
 # Run via: ctest -R param_miner -V
 add_subdirectory(param_miner)
+
+# Exposure scan -- the tightened signatures (.env case-sensitive + >=2 lines,
+# config files reject an HTML shell), evidence redaction, and buildGet's CR/LF
+# guards (pure logic; the live soft-404 calibration is covered in probe_smoke).
+# Run via: ctest -R exposure_scan -V
+add_subdirectory(exposure_scan)

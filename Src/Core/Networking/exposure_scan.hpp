@@ -7,6 +7,7 @@
 // positive. Read-only GETs; identification, not exfiltration (the finding names
 // the file, it doesn't dump its contents).
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -32,10 +33,42 @@ struct Request {
 struct Result {
     QList<Hit> hits;
     int     probed = 0;
+    bool    catchAll = false;   // a bogus path returned 2xx -> server 200s everything
     QString error;
 };
 
 // Probe the curated sensitive paths and return the confirmed exposures.
 Result scan(const Request &req);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (no network) -- split out so a regression test can exercise the
+// signature table + matcher against Qt6::Core alone.
+
+struct Signature {
+    QString path;
+    QString pattern;        // content signature (regex) confirming exposure
+    QString severity;
+    QString summary;
+    bool caseSensitive = false;  // .env keys are uppercase by convention -> match case-sensitively
+    bool rejectHtml = false;     // a plain-text/binary config file is never the HTML app shell
+    int  minMatches = 1;         // require N distinct matches (defeats a single coincidental line)
+    bool redact = true;          // mask the matched content in evidence (file is named, not dumped)
+};
+
+const QList<Signature> &signatures();
+
+// A short, regex-inert token for the bogus-path soft-404 calibration request.
+QString randTok();
+
+// Does the body look like an HTML document (the app shell / soft-404 page)?
+bool looksHtml(const QByteArray &body);
+
+// Run one signature over a body. Returns the (possibly redacted) evidence
+// fragment on a confirmed match, or empty. Honors caseSensitive / rejectHtml /
+// minMatches / redact.
+QString matchSignature(const QByteArray &body, const Signature &sig);
+
+// Build the GET. Returns empty if host or path carries a CR/LF.
+QByteArray buildGet(const Request &req, const QString &path);
 
 } // namespace Nullock::Core::ExposureScan
