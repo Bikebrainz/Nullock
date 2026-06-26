@@ -1131,7 +1131,8 @@ CB="$(post /api/content/discover "{\"url\":\"$(url ${P[content-found]} '')\"}")"
 chk "content finds /admin, soft-404 calibrated" "$CB" "d.get('softNotFoundStatus')==404 and any(h['path'].endswith('/admin') and h['status']==200 for h in d.get('hits',[]))"
 
 echo "== cross-site WebSocket hijacking (CSWSH) =="
-chk "cswsh vulnerable -> cross-origin accepted" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\"}")" "d.get('vulnerable') and d.get('isWebSocket')"
+chk "cswsh + session cookie -> CONFIRMED CSWSH (authed cross-origin upgrade)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('vulnerable') and d.get('isWebSocket')"
+chk "cswsh NO credential -> Origin-not-validated LEAD, not confirmed (FP fix)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originNotValidated')"
 chk "cswsh safe -> origin validated"            "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originValidated')"
 
 echo "== active JWT attacks =="

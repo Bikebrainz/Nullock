@@ -229,3 +229,11 @@ add_subdirectory(port_scanner)
 # build (a wrong byte silently makes the probe inert -- pure logic; timing I/O).
 # Run via: ctest -R smuggling -V
 add_subdirectory(smuggling)
+
+# CSWSH WebSocket probe -- expectedAccept against the RFC 6455 known vector
+# (key dGhlIHNhbXBsZSBub25jZQ== -> s3pPLMBiTxaQ9kYGzzhZRbK+xOo=), headerValue's
+# colon-anchoring / case handling, statusFromHeaderBlock, buildHandshake (the
+# upgrade headers, Origin present/omitted, carried-header strip, CR/LF abort),
+# and hasCredential (gates a CONFIRMED hijack vs an Origin-not-validated lead).
+# Run via: ctest -R ws_probe -V
+add_subdirectory(ws_probe)

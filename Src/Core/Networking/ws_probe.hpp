@@ -16,6 +16,7 @@
 // handshake (no Origin) tells apart "endpoint validates Origin" (good posture)
 // from "not a WebSocket endpoint".
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -33,7 +34,13 @@ struct Request {
 
 struct Result {
     bool    isWebSocket        = false;  // a valid handshake (101 + correct accept) was seen
-    bool    crossOriginAccepted = false; // the attacker-Origin handshake completed -> CSWSH
+    bool    crossOriginAccepted = false; // CONFIRMED CSWSH: a session credential was supplied
+                                         // AND the cross-origin handshake still completed
+    bool    originNotValidated  = false; // LEAD: cross-origin handshake completed but NO
+                                         // credential was supplied -- Origin isn't validated,
+                                         // but a public/unauthenticated WS accepting any
+                                         // Origin is expected, not a hijack. Confirm the
+                                         // socket is cookie-gated before treating as CSWSH.
     bool    originValidated     = false; // attacker Origin refused but a control handshake works
     int     attackerStatus      = 0;
     int     controlStatus       = 0;
@@ -45,5 +52,18 @@ struct Result {
 // Send a cross-origin upgrade handshake (and a no-Origin control if it's
 // refused). Confirms CSWSH only on 101 + a correct Sec-WebSocket-Accept.
 Result test(const Request &req);
+
+// --- Pure helpers, exposed for the unit test (no I/O; in ws_logic.cpp) ---
+//   expectedAccept   -- RFC 6455 base64(SHA1(key + GUID)) (known test vector).
+//   headerValue      -- value of a header from a response header block.
+//   statusFromHeaderBlock -- numeric status from the first line.
+//   buildHandshake   -- render the upgrade request; {} on CR/LF in basePath/host.
+QByteArray expectedAccept(const QByteArray &keyB64);
+QString headerValue(const QByteArray &headerBlock, const char *name);
+int statusFromHeaderBlock(const QByteArray &headerBlock);
+QByteArray buildHandshake(const Request &req, const QString &origin, const QByteArray &key);
+// Did the caller supply an ambient credential (Cookie / Authorization)? A
+// cross-origin 101 is only a CONFIRMED hijack when a session rides along.
+bool hasCredential(const QList<QPair<QString, QString>> &headers);
 
 } // namespace Nullock::Core::WsProbe

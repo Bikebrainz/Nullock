@@ -7121,11 +7121,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const auto wres = Nullock::Core::WsProbe::test(wr);
         if (m_wiring.scanner && wres.crossOriginAccepted)
             m_wiring.scanner->reportFinding(0, "high", "ws-cross-origin-accepted",
-                "Cross-site WebSocket hijacking: upgrade accepted with a foreign Origin",
+                "Cross-site WebSocket hijacking: cross-origin upgrade accepted while carrying a session credential",
+                wres.detail, u.host(), url);
+        else if (m_wiring.scanner && wres.originNotValidated)
+            // Origin not validated, but no credential was supplied -- a lead, not
+            // a confirmed hijack (a public/unauthenticated WS accepting any
+            // Origin is expected). Graded info; re-test with a session Cookie.
+            m_wiring.scanner->reportFinding(0, "info", "ws-origin-not-validated",
+                "WebSocket Origin not validated (no credential supplied -- confirm the socket is cookie-gated)",
                 wres.detail, u.host(), url);
         return okJson({{ "ok", wres.error.isEmpty() },
                        { "error", wres.error },
                        { "vulnerable", wres.crossOriginAccepted },
+                       { "originNotValidated", wres.originNotValidated },
                        { "isWebSocket", wres.isWebSocket },
                        { "originValidated", wres.originValidated },
                        { "attackerStatus", wres.attackerStatus },

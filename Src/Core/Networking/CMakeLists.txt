@@ -134,6 +134,7 @@ add_library(Networking STATIC
     deser_logic.cpp
     deser_probe.hpp
     ws_probe.cpp
+    ws_logic.cpp
     ws_probe.hpp
     jwt_probe.cpp
     jwt_probe.hpp

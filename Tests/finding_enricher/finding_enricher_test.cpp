@@ -51,6 +51,7 @@ const QStringList &emittedKinds() {
         "sql-injection", "ssti-confirmed", "ssti-engine-likely", "storage-of-secrets",
         "subdomain-takeover", "tech-detected", "waf-detected", "web-cache-deception",
         "web-cache-poisoning", "web-cache-poisoning-confirmed", "web-cache-unkeyed-reflected", "ws-cross-origin-accepted",
+        "ws-origin-not-validated",
         "x-powered-by", "xxe-injection", "cve-correlated", "secret-exposed",
         "sensitive-file-exposure",
         // active probes added in the above-Burp climb

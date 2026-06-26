@@ -12,7 +12,6 @@ namespace Nullock::Core::WsProbe {
 namespace {
 
 constexpr int kTimeoutMs = 10000;
-const char *kWsGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 QByteArray randomKey() {
     quint32 w[4];
@@ -20,23 +19,9 @@ QByteArray randomKey() {
     return QByteArray(reinterpret_cast<const char *>(w), 16).toBase64();
 }
 
-// RFC 6455: the server must echo base64(SHA1(key + GUID)).
-QByteArray expectedAccept(const QByteArray &keyB64) {
-    return QCryptographicHash::hash(keyB64 + kWsGuid, QCryptographicHash::Sha1).toBase64();
-}
-
-QString headerValue(const QByteArray &headerBlock, const char *name) {
-    const QByteArray lower = headerBlock.toLower();
-    const QByteArray key = QByteArray(name).toLower() + ":";
-    int i = lower.indexOf("\r\n" + key);
-    if (i < 0) { if (lower.startsWith(key)) i = 0; else return QString(); }
-    else i += 2;
-    // Anchor the colon to the end of the matched name, not the next ':' in the
-    // line -- so a value that itself contains a colon can't be misparsed.
-    const int colon = i + static_cast<int>(qstrlen(name));
-    const int eol = headerBlock.indexOf("\r\n", colon);
-    return QString::fromLatin1(headerBlock.mid(colon + 1, (eol < 0 ? headerBlock.size() : eol) - colon - 1)).trimmed();
-}
+// expectedAccept(), headerValue(), statusFromHeaderBlock() and buildHandshake()
+// are pure and live in ws_logic.cpp so they can be unit-tested (against the RFC
+// 6455 known vector) against Qt6::Core alone.
 
 struct Shake { int status = 0; bool acceptValid = false; bool ok = false; QString error; };
 
@@ -67,23 +52,8 @@ Shake handshake(const Request &req, const QString &origin) {
     }
 
     const QByteArray key = randomKey();
-    QByteArray r;
-    r  = "GET " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    r += "Host: " + req.host.toUtf8() + "\r\n";
-    r += "Upgrade: websocket\r\n";
-    r += "Connection: Upgrade\r\n";
-    r += "Sec-WebSocket-Key: " + key + "\r\n";
-    r += "Sec-WebSocket-Version: 13\r\n";
-    if (!origin.isEmpty() && !origin.contains('\r') && !origin.contains('\n'))
-        r += "Origin: " + origin.toUtf8() + "\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Origin", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        r += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    r += "\r\n";
+    const QByteArray r = buildHandshake(req, origin, key);
+    if (r.isEmpty()) { out.error = "request build aborted (CR/LF in host/path)"; sock->deleteLater(); return out; }
 
     sock->write(r);
     if (!sock->waitForBytesWritten(kTimeoutMs)) {
@@ -103,10 +73,7 @@ Shake handshake(const Request &req, const QString &origin) {
     const int sep = resp.indexOf("\r\n\r\n");
     if (sep < 0) { out.error = out.error.isEmpty() ? "no response headers" : out.error; return out; }
     const QByteArray headerBlock = resp.left(sep);
-    const int firstEol = headerBlock.indexOf("\r\n");
-    const QByteArray statusLine = headerBlock.left(firstEol < 0 ? headerBlock.size() : firstEol);
-    const int sp1 = statusLine.indexOf(' ');
-    out.status = sp1 < 0 ? 0 : statusLine.mid(sp1 + 1, 3).toInt();
+    out.status = statusFromHeaderBlock(headerBlock);
     out.ok = true;
     if (out.status == 101) {
         const QString accept = headerValue(headerBlock, "Sec-WebSocket-Accept");
@@ -125,31 +92,54 @@ Result test(const Request &reqIn) {
     result.attackerOrigin = req.attackerOrigin.isEmpty()
         ? QStringLiteral("https://nullock-cswsh.test") : req.attackerOrigin;
 
+    // CSWSH is only EXPLOITABLE when the socket authenticates the victim via an
+    // ambient credential (cookie / HTTP auth) the browser attaches cross-site.
+    // If the caller supplied one, a cross-origin 101 is a CONFIRMED hijack; if
+    // not, it only proves Origin isn't validated -- a public/no-auth WS that
+    // accepts any Origin is expected, not a vulnerability. Grade accordingly.
+    const bool authed = hasCredential(req.headers);
+    auto gradeAccepted = [&](const QString &origin) {
+        result.isWebSocket = true;
+        if (authed) {
+            result.crossOriginAccepted = true;
+            result.detail = "upgrade completed (101 + valid Sec-WebSocket-Accept) cross-origin (Origin "
+                            + origin + ") while carrying the supplied session credential -- CSWSH";
+        } else {
+            result.originNotValidated = true;
+            result.detail = "upgrade completed cross-origin (Origin " + origin
+                            + ") but NO session credential was supplied -- Origin is not validated; "
+                              "confirm the socket is authenticated/cookie-gated before treating as "
+                              "CSWSH (a public WS accepting any Origin is expected)";
+        }
+    };
+
     // 1) Attacker-Origin handshake.
     const Shake atk = handshake(req, result.attackerOrigin);
     if (!atk.ok && atk.status == 0) { result.error = atk.error; return result; }
     result.attackerStatus = atk.status;
+    if (atk.status == 101 && atk.acceptValid) { gradeAccepted(result.attackerOrigin); return result; }
 
-    if (atk.status == 101 && atk.acceptValid) {
-        result.isWebSocket = true;
-        result.crossOriginAccepted = true;
-        result.detail = "upgrade completed (101 + valid Sec-WebSocket-Accept) with a cross-origin Origin: "
-                        + result.attackerOrigin;
-        return result;
-    }
+    // 2) "null" Origin -- the single most common allow-listed bypass (a
+    // sandboxed iframe / cross-scheme redirect sends Origin: null). A 101 + valid
+    // accept here is an unambiguous Origin-validation bypass.
+    const Shake nul = handshake(req, QStringLiteral("null"));
+    if (nul.status == 101 && nul.acceptValid) { gradeAccepted(QStringLiteral("null")); return result; }
 
-    // 2) Attacker Origin refused -> a no-Origin control distinguishes "the
-    // endpoint validates Origin" from "not a WebSocket endpoint at all".
+    // 3) Both refused -> a no-Origin control distinguishes "the endpoint
+    // validates Origin" from "not a WebSocket endpoint at all".
     const Shake ctl = handshake(req, QString());
     result.controlStatus = ctl.status;
     if (ctl.status == 101 && ctl.acceptValid) {
         result.isWebSocket = true;
         result.originValidated = true;
-        result.detail = "WebSocket endpoint refused the cross-origin handshake (attacker status "
-                        + QString::number(atk.status) + ") -- Origin appears validated";
+        result.detail = "WebSocket endpoint refused both the attacker (status "
+                        + QString::number(atk.status) + ") and the null-Origin (status "
+                        + QString::number(nul.status) + ") handshakes while the no-Origin control "
+                          "upgraded -- Origin appears validated";
     } else {
         result.detail = "no valid WebSocket upgrade observed (attacker status "
-                        + QString::number(atk.status) + ", control status "
+                        + QString::number(atk.status) + ", null-Origin status "
+                        + QString::number(nul.status) + ", control status "
                         + QString::number(ctl.status) + ")";
     }
     return result;
