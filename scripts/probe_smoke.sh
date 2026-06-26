@@ -303,6 +303,25 @@ def make(mode):
                     self._send(200, b'<html><head><meta name="generator" content="Joomla! 3.9.28">'
                                     b'</head><body>home</body></html>'); return
                 self._send(200, b'<html>ok</html>'); return
+            if mode.startswith('hdr-'):
+                # Security-header audit. Each mode returns a response carrying one
+                # interesting header so the analyzer's headline fixes are checked
+                # end-to-end (HSTS modes need TLS, so they're unit-tested only).
+                #   hdr-noscript : CSP with no script-src/default-src -> script is
+                #                  unrestricted -> csp-no-script-restriction (high).
+                #   hdr-wildcard : script-src https://* -> csp-wildcard-source.
+                #   hdr-xfo-allowall : X-Frame-Options: ALLOWALL (permissive) ->
+                #                  still clickjacking-missing.
+                if mode == 'hdr-noscript':
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('Content-Security-Policy', "img-src 'self'; upgrade-insecure-requests")]); return
+                if mode == 'hdr-wildcard':
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('Content-Security-Policy', 'script-src https://*')]); return
+                if mode == 'hdr-xfo-allowall':
+                    self._send(200, b'<html>ok</html>', 'text/html',
+                               [('X-Frame-Options', 'ALLOWALL')]); return
+                self._send(200, b'<html>ok</html>'); return
             if mode.startswith('waf-'):
                 # Passive WAF/CDN/LB detection mock.
                 #   waf-detect: a site fronted by Cloudflare AND Imperva Incapsula.
@@ -926,6 +945,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        secrets-vuln secrets-example
        fp-prose fp-real
        waf-detect waf-clean
+       hdr-noscript hdr-wildcard hdr-xfo-allowall
        h3-adv h3-h2only h3-none h3-clear)
 MOCK_OUT="$(mktemp /tmp/nullock-probe-mock-out.XXXXXX)"
 python "$MOCK" "${MODES[@]}" > "$MOCK_OUT" 2>&1 & MOCK_PID=$!
@@ -1178,6 +1198,11 @@ chk "secret placeholder/example value -> NOT flagged (looksPlaceholder FP fix)" 
 echo "== HTTP fingerprint =="
 chk "fingerprint prose mention -> NO false Joomla/Drupal tech (CVE-FP fix)" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-prose]} '')\"}")" "not any(t.get('name') in ('Joomla','Drupal') for t in d.get('tech',[]))"
 chk "fingerprint Joomla generator meta -> detected with version" "$(post /api/fingerprint "{\"url\":\"$(url ${P[fp-real]} '')\"}")" "any(t.get('name')=='Joomla' and t.get('version')=='3.9.28' for t in d.get('tech',[]))"
+
+echo "== security-header / CSP audit =="
+chk "hdr: CSP without script-src/default-src -> csp-no-script-restriction HIGH (FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-noscript]} '')\"}")" "any(f['key']=='csp-no-script-restriction' and f['severity']=='high' for f in d.get('findings',[]))"
+chk "hdr: script-src https://* -> csp-wildcard-source (scheme-wildcard FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-wildcard]} '')\"}")" "any(f['key']=='csp-wildcard-source' for f in d.get('findings',[]))"
+chk "hdr: X-Frame-Options ALLOWALL -> clickjacking-missing (permissive XFO FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-xfo-allowall]} '')\"}")" "any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
 
 echo "== WAF / CDN / LB detection =="
 chk "waf Cloudflare + Incapsula detected (multi-vendor)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "any(x['name']=='Cloudflare' for x in d.get('detections',[])) and any(x['name']=='Imperva Incapsula' for x in d.get('detections',[]))"

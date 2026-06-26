@@ -100,6 +100,7 @@ add_library(Networking STATIC
     open_redirect_logic.cpp
     open_redirect.hpp
     header_audit.cpp
+    header_logic.cpp
     header_audit.hpp
     secret_scanner.cpp
     secret_logic.cpp

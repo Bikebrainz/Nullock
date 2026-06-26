@@ -196,3 +196,12 @@ add_subdirectory(crlf_injection)
 # guards on method/host/basePath/query (pure logic; OPTIONS/TRACE are I/O).
 # Run via: ctest -R method_audit -V
 add_subdirectory(method_audit)
+
+# Security-header / CSP audit -- the pure analyzer: a CSP with no script-src and
+# no default-src is script-unrestricted (csp-no-script-restriction), scheme-
+# prefixed wildcards (https://*) are flagged, HSTS max-age=0/invalid is distinct
+# from a short window, only DENY/SAMEORIGIN X-Frame-Options and a restrictive
+# ENFORCED frame-ancestors protect, a malformed 'sha token doesn't suppress
+# unsafe-inline, hostMatches' dot-guard, and buildRequest's CR/LF guards.
+# Run via: ctest -R header_audit -V
+add_subdirectory(header_audit)
