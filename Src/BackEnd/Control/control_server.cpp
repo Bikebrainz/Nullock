@@ -6681,17 +6681,24 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         };
         QJsonArray hits;
         for (const auto &h : sres.hits) {
+            // An imprecise match (scanned version less precise than the CVE's
+            // range boundary) can't confirm affected-vs-patched -- grade it a
+            // LEAD (capped at medium), never a confirmed critical.
+            QString sev = sevFor(h.cvss);
+            if (!h.precise && (sev == "critical" || sev == "high")) sev = QStringLiteral("medium");
             hits.append(QJsonObject{
                 { "port", h.port }, { "product", h.product }, { "version", h.version },
                 { "cveId", h.cveId }, { "cvss", h.cvss }, { "summary", h.summary },
                 { "affected", h.affected }, { "fix", h.fix }, { "reference", h.reference },
-                { "banner", h.banner } });
+                { "banner", h.banner }, { "precise", h.precise }, { "severity", sev } });
             if (m_wiring.scanner)
-                m_wiring.scanner->reportFinding(0, sevFor(h.cvss), "cve-correlated",
-                    QString("%1 on %2:%3 (%4) -- %5")
-                        .arg(h.cveId, host).arg(h.port).arg(h.product + " " + h.version, h.summary),
-                    QString("banner: %1 | affected %2 | fix %3 | %4")
-                        .arg(h.banner, h.affected, h.fix, h.reference),
+                m_wiring.scanner->reportFinding(0, sev, "cve-correlated",
+                    QString("%1%2 on %3:%4 (%5) -- %6")
+                        .arg(h.precise ? QString() : QStringLiteral("POSSIBLE — "),
+                             h.cveId, host).arg(h.port).arg(h.product + " " + h.version, h.summary),
+                    QString("banner: %1 | affected %2 | fix %3 | %4%5")
+                        .arg(h.banner, h.affected, h.fix, h.reference,
+                             h.precise ? QString() : QStringLiteral(" | NOTE: version less precise than the affected range (patch level not disclosed) -- confirm the exact build")),
                     host, host + ":" + QString::number(h.port));
         }
         return okJson({{ "ok", sres.error.isEmpty() },

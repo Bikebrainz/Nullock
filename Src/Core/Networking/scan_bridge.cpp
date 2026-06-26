@@ -142,14 +142,23 @@ QList<BridgeFinding> fromPortResults(const QList<PortResult> &results, const Opt
             ServiceVulns::parseBanner(r.banner, r.port, product, version);
             if (!product.isEmpty() && !version.isEmpty()) {
                 for (const auto &hit : ServiceVulns::matchVersion(product, version)) {
-                    QString summary = hit.cveId + QStringLiteral(" — ") + product
+                    // An imprecise match (the banner version is less precise than
+                    // the CVE's range boundary, e.g. "Apache/2.4") can't confirm
+                    // affected-vs-patched -- grade it a LEAD (capped at medium)
+                    // with an explicit note, never a confirmed critical.
+                    const QString lead = hit.precise ? QString()
+                        : QStringLiteral("POSSIBLE — ");
+                    QString summary = lead + hit.cveId + QStringLiteral(" — ") + product
                                     + QStringLiteral(" ") + version
                                     + QStringLiteral(" on ") + r.host
                                     + QStringLiteral(":") + QString::number(r.port);
                     QString evidence = hit.summary
                                      + QStringLiteral(" | affected: ") + hit.affected
                                      + QStringLiteral(" | fix: ") + hit.fix
-                                     + QStringLiteral(" | CVSS ") + QString::number(hit.cvss);
+                                     + QStringLiteral(" | CVSS ") + QString::number(hit.cvss)
+                                     + (hit.precise ? QString()
+                                        : QStringLiteral(" | NOTE: scanned version is less precise than the "
+                                                         "affected range (patch level not disclosed) -- confirm the exact build"));
                     // An unscored hit (cvss <= 0) is a known-vulnerable
                     // version with no CVSS on file -- don't bury it at "low";
                     // treat it as at least medium.
@@ -158,6 +167,10 @@ QList<BridgeFinding> fromPortResults(const QList<PortResult> &results, const Opt
                                    : hit.cvss >= 4.0 ? QStringLiteral("medium")
                                    : hit.cvss >  0.0 ? QStringLiteral("low")
                                                      : QStringLiteral("medium");
+                    // Cap an imprecise lead at medium so a hidden-patch-level
+                    // server isn't surfaced as a confirmed critical.
+                    if (!hit.precise && (cveSev == "critical" || cveSev == "high"))
+                        cveSev = QStringLiteral("medium");
                     out.append({ cveSev, QStringLiteral("cve-correlated"),
                                  summary, evidence, r.host, loc });
                 }

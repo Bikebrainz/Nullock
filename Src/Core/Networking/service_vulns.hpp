@@ -27,6 +27,10 @@ struct CveHit {
     QString fix;
     QString reference;
     QString banner;      // the banner the match came from
+    bool    precise = true;  // false => the scanned version is LESS precise than
+                             // the CVE's range boundary (e.g. "Apache/2.4" vs a
+                             // 2.4.x range) so affected-vs-patched can't be
+                             // confirmed -- grade it a lead, not a confirmed CVE.
 };
 
 struct Request {

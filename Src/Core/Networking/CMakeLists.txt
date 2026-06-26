@@ -12,6 +12,7 @@ add_library(Networking STATIC
     port_logic.cpp
     port_scanner.hpp
     service_vulns.cpp
+    service_vulns_logic.cpp
     service_vulns.hpp
     tls_inspect.cpp
     tls_inspect.hpp

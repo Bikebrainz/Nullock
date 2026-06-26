@@ -237,3 +237,11 @@ add_subdirectory(smuggling)
 # and hasCredential (gates a CONFIRMED hijack vs an Origin-not-validated lead).
 # Run via: ctest -R ws_probe -V
 add_subdirectory(ws_probe)
+
+# Service-version CVE matcher -- parseBanner per-product regexes, the version
+# range math (min incl / max EXCL / exact) at the boundary conditions, and the
+# precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range
+# CVE but is flagged a LEAD (precise=false), not a confirmed critical, because
+# its hidden patch level might be fixed; plus the overlay dedup-by-cveId.
+# Run via: ctest -R service_vulns -V
+add_subdirectory(service_vulns)
