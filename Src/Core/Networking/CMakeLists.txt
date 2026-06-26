@@ -18,6 +18,7 @@ add_library(Networking STATIC
     http_fingerprint_logic.cpp
     http_fingerprint.hpp
     method_audit.cpp
+    method_audit_logic.cpp
     method_audit.hpp
     takeover_scan.cpp
     takeover_logic.cpp

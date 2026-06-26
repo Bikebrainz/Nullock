@@ -216,8 +216,8 @@ const QHash<QString, Mapping> &table() {
         { "host-header-reflected",        { "CWE-20",  "A05:2021-Security Misconfiguration", 0.0, "", "", "An injected Host/forwarded-host value is reflected into the response body (not in a URL context). Confirm whether it reaches a redirect, an absolute link, or a password-reset email before treating it as exploitable host-header injection." } },
 
         // ---- HTTP method exposure ------------------------------------
-        { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 5.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Disable write methods (PUT/DELETE/PATCH) unless required; enforce auth + an allow-list per route." } },
-        { "webdav-enabled",         { "CWE-650", "A05:2021-Security Misconfiguration", 6.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:H/A:N", "", "Disable WebDAV if unused; it often allows file upload/overwrite." } },
+        { "dangerous-http-methods", { "CWE-650", "A05:2021-Security Misconfiguration", 0.0, "", "", "Write methods (PUT/DELETE/PATCH) are ADVERTISED in the OPTIONS Allow header -- not confirmed callable or unauthenticated. Confirm intrusively (if authorized) whether they execute without auth before treating as exploitable; disable unused write methods and enforce auth + a per-route allow-list." } },
+        { "webdav-enabled",         { "CWE-650", "A05:2021-Security Misconfiguration", 0.0, "", "", "WebDAV verbs are ADVERTISED in the OPTIONS Allow header -- not confirmed functional or unauthenticated (proxies/frameworks often echo a broad method list the backend rejects). Confirm with an authorized PROPFIND/PUT before treating as exploitable; disable WebDAV if unused (it can allow file upload/overwrite)." } },
         { "http-trace-enabled",     { "CWE-693", "A05:2021-Security Misconfiguration", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Disable the TRACE method to prevent Cross-Site Tracing." } },
 
         // ---- TLS / certificate weaknesses ----------------------------

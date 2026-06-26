@@ -8,6 +8,7 @@
 // server state; advertised write methods are reported from OPTIONS, and the
 // operator can confirm intrusively if authorized.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -36,5 +37,16 @@ struct Result {
 
 // Send OPTIONS (+ a TRACE echo probe) and report dangerous advertised methods.
 Result audit(const Request &req);
+
+// --- Pure helpers, exposed for the unit test (no network I/O; in method_audit_logic.cpp) ---
+//   buildReq            -- render a request, stripping CR/LF from method/host/path/query.
+//   parseAllow          -- split an Allow value into a deduped, upper-cased list.
+//   dangerousWriteMethods / dangerousWebdavMethods -- the dangerous subset of an allowed list.
+//   traceEchoed         -- did a TRACE body echo our request (XST)?
+QByteArray buildReq(const Request &req, const QString &method);
+QStringList parseAllow(const QString &allowHeader);
+QStringList dangerousWriteMethods(const QStringList &allowed);
+QStringList dangerousWebdavMethods(const QStringList &allowed);
+bool traceEchoed(const QString &body);
 
 } // namespace Nullock::Core::MethodAudit

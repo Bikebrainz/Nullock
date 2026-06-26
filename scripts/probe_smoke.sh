@@ -213,6 +213,29 @@ def make(mode):
                 tok = auth[7:] if auth.lower().startswith('bearer ') else ''
                 self._send(200 if tok else 401, b'ok' if tok else b'no'); return
             self._send(200, b'{"ok":true}', 'application/json')
+        def do_OPTIONS(self):
+            # method_audit reads the Allow header. method-allow advertises write +
+            # WebDAV verbs (must be graded INFO -- advertised, not confirmed); any
+            # other method-* mode advertises only benign verbs.
+            if mode == 'method-allow':
+                self._send(200, b'', extra=[('Allow', 'GET, HEAD, POST, OPTIONS, PUT, DELETE, PROPFIND, MKCOL')]); return
+            if mode.startswith('method'):
+                self._send(200, b'', extra=[('Allow', 'GET, HEAD, POST, OPTIONS')]); return
+            self._send(501, b'no'); return
+        def do_TRACE(self):
+            # method-trace echoes the received request verbatim (true XST loopback,
+            # body starts with the request line). method-trace-fp quotes the
+            # request MID-body in a logging page (must NOT be flagged after the
+            # offset-0 tightening). Other modes do not echo.
+            if mode == 'method-trace':
+                lines = 'TRACE ' + self.path + ' HTTP/1.1\r\n'
+                for k, v in self.headers.items(): lines += '%s: %s\r\n' % (k, v)
+                self._send(200, lines.encode(), 'message/http'); return
+            if mode == 'method-trace-fp':
+                lines = 'TRACE ' + self.path + ' HTTP/1.1\r\n'
+                for k, v in self.headers.items(): lines += '%s: %s\r\n' % (k, v)
+                self._send(200, ('<pre>logged request: ' + lines + '</pre>').encode()); return
+            self._send(405, b'no'); return
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
             if mode.startswith('cache'):
@@ -870,6 +893,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff
        crlf-vuln crlf-colonless crlf-safe
+       method-allow method-trace method-trace-fp
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
@@ -979,6 +1003,12 @@ chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url 
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss attr-context (raw, but in attribute) -> NOT vulnerable (headline FP fix)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-attr]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss raw reflection but nosniff+no-CT -> NOT vulnerable (sniff guard)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-nosniff]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== HTTP method audit =="
+chk "method: advertised write methods -> INFO not medium (severity honesty)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-allow]} '')\"}")" "any(f['kind']=='dangerous-http-methods' and f['severity']=='info' for f in d.get('findings',[]))"
+chk "method: advertised WebDAV -> webdav-enabled INFO" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-allow]} '')\"}")" "any(f['kind']=='webdav-enabled' and f['severity']=='info' for f in d.get('findings',[]))"
+chk "method: TRACE loopback echo -> XST confirmed" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-trace]} '')\"}")" "d.get('traceEnabled') and any(f['kind']=='http-trace-enabled' for f in d.get('findings',[]))"
+chk "method: request quoted mid-body (logging) -> NOT XST (offset-0 fix)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-trace-fp]} '')\"}")" "d.get('ok') and not d.get('traceEnabled')"
 
 echo "== CRLF / response splitting =="
 chk "crlf split -> confirmed (parsed header)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-vuln]} '?url=test')\"}")" "d.get('vulnerable')"

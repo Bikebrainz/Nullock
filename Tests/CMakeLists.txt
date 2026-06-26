@@ -189,3 +189,10 @@ add_subdirectory(xss_reflected)
 # CR/LF guards on method/host/basePath/query (pure logic; the sends are I/O).
 # Run via: ctest -R crlf_injection -V
 add_subdirectory(crlf_injection)
+
+# HTTP method audit -- parseAllow (dedup/upper/trim of the Allow header), the
+# dangerous write/WebDAV subsets, traceEchoed (XST needs BOTH the TRACE token
+# and our UA, so a page mentioning "trace" can't trip it), and buildReq's CR/LF
+# guards on method/host/basePath/query (pure logic; OPTIONS/TRACE are I/O).
+# Run via: ctest -R method_audit -V
+add_subdirectory(method_audit)
