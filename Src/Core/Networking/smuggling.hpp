@@ -18,6 +18,7 @@
 // (a chain that only desyncs under keep-alive may be missed) -- we prefer a
 // false negative over ever smuggling into production traffic.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -48,5 +49,14 @@ struct Result {
 // Time a baseline request, then the CL.TE and TE.CL timing probes; flag any
 // whose delay over baseline exceeds the threshold AND reproduces on a re-send.
 Result test(const Request &req);
+
+// --- Pure request builders, exposed for the unit test (in smuggling_logic.cpp) ---
+// Byte-exact: a wrong Content-Length / chunk silently makes the probe inert.
+// All four return {} when basePath/host carry CR/LF (a framing hazard for a
+// smuggling probe).
+QByteArray baselineRequest(const Request &req);
+QByteArray clteProbe(const Request &req);
+QByteArray teclProbe(const Request &req);
+QByteArray ambiguousControl(const Request &req);
 
 } // namespace Nullock::Core::Smuggling

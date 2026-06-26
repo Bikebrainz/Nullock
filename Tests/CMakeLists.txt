@@ -221,3 +221,11 @@ add_subdirectory(sequencer)
 # TLS is read from the RAW 0x16 0x03 record bytes (pure logic; sockets are I/O).
 # Run via: ctest -R port_scanner -V
 add_subdirectory(port_scanner)
+
+# HTTP request smuggling -- the byte-exact probe builders: CL.TE (CL=6 + chunked
+# + "1\r\nA\r\nX"), TE.CL (CL=6 + chunked + "0\r\n\r\nX"), the valid-ambiguous
+# control (CL=5 + "0\r\n\r\n", strands neither parser), Connection: close on
+# every probe, caller CL/TE stripped, and a CR/LF basePath/host aborting the
+# build (a wrong byte silently makes the probe inert -- pure logic; timing I/O).
+# Run via: ctest -R smuggling -V
+add_subdirectory(smuggling)

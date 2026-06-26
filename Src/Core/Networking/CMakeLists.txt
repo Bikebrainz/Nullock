@@ -146,6 +146,7 @@ add_library(Networking STATIC
     nosql_logic.cpp
     nosql_injection.hpp
     smuggling.cpp
+    smuggling_logic.cpp
     smuggling.hpp
 )
 

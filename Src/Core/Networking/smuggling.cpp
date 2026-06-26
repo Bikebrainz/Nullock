@@ -5,80 +5,17 @@
 
 namespace Nullock::Core::Smuggling {
 
+// The byte-exact probe builders (baselineRequest, clteProbe, teclProbe,
+// ambiguousControl) live in smuggling_logic.cpp so they can be unit-tested
+// against Qt6::Core alone. This TU keeps test(), which pulls in HttpClient (the
+// Qt6::Network chain) and is therefore I/O.
+
 namespace {
 
 // A response delayed by at least this much over baseline is a desync signal --
 // a vulnerable back-end blocks on its socket read timeout (typically >= 5-30s)
 // waiting for body bytes the front-end never forwarded.
 constexpr int kDelayThresholdMs = 4000;
-
-QByteArray commonHeaders(const Request &req) {
-    QByteArray h;
-    h += "Host: " + req.host.toUtf8() + "\r\n";
-    h += "User-Agent: Nullock/smuggling\r\n";
-    h += "Accept: */*\r\n";
-    for (const auto &kv : req.headers) {
-        if (kv.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (kv.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (kv.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
-        if (kv.first.contains('\r') || kv.first.contains('\n')) continue;
-        if (kv.second.contains('\r') || kv.second.contains('\n')) continue;
-        h += kv.first.toUtf8() + ": " + kv.second.toUtf8() + "\r\n";
-    }
-    return h;
-}
-
-// A normal, well-formed POST: the timing reference.
-QByteArray baselineRequest(const Request &req) {
-    const QByteArray body = "x=1";
-    QByteArray out = "POST " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += commonHeaders(req);
-    out += "Content-Type: application/x-www-form-urlencoded\r\n";
-    out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += body;
-    return out;
-}
-
-// CL.TE: front-end uses Content-Length (forwards the first 6 bytes "1\r\nA\r\n"
-// -- a complete 1-byte chunk), back-end uses Transfer-Encoding and blocks
-// waiting for the NEXT chunk-size line (the trailing "X" was never forwarded).
-QByteArray clteProbe(const Request &req) {
-    QByteArray out = "POST " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += commonHeaders(req);
-    out += "Content-Length: 6\r\n";
-    out += "Transfer-Encoding: chunked\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += "1\r\nA\r\nX";
-    return out;
-}
-
-// Valid-ambiguous control: BOTH framing headers, but a complete body that
-// strands neither parser (CL=5 forwards exactly "0\r\n\r\n"; TE reads it as the
-// terminating chunk). A server that delays on THIS is tarpitting ambiguous
-// requests in general, not desyncing -- so a probe delay isn't attributable to
-// a framing disagreement and must not be reported.
-QByteArray ambiguousControl(const Request &req) {
-    QByteArray out = "POST " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += commonHeaders(req);
-    out += "Content-Length: 5\r\n";
-    out += "Transfer-Encoding: chunked\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += "0\r\n\r\n";
-    return out;
-}
-
-// TE.CL: front-end uses Transfer-Encoding (forwards "0\r\n\r\n"), back-end uses
-// Content-Length=6 and blocks waiting for the remaining byte.
-QByteArray teclProbe(const Request &req) {
-    QByteArray out = "POST " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    out += commonHeaders(req);
-    out += "Content-Length: 6\r\n";
-    out += "Transfer-Encoding: chunked\r\n";
-    out += "Connection: close\r\n\r\n";
-    out += "0\r\n\r\nX";
-    return out;
-}
 
 } // namespace
 
@@ -111,8 +48,15 @@ Result test(const Request &reqIn) {
     // also stalls, the server delays on ambiguous input generally -- a probe
     // delay then isn't desync-specific, so we suppress to avoid a false
     // critical. Conservative: this can miss a desync on a tarpitting front end.
-    const int ctrl = timeSend(ambiguousControl(req));
-    const bool ambiguousSlow = (ctrl - result.baselineMs >= kDelayThresholdMs);
+    //
+    // Measure the control with the SAME min-of-two robustness as the baseline:
+    // a single transient-slow control sample must NOT veto a confirmed,
+    // twice-reproduced hit (the suppression side has to be as flap-resistant as
+    // the detection side, else one unlucky control turns a real desync into a
+    // silent false negative). Suppress only when the control is RELIABLY slow.
+    const int c1 = timeSend(ambiguousControl(req));
+    const int c2 = timeSend(ambiguousControl(req));
+    const bool ambiguousSlow = (qMin(c1, c2) - result.baselineMs >= kDelayThresholdMs);
 
     struct Variant { const char *name; QByteArray (*build)(const Request &); };
     const Variant variants[] = {
