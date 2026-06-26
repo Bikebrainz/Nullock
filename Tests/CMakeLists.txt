@@ -213,3 +213,11 @@ add_subdirectory(header_audit)
 # monotonic timestamps, and the constant-prefix LCS strip (pure logic).
 # Run via: ctest -R sequencer -V
 add_subdirectory(sequencer)
+
+# Port scanner banner classifier -- an OS mention isn't a service (no
+# winrm/smb from "Microsoft Windows"), an HTML body mentioning a DB is HTTP
+# (HTTP/1. status line wins before the DB substring matches), IMAP "* OK" is
+# detected without the literal word, dev/app-server ports classify http, and
+# TLS is read from the RAW 0x16 0x03 record bytes (pure logic; sockets are I/O).
+# Run via: ctest -R port_scanner -V
+add_subdirectory(port_scanner)

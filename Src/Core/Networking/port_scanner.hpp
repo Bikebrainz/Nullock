@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAtomicInt>
+#include <QByteArray>
 #include <QList>
 #include <QMutex>
 #include <QObject>
@@ -8,11 +9,15 @@
 
 namespace Nullock::Core {
 
+// Banner/port -> service label (pure; defined in port_logic.cpp). Exposed for
+// the unit test and called by the scanner on the RAW grabbed bytes.
+QString classifyBanner(quint16 port, const QByteArray &banner);
+
 // One target port + result of probing it.
 struct PortResult {
     QString  host;
     quint16  port    = 0;
-    QString  status;       // "open" | "closed" | "filtered"
+    QString  status;       // "open" | "closed" | "filtered" | "unreachable"
     int      latencyMs = 0;
     QString  banner;       // first ~256 bytes of whatever the service said
     QString  service;      // best-guess label (http / ssh / tls / ...)
