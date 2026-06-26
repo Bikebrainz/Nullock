@@ -4,12 +4,19 @@
 #include <QRandomGenerator>
 #include <QUrlQuery>
 
+#include <algorithm>
+
 namespace Nullock::Core::CrlfInjection {
+
+// The pure builder/matcher (buildRequest, queryWith, splitConfirmed) lives in
+// crlf_logic.cpp so it can be unit-tested against Qt6::Core alone. This TU keeps
+// test(), which pulls in HttpClient (the Qt6::Network chain via
+// Proxy::HttpResponse) and is therefore I/O.
 
 namespace {
 
 // The marker header an injected payload tries to plant. If it comes back in
-// the parsed response, the server split our CR/LF into a new header line.
+// the response, the server split our CR/LF into a new header line.
 const QString kMarkerName = QStringLiteral("X-Nullock-Crlf");
 
 struct Technique { const char *name; const char *sep; };
@@ -30,39 +37,6 @@ QString headerValue(const Proxy::HttpResponse &r, const QString &name) {
     for (const auto &h : r.headers)
         if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
     return QString();
-}
-
-QByteArray buildRequest(const Request &req, const QString &query) {
-    const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/crlf\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
-// Build the query string with `param` set to `rawValue`, preserving any other
-// existing params. rawValue is spliced in RAW (already percent-encoded) so the
-// CRLF escapes survive to the server -- QUrlQuery would re-encode the '%'.
-QString queryWith(const QString &existing, const QString &param, const QString &rawValue) {
-    QStringList parts;
-    const QUrlQuery q(existing);
-    for (const auto &kv : q.queryItems(QUrl::FullyEncoded))
-        // Compare decoded names so an exotically-encoded existing key matching
-        // the target isn't left in place alongside our injected copy.
-        if (QUrl::fromPercentEncoding(kv.first.toUtf8()) != param)
-            parts << kv.first + "=" + kv.second;
-    parts << param + "=" + rawValue;
-    return parts.join('&');
 }
 
 } // namespace
@@ -87,6 +61,16 @@ Result test(const Request &reqIn) {
         for (const auto &kv : q.queryItems())
             if (!params.contains(kv.first)) params << kv.first;
         if (params.isEmpty()) params = defaultParams();
+    }
+    // Before truncating, float high-signal sink names (the known redirect/
+    // callback set) to the front so the cap can't silently drop the one that's
+    // actually vulnerable.
+    if (params.size() > 8) {
+        const QStringList known = defaultParams();
+        std::stable_sort(params.begin(), params.end(),
+            [&](const QString &a, const QString &b) {
+                return known.contains(a) && !known.contains(b);
+            });
     }
     while (params.size() > 8) params.removeLast();   // cap work
     result.testedParams = params;
@@ -116,8 +100,11 @@ Result test(const Request &reqIn) {
                 + kMarkerName + "%3a" + marker;   // %3a == ':'
             const auto r = send(queryWith(req.query, param, payload));
             if (!r.ok) continue;
-            // Confirmed iff the server emitted our marker header with our value.
-            if (headerValue(r.parsed, kMarkerName).trimmed() == marker) {
+            // Confirmed iff the server split our CR/LF into a real header line --
+            // caught either as a parsed header or (when the server decoded the
+            // CR/LF but not the %3a colon) as a colon-less line in the raw
+            // header block.
+            if (splitConfirmed(r.rawResponse, r.parsed.headers, kMarkerName, marker)) {
                 result.hits.append({ param, QString::fromUtf8(t.name),
                                      payload, kMarkerName + ": " + marker });
                 result.vulnerable = true;

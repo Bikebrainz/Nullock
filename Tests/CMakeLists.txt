@@ -181,3 +181,11 @@ add_subdirectory(waf_detect)
 # and buildRequest's CR/LF guards (pure logic; the sends are I/O).
 # Run via: ctest -R xss_reflected -V
 add_subdirectory(xss_reflected)
+
+# CRLF / HTTP response splitting -- splitConfirmed: a parsed planted header OR a
+# colon-less split line at a header-block boundary confirms (the server decoded
+# CR/LF but not %3a), while a body echo or a mid-line reflection does NOT (no
+# FP); queryWith splices the raw payload without re-encoding; buildRequest's
+# CR/LF guards on method/host/basePath/query (pure logic; the sends are I/O).
+# Run via: ctest -R crlf_injection -V
+add_subdirectory(crlf_injection)

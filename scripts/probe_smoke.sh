@@ -656,6 +656,32 @@ def make(mode):
                     val = val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
                 return
+            if mode.startswith('crlf'):
+                # HTTP response splitting. The vulnerable server reflects the
+                # (decoded) first query-param value into a response header value
+                # via RAW bytes -- so an injected CR/LF physically splits off a
+                # new header line. We model three decoders:
+                #   crlf-vuln     : decodes %0d%0a AND %3a -> a real
+                #                   "X-Nullock-Crlf: <marker>" header (parsed-hit).
+                #   crlf-colonless: decodes the CR/LF but NOT %3a -> a colon-less
+                #                   "X-Nullock-Crlf%3a<marker>" line the parser
+                #                   drops -> confirmed only via the raw fallback.
+                #   crlf-safe     : strips CR/LF -> no split, not vulnerable.
+                from urllib.parse import unquote
+                raw = urlparse(self.path).query.split('&', 1)[0]
+                rawval = raw.split('=', 1)[1] if '=' in raw else ''
+                if mode == 'crlf-colonless':
+                    refl = (rawval.replace('%0d', '\r').replace('%0a', '\n')
+                                  .replace('%0D', '\r').replace('%0A', '\n'))
+                else:
+                    refl = unquote(rawval)
+                    if mode == 'crlf-safe':
+                        refl = refl.replace('\r', '').replace('\n', '')
+                body = b'<html>ok</html>'
+                resp = ('HTTP/1.0 200 OK\r\nX-Reflect: ' + refl + '\r\n'
+                        + 'Content-Type: text/html\r\nContent-Length: '
+                        + str(len(body)) + '\r\nConnection: close\r\n\r\n').encode() + body
+                self.wfile.write(resp); return
             if mode.startswith('openredir'):
                 # Vulnerable mock reflects the redirect param into a redirect
                 # sink; the probe flags it resolving to its sentinel.
@@ -843,6 +869,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff
+       crlf-vuln crlf-colonless crlf-safe
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
@@ -952,6 +979,11 @@ chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url 
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss attr-context (raw, but in attribute) -> NOT vulnerable (headline FP fix)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-attr]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "xss raw reflection but nosniff+no-CT -> NOT vulnerable (sniff guard)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-nosniff]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+
+echo "== CRLF / response splitting =="
+chk "crlf split -> confirmed (parsed header)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-vuln]} '?url=test')\"}")" "d.get('vulnerable')"
+chk "crlf split, colon-less line -> confirmed (raw-bytes fallback)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-colonless]} '?url=test')\"}")" "d.get('vulnerable')"
+chk "crlf CR/LF stripped -> NOT vulnerable" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-safe]} '?url=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== open redirect (core) =="
 chk "open-redirect vulnerable -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-vuln]} '?url=test')\"}")" "d.get('vulnerable')"

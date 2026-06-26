@@ -104,6 +104,7 @@ add_library(Networking STATIC
     secret_logic.cpp
     secret_scanner.hpp
     crlf_injection.cpp
+    crlf_logic.cpp
     crlf_injection.hpp
     path_traversal.cpp
     path_traversal_logic.cpp

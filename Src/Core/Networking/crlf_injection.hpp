@@ -9,6 +9,7 @@
 // uniquely-named marker header and check whether that header actually appears
 // in the parsed response -- the server split the header, no guessing.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -48,5 +49,18 @@ struct Result {
 Result test(const Request &req);
 
 QStringList defaultParams();
+
+// --- Pure helpers, exposed for the unit test (no network I/O; in crlf_logic.cpp) ---
+//   buildRequest -- render the GET, stripping CR/LF from method/host/path/query
+//                   and dropping any CR/LF-bearing carried header.
+//   queryWith    -- set `param` to a RAW (already-encoded) value, preserving others.
+//   splitConfirmed -- did the server split our CR/LF into a real header line?
+//                   parsed-header match OR a colon-less line at a header-block
+//                   boundary that starts with the marker name and holds the marker.
+QByteArray buildRequest(const Request &req, const QString &query);
+QString queryWith(const QString &existing, const QString &param, const QString &rawValue);
+bool splitConfirmed(const QByteArray &rawResponse,
+                    const QList<QPair<QString, QString>> &parsedHeaders,
+                    const QString &markerName, const QString &marker);
 
 } // namespace Nullock::Core::CrlfInjection
