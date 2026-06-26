@@ -636,6 +636,22 @@ def make(mode):
                 # reflects it raw (the <marker> stays an executable tag); the safe
                 # mock HTML-escapes it.
                 val = q.get('q', [''])[0]
+                if mode == 'xss-attr':
+                    # Reflect the marker RAW but into a later attribute, after an
+                    # earlier quoted attribute value that contains a literal '>'.
+                    # The marker lands inside the open tag (inert) -> must NOT be
+                    # flagged: regression-locks the headline attribute-quote FP.
+                    self._send(200, ('<input data-x="a>b" value=%s>' % val).encode()); return
+                if mode == 'xss-nosniff':
+                    # Reflect the marker RAW in element content, but send NO
+                    # Content-Type plus X-Content-Type-Options: nosniff, so a
+                    # browser won't sniff it as HTML -> not executable -> must NOT
+                    # be flagged.
+                    body = ('<html><body>Results for: %s</body></html>' % val).encode()
+                    self.send_response(200)
+                    self.send_header('X-Content-Type-Options', 'nosniff')
+                    self.send_header('Content-Length', str(len(body))); self.end_headers()
+                    self.wfile.write(body); return
                 if mode != 'xss-vuln':
                     val = val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
@@ -826,7 +842,7 @@ PY
 MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        hh-urlbody hh-location hh-bare hh-safe hh-comment hh-cookie hh-host-loc hh-urlattr
        sqli-vuln sqli-safe sqli-blind sqli-waf
-       xss-vuln xss-safe
+       xss-vuln xss-safe xss-attr xss-nosniff
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
@@ -934,6 +950,8 @@ chk "sqli WAF block (generic+403) -> NOT confirmed (FP fix)" "$(post /api/sqli/t
 echo "== reflected XSS (core) =="
 chk "xss vulnerable -> confirmed"       "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-vuln]} '?q=test')\"}")" "d.get('vulnerable')"
 chk "xss safe -> not vulnerable"        "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-safe]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "xss attr-context (raw, but in attribute) -> NOT vulnerable (headline FP fix)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-attr]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "xss raw reflection but nosniff+no-CT -> NOT vulnerable (sniff guard)" "$(post /api/xss/test "{\"url\":\"$(url ${P[xss-nosniff]} '?q=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== open redirect (core) =="
 chk "open-redirect vulnerable -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-vuln]} '?url=test')\"}")" "d.get('vulnerable')"

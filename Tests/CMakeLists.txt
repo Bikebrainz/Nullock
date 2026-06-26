@@ -172,3 +172,12 @@ add_subdirectory(http_fingerprint)
 # guards (pure logic; the single GET is I/O).
 # Run via: ctest -R waf_detect -V
 add_subdirectory(waf_detect)
+
+# Reflected XSS -- inExecutingHtmlContext, the reduced HTML5 tokenizer deciding
+# whether a reflected <marker> runs: attribute-quote tracking (a '>' inside a
+# quoted value must NOT end the tag -- the headline FP), raw-text elements incl.
+# plaintext/noframes/noembed, "</name"+delimiter and "--!>" close variants,
+# multi-occurrence + case-insensitive detection, isHtmlContentType, queryWith,
+# and buildRequest's CR/LF guards (pure logic; the sends are I/O).
+# Run via: ctest -R xss_reflected -V
+add_subdirectory(xss_reflected)

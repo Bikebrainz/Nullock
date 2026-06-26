@@ -12,6 +12,7 @@
 // is encoded but the delimiter quote isn't), DOM-based, and stored XSS are out
 // of scope for this reflected check.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -51,5 +52,16 @@ struct Result {
 Result test(const Request &req);
 
 QStringList defaultParams();
+
+// Exposed for tests (pure logic; live in xss_logic.cpp):
+//   isHtmlContentType  -- is a lower-cased Content-Type browser-executable HTML?
+//   inExecutingHtmlContext -- is the marker at `at` in runnable element content?
+//   buildRequest -- render the GET, stripping CR/LF from method/host/path/query
+//                   and dropping any CR/LF-bearing carried header.
+//   queryWith -- set `param` to `value` (percent-encoded), preserving others.
+bool isHtmlContentType(const QString &contentTypeLower);
+bool inExecutingHtmlContext(const QString &body, int at);
+QByteArray buildRequest(const Request &req, const QString &query);
+QString queryWith(const QString &existing, const QString &param, const QString &value);
 
 } // namespace Nullock::Core::XssReflected

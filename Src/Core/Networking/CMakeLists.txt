@@ -112,6 +112,7 @@ add_library(Networking STATIC
     cmd_injection_logic.cpp
     cmd_injection.hpp
     xss_reflected.cpp
+    xss_logic.cpp
     xss_reflected.hpp
     sql_injection.cpp
     sql_logic.cpp
