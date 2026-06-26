@@ -24,6 +24,11 @@
 
 namespace Nullock::Core {
 
+// The pure analysis (exposed for the unit test; defined in sequencer_logic.cpp).
+// Sequencer::analyze() is a thin Q_INVOKABLE wrapper around this. Returns the
+// JSON shape documented on Sequencer::analyze below.
+QJsonObject analyzeTokens(const QStringList &tokens);
+
 class Sequencer : public QObject {
     Q_OBJECT
 public:

@@ -1204,6 +1204,11 @@ chk "hdr: CSP without script-src/default-src -> csp-no-script-restriction HIGH (
 chk "hdr: script-src https://* -> csp-wildcard-source (scheme-wildcard FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-wildcard]} '')\"}")" "any(f['key']=='csp-wildcard-source' for f in d.get('findings',[]))"
 chk "hdr: X-Frame-Options ALLOWALL -> clickjacking-missing (permissive XFO FN fix)" "$(post /api/headers/audit "{\"url\":\"$(url ${P[hdr-xfo-allowall]} '')\"}")" "any(f['key']=='clickjacking-missing' for f in d.get('findings',[]))"
 
+echo "== token sequencer =="
+chk "seq: 8-hex tokens (~32 effective bits) -> NOT looks-random (keyspace)" "$(post /api/sequencer/analyze "{\"tokens\":[\"1a2b3c4d\",\"9f8e7d6c\",\"00112233\",\"deadbeef\",\"cafe1234\",\"5566aabb\",\"0f1e2d3c\",\"98765432\",\"abcdef01\",\"13579bdf\"]}")" "d.get('verdict')!='looks-random' and d.get('score',100)<80"
+chk "seq: 40-hex tokens (~160 bits) -> looks-random (no alphabet penalty)" "$(post /api/sequencer/analyze "{\"tokens\":[\"a3f19c4b7e2d8061f5a9c3e7b1d4082f6c9a1e35\",\"5e1d9a7c3f0b6248e9d1a4c7f2b8053196e4d7a0\",\"0c7b2e9f4a1d6385c0e9b2f7a4d18305e6c1b9f2\",\"f29a4d7c1e0b58369c2f7a4d1e8b0537a6c9f1e4\",\"7b1e4c9a2f8d05637e1c4a9f2d6b80531a7e4c92\",\"2d8f1a4c7e9b06352f8d1a4c7e0b9536a2f8d1c4\"]}")" "d.get('verdict')=='looks-random'"
+chk "seq: decimal counter crossing 99->100 -> sequential (base auto-detect)" "$(post /api/sequencer/analyze "{\"tokens\":[\"97\",\"98\",\"99\",\"100\",\"101\",\"102\"]}")" "d.get('sequential',{}).get('looksSequential')"
+
 echo "== WAF / CDN / LB detection =="
 chk "waf Cloudflare + Incapsula detected (multi-vendor)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "any(x['name']=='Cloudflare' for x in d.get('detections',[])) and any(x['name']=='Imperva Incapsula' for x in d.get('detections',[]))"
 chk "waf Cloudflare deduped to one row (cf-ray beats Server)" "$(post /api/waf/detect "{\"url\":\"$(url ${P[waf-detect]} '')\"}")" "len([x for x in d.get('detections',[]) if x['name']=='Cloudflare'])==1"

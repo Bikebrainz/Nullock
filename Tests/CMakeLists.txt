@@ -205,3 +205,11 @@ add_subdirectory(method_audit)
 # unsafe-inline, hostMatches' dot-guard, and buildRequest's CR/LF guards.
 # Run via: ctest -R header_audit -V
 add_subdirectory(header_audit)
+
+# Token-randomness sequencer -- the verdict is driven by EFFECTIVE keyspace
+# (bits/symbol * length), so a short hex token is brute-forceable however flat
+# its bytes while a long hex token is strong; base-auto-detected sequential
+# counters (incl. the 99->100 carry), the n=3 delta-threshold FP, strictly-
+# monotonic timestamps, and the constant-prefix LCS strip (pure logic).
+# Run via: ctest -R sequencer -V
+add_subdirectory(sequencer)

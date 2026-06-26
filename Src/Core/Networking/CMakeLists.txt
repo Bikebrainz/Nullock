@@ -49,6 +49,7 @@ add_library(Networking STATIC
     update_check.cpp
     update_check.hpp
     sequencer.cpp
+    sequencer_logic.cpp
     sequencer.hpp
     finding_enricher.cpp
     finding_enricher.hpp
