@@ -84,6 +84,27 @@ QByteArray ambiguousControl(const Request &req) {
     return out;
 }
 
+// Body-content tarpit control: a WELL-FORMED request -- ONE framing header
+// (Content-Length only, NO Transfer-Encoding), so it strands neither parser and
+// a normal server reads exactly the declared bytes and replies fast. But its
+// BODY is the CL.TE probe's body verbatim ("1\r\nA\r\nX"), trailing junk and
+// all. A WAF that tarpits on the suspicious body PATTERN (chunk-shaped data
+// with bytes after it) rather than on a CL/TE disagreement will stall on this
+// too -- letting the suppressor veto a probe delay that is really content-based
+// tarpitting, not a framing desync. CL = 7 = the full body length (1 0D 0A A
+// 0D 0A X), so there is genuinely no ambiguity for a conformant peer to act on.
+QByteArray tarpitControl(const Request &req) {
+    if (reqTainted(req)) return {};
+    const QByteArray body = "1\r\nA\r\nX";   // == clteProbe body, but as plain CL-framed content
+    QByteArray out = "POST " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
+    out += commonHeaders(req);
+    out += "Content-Type: application/octet-stream\r\n";
+    out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+    out += "Connection: close\r\n\r\n";
+    out += body;
+    return out;
+}
+
 // TE.CL: front-end uses Transfer-Encoding (forwards "0\r\n\r\n"), back-end uses
 // Content-Length=6 and blocks waiting for the remaining byte.
 QByteArray teclProbe(const Request &req) {

@@ -179,6 +179,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             if (!tlsErrors.isEmpty()) {
                 reason = tlsErrors.join("; ") + " :: " + reason;
             }
+            result.outcome = SocketOutcome::ConnectError;
             result.errorMessage = "TLS handshake failed: " + reason;
             socket->deleteLater();
             return result;
@@ -187,6 +188,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         socket = new QTcpSocket(this);
         socket->connectToHost(host, port);
         if (!socket->waitForConnected(kTimeoutMs)) {
+            result.outcome = SocketOutcome::ConnectError;
             result.errorMessage = "connect failed: " + socket->errorString();
             socket->deleteLater();
             return result;
@@ -195,6 +197,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
 
     socket->write(requestBytes);
     if (!socket->waitForBytesWritten(kTimeoutMs)) {
+        result.outcome = classifySocketOutcome(socket->error(), socket->state());
         result.errorMessage = "write failed: " + socket->errorString();
         socket->deleteLater();
         return result;
@@ -202,6 +205,11 @@ HttpClient::SendResult HttpClient::send(const QString &host,
 
     QByteArray headerBuf;
     if (!readHeaderBlock(socket, headerBuf)) {
+        // The desync-vs-quarantine distinction the smuggling probe relies on:
+        // a socket held OPEN and silent (Timeout) vs one the peer RST/closed
+        // (Reset) -- both surface here as "no headers", told apart by the
+        // socket's error()/state() at the moment of failure.
+        result.outcome = classifySocketOutcome(socket->error(), socket->state());
         result.errorMessage = "no response headers received";
         socket->deleteLater();
         return result;
@@ -226,6 +234,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         if (code >= 100 && code < 200 && guard < 8) {
             headerBuf = rest;                    // next response starts here
             if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
+                result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "no final response after 1xx";
                 socket->deleteLater();
                 return result;
@@ -270,6 +279,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     } else if (isChunked) {
         QByteArray decoded;
         if (!readChunkedBody(socket, rest, decoded, result.rawResponse)) {
+            result.outcome = classifySocketOutcome(socket->error(), socket->state());
             result.errorMessage = "chunked body read failed";
             socket->deleteLater();
             return result;
@@ -281,6 +291,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         if (result.parsed.body.size() < n) {
             QByteArray extra;
             if (!readExact(socket, n - result.parsed.body.size(), extra)) {
+                result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "content-length body read truncated";
                 socket->deleteLater();
                 return result;

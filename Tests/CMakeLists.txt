@@ -222,6 +222,15 @@ add_subdirectory(sequencer)
 # Run via: ctest -R port_scanner -V
 add_subdirectory(port_scanner)
 
+# HttpClient transport-outcome classifier -- classifySocketOutcome maps a failed
+# socket's error()/state() to {Ok,Timeout,Reset,ConnectError}. Locks the property
+# the smuggling FP fix depends on: a read TIMEOUT (socket open & silent -- a true
+# desync block) is distinct from a RESET/connect error (a hold-then-RST WAF
+# quarantine that mimics the same delay), and no reset/connect error ever grades
+# as Timeout (pure enum mapping; the live 15s read path can't be unit-timed).
+# Run via: ctest -R networking -V
+add_subdirectory(networking)
+
 # HTTP request smuggling -- the byte-exact probe builders: CL.TE (CL=6 + chunked
 # + "1\r\nA\r\nX"), TE.CL (CL=6 + chunked + "0\r\n\r\nX"), the valid-ambiguous
 # control (CL=5 + "0\r\n\r\n", strands neither parser), Connection: close on

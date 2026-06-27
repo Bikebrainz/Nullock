@@ -2,6 +2,8 @@
 add_library(Networking STATIC
     networking.cpp
     networking.hpp
+    networking_outcome.cpp
+    socket_outcome.hpp
     repeater.cpp
     repeater.hpp
     intruder.cpp

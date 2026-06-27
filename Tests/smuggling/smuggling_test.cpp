@@ -9,6 +9,9 @@
 //     5-byte "0\r\n\r\n" terminator, a CL=6 back-end blocks for the 6th byte);
 //   - ambiguousControl: CL=5 + chunked + body "0\r\n\r\n" (both parsers agree --
 //     the tarpit control must NOT strand either);
+//   - tarpitControl: CL=7 + NO chunked + body "1\r\nA\r\nX" (well-formed, single
+//     framing header, but carries the probe-shaped junk body for a content-keyed
+//     WAF tarpit to trip on);
 //   - baselineRequest: a well-formed POST with a matching Content-Length;
 //   - every probe carries Connection: close (the safety choice);
 //   - a CR/LF in basePath/host ABORTS the build (returns {}).
@@ -68,6 +71,23 @@ int main(int argc, char **argv) {
         chk("control: Connection: close (safety)", p.contains("Connection: close\r\n"));
         chk("control: body is exactly '0\\r\\n\\r\\n' (complete, no trailing junk)",
             p.endsWith("\r\n\r\n0\r\n\r\n"));
+    }
+
+    // ===== body-content tarpit control (well-formed, junk-shaped body) ===
+    {
+        const QByteArray p = tarpitControl(mk());
+        chk("tarpit: POST request line", p.startsWith("POST / HTTP/1.1\r\n"));
+        // Single framing header: CL=7 (the full body length), NO Transfer-
+        // Encoding -- so it strands neither parser (not a desync), it just
+        // carries the probe-shaped junk body for a content-keyed WAF to trip on.
+        chk("tarpit: Content-Length is 7 (full body, no ambiguity)", p.contains("Content-Length: 7\r\n"));
+        chk("tarpit: NO Transfer-Encoding (single framing header)", !p.contains("Transfer-Encoding"));
+        chk("tarpit: Connection: close (safety)", p.contains("Connection: close\r\n"));
+        chk("tarpit: body is the CL.TE probe body '1\\r\\nA\\r\\nX' verbatim",
+            p.endsWith("\r\n\r\n1\r\nA\r\nX"));
+        // CR/LF taint aborts this builder too.
+        Request bp = mk(); bp.basePath = "/a\r\nEvil: 1";
+        chk("tarpit: CRLF basePath -> build aborts (empty)", tarpitControl(bp).isEmpty());
     }
 
     // ===== baseline is a well-formed POST ===============================

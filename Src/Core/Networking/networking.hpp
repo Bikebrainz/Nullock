@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proxy_server.hpp"
+#include "socket_outcome.hpp"
 #include "tls_profile.hpp"
 
 #include <QByteArray>
@@ -21,6 +22,13 @@ public:
 
     struct SendResult {
         bool       ok = false;
+        // How the transport leg ended. Defaults to Ok and is only meaningful
+        // when ok == false. Added so callers (the smuggling timing probe) can
+        // tell a socket that stayed OPEN and silent (Timeout -- a true desync
+        // block) from one the peer DROPPED (Reset -- a WAF quarantine) that
+        // produces the same delay. Purely additive: existing consumers that
+        // read ok/errorMessage/rawResponse/parsed are unaffected.
+        SocketOutcome outcome = SocketOutcome::Ok;
         QString    errorMessage;
         QByteArray rawResponse;  // status line + headers + body, as received
         Nullock::Proxy::HttpResponse parsed;
