@@ -107,9 +107,11 @@ Result discover(const Request &reqIn) {
     //    depth, catch-all 200 at another) look "unstable" and disabled every
     //    soft-404 suppression. A failed second probe leaves the baseline
     //    UNcorroborated, so it must not be trusted as reliable.
-    const auto c1 = get(base + "/" + randToken());
+    const QString t1 = base + "/" + randToken();
+    const auto c1 = get(t1);
     if (!c1.ok) { result.error = "calibration failed: " + c1.errorMessage; return result; }
-    const auto c2 = get(base + "/" + randToken());
+    const QString t2 = base + "/" + randToken();
+    const auto c2 = get(t2);
 
     CalibProfile cal;
     const int s1 = c1.parsed.statusCode;
@@ -127,6 +129,18 @@ Result discover(const Request &reqIn) {
     cal.softLen = (l1 + l2) / 2;
     cal.jitter  = std::max(64, std::abs(l1 - l2) * 2);
 
+    // Path-masked body fingerprint of the soft-404. Trust it only when BOTH
+    // calibration bodies (each masked with ITS OWN random path) canonicalise to
+    // the SAME hash -- i.e. the not-found page is a stable template. Un-maskable
+    // per-request variance (a random CSRF token, a rotating banner) makes the two
+    // differ, leaving haveBodyHash false so classify() falls back to the length
+    // band rather than over-suppressing on a noisy hash.
+    if (c2.ok) {
+        const quint64 h1 = bodyFingerprint(canonicalizeBody(QString::fromLatin1(c1.parsed.body), t1));
+        const quint64 h2 = bodyFingerprint(canonicalizeBody(QString::fromLatin1(c2.parsed.body), t2));
+        if (h1 == h2) { cal.softBodyHash = h1; cal.haveBodyHash = true; }
+    }
+
     result.calibrationReliable = cal.reliable;
     result.softNotFoundStatus  = cal.reliable ? s1 : 0;
     result.softNotFoundSize    = cal.softLen;
@@ -137,13 +151,18 @@ Result discover(const Request &reqIn) {
         QString rel = w; while (rel.startsWith('/')) rel.remove(0, 1);
         if (rel.isEmpty()) continue;
         ++result.wordsTried;
-        const auto r = get(base + "/" + rel);
+        const QString full = base + "/" + rel;
+        const auto r = get(full);
         if (!r.ok) continue;
+        quint64 candHash = 0;
+        const bool candHasHash = cal.haveBodyHash;
+        if (candHasHash)
+            candHash = bodyFingerprint(canonicalizeBody(QString::fromLatin1(r.parsed.body), full));
         const QString note = classify(r.parsed.statusCode, bodyLen(r.parsed),
-                                      headerValue(r.parsed, "Location"), cal);
+                                      headerValue(r.parsed, "Location"), cal, candHash, candHasHash);
         if (note.isEmpty()) continue;
         Hit hit;
-        hit.path = base + "/" + rel;
+        hit.path = full;
         hit.status = r.parsed.statusCode;
         hit.size = bodyLen(r.parsed);
         hit.location = headerValue(r.parsed, "Location");

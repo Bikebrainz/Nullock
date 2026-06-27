@@ -106,6 +106,66 @@ int main(int argc, char **argv) {
         chk("unreliable: a 301 -> redirect (not a soft status)", classify(301, 0, "/x", c) == "redirect");
     }
 
+    // ===== canonicalizeBody + bodyFingerprint (reflective soft-404) ======
+    // A templated 404 that echoes the requested path and a per-request id.
+    auto soft404 = [](const QString &path) {
+        return QStringLiteral("<html><body><h1>Not Found</h1><p>The page ") + path
+             + QStringLiteral(" does not exist. Request id 8472913.</p></body></html>");
+    };
+    {
+        chk("canonicalize: digit runs collapse to one placeholder",
+            canonicalizeBody("id=12345 hits=6789", "/x") == canonicalizeBody("id=9 hits=0", "/x"));
+        chk("canonicalize: the requested path is masked (two paths -> same form)",
+            canonicalizeBody("not found: /admin/panel", "/admin/panel")
+            == canonicalizeBody("not found: /api/v2/users", "/api/v2/users"));
+        chk("fingerprint: deterministic for the same input",
+            bodyFingerprint("abc") == bodyFingerprint("abc"));
+        chk("fingerprint: differs for materially different content",
+            bodyFingerprint("the quick brown fox") != bodyFingerprint("the quick brown cat"));
+        chk("fingerprint: two reflective soft-404s for different paths share a fingerprint",
+            bodyFingerprint(canonicalizeBody(soft404("/nl404aaaa"), "/nl404aaaa"))
+            == bodyFingerprint(canonicalizeBody(soft404("/nl404bbbbbb"), "/nl404bbbbbb")));
+    }
+
+    // ===== classify: body-fingerprint overrides the length band ==========
+    {
+        CalibProfile c = cal200(500);
+        c.softBodyHash = bodyFingerprint(canonicalizeBody(soft404("/nl404aaaa"), "/nl404aaaa"));
+        c.haveBodyHash = true;
+
+        // (1) FP-flood fix: a reflective soft-404 whose echoed path makes its LENGTH
+        // diverge wildly from the soft size is still recognised as the soft page by
+        // its matching fingerprint -> suppressed (not a bogus hit).
+        const QString refl = soft404("/administrator-backup-portal-2024");
+        const quint64 hRefl = bodyFingerprint(canonicalizeBody(refl, "/administrator-backup-portal-2024"));
+        chk("fingerprint: a length-divergent reflective soft-404 is SUPPRESSED by the matching hash (FP-flood fix)",
+            classify(200, 99999, "", c, hRefl, true).isEmpty());
+
+        // (2) same-length FN fix: a REAL resource whose body size happens to equal
+        // the soft-404 size (within jitter) is reported because its fingerprint
+        // differs -- the length band alone would have silently dropped it.
+        const QString real = QStringLiteral("<html><body><h1>Admin Console</h1><form>login</form></body></html>");
+        const quint64 hReal = bodyFingerprint(canonicalizeBody(real, "/admin"));
+        chk("fingerprint: a real resource AT the soft length is ok-distinct (hash differs) (same-length FN fix)",
+            classify(200, 500, "", c, hReal, true) == "ok-distinct");
+
+        // (3) the fingerprint only governs the 200 path; a 301/403 is unaffected.
+        chk("fingerprint: a 301 still classifies as redirect regardless of body hash",
+            classify(301, 0, "/x", c, hReal, true) == "redirect");
+    }
+    {
+        // (4) fallback: when the profile has NO reliable fingerprint (noisy 404),
+        // the length band still governs even if the caller supplies a candidate hash.
+        const CalibProfile noisy = cal200(500);   // haveBodyHash defaults false
+        chk("fingerprint: no profile hash -> within-jitter 200 suppressed by length",
+            classify(200, 510, "", noisy, 12345ULL, true).isEmpty());
+        chk("fingerprint: no profile hash -> beyond-jitter 200 is ok-distinct by length",
+            classify(200, 900, "", noisy, 12345ULL, true) == "ok-distinct");
+        // (5) backward-compat: the 4-arg form (no candidate hash) is unchanged.
+        chk("fingerprint: 4-arg classify still length-only (within jitter suppressed)",
+            classify(200, 510, "", cal200(500)).isEmpty());
+    }
+
     // ===== forbiddenSaturated (WAF pattern-blocking) =====================
     chk("saturated: 50/100 forbidden -> true", forbiddenSaturated(50, 100));
     chk("saturated: 40/100 forbidden -> true (at threshold)", forbiddenSaturated(40, 100));

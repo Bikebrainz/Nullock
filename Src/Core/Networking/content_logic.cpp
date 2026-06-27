@@ -27,7 +27,43 @@ QString normBase(const QString &p) {
     return b;
 }
 
-QString classify(int status, int bodyLen, const QString &location, const CalibProfile &cal) {
+// Canonicalise a response body so a REFLECTIVE / templated soft-404 -- one that
+// echoes the requested path ("The page /nl404abc was not found") and/or carries
+// per-request noise (timestamps, hit counters, request ids) -- collapses to a
+// single stable form. We mask the exact path we requested (and its last segment,
+// since 404 pages often echo just the leaf) with a sentinel, then collapse every
+// run of digits to one '0'. Two soft-404s for DIFFERENT paths then canonicalise
+// identically, while a genuinely different resource does not. Pure.
+QString canonicalizeBody(const QString &body, const QString &probePath) {
+    QString s = body;
+    if (!probePath.isEmpty()) {
+        s.replace(probePath, QStringLiteral("\x01P\x01"));
+        const QString seg = probePath.section('/', -1);     // the leaf segment
+        if (!seg.isEmpty() && seg != probePath)
+            s.replace(seg, QStringLiteral("\x01P\x01"));
+    }
+    QString out;
+    out.reserve(s.size());
+    bool inDigits = false;
+    for (const QChar ch : s) {
+        if (ch.isDigit()) { if (!inDigits) { out += QLatin1Char('0'); inDigits = true; } }
+        else { out += ch; inDigits = false; }
+    }
+    return out;
+}
+
+// A stable 64-bit fingerprint of a (canonicalised) body. FNV-1a over the UTF-8
+// bytes -- deliberately NOT qHash(QString), which in Qt6 is randomly seeded per
+// process and so would never match across the calibration and probe responses.
+quint64 bodyFingerprint(const QString &canonicalBody) {
+    const QByteArray b = canonicalBody.toUtf8();
+    quint64 h = 1469598103934665603ULL;                      // FNV-1a offset basis
+    for (unsigned char c : b) { h ^= c; h *= 1099511628211ULL; }   // FNV-1a prime
+    return h;
+}
+
+QString classify(int status, int bodyLen, const QString &location, const CalibProfile &cal,
+                 quint64 candBodyHash, bool candHasHash) {
     const int st = status;
 
     // Redirects. A real directory commonly redirects (/admin -> /admin/), so a
@@ -52,7 +88,18 @@ QString classify(int status, int bodyLen, const QString &location, const CalibPr
     if (st == 200) {
         // Baseline isn't a 200-soft-404 -> any 200 is a real resource.
         if (!cal.softStatuses.contains(200)) return QStringLiteral("ok");
-        // 200-soft-404 server -> only a materially different body counts.
+        // 200-soft-404 server. When a RELIABLE path-masked body fingerprint exists
+        // (both calibration probes canonicalised to the same body), it is
+        // authoritative and the length band is bypassed: a candidate whose masked
+        // body matches the soft page IS the soft-404 -- whatever its length (this
+        // kills the reflective-404 false-positive flood where the echoed path makes
+        // every candidate's length differ); a candidate whose masked body DIFFERS
+        // is a real resource -- even at the soft-404's exact length (this catches
+        // the same-length real resource the length band silently dropped).
+        if (cal.haveBodyHash && candHasHash)
+            return candBodyHash == cal.softBodyHash ? QString() : QStringLiteral("ok-distinct");
+        // No reliable fingerprint (e.g. un-maskable per-request variance) -> fall
+        // back to the body-size band.
         return std::abs(bodyLen - cal.softLen) > cal.jitter ? QStringLiteral("ok-distinct") : QString();
     }
 

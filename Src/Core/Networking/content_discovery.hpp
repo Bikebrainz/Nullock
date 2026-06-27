@@ -64,6 +64,12 @@ struct CalibProfile {
     int       jitter  = 64;    // body-size tolerance band (>= 64)
     QString   softLocation;    // the soft-404 redirect target, when soft is a 3xx
     bool      reliable = false;// the two same-depth probes returned the same status
+    quint64   softBodyHash = 0;// path-masked fingerprint of the soft-404 body
+    bool      haveBodyHash = false; // both calibration bodies masked to the SAME
+                                    // fingerprint -> the soft-404 is a stable
+                                    // template, so the fingerprint is trustworthy
+                                    // (un-maskable per-request noise leaves this
+                                    // false and classify() falls back to length)
 };
 
 // Calibrate the not-found baseline, then probe each wordlist path and report
@@ -92,8 +98,20 @@ QStringList defaultWordlist();
 //                         ("ok"/"ok-distinct"/"redirect"/"auth-gated").
 //   forbiddenSaturated -- a 401/403 fraction high enough to read as WAF
 //                         pattern-blocking rather than many real resources.
+//   canonicalizeBody   -- mask the requested path (+ its leaf) and collapse digit
+//                         runs so a reflective/templated soft-404 canonicalises
+//                         to one stable form regardless of the path it echoes.
+//   bodyFingerprint    -- a deterministic FNV-1a 64-bit hash of a canonicalised
+//                         body (NOT qHash, which Qt6 seeds randomly per process).
 QString normBase(const QString &p);
-QString classify(int status, int bodyLen, const QString &location, const CalibProfile &cal);
+QString canonicalizeBody(const QString &body, const QString &probePath);
+quint64 bodyFingerprint(const QString &canonicalBody);
+// classify(): candBodyHash/candHasHash carry the candidate's path-masked body
+// fingerprint. When the profile ALSO has a reliable fingerprint, it overrides the
+// length band for a 200 under a 200-soft-404 server (defaults keep the old
+// length-only behaviour for callers that don't fingerprint).
+QString classify(int status, int bodyLen, const QString &location, const CalibProfile &cal,
+                 quint64 candBodyHash = 0, bool candHasHash = false);
 bool    forbiddenSaturated(int forbiddenHits, int wordsProbed);
 
 } // namespace Nullock::Core::ContentDiscovery
