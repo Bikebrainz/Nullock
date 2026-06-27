@@ -111,6 +111,53 @@ int main(int argc, char **argv) {
         chk("build: CR/LF host -> aborts (empty)", buildHandshake(bh, "https://evil.example", "k==").isEmpty());
     }
 
+    // ===== originVariants (the allow-list bypass sweep, FN fix) ==========
+    {
+        const QStringList v = originVariants("victim.tld");
+        chk("originVariants: non-empty for a real host", !v.isEmpty());
+        // endsWith(host) bug: a subdomain whose host ends with the target slips by.
+        chk("originVariants: a subdomain ends with the target host (endsWith bypass)",
+            v.contains("https://attacker-cswsh.victim.tld"));
+        // endsWith without a dot anchor: a sibling label "evilvictim.tld".
+        chk("originVariants: a no-dot sibling ends with the target host (missing dot anchor)",
+            v.contains("https://evilvictim.tld"));
+        // startsWith(host) bug: the target as the left-most label.
+        chk("originVariants: target as the left-most label (startsWith bypass)",
+            v.contains("https://victim.tld.attacker-cswsh.test"));
+        // contains(host) bug: the target embedded in the middle.
+        chk("originVariants: target embedded in the middle (contains bypass)",
+            v.contains("https://evil-victim.tld-cswsh.test"));
+        chk("originVariants: empty host -> empty list", originVariants("").isEmpty());
+        // The endsWith variant must NOT equal the foreign sentinel -- it has to be
+        // a DIFFERENT origin or the sweep adds nothing over the single attacker test.
+        chk("originVariants: distinct from the foreign sentinel",
+            !v.contains("https://nullock-cswsh.test"));
+    }
+
+    // ===== stripCredentials (the authed-baseline confirm, FP fix) =======
+    {
+        using HL = QList<QPair<QString, QString>>;
+        HL h{{"Cookie", "session=abc"}, {"X-Trace", "1"}, {"Authorization", "Bearer x"}, {"Accept", "*/*"}};
+        const HL s = stripCredentials(h);
+        bool hasCookie = false, hasAuth = false, hasTrace = false, hasAccept = false;
+        for (const auto &p : s) {
+            if (p.first.compare("Cookie", Qt::CaseInsensitive) == 0) hasCookie = true;
+            if (p.first.compare("Authorization", Qt::CaseInsensitive) == 0) hasAuth = true;
+            if (p.first == "X-Trace") hasTrace = true;
+            if (p.first == "Accept") hasAccept = true;
+        }
+        chk("stripCredentials: drops Cookie", !hasCookie);
+        chk("stripCredentials: drops Authorization", !hasAuth);
+        chk("stripCredentials: keeps non-credential headers (X-Trace)", hasTrace);
+        chk("stripCredentials: keeps non-credential headers (Accept)", hasAccept);
+        chk("stripCredentials: a credential-free list is unchanged in size",
+            stripCredentials(HL{{"Accept", "*/*"}}).size() == 1);
+        chk("stripCredentials: after strip, hasCredential() is false",
+            !hasCredential(stripCredentials(h)));
+        chk("stripCredentials: case-insensitive (COOKIE dropped)",
+            stripCredentials(HL{{"COOKIE", "s=1"}}).isEmpty());
+    }
+
     std::fprintf(stderr, "ws_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

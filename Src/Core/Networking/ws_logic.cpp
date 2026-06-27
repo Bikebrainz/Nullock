@@ -43,6 +43,32 @@ bool hasCredential(const QList<QPair<QString, QString>> &headers) {
     return false;
 }
 
+// Crafted Origins that defeat a naive host allow-list. Testing only one foreign
+// sentinel (e.g. https://nullock-cswsh.test) and concluding "refused -> Origin
+// validated" is a false negative against the common substring/affix checks; each
+// variant here targets a specific buggy comparison (see the header).
+QStringList originVariants(const QString &host) {
+    QStringList out;
+    if (host.isEmpty()) return out;
+    out << QStringLiteral("https://attacker-cswsh.") + host         // endsWith(host): a subdomain
+        << QStringLiteral("https://evil") + host                    // endsWith w/o dot anchor: sibling label
+        << QStringLiteral("https://") + host + QStringLiteral(".attacker-cswsh.test")  // startsWith(host)
+        << QStringLiteral("https://evil-") + host + QStringLiteral("-cswsh.test");     // contains(host)
+    return out;
+}
+
+// Re-issuing an accepted cross-origin handshake with these stripped tells a
+// session-gated socket (baseline now refused -> CONFIRMED hijack) apart from a
+// session-blind public socket (baseline still 101 -> just Origin-not-validated).
+QList<QPair<QString, QString>> stripCredentials(const QList<QPair<QString, QString>> &headers) {
+    QList<QPair<QString, QString>> out;
+    for (const auto &h : headers)
+        if (h.first.compare("Cookie", Qt::CaseInsensitive) != 0
+            && h.first.compare("Authorization", Qt::CaseInsensitive) != 0)
+            out.append(h);
+    return out;
+}
+
 // Parse the numeric status from the first line of a response header block.
 int statusFromHeaderBlock(const QByteArray &headerBlock) {
     const int firstEol = headerBlock.indexOf("\r\n");

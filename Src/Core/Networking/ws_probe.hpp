@@ -20,6 +20,7 @@
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 
 namespace Nullock::Core::WsProbe {
 
@@ -65,5 +66,19 @@ QByteArray buildHandshake(const Request &req, const QString &origin, const QByte
 // Did the caller supply an ambient credential (Cookie / Authorization)? A
 // cross-origin 101 is only a CONFIRMED hijack when a session rides along.
 bool hasCredential(const QList<QPair<QString, QString>> &headers);
+// Host-derived Origin-validation bypass variants: crafted Origins that defeat a
+// naive allow-list a foreign sentinel alone would miss --
+//   endsWith(host)          -> "https://attacker-cswsh.<host>" (a subdomain)
+//   endsWith w/o dot-anchor -> "https://evil<host>"            (a sibling label)
+//   startsWith(host)        -> "https://<host>.attacker-cswsh.test"
+//   contains(host)          -> "https://evil-<host>-cswsh.test"
+// Sweeping these turns "endpoint refused our one sentinel -> Origin validated"
+// (a false negative) into a caught bypass. Empty host -> empty list. Pure.
+QStringList originVariants(const QString &host);
+// Drop ambient credentials (Cookie / Authorization) from a header list -- used
+// to re-issue an accepted cross-origin handshake WITHOUT the session, so a
+// socket that ignores the credential (and would 101 for anyone) is graded a
+// lead, not a confirmed credentialed hijack. Pure.
+QList<QPair<QString, QString>> stripCredentials(const QList<QPair<QString, QString>> &headers);
 
 } // namespace Nullock::Core::WsProbe
