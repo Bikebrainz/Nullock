@@ -255,6 +255,12 @@ add_subdirectory(ws_probe)
 # Run via: ctest -R tls_inspect -V
 add_subdirectory(tls_inspect)
 
+# TLS-profile (browser-mimic ClientHello shaping) pure logic: the name<->profile
+# mapping, the browser cipher lists, and the TLS-1.3-suite split that gates the
+# partial-cipher-list soundness fix. Links tls_profile_logic.cpp against Qt6::Core.
+# Run via: ctest -R tls_profile -V
+add_subdirectory(tls_profile)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

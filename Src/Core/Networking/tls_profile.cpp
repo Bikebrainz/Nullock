@@ -14,85 +14,14 @@
 // implications for cert verification (R5), interception, and SChannel
 // vs OpenSSL backend differences. Filed for v2.
 
+// fromName(), name(), cipherNames(), isTls13SuiteName() and settableCipherNames()
+// are pure and live in tls_profile_logic.cpp so they can be unit-tested against
+// Qt6::Core alone. This TU keeps apply()/resolveCiphers()/backendIsOpenSsl(), which
+// pull QSslConfiguration/QSslCipher/QSslSocket (the Qt Network chain).
+
 namespace Nullock::Core::TlsProfile {
 
-Profile fromName(const QString &name) {
-    const QString n = name.toLower();
-    if (n == "chrome" || n == "chrome130")  return Profile::Chrome130;
-    if (n == "firefox" || n == "firefox131") return Profile::Firefox131;
-    return Profile::None;
-}
-
-QString name(Profile p) {
-    switch (p) {
-        case Profile::Chrome130:  return "chrome130";
-        case Profile::Firefox131: return "firefox131";
-        case Profile::None:       return "none";
-    }
-    return "none";
-}
-
 namespace {
-
-// Chrome 130's cipher list in handshake order. Pulled from real ClientHello
-// capture; refresh as Chrome rolls. JA3 cipher field is derived from
-// this list.
-//   TLS_AES_128_GCM_SHA256
-//   TLS_AES_256_GCM_SHA384
-//   TLS_CHACHA20_POLY1305_SHA256
-//   ECDHE-ECDSA-AES128-GCM-SHA256
-//   ECDHE-RSA-AES128-GCM-SHA256
-//   ECDHE-ECDSA-AES256-GCM-SHA384
-//   ECDHE-RSA-AES256-GCM-SHA384
-//   ECDHE-ECDSA-CHACHA20-POLY1305
-//   ECDHE-RSA-CHACHA20-POLY1305
-//   ECDHE-RSA-AES128-SHA
-//   ECDHE-RSA-AES256-SHA
-//   AES128-GCM-SHA256
-//   AES256-GCM-SHA384
-//   AES128-SHA
-//   AES256-SHA
-const QStringList &chrome130Ciphers() {
-    static const QStringList kList = {
-        "TLS_AES_128_GCM_SHA256",
-        "TLS_AES_256_GCM_SHA384",
-        "TLS_CHACHA20_POLY1305_SHA256",
-        "ECDHE-ECDSA-AES128-GCM-SHA256",
-        "ECDHE-RSA-AES128-GCM-SHA256",
-        "ECDHE-ECDSA-AES256-GCM-SHA384",
-        "ECDHE-RSA-AES256-GCM-SHA384",
-        "ECDHE-ECDSA-CHACHA20-POLY1305",
-        "ECDHE-RSA-CHACHA20-POLY1305",
-        "ECDHE-RSA-AES128-SHA",
-        "ECDHE-RSA-AES256-SHA",
-        "AES128-GCM-SHA256",
-        "AES256-GCM-SHA384",
-        "AES128-SHA",
-        "AES256-SHA",
-    };
-    return kList;
-}
-
-// Firefox 131 cipher list. Differs slightly in order from Chrome --
-// ChaCha20-Poly1305 ranked higher, no plain RSA at all.
-const QStringList &firefox131Ciphers() {
-    static const QStringList kList = {
-        "TLS_AES_128_GCM_SHA256",
-        "TLS_CHACHA20_POLY1305_SHA256",
-        "TLS_AES_256_GCM_SHA384",
-        "ECDHE-ECDSA-AES128-GCM-SHA256",
-        "ECDHE-RSA-AES128-GCM-SHA256",
-        "ECDHE-ECDSA-CHACHA20-POLY1305",
-        "ECDHE-RSA-CHACHA20-POLY1305",
-        "ECDHE-ECDSA-AES256-GCM-SHA384",
-        "ECDHE-RSA-AES256-GCM-SHA384",
-        "ECDHE-ECDSA-AES256-SHA",
-        "ECDHE-ECDSA-AES128-SHA",
-        "ECDHE-RSA-AES128-SHA",
-        "ECDHE-RSA-AES256-SHA",
-    };
-    return kList;
-}
 
 QList<QSslCipher> resolveCiphers(const QStringList &names) {
     QList<QSslCipher> out;
@@ -118,26 +47,30 @@ bool backendIsOpenSsl() {
 } // namespace
 
 bool apply(QSslConfiguration &cfg, Profile p) {
-    if (p == Profile::None) return true;
+    if (p == Profile::None) return true;        // no shaping requested -> no-op success
 
-    const QStringList *names = nullptr;
-    switch (p) {
-        case Profile::Chrome130:  names = &chrome130Ciphers(); break;
-        case Profile::Firefox131: names = &firefox131Ciphers(); break;
-        default: return false;
-    }
-    const QList<QSslCipher> ciphers = resolveCiphers(*names);
-    if (ciphers.isEmpty()) {
-        qWarning() << "tls-profile: backend doesn't recognize any cipher in"
-                   << name(p) << "-- profile not applied";
+    const QStringList full = cipherNames(p);
+    if (full.isEmpty()) return false;           // unknown profile -> not shaped
+
+    // Qt 6 can only pin TLS <= 1.2 ciphers (there is no setCiphersuites()); the
+    // TLS 1.3 suites are offered by the backend's default regardless. Require the
+    // SETTABLE (1.2) names to resolve COMPLETELY: a PARTIAL cipher list produces a
+    // fingerprint that matches neither the browser nor Qt's default -- MORE
+    // anomalous, the opposite of the goal -- so on any miss we leave cfg's ciphers
+    // at the Qt default and report "not shaped" rather than ship a mangled list.
+    const QStringList settable = settableCipherNames(full);
+    const QList<QSslCipher> ciphers = resolveCiphers(settable);
+    if (ciphers.size() != settable.size()) {
+        qWarning() << "tls-profile:" << name(p) << "-- backend resolved only"
+                   << ciphers.size() << "of" << settable.size()
+                   << "settable (TLS<=1.2) ciphers; leaving the default cipher list"
+                   << "(a partial list is MORE fingerprintable). Profile NOT applied.";
         return false;
     }
     cfg.setCiphers(ciphers);
 
-    // Protocol: both profiles want 1.2 minimum, prefer 1.3.
+    // Protocol floor 1.2 (prefer 1.3); ALPN h2 then http/1.1 (modern browsers).
     cfg.setProtocol(QSsl::TlsV1_2OrLater);
-
-    // ALPN order: h2 then http/1.1 for both profiles (modern browsers).
     cfg.setAllowedNextProtocols({
         QByteArrayLiteral("h2"),
         QByteArrayLiteral("http/1.1"),
@@ -145,9 +78,9 @@ bool apply(QSslConfiguration &cfg, Profile p) {
 
     if (!backendIsOpenSsl()) {
         qWarning() << "tls-profile:" << name(p)
-                   << "-- TLS backend isn't OpenSSL (likely SChannel on Windows);"
-                   << "cipher ORDER will be ignored. JA3 fingerprint not fully shaped.";
-        // Return true anyway -- we still applied what we could.
+                   << "-- TLS backend isn't OpenSSL (likely SChannel on Windows); cipher"
+                      " ORDER is ignored, so the JA3 fingerprint is NOT shaped.";
+        return false;   // contract: true ONLY when the fingerprint is actually shaped
     }
     return true;
 }

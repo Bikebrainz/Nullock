@@ -57,6 +57,7 @@ add_library(Networking STATIC
     crawler_logic.hpp
     crawler.hpp
     tls_profile.cpp
+    tls_profile_logic.cpp
     tls_profile.hpp
     update_check.cpp
     update_check.hpp
