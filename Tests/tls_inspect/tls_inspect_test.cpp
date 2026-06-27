@@ -201,6 +201,33 @@ int main(int argc, char **argv) {
             weakSignatureFinding("", sev, det).isEmpty());
     }
 
+    // ===== untrustedChainFinding: compose from chain-trust categories ====
+    {
+        QString sev, det;
+        chk("chain: a validating chain (no categories) -> sound (no finding)",
+            untrustedChainFinding(QStringList{}, sev, det).isEmpty());
+        chk("chain: an unrecognized category -> sound (no false positive)",
+            untrustedChainFinding(QStringList{ "hostname-mismatch" }, sev, det).isEmpty());
+        chk("chain: self-signed-in-chain -> tls-untrusted-chain, medium",
+            untrustedChainFinding(QStringList{ "self-signed-in-chain" }, sev, det) == "tls-untrusted-chain"
+            && sev == "medium");
+        chk("chain: detail names the self-signed root", det.contains("self-signed"));
+        chk("chain: incomplete-chain -> tls-untrusted-chain",
+            untrustedChainFinding(QStringList{ "incomplete-chain" }, sev, det) == "tls-untrusted-chain");
+        chk("chain: incomplete-chain detail mentions a missing issuer/intermediate",
+            det.contains("incomplete") || det.contains("missing"));
+        chk("chain: untrusted-root -> tls-untrusted-chain",
+            untrustedChainFinding(QStringList{ "untrusted-root" }, sev, det) == "tls-untrusted-chain");
+        chk("chain: ca-invalid -> tls-untrusted-chain",
+            untrustedChainFinding(QStringList{ "ca-invalid" }, sev, det) == "tls-untrusted-chain");
+        // Multiple distinct problems compose into one finding listing each.
+        const QString k = untrustedChainFinding(
+            QStringList{ "self-signed-in-chain", "incomplete-chain" }, sev, det);
+        chk("chain: multiple problems compose one finding", k == "tls-untrusted-chain");
+        chk("chain: composed detail lists both problems",
+            det.contains("self-signed") && (det.contains("incomplete") || det.contains("missing")));
+    }
+
     std::fprintf(stderr, "tls_inspect_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

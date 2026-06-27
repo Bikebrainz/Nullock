@@ -282,4 +282,29 @@ QString weakSignatureFinding(const QString &oid, QString &severity, QString &det
     return QString();
 }
 
+QString untrustedChainFinding(const QStringList &categories, QString &severity, QString &detail) {
+    severity.clear();
+    detail.clear();
+    // `categories` are normalized chain-trust problems the I/O side derived from the
+    // explicit chain verification (it maps Qt's QSslError values to these tokens and
+    // drops the ones reported elsewhere: a hostname mismatch, an expired/not-yet-
+    // valid cert, and a self-signed LEAF -- so this never double-reports them).
+    QStringList msgs;
+    if (categories.contains(QLatin1String("self-signed-in-chain")))
+        msgs << QStringLiteral("a self-signed certificate is in the chain (an untrusted private root)");
+    if (categories.contains(QLatin1String("incomplete-chain")))
+        msgs << QStringLiteral("the chain is incomplete -- an intermediate/issuer certificate is missing");
+    if (categories.contains(QLatin1String("untrusted-root")))
+        msgs << QStringLiteral("the chain terminates in a root not in the system trust store");
+    if (categories.contains(QLatin1String("ca-invalid")))
+        msgs << QStringLiteral("a certificate in the chain is not a valid CA for the issuance it performed");
+    if (msgs.isEmpty()) return QString();          // no recognized chain-trust problem -> sound
+    severity = QStringLiteral("medium");
+    detail = QStringLiteral("the presented certificate chain does NOT validate against the system "
+                            "trust store: ") + msgs.join(QStringLiteral("; "))
+           + QStringLiteral(" -- a browser would refuse this connection (possible MITM, "
+                            "mis-deployed intermediate, or a private/self-managed CA)");
+    return QStringLiteral("tls-untrusted-chain");
+}
+
 } // namespace Nullock::Core::TlsInspect

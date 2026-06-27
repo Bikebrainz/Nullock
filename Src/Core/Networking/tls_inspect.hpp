@@ -87,5 +87,11 @@ QString cipherWeakness(const QString &cipherName, int usedBits, QString &detail)
 bool    isOverbroadWildcard(const QString &certName);
 QString signatureAlgorithmOid(const QByteArray &der);
 QString weakSignatureFinding(const QString &oid, QString &severity, QString &detail);
+//   untrustedChainFinding -- compose a "tls-untrusted-chain" finding from the
+//                        normalized chain-trust categories ("self-signed-in-chain",
+//                        "incomplete-chain", "untrusted-root", "ca-invalid") the
+//                        I/O side derives from explicit chain verification; "" when
+//                        no recognized problem is present (a chain that validates).
+QString untrustedChainFinding(const QStringList &categories, QString &severity, QString &detail);
 
 } // namespace Nullock::Core::TlsInspect

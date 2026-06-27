@@ -5,6 +5,7 @@
 #include <QSslCertificate>
 #include <QSslCipher>
 #include <QSslConfiguration>
+#include <QSslError>
 #include <QSslKey>
 #include <QSslSocket>
 
@@ -135,6 +136,55 @@ Result inspect(const Request &req) {
         const QString sigKind =
             weakSignatureFinding(signatureAlgorithmOid(cert.toDer()), sigSev, sigDetail);
         if (!sigKind.isEmpty()) add(sigKind, sigSev, sigDetail);
+    }
+    // Untrusted / incomplete CA chain. VerifyNone let the handshake complete, so
+    // verify the PRESENTED chain against the system trust store explicitly (no
+    // extra I/O) and report a chain that wouldn't validate in a browser. A leaf
+    // self-signed cert, a hostname mismatch, and expiry are reported separately, so
+    // those QSslError categories are deliberately not mapped here (no double report).
+    //
+    // FP GUARD: QSslCertificate::verify() validates against the DEFAULT
+    // QSslConfiguration's CA list. With the OpenSSL backend on Windows that list is
+    // NOT auto-populated from the system ROOT store, so without this every chain --
+    // including a valid public CA -- would come back UnableToGetLocalIssuer and
+    // every host would be falsely flagged. Load the system CAs into the default
+    // config when it's empty, and ONLY evaluate the chain when a trust store is
+    // actually available (otherwise we can't form a sound verdict, so stay silent).
+    // Also skip when the leaf is self-signed -- that root cause is already reported
+    // as tls-self-signed and verify() would merely echo it as an untrusted root.
+    QList<QSslCertificate> trustStore = QSslConfiguration::defaultConfiguration().caCertificates();
+    if (trustStore.isEmpty()) {
+        trustStore = QSslSocket::systemCaCertificates();
+        if (!trustStore.isEmpty()) {
+            QSslConfiguration dc = QSslConfiguration::defaultConfiguration();
+            dc.setCaCertificates(trustStore);
+            QSslConfiguration::setDefaultConfiguration(dc);   // idempotent: only when previously empty
+        }
+    }
+    if (!trustStore.isEmpty() && !result.selfSigned) {
+        QStringList chainCats;
+        const QList<QSslError> chainErrors =
+            QSslCertificate::verify(sock.peerCertificateChain(), req.host);
+        for (const QSslError &e : chainErrors) {
+            switch (e.error()) {
+            case QSslError::SelfSignedCertificateInChain:
+                chainCats << QStringLiteral("self-signed-in-chain"); break;
+            case QSslError::UnableToGetIssuerCertificate:
+            case QSslError::UnableToVerifyFirstCertificate:
+                chainCats << QStringLiteral("incomplete-chain"); break;
+            case QSslError::UnableToGetLocalIssuerCertificate:
+            case QSslError::CertificateUntrusted:
+                chainCats << QStringLiteral("untrusted-root"); break;
+            case QSslError::InvalidCaCertificate:
+            case QSslError::InvalidPurpose:
+                chainCats << QStringLiteral("ca-invalid"); break;
+            default: break;   // hostname-mismatch / expired / self-signed-LEAF handled elsewhere
+            }
+        }
+        chainCats.removeDuplicates();
+        QString chSev, chDetail;
+        const QString chKind = untrustedChainFinding(chainCats, chSev, chDetail);
+        if (!chKind.isEmpty()) add(chKind, chSev, chDetail);
     }
     // Negotiated-cipher strength (NULL/anon/EXPORT/RC4/single-DES = weak-cipher;
     // 3DES/MD5-MAC/sub-128-bit = legacy-cipher).
