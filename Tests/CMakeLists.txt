@@ -261,6 +261,12 @@ add_subdirectory(tls_inspect)
 # Run via: ctest -R tls_profile -V
 add_subdirectory(tls_profile)
 
+# Update-check pure logic: semver precedence (incl. pre-release ordering so an rc
+# user is told about the final release) + the github.com release-URL allow-list.
+# Links update_check_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R update_check -V
+add_subdirectory(update_check)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

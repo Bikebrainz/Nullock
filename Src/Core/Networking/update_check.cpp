@@ -9,35 +9,9 @@
 
 namespace Nullock::Core {
 
-namespace {
-
-// Cheap semver compare. "1.0.0" < "1.0.1" < "1.1.0" < "2.0.0".
-// Pre-release suffixes (-rc1) ignored: treated as equal to base.
-int cmpSemver(const QString &a, const QString &b) {
-    auto split = [](QString s) {
-        // Strip leading "v" and pre-release suffix.
-        if (s.startsWith('v') || s.startsWith('V')) s = s.mid(1);
-        const int dash = s.indexOf('-');
-        if (dash >= 0) s = s.left(dash);
-        QList<int> parts;
-        for (const QString &p : s.split('.', Qt::SkipEmptyParts)) {
-            bool ok = false;
-            parts.append(p.toInt(&ok));
-            if (!ok) { parts.append(0); }
-        }
-        while (parts.size() < 3) parts.append(0);
-        return parts;
-    };
-    const auto pa = split(a);
-    const auto pb = split(b);
-    for (int i = 0; i < 3 && i < pa.size() && i < pb.size(); ++i) {
-        if (pa[i] < pb[i]) return -1;
-        if (pa[i] > pb[i]) return 1;
-    }
-    return 0;
-}
-
-}
+// compareSemver()/isTrustedReleaseUrl() are pure and live in update_check_logic.cpp
+// so they can be unit-tested against Qt6::Core alone. This TU keeps doCheck()'s
+// HttpClient I/O.
 
 UpdateInfo UpdateChecker::doCheck(const QString &currentVersion) {
     UpdateInfo r;
@@ -67,14 +41,17 @@ UpdateInfo UpdateChecker::doCheck(const QString &currentVersion) {
     }
     const QJsonObject o = doc.object();
     r.latestVersion = o.value("tag_name").toString();
-    r.releaseUrl    = o.value("html_url").toString();
+    // Only surface a release URL that is a real HTTPS github.com page -- never hand
+    // the chrome a javascript:/file:/http: link from an unexpected field.
+    const QString url = o.value("html_url").toString();
+    r.releaseUrl    = UpdateLogic::isTrustedReleaseUrl(url) ? url : QString();
     r.releaseNotes  = o.value("body").toString().left(8 * 1024);
     r.publishedAt   = o.value("published_at").toString();
     if (r.latestVersion.isEmpty()) {
         r.error = "no tag_name in release";
         return r;
     }
-    r.available = cmpSemver(currentVersion, r.latestVersion) < 0;
+    r.available = UpdateLogic::compareSemver(currentVersion, r.latestVersion) < 0;
     return r;
 }
 

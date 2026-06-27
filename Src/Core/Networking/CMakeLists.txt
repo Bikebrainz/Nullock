@@ -60,6 +60,7 @@ add_library(Networking STATIC
     tls_profile_logic.cpp
     tls_profile.hpp
     update_check.cpp
+    update_check_logic.cpp
     update_check.hpp
     sequencer.cpp
     sequencer_logic.cpp

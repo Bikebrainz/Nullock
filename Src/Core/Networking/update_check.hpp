@@ -24,6 +24,21 @@
 
 namespace Nullock::Core {
 
+// --- Pure update-check logic, exposed for the unit test (no I/O; in
+//     update_check_logic.cpp, links Qt6::Core alone -- doCheck()'s HttpClient work
+//     stays in update_check.cpp).
+namespace UpdateLogic {
+// Semver precedence: <0 if a is older than b, 0 if equal, >0 if newer. Tolerant of
+// a leading "v", build metadata (+...), short/long cores, and non-numeric fields
+// (treated as 0). Pre-release ordering follows semver §11 -- crucially a normal
+// release outranks its own pre-release (1.3.0 > 1.3.0-rc1), so a user on an rc IS
+// told about the final release.
+int  compareSemver(const QString &a, const QString &b);
+// True iff `url` is an HTTPS github.com page -- the only kind of release link the
+// UI should open (defense-in-depth against a tampered/unexpected html_url field).
+bool isTrustedReleaseUrl(const QString &url);
+} // namespace UpdateLogic
+
 struct UpdateInfo {
     bool    available  = false;
     QString currentVersion;
