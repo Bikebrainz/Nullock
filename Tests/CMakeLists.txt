@@ -279,6 +279,13 @@ add_subdirectory(crawler)
 # Run via: ctest -R robots_recon -V
 add_subdirectory(robots_recon)
 
+# Recon-engine pure helpers -- crt.sh name canonicalization (strip ALL leading
+# "*."), the acceptCertName filter (drop apex-collapse + residual wildcards), the
+# search-domain answer-record guard, and the wildcard-DNS false-positive
+# suppression decision. Links recon_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R recon_engine -V
+add_subdirectory(recon_engine)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

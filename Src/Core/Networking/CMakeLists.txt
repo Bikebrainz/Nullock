@@ -43,6 +43,8 @@ add_library(Networking STATIC
     waf_detect_logic.cpp
     waf_detect.hpp
     recon_engine.cpp
+    recon_logic.cpp
+    recon_logic.hpp
     recon_engine.hpp
     session_manager.cpp
     session_manager.hpp

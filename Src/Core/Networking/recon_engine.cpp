@@ -1,6 +1,7 @@
 #include "recon_engine.hpp"
 
 #include "networking.hpp"
+#include "recon_logic.hpp"
 
 #include <QDnsDomainNameRecord>
 #include <QDnsHostAddressRecord>
@@ -18,18 +19,11 @@
 
 namespace Nullock::Core {
 
-namespace {
-
-// Strip wildcards / extra labels / lowercase. crt.sh sometimes returns
-// names with a leading "*." or "\n"-separated multiple values. Returns
-// a canonical (lowercased, trimmed) host.
-QString cleanName(QString s) {
-    s = s.trimmed().toLower();
-    if (s.startsWith("*.")) s.remove(0, 2);
-    return s;
-}
-
-} // namespace
+// cleanName()/acceptCertName()/recordMatchesQuery()/isWildcardResolved() are pure
+// and live in recon_logic.cpp (Qt6::Core only) so they can be unit-tested.
+using ReconLogic::acceptCertName;
+using ReconLogic::cleanName;
+using ReconLogic::recordMatchesQuery;
 
 ReconEngine::ReconEngine(QObject *parent) : QObject(parent) {}
 
@@ -55,6 +49,8 @@ QList<Subdomain> ReconEngine::subdomains() const {
 
 void ReconEngine::clear() {
     if (m_active.loadAcquire() > 0) return;
+    m_stopFlag.storeRelease(0);   // a fresh slate must re-arm: a sticky stop flag
+                                  // otherwise permanently disables future scans.
     {
         QMutexLocker lk(&m_mutex);
         m_dnsRecords.clear();
@@ -86,6 +82,7 @@ void ReconEngine::finishOne() {
 void ReconEngine::runDns(const QString &domain) {
     if (domain.isEmpty()) return;
     const bool wasIdle = (m_active.loadAcquire() == 0);
+    if (wasIdle) m_stopFlag.storeRelease(0);   // re-arm: a prior stop() must not stick
     {
         QMutexLocker lk(&m_mutex);
         m_target = domain;
@@ -158,9 +155,18 @@ void ReconEngine::onDnsFinished() {
 
 void ReconEngine::addSubdomain(const Subdomain &sd) {
     QMutexLocker lk(&m_mutex);
-    // dedup on name (keep first source wins).
-    for (const auto &existing : m_subdomains) {
-        if (existing.name == sd.name) return;
+    // Dedup on name -- but MERGE rather than blindly first-source-wins: a later
+    // live-resolved result (wordlist, with IPs) must upgrade an earlier unverified
+    // crt.sh lead (empty IPs), or a genuinely-live host would be reported with no
+    // IPs and dropped by "has live IPs" consumers.
+    for (auto &existing : m_subdomains) {
+        if (existing.name == sd.name) {
+            if (existing.resolvedIps.isEmpty() && !sd.resolvedIps.isEmpty()) {
+                existing.resolvedIps = sd.resolvedIps;
+                existing.source = sd.source;
+            }
+            return;
+        }
     }
     m_subdomains.append(sd);
 }
@@ -168,6 +174,7 @@ void ReconEngine::addSubdomain(const Subdomain &sd) {
 void ReconEngine::runCertTransparency(const QString &domain) {
     if (domain.isEmpty()) return;
     const bool wasIdle = (m_active.loadAcquire() == 0);
+    if (wasIdle) m_stopFlag.storeRelease(0);   // re-arm: a prior stop() must not stick
     {
         QMutexLocker lk(&m_mutex);
         m_target = domain;
@@ -189,8 +196,9 @@ void ReconEngine::runCertTransparency(const QString &domain) {
         }
     }
     if (!domainOk) {
-        QMutexLocker lk(&m_mutex);
-        m_lastError = "crt.sh: refusing malformed domain";
+        { QMutexLocker lk(&m_mutex); m_lastError = "crt.sh: refusing malformed domain"; }
+        finishOne();   // balance the m_active increment above -- otherwise running()
+                       // stays pinned true forever and clear() is wedged.
         return;
     }
 
@@ -243,8 +251,10 @@ void ReconEngine::runCertTransparency(const QString &domain) {
                 o.value("name_value").toString().split('\n', Qt::SkipEmptyParts);
             for (const QString &raw : names) {
                 const QString name = cleanName(raw);
-                if (name.isEmpty()) continue;
-                if (!name.endsWith("." + domain) && name != domain) continue;
+                // Accept only a real in-scope SUBDOMAIN: not the apex (a wildcard
+                // cert "*.example.com" collapses to it) and no residual wildcard
+                // ("d*.example.com" is a cert-coverage pattern, never a host).
+                if (!acceptCertName(name, domain)) continue;
                 if (seen.contains(name)) continue;
                 seen.insert(name);
                 addSubdomain({ name, "crt.sh", {} });
@@ -260,6 +270,7 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
                                        const QStringList &subdomains) {
     if (domain.isEmpty() || subdomains.isEmpty()) return;
     const bool wasIdle = (m_active.loadAcquire() == 0);
+    if (wasIdle) m_stopFlag.storeRelease(0);   // re-arm: a prior stop() must not stick
     {
         QMutexLocker lk(&m_mutex);
         m_target = domain;
@@ -274,7 +285,14 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
     // wordlist that ships in the wild.
     constexpr int kMaxSubsPerRequest = 2000;
     QStringList capped = subdomains;
-    if (capped.size() > kMaxSubsPerRequest) capped = capped.mid(0, kMaxSubsPerRequest);
+    if (capped.size() > kMaxSubsPerRequest) {
+        capped = capped.mid(0, kMaxSubsPerRequest);
+        // Don't truncate silently -- a caller feeding a 100k list must know that
+        // names past the cap were never queried (else "not found" is ambiguous).
+        QMutexLocker lk(&m_mutex);
+        m_lastError = QStringLiteral("wordlist truncated: probed first %1 of %2 entries")
+                          .arg(kMaxSubsPerRequest).arg(subdomains.size());
+    }
 
     // One QDnsLookup per candidate. We bound it lazily by trusting Qt
     // to multiplex over its own DNS workers; even at 100 names the
@@ -294,10 +312,8 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
                 // match the FQDN we asked for.
                 QStringList ips;
                 for (const auto &r : lookup->hostAddressRecords()) {
-                    if (r.name().compare(name, Qt::CaseInsensitive) != 0
-                        && !r.name().endsWith("." + name, Qt::CaseInsensitive)) {
-                        continue;   // a different host's record snuck in
-                    }
+                    if (!recordMatchesQuery(r.name(), name))
+                        continue;   // a different host's record (search-domain expansion) snuck in
                     ips.append(r.value().toString());
                 }
                 if (!ips.isEmpty()) {
