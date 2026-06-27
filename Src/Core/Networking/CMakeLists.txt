@@ -144,6 +144,7 @@ add_library(Networking STATIC
     jwt_probe_logic.cpp
     jwt_probe.hpp
     content_discovery.cpp
+    content_logic.cpp
     content_discovery.hpp
     xxe_injection.cpp
     xxe_logic.cpp

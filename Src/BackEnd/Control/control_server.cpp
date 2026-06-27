@@ -7800,6 +7800,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "error", cres.error },
                        { "softNotFoundStatus", cres.softNotFoundStatus },
                        { "softNotFoundIs200", cres.softNotFoundIs200 },
+                       { "calibrationReliable", cres.calibrationReliable },
+                       { "forbiddenSaturated", cres.forbiddenSaturated },
+                       { "wordlistTruncated", cres.wordlistTruncated },
+                       { "wordsTotal", cres.wordsTotal },
+                       { "wordsTried", cres.wordsTried },
                        { "requestsSent", cres.requestsSent },
                        { "hitCount", static_cast<int>(cres.hits.size()) },
                        { "hits", hits }});

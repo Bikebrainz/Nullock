@@ -255,6 +255,14 @@ add_subdirectory(ws_probe)
 # Run via: ctest -R tls_inspect -V
 add_subdirectory(tls_inspect)
 
+# Content-discovery soft-404 classification -- same-depth calibration, the
+# softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
+# different target is reported, not masked by a redirect-soft-404), 401/403
+# body-size discrimination, and WAF-saturation detection. Links content_logic.cpp
+# against Qt6::Core alone.
+# Run via: ctest -R content_discovery -V
+add_subdirectory(content_discovery)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

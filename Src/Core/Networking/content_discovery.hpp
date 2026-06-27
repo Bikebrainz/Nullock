@@ -16,6 +16,7 @@
 
 #include <QList>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -44,8 +45,25 @@ struct Result {
     int     softNotFoundStatus = 0;   // calibrated not-found status (0 if uncertain)
     int     softNotFoundSize = 0;
     bool    softNotFoundIs200 = false; // server soft-404s with 200
+    bool    calibrationReliable = false; // both same-depth calibration probes agreed
+    bool    forbiddenSaturated = false;  // a large fraction of paths came back 401/403
+                                         // (likely WAF pattern-blocking) -- the
+                                         // per-path "auth-gated" hits were collapsed
+    bool    wordlistTruncated = false;   // the wordlist exceeded maxRequests
+    int     wordsTotal = 0;              // wordlist size before any cap
+    int     wordsTried = 0;              // candidate paths actually probed
     int     requestsSent = 0;
     QString error;
+};
+
+// The calibrated "not found" profile (the soft-404 fingerprint), derived from the
+// random-absent-path probes and consulted by classify(). Pure data.
+struct CalibProfile {
+    QSet<int> softStatuses;    // status code(s) an absent path returns
+    int       softLen = 0;     // representative not-found body size
+    int       jitter  = 64;    // body-size tolerance band (>= 64)
+    QString   softLocation;    // the soft-404 redirect target, when soft is a 3xx
+    bool      reliable = false;// the two same-depth probes returned the same status
 };
 
 // Calibrate the not-found baseline, then probe each wordlist path and report
@@ -55,5 +73,27 @@ Result discover(const Request &req);
 
 // A focused default wordlist of high-value paths (admin/api/backup/vcs/config).
 QStringList defaultWordlist();
+
+// --- Pure classification logic, exposed for the unit test (no I/O; in
+//     content_logic.cpp, links Qt6::Core alone -- discover()'s HttpClient work
+//     stays in content_discovery.cpp).
+//
+//   normBase           -- normalise the base dir to "" or "/sub" (no trailing
+//                         slash) so base + "/" + word is always a single join.
+//   classify           -- decide whether a probed response is an interesting hit
+//                         given the calibration: a redirect is suppressed only
+//                         when its target matches the soft-404 redirect (a real
+//                         dir-redirect to a DIFFERENT Location is reported); a
+//                         401/403 is suppressed only when its body size matches
+//                         the soft page (a distinct forbidden resource is
+//                         reported); a 200 under a 200-soft-404 server is reported
+//                         only when its size deviates beyond the jitter band.
+//                         Returns "" (not interesting) or a note
+//                         ("ok"/"ok-distinct"/"redirect"/"auth-gated").
+//   forbiddenSaturated -- a 401/403 fraction high enough to read as WAF
+//                         pattern-blocking rather than many real resources.
+QString normBase(const QString &p);
+QString classify(int status, int bodyLen, const QString &location, const CalibProfile &cal);
+bool    forbiddenSaturated(int forbiddenHits, int wordsProbed);
 
 } // namespace Nullock::Core::ContentDiscovery

@@ -4,6 +4,7 @@
 #include <QRandomGenerator>
 
 #include <algorithm>
+#include <climits>
 #include <cstdlib>
 
 namespace Nullock::Core::ContentDiscovery {
@@ -25,15 +26,8 @@ QString randToken() {
     return s;
 }
 
-// Normalise the base dir to "" or "/sub" (no trailing slash), so base + "/" +
-// word always yields a single-slash join.
-QString normBase(const QString &p) {
-    QString b = p;
-    if (b == "/" ) return QString();
-    while (b.endsWith('/')) b.chop(1);
-    if (!b.isEmpty() && !b.startsWith('/')) b.prepend('/');
-    return b;
-}
+// normBase(), classify() and forbiddenSaturated() are pure and live in
+// content_logic.cpp so they can be unit-tested against Qt6::Core alone.
 
 QByteArray buildGet(const Request &req, const QString &fullPath) {
     QByteArray out = "GET " + fullPath.toUtf8() + " HTTP/1.1\r\n";
@@ -90,8 +84,12 @@ Result discover(const Request &reqIn) {
     Request req = reqIn;
     const QString base = normBase(req.basePath);
     QStringList words = req.wordlist.isEmpty() ? defaultWordlist() : req.wordlist;
-    if (req.maxRequests > 0 && words.size() > req.maxRequests)
-        words = words.mid(0, req.maxRequests);
+    result.wordsTotal = words.size();
+    // maxRequests <= 0 means "no cap" -- normalise so the cap AND the loop budget
+    // agree on it (previously 0 skipped the cap but made the loop break fire
+    // immediately after calibration -> zero discovery).
+    const int maxReq = req.maxRequests > 0 ? req.maxRequests : (INT_MAX - 2);
+    if (words.size() > maxReq) { words = words.mid(0, maxReq); result.wordlistTruncated = true; }
 
     HttpClient client;
     const quint16 port = static_cast<quint16>(req.port);
@@ -103,55 +101,46 @@ Result discover(const Request &reqIn) {
         return std::min(static_cast<int>(r.body.size()), kMaxBody);
     };
 
-    // 1) Calibrate the not-found baseline from two random, certainly-absent
-    //    paths. If both agree we trust it; if they disagree (size-varying error
-    //    page) we fall back to "anything that is not the random status".
+    // 1) Calibrate the not-found baseline from two random, certainly-absent paths
+    //    AT THE SAME DEPTH as the real probes (a single segment under base).
+    //    Probing different depths made a depth-routing server (hard-404 at one
+    //    depth, catch-all 200 at another) look "unstable" and disabled every
+    //    soft-404 suppression. A failed second probe leaves the baseline
+    //    UNcorroborated, so it must not be trusted as reliable.
     const auto c1 = get(base + "/" + randToken());
     if (!c1.ok) { result.error = "calibration failed: " + c1.errorMessage; return result; }
-    const auto c2 = get(base + "/" + randToken() + "/" + randToken());
-    const int s1 = c1.parsed.statusCode, s2 = c2.ok ? c2.parsed.statusCode : s1;
-    const int l1 = bodyLen(c1.parsed), l2 = c2.ok ? bodyLen(c2.parsed) : l1;
-    const bool stableSoft = (s1 == s2);
-    result.softNotFoundStatus = stableSoft ? s1 : 0;
-    result.softNotFoundSize = (l1 + l2) / 2;
-    result.softNotFoundIs200 = stableSoft && s1 == 200;
+    const auto c2 = get(base + "/" + randToken());
 
-    // Body-size deviation threshold for the 200-soft-404 case: a real page must
-    // differ by more than the random-probe jitter (and a floor of 64 bytes).
-    const int jitter = std::max(64, std::abs(l1 - l2) * 2);
-    const int softLen = result.softNotFoundSize;
+    CalibProfile cal;
+    const int s1 = c1.parsed.statusCode;
+    const int l1 = bodyLen(c1.parsed);
+    cal.softStatuses.insert(s1);
+    cal.softLocation = headerValue(c1.parsed, "Location");
+    int l2 = l1;
+    if (c2.ok) {
+        const int s2 = c2.parsed.statusCode;
+        cal.softStatuses.insert(s2);                 // both observed statuses are "soft"
+        l2 = bodyLen(c2.parsed);
+        cal.reliable = (s1 == s2);                   // corroborated only if they agree
+        if (cal.softLocation.isEmpty()) cal.softLocation = headerValue(c2.parsed, "Location");
+    }
+    cal.softLen = (l1 + l2) / 2;
+    cal.jitter  = std::max(64, std::abs(l1 - l2) * 2);
 
-    auto interesting = [&](const Proxy::HttpResponse &resp) -> QString {
-        const int st = resp.statusCode;
-        // 3xx with a Location -> a real resource (often dir -> dir/).
-        if (st == 301 || st == 302 || st == 307 || st == 308) {
-            if (stableSoft && st == s1) return QString();   // server 3xx-soft-404s
-            return QStringLiteral("redirect");
-        }
-        // Auth-gated -> the resource exists behind a control.
-        if (st == 401 || st == 403) {
-            if (stableSoft && st == s1) return QString();
-            return QStringLiteral("auth-gated");
-        }
-        if (st == 200) {
-            if (!result.softNotFoundIs200) return QStringLiteral("ok");  // baseline 404s
-            // Soft-404 server: only a materially different body counts.
-            if (std::abs(bodyLen(resp) - softLen) > jitter) return QStringLiteral("ok-distinct");
-            return QString();
-        }
-        // Other 2xx (206/204 etc.) are worth noting if not the soft status.
-        if (st >= 200 && st < 300 && !(stableSoft && st == s1))
-            return QStringLiteral("ok");
-        return QString();
-    };
+    result.calibrationReliable = cal.reliable;
+    result.softNotFoundStatus  = cal.reliable ? s1 : 0;
+    result.softNotFoundSize    = cal.softLen;
+    result.softNotFoundIs200   = cal.reliable && cal.softStatuses.contains(200);
 
     for (const QString &w : words) {
-        if (result.requestsSent >= req.maxRequests + 2) break;  // +2 calibration
+        if (result.requestsSent >= maxReq + 2) break;  // +2 calibration
         QString rel = w; while (rel.startsWith('/')) rel.remove(0, 1);
         if (rel.isEmpty()) continue;
+        ++result.wordsTried;
         const auto r = get(base + "/" + rel);
         if (!r.ok) continue;
-        const QString note = interesting(r.parsed);
+        const QString note = classify(r.parsed.statusCode, bodyLen(r.parsed),
+                                      headerValue(r.parsed, "Location"), cal);
         if (note.isEmpty()) continue;
         Hit hit;
         hit.path = base + "/" + rel;
@@ -160,6 +149,28 @@ Result discover(const Request &reqIn) {
         hit.location = headerValue(r.parsed, "Location");
         hit.note = note;
         result.hits.append(hit);
+    }
+
+    // 2) WAF-saturation: a pattern-blocking WAF that passes the benign "nl404"
+    //    calibration tokens yet 401/403s every attack-shaped wordlist path would
+    //    otherwise emit one bogus "auth-gated" hit per path. If the forbidden
+    //    fraction is high, collapse them into a single signal.
+    auto isForbidden = [](const Hit &h) {
+        return h.note == QLatin1String("auth-gated") && (h.status == 401 || h.status == 403);
+    };
+    int forbidden = 0;
+    for (const Hit &h : result.hits) if (isForbidden(h)) ++forbidden;
+    if (forbiddenSaturated(forbidden, result.wordsTried)) {
+        result.forbiddenSaturated = true;
+        QList<Hit> kept;
+        for (const Hit &h : result.hits) if (!isForbidden(h)) kept.append(h);
+        Hit agg;
+        agg.path = base + "/*";
+        agg.status = 403;
+        agg.note = QStringLiteral("waf-saturated: %1 forbidden paths suppressed "
+                                  "(likely WAF pattern-blocking, not real resources)").arg(forbidden);
+        kept.append(agg);
+        result.hits = kept;
     }
     return result;
 }
