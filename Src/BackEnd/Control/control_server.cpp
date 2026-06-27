@@ -8042,6 +8042,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     u.host(), url);
             }
         }
+        QJsonArray secrets;
+        for (const auto &s : jres.secrets) {
+            secrets.append(QJsonObject{
+                { "kind", s.kind }, { "severity", s.severity }, { "redacted", s.redacted } });
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, s.severity, "js-hardcoded-secret",
+                    QString("Hardcoded %1 in client JS (%2)").arg(s.kind, s.redacted),
+                    "A credential shape was found baked into a fetched bundle -- move it server-side "
+                    "and rotate it (assume compromised). Value redacted.",
+                    u.host(), url);
+        }
         return okJson({{ "ok", jres.error.isEmpty() },
                        { "error", jres.error },
                        { "requestsSent", jres.requestsSent },
@@ -8049,7 +8060,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "crossOriginScripts", crossOrigin },
                        { "endpointCount", static_cast<int>(jres.endpoints.size()) },
                        { "endpoints", endpoints },
-                       { "sourceMaps", maps }});
+                       { "sourceMaps", maps },
+                       { "secretCount", static_cast<int>(jres.secrets.size()) },
+                       { "secrets", secrets }});
     }
 
     // ---- Active CORS exploitability ----------------------------------

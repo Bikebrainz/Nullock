@@ -101,6 +101,60 @@ int main(int argc, char **argv) {
             == "real.abc.js.map");
     chk("sourcemap: none -> empty", sourceMappingUrl("just some code()").isEmpty());
 
+    // ===== extractSecrets (redacted credential mining) =================
+    // Fixtures are assembled by concatenation so no literal secret shape ever
+    // appears in this source file.
+    auto secrets = [](const QString &js) { QList<JsSecret> s; extractSecrets(js, s); return s; };
+    auto hasKind = [](const QList<JsSecret> &s, const QString &kind) {
+        for (const auto &x : s) if (x.kind == kind) return true;
+        return false;
+    };
+    auto redactedOf = [](const QList<JsSecret> &s, const QString &kind) {
+        for (const auto &x : s) if (x.kind == kind) return x.redacted;
+        return QString();
+    };
+    {
+        const QString awsKey = QString("AKIA") + "ABCDEFGHIJKLMNOP";   // AKIA + 16 chars
+        const QString js = "var creds = { id: '" + awsKey + "' };";
+        const auto s = secrets(js);
+        chk("secret: AWS access key detected", hasKind(s, "aws-access-key"));
+        const QString red = redactedOf(s, "aws-access-key");
+        chk("secret: AWS key is REDACTED (prefix + length only)",
+            red.startsWith("AKIA") && red.contains("chars]") && !red.contains(awsKey.mid(4)));
+        for (const auto &x : s) if (x.kind == "aws-access-key")
+            chk("secret: AWS severity is high", x.severity == "high");
+    }
+    {
+        const QString stripeKey = QString("sk_") + "live_" + "0123456789abcdefABCDEFgh";   // 24 chars
+        const auto s = secrets("const key='" + stripeKey + "';");
+        chk("secret: Stripe live key detected", hasKind(s, "stripe-secret"));
+        for (const auto &x : s) if (x.kind == "stripe-secret")
+            chk("secret: Stripe severity is critical", x.severity == "critical");
+    }
+    {
+        const QString gh = QString("ghp_") + "0123456789abcdefABCDEF0123456789abcd";   // 36 chars
+        chk("secret: GitHub PAT detected", hasKind(secrets("token: '" + gh + "'"), "github-pat"));
+    }
+    {
+        const QString jwt = QString("eyJ") + "abcdefghij" + ".eyJ" + "klmnopqrst" + "." + "uvwxyz0123";
+        chk("secret: JWT shape detected (low)", hasKind(secrets("var t='" + jwt + "'"), "jwt"));
+    }
+    {
+        const QString pk = QString("-----BEGIN ") + "RSA PRIVATE KEY" + "-----";
+        const auto s = secrets("const k=`" + pk + "\\nMIIE...`;");
+        chk("secret: private key header detected", hasKind(s, "private-key"));
+        for (const auto &x : s) if (x.kind == "private-key")
+            chk("secret: private key severity is critical", x.severity == "critical");
+    }
+    {
+        const auto s = secrets("const config = { apiKey: \"AbCdEf0123456789GhIjKl\" };");
+        chk("secret: generic high-entropy assignment -> info lead", hasKind(s, "generic-secret"));
+        for (const auto &x : s) if (x.kind == "generic-secret")
+            chk("secret: generic severity is info (lead)", x.severity == "info");
+    }
+    chk("secret: a clean bundle yields no secrets",
+        secrets("function add(a,b){return a+b;} const x=fetch('/api/x');").isEmpty());
+
     std::fprintf(stderr, "js_recon_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -31,6 +31,14 @@ struct SourceMap {
     QStringList sources;     // original source paths from the map
 };
 
+// A credential SHAPE found hardcoded in a bundle. The value is REDACTED (prefix
+// + length only) so the finding never leaks/persists the secret itself.
+struct JsSecret {
+    QString kind;            // "aws-access-key", "google-api-key", "jwt", "generic-secret", ...
+    QString severity;        // critical | high | medium | low | info
+    QString redacted;        // e.g. "AKIA...[20 chars]" -- never the full value
+};
+
 struct Request {
     QString host;
     int     port = 443;
@@ -44,6 +52,7 @@ struct Result {
     QStringList crossOriginScripts;   // bundles on other hosts (listed, not fetched)
     QStringList endpoints;        // deduped API paths / URLs discovered
     QList<SourceMap> sourceMaps;
+    QList<JsSecret> secrets;      // hardcoded credential shapes (redacted)
     int     requestsSent = 0;
     QString error;
 };
@@ -64,5 +73,11 @@ Result scan(const Request &req, int maxScripts = 20);
 //   sourceMappingUrl  -- the EFFECTIVE //# sourceMappingURL (the LAST one wins).
 void    extractEndpoints(const QString &js, QSet<QString> &out);
 QString sourceMappingUrl(const QString &js);
+
+// Mine hardcoded credential SHAPES (cloud/VCS/SaaS keys, JWTs, private-key
+// headers, high-entropy api_key/secret/token assignments) from a JS body. The
+// stored value is REDACTED -- the finding never carries the secret itself.
+// Deduped within a body. Generic high-entropy hits are graded info (LEADs).
+void    extractSecrets(const QString &js, QList<JsSecret> &out);
 
 } // namespace Nullock::Core::JsRecon

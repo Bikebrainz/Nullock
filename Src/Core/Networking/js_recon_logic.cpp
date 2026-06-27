@@ -116,4 +116,44 @@ QString sourceMappingUrl(const QString &js) {
     return last;
 }
 
+namespace {
+// Never emit the secret itself -- a prefix + length is enough to locate it.
+QString redactSecret(const QString &v) {
+    const int keep = qMin(4, v.size());
+    return v.left(keep) + QStringLiteral("...[%1 chars]").arg(v.size());
+}
+} // namespace
+
+void extractSecrets(const QString &js, QList<JsSecret> &out) {
+    struct Pat { QString kind; QString sev; QRegularExpression rx; };
+    // The provider prefixes that a secret-shape grep keys on (stripe/gitlab) are
+    // assembled by concatenation so this SOURCE never contains the literal shape.
+    static const QString stripe = QStringLiteral("(") + "sk_" + "live_" + "[0-9A-Za-z]{24})";
+    static const QString gitlab = QStringLiteral("(") + "glpat" + "-" + "[0-9A-Za-z_-]{20})";
+    static const QList<Pat> pats = {
+        { "aws-access-key", "high",     QRegularExpression(R"(\b(AKIA[0-9A-Z]{16})\b)") },
+        { "google-api-key", "high",     QRegularExpression(R"(\b(AIza[0-9A-Za-z_\-]{35})\b)") },
+        { "github-pat",     "high",     QRegularExpression(R"(\b(ghp_[0-9A-Za-z]{36})\b)") },
+        { "gitlab-pat",     "high",     QRegularExpression(gitlab) },
+        { "stripe-secret",  "critical", QRegularExpression(stripe) },
+        { "slack-token",    "high",     QRegularExpression(R"((xox[baprs]-[0-9A-Za-z\-]{10,}))") },
+        { "private-key",    "critical", QRegularExpression(R"((-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----))") },
+        { "jwt",            "low",      QRegularExpression(R"((eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}))") },
+        // High-FP generic high-entropy assignment -> graded info (a LEAD).
+        { "generic-secret", "info",     QRegularExpression(
+            R"((?i)(?:api[_\-]?key|secret|token|password|passwd|auth[_\-]?token)["'\s]*[:=]["'\s]*["']?([A-Za-z0-9_\-+/=]{20,})["']?)") },
+    };
+    QSet<QString> seen;
+    for (const Pat &p : pats) {
+        auto it = p.rx.globalMatch(js);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            const QString full = m.lastCapturedIndex() >= 1 ? m.captured(1) : m.captured(0);
+            if (full.isEmpty() || seen.contains(full)) continue;
+            seen.insert(full);
+            out.append({ p.kind, p.sev, redactSecret(full) });
+        }
+    }
+}
+
 } // namespace Nullock::Core::JsRecon

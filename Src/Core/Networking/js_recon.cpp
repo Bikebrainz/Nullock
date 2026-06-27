@@ -138,7 +138,12 @@ Result scan(const Request &req, int maxScripts) {
         // server-rendered inline JS are real surface the external bundles miss.
         auto iit = inlineScriptRx().globalMatch(firstBody);
         bool anyInline = false;
-        while (iit.hasNext()) { anyInline = true; extractEndpoints(iit.next().captured(1), endpoints); }
+        while (iit.hasNext()) {
+            anyInline = true;
+            const QString inlineJs = iit.next().captured(1);
+            extractEndpoints(inlineJs, endpoints);
+            extractSecrets(inlineJs, result.secrets);
+        }
         // Misclassified-bundle fallback: a body with NO <script> at all (no src,
         // no inline) and no cross-origin scripts is most likely a JS bundle the
         // looksJs sniff mislabeled (wrong Content-Type + extensionless + a stray
@@ -153,6 +158,7 @@ Result scan(const Request &req, int maxScripts) {
         result.scripts << scriptPath;
         const QString js = QString::fromUtf8(r.parsed.body.left(kMaxScan));
         extractEndpoints(js, endpoints);
+        extractSecrets(js, result.secrets);
 
         // Source map exposure.
         const QString smRef = sourceMappingUrl(js);
