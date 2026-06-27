@@ -12,6 +12,13 @@
 //   classifies on raw bytes, not a lossy UTF-8 round-trip), and the known wire
 //   prefixes / port table still resolve.
 //
+// A second hardening pass anchors the DATABASE labels to the real wire
+// handshake instead of a free substring: a MySQL protocol-10 greeting, a
+// PostgreSQL 'E'/'R' message frame, or a Redis RESP reply now classify on ANY
+// port, while a banner that merely *names* a DB is trusted only when it sits on
+// the canonical DB port (3306/5432/6379). The cases below lock both directions
+// (handshake -> labeled; product-name-in-prose -> NOT labeled).
+//
 // Run via:  ctest -R port_scanner -V
 
 #include "port_scanner.hpp"
@@ -20,6 +27,7 @@
 #include <QCoreApplication>
 
 #include <cstdio>
+#include <initializer_list>
 
 using namespace Nullock::Core;
 
@@ -30,6 +38,37 @@ void chk(const char *label, bool ok) {
     else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; }
 }
 QString cls(quint16 port, const QByteArray &banner) { return classifyBanner(port, banner); }
+
+// Banners with embedded NULs must be assembled byte-by-byte: the
+// QByteArray(const char*) ctor truncates at the first NUL, which would hide the
+// very handshake framing (NUL-terminated MySQL version, PG length fields) these
+// cases exist to test. `bytes` builds an exact-length QByteArray from raw octets.
+QByteArray bytes(std::initializer_list<int> vs) {
+    QByteArray b;
+    for (int v : vs) b.append(static_cast<char>(v));
+    return b;
+}
+
+// MySQL/MariaDB protocol-10 greeting, raw form (starts at the protocol byte):
+// 0x0a + NUL-terminated ASCII server version + binary tail.
+QByteArray mysqlGreetRaw() {
+    return bytes({0x0a}) + "8.0.32-log" + bytes({0x00}) + "thread-id+salt";
+}
+// MySQL greeting, full wire form: 3-byte LE length + seq id 0 + proto byte at +4.
+QByteArray mysqlGreetWire() {
+    return bytes({0x36, 0x00, 0x00, 0x00, 0x0a}) + "5.7.40" + bytes({0x00}) + "rest";
+}
+// PostgreSQL ErrorResponse 'E' : type byte + 4-byte BE length (26) + fields.
+QByteArray pgErrorResponse() {
+    return bytes({'E', 0x00, 0x00, 0x00, 0x1a})
+         + "S" + "FATAL" + bytes({0x00})
+         + "C" + "28000" + bytes({0x00})
+         + bytes({0x00});
+}
+// PostgreSQL Authentication 'R' : type byte + 4-byte BE length (8) + auth tag.
+QByteArray pgAuthRequest() {
+    return bytes({'R', 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x05});
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -77,6 +116,77 @@ int main(int argc, char **argv) {
     chk("empty banner + unknown port -> empty label", cls(54321, QByteArray()).isEmpty());
     chk("non-empty unrecognized banner on unknown port -> unknown",
         cls(54321, "some random chatter") == "unknown");
+
+    // ===== DB handshake FRAMING wins on ANY port (positive) =============
+    // Non-tabled ports so these exercise the wire-handshake recognizers, NOT
+    // the 3306/5432/6379 port fallback (a revert of the framing logic must FAIL
+    // here, where the port table can't rescue it).
+    chk("MySQL proto-10 greeting (0x0a + NUL-terminated version) -> mysql, any port",
+        cls(40001, mysqlGreetRaw()) == "mysql");
+    chk("MySQL full wire greeting (len+seq header, proto at +4) -> mysql, any port",
+        cls(40002, mysqlGreetWire()) == "mysql");
+    chk("PostgreSQL ErrorResponse 'E' framing -> postgresql, any port",
+        cls(40003, pgErrorResponse()) == "postgresql");
+    chk("PostgreSQL Authentication 'R' framing -> postgresql, any port",
+        cls(40004, pgAuthRequest()) == "postgresql");
+    chk("Redis RESP '-NOAUTH' reply -> redis, any port",
+        cls(40005, "-NOAUTH Authentication required.\r\n") == "redis");
+    chk("Redis RESP '+PONG' reply -> redis, any port",
+        cls(40006, "+PONG\r\n") == "redis");
+    chk("Redis RESP '-DENIED' (protected mode) -> redis, any port",
+        cls(40007, "-DENIED Redis is running in protected mode.\r\n") == "redis");
+    chk("Redis RESP '-ERR' reply -> redis, any port",
+        cls(40008, "-ERR unknown command 'GET'\r\n") == "redis");
+    chk("Redis nil bulk-string '$-1' framing -> redis, any port",
+        cls(40009, "$-1\r\n") == "redis");
+    chk("Redis INFO 'redis_version:' marker -> redis, any port",
+        cls(40010, "$120\r\n# Server\r\nredis_version:7.0.5\r\n") == "redis");
+
+    // ===== product NAME in a non-handshake context is NOT mislabeled =====
+    // (the core hardening: a banner that merely *mentions* a DB on a non-DB port
+    // must not be labeled that DB.)
+    chk("'MySQL' mentioned in plain text on a non-DB port -> NOT mysql (unknown)",
+        cls(40011, "Welcome -- this host runs MySQL 8 behind the app") == "unknown");
+    chk("'PostgreSQL' mentioned in plain text on a non-DB port -> NOT postgresql",
+        cls(40012, "PostgreSQL is the world's most advanced open source DB") == "unknown");
+    chk("'Redis' mentioned in plain text on a non-DB port -> NOT redis",
+        cls(40013, "We use Redis for our session cache.") == "unknown");
+    chk("a telnet greeting mentioning MySQL -> telnet (port), NOT mysql",
+        cls(23, "MySQL maintenance box\r\nlogin: ") == "telnet");
+    chk("'$' as a shell-prompt char (not RESP framing) on a non-DB port -> unknown",
+        cls(40014, "$ welcome to the jump host") == "unknown");
+    chk("text starting with 'E' but no PG length framing -> NOT postgresql",
+        cls(40015, "ERROR: command not found") == "unknown");
+
+    // ===== port-gated product NAME as a secondary signal ================
+    // On the canonical DB port, a bare product mention (framing ambiguous) is
+    // still trusted; on any other port the same text is not.
+    chk("ambiguous 'MySQL' text ON port 3306 -> mysql (port-gated secondary)",
+        cls(3306, "Access denied for user (using MySQL)") == "mysql");
+    chk("same ambiguous 'MySQL' text on a non-3306 port -> NOT mysql",
+        cls(40016, "Access denied for user (using MySQL)") == "unknown");
+    chk("PG 'FATAL' text ON port 5432 -> postgresql (port-gated secondary)",
+        cls(5432, "FATAL: password authentication failed for user") == "postgresql");
+    chk("same 'FATAL' text on a non-5432 port -> NOT postgresql",
+        cls(40017, "FATAL: password authentication failed for user") == "unknown");
+    chk("ambiguous 'Redis' text ON port 6379 -> redis (port-gated secondary)",
+        cls(6379, "this is a Redis-compatible service") == "redis");
+    chk("same ambiguous 'Redis' text on a non-6379 port -> NOT redis",
+        cls(40018, "this is a Redis-compatible service") == "unknown");
+
+    // ===== newly added port-table services ==============================
+    chk("port 5672 -> amqp",       cls(5672,  QByteArray()) == "amqp");
+    chk("port 2181 -> zookeeper",  cls(2181,  QByteArray()) == "zookeeper");
+    chk("port 2379 -> etcd",       cls(2379,  QByteArray()) == "etcd");
+    chk("port 8500 -> consul",     cls(8500,  QByteArray()) == "consul");
+    chk("port 9042 -> cassandra",  cls(9042,  QByteArray()) == "cassandra");
+    chk("port 28015 -> rethinkdb", cls(28015, QByteArray()) == "rethinkdb");
+    chk("port 50051 -> grpc",      cls(50051, QByteArray()) == "grpc");
+    chk("port 1883 -> mqtt",       cls(1883,  QByteArray()) == "mqtt");
+    chk("port 27017 -> mongodb (verify still present)",
+        cls(27017, QByteArray()) == "mongodb");
+    chk("port 9090 -> http (Prometheus over HTTP)",
+        cls(9090, QByteArray()) == "http");
 
     std::fprintf(stderr, "port_scanner_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

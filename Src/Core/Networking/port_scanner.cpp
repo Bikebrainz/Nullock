@@ -16,7 +16,8 @@ namespace Nullock::Core {
 namespace {
 
 PortResult probeOne(const QString &host, quint16 port,
-                    int timeoutMs, bool grabBanner) {
+                    int timeoutMs, bool grabBanner,
+                    bool *hostNotFound = nullptr) {
     PortResult r;
     r.host = host;
     r.port = port;
@@ -34,6 +35,11 @@ PortResult probeOne(const QString &host, quint16 port,
             case QAbstractSocket::ConnectionRefusedError:
                 r.status = "closed"; break;
             case QAbstractSocket::HostNotFoundError:
+                // DNS didn't resolve the name. This is a property of the host,
+                // not the port -- every other port on it will fail identically,
+                // so let the caller short-circuit the rest of the scan.
+                if (hostNotFound) *hostNotFound = true;
+                r.status = "unreachable"; break;
             case QAbstractSocket::NetworkError:
             case QAbstractSocket::SocketAddressNotAvailableError:
                 r.status = "unreachable"; break;
@@ -112,6 +118,7 @@ bool PortScanner::start(const ScanRequest &req) {
                                    : QString("%1 hosts").arg(hosts.size());
         m_results.clear();
         m_lastError.clear();
+        m_deadHosts.clear();
     }
     m_stopFlag.storeRelease(0);
     m_done.storeRelease(0);
@@ -134,6 +141,7 @@ void PortScanner::clear() {
         m_results.clear();
         m_lastError.clear();
         m_host.clear();
+        m_deadHosts.clear();
     }
     m_done.storeRelease(0);
     m_total.storeRelease(0);
@@ -185,6 +193,20 @@ void PortScanner::run(const ScanRequest req) {
 
     for (const Task &task : tasks) {
         if (m_stopFlag.loadAcquire() != 0) break;
+        // If an earlier probe proved this host's name doesn't resolve, don't
+        // bother probing the rest of its ports -- they'd all fail DNS the same
+        // way. Count it done so progress still completes. (Up to ~parallel
+        // probes for the host may already be in flight before the first
+        // HostNotFound lands; we skip only what hasn't launched yet.)
+        {
+            QMutexLocker lk(&m_mutex);
+            if (m_deadHosts.contains(task.host)) {
+                lk.unlock();
+                m_done.fetchAndAddOrdered(1);
+                emit progressChanged();
+                continue;
+            }
+        }
         slotsSem.acquire();
         if (req.throttleMs > 0) {
             // Pause between probe launches (in addition to the parallel
@@ -198,10 +220,18 @@ void PortScanner::run(const ScanRequest req) {
         QThread *t = QThread::create([this, host, port,
                                       timeoutMs=req.timeoutMs,
                                       grabBanner=req.grabBanner, &slotsSem] {
-            const PortResult r = probeOne(host, port, timeoutMs, grabBanner);
+            bool hostNotFound = false;
+            const PortResult r = probeOne(host, port, timeoutMs, grabBanner,
+                                          &hostNotFound);
             {
                 QMutexLocker lk(&m_mutex);
                 m_results.append(r);
+                if (hostNotFound) {
+                    m_deadHosts.insert(host);
+                    if (m_lastError.isEmpty())
+                        m_lastError =
+                            QStringLiteral("host not found (DNS): %1").arg(host);
+                }
             }
             m_done.fetchAndAddOrdered(1);
             emit progressChanged();

@@ -5,6 +5,7 @@
 #include <QList>
 #include <QMutex>
 #include <QObject>
+#include <QSet>
 #include <QString>
 
 namespace Nullock::Core {
@@ -81,6 +82,8 @@ private:
     QList<PortResult>  m_results;
     QString            m_host;
     QString            m_lastError;
+    QSet<QString>      m_deadHosts;   // hosts that failed DNS -- skip their
+                                      // remaining ports (guarded by m_mutex)
     QAtomicInt         m_running{0};
     QAtomicInt         m_stopFlag{0};
     QAtomicInt         m_done{0};
