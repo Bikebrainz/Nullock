@@ -33,10 +33,22 @@ struct Result {
     QStringList sitemapUrls;         // <loc> page URLs from a <urlset> sitemap.xml
     bool        disallowTruncated = false;  // the Disallow cap was hit (more existed)
     bool        sitemapTruncated  = false;  // the <loc> cap was hit (more existed)
+    bool        sitemapFetchTruncated = false; // the child-sitemap FETCH budget was hit
+                                               // (more child sitemaps existed unfetched)
     QString     error;
 };
 
 Result scan(const Request &req);
+
+// A parsed, fetchable sitemap/redirect target (http(s) only). Used by scan() to
+// decide whether to follow a child sitemap / Sitemap: ref / redirect. Pure data.
+struct FetchTarget {
+    bool    valid = false;
+    bool    tls   = false;
+    QString host;
+    int     port  = 0;
+    QString path;        // path (+ "?query" when present); never empty ("/" minimum)
+};
 
 // --- Pure parsing, exposed for the unit test (no I/O; in robots_logic.cpp, links
 //     Qt6::Core alone -- scan()'s HttpClient work stays in robots_recon.cpp).
@@ -57,5 +69,25 @@ void parseRobots(const QString &body, QStringList &disallowed, QStringList &disa
                  QStringList &sitemapRefs, bool &truncated);
 QStringList parseSitemapLocs(const QString &body, bool &truncated);
 bool isSitemapIndex(const QString &body);
+
+//   parseFetchTarget -- parse a sitemap/child/redirect URL into a fetchable
+//                       target (http(s) + host required); invalid otherwise. The
+//                       port defaults to the scheme's (443/80); the path keeps its
+//                       query and is never empty.
+//   resolveRedirect  -- resolve a Location value against the current URL (relative
+//                       or absolute) into an absolute http(s) URL string, or ""
+//                       for a non-http(s) / unparseable target (so an open-redirect
+//                       to javascript:/data:/another scheme is not followed).
+//   sameHost         -- case-insensitive host equality, used as the no-host-jump
+//                       guard so following a child/redirect can't pivot to a
+//                       different host (an SSRF / scope-escape hazard).
+//   portInScope      -- gate the target's port/scheme to the request origin: the
+//                       request's own port, or a canonical http<->https hop on the
+//                       schemes' default ports. Refuses an attacker-steered fetch
+//                       to an unrelated service port (:6379/:9200/...) on the host.
+FetchTarget parseFetchTarget(const QString &url);
+QString     resolveRedirect(const QString &location, const QString &baseUrl);
+bool        sameHost(const QString &a, const QString &b);
+bool        portInScope(int targetPort, bool targetTls, int reqPort, bool reqTls);
 
 } // namespace Nullock::Core::RobotsRecon

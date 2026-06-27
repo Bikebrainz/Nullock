@@ -7,6 +7,7 @@
 
 #include <QRegularExpression>
 #include <QSet>
+#include <QUrl>
 
 namespace Nullock::Core::RobotsRecon {
 
@@ -86,10 +87,67 @@ QStringList parseSitemapLocs(const QString &body, bool &truncated) {
 }
 
 bool isSitemapIndex(const QString &body) {
-    // A sitemap index nests child-sitemap <loc>s inside <sitemap> wrappers under a
-    // <sitemapindex> root (possibly namespace-prefixed, e.g. <sm:sitemapindex>).
-    return body.contains(QLatin1String("<sitemapindex"), Qt::CaseInsensitive)
-        || body.contains(QLatin1String(":sitemapindex"), Qt::CaseInsensitive);
+    // Decide index-vs-urlset from the ROOT element, not a free substring: a bare
+    // contains("<sitemapindex"/":sitemapindex") misclassifies a page <urlset>
+    // whose <loc> merely carries that text (e.g. ".../x?ref=:sitemapindex") or
+    // that buries it in a comment -- dropping every real page URL. Strip comments,
+    // then take whichever of <sitemapindex>/<urlset> START TAG appears first
+    // (namespace-prefix tolerant, with a real tag boundary like parseSitemapLocs).
+    QString b = body;
+    b.remove(QRegularExpression(QStringLiteral("(?s)<!--.*?-->")));
+    static const QRegularExpression idxRe(
+        QStringLiteral("(?is)<\\s*(?:[A-Za-z][\\w.\\-]*:)?sitemapindex[\\s/>]"));
+    static const QRegularExpression setRe(
+        QStringLiteral("(?is)<\\s*(?:[A-Za-z][\\w.\\-]*:)?urlset[\\s/>]"));
+    const auto mi = idxRe.match(b);
+    if (!mi.hasMatch()) return false;
+    const auto ms = setRe.match(b);
+    return !ms.hasMatch() || mi.capturedStart() < ms.capturedStart();
+}
+
+FetchTarget parseFetchTarget(const QString &url) {
+    FetchTarget t;
+    const QUrl u(url.trimmed());
+    if (!u.isValid() || u.host().isEmpty()) return t;
+    const QString scheme = u.scheme().toLower();
+    if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) return t;
+    t.valid = true;
+    t.tls   = (scheme == QLatin1String("https"));
+    t.host  = u.host();
+    t.port  = u.port(t.tls ? 443 : 80);          // -1 (absent) -> scheme default
+    QString path = u.path(QUrl::FullyEncoded);
+    if (path.isEmpty()) path = QStringLiteral("/");
+    const QString q = u.query(QUrl::FullyEncoded);
+    if (!q.isEmpty()) path += QLatin1Char('?') + q;
+    t.path = path;
+    return t;
+}
+
+QString resolveRedirect(const QString &location, const QString &baseUrl) {
+    const QString loc = location.trimmed();
+    if (loc.isEmpty()) return QString();
+    const QUrl abs = QUrl(baseUrl).resolved(QUrl(loc));
+    if (!abs.isValid() || abs.host().isEmpty()) return QString();
+    const QString scheme = abs.scheme().toLower();
+    if (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
+        return QString();                        // never follow javascript:/data:/mailto: ...
+    return abs.toString();
+}
+
+bool sameHost(const QString &a, const QString &b) {
+    return !a.isEmpty() && a.compare(b, Qt::CaseInsensitive) == 0;
+}
+
+bool portInScope(int targetPort, bool targetTls, int reqPort, bool reqTls) {
+    // The request's own port is always in scope; otherwise allow ONLY a canonical
+    // http<->https hop where BOTH endpoints sit on their scheme's default port
+    // (so a tested http:80 -> https:443 upgrade still follows). This refuses an
+    // attacker-controlled sitemap/redirect from steering a fetch to an unrelated
+    // service port (:6379 / :9200 / :22 / :8080 ...) on the in-scope host.
+    if (targetPort == reqPort) return true;
+    const int targetDefault = targetTls ? 443 : 80;
+    const int reqDefault    = reqTls    ? 443 : 80;
+    return targetPort == targetDefault && reqPort == reqDefault;
 }
 
 } // namespace Nullock::Core::RobotsRecon
