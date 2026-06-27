@@ -127,6 +127,15 @@ Result inspect(const Request &req) {
     QString keyDetail;
     if (keyIsWeak(result.keyAlgorithm, result.keyBits, keyDetail))
         add("tls-weak-key", "high", keyDetail);
+    // Certificate signature hash: a cert signed with MD2/MD4/MD5 or SHA-1 is
+    // forgeable via a hash collision. QSslCertificate exposes no signature-
+    // algorithm accessor, so parse the OID straight out of the DER.
+    {
+        QString sigSev, sigDetail;
+        const QString sigKind =
+            weakSignatureFinding(signatureAlgorithmOid(cert.toDer()), sigSev, sigDetail);
+        if (!sigKind.isEmpty()) add(sigKind, sigSev, sigDetail);
+    }
     // Negotiated-cipher strength (NULL/anon/EXPORT/RC4/single-DES = weak-cipher;
     // 3DES/MD5-MAC/sub-128-bit = legacy-cipher).
     if (!sock.sessionCipher().isNull()) {

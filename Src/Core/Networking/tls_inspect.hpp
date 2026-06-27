@@ -8,6 +8,7 @@
 // protocols (TLS 1.0/1.1) that still complete a handshake. Read-only: it reads
 // what the server presents, it doesn't attack. Findings map to CWE-295/326/327.
 
+#include <QByteArray>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -71,11 +72,20 @@ Result inspect(const Request &req);
 //                        3DES/MD5-MAC/<128-bit) or "" when the suite is sound.
 //   isOverbroadWildcard -- a wildcard spanning a public suffix (*.com, *.co.uk):
 //                        a cert no conformant client should accept.
+//   signatureAlgorithmOid -- the certificate's signatureAlgorithm OID (dotted
+//                        decimal) parsed straight from the DER (QSslCertificate
+//                        exposes no signature-algorithm API). "" if unparseable.
+//   weakSignatureFinding -- map a signature OID using a collision-feasible hash
+//                        (MD2/4/5 -> high; SHA-1 -> medium) to the finding kind
+//                        "tls-weak-sig-algo" (setting severity + detail); "" for a
+//                        modern algorithm (SHA-2/3, EdDSA, ...) or unknown OID.
 bool    nameMatches(const QString &host, const QString &certName);
 bool    hostnameCovered(const QString &host, const QStringList &cnNames,
                         const QStringList &sanDnsNames, bool &usedCnFallback);
 bool    keyIsWeak(const QString &algo, int bits, QString &detail);
 QString cipherWeakness(const QString &cipherName, int usedBits, QString &detail);
 bool    isOverbroadWildcard(const QString &certName);
+QString signatureAlgorithmOid(const QByteArray &der);
+QString weakSignatureFinding(const QString &oid, QString &severity, QString &detail);
 
 } // namespace Nullock::Core::TlsInspect

@@ -11,6 +11,7 @@
 
 #include "tls_inspect.hpp"
 
+#include <QByteArray>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -179,6 +180,106 @@ bool isOverbroadWildcard(const QString &certName) {
         if (twoLevelPublicSuffixes.contains(base)) return true;
     }
     return false;
+}
+
+namespace {
+// Read one ASN.1 DER TLV header at `pos`. On success sets contentPos (start of
+// content), contentLen, and nextPos (first byte after this TLV) and returns the
+// tag byte; returns -1 on a malformed/overrunning/indefinite-length header.
+// Handles short- and (up to 4-byte) long-form lengths.
+int derReadTLV(const QByteArray &der, int pos, int &contentPos, int &contentLen, int &nextPos) {
+    const int n = der.size();
+    if (pos < 0 || pos + 1 >= n) return -1;                 // need at least tag + 1 length byte
+    const int tag = static_cast<unsigned char>(der[pos]);
+    int p = pos + 1;                                        // p <= n here (pos+1 < n)
+    const int len0 = static_cast<unsigned char>(der[p++]);
+    int len = 0;
+    if (len0 < 0x80) {
+        len = len0;                                         // short form
+    } else {
+        const int nbytes = len0 & 0x7f;
+        // Subtraction form (n - p >= 0) so the bound never overflows. A 4-byte
+        // length with bit 31 set decodes to a negative `len` and is rejected below.
+        if (nbytes == 0 || nbytes > 4 || nbytes > n - p) return -1;  // indefinite / too large
+        for (int i = 0; i < nbytes; ++i) len = (len << 8) | static_cast<unsigned char>(der[p++]);
+        if (len < 0) return -1;
+    }
+    // CRITICAL: compare via subtraction, never `p + len > n`. An attacker can encode
+    // len = 0x7FFFFFFF (positive, so `len < 0` misses it); `p + len` would overflow
+    // signed int to a NEGATIVE value, pass `> n`, and yield a multi-GB over-read of
+    // an attacker-controlled cert. `len > n - p` (both operands >= 0) cannot overflow.
+    if (len < 0 || len > n - p) return -1;
+    contentPos = p; contentLen = len; nextPos = p + len;    // p + len <= n, no overflow
+    return tag;
+}
+
+// Decode a DER OBJECT IDENTIFIER content (no tag/len) to a dotted-decimal string.
+QString derDecodeOid(const QByteArray &der, int pos, int len) {
+    // Subtraction-form bounds (der.size() is 64-bit qsizetype) so `pos + len` can't
+    // overflow into a passing value -- the same INT_MAX-length over-read vector.
+    if (pos < 0 || pos > der.size() || len <= 0 || len > der.size() - pos) return QString();
+    const int first = static_cast<unsigned char>(der[pos]);
+    QString out = QString::number(first / 40) + QLatin1Char('.') + QString::number(first % 40);
+    quint64 arc = 0;
+    for (int i = 1; i < len; ++i) {
+        const int b = static_cast<unsigned char>(der[pos + i]);
+        arc = (arc << 7) | (b & 0x7f);
+        if (!(b & 0x80)) { out += QLatin1Char('.') + QString::number(arc); arc = 0; }
+    }
+    return out;
+}
+} // namespace
+
+QString signatureAlgorithmOid(const QByteArray &der) {
+    // X.509  Certificate ::= SEQUENCE { tbsCertificate SEQUENCE, signatureAlgorithm
+    // AlgorithmIdentifier SEQUENCE { algorithm OID, parameters OPTIONAL }, ... }.
+    // The OUTER signatureAlgorithm is the authoritative "signed-with" field, so we
+    // skip tbsCertificate and read the OID of the SECOND outer child.
+    constexpr int kSequence = 0x30, kOid = 0x06;
+    int cp, cl, np;
+    if (derReadTLV(der, 0, cp, cl, np) != kSequence) return QString();      // outer SEQUENCE; content [cp, np)
+    int tcp, tcl, tnp;
+    if (derReadTLV(der, cp, tcp, tcl, tnp) != kSequence) return QString();  // tbsCertificate (skipped)
+    if (tnp > np) return QString();                                        // tbs must stay inside the outer SEQ
+    int scp, scl, snp;
+    if (derReadTLV(der, tnp, scp, scl, snp) != kSequence) return QString(); // signatureAlgorithm
+    if (snp > np) return QString();                                        // sigAlg must stay inside the outer SEQ
+    int ocp, ocl, onp;
+    if (derReadTLV(der, scp, ocp, ocl, onp) != kOid) return QString();      // its algorithm OID
+    if (onp > snp) return QString();                                       // OID must stay inside sigAlg
+    return derDecodeOid(der, ocp, ocl);
+}
+
+QString weakSignatureFinding(const QString &oid, QString &severity, QString &detail) {
+    severity.clear();
+    detail.clear();
+    // Certificate signature algorithms whose hash is collision-feasible: an
+    // attacker who can mount a (chosen-prefix) collision can forge a colliding
+    // certificate. MD2/MD4/MD5 are badly broken (high); SHA-1 is chosen-prefix-
+    // broken and deprecated for PKI since 2017 (medium).
+    struct Weak { const char *oid; const char *name; const char *sev; };
+    static const Weak kWeak[] = {
+        { "1.2.840.113549.1.1.2",  "MD2 with RSA",                "high"   },
+        { "1.2.840.113549.1.1.3",  "MD4 with RSA",                "high"   },
+        { "1.2.840.113549.1.1.4",  "MD5 with RSA",                "high"   },
+        { "1.2.840.113549.2.5",    "MD5",                         "high"   },
+        { "1.2.840.113549.1.1.5",  "SHA-1 with RSA",              "medium" },
+        { "1.3.14.3.2.29",         "SHA-1 with RSA (legacy OID)", "medium" },
+        { "1.3.14.3.2.26",         "SHA-1",                       "medium" },
+        { "1.2.840.10040.4.3",     "DSA with SHA-1",              "medium" },
+        { "1.2.840.10045.4.1",     "ECDSA with SHA-1",            "medium" },
+    };
+    for (const Weak &w : kWeak) {
+        if (oid == QLatin1String(w.oid)) {
+            severity = QLatin1String(w.sev);
+            detail = QStringLiteral("certificate is signed with %1 -- a collision-feasible "
+                                    "hash; an attacker able to mount a hash collision could forge "
+                                    "a colliding certificate (signature OID %2)")
+                         .arg(QLatin1String(w.name), oid);
+            return QStringLiteral("tls-weak-sig-algo");
+        }
+    }
+    return QString();
 }
 
 } // namespace Nullock::Core::TlsInspect

@@ -139,6 +139,68 @@ int main(int argc, char **argv) {
     chk("a non-wildcard name is never over-broad", !isOverbroadWildcard("www.example.com"));
     chk("over-broad check is case-insensitive", isOverbroadWildcard("*.CO.UK"));
 
+    // ===== signatureAlgorithmOid: ASN.1 DER walk to the sigAlg OID =======
+    // Build a minimal X.509 DER: SEQUENCE { tbs SEQUENCE, sigAlg SEQUENCE { OID } }.
+    auto derLen = [](int n) -> QByteArray {
+        QByteArray b;
+        if (n < 0x80) b += char(n);
+        else if (n < 0x100) { b += char(0x81); b += char(n); }
+        else { b += char(0x82); b += char((n >> 8) & 0xff); b += char(n & 0xff); }
+        return b;
+    };
+    auto tlv = [&](unsigned char tag, const QByteArray &content) {
+        QByteArray b; b += char(tag); b += derLen(content.size()); b += content; return b;
+    };
+    auto mkCert = [&](const QByteArray &oidContent, const QByteArray &tbsBody) {
+        const QByteArray sigAlg = tlv(0x30, tlv(0x06, oidContent));   // SEQUENCE { OID }
+        const QByteArray tbs    = tlv(0x30, tbsBody);                 // tbsCertificate SEQUENCE
+        return tlv(0x30, tbs + sigAlg);                              // outer Certificate SEQUENCE
+    };
+    const QByteArray sha1Rsa   = QByteArray::fromHex("2a864886f70d010105"); // 1.2.840.113549.1.1.5
+    const QByteArray md5Rsa    = QByteArray::fromHex("2a864886f70d010104"); // ...1.1.4
+    const QByteArray sha256Rsa = QByteArray::fromHex("2a864886f70d01010b"); // ...1.1.11
+    chk("sigOid: sha1WithRSA parsed (short-form tbs)",
+        signatureAlgorithmOid(mkCert(sha1Rsa, QByteArray())) == "1.2.840.113549.1.1.5");
+    chk("sigOid: md5WithRSA parsed", signatureAlgorithmOid(mkCert(md5Rsa, QByteArray())) == "1.2.840.113549.1.1.4");
+    chk("sigOid: sha256WithRSA parsed", signatureAlgorithmOid(mkCert(sha256Rsa, QByteArray())) == "1.2.840.113549.1.1.11");
+    // LONG-FORM length: a 200-byte tbsCertificate (length encoded as 0x81 0xC8) --
+    // exercises the multi-byte length path real certs always hit.
+    chk("sigOid: long-form tbs length is handled (real-cert shape)",
+        signatureAlgorithmOid(mkCert(sha1Rsa, QByteArray(200, 'A'))) == "1.2.840.113549.1.1.5");
+    chk("sigOid: garbage DER -> empty", signatureAlgorithmOid(QByteArray::fromHex("deadbeef")).isEmpty());
+    chk("sigOid: empty DER -> empty", signatureAlgorithmOid(QByteArray()).isEmpty());
+    // A truncated length (claims 0x82 0xFF 0xFF but no body) must not over-read.
+    chk("sigOid: truncated long-form length -> empty (no over-read)",
+        signatureAlgorithmOid(QByteArray::fromHex("3082ffff")).isEmpty());
+    // HOSTILE: a 4-byte long-form length 0x7FFFFFFF (sign bit CLEAR, so positive)
+    // -- a naive `pos+len` bound overflows signed-int and would over-read ~2GB.
+    // Must be rejected. (12-byte cert: outer SEQ, empty tbs, sigAlg SEQ, OID len 7FFFFFFF.)
+    chk("sigOid: INT_MAX (0x7FFFFFFF) long-form length -> empty (overflow over-read guard)",
+        signatureAlgorithmOid(QByteArray::fromHex("300a3000300606847fffffff")).isEmpty());
+    // A child whose declared length runs PAST its parent SEQUENCE must not be read
+    // from bytes outside the outer Certificate -- it returns empty, not a bogus OID.
+    chk("sigOid: sigAlg element outside the outer SEQUENCE -> empty (no misleading OID)",
+        signatureAlgorithmOid(QByteArray::fromHex("300430020500300406022a03")).isEmpty());
+
+    // ===== weakSignatureFinding: collision-feasible hash classification ==
+    {
+        QString sev, det;
+        chk("weakSig: SHA-1/RSA -> tls-weak-sig-algo, medium",
+            weakSignatureFinding("1.2.840.113549.1.1.5", sev, det) == "tls-weak-sig-algo" && sev == "medium");
+        chk("weakSig: detail names the algorithm", det.contains("SHA-1"));
+        chk("weakSig: MD5/RSA -> high",
+            weakSignatureFinding("1.2.840.113549.1.1.4", sev, det) == "tls-weak-sig-algo" && sev == "high");
+        chk("weakSig: MD2/RSA -> high",
+            weakSignatureFinding("1.2.840.113549.1.1.2", sev, det) == "tls-weak-sig-algo" && sev == "high");
+        chk("weakSig: ECDSA-with-SHA1 -> medium",
+            weakSignatureFinding("1.2.840.10045.4.1", sev, det) == "tls-weak-sig-algo" && sev == "medium");
+        chk("weakSig: SHA-256/RSA -> sound (no finding)",
+            weakSignatureFinding("1.2.840.113549.1.1.11", sev, det).isEmpty());
+        chk("weakSig: Ed25519 -> sound", weakSignatureFinding("1.3.101.112", sev, det).isEmpty());
+        chk("weakSig: an empty/unparsed OID -> sound (no false positive)",
+            weakSignatureFinding("", sev, det).isEmpty());
+    }
+
     std::fprintf(stderr, "tls_inspect_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
