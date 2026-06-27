@@ -1,7 +1,10 @@
 #include "sequencer.hpp"
 
+#include <QByteArray>
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonObject>
+#include <QList>
 #include <QRegularExpression>
 #include <QVector>
 #include <cmath>
@@ -164,6 +167,245 @@ bool looksMonotonic(const QStringList &tokens) {
     return inc == steps || dec == steps;       // strictly monotonic
 }
 
+// ===================================================================
+// Deeper randomness tests: statistical flatness != unpredictability.
+//
+// The effective-keyspace score above flags SHORT weak tokens (an 8-hex/32-bit
+// LCG is brute-forceable however flat its characters). It cannot see the deeper
+// miss: a LONG token whose characters are individually uniform AND whose total
+// keyspace looks large, yet whose underlying bytes come from a statistically-
+// flat-but-PREDICTABLE generator (a 32-bit-seeded LCG, java.util.Random, ...)
+// rendered to hex/base64 -- high char entropy, high effective keyspace, but
+// recoverable from a handful of samples.
+//
+// Three positional/bit-level tests over the corpus pick up that structure:
+//   * per-CHARACTER-POSITION Shannon entropy   -> a column that leaks structure
+//   * NIST-style monobit + two-bit serial test -> a biased decoded bitstream
+//   * byte-level lag-1 serial correlation       -> the LCG/linear-congruential
+//                                                  lattice (and java.util.Random
+//                                                  low-bit) signature
+//
+// Scope / honesty: monobit + serial + lag-1 correlation catch the LCG / linear-
+// congruential family and gross per-position leaks. A *Mersenne Twister* stream
+// passes all of these (that is precisely why MT is popular) -- catching MT needs
+// a binary-matrix-rank or 624-word state-recovery test, which is deliberately
+// out of scope here (a future test). We do NOT claim to flag MT; we flag the
+// linear/low-bit-weak generators and structural leaks these tests can prove.
+//
+// Everything is conservative on purpose (the analyst acts on a flag): each test
+// is gated behind a minimum corpus size and uses a standard significance
+// threshold, so a small or genuinely-random corpus is never false-flagged.
+// ===================================================================
+
+// Minimum corpus size before ANY deeper test runs. The per-position and bit
+// tests are cross-sample statistics; below this they are noise. Set well above
+// every existing regression corpus so the deeper tests only ever ADD signal on
+// real (larger) captures -- they never perturb the legacy small-corpus grades.
+constexpr int kDeepMinN = 20;
+
+struct PositionalResult {
+    bool   applicable = false;   // fixed-width corpus with enough samples?
+    int    width = 0;
+    int    n = 0;                // count of modal-width tokens analyzed
+    QList<double> columnEntropy; // per-column Shannon entropy (bits)
+    double reference = 0.0;      // the strongest variable column (healthy baseline)
+    int    weakColumns = 0;
+    bool   biased = false;
+};
+
+// Per-character-position Shannon entropy across the fixed-width tokens. A
+// healthy random token draws every column from the same alphabet uniformly, so
+// EVERY column's entropy should sit near the alphabet's bits/symbol. A generator
+// that leaks structure per position (a constant-ish nibble, a low-order LCG bit
+// rendered to a fixed column, an embedded counter) shows columns whose entropy
+// is anomalously low relative to their siblings.
+//
+// FP guards: we judge only VARIABLE columns (distinct >= 2). A fully-constant
+// column is corpus format -- a fixed prefix/suffix, a UUID dash, a version
+// nibble -- not a generator flaw, so it is reported but never counted as bias
+// (this is also what keeps UUIDv4, whose lone low-entropy variant nibble is a
+// single column, from tripping the flag). We require >= 2 weak columns, a
+// healthy reference alphabet (>= 2 bits) and the modal width to be a real
+// majority before flagging.
+PositionalResult positionalEntropy(const QStringList &tokens) {
+    PositionalResult r;
+    if (tokens.size() < kDeepMinN) return r;
+
+    // Modal token width.
+    QHash<int, int> widthCount;
+    for (const QString &t : tokens) widthCount[t.size()]++;
+    int modeW = 0, modeC = 0;
+    for (auto it = widthCount.cbegin(); it != widthCount.cend(); ++it)
+        if (it.value() > modeC) { modeC = it.value(); modeW = it.key(); }
+    if (modeW < 8 || modeC < kDeepMinN || modeC * 2 < tokens.size()) return r;
+
+    QStringList fw;
+    for (const QString &t : tokens) if (t.size() == modeW) fw << t;
+    r.applicable = true;
+    r.width = modeW;
+    r.n = fw.size();
+
+    const double tot = double(fw.size());
+    QList<double> varH;                         // entropies of variable columns
+    for (int c = 0; c < modeW; ++c) {
+        QHash<char16_t, int> cnt;
+        for (const QString &t : fw) cnt[t[c].unicode()]++;
+        double H = 0.0;
+        for (auto it = cnt.cbegin(); it != cnt.cend(); ++it) {
+            const double p = double(it.value()) / tot;
+            H -= p * std::log2(p);
+        }
+        r.columnEntropy << H;
+        if (cnt.size() >= 2) varH << H;         // skip constant (format) columns
+    }
+
+    double ref = 0.0;
+    for (double h : varH) ref = qMax(ref, h);
+    r.reference = ref;
+
+    // Need enough variable columns and a meaningful alphabet for per-position
+    // entropy to discriminate (a 2-symbol/numeric corpus is judged elsewhere).
+    if (varH.size() >= 4 && ref >= 2.0) {
+        int weak = 0;
+        for (double h : varH)
+            if (h < 0.5 * ref && (ref - h) >= 1.0) ++weak;
+        r.weakColumns = weak;
+        r.biased = (weak >= 2);
+    }
+    return r;
+}
+
+// Decode every token to bytes IFF the whole corpus is consistently hex or
+// base64; otherwise return empty (the bit tests then report not-applicable
+// rather than decoding garbage). Hex is tried first because a hex corpus is also
+// a valid base64 charset.
+QList<QByteArray> decodeCorpusBytes(const QStringList &tokens, QString &scheme) {
+    scheme.clear();
+    static const QRegularExpression hexRe("^[0-9a-fA-F]+$");
+    static const QRegularExpression b64Re("^[A-Za-z0-9+/_-]+={0,2}$");
+
+    bool allHex = !tokens.isEmpty();
+    for (const QString &t : tokens) {
+        if (t.isEmpty() || (t.size() % 2) != 0 || !hexRe.match(t).hasMatch()) { allHex = false; break; }
+    }
+    if (allHex) {
+        QList<QByteArray> out;
+        for (const QString &t : tokens) out << QByteArray::fromHex(t.toLatin1());
+        scheme = "hex";
+        return out;
+    }
+
+    bool allB64 = !tokens.isEmpty();
+    QList<QByteArray> out;
+    for (const QString &t : tokens) {
+        if (t.size() < 4 || !b64Re.match(t).hasMatch()) { allB64 = false; break; }
+        QByteArray b = QByteArray::fromBase64(
+            t.toLatin1(), QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+        if (b.isEmpty())
+            b = QByteArray::fromBase64(
+                t.toLatin1(), QByteArray::Base64UrlEncoding | QByteArray::AbortOnBase64DecodingErrors);
+        if (b.isEmpty()) { allB64 = false; break; }
+        out << b;
+    }
+    if (allB64) { scheme = "base64"; return out; }
+    return {};
+}
+
+struct BitLevelResult {
+    bool   applicable = false;
+    QString scheme;
+    qint64 bits = 0;
+    double monobitP = 1.0;      // NIST SP 800-22 frequency (monobit) p-value
+    bool   monobitFail = false;
+    double twoBitChi = 0.0;     // chi-square (3 dof) over non-overlapping bit pairs
+    bool   twoBitFail = false;
+    double serialR = 0.0;       // byte-level lag-1 serial correlation coefficient
+    bool   serialFail = false;
+    bool   anyFail = false;
+};
+
+// Bit/byte-level tests on the decoded byte stream:
+//   monobit : NIST frequency test -- proportion of 1-bits; p < 0.01 -> biased.
+//   twoBit  : chi-square over the four non-overlapping 2-bit blocks (3 dof);
+//             a flat stream spreads 00/01/10/11 evenly. Critical 11.345 (p<0.01).
+//   serial  : lag-1 Pearson correlation of consecutive bytes -- the classic LCG
+//             lattice / java.util.Random low-bit tell. A CSPRNG stream gives
+//             r ~ 0; |r| past max(0.08, 3/sqrt(m)) (a generous ~3-sigma floor)
+//             flags a linear dependency.
+BitLevelResult bitLevelTests(const QStringList &tokens) {
+    BitLevelResult r;
+    if (tokens.size() < kDeepMinN) return r;
+
+    QString scheme;
+    const QList<QByteArray> per = decodeCorpusBytes(tokens, scheme);
+    if (per.isEmpty()) return r;
+
+    QByteArray cat;
+    for (const QByteArray &b : per) cat += b;
+    if (cat.size() < 32) return r;              // need >= 256 bits to be meaningful
+    r.applicable = true;
+    r.scheme = scheme;
+
+    // ---- monobit ----
+    qint64 ones = 0;
+    for (unsigned char ch : cat)
+        for (int i = 0; i < 8; ++i) ones += (ch >> i) & 1;
+    const qint64 total = qint64(cat.size()) * 8;
+    r.bits = total;
+    {
+        const double s    = double(2 * ones - total);          // (#1 - #0)
+        const double sObs = std::fabs(s) / std::sqrt(double(total));
+        r.monobitP    = std::erfc(sObs / std::sqrt(2.0));
+        r.monobitFail = r.monobitP < 0.01;
+    }
+
+    // ---- two-bit (non-overlapping) frequency chi-square ----
+    {
+        qint64 counts[4] = {0, 0, 0, 0};
+        qint64 bitIdx = 0;
+        int    first = 0;
+        for (unsigned char ch : cat)
+            for (int i = 7; i >= 0; --i) {
+                const int bit = (ch >> i) & 1;
+                if ((bitIdx & 1) == 0) first = bit;
+                else counts[(first << 1) | bit]++;
+                ++bitIdx;
+            }
+        const qint64 pairs = bitIdx / 2;
+        if (pairs >= 20) {
+            const double exp = double(pairs) / 4.0;
+            double chi = 0.0;
+            for (int k = 0; k < 4; ++k) {
+                const double d = double(counts[k]) - exp;
+                chi += d * d / exp;
+            }
+            r.twoBitChi  = chi;
+            r.twoBitFail = chi > 11.345;        // 3 dof, p < 0.01
+        }
+    }
+
+    // ---- byte-level lag-1 serial correlation ----
+    {
+        const qint64 m = qint64(cat.size()) - 1;
+        if (m >= 16) {
+            double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+            for (qint64 i = 0; i < m; ++i) {
+                const double x = double(static_cast<unsigned char>(cat[int(i)]));
+                const double y = double(static_cast<unsigned char>(cat[int(i + 1)]));
+                sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+            }
+            const double num = double(m) * sxy - sx * sy;
+            const double den = std::sqrt((double(m) * sxx - sx * sx) * (double(m) * syy - sy * sy));
+            r.serialR    = (den > 1e-9) ? num / den : 0.0;
+            const double thr = qMax(0.08, 3.0 / std::sqrt(double(m)));
+            r.serialFail = std::fabs(r.serialR) > thr;
+        }
+    }
+
+    r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail;
+    return r;
+}
+
 } // namespace
 
 QJsonObject analyzeTokens(const QStringList &tokens) {
@@ -266,6 +508,46 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     seqObj["delta"] = static_cast<double>(delta);
     result["sequential"] = seqObj;
 
+    // Deeper tests: statistical flatness != cryptographic unpredictability.
+    // These only activate on a corpus of >= kDeepMinN tokens (below that they
+    // are noise), so smaller captures keep exactly their legacy grade.
+    const PositionalResult pos = positionalEntropy(tokens);
+    QJsonObject posObj;
+    posObj["applicable"] = pos.applicable;
+    if (pos.applicable) {
+        posObj["width"] = pos.width;
+        posObj["n"]     = pos.n;
+        QJsonArray cols;
+        for (double h : pos.columnEntropy) cols.append(h);
+        posObj["columnEntropy"] = cols;
+        posObj["reference"]     = pos.reference;
+        posObj["weakColumns"]   = pos.weakColumns;
+        posObj["biased"]        = pos.biased;
+    }
+    result["positional"] = posObj;
+
+    const BitLevelResult bit = bitLevelTests(tokens);
+    QJsonObject bitObj;
+    bitObj["applicable"] = bit.applicable;
+    if (bit.applicable) {
+        bitObj["scheme"] = bit.scheme;
+        bitObj["bits"]   = double(bit.bits);
+        QJsonObject mono;
+        mono["pValue"] = bit.monobitP;
+        mono["failed"] = bit.monobitFail;
+        bitObj["monobit"] = mono;
+        QJsonObject two;
+        two["chiSquare"] = bit.twoBitChi;
+        two["failed"]    = bit.twoBitFail;
+        bitObj["twoBit"] = two;
+        QJsonObject ser;
+        ser["r"]      = bit.serialR;
+        ser["failed"] = bit.serialFail;
+        bitObj["serialCorrelation"] = ser;
+        bitObj["anyFailed"] = bit.anyFail;
+    }
+    result["bitLevel"] = bitObj;
+
     // Final verdict. The PRIMARY axis is the effective keyspace (total entropy
     // per token), not per-byte alphabet flatness -- a short token is brute-
     // forceable however uniform its characters, while a long hex/base64 token is
@@ -287,6 +569,18 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     if (seq) score -= 50;
     else if (mono) score -= 25;                  // monotonic but not constant-delta
     if (lcs.size() > avgLen / 2 && avgLen > 8) score -= 30;
+    // Deeper-test deductions. Conservative, and gated behind kDeepMinN + standard
+    // significance thresholds inside each test, so they only fire on a real
+    // (large) corpus that genuinely fails. They catch the case the keyspace score
+    // misses: a long token with high char entropy / high effective keyspace whose
+    // bytes still come from a predictable (LCG / linear / per-position-leaky)
+    // generator.
+    if (pos.applicable && pos.biased)   score -= 20;   // a column leaks structure
+    if (bit.applicable) {
+        if (bit.monobitFail) score -= 20;              // biased decoded bitstream
+        if (bit.twoBitFail)  score -= 15;              // non-uniform 2-bit blocks
+        if (bit.serialFail)  score -= 25;              // LCG/linear lag-1 lattice
+    }
     score = qBound(0, score, 100);
     result["score"] = score;
     QString verdict;

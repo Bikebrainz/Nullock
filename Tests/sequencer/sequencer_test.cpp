@@ -14,6 +14,16 @@
 //     - a long strong token (40-hex ~160 bits) IS "looks-random" (no alphabet
 //       penalty).
 //
+// Deeper tests (statistical flatness != cryptographic unpredictability), gated
+// behind a >= 20-token corpus so they never perturb the legacy small-corpus
+// grades above:
+//     - a per-position-leaky corpus (high char entropy / high effective keyspace
+//       but biased columns) -> positional.biased -> flagged;
+//     - a linear/LCG-shaped byte generator (flat per-byte, recoverable) ->
+//       bitLevel serial-correlation -> flagged;
+//     - a strong MT random corpus -> NONE of the deeper sub-tests fire (these
+//       tests cannot, and do not claim to, catch MT) -> stays looks-random.
+//
 // Run via:  ctest -R sequencer -V
 
 #include "sequencer.hpp"
@@ -23,7 +33,10 @@
 #include <QString>
 #include <QStringList>
 
+#include <cstdint>
 #include <cstdio>
+#include <random>
+#include <vector>
 
 using namespace Nullock::Core;
 
@@ -134,6 +147,91 @@ int main(int argc, char **argv) {
     chk("empty corpus -> no-data", analyze(QStringList())["verdict"].toString() == "no-data");
     chk("single token -> does not crash, scores",
         analyze(L({"abc123"}))["n"].toInt() == 1);
+
+    // ===== deeper tests: statistical flatness != unpredictability ==========
+    // These activate only on a corpus of >= 20 tokens (so every legacy corpus
+    // above keeps its grade), hence they are exercised with freshly-built
+    // 32-token corpora rather than hand-typed literals.
+    {
+        auto hexOf = [](const std::vector<uint8_t> &b) {
+            static const char *H = "0123456789abcdef";
+            QString s; s.reserve(int(b.size()) * 2);
+            for (uint8_t x : b) { s += QChar(H[x >> 4]); s += QChar(H[x & 0xF]); }
+            return s;
+        };
+
+        // --- negative: a strong random corpus (mt19937_64). MT passes monobit /
+        // serial / per-position by design (these tests CANNOT catch MT), so it
+        // must trip none of the deeper sub-tests and stay looks-random.
+        {
+            std::mt19937_64 rng(0xC0FFEEULL);
+            QStringList strong;
+            for (int i = 0; i < 32; ++i) {
+                std::vector<uint8_t> b(16);
+                for (auto &x : b) x = uint8_t(rng());
+                strong << hexOf(b);
+            }
+            const QJsonObject r  = analyze(strong);
+            const QJsonObject p  = r["positional"].toObject();
+            const QJsonObject bl = r["bitLevel"].toObject();
+            chk("strong 32x16B random -> deeper tests are applicable",
+                p["applicable"].toBool() && bl["applicable"].toBool());
+            chk("strong random -> positional NOT biased", !p["biased"].toBool());
+            chk("strong random -> bitLevel NOT failed",   !bl["anyFailed"].toBool());
+            chk("strong random -> still looks-random",
+                r["verdict"].toString() == "looks-random");
+        }
+
+        // --- positive A: per-position leak. 32 tokens x 32 hex chars; columns
+        // 0..25 are full hex, the last 6 columns carry only {0,f}. Char entropy
+        // and effective keyspace stay high (the LEGACY score would pass it), but
+        // six columns leak structure -> positional.biased -> flagged.
+        {
+            std::mt19937_64 rng(0x0BADC0DEULL);
+            QStringList leaky;
+            for (int i = 0; i < 32; ++i) {
+                QString s;
+                for (int c = 0; c < 32; ++c) {
+                    if (c < 26) s += QChar("0123456789abcdef"[rng() & 0xF]);
+                    else        s += QChar((rng() & 1) ? 'f' : '0');
+                }
+                leaky << s;
+            }
+            const QJsonObject r = analyze(leaky);
+            chk("per-position-leaky corpus -> positional.biased",
+                r["positional"].toObject()["biased"].toBool());
+            chk("per-position-leaky corpus -> NOT looks-random",
+                r["verdict"].toString() != "looks-random" && r["score"].toInt() < 80);
+            chk("per-position-leaky corpus -> high effective keyspace (legacy would pass)",
+                r["shannon"].toObject()["effectiveBitsPerToken"].toDouble() > 64.0);
+        }
+
+        // --- positive B: a linear/LCG-shaped byte generator. Each token's 16
+        // bytes are an arithmetic walk b[k]=b[k-1]+1 from a per-token random seed:
+        // per-byte values span the range (high char entropy, high effective
+        // keyspace, balanced bits -> passes monobit, per-position fine) -- the
+        // ONLY tell is a strong lag-1 byte correlation. The canonical "flat
+        // statistics, fully recoverable generator" case.
+        {
+            std::mt19937_64 rng(0x5EED1234ULL);
+            QStringList lin;
+            for (int i = 0; i < 32; ++i) {
+                std::vector<uint8_t> b(16);
+                uint8_t cur = uint8_t(rng());
+                for (int k = 0; k < 16; ++k) { b[k] = cur; cur = uint8_t(cur + 1); }
+                lin << hexOf(b);
+            }
+            const QJsonObject r  = analyze(lin);
+            const QJsonObject bl = r["bitLevel"].toObject();
+            chk("linear/LCG byte corpus -> serial-correlation failed",
+                bl["serialCorrelation"].toObject()["failed"].toBool());
+            chk("linear/LCG byte corpus -> NOT looks-random",
+                r["verdict"].toString() != "looks-random" && r["score"].toInt() < 80);
+            chk("linear/LCG byte corpus -> NOT caught by legacy sequential/monotonic",
+                !r["sequential"].toObject()["looksSequential"].toBool()
+                && !r["sequential"].toObject()["looksMonotonic"].toBool());
+        }
+    }
 
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

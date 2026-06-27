@@ -8,11 +8,24 @@
 // brute-forceable, sequential, or low-entropy.
 //
 // Tests we run:
-//   1. Shannon entropy per byte (bits)
+//   1. Shannon entropy per byte (bits) + effective per-token keyspace
 //   2. Character class entropy (alpha / digit / special / case)
 //   3. Hamming distance distribution between consecutive tokens
 //   4. Longest common substring across the corpus
 //   5. Sequential-counter detection (parse hex/dec, look at deltas)
+//   6. Per-character-position Shannon entropy (fixed-width corpora) -- catches a
+//      generator that leaks structure in a specific column
+//   7. Bit-level NIST monobit + two-bit serial chi-square on the decoded bytes
+//   8. Byte-level lag-1 serial correlation -- the LCG / linear-congruential and
+//      java.util.Random low-bit signature
+//
+// Tests 6-8 address the deeper "statistical flatness != cryptographic
+// unpredictability" miss: a LONG token with high char entropy AND high effective
+// keyspace whose bytes still come from a predictable generator. They only
+// activate on corpora of >= 20 tokens and use standard significance thresholds,
+// so small or genuinely-random captures are never false-flagged. (A Mersenne
+// Twister stream passes 6-8; flagging MT needs a matrix-rank / state-recovery
+// test, left as future work.)
 //
 // All tests are O(N * len). The whole analyze() call returns in
 // under 50ms for typical corpora of 100 tokens.
@@ -43,6 +56,15 @@ public:
     //     "hamming":   { "avg": <int>, "min": <int>, "max": <int> },
     //     "lcs":       { "longest": "<chars>", "length": <int> },
     //     "sequential":{ "looksSequential": <bool>, "delta": <int> },
+    //     "positional":{ "applicable": <bool>, "width": <int>, "n": <int>,
+    //                    "columnEntropy": [<double>...], "reference": <double>,
+    //                    "weakColumns": <int>, "biased": <bool> },
+    //     "bitLevel":  { "applicable": <bool>, "scheme": "hex"|"base64",
+    //                    "bits": <int>,
+    //                    "monobit": { "pValue": <double>, "failed": <bool> },
+    //                    "twoBit":  { "chiSquare": <double>, "failed": <bool> },
+    //                    "serialCorrelation": { "r": <double>, "failed": <bool> },
+    //                    "anyFailed": <bool> },
     //     "verdict":   "looks-random" | "may-be-predictable" | "predictable",
     //     "score":     <0-100>
     //   }
