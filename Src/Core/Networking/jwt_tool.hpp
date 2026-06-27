@@ -24,6 +24,9 @@ namespace Nullock::Core::JwtTool {
 
 struct Decoded {
     bool       ok = false;
+    bool       payloadOk = false;  // the payload parsed as a JSON object. When false,
+                                   // d.payload is empty and analyze() must NOT read it
+                                   // as "no claims" (that fabricated a false jwt-no-exp).
     QString    error;
     QString    headerJson;     // pretty-printed
     QString    payloadJson;    // pretty-printed
@@ -49,6 +52,12 @@ struct Weakness {
 // Static analysis of a decoded token. `nowEpoch` lets callers pin the
 // clock (tests); pass 0 to use the system clock.
 QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch = 0);
+
+// Exposed for tests: is a `kid` worth flagging for injection testing? Risky when
+// it contains anything outside the conservative key-id allowlist [A-Za-z0-9._-]
+// (or a ".." traversal) -- a real kid is an opaque id, so any other char is a
+// path-traversal / SQLi / command-injection lead in the server's key lookup.
+bool kidLooksRisky(const QString &kid);
 
 // Try each candidate as the HS256/384/512 secret. Returns the first that
 // verifies the signature, or an empty string if none match.

@@ -286,6 +286,13 @@ add_subdirectory(robots_recon)
 # Run via: ctest -R recon_engine -V
 add_subdirectory(recon_engine)
 
+# jwt_tool offline decode + weakness analysis -- unparseable-payload handling (no
+# fabricated jwt-no-exp), string-encoded exp, absent-alg vs the 'none' bypass,
+# the RS/ES/PS alg-confusion lead, the kid allow-list, all-privilege-claims, JWE
+# rejection, and HMAC-only bruteHmac. jwt_tool is Qt6::Core-only.
+# Run via: ctest -R jwt_tool -V
+add_subdirectory(jwt_tool)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

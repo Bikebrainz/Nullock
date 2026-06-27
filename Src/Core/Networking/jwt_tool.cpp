@@ -42,6 +42,15 @@ Decoded decode(const QString &token) {
         d.error = "not a JWT (need at least header.payload)";
         return d;
     }
+    if (parts.size() > 3) {
+        // A compact JWS is 2 or 3 segments. 5 segments is a JWE (encrypted) --
+        // don't decode its encrypted-key segment as a signature and analyze the
+        // (absent) plaintext payload.
+        d.error = (parts.size() == 5)
+            ? "looks like a JWE (5 segments, encrypted) -- not a signed JWS"
+            : "not a compact JWS (too many '.'-separated segments)";
+        return d;
+    }
     const QByteArray headerRaw  = b64urlDecode(parts[0]);
     const QByteArray payloadRaw = b64urlDecode(parts[1]);
     d.headerJson  = prettyJson(headerRaw,  &d.header);
@@ -50,6 +59,10 @@ Decoded decode(const QString &token) {
         d.error = "header is not valid base64url JSON";
         return d;
     }
+    // The payload may fail to parse (invalid base64url, or a JSON non-object).
+    // Keep ok=true so the header is still surfaced, but flag it so analyze()
+    // doesn't read an EMPTY payload as "no claims" (a fabricated jwt-no-exp).
+    d.payloadOk = !d.payloadJson.isEmpty();
     d.alg = d.header.value("alg").toString();
     d.typ = d.header.value("typ").toString();
     d.kid = d.header.value("kid").toString();
@@ -59,6 +72,16 @@ Decoded decode(const QString &token) {
     return d;
 }
 
+bool kidLooksRisky(const QString &kid) {
+    if (kid.contains(QLatin1String(".."))) return true;   // path traversal
+    for (const QChar c : kid) {
+        if (c.isLetterOrNumber()) continue;
+        if (c == '.' || c == '_' || c == '-') continue;
+        return true;   // any other char (/, quotes, ;, space, backtick, <>, |, &, $, {}, %, \, CR/LF, ...)
+    }
+    return false;
+}
+
 QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
     QList<Weakness> out;
     if (!d.ok) return out;
@@ -66,32 +89,72 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
 
     const QString algLow = d.alg.toLower();
 
-    // alg:none -- the canonical auth-bypass. If the server honours it,
-    // any token is accepted with no signature.
-    if (algLow == "none" || algLow.isEmpty()) {
+    // ---- header-derived checks (run even if the payload didn't parse) ----
+
+    // alg:none -- the canonical auth-bypass. An ABSENT alg is a weaker, distinct
+    // signal (non-spec header) -- don't brand it the confirmed 'none' bypass.
+    if (algLow == QLatin1String("none")) {
         out.append({ "jwt-alg-none", "critical",
-            "alg is '" + (d.alg.isEmpty() ? QString("(absent)") : d.alg)
-            + "' -- if the server accepts unsigned tokens this is a full "
-              "authentication bypass. Forge with the 'none' attack and replay." });
+            "alg is 'none' -- if the server accepts unsigned tokens this is a full "
+            "authentication bypass. Forge with the 'none' attack and replay." });
+    } else if (algLow.isEmpty()) {
+        out.append({ "jwt-alg-absent", "medium",
+            "the header declares no 'alg' (RFC 7515 requires it) -- non-spec. Test "
+            "whether the server falls back to an unsigned / 'none' verification." });
     }
 
-    // HMAC family -- weak-secret brute and RS->HS confusion surface.
-    if (algLow.startsWith("hs")) {
+    // HMAC (symmetric) -- weak-secret brute + the RS->HS confusion surface.
+    if (algLow.startsWith(QLatin1String("hs"))) {
         out.append({ "jwt-hmac-alg", "info",
             d.alg + " is symmetric (HMAC). If the secret is weak it can be "
             "brute-forced; if the server also accepts RS256 it may be "
-            "vulnerable to an algorithm-confusion attack (sign with the "
-            "public key as the HMAC secret)." });
+            "vulnerable to an algorithm-confusion attack." });
+    } else if (algLow.startsWith(QLatin1String("rs")) || algLow.startsWith(QLatin1String("es"))
+               || algLow.startsWith(QLatin1String("ps"))) {
+        // The asymmetric token is the ACTUAL target of RS->HS confusion -- flag it
+        // here, not only on HS tokens (where the attack doesn't apply).
+        out.append({ "jwt-asym-alg", "info",
+            d.alg + " is asymmetric. If the server can be coerced to HMAC-verify "
+            "(alg substituted to HS256), the token may be forgeable by signing with "
+            "the server's public-key bytes as the HMAC secret. Confirm with the active probe." });
     }
 
-    // exp handling.
+    // kid injection surface (header-derived).
+    if (!d.kid.isEmpty()) {
+        const bool risky = kidLooksRisky(d.kid);
+        out.append({ "jwt-kid", risky ? "medium" : "info",
+            "kid = '" + d.kid + "'"
+            + (risky ? " -- contains path/injection chars; test for path traversal "
+                       "or SQL/command injection in the key lookup."
+                     : " -- if the server resolves this to a key file/row, test "
+                       "kid injection (path traversal / SQLi).") });
+    }
+
+    // ---- payload-derived checks (require a parsed payload) ----
+    if (!d.payloadOk) {
+        out.append({ "jwt-payload-unparseable", "info",
+            "the payload is not valid base64url JSON -- claims (exp, roles, ...) "
+            "could not be analyzed." });
+        return out;
+    }
+
+    // exp handling -- accept a numeric OR string-encoded NumericDate; a present
+    // but non-numeric exp is surfaced rather than silently dropped.
     if (!d.payload.contains("exp")) {
         out.append({ "jwt-no-exp", "medium",
             "no 'exp' claim -- this token never expires. A leaked token is "
             "valid forever." });
     } else {
-        const qint64 exp = static_cast<qint64>(d.payload.value("exp").toDouble());
-        if (exp > 0 && exp < nowEpoch) {
+        const QJsonValue ev = d.payload.value("exp");
+        qint64 exp = 0;
+        bool expOk = false;
+        if (ev.isDouble()) { exp = static_cast<qint64>(ev.toDouble()); expOk = true; }
+        else if (ev.isString()) { exp = ev.toString().toLongLong(&expOk); }
+        if (!expOk || exp <= 0) {
+            out.append({ "jwt-exp-malformed", "medium",
+                "the 'exp' claim is present but not a numeric timestamp -- a lax "
+                "verifier may not enforce expiry. Normalize exp to a NumericDate." });
+        } else if (exp < nowEpoch) {
             out.append({ "jwt-expired", "info",
                 "token expired at epoch " + QString::number(exp)
                 + " -- if the server still accepts it, expiry isn't enforced." });
@@ -101,20 +164,8 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
         }
     }
 
-    // kid injection surface.
-    if (!d.kid.isEmpty()) {
-        const bool risky = d.kid.contains('/') || d.kid.contains("..")
-                        || d.kid.contains('\'') || d.kid.contains(';')
-                        || d.kid.contains(' ');
-        out.append({ "jwt-kid", risky ? "medium" : "info",
-            "kid = '" + d.kid + "'"
-            + (risky ? " -- contains path/quote chars; test for path traversal "
-                       "or SQL injection in the key lookup."
-                     : " -- if the server resolves this to a key file/row, test "
-                       "kid injection (path traversal / SQLi).") });
-    }
-
-    // Privilege claims worth tampering once you can forge.
+    // Privilege claims worth tampering once you can forge -- report EVERY one,
+    // not just the first (a token with role AND is_admin has two tamper targets).
     static const QStringList privKeys = {
         "admin", "is_admin", "isAdmin", "role", "roles", "scope",
         "scopes", "groups", "permissions", "is_superuser",
@@ -126,7 +177,6 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
                 + QString::fromUtf8(QJsonDocument(QJsonObject{{k, d.payload.value(k)}})
                        .toJson(QJsonDocument::Compact))
                 + " -- prime target for tampering under a forging attack." });
-            break;
         }
     }
 
@@ -135,6 +185,10 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
 
 QString bruteHmac(const Decoded &d, const QStringList &candidates) {
     if (!d.ok || d.signature.isEmpty()) return {};
+    // HMAC-only: an RS/ES/PS token's signature is RSA/ECDSA bytes that an HMAC can
+    // never equal, so brute-forcing it would always "find nothing" -- which a
+    // caller can't tell from a genuinely-exhausted wordlist. Refuse up front.
+    if (!d.alg.startsWith(QLatin1String("HS"), Qt::CaseInsensitive)) return {};
     const QCryptographicHash::Algorithm h = hashForAlg(d.alg);
     for (const QString &cand : candidates) {
         const QByteArray mac = QMessageAuthenticationCode::hash(
