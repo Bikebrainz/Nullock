@@ -41,8 +41,8 @@
 namespace Nullock::Core::JwtProbe {
 
 struct Hit {
-    QString attack;    // "alg-none" | "signature-not-verified" | "weak-secret" | "alg-confusion"
-    QString kind;      // finding kind (jwt-alg-none | jwt-signature-not-verified | jwt-weak-secret | jwt-alg-confusion)
+    QString attack;    // "alg-none" | "signature-not-verified" | "weak-secret" | "alg-confusion" | "blank-secret" | "kid-injection"
+    QString kind;      // finding kind (jwt-alg-none | jwt-signature-not-verified | jwt-weak-secret | jwt-alg-confusion | jwt-blank-secret | jwt-kid-injection)
     QString detail;
     QString forged;    // the forged token that was accepted
     QString carrier;   // where the forgery was accepted (e.g. "Authorization: Bearer", "cookie:jwt")
@@ -84,10 +84,15 @@ Result test(const Request &req);
 //   corruptSignature-- flip a DECODED signature byte (avoids the base64-padding
 //                      round-trip that would re-accept ~1/16 of tokens).
 //   algNoneVariants -- the 6 alg:none bypass tokens (case/empty/absent).
+//   blankSecretVariants -- HS256/384/512 signed with an EMPTY key (blank secret).
+//   kidInjectionVariants -- HS256/384/512 tokens with a malicious `kid` (path
+//                      traversal to an empty file like /dev/null) signed empty-key.
 //   isCredentialHeader / defaultSecrets -- helpers exposed for coverage.
 QByteArray buildRequest(const Request &req, const QString &token);
 QString corruptSignature(const QString &token);
 QStringList algNoneVariants(const JwtTool::Decoded &d);
+QStringList blankSecretVariants(const JwtTool::Decoded &d);
+QStringList kidInjectionVariants(const JwtTool::Decoded &d);
 bool isCredentialHeader(const QString &name);
 QStringList defaultSecrets();
 

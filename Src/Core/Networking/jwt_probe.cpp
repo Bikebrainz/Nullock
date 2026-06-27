@@ -194,6 +194,53 @@ static Result testOneCarrier(const Request &req) {
         }
     }
 
+    // Classes 5 & 6 (empty-key forgeries) are SOUND only when the server actually
+    // VERIFIES the signature -- i.e. the corrupt-signature token was REJECTED. If
+    // the server ignores the signature entirely (corruptAccepted), an empty-key /
+    // kid forgery is accepted for THAT reason, which class 1 (signature-not-
+    // verified) already reports; firing blank-secret/kid here would assert a false
+    // mechanism (the key isn't blank, and kid was never resolved). So gate on it.
+    if (!corruptAccepted) {
+        // 5) blank HMAC secret: an HS256/384/512 token signed with an EMPTY key. A
+        //    server with an unset/blank signing secret verifies it. Distinct from
+        //    the weak-secret dictionary crack (the empty string isn't a wordlist
+        //    entry); runs for ANY captured token (an RS/ES server may HMAC-fall-back).
+        bool blankAccepted = false;
+        for (const QString &forged : blankSecretVariants(d)) {
+            if (!forged.isEmpty() && acceptedStably(forged)) {
+                result.hits.append({ "blank-secret", "jwt-blank-secret",
+                    "the server accepted an HMAC token signed with an EMPTY secret -- the "
+                    "JWT signing key is blank/unset", forged });
+                result.vulnerable = true;
+                blankAccepted = true;
+                break;
+            }
+        }
+
+        // 6) kid header injection -- DIFFERENTIAL: a malicious `kid` (path traversal
+        //    to an empty file such as /dev/null) steers the server's key lookup at
+        //    empty-key bytes. This is only sound when the bare empty-key token (no
+        //    kid) is REJECTED but a kid variant is ACCEPTED -- that isolates "empty
+        //    key reached VIA the kid-controlled file lookup" from "the configured
+        //    secret is simply blank" (class 5, which shares the empty key). If the
+        //    no-kid blank-secret token already passed, the empty key -- not kid --
+        //    explains acceptance, so the kid mechanism is unproven; don't claim it.
+        if (!blankAccepted) {
+            for (const QString &forged : kidInjectionVariants(d)) {
+                if (!forged.isEmpty() && acceptedStably(forged)) {
+                    result.hits.append({ "kid-injection", "jwt-kid-injection",
+                        "the server accepted a token whose `kid` points its key lookup at an "
+                        "empty/predictable file (e.g. /dev/null) and then HMAC-verified with "
+                        "the empty key the attacker also used, while the same empty-key token "
+                        "WITHOUT the kid was rejected -- kid path-traversal key injection",
+                        forged });
+                    result.vulnerable = true;
+                    break;
+                }
+            }
+        }
+    }
+
     // Surface the gap when an asymmetric token couldn't be tested for confusion
     // and nothing else fired (so a clean result isn't mistaken for fully tested).
     if (algConfusionUntested && !result.vulnerable && result.error.isEmpty())

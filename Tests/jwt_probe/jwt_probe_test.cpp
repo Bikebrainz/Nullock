@@ -146,6 +146,61 @@ int main(int argc, char **argv) {
     chk("isCredentialHeader: X-Trace -> false", !isCredentialHeader("X-Trace"));
     chk("defaultSecrets: non-empty + includes 'secret'", defaultSecrets().contains("secret"));
 
+    // ===== blankSecretVariants: HS256/384/512 signed with an EMPTY key ===
+    {
+        const QStringList v = blankSecretVariants(d);
+        chk("blank-secret: one variant per HS alg (>=3)", v.size() >= 3);
+        bool has256 = false, has384 = false, has512 = false, allEmptyKey = true, claimsOk = true;
+        for (const QString &t : v) {
+            const QString a = algOf(t);
+            if (a == "HS256") has256 = true;
+            if (a == "HS384") has384 = true;
+            if (a == "HS512") has512 = true;
+            const JwtTool::Decoded fd = JwtTool::decode(t);
+            if (fd.payload.value("sub").toString() != "alice") claimsOk = false;
+            // empty-key signature must DIFFER from a non-empty-key sig over the same
+            // header+payload (proves the key is genuinely empty, not 'secret') AND
+            // equal an independent empty-key re-derivation.
+            if (t.section('.', 2, 2) == JwtTool::signHmac(fd.header, fd.payload, QByteArray("secret")).section('.', 2, 2))
+                allEmptyKey = false;
+            if (t != JwtTool::signHmac(fd.header, fd.payload, QByteArray()))
+                allEmptyKey = false;
+        }
+        chk("blank-secret: covers HS256/HS384/HS512", has256 && has384 && has512);
+        chk("blank-secret: every variant is empty-key signed (and != a real key)", allEmptyKey);
+        chk("blank-secret: claims preserved across variants (sub=alice)", claimsOk);
+    }
+
+    // ===== kidInjectionVariants: malicious kid + empty-key HS family =====
+    {
+        const QStringList v = kidInjectionVariants(d);
+        chk("kid-injection: kids x HS-algs (>=6 variants)", v.size() >= 6);
+        bool allHs = true, allKid = true, anyTraversal = false, anyNullDevice = false;
+        bool has384 = false, has512 = false;
+        for (const QString &t : v) {
+            const QString a = algOf(t);
+            if (a != "HS256" && a != "HS384" && a != "HS512") allHs = false;
+            if (a == "HS384") has384 = true;
+            if (a == "HS512") has512 = true;
+            const QJsonObject h = QJsonDocument::fromJson(b64uDecode(t.split('.').value(0))).object();
+            const QString kid = h.value("kid").toString();
+            if (!h.contains("kid") || kid.isEmpty()) allKid = false;
+            if (kid.contains("..")) anyTraversal = true;
+            if (kid.contains("/dev/null") || kid.contains("NUL")) anyNullDevice = true;
+        }
+        chk("kid-injection: every variant is an HS-family alg", allHs);
+        chk("kid-injection: HS384 + HS512 variants present (not HS256-only)", has384 && has512);
+        chk("kid-injection: every variant carries a non-empty kid header", allKid);
+        chk("kid-injection: a path-traversal kid is present", anyTraversal);
+        chk("kid-injection: a null-device (/dev/null or NUL) kid is present", anyNullDevice);
+        const JwtTool::Decoded fd0 = JwtTool::decode(v.first());
+        chk("kid-injection: first variant decodes + a real signature", fd0.ok && fd0.signature.size() >= 32);
+        chk("kid-injection: claims preserved (sub=alice)", fd0.payload.value("sub").toString() == "alice");
+        chk("kid-injection: empty-key sig != 'secret'-key sig (key really is empty)",
+            v.first().section('.', 2, 2)
+            != JwtTool::signHmac(fd0.header, fd0.payload, QByteArray("secret")).section('.', 2, 2));
+    }
+
     std::fprintf(stderr, "jwt_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
