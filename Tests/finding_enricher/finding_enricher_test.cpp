@@ -143,6 +143,72 @@ int main(int argc, char **argv) {
         }
     }
 
+    // 3) Idempotency / stale-vector contract. enrich() advertises (in the
+    //    header) that it is safe to re-call on an already-enriched finding.
+    //    A kind whose table CVSS score is 0.0 (info/recon, empty vector) must
+    //    NOT leave a previously-stamped cvssVector in place: the 0.0-score path
+    //    clears it, so a 0.0 kind never carries a vector. The inverse is also
+    //    guarded -- a placeholder-0.0 kind that legitimately carries a
+    //    per-finding score+vector (cve-correlated) must keep its vector.
+    auto checkIdem = [&](const char *name, bool ok) {
+        if (ok) {
+            ++pass;
+        } else {
+            std::fprintf(stderr, "  FAIL  idempotency %s\n", name);
+            ++fail;
+            failures << QString("idempotency %1").arg(name);
+        }
+    };
+
+    // 3a) A stale vector pre-seeded on a 0.0-score kind is cleared, and the
+    //     score falls through to the severity default.
+    {
+        Finding f;
+        f.kind       = "waf-detected";          // table cvssScore 0.0, empty vector
+        f.severity   = "medium";
+        f.cvssVector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N";  // stale seed
+        FindingEnricher::enrich(f);
+        checkIdem("0.0-kind clears pre-seeded vector",
+                  f.cvssVector.isEmpty()
+                  && qFuzzyCompare(f.cvssScore + 1.0, 5.0 + 1.0));   // medium -> 5.0
+    }
+
+    // 3b) Full re-enrich cycle: a finding first enriched as a scored kind (which
+    //     stamps a vector) and later re-pointed at a 0.0-score kind must come
+    //     out clean -- no stale vector, score back to the severity default.
+    {
+        Finding f;
+        f.kind     = "missing-csp";             // table cvssScore 4.3, stamps a vector
+        f.severity = "high";
+        FindingEnricher::enrich(f);
+        const bool stampedFirst = !f.cvssVector.isEmpty()
+                                  && qFuzzyCompare(f.cvssScore + 1.0, 4.3 + 1.0);
+        // Re-classified as an info/recon kind; upstream recomputes score to 0.
+        f.kind      = "robots-disallowed-path"; // table cvssScore 0.0, empty vector
+        f.cvssScore = 0.0;
+        FindingEnricher::enrich(f);
+        checkIdem("re-enrich onto 0.0-kind clears stamped vector",
+                  stampedFirst
+                  && f.cvssVector.isEmpty()
+                  && qFuzzyCompare(f.cvssScore + 1.0, 7.0 + 1.0));   // high -> 7.0
+    }
+
+    // 3c) Guard against over-clearing: cve-correlated has a 0.0 *table* score
+    //     (placeholder) but carries a real per-CVE score+vector. f.cvssScore is
+    //     > 0.0, so neither 0.0-score branch runs and the vector is preserved.
+    {
+        Finding f;
+        f.kind       = "cve-correlated";
+        f.severity   = "high";
+        f.cvssScore  = 8.8;
+        f.cvssVector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N";
+        const QString keptVector = f.cvssVector;
+        FindingEnricher::enrich(f);
+        checkIdem("cve-correlated keeps per-CVE vector",
+                  f.cvssVector == keptVector
+                  && qFuzzyCompare(f.cvssScore + 1.0, 8.8 + 1.0));
+    }
+
     std::fprintf(stderr,
         "\n========================================\n"
         "Finding enricher regression: %d passed, %d failed\n"

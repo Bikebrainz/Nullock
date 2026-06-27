@@ -420,6 +420,14 @@ void enrich(Finding &f) {
         f.cvssVector = QString::fromLatin1(m->cvssVector);
     } else if (f.cvssScore <= 0.0) {
         f.cvssScore  = defaultScoreForSeverity(f.severity);
+        // A 0.0 kind carries no vector. Clear any vector the finding already
+        // holds so re-enrichment is truly idempotent (header contract) -- e.g.
+        // a finding stamped with a vector by an earlier scored kind, then
+        // re-pointed at an info/recon kind, must not keep the stale vector.
+        // (A placeholder-0.0 kind that legitimately carries its own per-finding
+        // score+vector, like cve-correlated, has f.cvssScore > 0.0 and never
+        // reaches this branch, so its vector is preserved.)
+        f.cvssVector.clear();
     }
     f.fixSummary = QString::fromLatin1(m->fix);
     const QString comp = QString::fromLatin1(m->compliance);
