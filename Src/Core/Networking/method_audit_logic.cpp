@@ -61,6 +61,17 @@ QStringList parseAllow(const QString &allowHeader) {
     return out;
 }
 
+// Fold an additional Allow header value into an already-parsed method list,
+// deduped (parseAllow upper-cases, so the contains() check is case-folded),
+// preserving first-seen order. The OPTIONS Allow seeds `existing`; the 405
+// Method-Not-Allowed harvest extends it without re-listing shared verbs.
+QStringList mergeAllow(const QStringList &existing, const QString &allowHeader) {
+    QStringList out = existing;
+    for (const QString &m : parseAllow(allowHeader))
+        if (!out.contains(m)) out << m;
+    return out;
+}
+
 QStringList dangerousWriteMethods(const QStringList &allowed) {
     QStringList out;
     for (const QString &m : allowed)
@@ -75,16 +86,20 @@ QStringList dangerousWebdavMethods(const QStringList &allowed) {
     return out;
 }
 
-// Did a TRACE response echo our request back (Cross-Site Tracing)? A true TRACE
-// loopback (RFC 7231) returns the received request verbatim as the body, so it
-// must START with our request line "TRACE " AND carry back our distinctive
-// User-Agent. Requiring the request line at offset 0 (not merely "contains
-// TRACE") rejects a logging/error page that quotes the request mid-body or a
-// page that just mentions the word "trace".
-bool traceEchoed(const QString &body) {
+// Did a response echo our request back (Cross-Site Tracing)? A true TRACE
+// loopback (RFC 7231) -- or its IIS TRACK alias -- returns the received request
+// verbatim as the body, so it must START with our request line ("<METHOD> ")
+// AND carry back our distinctive User-Agent. Requiring the request line at
+// offset 0 (not merely "contains TRACE") rejects a logging/error page that
+// quotes the request mid-body or a page that just mentions the word "trace".
+// `method` is the verb we expect echoed back -- "TRACE" by default, "TRACK" for
+// the IIS alias; a Max-Forwards:0 TRACE still echoes "TRACE".
+bool traceEchoed(const QString &body, const QString &method) {
     // UA match is case-insensitive: an h2->h1.1 gateway may lower-case the
-    // echoed header names, which must not hide a real XST loopback.
-    return body.trimmed().startsWith(QLatin1String("TRACE "), Qt::CaseInsensitive)
+    // echoed header names, which must not hide a real XST loopback. The verb
+    // token is compared case-insensitively for the same reason.
+    const QString token = method.trimmed().toUpper() + QLatin1Char(' ');
+    return body.trimmed().startsWith(token, Qt::CaseInsensitive)
         && body.contains(QLatin1String("User-Agent: Nullock/method-audit"), Qt::CaseInsensitive);
 }
 

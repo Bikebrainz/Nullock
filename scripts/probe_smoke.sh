@@ -219,6 +219,14 @@ def make(mode):
             # other method-* mode advertises only benign verbs.
             if mode == 'method-allow':
                 self._send(200, b'', extra=[('Allow', 'GET, HEAD, POST, OPTIONS, PUT, DELETE, PROPFIND, MKCOL')]); return
+            if mode == 'method-405':
+                # OPTIONS deliberately omits Allow -> the only way to learn the
+                # method set is the 405 harvest (do_XYZZY below).
+                self._send(200, b''); return
+            if mode == 'method-track':
+                # A proxy blocks OPTIONS outright -> the audit must fall through to
+                # the 405 harvest and the TRACE/TRACK family instead of aborting.
+                self._send(403, b'forbidden'); return
             if mode.startswith('method'):
                 self._send(200, b'', extra=[('Allow', 'GET, HEAD, POST, OPTIONS')]); return
             self._send(501, b'no'); return
@@ -236,6 +244,23 @@ def make(mode):
                 for k, v in self.headers.items(): lines += '%s: %s\r\n' % (k, v)
                 self._send(200, ('<pre>logged request: ' + lines + '</pre>').encode()); return
             self._send(405, b'no'); return
+        def do_TRACK(self):
+            # IIS's TRACE alias. method-track echoes it back verbatim (XST via the
+            # alias) even though OPTIONS is blocked -- the body starts with the
+            # TRACK request line, which the audit confirms against the TRACK token.
+            if mode == 'method-track':
+                lines = 'TRACK ' + self.path + ' HTTP/1.1\r\n'
+                for k, v in self.headers.items(): lines += '%s: %s\r\n' % (k, v)
+                self._send(200, lines.encode(), 'message/http'); return
+            self._send(405, b'no'); return
+        def do_XYZZY(self):
+            # The audit's deliberately-bogus method. method-405 answers 405 WITH an
+            # Allow header (the harvest source) -- modeling servers that surface the
+            # method set on 405 but not on OPTIONS. Elsewhere it's a plain 501.
+            if mode == 'method-405':
+                self._send(405, b'method not allowed',
+                           extra=[('Allow', 'GET, HEAD, POST, OPTIONS, PUT, DELETE')]); return
+            self._send(501, b'no'); return
         def do_GET(self):
             q = parse_qs(urlparse(self.path).query)
             if mode.startswith('cache'):
@@ -616,17 +641,46 @@ def make(mode):
                 self._send(200 if valid else 401, b'ok' if valid else b'unauthorized'); return
             if mode.startswith('cswsh'):
                 # WebSocket upgrade endpoint. Compute the RFC-6455 accept token so
-                # the probe sees a genuine handshake. The vuln endpoint completes
-                # the upgrade for ANY Origin; the safe one rejects a cross-origin
-                # handshake (foreign Origin) but completes the no-Origin control.
+                # the probe sees a genuine handshake. The modes model the grading
+                # ladder end-to-end:
+                #   cswsh-vuln      : an AUTHENTICATED socket that does NOT validate
+                #     Origin but DOES require the session cookie -- a cross-origin
+                #     upgrade carrying the cookie completes (CSWSH) while the
+                #     probe's no-cookie baseline is refused, so the socket is proven
+                #     to honor the session -> CONFIRMED high.
+                #   cswsh-open      : a PUBLIC socket -- accepts any Origin with or
+                #     without a cookie. No credential -> Origin-not-validated LEAD;
+                #     even WITH a cookie the no-cookie baseline also 101s, so the
+                #     authed-baseline confirm DOWNGRADES it to the lead (never a
+                #     confirmed hijack on a socket that ignores the session).
+                #   cswsh-subdomain : a naive endsWith(host) allow-list -- refuses
+                #     the .test sentinel and null but ACCEPTS any Origin whose host
+                #     ends with the target host, so the attacker.<host> subdomain
+                #     variant slips through (the false negative the variant sweep
+                #     must catch -- without it the probe would call this validated).
+                #   cswsh-safe      : validates Origin -- refuses every foreign
+                #     Origin (incl. all derived variants) and completes only the
+                #     no-Origin control.
                 up = self.headers.get('Upgrade', '')
                 key = self.headers.get('Sec-WebSocket-Key', '')
                 origin = self.headers.get('Origin', '')
+                cookie = self.headers.get('Cookie', '')
                 if up.lower() != 'websocket' or not key:
                     self._send(200, b'<html>not a websocket</html>'); return
-                foreign = bool(origin) and '127.0.0.1' not in origin
-                if mode == 'cswsh-safe' and foreign:
-                    self._send(403, b'cross-origin handshake refused'); return
+                def ohost(o):
+                    h = o.split('://', 1)[1] if '://' in o else o
+                    return h.split('/', 1)[0].rstrip('.').lower()
+                target = '127.0.0.1'
+                if mode == 'cswsh-safe':
+                    if origin:                                  # any Origin -> refused
+                        self._send(403, b'cross-origin handshake refused'); return
+                elif mode == 'cswsh-subdomain':
+                    if origin and not ohost(origin).endswith(target):   # endsWith() bug
+                        self._send(403, b'cross-origin handshake refused'); return
+                elif mode == 'cswsh-vuln':
+                    if 'session=' not in cookie:                # authenticated socket
+                        self._send(401, b'authentication required'); return
+                # cswsh-open: accept any Origin regardless of cookie (fall through).
                 accept = base64.b64encode(
                     hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
                 self.send_response(101)
@@ -912,7 +966,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff
        crlf-vuln crlf-colonless crlf-safe
-       method-allow method-trace method-trace-fp
+       method-allow method-trace method-trace-fp method-405 method-track
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
@@ -932,7 +986,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        ldap-vuln ldap-safe ldap-baseline ldap-waf
        xpath-vuln xpath-safe xpath-waf
        content-found
-       cswsh-vuln cswsh-safe
+       cswsh-vuln cswsh-open cswsh-safe cswsh-subdomain
        jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
        jwt-body-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
@@ -1029,6 +1083,8 @@ chk "method: advertised write methods -> INFO not medium (severity honesty)" "$(
 chk "method: advertised WebDAV -> webdav-enabled INFO" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-allow]} '')\"}")" "any(f['kind']=='webdav-enabled' and f['severity']=='info' for f in d.get('findings',[]))"
 chk "method: TRACE loopback echo -> XST confirmed" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-trace]} '')\"}")" "d.get('traceEnabled') and any(f['kind']=='http-trace-enabled' for f in d.get('findings',[]))"
 chk "method: request quoted mid-body (logging) -> NOT XST (offset-0 fix)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-trace-fp]} '')\"}")" "d.get('ok') and not d.get('traceEnabled')"
+chk "method: Allow only on 405 (none on OPTIONS) -> harvested into allowed (FN fix)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-405]} '')\"}")" "'PUT' in d.get('allowed',[]) and 'DELETE' in d.get('allowed',[]) and any(f['kind']=='dangerous-http-methods' for f in d.get('findings',[]))"
+chk "method: OPTIONS blocked but TRACK echoes -> XST confirmed via TRACK (FN fix)" "$(post /api/methods/test "{\"url\":\"$(url ${P[method-track]} '')\"}")" "d.get('ok') and d.get('traceEnabled') and any(f['kind']=='http-track-enabled' for f in d.get('findings',[]))"
 
 echo "== CRLF / response splitting =="
 chk "crlf split -> confirmed (parsed header)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-vuln]} '?url=test')\"}")" "d.get('vulnerable')"
@@ -1131,8 +1187,10 @@ CB="$(post /api/content/discover "{\"url\":\"$(url ${P[content-found]} '')\"}")"
 chk "content finds /admin, soft-404 calibrated" "$CB" "d.get('softNotFoundStatus')==404 and any(h['path'].endswith('/admin') and h['status']==200 for h in d.get('hits',[]))"
 
 echo "== cross-site WebSocket hijacking (CSWSH) =="
-chk "cswsh + session cookie -> CONFIRMED CSWSH (authed cross-origin upgrade)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('vulnerable') and d.get('isWebSocket')"
-chk "cswsh NO credential -> Origin-not-validated LEAD, not confirmed (FP fix)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originNotValidated')"
+chk "cswsh authed cross-origin, no-cookie baseline refused -> CONFIRMED CSWSH" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('vulnerable') and d.get('isWebSocket')"
+chk "cswsh public, NO credential -> Origin-not-validated LEAD (FP fix)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-open]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originNotValidated')"
+chk "cswsh public + cookie, no-cookie baseline ALSO 101s -> downgrade to LEAD (authed-baseline confirm)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-open]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('ok') and not d.get('vulnerable') and d.get('originNotValidated')"
+chk "cswsh endsWith(host) allow-list accepts attacker.<host> subdomain -> still flagged (FN fix)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-subdomain]} '')\"}")" "d.get('ok') and d.get('originNotValidated') and not d.get('originValidated')"
 chk "cswsh safe -> origin validated"            "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originValidated')"
 
 echo "== active JWT attacks =="

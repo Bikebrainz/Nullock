@@ -1,9 +1,13 @@
 // Regression corpus for the HTTP method-audit probe's pure logic (no network):
 //   - parseAllow: an Allow header -> a deduplicated, upper-cased method list
 //     (trims whitespace, drops empties, folds case and duplicates);
+//   - mergeAllow: folds a second Allow value (the 405-harvest) into an already-
+//     parsed list, deduped and order-preserving, so OPTIONS-only false negatives
+//     are recovered;
 //   - dangerousWriteMethods / dangerousWebdavMethods: the dangerous subset;
-//   - traceEchoed: requires BOTH the TRACE request-line token AND our
-//     distinctive User-Agent, so a page that merely says "trace" can't trip it;
+//   - traceEchoed: requires BOTH the expected verb request-line token (TRACE by
+//     default, or TRACK for the IIS alias) AND our distinctive User-Agent, so a
+//     page that merely says "trace"/"track" can't trip it;
 //   - buildReq's CR/LF guards on method/host/basePath/query.
 //
 // Run via:  ctest -R method_audit -V
@@ -40,6 +44,24 @@ int main(int argc, char **argv) {
         [](){ const QStringList a = parseAllow("GET,, ,POST");
               return a.size() == 2 && has(a, "GET") && has(a, "POST"); }());
     chk("parseAllow empty header -> empty list", parseAllow("").isEmpty());
+
+    // ===== mergeAllow (405-harvest fold-in) ==============================
+    chk("mergeAllow into empty -> just the harvested verbs",
+        [](){ const QStringList a = mergeAllow(QStringList(), "GET, PUT, DELETE");
+              return a.size() == 3 && has(a, "GET") && has(a, "PUT") && has(a, "DELETE"); }());
+    chk("mergeAllow dedups across the two sources (case-folded)",
+        [](){ const QStringList a = mergeAllow(parseAllow("GET, POST"), "post, DELETE");
+              return a.size() == 3 && has(a, "GET") && has(a, "POST") && has(a, "DELETE"); }());
+    chk("mergeAllow preserves first-seen order (existing before harvested)",
+        [](){ const QStringList a = mergeAllow(parseAllow("GET, HEAD"), "PUT");
+              return a.at(0) == "GET" && a.at(1) == "HEAD" && a.at(2) == "PUT"; }());
+    chk("mergeAllow empty harvest -> existing unchanged",
+        mergeAllow(parseAllow("GET, OPTIONS"), "").size() == 2);
+    chk("mergeAllow surfaces a write verb that OPTIONS never advertised",
+        [](){ const QStringList a = mergeAllow(parseAllow("GET, HEAD, OPTIONS"),
+                                               "GET, HEAD, POST, PUT, DELETE");
+              return !dangerousWriteMethods(a).isEmpty()
+                  && has(dangerousWriteMethods(a), "PUT") && has(dangerousWriteMethods(a), "DELETE"); }());
 
     // ===== dangerous subsets =============================================
     {
@@ -83,6 +105,18 @@ int main(int argc, char **argv) {
         !traceEchoed("<pre>Request was: TRACE / HTTP/1.1 User-Agent: Nullock/method-audit</pre>"));
     chk("trace: gateway lower-cased the echoed UA header -> still confirmed (FN fix)",
         traceEchoed("TRACE / HTTP/1.1\r\nuser-agent: Nullock/method-audit\r\n\r\n"));
+
+    // generalized verb token: TRACK (IIS alias) and Max-Forwards:0 (echoes TRACE)
+    chk("track echo: TRACK loopback with our UA -> XST confirmed (IIS alias)",
+        traceEchoed("TRACK / HTTP/1.1\r\nHost: x\r\nUser-Agent: Nullock/method-audit\r\n\r\n", "TRACK"));
+    chk("track echo: verb token is case-insensitive (gateway lower-cased it)",
+        traceEchoed("track /a HTTP/1.1\r\nUser-Agent: Nullock/method-audit\r\n", "TRACK"));
+    chk("track vs trace: a TRACE loopback must NOT satisfy a TRACK expectation",
+        !traceEchoed("TRACE / HTTP/1.1\r\nUser-Agent: Nullock/method-audit\r\n\r\n", "TRACK"));
+    chk("track FP: a page mentioning 'track' without our UA -> NOT confirmed",
+        !traceEchoed("<html>order tracking: TRACK your shipment here</html>", "TRACK"));
+    chk("max-forwards TRACE still echoes verb TRACE -> confirmed",
+        traceEchoed("TRACE / HTTP/1.1\r\nMax-Forwards: 0\r\nUser-Agent: Nullock/method-audit\r\n\r\n", "TRACE"));
 
     // ===== buildReq: CR/LF guard parity ==================================
     {
