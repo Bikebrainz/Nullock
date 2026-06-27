@@ -55,6 +55,39 @@ int main(int argc, char **argv) {
     chk("default scope: empty host is out", !inDefaultScope("", "example.com"));
     chk("default scope: empty seed is out (nothing in scope)", !inDefaultScope("example.com", ""));
 
+    // ===== effectivePort: explicit port wins, else scheme default ========
+    chk("effPort: explicit 8080 kept", effectivePort("https", 8080) == 8080);
+    chk("effPort: https default 443", effectivePort("https", -1) == 443);
+    chk("effPort: http default 80", effectivePort("http", -1) == 80);
+    chk("effPort: case-insensitive scheme", effectivePort("HTTPS", -1) == 443);
+    chk("effPort: explicit beats scheme default", effectivePort("http", 443) == 443);
+
+    // ===== inDefaultScopeOrigin: host tree AND no cross-service port hop ==
+    // Seed on a standard web port: http<->https on the in-tree host stays in scope.
+    chk("origin scope: seed https:443, link https same host -> in",
+        inDefaultScopeOrigin("https", "example.com", -1, "https", "example.com", -1));
+    chk("origin scope: seed https:443, link HTTP same host -> in (http<->https hop)",
+        inDefaultScopeOrigin("http", "example.com", -1, "https", "example.com", -1));
+    chk("origin scope: seed https:443, in-tree subdomain on 443 -> in",
+        inDefaultScopeOrigin("https", "api.example.com", -1, "https", "example.com", -1));
+    // ...but a non-standard port on the same host is a DIFFERENT service -> creep.
+    chk("origin scope: seed https:443, link host:8080 -> OUT (cross-service creep)",
+        !inDefaultScopeOrigin("http", "example.com", 8080, "https", "example.com", -1));
+    chk("origin scope: seed https:443, link host:8443 -> OUT",
+        !inDefaultScopeOrigin("https", "example.com", 8443, "https", "example.com", -1));
+    // Off-tree host is out regardless of port.
+    chk("origin scope: a different site is OUT even on a standard port",
+        !inDefaultScopeOrigin("https", "evil.com", -1, "https", "example.com", -1));
+    // Seed pinned to a NON-standard port: stay on exactly that port.
+    chk("origin scope: seed :8080, link :8080 same host -> in",
+        inDefaultScopeOrigin("http", "example.com", 8080, "http", "example.com", 8080));
+    chk("origin scope: seed :8080, link :443 same host -> OUT (pinned to 8080)",
+        !inDefaultScopeOrigin("https", "example.com", -1, "http", "example.com", 8080));
+    chk("origin scope: seed :8080, link :9090 same host -> OUT",
+        !inDefaultScopeOrigin("http", "example.com", 9090, "http", "example.com", 8080));
+    chk("origin scope: seed :8080, in-tree subdomain on :8080 -> in",
+        inDefaultScopeOrigin("http", "api.example.com", 8080, "http", "example.com", 8080));
+
     // ===== canonicalLink: resolve + http(s) allow-list + normalize =======
     chk("canon: relative path resolves against base",
         canon("/admin", "https://h.com/x/y") == "https://h.com/admin");

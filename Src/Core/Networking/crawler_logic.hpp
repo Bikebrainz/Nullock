@@ -60,4 +60,19 @@ QString canonicalLink(const QString &href, const QUrl &base, QString &outHost);
 // off-site by default.
 bool inDefaultScope(const QString &host, const QString &seedHost);
 
+// The effective port for a scheme/port pair: the explicit port when > 0, else the
+// scheme default (443 for https, 80 otherwise). QUrl::port(-1) yields -1 for an
+// absent port, which this resolves so origins compare by their real port.
+int effectivePort(const QString &scheme, int port);
+
+// Origin-aware fail-closed default scope (no injected checker). In scope iff the
+// host is within the seed's domain tree (inDefaultScope) AND the port does not
+// cross into a different service: a seed on a standard web port (80/443) admits
+// any standard-web port on the in-tree host (so an http<->https hop stays in
+// scope) but refuses a non-standard port (:8080/:8443/... is a different app ->
+// scope creep); a seed pinned to a non-standard port admits only that exact port.
+// Pure.
+bool inDefaultScopeOrigin(const QString &scheme, const QString &host, int port,
+                          const QString &seedScheme, const QString &seedHost, int seedPort);
+
 } // namespace Nullock::Core::CrawlerLogic

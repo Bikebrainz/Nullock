@@ -142,4 +142,28 @@ bool inDefaultScope(const QString &host, const QString &seedHost) {
     return h == apex || h.endsWith(QLatin1Char('.') + apex);
 }
 
+int effectivePort(const QString &scheme, int port) {
+    if (port > 0) return port;                       // explicit port wins (QUrl::port(-1) gives -1 when absent)
+    return scheme.compare(QLatin1String("https"), Qt::CaseInsensitive) == 0 ? 443 : 80;
+}
+
+bool inDefaultScopeOrigin(const QString &scheme, const QString &host, int port,
+                          const QString &seedScheme, const QString &seedHost, int seedPort) {
+    // Host dimension first: never broader than the seed's domain tree.
+    if (!inDefaultScope(host, seedHost)) return false;
+    const int ep  = effectivePort(scheme, port);
+    const int sep = effectivePort(seedScheme, seedPort);
+    const auto isStdWeb = [](int p) { return p == 80 || p == 443; };
+    // Seed on a standard web port (80/443): admit ANY standard-web port on the
+    // in-tree host -- so an http<->https hop on the same site (the redirect case)
+    // stays in scope -- but REFUSE a non-standard port. A service answering on
+    // :8080 / :8443 / :3000 that merely shares the hostname is a different
+    // application, and walking it is scope creep (a real engagement violation).
+    if (isStdWeb(sep)) return isStdWeb(ep);
+    // Seed pinned to a NON-standard port (e.g. an app on :8080): stay on exactly
+    // that port -- neither the standard web ports nor another high port are in
+    // scope by default.
+    return ep == sep;
+}
+
 } // namespace Nullock::Core::CrawlerLogic

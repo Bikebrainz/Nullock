@@ -10,11 +10,12 @@
 
 namespace Nullock::Core {
 
-bool Crawler::inScope(const QString &host) const {
-    // Injected checker wins; otherwise fail closed to the seed's own domain tree.
-    // A null checker must NEVER mean "everything is in scope".
-    if (m_scope) return m_scope(host);
-    return CrawlerLogic::inDefaultScope(host, m_seedHost);
+bool Crawler::inScope(const QString &scheme, const QString &host, int port) const {
+    // Injected checker wins; otherwise fail closed to the seed's own domain tree
+    // AND origin port. A null checker must NEVER mean "everything is in scope".
+    if (m_scope) return m_scope(scheme, host, port);
+    return CrawlerLogic::inDefaultScopeOrigin(scheme, host, port,
+                                              m_seedScheme, m_seedHost, m_seedPort);
 }
 
 Crawler::Crawler(QObject *parent) : QObject(parent) {}
@@ -44,9 +45,11 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     }
     m_seed       = seed;
     m_seedHost   = seedHost;
+    m_seedScheme = u.scheme().toLower();
+    m_seedPort   = u.port(-1);          // -1 when absent -> resolved to the scheme default in logic
     // Scope-check the SEED before any fetch. With an injected checker an
     // out-of-scope seed is rejected; with none, the seed defines its own scope.
-    if (!inScope(seedHost)) {
+    if (!inScope(m_seedScheme, seedHost, m_seedPort)) {
         emit errorOccurred("crawler: seed host is out of scope");
         return false;
     }
@@ -154,7 +157,9 @@ void Crawler::extractAndEnqueue(const QString &fromUrl, const QByteArray &body, 
         if (canon.isEmpty()) continue;              // non-http(s) / unparseable
         // Scope FIRST: an out-of-scope link must neither be enqueued NOR consume
         // a seen-slot toward the cap. inScope() is fail-closed when unconfigured.
-        if (!inScope(host)) continue;
+        // The canonical URL carries the resolved scheme/port for the origin check.
+        const QUrl cu(canon);
+        if (!inScope(cu.scheme(), host, cu.port(-1))) continue;
         if (m_seenUrls.contains(canon)) continue;
         m_seenUrls.insert(canon);
         m_queue.enqueue({ canon, depth });

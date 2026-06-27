@@ -44,9 +44,12 @@ public:
     int     queued()  const { return m_queue.size(); }
     QString seed()    const { return m_seed; }
 
-    // Inject the project's scope checker so the crawler refuses to
-    // walk out-of-scope hosts. Set by App at wire time.
-    using ScopeFn = std::function<bool(const QString &host)>;
+    // Inject the project's scope checker so the crawler refuses to walk
+    // out-of-scope origins. Set by App at wire time. The checker receives the full
+    // origin (scheme, host, port) so a checker CAN scope by scheme/port; the
+    // project's host-glob model ignores all but the host, while the built-in
+    // default scope uses the port to refuse cross-service (port-crossing) creep.
+    using ScopeFn = std::function<bool(const QString &scheme, const QString &host, int port)>;
     void setScopeChecker(ScopeFn f) { m_scope = std::move(f); }
 
     // Start a fresh crawl from <seed>. Cancels any running walk first.
@@ -75,8 +78,9 @@ private:
     void extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth);
     // Scope decision used for BOTH the seed and discovered links. Uses the
     // injected checker when present; otherwise FAIL-CLOSED to the seed's own
-    // domain tree (never an unscoped walk of arbitrary hosts).
-    bool inScope(const QString &host) const;
+    // domain tree AND origin port (never an unscoped walk of arbitrary hosts, and
+    // never a port-crossing hop onto a different service on the same host).
+    bool inScope(const QString &scheme, const QString &host, int port) const;
 
     // m_running is set on the worker thread; readers can race so it's
     // also atomic. m_stopRequested gets flipped from the main thread
@@ -86,6 +90,8 @@ private:
     QAtomicInteger<int> m_stopRequested  { 0 };
     QString   m_seed;
     QString   m_seedHost;        // the seed's host -- the authority for the default scope
+    QString   m_seedScheme;      // the seed's scheme (with m_seedPort -> the default-scope origin port)
+    int       m_seedPort = -1;   // the seed's explicit port (-1 -> scheme default, resolved in logic)
     int       m_maxPages = 200;
     int       m_maxDepth = 4;
     int       m_throttleMs = 200;

@@ -864,7 +864,10 @@ int main(int argc, char *argv[]) {
     }
 
     Nullock::Core::Crawler crawler;
-    crawler.setScopeChecker([&proxy](const QString &host) {
+    crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) {
+        // The project scope model is host-glob, so scheme/port are not consulted
+        // here; the crawler's built-in default scope is what uses the port to
+        // refuse cross-service creep when no project checker is injected.
         return proxy.isInScope(host);
     });
     QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
