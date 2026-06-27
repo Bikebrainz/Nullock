@@ -245,3 +245,12 @@ add_subdirectory(ws_probe)
 # its hidden patch level might be fixed; plus the overlay dedup-by-cveId.
 # Run via: ctest -R service_vulns -V
 add_subdirectory(service_vulns)
+
+# Active JWT probe -- the pure forgery/request builders: corruptSignature flips
+# one DECODED signature byte (avoids the base64-padding round-trip that re-
+# accepts ~1/16 of tokens) and adds a junk sig to a no-sig token; algNoneVariants
+# emits the 6 none/None/NONE/nOnE/empty/absent bypass tokens; buildRequest's
+# Authorization/header/cookie carriers, the no-token credential-drop, and CR/LF
+# guards on every field (links the pure jwt_tool; testOneCarrier is I/O).
+# Run via: ctest -R jwt_probe -V
+add_subdirectory(jwt_probe)

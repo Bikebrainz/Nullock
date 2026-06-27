@@ -30,6 +30,9 @@
 // mistaken for a real authorized one. An asymmetric token with no public key is
 // surfaced as "algorithm-confusion not tested", not silently passed.
 
+#include "jwt_tool.hpp"
+
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -74,5 +77,18 @@ struct Result {
 // Send the valid token (baseline), a corrupted token (calibration), then the
 // forgeries; flag only forgeries the endpoint accepts as the valid baseline.
 Result test(const Request &req);
+
+// --- Pure forgery/request builders, exposed for the unit test (jwt_probe_logic.cpp) ---
+//   buildRequest    -- render a shot; {} on CR/LF in any field; drops secondary
+//                      credentials on the no-token calibration shot.
+//   corruptSignature-- flip a DECODED signature byte (avoids the base64-padding
+//                      round-trip that would re-accept ~1/16 of tokens).
+//   algNoneVariants -- the 6 alg:none bypass tokens (case/empty/absent).
+//   isCredentialHeader / defaultSecrets -- helpers exposed for coverage.
+QByteArray buildRequest(const Request &req, const QString &token);
+QString corruptSignature(const QString &token);
+QStringList algNoneVariants(const JwtTool::Decoded &d);
+bool isCredentialHeader(const QString &name);
+QStringList defaultSecrets();
 
 } // namespace Nullock::Core::JwtProbe
