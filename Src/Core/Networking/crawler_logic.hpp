@@ -33,6 +33,20 @@ QUrl resolveBase(const QString &html, const QUrl &pageUrl);
 // returned raw (un-resolved), trimmed, in document order.
 QStringList extractRawLinks(const QString &html);
 
+// Responsive-image srcset candidates: each comma-separated candidate's leading
+// URL token (before its width/density descriptor). Raw, un-resolved.
+QStringList extractSrcset(const QString &html);
+
+// <meta http-equiv="refresh" content="0;url=/next"> redirect targets (the url=
+// from the content attribute). Raw, un-resolved.
+QStringList extractMetaRefresh(const QString &html);
+
+// GET-form parameter surfaces: for each <form method=get action=X> carrying
+// <input>/<select>/<textarea> name= fields, synthesize "action?n1=&n2=" (action
+// empty => relative "?..." resolved against the page) so the parameterized
+// endpoint enters the crawl. Raw, un-resolved.
+QStringList extractFormGets(const QString &html);
+
 // Resolve `href` against `base`, drop the fragment, and enforce an http/https
 // scheme allow-list (so mailto:/tel:/javascript:/data:/blob: collapse to ""). On
 // success returns a canonical dedup key (empty path normalized to "/") and sets

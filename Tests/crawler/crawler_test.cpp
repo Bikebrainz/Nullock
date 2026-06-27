@@ -133,6 +133,38 @@ int main(int argc, char **argv) {
             truncateBodyAtTag(QByteArray("href=\"/no-tag-here-at-all"), 8).isEmpty());
     }
 
+    // ===== extractSrcset ================================================
+    {
+        const QStringList l = extractSrcset("<img srcset=\"/img/a.jpg 1x, /img/b.jpg 2x\">");
+        chk("srcset: first candidate URL", listHas(l, "/img/a.jpg"));
+        chk("srcset: second candidate URL (descriptor stripped)", listHas(l, "/img/b.jpg"));
+        chk("srcset: no descriptor mixed in", !listHas(l, "/img/a.jpg 1x"));
+        chk("srcset: none -> empty", extractSrcset("<img src=/x.png>").isEmpty());
+    }
+
+    // ===== extractMetaRefresh ===========================================
+    {
+        chk("meta-refresh: url extracted",
+            listHas(extractMetaRefresh("<meta http-equiv=\"refresh\" content=\"0;url=/next\">"), "/next"));
+        chk("meta-refresh: attribute order tolerant",
+            listHas(extractMetaRefresh("<meta content='5; url=/dest' http-equiv=refresh>"), "/dest"));
+        chk("meta-refresh: a non-refresh meta is ignored",
+            extractMetaRefresh("<meta name=\"viewport\" content=\"width=device-width\">").isEmpty());
+    }
+
+    // ===== extractFormGets ==============================================
+    {
+        const QStringList l = extractFormGets(
+            "<form method=get action=/search><input name=q><input name=\"lang\"></form>");
+        chk("form-get: synthesizes action?param surface", listHas(l, "/search?q=&lang="));
+        const QStringList l2 = extractFormGets("<form method=\"GET\"><input name=x><select name=y></select></form>");
+        chk("form-get: action-less form -> relative ?param", listHas(l2, "?x=&y="));
+        chk("form-get: a POST form is ignored",
+            extractFormGets("<form method=post action=/save><input name=q></form>").isEmpty());
+        chk("form-get: a GET form with no fields yields nothing",
+            extractFormGets("<form method=get action=/x></form>").isEmpty());
+    }
+
     std::fprintf(stderr, "crawler_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -141,7 +141,13 @@ void Crawler::extractAndEnqueue(const QString &fromUrl, const QByteArray &body, 
     // Honor <base href> for relative-link resolution.
     const QUrl base = CrawlerLogic::resolveBase(text, QUrl(fromUrl));
 
-    for (const QString &href : CrawlerLogic::extractRawLinks(text)) {
+    // href/src/action + srcset (responsive images), meta-refresh redirects, and
+    // GET-form parameter surfaces -- all resolved + scoped through one path.
+    QStringList refs = CrawlerLogic::extractRawLinks(text);
+    refs += CrawlerLogic::extractSrcset(text);
+    refs += CrawlerLogic::extractMetaRefresh(text);
+    refs += CrawlerLogic::extractFormGets(text);
+    for (const QString &href : refs) {
         if (m_seenUrls.size() >= 50'000) break;
         QString host;
         const QString canon = CrawlerLogic::canonicalLink(href, base, host);
