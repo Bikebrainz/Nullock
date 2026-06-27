@@ -129,6 +129,15 @@ const QList<Case> &corpus() {
         { "Spring 5.3.20 (patched) -> NOT 22965",     "fw-spring", "Spring 5.3.20", "CVE-2022-22965", true, 0 },
         { "Symfony 5.4.40 -> 50345 (open-redirect)",  "fw-symfony", "Symfony 5.4.40", "CVE-2024-50345", false, 6.1 },
 
+        // ---- Magento CosmicSting: patch-level suffix bound (FN fix) ------
+        // "<2.4.7-p1" must FLAG the exact vulnerable build 2.4.7 (the suffix is
+        // the FIXED build) -- the old triple dropped "-p1" so 2.4.7 < 2.4.7 was
+        // false and the 9.8 RCE was missed for its precise target.
+        { "Magento 2.4.7 -> 34102 (suffix FN fix)",   "cms-magento", "Magento 2.4.7", "CVE-2024-34102", false, 9.8 },
+        { "Magento 2.4.6 -> 34102 (older, vuln)",     "cms-magento", "Magento 2.4.6", "CVE-2024-34102", false, 9.8 },
+        { "Magento 2.4.7-p1 (patched) -> NOT 34102",  "cms-magento", "Magento 2.4.7-p1", "CVE-2024-34102", true, 0 },
+        { "Magento 2.4.8 (modern) -> NOT 34102",      "cms-magento", "Magento 2.4.8", "CVE-2024-34102", true, 0 },
+
         // ---- Removed bogus entries must stay gone -----------------------
         { "cms-drupal entries removed -> none",       "cms-drupal", "Drupal 10.1.0", "", false, 0 },
         { "SharePoint CVE-2024-30043 removed -> NOT on ASP.NET", "fw-aspnet", "ASP.NET 4.0.30319", "CVE-2024-30043", true, 0 },
@@ -182,6 +191,84 @@ int main(int argc, char **argv) {
             failures << QString::fromLatin1(t.label);
         }
     }
+
+    // ---- precision flag, fingerprint fallback, and table integrity -----
+    // (soundness fixes from the adversarial audit, beyond the corpus)
+    auto chk = [&](const char *label, bool cond) {
+        if (cond) { std::fprintf(stderr, "  PASS  %s\n", label); ++pass; }
+        else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; failures << QString::fromLatin1(label); }
+    };
+
+    // A version-confirmed in-range match is precise.
+    {
+        double cv;
+        const auto m = CveDatabase::lookup("cms-wordpress", "WordPress 6.4.1");
+        chk("WP 6.4.1 -> 31210 is a PRECISE match", hasCve(m, "CVE-2024-31210", cv));
+        bool prec = false;
+        for (const auto &x : m) if (x.cveId == "CVE-2024-31210") prec = x.precise;
+        chk("WP 6.4.1 -> 31210 precise flag is true", prec);
+    }
+    // An UNPARSEABLE version is surfaced but flagged IMPRECISE (not confirmed) --
+    // this is what stops a versionless 'Express'/'Next.js' from reading critical.
+    {
+        const auto m = CveDatabase::lookup("cms-wordpress", "WordPress");   // no digits
+        chk("unparseable version still surfaces entries", !m.isEmpty());
+        bool allImprecise = !m.isEmpty();
+        for (const auto &x : m) if (x.precise) allImprecise = false;
+        chk("unparseable version -> every surfaced entry is imprecise", allImprecise);
+    }
+    // lookupByFingerprint: a PATCHED host (version parsed, matched nothing) must
+    // return EMPTY, NOT the whole table (the headline false positive).
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.bodyVersion = "WordPress 6.4.3";   // patched
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        chk("fingerprint: patched 6.4.3 -> NO full-table dump (empty)", m.isEmpty());
+    }
+    // lookupByFingerprint: a VULNERABLE host is still confirmed precisely.
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.bodyVersion = "WordPress 6.4.1";
+        double cv;
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        bool prec = false;
+        for (const auto &x : m) if (x.cveId == "CVE-2024-31210") prec = x.precise;
+        chk("fingerprint: vulnerable 6.4.1 -> 31210 confirmed precise",
+            hasCve(m, "CVE-2024-31210", cv) && prec);
+    }
+    // lookupByFingerprint: a coarse early source must not shadow a precise one.
+    // Coarse "6" -> {6,0,0} does NOT satisfy the 6.1.x branch bound ">=6.1.0";
+    // only the precise "6.1.2" reaches CVE-2023-39999, so its presence proves the
+    // precise source was selected over the coarse first one.
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.bodyVersion = "WordPress 6";        // coarse, major-only (misses 6.1.x branch)
+        fp.xGenerator  = "WordPress 6.1.2";    // precise -> in the 6.1.x branch CVE
+        double cv;
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        chk("fingerprint: precise xGenerator 6.1.2 beats coarse '6' -> 39999",
+            hasCve(m, "CVE-2023-39999", cv));
+    }
+    // lookupByFingerprint: NO parseable version anywhere -> imprecise triage.
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.server = "wordpress";   // names the vendor but carries no version
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        bool anyImprecise = !m.isEmpty();
+        for (const auto &x : m) if (x.precise) anyImprecise = false;
+        chk("fingerprint: no version -> manual-triage leads, all imprecise",
+            !m.isEmpty() && anyImprecise);
+    }
+    // parseVersion must pick the most-dotted run, not a digit inside the product
+    // name: "Mag9 2.4.7" -> the version is 2.4.7 (in range), not "9" (out of range).
+    {
+        double cv;
+        const auto m = CveDatabase::lookup("cms-magento", "Mag9 2.4.7");
+        chk("digit in product name does not shadow the dotted version (Mag9 2.4.7 -> 34102)",
+            hasCve(m, "CVE-2024-34102", cv));
+    }
+    // Table integrity: no entry has a crossed/unsatisfiable range (dead row).
+    chk("table has no crossed/dead >=X,<Y ranges", CveDatabase::auditRanges() == 0);
 
     std::fprintf(stderr,
         "\n========================================\n"

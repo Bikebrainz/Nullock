@@ -1498,8 +1498,12 @@ void PassiveScanner::checkResponse(int rowId,
             if (!hay.contains(vendor)) continue;
             const auto hits = CveDatabase::lookupByFingerprint(kind, fp);
             for (const auto &h : hits) {
-                // Severity from CVSS base score.
-                const char *sev = h.cvss >= 9.0 ? "critical"
+                // Severity from CVSS base score -- but only for a version-CONFIRMED
+                // match. An imprecise/manual-triage lead (version or range couldn't
+                // be parsed) must never escalate to critical/high: a patched or
+                // unknown host would otherwise read as a confirmed critical.
+                const char *sev = !h.precise   ? "info"
+                                : h.cvss >= 9.0 ? "critical"
                                 : h.cvss >= 7.0 ? "high"
                                 : h.cvss >= 4.0 ? "medium" : "low";
                 addFinding(rowId, req, resp, sev, "cve-correlated",

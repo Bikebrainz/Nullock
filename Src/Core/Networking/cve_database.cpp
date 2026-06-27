@@ -616,116 +616,189 @@ const QList<Entry> &table() {
 }
 
 // Parse "Drupal 10.2.5" / "WordPress 6.1.2" / "Apache/2.4.41" /
-// "nginx/1.24.0 (Ubuntu)" / "Express 4.18.3" etc. Returns the
-// version segment as a dotted triple [major, minor, patch].
-struct Triple { int a = -1, b = -1, c = -1; bool valid = false; };
-Triple parseVersion(const QString &s) {
-    static const QRegularExpression rx(
-        R"((\d+)(?:\.(\d+))?(?:\.(\d+))?)");
-    auto m = rx.match(s);
-    if (!m.hasMatch()) return {};
-    Triple t;
-    t.a = m.captured(1).toInt();
-    t.b = m.captured(2).toInt();
-    t.c = m.captured(3).toInt();
-    t.valid = true;
-    return t;
+// "nginx/1.24.0 (Ubuntu)" / "Magento 2.4.7-p1" etc. into up to four dotted
+// numeric components PLUS a patch-level/pre-release suffix RANK, so a vendor
+// patch build sorts ABOVE its base release ("2.4.7" < "2.4.7-p1") and a
+// pre-release sorts BELOW it ("1.2.3rc1" < "1.2.3"). The old dotted-triple
+// dropped the suffix at the '-', collapsing "2.4.7-p1" to "2.4.7" and missing
+// the exact vulnerable build a "<X-pN" bound targets.
+
+// Rank a trailing suffix: patch-level (-pN/patchN/plN) -> well above release;
+// pre-release (rc/beta/alpha/dev/...) -> below release; release/unknown -> 0.
+int suffixRank(const QString &sufIn) {
+    QString t = sufIn.toLower();
+    while (!t.isEmpty() && (t.front() == '-' || t.front() == '_' || t.front() == '.' || t.front() == ' '))
+        t.remove(0, 1);
+    if (t.isEmpty()) return 0;
+    static const QRegularExpression patch(R"(^(?:p|patch|pl)(\d+))");
+    if (auto mp = patch.match(t); mp.hasMatch()) return 1000 + mp.captured(1).toInt();
+    static const QRegularExpression pre(R"(^(rc|beta|alpha|dev|snapshot|preview|pre)(\d*))");
+    if (auto mr = pre.match(t); mr.hasMatch())
+        return -1000 + (mr.captured(2).isEmpty() ? 0 : mr.captured(2).toInt());
+    return 0;   // unknown trailing text -> treat as a plain release
 }
 
-int cmpTriple(const Triple &x, const Triple &y) {
-    if (x.a != y.a) return x.a < y.a ? -1 : 1;
-    if (x.b != y.b) return x.b < y.b ? -1 : 1;
-    if (x.c != y.c) return x.c < y.c ? -1 : 1;
+struct Ver { int p[4] = { 0, 0, 0, 0 }; int ncomp = 0; int suffix = 0; bool valid = false; };
+Ver parseVersion(const QString &s) {
+    static const QRegularExpression rx(
+        R"((\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?([A-Za-z0-9._\-]*))");
+    // Pick the MOST-dotted digit run, not the first: a product name that itself
+    // carries a digit ("log4j 2.14.1", "ASP.NET 4.x") must not let the bare "4"
+    // shadow the real dotted version.
+    auto it = rx.globalMatch(s);
+    Ver best;
+    while (it.hasNext()) {
+        auto m = it.next();
+        Ver v;
+        v.p[0] = m.captured(1).toInt();
+        v.ncomp = 1;
+        for (int i = 2; i <= 4; ++i) {
+            const QString c = m.captured(i);
+            if (c.isEmpty()) break;
+            v.p[i - 1] = c.toInt();
+            v.ncomp = i;
+        }
+        v.suffix = suffixRank(m.captured(5));
+        v.valid = true;
+        if (!best.valid || v.ncomp > best.ncomp) best = v;   // most components wins (ties -> first)
+    }
+    return best;   // valid=false if no digit run at all
+}
+
+int cmpVer(const Ver &x, const Ver &y) {
+    for (int i = 0; i < 4; ++i)
+        if (x.p[i] != y.p[i]) return x.p[i] < y.p[i] ? -1 : 1;
+    if (x.suffix != y.suffix) return x.suffix < y.suffix ? -1 : 1;
     return 0;
 }
 
-// "<10.3.13" / ">=4.2,<4.2.14" / arbitrary text.
-bool rangeMatches(const QString &range, const QString &version) {
-    if (range.isEmpty()) return true;            // applies to all versions
-    const Triple have = parseVersion(version);
-    if (!have.valid) return true;                // can't parse; surface anyway
+// "<10.3.13" / ">=4.2,<4.2.14" / "<2.4.7-p1" / "2.4.49" (exact) / arbitrary text.
+// Sets `precise`: true for a version-confirmed in-range/exact match; false when
+// the version or the range couldn't be parsed and the entry was SURFACED anyway.
+bool rangeMatches(const QString &range, const Ver &have, bool &precise) {
+    precise = true;
+    if (range.isEmpty()) { precise = false; return true; }   // applies to all -> not confirmed
+    if (!have.valid)      { precise = false; return true; }   // unparseable version -> surface, not confirmed
 
-    static const QRegularExpression op(R"(([<>]=?)\s*([\d.]+))");
+    // The bound token keeps any -pN / pre-release suffix (the char class spans
+    // letters/'-'), so parseVersion can rank it -- the old [\d.]+ stopped at '-'.
+    static const QRegularExpression op(R"(([<>]=?)\s*([0-9][0-9A-Za-z._\-]*))");
     auto it = op.globalMatch(range);
-    QList<QPair<QString, Triple>> bounds;
+    QList<QPair<QString, Ver>> bounds;
     while (it.hasNext()) {
         auto m = it.next();
-        Triple b = parseVersion(m.captured(2));
+        Ver b = parseVersion(m.captured(2));
         if (!b.valid) continue;
         bounds.append({ m.captured(1), b });
     }
     if (bounds.isEmpty()) {
-        // No </> bound parsed. A bare dotted version ("2.4.49") means an
-        // EXACT-version match (as the struct doc promises) -- compare for
-        // equality rather than silently matching every version. Anything else
-        // (free-text / "n/a") we surface rather than drop.
+        // No </> bound. A bare dotted version ("2.4.49") is an EXACT match.
+        // Anything else (free text / "n/a") is surfaced, but NOT as confirmed.
         static const QRegularExpression bare(R"(^\s*\d+(?:\.\d+){0,3}\s*$)");
         if (bare.match(range).hasMatch()) {
-            const Triple want = parseVersion(range);
-            return want.valid && cmpTriple(have, want) == 0;
+            const Ver want = parseVersion(range);
+            return want.valid && cmpVer(have, want) == 0;     // exact -> precise
         }
-        return true;
+        precise = false; return true;                          // free-text -> surfaced
     }
     for (const auto &[oper, bound] : bounds) {
-        const int c = cmpTriple(have, bound);
+        const int c = cmpVer(have, bound);
         if (oper == "<"  && !(c <  0)) return false;
         if (oper == "<=" && !(c <= 0)) return false;
         if (oper == ">"  && !(c >  0)) return false;
         if (oper == ">=" && !(c >= 0)) return false;
     }
-    return true;
+    return true;                                                // bounded match -> precise
+}
+
+Match makeMatch(const Entry &e, bool precise) {
+    return {
+        QString::fromLatin1(e.cveId),
+        QString::fromLatin1(e.summary),
+        e.cvss,
+        QString::fromLatin1(e.cvssVector),
+        QString::fromLatin1(e.affectedRange),
+        QString::fromLatin1(e.fixVersion),
+        QString::fromLatin1(e.reference),
+        precise,
+    };
 }
 
 } // namespace
 
 QList<Match> lookup(const QString &kind, const QString &versionString) {
     QList<Match> out;
+    const Ver have = parseVersion(versionString);
     for (const Entry &e : table()) {
         if (QString::fromLatin1(e.kind) != kind) continue;
-        if (!rangeMatches(QString::fromLatin1(e.affectedRange), versionString))
+        bool precise = true;
+        if (!rangeMatches(QString::fromLatin1(e.affectedRange), have, precise))
             continue;
-        out.append({
-            QString::fromLatin1(e.cveId),
-            QString::fromLatin1(e.summary),
-            e.cvss,
-            QString::fromLatin1(e.cvssVector),
-            QString::fromLatin1(e.affectedRange),
-            QString::fromLatin1(e.fixVersion),
-            QString::fromLatin1(e.reference),
-        });
+        out.append(makeMatch(e, precise));
     }
     return out;
 }
 
 QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp) {
-    // Try in priority order until we get something. Body sniff often
-    // beats headers because vendors strip version from response headers.
-    static const QStringList sources = {};   // placeholder for chain.
-    Q_UNUSED(sources);
-    const QString tries[] = {
-        fp.bodyVersion, fp.xGenerator, fp.xPoweredBy, fp.server,
-    };
-    for (const QString &v : tries) {
+    // Pick the MOST PRECISE parseable version across the fingerprint sources --
+    // preferring a source that actually names this kind's vendor -- so a coarse
+    // early source (e.g. a major-only "6") doesn't shadow a precise later one
+    // (e.g. an "6.1.3" generator) and a foreign source's version (a Server
+    // header's Apache version for a CMS kind) doesn't drive the lookup.
+    const QString vendor = kind.section('-', 1, 1).toLower();
+    const QString sources[] = { fp.bodyVersion, fp.xGenerator, fp.xPoweredBy, fp.server };
+    QString best; int bestComp = -1; bool bestVendor = false; bool anyParseable = false;
+    for (const QString &v : sources) {
         if (v.isEmpty()) continue;
-        const auto hits = lookup(kind, v);
-        if (!hits.isEmpty()) return hits;
+        const Ver pv = parseVersion(v);
+        if (!pv.valid) continue;
+        anyParseable = true;
+        const bool vendorMatch = !vendor.isEmpty() && v.toLower().contains(vendor);
+        if ((vendorMatch && !bestVendor) ||
+            (vendorMatch == bestVendor && pv.ncomp > bestComp)) {
+            best = v; bestComp = pv.ncomp; bestVendor = vendorMatch;
+        }
     }
-    // Nothing matched against any source -- emit the kind's full table
-    // as "manual triage" hits so the user at least sees what to check.
+
+    if (anyParseable) {
+        // We HAVE a real version -> a clean, version-confirmed lookup. If it
+        // matches nothing, the host is patched / out of range -> return EMPTY.
+        // Dumping the whole table here flagged a patched host with every
+        // historical CVE (escalated to critical by the CVSS-based severity).
+        return lookup(kind, best);
+    }
+
+    // No source produced a parseable version at all -> a genuine unknown. Surface
+    // the kind's table as IMPRECISE manual-triage leads (never confirmed, so a
+    // consumer won't escalate them by CVSS).
     QList<Match> out;
     for (const Entry &e : table()) {
         if (QString::fromLatin1(e.kind) != kind) continue;
-        out.append({
-            QString::fromLatin1(e.cveId),
-            QString("[manual triage] ") + QString::fromLatin1(e.summary),
-            e.cvss,
-            QString::fromLatin1(e.cvssVector),
-            QString::fromLatin1(e.affectedRange),
-            QString::fromLatin1(e.fixVersion),
-            QString::fromLatin1(e.reference),
-        });
+        Match m = makeMatch(e, /*precise=*/false);
+        m.summary = QStringLiteral("[manual triage] ") + m.summary;
+        out.append(m);
     }
     return out;
+}
+
+int auditRanges() {
+    static const QRegularExpression op(R"(([<>]=?)\s*([0-9][0-9A-Za-z._\-]*))");
+    int dead = 0;
+    for (const Entry &e : table()) {
+        Ver lower, upper; bool hasLower = false, hasUpper = false;
+        auto it = op.globalMatch(QString::fromLatin1(e.affectedRange));
+        while (it.hasNext()) {
+            auto m = it.next();
+            const Ver b = parseVersion(m.captured(2));
+            if (!b.valid) continue;
+            const QString o = m.captured(1);
+            if (o == ">" || o == ">=") { lower = b; hasLower = true; }
+            else                       { upper = b; hasUpper = true; }
+        }
+        // Crossed bounds (lower >= upper) -> the conjunction matches no version.
+        if (hasLower && hasUpper && cmpVer(lower, upper) >= 0) ++dead;
+    }
+    return dead;
 }
 
 } // namespace Nullock::Core::CveDatabase

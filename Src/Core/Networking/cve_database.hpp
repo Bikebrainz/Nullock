@@ -25,6 +25,12 @@ struct Match {
     QString affectedRange;// "< 5.7.0" / ">= 4.0, < 4.2.1"
     QString fixVersion;   // "5.7.0" / "4.2.1"
     QString reference;    // canonical advisory URL
+    bool    precise = true;  // false => NOT a version-confirmed in-range match. The
+                             // version (or the range) couldn't be parsed so the entry
+                             // was SURFACED for manual triage, or it's the whole-table
+                             // fallback when no version was found at all. A consumer
+                             // MUST NOT escalate an imprecise match by CVSS (a patched
+                             // or unknown host must never read as a confirmed critical).
 };
 
 // Given a framework identifier (matches the kind we use in detectors,
@@ -46,5 +52,12 @@ struct HttpFingerprint {
     QString bodyVersion;  // version we sniffed from body
 };
 QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp);
+
+// Table-integrity self-check (exposed for the unit test): the number of curated
+// entries whose affectedRange carries BOTH a lower (>=/>) and an upper (</<=)
+// bound that are crossed (lower >= upper) and therefore match NO version -- a
+// silent dead row a hand-edited table can introduce with one swapped digit.
+// Should be 0; the test asserts it.
+int auditRanges();
 
 } // namespace Nullock::Core::CveDatabase

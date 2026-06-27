@@ -418,7 +418,7 @@ QJsonObject assessWebTarget(Nullock::Core::PassiveScanner *scanner,
                  "fingerprint source: " + t.source);
             if (!t.cveKind.isEmpty() && !t.version.isEmpty())
                 for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + " " + t.version))
-                    addF(sevFor(m.cvss), "cve-correlated",
+                    addF(m.precise ? sevFor(m.cvss) : QStringLiteral("info"), "cve-correlated",
                          QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
                          "fix " + m.fixVersion + " | " + m.reference);
         }
@@ -6595,7 +6595,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         { "cveId", m.cveId }, { "tech", t.name + " " + t.version },
                         { "cvss", m.cvss }, { "summary", m.summary } });
                     if (m_wiring.scanner)
-                        m_wiring.scanner->reportFinding(0, sevFor(m.cvss), "cve-correlated",
+                        m_wiring.scanner->reportFinding(0, m.precise ? sevFor(m.cvss) : QStringLiteral("info"), "cve-correlated",
                             QString("%1 in %2 %3 -- %4").arg(m.cveId, t.name, t.version, m.summary),
                             QString("affected %1 | fix %2 | %3").arg(m.affectedRange, m.fixVersion, m.reference),
                             fr.host, url);
