@@ -270,6 +270,50 @@ int main(int argc, char **argv) {
     // Table integrity: no entry has a crossed/unsatisfiable range (dead row).
     chk("table has no crossed/dead >=X,<Y ranges", CveDatabase::auditRanges() == 0);
 
+    // ---- runtime CVE overlay (cve_feed_sync) ---------------------------
+    {
+        CveDatabase::clearOverlay();
+        chk("overlay: starts empty", CveDatabase::overlayCount() == 0);
+        QList<CveDatabase::OverlayCve> ov;
+        ov.append({ "cms-joomla", "CVE-2099-0001", 9.1, "CVSS:3.1/AV:N/AC:L/...",
+                    ">=4.0.0,<4.2.8", "4.2.8", "feed-synced Joomla RCE", "https://example/CVE-2099-0001" });
+        chk("overlay: setOverlay returns the stored count", CveDatabase::setOverlay(ov) == 1);
+        chk("overlay: overlayCount reflects it", CveDatabase::overlayCount() == 1);
+
+        double cv;
+        const auto inRange = CveDatabase::lookup("cms-joomla", "Joomla 4.1.0");
+        chk("overlay: a version IN range matches (precise)",
+            hasCve(inRange, "CVE-2099-0001", cv) && cv > 9.0);
+        bool prec = true;
+        for (const auto &m : inRange) if (m.cveId == "CVE-2099-0001") prec = m.precise;
+        chk("overlay: in-range overlay match is precise", prec);
+
+        chk("overlay: a PATCHED version (>= fix) does NOT match",
+            !hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.2.8"), "CVE-2099-0001", cv));
+        chk("overlay: a different kind does NOT match",
+            CveDatabase::lookup("cms-wordpress", "WordPress 4.1.0").isEmpty()
+            || !hasCve(CveDatabase::lookup("cms-wordpress", "WordPress 4.1.0"), "CVE-2099-0001", cv));
+        chk("overlay: an unparseable version surfaces the entry as IMPRECISE",
+            [&]{ const auto m = CveDatabase::lookup("cms-joomla", "Joomla");
+                 for (const auto &x : m) if (x.cveId == "CVE-2099-0001") return !x.precise;
+                 return false; }());
+
+        // Dedup: an overlay row re-publishing a static CVE id must not double it
+        // (the static table wins).
+        QList<CveDatabase::OverlayCve> dup;
+        dup.append({ "cms-wordpress", "CVE-2024-31210", 1.0, "", ">=0,<99", "99",
+                     "overlay dup", "https://x" });
+        CveDatabase::setOverlay(dup);
+        const auto m = CveDatabase::lookup("cms-wordpress", "WordPress 6.4.1");
+        int n = 0; for (const auto &x : m) if (x.cveId == "CVE-2024-31210") ++n;
+        chk("overlay: a dup of a static CVE id is not double-counted (static wins)", n == 1);
+
+        CveDatabase::clearOverlay();
+        chk("overlay: clearOverlay empties it", CveDatabase::overlayCount() == 0);
+        chk("overlay: after clear, the overlay CVE no longer matches",
+            !hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.1.0"), "CVE-2099-0001", cv));
+    }
+
     std::fprintf(stderr,
         "\n========================================\n"
         "CVE database regression: %d passed, %d failed\n"

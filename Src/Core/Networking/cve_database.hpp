@@ -60,4 +60,26 @@ QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp)
 // Should be 0; the test asserts it.
 int auditRanges();
 
+// ---- Runtime CVE overlay (cve_feed_sync) -------------------------------
+// The static table() ships a curated set of high-signal web-framework/CMS/library
+// CVEs. The overlay lets an operator extend coverage at runtime by syncing an
+// external feed (or pushing entries directly) -- lookup() consults BOTH, reusing
+// the SAME suffix-aware version/range grammar and the precise flag. Dedup is by
+// cveId (the static table wins). Thread-safe.
+struct OverlayCve {
+    QString kind;          // matched against the lookup kind, e.g. "cms-wordpress"
+    QString cveId;
+    double  cvss = 0.0;
+    QString cvssVector;
+    QString affectedRange; // same grammar as the table (">=4.0,<4.2.1", "<2.4.7-p1", "2.4.49")
+    QString fixVersion;
+    QString summary;
+    QString reference;
+};
+
+// Replace the overlay with `entries`; returns how many were stored.
+int  setOverlay(const QList<OverlayCve> &entries);
+void clearOverlay();
+int  overlayCount();
+
 } // namespace Nullock::Core::CveDatabase

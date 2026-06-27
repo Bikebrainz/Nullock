@@ -1,7 +1,9 @@
 #include "cve_database.hpp"
 
 #include <QHash>
+#include <QMutex>
 #include <QRegularExpression>
+#include <QSet>
 
 namespace Nullock::Core::CveDatabase {
 
@@ -724,6 +726,10 @@ Match makeMatch(const Entry &e, bool precise) {
     };
 }
 
+// Runtime CVE overlay (cve_feed_sync) -- file-scoped, mutex-guarded.
+QMutex            g_overlayMutex;
+QList<OverlayCve> g_overlay;
+
 } // namespace
 
 QList<Match> lookup(const QString &kind, const QString &versionString) {
@@ -736,7 +742,37 @@ QList<Match> lookup(const QString &kind, const QString &versionString) {
             continue;
         out.append(makeMatch(e, precise));
     }
+    // Runtime overlay: same range/precise semantics. Dedup by cveId (the static
+    // table wins) so a feed re-publishing a curated CVE doesn't double-count.
+    QSet<QString> seen;
+    for (const Match &m : out) seen.insert(m.cveId.toLower());
+    QMutexLocker lk(&g_overlayMutex);
+    for (const OverlayCve &c : g_overlay) {
+        if (c.kind != kind) continue;
+        if (seen.contains(c.cveId.toLower())) continue;
+        bool precise = true;
+        if (!rangeMatches(c.affectedRange, have, precise)) continue;
+        seen.insert(c.cveId.toLower());
+        out.append({ c.cveId, c.summary, c.cvss, c.cvssVector, c.affectedRange,
+                     c.fixVersion, c.reference, precise });
+    }
     return out;
+}
+
+int setOverlay(const QList<OverlayCve> &entries) {
+    QMutexLocker lk(&g_overlayMutex);
+    g_overlay = entries;
+    return g_overlay.size();
+}
+
+void clearOverlay() {
+    QMutexLocker lk(&g_overlayMutex);
+    g_overlay.clear();
+}
+
+int overlayCount() {
+    QMutexLocker lk(&g_overlayMutex);
+    return g_overlay.size();
 }
 
 QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp) {
