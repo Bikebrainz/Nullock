@@ -80,6 +80,23 @@ int main(int argc, char **argv) {
     chk("wildcard: a non-resolving candidate (empty IPs) is not a wildcard hit",
         !isWildcardResolved(QStringList(), L({"1.2.3.4"})));
 
+    // ===== mergeIps (A + AAAA union; crt.sh lead later resolved) =========
+    chk("mergeIps: union of disjoint A and AAAA addresses",
+        mergeIps(L({"1.2.3.4"}), L({"2606:4700::1111"})) == L({"1.2.3.4", "2606:4700::1111"}));
+    chk("mergeIps: existing order preserved, new appended",
+        mergeIps(L({"1.1.1.1", "2.2.2.2"}), L({"3.3.3.3"})) == L({"1.1.1.1", "2.2.2.2", "3.3.3.3"}));
+    chk("mergeIps: duplicates are dropped (idempotent re-resolve)",
+        mergeIps(L({"1.2.3.4"}), L({"1.2.3.4"})) == L({"1.2.3.4"}));
+    chk("mergeIps: a crt.sh lead (empty) gains the resolved IPs",
+        mergeIps(QStringList(), L({"1.2.3.4", "2606:4700::1111"})) == L({"1.2.3.4", "2606:4700::1111"}));
+    chk("mergeIps: nothing incoming leaves existing unchanged",
+        mergeIps(L({"1.2.3.4"}), QStringList()) == L({"1.2.3.4"}));
+    chk("mergeIps: empty incoming entries are skipped",
+        mergeIps(L({"1.2.3.4"}), L({""})) == L({"1.2.3.4"}));
+    chk("mergeIps: partial overlap unions only the new address",
+        mergeIps(L({"1.2.3.4", "5.6.7.8"}), L({"5.6.7.8", "9.9.9.9"}))
+            == L({"1.2.3.4", "5.6.7.8", "9.9.9.9"}));
+
     std::fprintf(stderr, "recon_engine_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -29,4 +29,11 @@ bool isWildcardResolved(const QStringList &candidateIps, const QStringList &wild
     return true;                                                // resolves ONLY to wildcard IPs
 }
 
+QStringList mergeIps(const QStringList &existing, const QStringList &incoming) {
+    QStringList out = existing;
+    for (const QString &ip : incoming)
+        if (!ip.isEmpty() && !out.contains(ip)) out.append(ip);  // union, preserve order, dedup
+    return out;
+}
+
 } // namespace Nullock::Core::ReconLogic

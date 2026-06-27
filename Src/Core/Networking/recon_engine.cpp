@@ -161,10 +161,13 @@ void ReconEngine::addSubdomain(const Subdomain &sd) {
     // IPs and dropped by "has live IPs" consumers.
     for (auto &existing : m_subdomains) {
         if (existing.name == sd.name) {
-            if (existing.resolvedIps.isEmpty() && !sd.resolvedIps.isEmpty()) {
-                existing.resolvedIps = sd.resolvedIps;
-                existing.source = sd.source;
-            }
+            // UNION the IPs (dedup) so an A and an AAAA answer for the same host
+            // both land, and a later live resolution upgrades an earlier crt.sh
+            // lead (empty IPs) instead of one record type overwriting the other.
+            const bool wasEmpty = existing.resolvedIps.isEmpty();
+            existing.resolvedIps = ReconLogic::mergeIps(existing.resolvedIps, sd.resolvedIps);
+            // The first time a bare lead becomes live, adopt the resolving source.
+            if (wasEmpty && !existing.resolvedIps.isEmpty()) existing.source = sd.source;
             return;
         }
     }
@@ -242,7 +245,12 @@ void ReconEngine::runCertTransparency(const QString &domain) {
             return;
         }
         QSet<QString> seen;
+        QStringList toResolve;
         int added = 0;
+        // Cap LIVE resolution to avoid a DNS storm on a huge CT result -- every
+        // name is still recorded as a lead; only the first kMaxCrtResolve are
+        // resolved to confirm which are live.
+        constexpr int kMaxCrtResolve = 1000;
         for (const QJsonValue &v : doc.array()) {
             if (m_stopFlag.loadAcquire() != 0) break;
             const QJsonObject o = v.toObject();
@@ -257,11 +265,25 @@ void ReconEngine::runCertTransparency(const QString &domain) {
                 if (!acceptCertName(name, domain)) continue;
                 if (seen.contains(name)) continue;
                 seen.insert(name);
-                addSubdomain({ name, "crt.sh", {} });
+                addSubdomain({ name, "crt.sh", {} });        // the lead (recorded even if not live)
+                if (toResolve.size() < kMaxCrtResolve) toResolve.append(name);
                 ++added;
             }
         }
         if (added > 0) emit subdomainsChanged();
+        // Resolve the CT leads (A + AAAA) to mark which actually resolve. QDnsLookup
+        // must be created on the object's OWN thread, so hop off this worker; a
+        // batch-holder on m_active keeps running() stable across the hand-off.
+        if (!toResolve.isEmpty()) {
+            m_active.fetchAndAddOrdered(1);
+            QMetaObject::invokeMethod(this, [this, toResolve]() {
+                for (const QString &n : toResolve) {
+                    if (m_stopFlag.loadAcquire() != 0) break;
+                    resolveName(n, QStringLiteral("crt.sh"));
+                }
+                finishOne();   // release the batch holder
+            }, Qt::QueuedConnection);
+        }
         finishOne();
     });
 }
@@ -277,13 +299,13 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
     }
     if (wasIdle) emit runningChanged();
 
-    // Cap how many candidates we'll process per request. A wordlist of
-    // hundreds of thousands would spawn one QDnsLookup per entry --
-    // each opens its own UDP socket -- and exhaust file descriptors,
-    // trigger resolver rate limiting, and look extremely loud to the
-    // network. 2000 is comfortably more than every curated subdomain
-    // wordlist that ships in the wild.
-    constexpr int kMaxSubsPerRequest = 2000;
+    // Cap how many candidates we'll process per request. Each candidate now spawns
+    // TWO QDnsLookups (A + AAAA), each opening its own UDP socket, so a huge
+    // wordlist would exhaust file descriptors, trigger resolver rate limiting, and
+    // look extremely loud. The cap is 1000 (=> a ~2000-socket ceiling, matching the
+    // prior one-lookup-per-candidate budget) -- still comfortably above every
+    // curated subdomain wordlist that ships in the wild.
+    constexpr int kMaxSubsPerRequest = 1000;
     QStringList capped = subdomains;
     if (capped.size() > kMaxSubsPerRequest) {
         capped = capped.mid(0, kMaxSubsPerRequest);
@@ -294,22 +316,28 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
                           .arg(kMaxSubsPerRequest).arg(subdomains.size());
     }
 
-    // One QDnsLookup per candidate. We bound it lazily by trusting Qt
-    // to multiplex over its own DNS workers; even at 100 names the
-    // total network cost is well under a second.
+    // One A + one AAAA QDnsLookup per candidate. We bound it lazily by trusting Qt
+    // to multiplex over its own DNS workers; even at 100 names the total network
+    // cost is well under a second.
     for (const QString &sub : capped) {
         if (m_stopFlag.loadAcquire() != 0) break;
-        const QString name = (sub + "." + domain).toLower();
+        resolveName((sub + "." + domain).toLower(), QStringLiteral("wordlist"));
+    }
+}
 
-        auto *lookup = new QDnsLookup(QDnsLookup::A, name, this);
+void ReconEngine::resolveName(const QString &name, const QString &source) {
+    // Probe BOTH address families: an IPv6-only host has no A record, so an
+    // A-only brute would silently miss it (a false negative). The A and AAAA
+    // answers are unioned into one Subdomain by addSubdomain()/mergeIps().
+    for (const QDnsLookup::Type type : { QDnsLookup::A, QDnsLookup::AAAA }) {
+        auto *lookup = new QDnsLookup(type, name, this);
         m_active.fetchAndAddOrdered(1);
-        connect(lookup, &QDnsLookup::finished, this, [this, lookup, name]() {
+        connect(lookup, &QDnsLookup::finished, this, [this, lookup, name, source]() {
             if (lookup->error() == QDnsLookup::NoError) {
-                // Some OS resolvers do "search domain" suffix expansion --
-                // ask for "ftp" and you may get back records for
-                // "ftp.<your-local-search-domain>". QDnsLookup inherits
-                // that. Reject any answer whose canonical name doesn't
-                // match the FQDN we asked for.
+                // Some OS resolvers do "search domain" suffix expansion -- ask for
+                // "ftp" and you may get back records for "ftp.<local-search-domain>".
+                // Reject any answer whose canonical name doesn't match the FQDN we
+                // asked for.
                 QStringList ips;
                 for (const auto &r : lookup->hostAddressRecords()) {
                     if (!recordMatchesQuery(r.name(), name))
@@ -317,7 +345,7 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
                     ips.append(r.value().toString());
                 }
                 if (!ips.isEmpty()) {
-                    addSubdomain({ name, "wordlist", ips });
+                    addSubdomain({ name, source, ips });
                     emit subdomainsChanged();
                 }
             }

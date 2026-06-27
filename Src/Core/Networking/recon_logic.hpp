@@ -35,4 +35,11 @@ bool recordMatchesQuery(const QString &recordName, const QString &askedName);
 // where "*.example.com A 1.2.3.4" makes every candidate resolve.
 bool isWildcardResolved(const QStringList &candidateIps, const QStringList &wildcardIps);
 
+// Dedup-union of a name's resolved IPs across multiple record types/lookups (an A
+// answer and an AAAA answer for the same host, or a crt.sh lead later resolved):
+// `existing` order is preserved and only IPs not already present are appended, so
+// IPv4 and IPv6 addresses accumulate instead of one record type overwriting the
+// other. Empty incoming entries are skipped.
+QStringList mergeIps(const QStringList &existing, const QStringList &incoming);
+
 } // namespace Nullock::Core::ReconLogic

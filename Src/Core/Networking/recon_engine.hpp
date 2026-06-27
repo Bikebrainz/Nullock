@@ -71,6 +71,9 @@ private slots:
 private:
     void               addLookup(QDnsLookup::Type type, const QString &name);
     void               addSubdomain(const Subdomain &sd);
+    // Resolve a fully-qualified name over BOTH A and AAAA (so an IPv6-only host
+    // isn't missed), reporting any matching answers as a Subdomain from `source`.
+    void               resolveName(const QString &name, const QString &source);
     void               finishOne();
 
     mutable QMutex     m_mutex;
