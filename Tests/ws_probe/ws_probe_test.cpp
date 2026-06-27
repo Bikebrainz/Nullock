@@ -158,6 +158,33 @@ int main(int argc, char **argv) {
             stripCredentials(HL{{"COOKIE", "s=1"}}).isEmpty());
     }
 
+    // ===== schemePortVariants (scheme/port-confusion bypass) ============
+    {
+        const QStringList v = schemePortVariants("victim.tld", /*tls=*/true, 8443);
+        chk("scheme/port: a cleartext-scheme downgrade is tried (http:// on a wss target)",
+            v.contains("http://victim.tld"));
+        chk("scheme/port: a non-canonical port variant is tried",
+            v.contains("https://victim.tld:1337"));
+        chk("scheme/port: an FQDN trailing-dot host variant is tried",
+            v.contains("https://victim.tld."));
+        // An upper-cased host is NOT emitted: browsers lower-case the host when
+        // serializing Origin, so accepting it is correct case-folding, not a bypass
+        // (this would mis-grade as a confirmed hijack -- a verified false positive).
+        chk("scheme/port: NO upper-cased-host variant (would be a false positive)",
+            !v.contains("https://VICTIM.TLD"));
+        chk("scheme/port: empty host -> empty", schemePortVariants("", true, 443).isEmpty());
+        // A ws (non-tls) target is already cleartext, so no bare-host "http://<host>"
+        // downgrade variant is emitted (it would duplicate the scheme itself).
+        chk("scheme/port: a ws (non-tls) target on :80 emits no bare http downgrade",
+            !schemePortVariants("victim.tld", false, 80).contains("http://victim.tld"));
+        // A non-canonical TARGET port (e.g. wss on :8443) is itself worth trying as a
+        // bare host (no explicit port) against an allow-list that pinned the port.
+        chk("scheme/port: a non-standard wss port also yields a bare-host (port-stripped) variant",
+            schemePortVariants("victim.tld", true, 8443).contains("https://victim.tld"));
+        chk("scheme/port: a canonical wss :443 target does NOT add a redundant bare-host variant",
+            schemePortVariants("victim.tld", true, 443).count("https://victim.tld") == 0);
+    }
+
     std::fprintf(stderr, "ws_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

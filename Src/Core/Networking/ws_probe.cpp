@@ -145,6 +145,7 @@ Result test(const Request &reqIn) {
     QStringList origins;
     origins << result.attackerOrigin << QStringLiteral("null");
     origins << originVariants(req.host);
+    origins << schemePortVariants(req.host, req.tls, req.port);
 
     int firstStatus = -1;
     for (const QString &origin : origins) {

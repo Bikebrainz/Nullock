@@ -75,6 +75,14 @@ bool hasCredential(const QList<QPair<QString, QString>> &headers);
 // Sweeping these turns "endpoint refused our one sentinel -> Origin validated"
 // (a false negative) into a caught bypass. Empty host -> empty list. Pure.
 QStringList originVariants(const QString &host);
+// Scheme/port-confusion bypass origins: an allow-list that compares ONLY the
+// hostname (ignoring scheme/port) accepts a cleartext-scheme downgrade
+// ("http://<host>" when wss), a non-canonical port ("<scheme>://<host>:1337"),
+// or an FQDN trailing-dot host. Empty host -> empty. Deliberately NO upper-cased
+// host: browsers lower-case the host when serializing Origin, so that form is
+// never attacker-emittable and a server accepting it is case-folding correctly
+// (a false positive, not a bypass).
+QStringList schemePortVariants(const QString &host, bool tls, int port);
 // Drop ambient credentials (Cookie / Authorization) from a header list -- used
 // to re-issue an accepted cross-origin handshake WITHOUT the session, so a
 // socket that ignores the credential (and would 101 for anyone) is graded a

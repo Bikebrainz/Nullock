@@ -57,6 +57,23 @@ QStringList originVariants(const QString &host) {
     return out;
 }
 
+QStringList schemePortVariants(const QString &host, bool tls, int port) {
+    QStringList out;
+    if (host.isEmpty()) return out;
+    const QString scheme = tls ? QStringLiteral("https") : QStringLiteral("http");
+    if (tls) out << QStringLiteral("http://") + host;                 // cleartext-scheme downgrade
+    out << scheme + QStringLiteral("://") + host + QStringLiteral(":1337");  // a non-canonical port
+    if (port > 0 && port != (tls ? 443 : 80))
+        out << scheme + QStringLiteral("://") + host;                 // bare host (no explicit port) vs an explicit-port allow-list
+    out << scheme + QStringLiteral("://") + host + QStringLiteral("."); // FQDN trailing-dot
+    // NB: NO upper-cased-host variant -- hostnames are case-insensitive (RFC 4343)
+    // and every browser lower-cases the host when serializing Origin, so an
+    // attacker page can never emit "https://HOST"; a server accepting it is
+    // case-folding correctly, not exhibiting a bypass (it would mis-grade as a
+    // confirmed hijack -- a verified false positive from the pre-commit panel).
+    return out;
+}
+
 // Re-issuing an accepted cross-origin handshake with these stripped tells a
 // session-gated socket (baseline now refused -> CONFIRMED hijack) apart from a
 // session-blind public socket (baseline still 101 -> just Origin-not-validated).
