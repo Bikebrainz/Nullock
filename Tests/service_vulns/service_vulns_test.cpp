@@ -32,6 +32,14 @@ QSet<QString> cves(const char *product, const char *version) {
     return s;
 }
 bool has(const QSet<QString> &s, const char *id) { return s.contains(id); }
+// precision of one CVE match: 1 = confirmed/precise, 0 = lead/imprecise, -1 = not matched.
+int matchPrec(const char *product, const char *version, const char *id) {
+    for (const auto &h : matchVersion(product, version))
+        if (h.cveId == id) return h.precise ? 1 : 0;
+    return -1;
+}
+// productOnly() canonical product for a banner (port hint).
+QString pOnly(const char *banner, int port = 0) { return productOnly(QString::fromLatin1(banner), port); }
 } // namespace
 
 int main(int argc, char **argv) {
@@ -45,7 +53,7 @@ int main(int argc, char **argv) {
     chk("parse nginx",   prod("nginx/1.20.1") == "nginx" && ver("nginx/1.20.1") == "1.20.1");
     chk("parse IIS",     prod("Microsoft-IIS/6.0") == "iis" && ver("Microsoft-IIS/6.0") == "6.0");
     chk("empty banner -> no product", prod("") == "");
-    chk("unrecognized banner -> no product", prod("lighttpd/1.4.59") == "");
+    chk("unrecognized banner -> no product", prod("Caddy/2.6.4") == "");
 
     // ===== regreSSHion CVE-2024-6387 range (min 8.5 incl, max 9.8 excl) ==
     chk("openssh 9.7p1 -> regreSSHion (in range)", has(cves("openssh", "9.7p1"), "CVE-2024-6387"));
@@ -72,7 +80,7 @@ int main(int argc, char **argv) {
     // ===== empty / unknown ==============================================
     chk("empty product -> no hits", cves("", "9.7p1").isEmpty());
     chk("empty version -> no hits", cves("openssh", "").isEmpty());
-    chk("unknown product -> no hits", cves("lighttpd", "1.4.59").isEmpty());
+    chk("unknown product -> no hits", cves("caddy", "2.6.4").isEmpty());
 
     // ===== precision-aware grading (#1 FP fix) ==========================
     // A truncated "Apache/2.4" (ServerTokens Minor) still MATCHES the 2.4.x
@@ -97,6 +105,71 @@ int main(int argc, char **argv) {
         // "2.3" has a DIFFERING prefix from the 2.4.x range -> certain (no match).
         chk("apache 2.3 (differing prefix) -> no 2.4.x range hit", !has(cves("apache", "2.3"), "CVE-2023-25690"));
     }
+
+    // ===== lettered patch/build ordering (#2) ============================
+    // proftpd CVE-2015-3306 affects ONLY 1.3.5; the fix is the lettered build
+    // 1.3.5a, which sorts ABOVE 1.3.5 -> the fixed build must NOT match.
+    chk("proftpd 1.3.5 -> mod_copy CVE-2015-3306 (vulnerable release)", has(cves("proftpd", "1.3.5"), "CVE-2015-3306"));
+    chk("proftpd 1.3.5 hit is CONFIRMED (precise, not a lead)", matchPrec("proftpd", "1.3.5", "CVE-2015-3306") == 1);
+    chk("proftpd 1.3.5a -> NOT CVE-2015-3306 (lettered FIX sorts above 1.3.5)", !has(cves("proftpd", "1.3.5a"), "CVE-2015-3306"));
+    chk("proftpd 1.3.5b -> NOT CVE-2015-3306 (later fix build)", !has(cves("proftpd", "1.3.5b"), "CVE-2015-3306"));
+    chk("proftpd 1.3.4 -> NOT CVE-2015-3306 (below the affected release)", !has(cves("proftpd", "1.3.4"), "CVE-2015-3306"));
+
+    // ===== pre-release ordering (#2) =====================================
+    // A pre-release ("1.2.3rc1") must sort BELOW its final release ("1.2.3"),
+    // not above it. Exercised through the overlay's range + exact semantics.
+    {
+        OverlayCve rng; rng.product = "acme"; rng.cveId = "CVE-3000-0001"; rng.cvss = 7.5;
+        rng.minVer = ""; rng.maxVer = "1.2.3"; rng.exact = false;     // affected: < 1.2.3
+        setOverlay({rng});
+        chk("pre-release 1.2.3rc1 sorts BELOW 1.2.3 -> inside (,1.2.3)", has(cves("acme", "1.2.3rc1"), "CVE-3000-0001"));
+        chk("pre-release 1.2.3beta2 also below 1.2.3 -> inside range", has(cves("acme", "1.2.3beta2"), "CVE-3000-0001"));
+        chk("final 1.2.3 is the fix boundary -> NOT inside (,1.2.3)", !has(cves("acme", "1.2.3"), "CVE-3000-0001"));
+        chk("patch build 1.2.3a sorts ABOVE 1.2.3 -> NOT inside (,1.2.3)", !has(cves("acme", "1.2.3a"), "CVE-3000-0001"));
+        OverlayCve ex; ex.product = "acme"; ex.cveId = "CVE-3000-0002"; ex.cvss = 5.0;
+        ex.minVer = "1.2.3"; ex.exact = true;                          // affected: == 1.2.3 only
+        setOverlay({ex});
+        chk("exact 1.2.3 does NOT match the pre-release 1.2.3rc1", !has(cves("acme", "1.2.3rc1"), "CVE-3000-0002"));
+        chk("exact 1.2.3 matches the final release", has(cves("acme", "1.2.3"), "CVE-3000-0002"));
+        clearOverlay();
+    }
+
+    // ===== min-boundary truncation -> lead (#3) ==========================
+    // A version truncated BELOW the min ("8" vs a [8.5, 9.8) range) used to be
+    // dropped as not-affected; the hidden minor decides, so it must surface as
+    // an affected LEAD (matched, imprecise), symmetric to the max-side fix.
+    chk("openssh 8 (truncated at/under min 8.5) -> regreSSHion matched as a LEAD", has(cves("openssh", "8"), "CVE-2024-6387"));
+    chk("openssh 8 -> that regreSSHion match is flagged imprecise (lead)", matchPrec("openssh", "8", "CVE-2024-6387") == 0);
+    chk("openssh 7 (whole 7.x is below 8.5) -> NOT regreSSHion (certain, dropped)", !has(cves("openssh", "7"), "CVE-2024-6387"));
+    // a band that fully contains 8.x is still a CONFIRMED hit (truncation doesn't decide).
+    chk("openssh 8 -> ssh-agent CVE-2023-38408 stays CONFIRMED (all 8.x in 5.5-9.3p1)", matchPrec("openssh", "8", "CVE-2023-38408") == 1);
+
+    // ===== product-only -> INFO (#1) + new product coverage (#4) =========
+    // ServerTokens Prod / server_tokens off: a bare "Apache"/"nginx" has no
+    // version, so parseBanner yields nothing -- but productOnly still names the
+    // service so the caller can emit an INFO "version not disclosed" finding
+    // instead of a silent (looks-patched) drop.
+    chk("bare 'Apache' -> parseBanner gives NO product/version", prod("Apache") == "" && ver("Apache") == "");
+    chk("bare 'Apache' -> productOnly recognizes apache", pOnly("Apache") == "apache");
+    chk("bare 'nginx' -> productOnly recognizes nginx", pOnly("nginx") == "nginx");
+    chk("full banner -> productOnly still returns the product", pOnly("Apache/2.4.49 (Debian)") == "apache");
+    chk("genuinely unknown server -> productOnly empty", pOnly("Caddy/2.6.4") == "");
+    chk("empty banner -> productOnly empty", pOnly("") == "");
+    // newly-recognized products (parse where the version is disclosed; name-only otherwise).
+    chk("parse lighttpd version", prod("lighttpd/1.4.59") == "lighttpd" && ver("lighttpd/1.4.59") == "1.4.59");
+    chk("productOnly lighttpd (no version)", pOnly("lighttpd") == "lighttpd");
+    chk("parse MariaDB handshake version", prod("5.5.5-10.3.27-MariaDB-1") == "mariadb" && ver("5.5.5-10.3.27-MariaDB-1") == "10.3.27");
+    chk("productOnly Postfix SMTP greeting (no version)", pOnly("220 mail.example.com ESMTP Postfix (Ubuntu)", 25) == "postfix");
+    chk("productOnly Dovecot IMAP greeting (no version)", pOnly("* OK [CAPABILITY IMAP4rev1] Dovecot ready.", 143) == "dovecot");
+    chk("productOnly Redis INFO line", pOnly("redis_version:7.0.5") == "redis");
+    chk("productOnly MySQL handshake marker", pOnly("5.7.33-log mysql_native_password caching_sha2_password", 3306) == "mysql");
+
+    // ===== Samba range (curated CVE, reachable via matchVersion/overlay) ==
+    chk("samba 4.5.0 -> SambaCry CVE-2017-7494 (3.5.0-4.6.3)", has(cves("samba", "4.5.0"), "CVE-2017-7494"));
+    chk("samba 4.6.4 -> NOT CVE-2017-7494 (the fix, max excl)", !has(cves("samba", "4.6.4"), "CVE-2017-7494"));
+
+    // ===== SMB/445 removed from the default probe set (#4) ===============
+    chk("445 is NOT in the default probe set (raw grab is blind to SMB)", !serviceProbePorts().contains(445));
 
     // ===== runtime overlay + dedup ======================================
     {

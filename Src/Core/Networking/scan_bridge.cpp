@@ -174,6 +174,20 @@ QList<BridgeFinding> fromPortResults(const QList<PortResult> &results, const Opt
                     out.append({ cveSev, QStringLiteral("cve-correlated"),
                                  summary, evidence, r.host, loc });
                 }
+            } else if (const QString p = ServiceVulns::productOnly(r.banner, r.port); !p.isEmpty()) {
+                // Product recognized but no version in the banner (ServerTokens
+                // Prod / server_tokens off) -- emit an INFO coverage-gap finding
+                // so an undisclosed version isn't silently read as "patched".
+                QString summary = p + QStringLiteral(" on ") + r.host
+                                + QStringLiteral(":") + QString::number(r.port)
+                                + QStringLiteral(" -- version not disclosed (coverage incomplete)");
+                QString evidence = QStringLiteral("product identified but the banner carries no version "
+                                                  "(e.g. ServerTokens Prod); CVE matching skipped -- "
+                                                  "confirm the running version manually")
+                                 + (r.banner.isEmpty() ? QString()
+                                    : QStringLiteral(" | banner=") + r.banner.left(256));
+                out.append({ QStringLiteral("info"), QStringLiteral("service-version-undisclosed"),
+                             summary, evidence, r.host, loc });
             }
         }
     }

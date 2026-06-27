@@ -4,9 +4,10 @@
 
 namespace Nullock::Core::ServiceVulns {
 
-// The pure version-matching logic (table, verParts/verCmp, parseBanner,
-// matchVersion, the runtime overlay, serviceProbePorts) lives in
-// service_vulns_logic.cpp so it can be unit-tested against Qt6::Core alone.
+// The pure version-matching logic (table, the version parser/comparator,
+// parseBanner/productOnly, matchVersion, the runtime overlay, serviceProbePorts)
+// lives in service_vulns_logic.cpp so it can be unit-tested against Qt6::Core
+// alone.
 // This TU keeps grabBanner()/scan(), which use QTcpSocket (the Qt6::Network
 // chain) and are therefore I/O.
 
@@ -54,11 +55,24 @@ Result scan(const Request &req) {
         ++result.banners;
         QString product, version;
         parseBanner(banner, port, product, version);
-        if (product.isEmpty()) continue;
-        for (CveHit h : matchVersion(product, version)) {
-            h.port = port;
-            h.banner = banner.left(200);
-            result.hits.append(h);
+        if (!product.isEmpty()) {
+            for (CveHit h : matchVersion(product, version)) {
+                h.port = port;
+                h.banner = banner.left(200);
+                result.hits.append(h);
+            }
+        } else if (const QString p = productOnly(banner, port); !p.isEmpty()) {
+            // Product recognized, but the banner withheld its version -- emit an
+            // INFO coverage-gap finding instead of silently dropping the host
+            // (which would be indistinguishable from "fully patched").
+            CveHit info;
+            info.port = port;
+            info.product = p;
+            info.informational = true;
+            info.summary = QStringLiteral("product identified, version not disclosed "
+                                          "-- manual review / coverage incomplete");
+            info.banner = banner.left(200);
+            result.hits.append(info);
         }
     }
     return result;

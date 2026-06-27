@@ -31,6 +31,14 @@ struct CveHit {
                              // the CVE's range boundary (e.g. "Apache/2.4" vs a
                              // 2.4.x range) so affected-vs-patched can't be
                              // confirmed -- grade it a lead, not a confirmed CVE.
+    bool    informational = false;  // true => NOT a CVE match. The product was
+                             // recognized but the banner disclosed no version
+                             // (ServerTokens Prod / server_tokens off), so CVE
+                             // matching is impossible. Emitted as an INFO
+                             // coverage-gap finding (cveId/cvss empty/0) to
+                             // distinguish "service present, version withheld"
+                             // from "no service" -- otherwise an undisclosed
+                             // version looks identical to a fully-patched host.
 };
 
 struct Request {
@@ -54,8 +62,16 @@ Result scan(const Request &req);
 QList<int> serviceProbePorts();
 
 // Exposed for tests: parse "product"/"version" out of a banner (port hints the
-// protocol). Returns empty product when nothing recognizable is found.
+// protocol). Returns empty product when nothing recognizable is found. Only
+// sets a product when a VERSION was also disclosed.
 void parseBanner(const QString &banner, int port, QString &product, QString &version);
+
+// Exposed for tests: recognize the product even when the banner withheld its
+// version (e.g. a bare "Apache" / "nginx" under ServerTokens Prod). Returns the
+// canonical product name, or "" if no known product token is present. Lets a
+// caller distinguish "service present, version not disclosed" (-> INFO,
+// coverage incomplete) from "no service".
+QString productOnly(const QString &banner, int port);
 
 // Exposed for tests: CVE matches for an already-parsed product+version.
 // Consults the curated static table AND the runtime overlay (see below).

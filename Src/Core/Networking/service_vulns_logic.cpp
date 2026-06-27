@@ -47,8 +47,11 @@ const QList<ServiceCve> &table() {
           "", "7.7", false, "< 7.7",
           "Username enumeration via differing auth responses for valid vs invalid users.",
           "7.7", "https://nvd.nist.gov/vuln/detail/CVE-2018-15473" },
+        // Affected range [1.3.5, 1.3.5a): only the 1.3.5 release is vulnerable;
+        // the fix is the lettered build 1.3.5a, which sorts ABOVE 1.3.5 in the
+        // version model so it (and 1.3.5b/c...) is correctly excluded.
         { "proftpd", "CVE-2015-3306", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-          "1.3.5", "1.3.5.1", false, "1.3.5 (mod_copy)",
+          "1.3.5", "1.3.5a", false, "1.3.5 (mod_copy)",
           "mod_copy SITE CPFR/CPTO lets an unauthenticated attacker copy files -> RCE.",
           "1.3.5a", "https://nvd.nist.gov/vuln/detail/CVE-2015-3306" },
         { "exim", "CVE-2019-10149", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
@@ -91,40 +94,141 @@ const QList<ServiceCve> &table() {
     return t;
 }
 
-// Compare dotted versions component-wise. "9.3p1" -> [9,3,1]; "2.4.49" -> [2,4,49].
-QList<int> verParts(const QString &v) {
-    QList<int> out;
-    const QString norm = QString(v).replace(QRegularExpression("[A-Za-z]+"), ".");
-    for (const QString &p : norm.split('.', Qt::SkipEmptyParts)) {
-        bool ok = false; const int n = p.toInt(&ok);
-        if (ok) out << n;
-    }
-    return out;
-}
-int verCmp(const QString &a, const QString &b) {
-    const QList<int> pa = verParts(a), pb = verParts(b);
-    for (int i = 0; i < qMax(pa.size(), pb.size()); ++i) {
-        const int x = i < pa.size() ? pa[i] : 0;
-        const int y = i < pb.size() ? pb[i] : 0;
-        if (x != y) return x < y ? -1 : 1;
-    }
+// ---- Version model ---------------------------------------------------------
+// A service version compares as: numeric RELEASE components first, then a
+// release-STAGE tiebreaker. The stage distinguishes three suffix shapes the old
+// "replace every letter run with a dot" parser silently conflated:
+//
+//   * openssh 'p<N>' portable patch ("9.3p1"): 'p' is a soft separator, so the
+//     number folds in as an ordinary numeric component -- 9.3p1 == 9.3.1. This
+//     is what the curated ssh ranges rely on (e.g. the 9.3p2 fix == 9.3.2).
+//   * a trailing maintenance LETTER ("1.3.5a", openssl "1.0.2k"): a PATCH build
+//     that sorts ABOVE the bare release -- 1.3.5 < 1.3.5a. (Old parser dropped
+//     the 'a' so the proftpd FIX 1.3.5a matched a 1.3.5-only CVE.)
+//   * a pre-release WORD ("1.2.3rc1", "...beta2"): sorts BELOW the release --
+//     1.2.3rc1 < 1.2.3. (Old parser turned "rc1" into a ".1", sorting the
+//     pre-release ABOVE its own final release.)
+enum Stage { StagePre = -1, StageRelease = 0, StagePatch = 1 };
+
+struct Ver {
+    QList<int> nums;
+    int        stage    = StageRelease;
+    int        stageKey = 0;   // ordering WITHIN a non-release stage
+};
+
+// alpha < beta < rc, with the looser snapshot/dev tags below alpha. Only the
+// relative order matters (a pre-release always sorts below its release anyway).
+int preRank(const QString &w) {
+    if (w == "dev" || w == "snapshot") return 0;
+    if (w == "alpha")                  return 1;
+    if (w == "milestone")              return 2;
+    if (w == "beta")                   return 3;
+    if (w == "pre" || w == "preview")  return 4;
+    if (w == "rc")                     return 5;
     return 0;
 }
 
-// Is `version` too imprecise to confirm a range CVE's UPPER bound? verCmp pads
-// missing components with 0, so a less-precise version ("2.4") compares EQUAL on
-// the shared prefix of an exclusive max ("2.4.56") and is judged below-max --
-// even though the real (hidden) patch level could be at or past the fix. Only
-// the missing trailing component(s) decide affected-vs-patched, so the match is
-// a LEAD, not a confirmation. (When the known prefix already differs from max --
-// e.g. "2.3" vs "2.4.56" -- the comparison is certain, so this returns false.)
-bool maxUncertain(const QString &version, const QString &maxVer) {
-    if (maxVer.isEmpty()) return false;
-    const QList<int> pv = verParts(version), pm = verParts(maxVer);
-    if (pv.size() >= pm.size()) return false;   // precise enough to compare max
+Ver parseVer(const QString &in) {
+    Ver out;
+    // Tokenize into maximal digit / letter runs; any other char is a separator.
+    QStringList toks;
+    QString cur; bool curDigit = false;
+    auto flush = [&]() { if (!cur.isEmpty()) { toks << cur; cur.clear(); } };
+    for (const QChar &c : in.toLower()) {
+        if (c.isDigit()) {
+            if (!cur.isEmpty() && !curDigit) flush();
+            curDigit = true; cur += c;
+        } else if (c.isLetter()) {
+            if (!cur.isEmpty() && curDigit) flush();
+            curDigit = false; cur += c;
+        } else { flush(); }
+    }
+    flush();
+
+    static const QSet<QString> preWords = {
+        "rc", "alpha", "beta", "pre", "preview", "dev", "snapshot", "milestone" };
+
+    for (int i = 0; i < toks.size(); ++i) {
+        const QString &t = toks[i];
+        bool isNum = false; const int n = t.toInt(&isNum);
+        if (isNum) {
+            if (out.stage == StageRelease) out.nums << n;   // release core
+            continue;                                       // post-stage digits handled below
+        }
+        // 'p' immediately followed by digits is openssh's portable patch -- a
+        // soft separator, NOT a stage; the following number folds into nums.
+        if (t == QLatin1String("p") && i + 1 < toks.size()) {
+            bool nx = false; toks[i + 1].toInt(&nx);
+            if (nx) continue;
+        }
+        if (preWords.contains(t)) {
+            out.stage = StagePre;
+            int num = 0;
+            if (i + 1 < toks.size()) { bool nx = false; const int x = toks[i + 1].toInt(&nx); if (nx) num = x; }
+            out.stageKey = preRank(t) * 100000 + num;       // word rank, then its number
+            break;
+        }
+        // a maintenance letter run (e.g. "a", "k") -> patch build above release.
+        int key = 0; for (const QChar &c : t) key = key * 26 + (c.toLatin1() - 'a' + 1);
+        out.stage = StagePatch; out.stageKey = key;
+        break;
+    }
+    return out;
+}
+
+// Numeric release components only (no stage) -- the truncation/precision checks
+// reason about how many dotted numbers the scanned version actually disclosed.
+QList<int> verNums(const QString &v) { return parseVer(v).nums; }
+
+int verCmp(const QString &a, const QString &b) {
+    const Ver va = parseVer(a), vb = parseVer(b);
+    for (int i = 0; i < qMax(va.nums.size(), vb.nums.size()); ++i) {
+        const int x = i < va.nums.size() ? va.nums[i] : 0;
+        const int y = i < vb.nums.size() ? vb.nums[i] : 0;
+        if (x != y) return x < y ? -1 : 1;
+    }
+    if (va.stage != vb.stage)       return va.stage < vb.stage ? -1 : 1;
+    if (va.stageKey != vb.stageKey) return va.stageKey < vb.stageKey ? -1 : 1;
+    return 0;
+}
+
+// Is `version` too imprecise to decide a range BOUNDARY? verCmp pads missing
+// components with 0, so a less-precise version ("2.4") compares EQUAL on the
+// shared prefix of a boundary ("2.4.56") and is judged below it -- even though
+// the real (hidden) patch level could land on the other side. The match is then
+// a LEAD, not a confirmation. Uncertain ONLY when: fewer components than the
+// boundary, the shared prefix matches, AND at least one of the boundary's
+// missing trailing components is non-zero (so the hidden component actually
+// DECIDES). If the prefix differs ("2.3" vs "2.4.56") or the boundary's tail is
+// all-zero ("2.4" vs "2.4.0", where every 2.4.x >= 2.4.0) the comparison is
+// certain and this returns false.
+bool truncatedAgainst(const QString &version, const QString &boundary) {
+    if (boundary.isEmpty()) return false;
+    const QList<int> pv = verNums(version), pb = verNums(boundary);
+    if (pv.size() >= pb.size()) return false;
     for (int i = 0; i < pv.size(); ++i)
-        if (pv[i] != pm[i]) return false;       // prefix differs -> comparison is certain
-    return true;                                // equal prefix + fewer components
+        if (pv[i] != pb[i]) return false;       // prefix differs -> certain
+    for (int i = pv.size(); i < pb.size(); ++i)
+        if (pb[i] != 0) return true;            // a non-zero hidden component decides
+    return false;                               // boundary tail all-zero -> certain
+}
+
+// Decide affected + precision for one CVE (exact, or a [minVer, maxVer) range
+// with min inclusive / max exclusive) against a scanned version. Truncation at
+// EITHER boundary that leaves the missing component(s) deciding yields an
+// affected LEAD (affected=true, precise=false) -- never a silent drop on the
+// min side, never a false confirm on the max side.
+struct Verdict { bool affected; bool precise; };
+Verdict evalCve(const QString &version, const QString &minVer, const QString &maxVer, bool exact) {
+    if (exact)
+        return { verCmp(version, minVer) == 0, true };
+    const bool hasMin = !minVer.isEmpty();
+    const bool hasMax = !maxVer.isEmpty();
+    const bool minTrunc = hasMin && truncatedAgainst(version, minVer);
+    const bool maxTrunc = hasMax && truncatedAgainst(version, maxVer);
+    const bool aboveMin = !hasMin || verCmp(version, minVer) >= 0 || minTrunc;
+    const bool belowMax = !hasMax || verCmp(version, maxVer) <  0 || maxTrunc;
+    return { aboveMin && belowMax, !(minTrunc || maxTrunc) };
 }
 
 // Runtime overlay store (cve_feed_sync). Guarded by a mutex because
@@ -135,28 +239,91 @@ QList<OverlayCve> g_overlay;
 } // namespace
 
 QList<int> serviceProbePorts() {
-    return { 21, 22, 25, 80, 110, 143, 443, 445, 587, 3306, 5432, 8080 };
+    // NOTE: SMB/445 is deliberately NOT probed here. A raw TCP banner grab on
+    // 445 returns nothing (SMB requires a Negotiate Protocol exchange), so the
+    // empty result is indistinguishable from "service identified & patched" --
+    // a silent false-negative that would hide the curated Samba SambaCry CVE.
+    // Until a minimal SMB negotiate is implemented, 445 stays out of the default
+    // set so an empty scan is never misread as safe. Port-level SMB exposure is
+    // still surfaced by the port scanner (scan_bridge classify -> file-share),
+    // and the Samba CVE remains reachable via matchVersion / the overlay.
+    return { 21, 22, 25, 80, 110, 143, 443, 587, 3306, 5432, 8080 };
 }
+
+namespace {
+
+// Product + version-capture regex. A digit after the delimiter is required, so
+// these only fire when the banner actually discloses a version. Order matters:
+// MariaDB's "-MariaDB"-anchored pattern precedes anything that could shadow it.
+struct VerPat { const char *product; QRegularExpression re; };
+const QList<VerPat> &verPats() {
+    static const QList<VerPat> p = {
+        { "openssh",  QRegularExpression("OpenSSH[_/]([0-9][0-9.p]*)",   QRegularExpression::CaseInsensitiveOption) },
+        { "vsftpd",   QRegularExpression("vsftpd\\s+([0-9][0-9.]*)",     QRegularExpression::CaseInsensitiveOption) },
+        { "proftpd",  QRegularExpression("ProFTPD\\s+([0-9][0-9.]*)",    QRegularExpression::CaseInsensitiveOption) },
+        { "exim",     QRegularExpression("Exim\\s+([0-9][0-9.]*)",       QRegularExpression::CaseInsensitiveOption) },
+        { "apache",   QRegularExpression("Apache/([0-9][0-9.]*)",        QRegularExpression::CaseInsensitiveOption) },
+        { "nginx",    QRegularExpression("nginx/([0-9][0-9.]*)",         QRegularExpression::CaseInsensitiveOption) },
+        { "lighttpd", QRegularExpression("lighttpd/([0-9][0-9.]*)",      QRegularExpression::CaseInsensitiveOption) },
+        { "iis",      QRegularExpression("Microsoft-IIS/([0-9][0-9.]*)", QRegularExpression::CaseInsensitiveOption) },
+        { "samba",    QRegularExpression("Samba\\s+([0-9][0-9.]*)",      QRegularExpression::CaseInsensitiveOption) },
+        // MariaDB greets as "5.5.5-10.x.y-MariaDB-..."; the real version is the
+        // X.Y.Z immediately before "-MariaDB" (the 5.5.5 is a compat prefix).
+        { "mariadb",  QRegularExpression("([0-9][0-9.]+)-MariaDB",       QRegularExpression::CaseInsensitiveOption) },
+        { "postfix",  QRegularExpression("Postfix\\s+([0-9][0-9.]*)",    QRegularExpression::CaseInsensitiveOption) },
+        { "dovecot",  QRegularExpression("Dovecot\\s+([0-9][0-9.]*)",    QRegularExpression::CaseInsensitiveOption) },
+        { "redis",    QRegularExpression("redis_version:([0-9][0-9.]*)", QRegularExpression::CaseInsensitiveOption) },
+    };
+    return p;
+}
+
+// Product-NAME regexes (version optional). Lets productOnly() recognize a
+// service whose banner withheld its version (ServerTokens Prod / server_tokens
+// off / a bare "Postfix"/"Dovecot" greeting). Order matters: more specific
+// product tokens first (MariaDB before the generic MySQL handshake markers).
+struct NamePat { const char *product; QRegularExpression re; };
+const QList<NamePat> &namePats() {
+    static const QList<NamePat> p = {
+        { "openssh",  QRegularExpression("OpenSSH",        QRegularExpression::CaseInsensitiveOption) },
+        { "apache",   QRegularExpression("Apache",         QRegularExpression::CaseInsensitiveOption) },
+        { "nginx",    QRegularExpression("nginx",          QRegularExpression::CaseInsensitiveOption) },
+        { "lighttpd", QRegularExpression("lighttpd",       QRegularExpression::CaseInsensitiveOption) },
+        { "iis",      QRegularExpression("Microsoft-IIS",  QRegularExpression::CaseInsensitiveOption) },
+        { "vsftpd",   QRegularExpression("vsftpd",         QRegularExpression::CaseInsensitiveOption) },
+        { "proftpd",  QRegularExpression("ProFTPD",        QRegularExpression::CaseInsensitiveOption) },
+        { "exim",     QRegularExpression("Exim",           QRegularExpression::CaseInsensitiveOption) },
+        { "postfix",  QRegularExpression("Postfix",        QRegularExpression::CaseInsensitiveOption) },
+        { "dovecot",  QRegularExpression("Dovecot",        QRegularExpression::CaseInsensitiveOption) },
+        { "samba",    QRegularExpression("Samba",          QRegularExpression::CaseInsensitiveOption) },
+        { "mariadb",  QRegularExpression("MariaDB",        QRegularExpression::CaseInsensitiveOption) },
+        { "redis",    QRegularExpression("Redis|redis_version", QRegularExpression::CaseInsensitiveOption) },
+        { "mysql",    QRegularExpression("MySQL|mysql_native_password|caching_sha2_password",
+                                         QRegularExpression::CaseInsensitiveOption) },
+    };
+    return p;
+}
+
+} // namespace
 
 void parseBanner(const QString &banner, int port, QString &product, QString &version) {
     product.clear(); version.clear();
     if (banner.isEmpty()) return;
-    struct Pat { const char *product; QRegularExpression re; };
-    static const QList<Pat> pats = {
-        { "openssh", QRegularExpression("OpenSSH[_/]([0-9][0-9.p]*)", QRegularExpression::CaseInsensitiveOption) },
-        { "vsftpd",  QRegularExpression("vsftpd\\s+([0-9][0-9.]*)",   QRegularExpression::CaseInsensitiveOption) },
-        { "proftpd", QRegularExpression("ProFTPD\\s+([0-9][0-9.]*)",  QRegularExpression::CaseInsensitiveOption) },
-        { "exim",    QRegularExpression("Exim\\s+([0-9][0-9.]*)",     QRegularExpression::CaseInsensitiveOption) },
-        { "apache",  QRegularExpression("Apache/([0-9][0-9.]*)",      QRegularExpression::CaseInsensitiveOption) },
-        { "nginx",   QRegularExpression("nginx/([0-9][0-9.]*)",       QRegularExpression::CaseInsensitiveOption) },
-        { "iis",     QRegularExpression("Microsoft-IIS/([0-9][0-9.]*)", QRegularExpression::CaseInsensitiveOption) },
-        { "samba",   QRegularExpression("Samba\\s+([0-9][0-9.]*)",    QRegularExpression::CaseInsensitiveOption) },
-    };
     Q_UNUSED(port);
-    for (const Pat &p : pats) {
+    for (const VerPat &p : verPats()) {
         const auto m = p.re.match(banner);
         if (m.hasMatch()) { product = p.product; version = m.captured(1); return; }
     }
+}
+
+QString productOnly(const QString &banner, int port) {
+    if (banner.isEmpty()) return QString();
+    // A full product+version parse (if one is available) keeps the canonical
+    // product name identical to parseBanner.
+    QString p, v; parseBanner(banner, port, p, v);
+    if (!p.isEmpty()) return p;
+    for (const NamePat &n : namePats())
+        if (n.re.match(banner).hasMatch()) return QString::fromLatin1(n.product);
+    return QString();
 }
 
 QList<CveHit> matchVersion(const QString &product, const QString &version) {
@@ -164,20 +331,14 @@ QList<CveHit> matchVersion(const QString &product, const QString &version) {
     if (product.isEmpty() || version.isEmpty()) return out;
     for (const ServiceCve &c : table()) {
         if (product.compare(QString::fromUtf8(c.product), Qt::CaseInsensitive) != 0) continue;
-        bool affected;
-        if (c.exact) {
-            affected = verCmp(version, QString::fromUtf8(c.minVer)) == 0;
-        } else {
-            const bool aboveMin = !*c.minVer || verCmp(version, QString::fromUtf8(c.minVer)) >= 0;
-            const bool belowMax = !*c.maxVer || verCmp(version, QString::fromUtf8(c.maxVer)) < 0;
-            affected = aboveMin && belowMax;
-        }
-        if (!affected) continue;
+        const Verdict vd = evalCve(version, QString::fromUtf8(c.minVer),
+                                   QString::fromUtf8(c.maxVer), c.exact);
+        if (!vd.affected) continue;
         CveHit h;
         h.product = product; h.version = version;
         h.cveId = c.cveId; h.cvss = c.cvss; h.cvssVector = c.cvssVector;
         h.summary = c.summary; h.affected = c.affected; h.fix = c.fix; h.reference = c.reference;
-        h.precise = c.exact || !maxUncertain(version, QString::fromUtf8(c.maxVer));
+        h.precise = vd.precise;
         out.append(h);
     }
     // Also consult the runtime overlay (same range semantics, reusing verCmp).
@@ -190,21 +351,14 @@ QList<CveHit> matchVersion(const QString &product, const QString &version) {
         for (const OverlayCve &c : g_overlay) {
             if (product.compare(c.product, Qt::CaseInsensitive) != 0) continue;
             if (seenCve.contains(c.cveId.toLower())) continue;
-            bool affected;
-            if (c.exact) {
-                affected = verCmp(version, c.minVer) == 0;
-            } else {
-                const bool aboveMin = c.minVer.isEmpty() || verCmp(version, c.minVer) >= 0;
-                const bool belowMax = c.maxVer.isEmpty() || verCmp(version, c.maxVer) < 0;
-                affected = aboveMin && belowMax;
-            }
-            if (!affected) continue;
+            const Verdict vd = evalCve(version, c.minVer, c.maxVer, c.exact);
+            if (!vd.affected) continue;
             seenCve.insert(c.cveId.toLower());
             CveHit h;
             h.product = product; h.version = version;
             h.cveId = c.cveId; h.cvss = c.cvss; h.cvssVector = c.cvssVector;
             h.summary = c.summary; h.affected = c.affected; h.fix = c.fix; h.reference = c.reference;
-            h.precise = c.exact || !maxUncertain(version, c.maxVer);
+            h.precise = vd.precise;
             out.append(h);
         }
     }
