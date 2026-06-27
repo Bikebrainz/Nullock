@@ -6680,10 +6680,30 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return cvss > 0.0 ? QStringLiteral("low") : QStringLiteral("medium");  // unscored-but-known -> medium
         };
         QJsonArray hits;
+        int cveHitCount = 0;
         for (const auto &h : sres.hits) {
+            // Product recognized but the banner withheld its version -- an INFO
+            // coverage-gap finding, NOT a CVE match. Surface it so an undisclosed
+            // version isn't silently read as "patched".
+            if (h.informational) {
+                hits.append(QJsonObject{
+                    { "port", h.port }, { "product", h.product }, { "version", QString() },
+                    { "cveId", QString() }, { "cvss", 0.0 }, { "summary", h.summary },
+                    { "banner", h.banner }, { "informational", true }, { "severity", QStringLiteral("info") } });
+                if (m_wiring.scanner)
+                    m_wiring.scanner->reportFinding(0, "info", "service-version-undisclosed",
+                        QString("%1 on %2:%3 -- version not disclosed (coverage incomplete)")
+                            .arg(h.product, host).arg(h.port),
+                        QString("banner: %1 | product identified but no version in the banner "
+                                "(e.g. ServerTokens Prod) -- CVE matching cannot confirm patched-vs-vulnerable; "
+                                "verify the running version manually").arg(h.banner),
+                        host, host + ":" + QString::number(h.port));
+                continue;
+            }
             // An imprecise match (scanned version less precise than the CVE's
             // range boundary) can't confirm affected-vs-patched -- grade it a
             // LEAD (capped at medium), never a confirmed critical.
+            ++cveHitCount;
             QString sev = sevFor(h.cvss);
             if (!h.precise && (sev == "critical" || sev == "high")) sev = QStringLiteral("medium");
             hits.append(QJsonObject{
@@ -6706,7 +6726,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "host", sres.host },
                        { "portsProbed", sres.portsProbed },
                        { "banners", sres.banners },
-                       { "hitCount", static_cast<int>(sres.hits.size()) },
+                       { "hitCount", cveHitCount },
                        { "hits", hits }});
     }
 
@@ -7301,9 +7321,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // ---- CRLF / HTTP response splitting ------------------------------
-    // POST /api/crlf/test { url, param?, method?, headers? }
+    // POST /api/crlf/test { url, param?, method?, headers?, in?, body? }
     //   Injects encoded-CRLF payloads carrying a marker header; confirms by
-    //   that header appearing in the parsed response. CWE-113.
+    //   that header appearing in the parsed response. CWE-113. `in` selects the
+    //   reflecting sink: "query" (default) | "body" (POST x-www-form-urlencoded)
+    //   | "path" | "header" (a reflected request header) | "all". For "header",
+    //   `param` is the header name to fuzz; for "body", `body` is the existing
+    //   form body to preserve.
     if (path == "/api/crlf/test") {
         const QString url = bodyJson.value("url").toString();
         const QUrl u(url);
@@ -7318,7 +7342,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         cr.basePath = u.path(QUrl::FullyEncoded).isEmpty()
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         cr.query = u.query(QUrl::FullyEncoded);
+        cr.body = bodyJson.value("body").toString().toUtf8();
         cr.param = bodyJson.value("param").toString();
+        cr.in = bodyJson.value("in").toString();
         const QJsonObject chdrs = bodyJson.value("headers").toObject();
         for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
             cr.headers.append({ it.key(), it.value().toString() });
@@ -7329,9 +7355,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QStringList where;
         for (const auto &h : cres.hits) {
             hits.append(QJsonObject{
-                { "param", h.param }, { "technique", h.technique },
+                { "point", h.point }, { "param", h.param }, { "technique", h.technique },
                 { "payload", h.payload }, { "evidence", h.evidence } });
-            where << h.param + "/" + h.technique;
+            where << h.point + "/" + h.param + "/" + h.technique;
         }
         if (m_wiring.scanner && cres.vulnerable)
             m_wiring.scanner->reportFinding(0, "high", "crlf-injection",

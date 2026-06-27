@@ -83,6 +83,24 @@ def make(mode):
         def do_POST(self):
             n = int(self.headers.get('Content-Length', '0') or 0)
             raw = self.rfile.read(n) if n else b''
+            if mode.startswith('crlf-post'):
+                # POST-body response splitting: reflect the FIRST x-www-form-
+                # urlencoded body param's value into a response header via RAW
+                # bytes (mirrors the query crlf mock). crlf-post-vuln decodes
+                # %0d%0a AND %3a -> a real "X-Nullock-Crlf: <marker>" header;
+                # crlf-post-safe strips CR/LF -> no split.
+                from urllib.parse import unquote
+                txt = raw.decode('latin-1', 'replace')
+                first = txt.split('&', 1)[0]
+                rawval = first.split('=', 1)[1] if '=' in first else ''
+                refl = unquote(rawval)
+                if mode == 'crlf-post-safe':
+                    refl = refl.replace('\r', '').replace('\n', '')
+                body = b'<html>ok</html>'
+                resp = ('HTTP/1.0 200 OK\r\nX-Reflect: ' + refl + '\r\n'
+                        + 'Content-Type: text/html\r\nContent-Length: '
+                        + str(len(body)) + '\r\nConnection: close\r\n\r\n').encode('latin-1', 'replace') + body
+                self.wfile.write(resp); return
             if mode == 'verb-case':   # POST denied too; only lower-cased "get" flips
                 self._send(403, b'<html>x</html>'); return
             if mode.startswith('race-'):
@@ -752,6 +770,23 @@ def make(mode):
                     val = val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 self._send(200, ('<html><body>Results for: %s</body></html>' % val).encode())
                 return
+            if mode.startswith('crlf-hdr'):
+                # Reflected request-HEADER response splitting: echo an incoming
+                # X-Forwarded-Host value into a response header via RAW bytes, so
+                # an injected CR/LF in that request header splits off a new
+                # response header line. crlf-hdr-vuln decodes %0d%0a AND %3a -> a
+                # real "X-Nullock-Crlf: <marker>" header; crlf-hdr-safe strips
+                # CR/LF -> no split. (Must precede the generic crlf branch below,
+                # which would otherwise reflect the empty query string instead.)
+                from urllib.parse import unquote
+                refl = unquote(self.headers.get('X-Forwarded-Host', ''))
+                if mode == 'crlf-hdr-safe':
+                    refl = refl.replace('\r', '').replace('\n', '')
+                body = b'<html>ok</html>'
+                resp = ('HTTP/1.0 200 OK\r\nX-Reflect: ' + refl + '\r\n'
+                        + 'Content-Type: text/html\r\nContent-Length: '
+                        + str(len(body)) + '\r\nConnection: close\r\n\r\n').encode('latin-1', 'replace') + body
+                self.wfile.write(resp); return
             if mode.startswith('crlf'):
                 # HTTP response splitting. The vulnerable server reflects the
                 # (decoded) first query-param value into a response header value
@@ -966,6 +1001,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        sqli-vuln sqli-safe sqli-blind sqli-waf
        xss-vuln xss-safe xss-attr xss-nosniff
        crlf-vuln crlf-colonless crlf-safe
+       crlf-post-vuln crlf-post-safe crlf-hdr-vuln crlf-hdr-safe
        method-allow method-trace method-trace-fp method-405 method-track
        openredir-vuln openredir-safe openredir-refresh openredir-js openredir-echo
        pathtrav-vuln pathtrav-safe pathtrav-template
@@ -1090,6 +1126,10 @@ echo "== CRLF / response splitting =="
 chk "crlf split -> confirmed (parsed header)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-vuln]} '?url=test')\"}")" "d.get('vulnerable')"
 chk "crlf split, colon-less line -> confirmed (raw-bytes fallback)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-colonless]} '?url=test')\"}")" "d.get('vulnerable')"
 chk "crlf CR/LF stripped -> NOT vulnerable" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-safe]} '?url=test')\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "crlf POST-body split -> confirmed (body sink)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-post-vuln]} '')\",\"in\":\"body\",\"method\":\"POST\",\"param\":\"url\"}")" "d.get('vulnerable') and any(h.get('point')=='body' for h in d.get('hits',[]))"
+chk "crlf POST-body CR/LF stripped -> NOT vulnerable" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-post-safe]} '')\",\"in\":\"body\",\"method\":\"POST\",\"param\":\"url\"}")" "d.get('ok') and not d.get('vulnerable')"
+chk "crlf request-header reflection -> confirmed (header sink)" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-hdr-vuln]} '')\",\"in\":\"header\",\"param\":\"X-Forwarded-Host\"}")" "d.get('vulnerable') and any(h.get('point')=='header' for h in d.get('hits',[]))"
+chk "crlf request-header CR/LF stripped -> NOT vulnerable" "$(post /api/crlf/test "{\"url\":\"$(url ${P[crlf-hdr-safe]} '')\",\"in\":\"header\",\"param\":\"X-Forwarded-Host\"}")" "d.get('ok') and not d.get('vulnerable')"
 
 echo "== open redirect (core) =="
 chk "open-redirect vulnerable -> confirmed" "$(post /api/openredirect/test "{\"url\":\"$(url ${P[openredir-vuln]} '?url=test')\"}")" "d.get('vulnerable')"

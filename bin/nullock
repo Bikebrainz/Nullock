@@ -1220,22 +1220,41 @@ cmd_lfi() {
 }
 
 cmd_crlf() {
-    # nullock crlf <url> [param] [Header:Value ...]
-    [[ -n ${1-} ]] || die "usage: nullock crlf <url> [param] [hdr:val ...]"
+    # nullock crlf <url> [param] [--in query|body|path|header|all] [--method M]
+    #                            [--body k=v&k2=v2] [Header:Value ...]
+    #   --in selects the reflecting sink (default: query). For --in header, [param]
+    #   is the request header NAME to fuzz; for --in body, --body is the existing
+    #   form body to preserve (and the method defaults to POST).
+    [[ -n ${1-} ]] || die "usage: nullock crlf <url> [param] [--in point] [--method M] [--body form] [hdr:val ...]"
     local url=$1; shift
-    local param=""
-    if [[ -n ${1-} && $1 != *:* ]]; then param=$1; shift; fi
+    local param="" inSel="" method="" body=""
+    local -a hdrs=()
+    while (( $# > 0 )); do
+        case $1 in
+            --in)     inSel=${2-}; shift 2 ;;
+            --method) method=${2-}; shift 2 ;;
+            --body)   body=${2-}; shift 2 ;;
+            *:*)      hdrs+=("$1"); shift ;;
+            *)        if [[ -z $param ]]; then param=$1; else hdrs+=("$1"); fi; shift ;;
+        esac
+    done
+    # POST body injection implies POST unless the caller overrode the method.
+    [[ $inSel == body && -z $method ]] && method="POST"
     local headers="{}"
-    if (( $# > 0 )); then
+    if (( ${#hdrs[@]} > 0 )); then
         headers="{"; local first=1
-        for h in "$@"; do
+        for h in "${hdrs[@]}"; do
             local name=${h%%:*} val=${h#*:}; val=${val# }
             if (( first )); then first=0; else headers+=","; fi
             headers+="$(jsonq "$name"):$(jsonq "$val")"
         done
         headers+="}"
     fi
-    post /api/crlf/test "{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"headers\":$headers}" | pp
+    local req="{\"url\":$(jsonq "$url"),\"param\":$(jsonq "$param"),\"in\":$(jsonq "$inSel"),\"headers\":$headers"
+    [[ -n $method ]] && req+=",\"method\":$(jsonq "$method")"
+    [[ -n $body ]]   && req+=",\"body\":$(jsonq "$body")"
+    req+="}"
+    post /api/crlf/test "$req" | pp
 }
 
 cmd_secrets() {
@@ -1894,10 +1913,15 @@ Above-Burp features (v4/v5):
   nullock secrets <url> [hdr:val ...]    scan the page + same-origin JS for
                                          exposed keys/tokens/private keys
                                          (AWS, Google, Stripe, GitHub...), masked
-  nullock crlf <url> [param] [hdr:val ...]
+  nullock crlf <url> [param] [--in query|body|path|header|all] [--method M]
+             [--body form] [hdr:val ...]
                                          CRLF / response splitting -- injects
                                          encoded CRLF + a marker header and
-                                         confirms it lands in the response
+                                         confirms it lands in the response.
+                                         --in picks the sink (query param,
+                                         POST body param, path segment, or a
+                                         reflected request header); for --in
+                                         header, [param] is the header name
   nullock lfi <url> [param] [hdr:val ...]
                                          path traversal / LFI -- traversal
                                          encodings to /etc/passwd & win.ini,
