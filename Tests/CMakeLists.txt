@@ -263,6 +263,14 @@ add_subdirectory(tls_inspect)
 # Run via: ctest -R content_discovery -V
 add_subdirectory(content_discovery)
 
+# Crawler pure logic -- the FAIL-CLOSED default scope (an unconfigured crawl
+# stays in the seed's domain tree, never walks arbitrary hosts), <base href>
+# resolution, quoted+unquoted link extraction, the http(s)-only canonicalizer
+# (rejects mailto:/javascript:/data:, normalizes the apex), and tag-boundary body
+# truncation. Links crawler_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R crawler -V
+add_subdirectory(crawler)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

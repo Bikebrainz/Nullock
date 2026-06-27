@@ -48,6 +48,8 @@ add_library(Networking STATIC
     session_rules.cpp
     session_rules.hpp
     crawler.cpp
+    crawler_logic.cpp
+    crawler_logic.hpp
     crawler.hpp
     tls_profile.cpp
     tls_profile.hpp

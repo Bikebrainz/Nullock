@@ -73,6 +73,10 @@ private:
 
     void crawlOne(const PendingUrl &u);
     void extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth);
+    // Scope decision used for BOTH the seed and discovered links. Uses the
+    // injected checker when present; otherwise FAIL-CLOSED to the seed's own
+    // domain tree (never an unscoped walk of arbitrary hosts).
+    bool inScope(const QString &host) const;
 
     // m_running is set on the worker thread; readers can race so it's
     // also atomic. m_stopRequested gets flipped from the main thread
@@ -81,6 +85,7 @@ private:
     QAtomicInteger<int> m_running        { 0 };
     QAtomicInteger<int> m_stopRequested  { 0 };
     QString   m_seed;
+    QString   m_seedHost;        // the seed's host -- the authority for the default scope
     int       m_maxPages = 200;
     int       m_maxDepth = 4;
     int       m_throttleMs = 200;

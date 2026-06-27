@@ -1,14 +1,21 @@
 #include "crawler.hpp"
 
+#include "crawler_logic.hpp"
 #include "networking.hpp"
 
 #include <QDateTime>
-#include <QRegularExpression>
 #include <QThread>
 #include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
 
 namespace Nullock::Core {
+
+bool Crawler::inScope(const QString &host) const {
+    // Injected checker wins; otherwise fail closed to the seed's own domain tree.
+    // A null checker must NEVER mean "everything is in scope".
+    if (m_scope) return m_scope(host);
+    return CrawlerLogic::inDefaultScope(host, m_seedHost);
+}
 
 Crawler::Crawler(QObject *parent) : QObject(parent) {}
 
@@ -26,15 +33,31 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
         emit errorOccurred("crawler: invalid seed URL");
         return false;
     }
+    // Canonicalize the seed through the SAME pipeline as discovered links (http(s)
+    // allow-list, fragment strip, "/" path) so the seed's self-links dedupe and
+    // the start page isn't fetched twice.
+    QString seedHost;
+    const QString canonSeed = CrawlerLogic::canonicalLink(seed, u, seedHost);
+    if (canonSeed.isEmpty()) {
+        emit errorOccurred("crawler: seed must be an http(s) URL");
+        return false;
+    }
     m_seed       = seed;
+    m_seedHost   = seedHost;
+    // Scope-check the SEED before any fetch. With an injected checker an
+    // out-of-scope seed is rejected; with none, the seed defines its own scope.
+    if (!inScope(seedHost)) {
+        emit errorOccurred("crawler: seed host is out of scope");
+        return false;
+    }
     m_maxPages   = qBound(1, maxPages, 5000);
     m_maxDepth   = qBound(0, maxDepth, 10);
     m_throttleMs = qBound(0, throttleMs, 60'000);
     m_visited    = 0;
     m_seenUrls.clear();
     m_queue.clear();
-    m_queue.enqueue({ seed, 0 });
-    m_seenUrls.insert(seed);
+    m_queue.enqueue({ canonSeed, 0 });
+    m_seenUrls.insert(canonSeed);
     m_stopRequested.storeRelease(0);
     m_running.storeRelease(1);
     emit seedChanged();
@@ -109,38 +132,26 @@ void Crawler::crawlOne(const PendingUrl &u) {
 }
 
 void Crawler::extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth) {
-    // Naive HTML link extraction. Handles href / src / action across
-    // tags. Doesn't run JS so heavily-SPA targets won't yield many
-    // links -- that's a fundamental limitation of static crawling.
-    // Cap body scanned at 4 MB.
-    const QString text = QString::fromUtf8(body.left(4 * 1024 * 1024));
-    static const QRegularExpression rx(
-        R"#((?:href|src|action)\s*=\s*["']([^"']+)["'])#",
-        QRegularExpression::CaseInsensitiveOption);
+    // Naive HTML link extraction. Handles href / src / action (quoted AND
+    // unquoted) across tags. Doesn't run JS so heavily-SPA targets won't yield
+    // many links -- a fundamental limitation of static crawling. The body is
+    // capped at 4 MB but cut at a tag boundary so a straddling link isn't lost.
+    const QString text = QString::fromUtf8(
+        CrawlerLogic::truncateBodyAtTag(body, 4 * 1024 * 1024));
+    // Honor <base href> for relative-link resolution.
+    const QUrl base = CrawlerLogic::resolveBase(text, QUrl(fromUrl));
 
-    auto it = rx.globalMatch(text);
-    const QUrl base(fromUrl);
-    while (it.hasNext() && m_seenUrls.size() < 50'000) {
-        const QString href = it.next().captured(1).trimmed();
-        if (href.isEmpty()) continue;
-        // Skip non-HTTP schemes.
-        const QString lower = href.toLower();
-        if (lower.startsWith("mailto:") || lower.startsWith("tel:")
-            || lower.startsWith("javascript:") || lower.startsWith("data:")
-            || lower.startsWith("blob:") || lower.startsWith("#")) continue;
-
-        QUrl abs = base.resolved(QUrl(href));
-        if (!abs.isValid() || abs.host().isEmpty()) continue;
-        // Strip fragments -- they don't affect what the server sees.
-        abs.setFragment(QString());
-        const QString final = abs.toString();
-        if (m_seenUrls.contains(final)) continue;
-        m_seenUrls.insert(final);
-
-        // Scope check: don't walk hosts that aren't in scope.
-        if (m_scope && !m_scope(abs.host())) continue;
-
-        m_queue.enqueue({ final, depth });
+    for (const QString &href : CrawlerLogic::extractRawLinks(text)) {
+        if (m_seenUrls.size() >= 50'000) break;
+        QString host;
+        const QString canon = CrawlerLogic::canonicalLink(href, base, host);
+        if (canon.isEmpty()) continue;              // non-http(s) / unparseable
+        // Scope FIRST: an out-of-scope link must neither be enqueued NOR consume
+        // a seen-slot toward the cap. inScope() is fail-closed when unconfigured.
+        if (!inScope(host)) continue;
+        if (m_seenUrls.contains(canon)) continue;
+        m_seenUrls.insert(canon);
+        m_queue.enqueue({ canon, depth });
     }
     emit progressChanged();
 }
