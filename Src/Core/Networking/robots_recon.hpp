@@ -24,17 +24,38 @@ struct Result {
     QString     host;
     bool        robotsFound = false;
     bool        sitemapFound = false;
-    QStringList disallowed;    // Disallow paths from robots.txt
-    QStringList sitemapRefs;   // Sitemap: URLs declared in robots.txt
-    QStringList sitemapUrls;   // <loc> URLs from sitemap.xml
+    QStringList disallowed;          // concrete Disallow PATHS (a "/..." lead)
+    QStringList disallowedPatterns;  // Disallow MATCH PATTERNS ("*", "/*.php$") --
+                                     // NOT fetchable paths; kept distinct so a
+                                     // consumer doesn't GET a literal "/*.php$".
+    QStringList sitemapRefs;         // Sitemap: URLs (robots.txt) + child sitemaps
+                                     // from a <sitemapindex> (NOT page leads).
+    QStringList sitemapUrls;         // <loc> page URLs from a <urlset> sitemap.xml
+    bool        disallowTruncated = false;  // the Disallow cap was hit (more existed)
+    bool        sitemapTruncated  = false;  // the <loc> cap was hit (more existed)
     QString     error;
 };
 
 Result scan(const Request &req);
 
-// Exposed for tests: parse robots.txt body -> disallowed paths + sitemap refs.
-void parseRobots(const QString &body, QStringList &disallowed, QStringList &sitemapRefs);
-// Exposed for tests: extract <loc> URLs from a sitemap.xml body.
-QStringList parseSitemapLocs(const QString &body);
+// --- Pure parsing, exposed for the unit test (no I/O; in robots_logic.cpp, links
+//     Qt6::Core alone -- scan()'s HttpClient work stays in robots_recon.cpp).
+//
+//   looksLikeRobots  -- the body's first non-whitespace token on some line is a
+//                       robots directive (guards an HTML catch-all 200).
+//   parseRobots      -- classify Disallow values into concrete PATHS vs match
+//                       PATTERNS (and drop absolute-URL values, which aren't a
+//                       same-host path lead); collect Sitemap: refs. Sets
+//                       `truncated` when the cap is reached.
+//   parseSitemapLocs -- extract <loc> URLs, tolerant of a namespace prefix /
+//                       attributes (<image:loc>, <loc xml:lang=...>). Sets
+//                       `truncated` when the cap is reached.
+//   isSitemapIndex   -- the body is a <sitemapindex> (its <loc>s are CHILD
+//                       sitemaps, not pages) rather than a <urlset>.
+bool looksLikeRobots(const QString &body);
+void parseRobots(const QString &body, QStringList &disallowed, QStringList &disallowedPatterns,
+                 QStringList &sitemapRefs, bool &truncated);
+QStringList parseSitemapLocs(const QString &body, bool &truncated);
+bool isSitemapIndex(const QString &body);
 
 } // namespace Nullock::Core::RobotsRecon

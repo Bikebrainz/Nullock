@@ -271,6 +271,14 @@ add_subdirectory(content_discovery)
 # Run via: ctest -R crawler -V
 add_subdirectory(crawler)
 
+# robots.txt / sitemap parsing -- Disallow path-vs-pattern classification (a
+# wildcard "/*.php$" is not a fetchable path), absolute-URL Disallow drop,
+# namespaced/attributed <loc> extraction (<image:loc>, <loc xml:lang=...>),
+# sitemap-index detection, and the line-leading-directive guard. Links
+# robots_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R robots_recon -V
+add_subdirectory(robots_recon)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

@@ -6414,6 +6414,18 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     "Crawler-hidden path -- review for unlinked admin/backup/internal content.",
                     rr.host, origin + (p.startsWith('/') ? p : "/" + p));
         }
+        // Match PATTERNS (e.g. "/*.php$") are NOT fetchable paths -- surface them
+        // under a distinct kind so they aren't joined to the host as a literal URL.
+        for (const QString &p : res.disallowedPatterns) {
+            if (emitted >= kCap) break;
+            ++emitted;
+            if (m_wiring.scanner)
+                m_wiring.scanner->reportFinding(0, "info", "robots-disallowed-pattern",
+                    "robots.txt Disallow pattern: " + p,
+                    "A wildcard/anchored match pattern (not a literal path) -- expand it manually "
+                    "to find the hidden surface it covers.",
+                    rr.host, origin);
+        }
 
         return okJson({
             { "ok", res.error.isEmpty() },
@@ -6423,9 +6435,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "sitemapFound", res.sitemapFound },
             { "disallowedCount", res.disallowed.size() },
             { "disallowed", QJsonArray::fromStringList(res.disallowed) },
+            { "disallowedPatterns", QJsonArray::fromStringList(res.disallowedPatterns) },
+            { "disallowTruncated", res.disallowTruncated },
             { "sitemapRefs", QJsonArray::fromStringList(res.sitemapRefs) },
             { "sitemapUrlCount", res.sitemapUrls.size() },
             { "sitemapUrls", QJsonArray::fromStringList(res.sitemapUrls) },
+            { "sitemapTruncated", res.sitemapTruncated },
             { "findingsEmitted", emitted },
         });
     }
