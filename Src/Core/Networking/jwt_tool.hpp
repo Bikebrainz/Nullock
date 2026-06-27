@@ -35,6 +35,11 @@ struct Decoded {
     QString    kid;
     QByteArray signature;      // raw signature bytes (decoded from b64url)
     QByteArray signingInput;   // exact bytes that were signed: "header.payload"
+    QString    rawHeaderB64;   // the ORIGINAL header segment (parts[0]) verbatim
+    QString    rawPayloadB64;  // the ORIGINAL payload segment (parts[1]) verbatim --
+                               // reused when forging without overrides so the
+                               // forged token keeps the exact claim bytes (a
+                               // re-serialize through QJsonObject reorders keys).
     QJsonObject header;
     QJsonObject payload;
 };

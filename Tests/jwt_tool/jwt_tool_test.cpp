@@ -160,6 +160,26 @@ int main(int argc, char **argv) {
             bruteHmac(d, QStringList{ "anything", "x" }).isEmpty());
     }
 
+    // ===== forgeNone: byte-faithful payload (no key reorder) ============
+    {
+        const QByteArray payloadJson = "{\"sub\":\"x\",\"zzz\":1,\"aaa\":2}";   // deliberately non-sorted keys
+        const auto d = decode(mkToken("{\"alg\":\"HS256\",\"typ\":\"JWT\"}", payloadJson));
+        chk("decode: rawPayloadB64 captured", d.rawPayloadB64 == b64u(payloadJson));
+        const QString forged = forgeNone(d);
+        chk("forgeNone: payload segment preserves the ORIGINAL bytes (no key reorder)",
+            forged.section('.', 1, 1) == b64u(payloadJson));
+        const QString forgedOv = forgeNone(d, QJsonObject{ { "admin", true } });
+        chk("forgeNone: WITH overrides the payload is re-serialized (differs)",
+            forgedOv.section('.', 1, 1) != b64u(payloadJson));
+        const auto rd = decode(forged);
+        chk("forgeNone: the forged token re-decodes ok", rd.ok);
+        chk("forgeNone: the forged token is alg:none", rd.alg == "none");
+        bool admin = false;
+        for (const auto &w : analyze(decode(forgedOv), kNow))
+            if (w.id == "jwt-priv-claim") admin = true;
+        chk("forgeNone: an override is actually applied (admin priv-claim present)", admin);
+    }
+
     std::fprintf(stderr, "jwt_tool_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
