@@ -18,6 +18,7 @@
 
 #include <QList>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -50,5 +51,18 @@ struct Result {
 // Scan the target. maxScripts bounds how many same-origin bundles we
 // fetch + mine (a page can reference dozens).
 Result scan(const Request &req, int maxScripts = 20);
+
+// --- Pure extraction, exposed for the unit test (no I/O; in js_recon_logic.cpp,
+//     links Qt6::Core alone -- scan()'s HttpClient work stays in js_recon.cpp).
+//   extractEndpoints  -- mine API endpoint paths / URLs from a JS (or inline
+//                        script) body into `out`. API-token matching is
+//                        path-segment-anchored (so "/therapist/" is NOT an "api"
+//                        path); covers fetch/axios/xhr-open/import/Worker/
+//                        sendBeacon/EventSource/WebSocket and http(s)/ws(s) URLs;
+//                        keeps a template literal's static prefix; filters
+//                        third-party CDNs by HOST suffix, not raw substring.
+//   sourceMappingUrl  -- the EFFECTIVE //# sourceMappingURL (the LAST one wins).
+void    extractEndpoints(const QString &js, QSet<QString> &out);
+QString sourceMappingUrl(const QString &js);
 
 } // namespace Nullock::Core::JsRecon

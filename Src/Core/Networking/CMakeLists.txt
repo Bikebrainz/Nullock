@@ -86,6 +86,7 @@ add_library(Networking STATIC
     cors_origin.cpp
     cors_tester.hpp
     js_recon.cpp
+    js_recon_logic.cpp
     js_recon.hpp
     race_tester.cpp
     race_logic.cpp

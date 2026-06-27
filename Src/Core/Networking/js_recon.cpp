@@ -8,6 +8,10 @@
 #include <QSet>
 #include <QUrl>
 
+// extractEndpoints() and sourceMappingUrl() are pure and live in
+// js_recon_logic.cpp (Qt6::Core only) so they can be unit-tested. This TU keeps
+// scan() + its HttpClient I/O and the same-origin/script wiring.
+
 namespace Nullock::Core::JsRecon {
 
 namespace {
@@ -68,56 +72,14 @@ QPair<bool, QString> resolveRef(const Request &req, const QUrl &base,
     return { false, r.toString() };
 }
 
-void extractEndpoints(const QString &js, QSet<QString> &out) {
-    // URLs in fetch/axios/XHR-ish calls, and "/api/..."-shaped strings.
-    static const QRegularExpression rxCall(
-        R"((?:fetch|axios(?:\.\w+)?|\.open|\.ajax|url\s*:)\s*\(?\s*["'`]([^"'`]{1,256})["'`])");
-    static const QRegularExpression rxApiPath(
-        R"(["'`](/(?:[\w.-]+/)*[\w.-]*(?:api|graphql|v\d|rest|internal|admin|auth)[\w./-]*)["'`])",
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression rxAbs(
-        R"(["'`](https?://[\w.-]+(?:/[\w./?=&%-]*)?)["'`])");
-    // A static asset extension -> not an endpoint.
-    static const QRegularExpression assetRx(
-        R"(\.(?:css|png|jpe?g|gif|svg|woff2?|ttf|eot|ico|map|mp4|webm|webp|avif)(?:\?|$))",
-        QRegularExpression::CaseInsensitiveOption);
-    // An API-ish token -> keep even if it ends in .js (e.g. /api/conf.js).
-    static const QRegularExpression apiTokenRx(
-        R"((?:api|graphql|rest|internal|admin|auth|/v\d))",
-        QRegularExpression::CaseInsensitiveOption);
-    // Third-party hosts that pollute the endpoint list (CDNs, namespaces,
-    // analytics) -- only filtered for absolute URLs.
-    static const QStringList thirdParty = {
-        "w3.org", "schema.org", "googleapis.com", "gstatic.com",
-        "jsdelivr.net", "unpkg.com", "cdnjs.", "google-analytics.com",
-        "googletagmanager.com", "jquery.com", "bootstrapcdn.com",
-        "fontawesome.com", "polyfill.io",
-    };
-    auto consider = [&](const QString &raw) {
-        const QString v = raw.trimmed();
-        if (v.length() < 2 || v.contains("${")) return;
-        if (assetRx.match(v).hasMatch()) return;
-        // A bundle reference (.js/.mjs) that isn't API-shaped is a script,
-        // not an endpoint -- but keep /api/foo.js style routes.
-        if ((v.endsWith(".js") || v.endsWith(".mjs")) && !apiTokenRx.match(v).hasMatch())
-            return;
-        if (v.startsWith("http")) {
-            for (const QString &tp : thirdParty)
-                if (v.contains(tp, Qt::CaseInsensitive)) return;
-        }
-        out.insert(v);
-    };
-    for (const QRegularExpression *rx : { &rxCall, &rxApiPath, &rxAbs }) {
-        auto it = rx->globalMatch(js);
-        while (it.hasNext()) consider(it.next().captured(1));
-    }
-}
-
-QString sourceMappingUrl(const QString &js) {
+// Capture the bodies of inline <script>...</script> blocks (those WITHOUT a src
+// attribute) so their endpoints are mined too -- the page's own inline JS often
+// names APIs that no external bundle does.
+const QRegularExpression &inlineScriptRx() {
     static const QRegularExpression rx(
-        R"((?:^|\n)\s*//[#@]\s*sourceMappingURL=(\S+))");
-    const auto m = rx.match(js);
-    return m.hasMatch() ? m.captured(1).trimmed() : QString();
+        R"(<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)</script>)",
+        QRegularExpression::CaseInsensitiveOption);
+    return rx;
 }
 
 } // namespace
@@ -150,6 +112,7 @@ Result scan(const Request &req, int maxScripts) {
     static const QRegularExpression jsPathRx(R"(\.m?js(\?|$))");
     const QString ctype = headerOf(first.parsed.headers, "Content-Type");
     QStringList toFetch;      // same-origin script paths
+    QSet<QString> endpoints;
     const bool looksJs = ctype.contains("javascript", Qt::CaseInsensitive)
                       || ctype.contains("ecmascript", Qt::CaseInsensitive)
                       || req.basePath.contains(jsPathRx)
@@ -171,9 +134,19 @@ Result scan(const Request &req, int maxScripts) {
             if (sameHost) { if (toFetch.size() < maxScripts) toFetch << ref; }
             else result.crossOriginScripts << ref;
         }
+        // Mine the page's INLINE <script> bodies too -- endpoints referenced in
+        // server-rendered inline JS are real surface the external bundles miss.
+        auto iit = inlineScriptRx().globalMatch(firstBody);
+        bool anyInline = false;
+        while (iit.hasNext()) { anyInline = true; extractEndpoints(iit.next().captured(1), endpoints); }
+        // Misclassified-bundle fallback: a body with NO <script> at all (no src,
+        // no inline) and no cross-origin scripts is most likely a JS bundle the
+        // looksJs sniff mislabeled (wrong Content-Type + extensionless + a stray
+        // '<') -- mine it directly so its endpoints aren't silently lost.
+        if (toFetch.isEmpty() && !anyInline && result.crossOriginScripts.isEmpty())
+            extractEndpoints(firstBody, endpoints);
     }
 
-    QSet<QString> endpoints;
     for (const QString &scriptPath : toFetch) {
         const auto r = get(scriptPath);
         if (!r.ok || r.parsed.statusCode != 200) continue;

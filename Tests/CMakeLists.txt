@@ -293,6 +293,13 @@ add_subdirectory(recon_engine)
 # Run via: ctest -R jwt_tool -V
 add_subdirectory(jwt_tool)
 
+# JS-recon endpoint mining -- path-segment-anchored API tokens (no /therapist/
+# false positives), relative paths, modern call shapes (import/Worker/sendBeacon/
+# WebSocket) + ws(s), xhr.open URL-not-verb, template-literal prefixes, host-suffix
+# CDN filtering, and last-wins sourceMappingURL. js_recon_logic.cpp is Qt6::Core-only.
+# Run via: ctest -R js_recon -V
+add_subdirectory(js_recon)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range
