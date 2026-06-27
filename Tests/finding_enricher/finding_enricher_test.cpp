@@ -43,7 +43,8 @@ const QStringList &emittedKinds() {
         "hsts-no-preload", "hsts-no-subdomains", "hsts-short-max-age", "html-comment-leak",
         "idor-enumerable", "internal-hostname-leak", "internal-ip-leak", "jwt-echoed-in-body",
         "jwt-in-url", "mass-assignment", "missing-coep", "missing-coop",
-        "missing-corp", "missing-permissions-policy", "mixed-content", "nosql-injection",
+        "missing-corp", "missing-permissions-policy", "missing-permitted-cross-domain-policies",
+        "mixed-content", "nosql-injection",
         "open-redirect", "options-mutation-methods", "path-traversal", "phpinfo-output",
         "protocol-graphql", "protocol-grpc", "race-condition-suspect", "reflected-file-download",
         "reflected-xss", "request-smuggling", "robots-disallowed-path", "robots-discloses-paths",
@@ -68,7 +69,8 @@ const QStringList &emittedKinds() {
 struct Spot { const char *kind; const char *cwe; };
 const QList<Spot> &spotChecks() {
     static const QList<Spot> s = {
-        { "missing-coep",                "CWE-693" },   // missing- family
+        { "missing-coep",                "CWE-693" },   // exact (new) -- formerly missing- family
+        { "missing-permitted-cross-domain-policies", "CWE-693" }, // exact (new)
         { "cookie-secure-prefix-violation", "CWE-1004" },// cookie- family
         { "cors-origin-reflection",      "CWE-942" },   // cors- family
         { "csp-wildcard-src",            "CWE-1021" },  // csp- family

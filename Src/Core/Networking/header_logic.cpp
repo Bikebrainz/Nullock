@@ -255,6 +255,45 @@ void analyze(const Headers &headers, bool effTls, Result &result) {
         add("referrer-policy-missing", "low", "No Referrer-Policy",
             "full URLs (with tokens in query) may leak to third parties via Referer");
 
+    // ---- Modern defense-in-depth headers (low/info) ----
+    // None of these enable a direct attack on their own, so they stay low: each
+    // just closes a real gap (powerful-feature abuse, cross-window / Spectre-
+    // class isolation, legacy Flash/PDF cross-domain trust). Kept quiet so they
+    // inform without drowning the higher-signal CSP/HSTS/cookie findings. Kind
+    // names mirror the passive scanner's so both paths share enricher mappings.
+    if (headerValue(headers, "Permissions-Policy").isEmpty()
+        && headerValue(headers, "Feature-Policy").isEmpty())
+        add("missing-permissions-policy", "low", "No Permissions-Policy",
+            "powerful features (camera/microphone/geolocation, etc.) are not "
+            "restricted; neither Permissions-Policy nor the legacy Feature-Policy is set");
+
+    // COOP only governs a *document's* opener relationship, so flag it only on an
+    // HTML response -- firing it on a JSON/API/image reply would be noise.
+    const bool isHtml =
+        headerValue(headers, "Content-Type").contains("text/html", Qt::CaseInsensitive);
+    if (isHtml && headerValue(headers, "Cross-Origin-Opener-Policy").isEmpty())
+        add("missing-coop", "low", "No Cross-Origin-Opener-Policy",
+            "a cross-origin opener keeps a window reference to this document, "
+            "enabling cross-window attacks and defeating Spectre-class process "
+            "isolation; set Cross-Origin-Opener-Policy: same-origin");
+
+    if (headerValue(headers, "Cross-Origin-Embedder-Policy").isEmpty())
+        add("missing-coep", "low", "No Cross-Origin-Embedder-Policy",
+            "COEP (with COOP) is required for cross-origin isolation; without it "
+            "the document can't use isolation-gated APIs and shares a process "
+            "with cross-origin subresources");
+
+    if (headerValue(headers, "Cross-Origin-Resource-Policy").isEmpty())
+        add("missing-corp", "low", "No Cross-Origin-Resource-Policy",
+            "the response carries no CORP, so other origins may embed/read it; "
+            "set Cross-Origin-Resource-Policy: same-origin on sensitive resources");
+
+    if (headerValue(headers, "X-Permitted-Cross-Domain-Policies").isEmpty())
+        add("missing-permitted-cross-domain-policies", "low",
+            "No X-Permitted-Cross-Domain-Policies",
+            "legacy Flash/Acrobat cross-domain policy is unrestricted; set 'none' "
+            "to deny cross-domain data loads (minor on modern stacks)");
+
     // ---- Set-Cookie flags ----
     // Match attribute *keys* (the ';'-separated segments after name=value), not
     // a substring over the whole line -- else a value like sid=secure123 would

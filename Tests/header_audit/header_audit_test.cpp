@@ -134,6 +134,38 @@ int main(int argc, char **argv) {
     chk("hostOf strips scheme/path/port", hostOf("https://cdn.example.com:443/lib.js") == "cdn.example.com");
     chk("hostOf https://* -> *", hostOf("https://*") == "*");
 
+    // ===== modern defense-in-depth headers ===============================
+    // Positive: header absent -> finding fires. An empty header set leaves all
+    // of these missing (COOP additionally needs an HTML Content-Type to fire).
+    chk("Permissions-Policy absent -> missing-permissions-policy",
+        has(keys(H({}), false), "missing-permissions-policy"));
+    chk("COEP absent -> missing-coep",
+        has(keys(H({}), false), "missing-coep"));
+    chk("CORP absent -> missing-corp",
+        has(keys(H({}), false), "missing-corp"));
+    chk("X-Permitted-Cross-Domain-Policies absent -> missing-permitted-cross-domain-policies",
+        has(keys(H({}), false), "missing-permitted-cross-domain-policies"));
+    chk("COOP absent on an HTML document -> missing-coop",
+        has(keys(H({{"Content-Type", "text/html; charset=utf-8"}}), false), "missing-coop"));
+    chk("COOP absent on a non-HTML (JSON) response -> NOT missing-coop (doc-gated)",
+        !has(keys(H({{"Content-Type", "application/json"}}), false), "missing-coop"));
+
+    // Negative: header present -> finding suppressed.
+    chk("Permissions-Policy present -> NOT missing-permissions-policy",
+        !has(keys(H({{"Permissions-Policy", "geolocation=()"}}), false), "missing-permissions-policy"));
+    chk("legacy Feature-Policy present -> NOT missing-permissions-policy",
+        !has(keys(H({{"Feature-Policy", "geolocation 'none'"}}), false), "missing-permissions-policy"));
+    chk("COOP present (HTML) -> NOT missing-coop",
+        !has(keys(H({{"Content-Type", "text/html"}, {"Cross-Origin-Opener-Policy", "same-origin"}}), false),
+             "missing-coop"));
+    chk("COEP present -> NOT missing-coep",
+        !has(keys(H({{"Cross-Origin-Embedder-Policy", "require-corp"}}), false), "missing-coep"));
+    chk("CORP present -> NOT missing-corp",
+        !has(keys(H({{"Cross-Origin-Resource-Policy", "same-origin"}}), false), "missing-corp"));
+    chk("X-Permitted-Cross-Domain-Policies present -> NOT missing-permitted-cross-domain-policies",
+        !has(keys(H({{"X-Permitted-Cross-Domain-Policies", "none"}}), false),
+             "missing-permitted-cross-domain-policies"));
+
     // ===== buildRequest: CR/LF guard parity ==============================
     {
         Request req; req.host = "victim.tld"; req.basePath = "/";

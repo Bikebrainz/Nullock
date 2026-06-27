@@ -253,6 +253,17 @@ const QHash<QString, Mapping> &table() {
         { "referrer-policy-missing", { "CWE-200", "A01:2021-Broken Access Control", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Set Referrer-Policy: strict-origin-when-cross-origin (or no-referrer) to stop URL/token leakage." } },
         { "cookie-insecure",     { "CWE-1004", "A05:2021-Security Misconfiguration", 5.0, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Set Secure + HttpOnly + SameSite on session cookies." } },
 
+        // ---- Modern isolation / feature-policy headers (defense-in-depth) ----
+        // All absent-header defense-in-depth gaps: CWE-693 (protection mechanism
+        // failure) under A05, scored low like xcto-missing. missing-coep is also
+        // reachable via the missing- family fallback; the explicit entry gives a
+        // tailored fix (and keeps the spot-check's CWE-693 stable).
+        { "missing-permissions-policy", { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Send a restrictive Permissions-Policy (e.g. camera=(), microphone=(), geolocation=()) so powerful features are denied by default." } },
+        { "missing-coop",  { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Set Cross-Origin-Opener-Policy: same-origin to sever cross-origin opener references and restore process isolation." } },
+        { "missing-coep",  { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Set Cross-Origin-Embedder-Policy: require-corp (with COOP: same-origin) to enable cross-origin isolation." } },
+        { "missing-corp",  { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Set Cross-Origin-Resource-Policy: same-origin (or same-site) on sensitive responses so other origins can't embed/read them." } },
+        { "missing-permitted-cross-domain-policies", { "CWE-693", "A05:2021-Security Misconfiguration", 3.1, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N", "", "Send X-Permitted-Cross-Domain-Policies: none to deny legacy Flash/Acrobat cross-domain data loads." } },
+
         // ---- Open redirect -------------------------------------------
         { "open-redirect", { "CWE-601", "A01:2021-Broken Access Control", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Validate redirect targets against an allow-list of relative paths or exact hosts; never redirect to a raw user-supplied URL." } },
 
