@@ -6649,6 +6649,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "notAfter", tres.notAfter },
                        { "daysToExpiry", tres.daysToExpiry },
                        { "keyBits", tres.keyBits },
+                       { "keyAlgorithm", tres.keyAlgorithm },
                        { "hostnameMatch", tres.hostnameMatch },
                        { "sans", QJsonArray::fromStringList(tres.sans) },
                        { "legacyProtocolsEnabled", QJsonArray::fromStringList(tres.legacyProtocolsEnabled) },

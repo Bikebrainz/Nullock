@@ -22,19 +22,18 @@ QString protoName(QSsl::SslProtocol p) {
     }
 }
 
-// Match a host against a cert name (CN or SAN), honoring a single leading
-// "*." wildcard label.
-bool nameMatches(const QString &host, const QString &certName) {
-    const QString h = host.toLower();
-    const QString c = certName.toLower().trimmed();
-    if (c.isEmpty()) return false;
-    if (c.startsWith("*.")) {
-        const QString suffix = c.mid(1);                 // ".example.com"
-        const int dot = h.indexOf('.');
-        // wildcard matches exactly one left-most label
-        return dot > 0 && h.mid(dot) == suffix;
+// Canonical algorithm name for the peer key, so keyIsWeak() can apply the right
+// strength floor (the 2048-bit threshold is RSA/finite-field; EC is judged on
+// curve size). nameMatches/hostnameCovered/keyIsWeak/cipherWeakness/
+// isOverbroadWildcard are pure and live in tls_logic.cpp (Qt6::Core only).
+QString keyAlgoName(QSsl::KeyAlgorithm a) {
+    switch (a) {
+        case QSsl::Rsa: return "RSA";
+        case QSsl::Dsa: return "DSA";
+        case QSsl::Ec:  return "EC";
+        case QSsl::Dh:  return "DH";
+        default:        return QString();   // Opaque / unsupported
     }
-    return h == c;
 }
 
 // Try a handshake forcing one protocol; true if it completes encrypted.
@@ -89,22 +88,31 @@ Result inspect(const Request &req) {
     const QDateTime nb = cert.effectiveDate(), na = cert.expiryDate();
     result.notBefore = nb.toString(Qt::ISODate);
     result.notAfter  = na.toString(Qt::ISODate);
-    result.daysToExpiry = static_cast<int>(now.daysTo(na));
+    result.daysToExpiry = na.isValid() ? static_cast<int>(now.daysTo(na)) : 0;
     result.keyBits = cert.publicKey().length();
+    result.keyAlgorithm = keyAlgoName(cert.publicKey().algorithm());
 
-    // Subject + SAN names for hostname matching.
-    QStringList names = cert.subjectInfo(QSslCertificate::CommonName);
+    // CN + SAN names. Keep SAN dNSNames separate from the CN so hostname matching
+    // can honor RFC 6125 SAN precedence (CN ignored when any SAN dNSName exists),
+    // and filter SANs to the DNS type (an EmailEntry must never match a host).
+    const QStringList cnNames = cert.subjectInfo(QSslCertificate::CommonName);
+    QStringList sanDnsNames;
     const auto sanMap = cert.subjectAlternativeNames();
     for (auto it = sanMap.begin(); it != sanMap.end(); ++it) {
         result.sans << it.value();
-        names << it.value();
+        if (it.key() == QSsl::DnsEntry) sanDnsNames << it.value();
     }
-    result.hostnameMatch = false;
-    for (const QString &n : names)
-        if (nameMatches(req.host, n)) { result.hostnameMatch = true; break; }
+    bool usedCnFallback = false;
+    result.hostnameMatch = hostnameCovered(req.host, cnNames, sanDnsNames, usedCnFallback);
 
     // ---- evaluate ----
-    if (na.isValid() && na < now)
+    // Validity window. An unparseable notAfter (a malformed cert the VerifyNone
+    // handshake still completed against) must surface as a fault, not be silently
+    // misread as "expires in 0 days" (daysTo() returns 0 for an invalid date).
+    if (!na.isValid())
+        add("tls-cert-validity-unparseable", "medium",
+            "certificate notAfter date is missing or unparseable -- expiry cannot be evaluated");
+    else if (na < now)
         add("tls-expired", "high", "certificate expired " + result.notAfter);
     else if (result.daysToExpiry >= 0 && result.daysToExpiry <= 21)
         add("tls-cert-expiring-soon", "low",
@@ -113,13 +121,35 @@ Result inspect(const Request &req) {
         add("tls-not-yet-valid", "medium", "certificate not valid until " + result.notBefore);
     if (result.selfSigned)
         add("tls-self-signed", "medium", "self-signed certificate (no trusted CA chain)");
-    if (result.keyBits > 0 && result.keyBits < 2048)
-        add("tls-weak-key", "high",
-            QString("public key is only %1 bits (< 2048)").arg(result.keyBits));
-    // Hostname check is meaningless for a bare IP literal -- only flag for names.
+    // Algorithm-aware key strength: a 256-bit EC key is strong (~RSA-3072); only
+    // RSA/DSA/DH below 2048, or EC below P-256, is weak -- the flat <2048 check
+    // flagged every modern ECDSA cert.
+    QString keyDetail;
+    if (keyIsWeak(result.keyAlgorithm, result.keyBits, keyDetail))
+        add("tls-weak-key", "high", keyDetail);
+    // Negotiated-cipher strength (NULL/anon/EXPORT/RC4/single-DES = weak-cipher;
+    // 3DES/MD5-MAC/sub-128-bit = legacy-cipher).
+    if (!sock.sessionCipher().isNull()) {
+        QString cipherDetail;
+        const QString ckind = cipherWeakness(result.cipher, sock.sessionCipher().usedBits(), cipherDetail);
+        if (ckind == QLatin1String("tls-weak-cipher"))        add(ckind, "high",   cipherDetail);
+        else if (ckind == QLatin1String("tls-legacy-cipher")) add(ckind, "medium", cipherDetail);
+    }
+    // Hostname check is meaningless for a bare IP literal (Qt's SAN API doesn't
+    // surface iPAddress entries, so an IP host can't be matched soundly) -- only
+    // flag DNS-name hosts.
     if (!result.hostnameMatch && QHostAddress(req.host).isNull())
         add("tls-hostname-mismatch", "medium",
-            "host '" + req.host + "' is not in the certificate CN/SAN");
+            "host '" + req.host + "' is not in the certificate"
+            + (usedCnFallback ? QStringLiteral(" CN (no SAN present)") : QStringLiteral(" SAN")));
+    // An over-broad wildcard (e.g. *.com, *.co.uk) is a mis-issued cert no
+    // conformant client should trust, independent of whether it covers this host.
+    for (const QString &n : (cnNames + sanDnsNames))
+        if (isOverbroadWildcard(n)) {
+            add("tls-overbroad-wildcard", "medium",
+                "certificate presents an over-broad wildcard '" + n + "' spanning a public suffix");
+            break;
+        }
     if (sock.sessionProtocol() == QSsl::TlsV1_0 || sock.sessionProtocol() == QSsl::TlsV1_1)
         add("tls-deprecated-protocol", "medium",
             "negotiated " + result.negotiatedProtocol + " (deprecated)");

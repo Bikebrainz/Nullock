@@ -229,6 +229,10 @@ const QHash<QString, Mapping> &table() {
         { "tls-hostname-mismatch",    { "CWE-295", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Issue a certificate whose CN/SAN covers this host." } },
         { "tls-deprecated-protocol",  { "CWE-327", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Disable TLS 1.0/1.1; require TLS 1.2+." } },
         { "tls-legacy-protocol-enabled", { "CWE-327", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Disable TLS 1.0/1.1 at the server/load-balancer; require TLS 1.2+." } },
+        { "tls-weak-cipher",          { "CWE-327", "A02:2021-Cryptographic Failures", 7.4, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-4.2.1", "Disable NULL/anonymous/EXPORT/RC4/single-DES suites; require AEAD ciphers (AES-GCM/ChaCha20-Poly1305)." } },
+        { "tls-legacy-cipher",        { "CWE-327", "A02:2021-Cryptographic Failures", 5.9, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N", "PCI-DSS-4.2.1", "Disable 3DES (Sweet32) and MD5-MAC suites; require modern AEAD ciphers." } },
+        { "tls-overbroad-wildcard",   { "CWE-295", "A07:2021-Identification and Authentication Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N", "", "Avoid wildcards that span a public suffix (e.g. *.com, *.co.uk); scope the certificate to a specific registrable domain." } },
+        { "tls-cert-validity-unparseable", { "CWE-295", "A02:2021-Cryptographic Failures", 5.3, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:N", "", "Reissue the certificate; its notBefore/notAfter validity window could not be parsed." } },
 
         // ---- Exposed secrets in client code --------------------------
         { "secret-exposed", { "CWE-798", "A07:2021-Identification and Authentication Failures", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Move the credential server-side; rotate it immediately (assume compromised) and scope front-end keys to least privilege." } },

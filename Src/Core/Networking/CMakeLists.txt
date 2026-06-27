@@ -17,6 +17,7 @@ add_library(Networking STATIC
     service_vulns_logic.cpp
     service_vulns.hpp
     tls_inspect.cpp
+    tls_logic.cpp
     tls_inspect.hpp
     http_fingerprint.cpp
     http_fingerprint_logic.cpp

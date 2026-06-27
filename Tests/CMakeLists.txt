@@ -247,6 +247,14 @@ add_subdirectory(smuggling)
 # Run via: ctest -R ws_probe -V
 add_subdirectory(ws_probe)
 
+# TLS inspector pure logic -- the algorithm-aware key-strength gate (a 256-bit EC
+# key is NOT weak), RFC 6125 hostname matching (SAN precedence over CN, single-
+# label wildcard, trailing-dot FQDN normalization), negotiated-cipher
+# classification (NULL/anon/EXPORT/RC4/DES vs 3DES/MD5 legacy), and over-broad
+# public-suffix wildcard detection. Links tls_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R tls_inspect -V
+add_subdirectory(tls_inspect)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range
