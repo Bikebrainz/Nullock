@@ -43,6 +43,8 @@ struct Result {
     bool    hostnameMatch = true;
     QStringList sans;
     QStringList legacyProtocolsEnabled;  // e.g. ["TLSv1.0","TLSv1.1"]
+    QStringList legacyProtocolsInconclusive;  // probed but no verdict (network error/
+                                              // timeout) -- NOT confirmed disabled
     QList<Finding> findings;
     QString error;
 };
@@ -93,5 +95,10 @@ QString weakSignatureFinding(const QString &oid, QString &severity, QString &det
 //                        I/O side derives from explicit chain verification; "" when
 //                        no recognized problem is present (a chain that validates).
 QString untrustedChainFinding(const QStringList &categories, QString &severity, QString &detail);
+//   legacyProbeVerdict -- tri-state for a TLS 1.0/1.1 probe: "enabled" (handshake
+//                        completed), "disabled" (TCP reached, server refused the
+//                        version -> clean), or "inconclusive" (unreachable/timeout
+//                        -- a failed handshake is NOT proof the protocol is off).
+QString legacyProbeVerdict(bool encrypted, const QString &failureCategory);
 
 } // namespace Nullock::Core::TlsInspect

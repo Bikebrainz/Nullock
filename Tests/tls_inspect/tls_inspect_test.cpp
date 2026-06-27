@@ -228,6 +228,19 @@ int main(int argc, char **argv) {
             det.contains("self-signed") && (det.contains("incomplete") || det.contains("missing")));
     }
 
+    // ===== legacyProbeVerdict: enabled / disabled / inconclusive ========
+    chk("legacyProbe: a completed handshake -> enabled", legacyProbeVerdict(true, "") == "enabled");
+    chk("legacyProbe: encrypted wins over any failure category",
+        legacyProbeVerdict(true, "unreachable") == "enabled");
+    chk("legacyProbe: a TLS-level refusal -> disabled (server declined the version: clean)",
+        legacyProbeVerdict(false, "tls-refused") == "disabled");
+    chk("legacyProbe: unreachable -> inconclusive (NOT falsely clean -- the FN fix)",
+        legacyProbeVerdict(false, "unreachable") == "inconclusive");
+    chk("legacyProbe: an unknown failure category -> inconclusive (conservative)",
+        legacyProbeVerdict(false, "weird") == "inconclusive");
+    chk("legacyProbe: an empty failure -> inconclusive (a failed probe is not proof of disabled)",
+        legacyProbeVerdict(false, "") == "inconclusive");
+
     std::fprintf(stderr, "tls_inspect_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

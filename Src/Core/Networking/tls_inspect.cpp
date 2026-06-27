@@ -38,16 +38,36 @@ QString keyAlgoName(QSsl::KeyAlgorithm a) {
 }
 
 // Try a handshake forcing one protocol; true if it completes encrypted.
-bool handshakeWith(const QString &host, int port, int timeoutMs, QSsl::SslProtocol proto) {
+// Tri-state legacy-protocol probe: "enabled" / "disabled" / "inconclusive".
+// A failed handshake is NOT proof the protocol is off -- a network error or
+// timeout reaches no verdict, and calling that "disabled" would be a false
+// negative on a legacy-enabled server. We map the socket error to a category and
+// let the pure legacyProbeVerdict() decide.
+QString probeLegacyProtocol(const QString &host, int port, int timeoutMs, QSsl::SslProtocol proto) {
     QSslSocket s;
     QSslConfiguration cfg = QSslConfiguration::defaultConfiguration();
     cfg.setProtocol(proto);
     cfg.setPeerVerifyMode(QSslSocket::VerifyNone);
     s.setSslConfiguration(cfg);
     s.connectToHostEncrypted(host, static_cast<quint16>(port));
-    const bool ok = s.waitForEncrypted(timeoutMs);
+    if (s.waitForEncrypted(timeoutMs)) { s.abort(); return legacyProbeVerdict(true, QString()); }
+    const QAbstractSocket::SocketError err = s.error();
     s.abort();
-    return ok;
+    // A TLS-level failure means TCP connected but the server declined THIS protocol
+    // version (handshake fail / fatal alert / reset during handshake) -> the legacy
+    // protocol is off (clean). A connect-level failure (refused/timeout/DNS) reached
+    // no verdict -> inconclusive.
+    QString cat;
+    switch (err) {
+    case QAbstractSocket::SslHandshakeFailedError:
+    case QAbstractSocket::SslInternalError:
+    case QAbstractSocket::SslInvalidUserDataError:
+    case QAbstractSocket::RemoteHostClosedError:
+        cat = QStringLiteral("tls-refused"); break;
+    default:
+        cat = QStringLiteral("unreachable"); break;   // refused / timeout / DNS / unknown
+    }
+    return legacyProbeVerdict(false, cat);
 }
 
 } // namespace
@@ -154,7 +174,7 @@ Result inspect(const Request &req) {
     // as tls-self-signed and verify() would merely echo it as an untrusted root.
     QList<QSslCertificate> trustStore = QSslConfiguration::defaultConfiguration().caCertificates();
     if (trustStore.isEmpty()) {
-        trustStore = QSslSocket::systemCaCertificates();
+        trustStore = QSslConfiguration::systemCaCertificates();   // Qt6: moved off QSslSocket
         if (!trustStore.isEmpty()) {
             QSslConfiguration dc = QSslConfiguration::defaultConfiguration();
             dc.setCaCertificates(trustStore);
@@ -214,15 +234,25 @@ Result inspect(const Request &req) {
             "negotiated " + result.negotiatedProtocol + " (deprecated)");
     sock.abort();
 
-    // ---- legacy-protocol probe ----
+    // ---- legacy-protocol probe (tri-state: enabled / disabled / inconclusive) ----
     if (req.probeLegacyProtocols) {
-        if (handshakeWith(req.host, req.port, req.timeoutMs, QSsl::TlsV1_0))
-            result.legacyProtocolsEnabled << "TLSv1.0";
-        if (handshakeWith(req.host, req.port, req.timeoutMs, QSsl::TlsV1_1))
-            result.legacyProtocolsEnabled << "TLSv1.1";
+        struct LP { const char *name; QSsl::SslProtocol proto; };
+        static const LP kLegacy[] = { { "TLSv1.0", QSsl::TlsV1_0 }, { "TLSv1.1", QSsl::TlsV1_1 } };
+        for (const LP &lp : kLegacy) {
+            const QString verdict = probeLegacyProtocol(req.host, req.port, req.timeoutMs, lp.proto);
+            if (verdict == QLatin1String("enabled"))           result.legacyProtocolsEnabled << lp.name;
+            else if (verdict == QLatin1String("inconclusive")) result.legacyProtocolsInconclusive << lp.name;
+            // "disabled" -> the server refused the version: clean, nothing recorded.
+        }
         if (!result.legacyProtocolsEnabled.isEmpty())
             add("tls-legacy-protocol-enabled", "medium",
                 "server still accepts " + result.legacyProtocolsEnabled.join(", "));
+        // Inconclusive is INFO, not clean -- a network error/timeout left these
+        // protocols untested, so don't let a quiet result read as "fully tested".
+        if (!result.legacyProtocolsInconclusive.isEmpty())
+            add("tls-legacy-protocol-inconclusive", "info",
+                "could not determine support for " + result.legacyProtocolsInconclusive.join(", ")
+                + " (the probe reached no verdict -- network error/timeout; NOT confirmed disabled)");
     }
 
     return result;

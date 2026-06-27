@@ -307,4 +307,21 @@ QString untrustedChainFinding(const QStringList &categories, QString &severity, 
     return QStringLiteral("tls-untrusted-chain");
 }
 
+QString legacyProbeVerdict(bool encrypted, const QString &failureCategory) {
+    // A legacy-protocol (TLS 1.0/1.1) probe is tri-state. A FAILED handshake does
+    // NOT mean "the protocol is disabled" -- it could be a network error/timeout
+    // that reached no verdict. Treating that as clean is a false negative (a
+    // legacy-enabled server looks safe). So:
+    //   encrypted              -> "enabled"      (the legacy handshake completed)
+    //   failureCategory ==      -> "disabled"     (TCP connected but the server
+    //     "tls-refused"            (clean)         declined THIS version: alert /
+    //                                              reset / handshake-fail)
+    //   anything else           -> "inconclusive" (unreachable / timeout / DNS /
+    //     (unreachable/unknown)                    unknown -- report it, do NOT
+    //                                              claim the protocol is disabled)
+    if (encrypted) return QStringLiteral("enabled");
+    if (failureCategory == QLatin1String("tls-refused")) return QStringLiteral("disabled");
+    return QStringLiteral("inconclusive");
+}
+
 } // namespace Nullock::Core::TlsInspect
