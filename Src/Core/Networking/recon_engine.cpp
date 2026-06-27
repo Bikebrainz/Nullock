@@ -14,7 +14,9 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMutexLocker>
+#include <QRandomGenerator>
 #include <QSet>
+#include <QSharedPointer>
 #include <QtConcurrent/QtConcurrent>
 
 namespace Nullock::Core {
@@ -316,23 +318,64 @@ void ReconEngine::runSubdomainWordlist(const QString &domain,
                           .arg(kMaxSubsPerRequest).arg(subdomains.size());
     }
 
-    // One A + one AAAA QDnsLookup per candidate. We bound it lazily by trusting Qt
-    // to multiplex over its own DNS workers; even at 100 names the total network
-    // cost is well under a second.
+    // Calibrate the wildcard answer set FIRST, then sweep the candidates with
+    // wildcard synthesis suppressed (a "*.domain A 1.2.3.4" record otherwise makes
+    // every guess "resolve" -> a flood of false-positive subdomains).
+    probeWildcardThenSweep(domain, capped);
+}
+
+void ReconEngine::runWordlistSweep(const QString &domain, const QStringList &capped) {
+    // One A + one AAAA QDnsLookup per candidate (so an IPv6-only host isn't missed).
+    // We bound it lazily by trusting Qt to multiplex over its own DNS workers.
     for (const QString &sub : capped) {
         if (m_stopFlag.loadAcquire() != 0) break;
-        resolveName((sub + "." + domain).toLower(), QStringLiteral("wordlist"));
+        resolveName((sub + "." + domain).toLower(), QStringLiteral("wordlist"), /*filterWildcard=*/true);
     }
 }
 
-void ReconEngine::resolveName(const QString &name, const QString &source) {
+void ReconEngine::probeWildcardThenSweep(const QString &domain, const QStringList &capped) {
+    { QMutexLocker lk(&m_mutex); m_wildcardIps.clear(); }
+    // A CERTAINLY-absent random name: if the domain wildcards DNS, this still
+    // returns the wildcard IPs (a real host for this name cannot exist).
+    const QString probe = QStringLiteral("nlk-wc-")
+        + QString::number(QRandomGenerator::global()->generate(), 16) + QLatin1Char('.') + domain;
+    auto remaining = QSharedPointer<QAtomicInt>::create(2);   // A + AAAA must both finish
+    m_active.fetchAndAddOrdered(1);                           // hold running() across calibration
+    for (const QDnsLookup::Type type : { QDnsLookup::A, QDnsLookup::AAAA }) {
+        auto *lookup = new QDnsLookup(type, probe, this);
+        m_active.fetchAndAddOrdered(1);
+        connect(lookup, &QDnsLookup::finished, this,
+                [this, lookup, probe, domain, capped, remaining]() {
+            if (lookup->error() == QDnsLookup::NoError) {
+                QStringList ips;
+                for (const auto &r : lookup->hostAddressRecords()) {
+                    if (!recordMatchesQuery(r.name(), probe)) continue;
+                    ips.append(r.value().toString());
+                }
+                if (!ips.isEmpty()) {
+                    QMutexLocker lk(&m_mutex);
+                    m_wildcardIps = ReconLogic::mergeIps(m_wildcardIps, ips);
+                }
+            }
+            lookup->deleteLater();
+            finishOne();                                     // release this calibration lookup
+            if (remaining->fetchAndAddOrdered(-1) == 1) {    // both A+AAAA done -> sweep
+                if (m_stopFlag.loadAcquire() == 0) runWordlistSweep(domain, capped);
+                finishOne();                                 // release the calibration holder
+            }
+        });
+        lookup->lookup();
+    }
+}
+
+void ReconEngine::resolveName(const QString &name, const QString &source, bool filterWildcard) {
     // Probe BOTH address families: an IPv6-only host has no A record, so an
     // A-only brute would silently miss it (a false negative). The A and AAAA
     // answers are unioned into one Subdomain by addSubdomain()/mergeIps().
     for (const QDnsLookup::Type type : { QDnsLookup::A, QDnsLookup::AAAA }) {
         auto *lookup = new QDnsLookup(type, name, this);
         m_active.fetchAndAddOrdered(1);
-        connect(lookup, &QDnsLookup::finished, this, [this, lookup, name, source]() {
+        connect(lookup, &QDnsLookup::finished, this, [this, lookup, name, source, filterWildcard]() {
             if (lookup->error() == QDnsLookup::NoError) {
                 // Some OS resolvers do "search domain" suffix expansion -- ask for
                 // "ftp" and you may get back records for "ftp.<local-search-domain>".
@@ -344,7 +387,17 @@ void ReconEngine::resolveName(const QString &name, const QString &source) {
                         continue;   // a different host's record (search-domain expansion) snuck in
                     ips.append(r.value().toString());
                 }
-                if (!ips.isEmpty()) {
+                // Wildcard-DNS suppression (wordlist brute only): drop a candidate
+                // that resolves ONLY to the calibrated wildcard set -- it's DNS
+                // synthesis, not a distinct host. A candidate with any address the
+                // wildcard set lacks is a real host and survives.
+                bool synthetic = false;
+                if (filterWildcard && !ips.isEmpty()) {
+                    QStringList wc;
+                    { QMutexLocker lk(&m_mutex); wc = m_wildcardIps; }
+                    synthetic = ReconLogic::isWildcardResolved(ips, wc);
+                }
+                if (!ips.isEmpty() && !synthetic) {
                     addSubdomain({ name, source, ips });
                     emit subdomainsChanged();
                 }

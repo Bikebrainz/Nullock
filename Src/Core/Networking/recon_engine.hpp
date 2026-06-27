@@ -73,7 +73,14 @@ private:
     void               addSubdomain(const Subdomain &sd);
     // Resolve a fully-qualified name over BOTH A and AAAA (so an IPv6-only host
     // isn't missed), reporting any matching answers as a Subdomain from `source`.
-    void               resolveName(const QString &name, const QString &source);
+    // When filterWildcard is set (the wordlist brute), a candidate that resolves
+    // ONLY to the calibrated wildcard set (m_wildcardIps) is dropped as synthesis.
+    void               resolveName(const QString &name, const QString &source,
+                                   bool filterWildcard = false);
+    // Calibrate the wildcard-DNS answer set from a certainly-absent random name,
+    // THEN run the candidate sweep (the sweep must see m_wildcardIps first).
+    void               probeWildcardThenSweep(const QString &domain, const QStringList &capped);
+    void               runWordlistSweep(const QString &domain, const QStringList &capped);
     void               finishOne();
 
     mutable QMutex     m_mutex;
@@ -81,6 +88,8 @@ private:
     QString            m_lastError;
     QList<DnsRecord>   m_dnsRecords;
     QList<Subdomain>   m_subdomains;
+    QStringList        m_wildcardIps;     // calibrated "*.domain" answer set (A+AAAA);
+                                          // a candidate resolving only to these is synthesis
     QAtomicInt         m_active{0};       // total in-flight ops
     QAtomicInt         m_stopFlag{0};
     QList<QDnsLookup *> m_pendingLookups;
