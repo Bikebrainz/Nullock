@@ -300,6 +300,13 @@ add_subdirectory(jwt_tool)
 # Run via: ctest -R js_recon -V
 add_subdirectory(js_recon)
 
+# Session-handling rule logic -- the inject sanitizers (CR/LF strip for headers,
+# ';'-strip for cookies, JSON-escape for JSON bodies), exact-integer JSON numerics,
+# first-segment cookie extraction, first-participating regex group, and pathGlob
+# query stripping. session_rules_logic.cpp is Qt6::Core-only.
+# Run via: ctest -R session_rules -V
+add_subdirectory(session_rules)
+
 # Service-version CVE matcher -- parseBanner per-product regexes, the version
 # range math (min incl / max EXCL / exact) at the boundary conditions, and the
 # precision-aware grading: a truncated "Apache/2.4" still matches a 2.4.x range

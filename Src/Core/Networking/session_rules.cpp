@@ -1,71 +1,16 @@
 #include "session_rules.hpp"
+#include "session_rules_logic.hpp"
 
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonValue>
 #include <QMutexLocker>
 #include <QRegularExpression>
+#include <QUrl>
 
 namespace Nullock::Core {
 
-namespace {
-
-// Glob to anchored regex. Same trick as M&R: any-char (*) and
-// single-char (?) wildcards, otherwise escape.
-QRegularExpression globToRx(const QString &glob) {
-    QString rx = "^";
-    for (QChar c : glob) {
-        if (c == '*')      rx += ".*";
-        else if (c == '?') rx += ".";
-        else               rx += QRegularExpression::escape(QString(c));
-    }
-    rx += "$";
-    return QRegularExpression(rx, QRegularExpression::CaseInsensitiveOption);
-}
-
-QString findHeader(const QList<QPair<QString,QString>> &headers, const QString &name) {
-    for (const auto &h : headers)
-        if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
-    return {};
-}
-
-QString findCookieValue(const QString &raw, const QString &name) {
-    // raw is either a Cookie or Set-Cookie header value. Walk segments.
-    for (const QString &seg : raw.split(';')) {
-        const QString s = seg.trimmed();
-        const int eq = s.indexOf('=');
-        if (eq <= 0) continue;
-        if (s.left(eq).trimmed().compare(name, Qt::CaseInsensitive) == 0)
-            return s.mid(eq + 1).trimmed();
-    }
-    return {};
-}
-
-QString jsonPathGet(const QByteArray &body, const QString &path) {
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(body, &err);
-    if (err.error != QJsonParseError::NoError) return {};
-    QJsonValue cur = doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object());
-    for (const QString &seg : path.split('.', Qt::SkipEmptyParts)) {
-        if (cur.isObject()) {
-            cur = cur.toObject().value(seg);
-        } else if (cur.isArray()) {
-            bool ok = false;
-            const int idx = seg.toInt(&ok);
-            if (!ok || idx < 0 || idx >= cur.toArray().size()) return {};
-            cur = cur.toArray().at(idx);
-        } else {
-            return {};
-        }
-    }
-    if (cur.isString()) return cur.toString();
-    if (cur.isDouble()) return QString::number(cur.toDouble());
-    if (cur.isBool())   return cur.toBool() ? "true" : "false";
-    return {};
-}
-
-} // namespace
+// globToRx/findHeader/findCookieValue/jsonPathGet/substitute and the new
+// sanitizers are pure and live in session_rules_logic.cpp (Qt6::Core only) so
+// they can be unit-tested. This TU keeps the QObject + the proxy-typed pipeline.
+using namespace SessionRulesLogic;
 
 void SessionRules::setRules(const QList<SessionRule> &rules) {
     {
@@ -82,13 +27,18 @@ QList<SessionRule> SessionRules::rules() const {
 
 QHash<QString, QString> SessionRules::variables() const {
     QMutexLocker lk(&m_mutex);
-    return m_vars;
+    // Flattened view for the UI/debug (later hosts win on a name collision).
+    QHash<QString, QString> flat;
+    for (auto h = m_varsByHost.cbegin(); h != m_varsByHost.cend(); ++h)
+        for (auto v = h->cbegin(); v != h->cend(); ++v)
+            flat.insert(v.key(), v.value());
+    return flat;
 }
 
 void SessionRules::clearAll() {
     {
         QMutexLocker lk(&m_mutex);
-        m_vars.clear();
+        m_varsByHost.clear();
     }
     emit variablesChanged();
 }
@@ -110,27 +60,15 @@ bool SessionRules::matches(const SessionRule &r,
         cache.insert(g, rx);
         return rx;
     };
+    // Match the pathGlob against the path component only -- req.path carries the
+    // "?query", so an exact glob would otherwise never match a query-bearing req.
     return resolve(r.hostGlob).match(host).hasMatch()
-        && resolve(r.pathGlob).match(path).hasMatch();
+        && resolve(r.pathGlob).match(stripQuery(path)).hasMatch();
 }
 
 QString SessionRules::substitute(const QString &templ,
                                  const QHash<QString, QString> &vars) const {
-    // {{var}} substitution. Unknown vars stay literal so the user can
-    // see in a captured request that a value was missing.
-    QString out = templ;
-    static const QRegularExpression rx(R"(\{\{([A-Za-z_][A-Za-z0-9_]*)\}\})");
-    int offset = 0;
-    while (true) {
-        auto m = rx.match(out, offset);
-        if (!m.hasMatch()) break;
-        const QString name = m.captured(1);
-        auto it = vars.find(name);
-        if (it == vars.end()) { offset = m.capturedEnd(); continue; }
-        out.replace(m.capturedStart(), m.capturedLength(), *it);
-        offset = m.capturedStart() + it->size();
-    }
-    return out;
+    return SessionRulesLogic::substitute(templ, vars);
 }
 
 void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
@@ -154,11 +92,13 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
                 val = findHeader(resp.headers, r.extractKey);
                 break;
             case SessionRule::ExtractFromCookie:
-                // Walk every Set-Cookie response header looking for the name.
+                // Walk EVERY Set-Cookie response header; the LAST same-name set
+                // value wins (browser cookie-jar semantics -- a rotated session
+                // cookie re-issued later in the response is the authoritative one).
                 for (const auto &h : resp.headers) {
                     if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) != 0) continue;
-                    val = findCookieValue(h.second, r.extractKey);
-                    if (!val.isEmpty()) break;
+                    const QString v = findCookieValue(h.second, r.extractKey);
+                    if (!v.isEmpty()) val = v;
                 }
                 break;
             case SessionRule::ExtractFromJsonPath:
@@ -172,8 +112,7 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
                 // payload is a real-world foot-gun.
                 const QByteArray buf = resp.body.left(1 * 1024 * 1024);
                 auto m = rx.match(QString::fromUtf8(buf));
-                if (m.hasMatch())
-                    val = m.lastCapturedIndex() >= 1 ? m.captured(1) : m.captured(0);
+                if (m.hasMatch()) val = firstCapture(m);   // first PARTICIPATING group
                 break;
             }
         }
@@ -182,8 +121,11 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
     if (newVars.isEmpty()) return;
     {
         QMutexLocker lk(&m_mutex);
+        // Store under the HOST the value was extracted from -- never inject a
+        // host-A secret into a host-B request.
+        auto &hostVars = m_varsByHost[req.host];
         for (auto it = newVars.cbegin(); it != newVars.cend(); ++it)
-            m_vars.insert(it.key(), it.value());
+            hostVars.insert(it.key(), it.value());
     }
     emit variablesChanged();
 }
@@ -194,7 +136,9 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
     {
         QMutexLocker lk(&m_mutex);
         rs = m_rules;
-        vars = m_vars;
+        // ONLY variables captured from THIS request's host -- a secret extracted
+        // from another host must never ride along cross-origin.
+        vars = m_varsByHost.value(req.host);
     }
     if (rs.isEmpty() || vars.isEmpty()) return;
 
@@ -211,21 +155,24 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
 
         switch (r.injectInto) {
             case SessionRule::InjectIntoHeader: {
-                // Replace existing header by name, else append.
+                // Strip CR/LF: a target-controlled value must not split the header
+                // line / smuggle a request onto the wire (CWE-93/CWE-113).
+                const QString hv = sanitizeHeaderValue(value);
                 bool replaced = false;
                 for (auto &h : req.headers) {
                     if (h.first.compare(r.injectKey, Qt::CaseInsensitive) == 0) {
-                        h.second = value;
+                        h.second = hv;
                         replaced = true;
                         break;
                     }
                 }
                 if (!replaced)
-                    req.headers.append({ r.injectKey, value });
+                    req.headers.append({ r.injectKey, hv });
                 break;
             }
             case SessionRule::InjectIntoCookie: {
-                // Merge into existing Cookie header. Same-name overwrites.
+                // Strip CR/LF AND ';' (a ';' would forge extra cookie pairs).
+                const QString cv = sanitizeCookieValue(value);
                 int idx = -1;
                 for (int i = 0; i < req.headers.size(); ++i)
                     if (req.headers[i].first.compare("Cookie", Qt::CaseInsensitive) == 0) {
@@ -239,13 +186,13 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
                     const int eq = s.indexOf('=');
                     const QString name = eq > 0 ? s.left(eq).trimmed() : s;
                     if (name.compare(r.injectKey, Qt::CaseInsensitive) == 0) {
-                        parts << (r.injectKey + "=" + value);
+                        parts << (r.injectKey + "=" + cv);
                         replaced = true;
                     } else {
                         parts << s;
                     }
                 }
-                if (!replaced) parts << (r.injectKey + "=" + value);
+                if (!replaced) parts << (r.injectKey + "=" + cv);
                 const QString joined = parts.join("; ");
                 if (idx >= 0) req.headers[idx].second = joined;
                 else          req.headers.append({ "Cookie", joined });
@@ -262,11 +209,15 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
                     b.append(QUrl::toPercentEncoding(value));
                     req.body = b;
                 } else {
-                    // JSON / other: replace literal "{{name}}" tokens.
+                    // JSON / other: replace literal "{{name}}" tokens. JSON-escape
+                    // the value when the body is JSON so a value containing a quote
+                    // or backslash can't break/forge the JSON.
+                    const bool isJson = contentType.contains("json", Qt::CaseInsensitive);
+                    const QString sub = isJson ? jsonEscapeInner(value) : value;
                     QByteArray b = req.body;
-                    b.replace(QString("{{%1}}").arg(r.injectKey).toUtf8(), value.toUtf8());
+                    b.replace(QString("{{%1}}").arg(r.injectKey).toUtf8(), sub.toUtf8());
                     if (!r.variable.isEmpty())
-                        b.replace(QString("{{%1}}").arg(r.variable).toUtf8(), value.toUtf8());
+                        b.replace(QString("{{%1}}").arg(r.variable).toUtf8(), sub.toUtf8());
                     req.body = b;
                 }
                 break;

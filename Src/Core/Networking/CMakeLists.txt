@@ -49,6 +49,8 @@ add_library(Networking STATIC
     session_manager.cpp
     session_manager.hpp
     session_rules.cpp
+    session_rules_logic.cpp
+    session_rules_logic.hpp
     session_rules.hpp
     crawler.cpp
     crawler_logic.cpp

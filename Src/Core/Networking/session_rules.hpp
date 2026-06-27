@@ -102,7 +102,10 @@ private:
 
     mutable QMutex                m_mutex;
     QList<SessionRule>            m_rules;
-    QHash<QString, QString>       m_vars;     // variable name -> value
+    // host -> (variable name -> value). Keyed by the HOST a value was extracted
+    // from, so a secret captured from host A is never injected into a request to
+    // host B (a wildcard hostGlob otherwise carries credentials cross-origin).
+    QHash<QString, QHash<QString, QString>> m_varsByHost;
 };
 
 } // namespace Nullock::Core
