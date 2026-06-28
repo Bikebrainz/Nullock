@@ -1635,6 +1635,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // calling this is cheap even for hundreds of rows.
     if (path == "/api/search") {
         QJsonArray hits;
+        bool truncated = false;
         if (m_wiring.history) {
             const QUrlQuery q(query);
             const QString pattern = q.queryItemValue("q");
@@ -1642,35 +1643,38 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (where.isEmpty()) where = "both";
             const int limit = q.queryItemValue("limit").toInt() > 0
                                 ? q.queryItemValue("limit").toInt() : 200;
-            // ReDoS defence. Qt's PCRE backend doesn't expose a match-time
-            // budget, so a hostile pattern like (a+)+$ run against MB of
-            // captured body backtracks for tens of seconds and freezes
-            // the whole API surface. Three guards:
-            //  1. Cap pattern length -- bombs are usually short, but a
-            //     malicious one inside a megabyte of legitimate text is
-            //     just noise.
-            //  2. Reject patterns whose shape screams "nested unbounded
-            //     quantifier" -- the textbook bomb pattern. Heuristic,
-            //     but the cost of a false positive is "user rewrites a
-            //     weird regex," which is fine.
-            //  3. Truncate each body to kSearchBodyCap and cap the total
-            //     rows scanned. A 200-row × 1 MB scan completes in
-            //     reasonable wall-clock even if the pattern is awkward.
-            constexpr int kPatternMax     = 4 * 1024;
-            constexpr int kSearchBodyCap  = 1 * 1024 * 1024;
-            constexpr int kSearchRowCap   = 500;
+            // ReDoS defence over a USER-SUPPLIED regex run against captured
+            // history. PCRE2 (Qt's backend) caps each single match via its
+            // internal match_limit (~tens of ms, then it aborts), so no one
+            // match hangs forever -- but a hostile pattern can still burn that
+            // budget on EVERY one of up to ~1000 bodies, and /api/search is
+            // cross-origin reachable via a simple GET (reads skip CSRF), so the
+            // aggregate would otherwise freeze this (main-thread) scan for
+            // seconds. Four guards:
+            //  1. Cap pattern length (bombs are short; a long one is noise).
+            //  2. Reject the obvious catastrophic shapes up front --
+            //     ControlLogic::looksLikeCatastrophicRegex covers the nested
+            //     unbounded quantifier AND identical-branch alternation bombs
+            //     ((a|a)+ etc.) that a shape-only check misses. Heuristic, so a
+            //     false positive just means "user rewrites a weird regex" -- a
+            //     fast-path, not the whole fix.
+            //  3. Truncate each body to kSearchBodyCap and cap rows scanned.
+            //  4. Bound the WHOLE scan by a wall-clock budget so a pattern that
+            //     slips past (2) still can't freeze the thread past
+            //     kSearchBudgetMs -- partial results come back "truncated": true.
+            constexpr int kPatternMax       = 4 * 1024;
+            constexpr int kSearchBodyCap    = 1 * 1024 * 1024;
+            constexpr int kSearchRowCap     = 500;
+            constexpr qint64 kSearchBudgetMs = 1000;
             if (pattern.size() > kPatternMax) {
                 return httpJson(400, QJsonObject{{ "error",
                     "search pattern too long (max 4 KB)" }});
             }
-            static const QRegularExpression kBombShape(
-                R"(\([^)]*[*+]\)[*+]|\([^)]*\{\d+,\}\)[*+])",
-                QRegularExpression::NoPatternOption);
-            if (kBombShape.match(pattern).hasMatch()) {
+            if (ControlLogic::looksLikeCatastrophicRegex(pattern)) {
                 return httpJson(400, QJsonObject{{ "error",
-                    "search pattern contains nested unbounded quantifier "
-                    "(potential catastrophic backtrack); rewrite or use a "
-                    "narrower pattern" }});
+                    "search pattern has a catastrophic-backtracking shape "
+                    "(nested unbounded quantifier or ambiguous alternation); "
+                    "rewrite or use a narrower pattern" }});
             }
             if (!pattern.isEmpty()) {
                 const QRegularExpression rx(pattern,
@@ -1709,7 +1713,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         hits.append(hit);
                     };
                     const int rowLoopMax = std::min(n, kSearchRowCap);
+                    QElapsedTimer searchTimer;
+                    searchTimer.start();
                     for (int row = 0; row < rowLoopMax && hits.size() < limit; ++row) {
+                        // Wall-clock budget: a pattern that slipped past the
+                        // shape pre-screen still can't freeze this (main-thread)
+                        // scan past kSearchBudgetMs -- return what we have so far.
+                        if (searchTimer.elapsed() > kSearchBudgetMs) {
+                            truncated = true;
+                            break;
+                        }
                         if (where == "req" || where == "both") {
                             QString t = m_wiring.history->requestRawAt(row);
                             if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
@@ -1728,8 +1741,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             }
         }
         QJsonObject root;
-        root["hits"]  = hits;
-        root["count"] = hits.size();
+        root["hits"]      = hits;
+        root["count"]     = hits.size();
+        root["truncated"] = truncated;
         return httpJson(200, root);
     }
 

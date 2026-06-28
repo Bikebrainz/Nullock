@@ -66,4 +66,21 @@ QString mdTextSafe(const QString &s);
 // already follow.
 bool hasRequestSmugglingChars(const QString &s);
 
+// --- /api/search ReDoS pattern pre-screen --------------------------------
+// /api/search compiles a USER-SUPPLIED regex and runs it over captured proxy
+// history. PCRE2 (Qt's backend) caps any single match via its internal
+// match_limit (~tens of ms), so a hostile pattern can't hang forever, but it
+// CAN burn that budget on every one of up to ~1000 bodies -> a multi-second
+// main-thread freeze (the endpoint is cross-origin reachable via a simple GET).
+// A wall-clock budget at the call site bounds the aggregate; this predicate is
+// the cheap FAST-PATH that rejects the two obvious catastrophic shapes up front:
+//   (1) a nested unbounded quantifier -- the textbook (a+)+ / (a*)* / (a{2,})+;
+//   (2) alternation with two IDENTICAL adjacent branches -- (a|a)+, (\d|\d)+,
+//       ([ab]|[ab])+, (a|a|a)+ -- which bypass shape (1). DISJOINT alternations
+//       like (foo|bar)+ or (a|b)+ are linear and are NOT flagged.
+// Returns true if the pattern matches a known-catastrophic shape (caller 400s).
+// Heuristic by nature (alternation-overlap detection is undecidable to do
+// precisely without over-rejecting), so it is a fast-path, NOT the whole defence.
+bool looksLikeCatastrophicRegex(const QString &pattern);
+
 } // namespace Nullock::Control::ControlLogic

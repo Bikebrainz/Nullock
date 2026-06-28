@@ -157,6 +157,34 @@ int main(int argc, char **argv) {
     chk("smuggle: decoded path with CRLF REJECTED (the OAST-2 vector)",
         hasRequestSmugglingChars("/a\r\nX-Injected: pwn"));
 
+    // ===== /api/search ReDoS pattern pre-screen =========================
+    // Locks looksLikeCatastrophicRegex: the textbook nested-quantifier bombs
+    // AND the identical-branch alternation bombs that bypassed the old
+    // shape-only kBombShape (measured against Qt 6.7.3 PCRE2), while disjoint
+    // alternations and ordinary patterns pass (low false-positive).
+    // --- nested unbounded quantifier (the original shape) ---
+    chk("redos: (a+)+ rejected",     looksLikeCatastrophicRegex("(a+)+"));
+    chk("redos: (a*)* rejected",     looksLikeCatastrophicRegex("(a*)*"));
+    chk("redos: (a{2,})+ rejected",  looksLikeCatastrophicRegex("(a{2,})+"));
+    chk("redos: ([a-z]+)+ rejected", looksLikeCatastrophicRegex("([a-z]+)+"));
+    chk("redos: (.*)* rejected",     looksLikeCatastrophicRegex("(.*)*"));
+    // --- identical-branch alternation (the kBombShape bypass, measured) ---
+    chk("redos: (a|a)+ rejected",       looksLikeCatastrophicRegex("(a|a)+"));
+    chk("redos: (\\d|\\d)+ rejected",   looksLikeCatastrophicRegex("(\\d|\\d)+"));
+    chk("redos: ([ab]|[ab])+ rejected", looksLikeCatastrophicRegex("([ab]|[ab])+"));
+    chk("redos: (a|a|a)+ rejected",     looksLikeCatastrophicRegex("(a|a|a)+"));
+    chk("redos: (ab|ab)* rejected",     looksLikeCatastrophicRegex("(ab|ab)*"));
+    // --- benign patterns NOT flagged ---
+    chk("redos: (foo|bar)+ accepted",          !looksLikeCatastrophicRegex("(foo|bar)+"));
+    chk("redos: (a|b)+ accepted (disjoint)",   !looksLikeCatastrophicRegex("(a|b)+"));
+    chk("redos: (https?|ftp) accepted",        !looksLikeCatastrophicRegex("(https?|ftp)"));
+    chk("redos: plain literal accepted",       !looksLikeCatastrophicRegex("GET /api HTTP"));
+    chk("redos: email-ish accepted",           !looksLikeCatastrophicRegex("\\w+@\\w+"));
+    chk("redos: single quantified group (no outer) accepted",
+        !looksLikeCatastrophicRegex("([a-z]+)"));
+    chk("redos: anchored line accepted",       !looksLikeCatastrophicRegex("^Set-Cookie: .*$"));
+    chk("redos: empty accepted",               !looksLikeCatastrophicRegex(""));
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

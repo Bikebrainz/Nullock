@@ -1,5 +1,6 @@
 #include "control_logic.hpp"
 
+#include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
 
@@ -75,6 +76,26 @@ bool hasRequestSmugglingChars(const QString &s) {
         const ushort u = ch.unicode();
         if (u == '\r' || u == '\n' || u == '\0') return true;
     }
+    return false;
+}
+
+bool looksLikeCatastrophicRegex(const QString &pattern) {
+    // (1) Nested unbounded quantifier: a quantifier INSIDE a group whose group
+    //     is itself unbounded-quantified -- (a+)+ / (a*)* / (a{2,})+.
+    static const QRegularExpression kNestedQuant(
+        QStringLiteral(R"(\([^)]*[*+]\)[*+]|\([^)]*\{\d+,\}\)[*+])"),
+        QRegularExpression::NoPatternOption);
+    if (kNestedQuant.match(pattern).hasMatch()) return true;
+    // (2) Alternation with two IDENTICAL adjacent branches under an unbounded
+    //     quantifier -- (a|a)+, (\d|\d)+, ([ab]|[ab])+, (a|a|a)+. The \1
+    //     backreference matches "a branch immediately followed by the SAME
+    //     branch"; the trailing [^)]* allows further alternatives before the
+    //     group closes and *requires* an outer + / * so a benign unquantified
+    //     (a|a) isn't flagged, while disjoint (foo|bar)+ / (a|b)+ never match.
+    static const QRegularExpression kDupAltBranch(
+        QStringLiteral(R"(\(([^|)]+)\|\1[^)]*\)[*+])"),
+        QRegularExpression::NoPatternOption);
+    if (kDupAltBranch.match(pattern).hasMatch()) return true;
     return false;
 }
 
