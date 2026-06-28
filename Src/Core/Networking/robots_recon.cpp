@@ -26,6 +26,11 @@ QString locationHeader(const Proxy::HttpResponse &r) {
 // alone. This TU keeps buildGet()/scan() (the HttpClient I/O).
 
 QByteArray buildGet(const Request &req, const QString &path) {
+    // Request-line / Host injection guard: path can be reassigned from a server
+    // Location redirect (resolveRedirect -> t.path, response-controlled), and
+    // host is written RAW -- a CR/LF in either injects a header / splits the line.
+    if (req.host.contains('\r') || req.host.contains('\n')) return {};
+    if (path.contains('\r')     || path.contains('\n'))     return {};
     QByteArray out = "GET " + path.toUtf8() + " HTTP/1.1\r\n";
     out += "Host: " + req.host.toUtf8() + "\r\n";
     out += "User-Agent: Nullock/robots-recon\r\n";

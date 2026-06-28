@@ -155,6 +155,28 @@ int main(int argc, char **argv) {
     chk("secret: a clean bundle yields no secrets",
         secrets("function add(a,b){return a+b;} const x=fetch('/api/x');").isEmpty());
 
+    // ===== buildGet: request-line / Host CRLF guard (the sweep fix) =====
+    {
+        Request r; r.host = "t.example";
+        const QByteArray ok = buildGet(r, "/app.js");
+        chk("get: well-formed", ok.startsWith("GET /app.js HTTP/1.1\r\n") && ok.contains("\r\nHost: t.example\r\n"));
+        chk("get: terminated", ok.endsWith("Connection: close\r\n\r\n"));
+    }
+    {
+        // path is a scan-DISCOVERED URL (script/source-map) -> response-influenced.
+        Request r; r.host = "t.example";
+        chk("get: CR/LF in path -> empty (request-line injection)", buildGet(r, "/x\r\nX-I: 1").isEmpty());
+        chk("get: bare LF in path -> empty", buildGet(r, "/x\nq").isEmpty());
+    }
+    { Request r; r.host = "t.example\r\nX-I: 1"; chk("get: CR/LF in host -> empty", buildGet(r, "/x").isEmpty()); }
+    {
+        // the header-loop CR/LF skip unique to this builder is now closed.
+        Request r; r.host = "t.example"; r.headers = { {"X-Bad", "v\r\nX-Smug: 1"} };
+        const QByteArray out = buildGet(r, "/x");
+        chk("get: CR/LF carried-header skipped (request still built)", !out.isEmpty() && !out.contains("X-Bad"));
+        chk("get: no smuggled header leaks from a CRLF header value", !out.contains("X-Smug"));
+    }
+
     std::fprintf(stderr, "js_recon_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

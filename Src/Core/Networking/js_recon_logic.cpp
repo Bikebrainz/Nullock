@@ -10,6 +10,31 @@
 
 namespace Nullock::Core::JsRecon {
 
+QByteArray buildGet(const Request &req, const QString &path) {
+    // Request-line / Host injection guard: path (the request-line target, often a
+    // scan-discovered script/source-map URL = response-influenced) and host are
+    // written RAW below, so a CR/LF in either injects a header / splits the line.
+    if (req.host.contains('\r') || req.host.contains('\n')) return {};
+    if (path.contains('\r')     || path.contains('\n'))     return {};
+
+    QByteArray out;
+    out  = "GET " + path.toUtf8() + " HTTP/1.1\r\n";
+    out += "Host: " + req.host.toUtf8() + "\r\n";
+    out += "User-Agent: Nullock/js-recon\r\n";
+    out += "Accept: */*\r\n";
+    out += "Accept-Encoding: identity\r\n";
+    for (const auto &h : req.headers) {
+        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // CR/LF skip on carried headers -- this loop was the one builder in the
+        // tree missing it (every sibling guards the header name + value).
+        if (h.first.contains('\r')  || h.first.contains('\n'))  continue;
+        if (h.second.contains('\r') || h.second.contains('\n')) continue;
+        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
+    }
+    out += "Connection: close\r\n\r\n";
+    return out;
+}
+
 namespace {
 
 // An api/version token must be a whole PATH SEGMENT (bounded by /._- or a string

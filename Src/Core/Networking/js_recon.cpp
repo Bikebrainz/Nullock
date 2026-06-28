@@ -16,21 +16,6 @@ namespace Nullock::Core::JsRecon {
 
 namespace {
 
-QByteArray buildGet(const Request &req, const QString &path) {
-    QByteArray out;
-    out  = "GET " + path.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/js-recon\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
 QString headerOf(const QList<QPair<QString, QString>> &headers, const QString &name) {
     for (const auto &h : headers)
         if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second.trimmed();

@@ -30,6 +30,11 @@ QString randToken() {
 // content_logic.cpp so they can be unit-tested against Qt6::Core alone.
 
 QByteArray buildGet(const Request &req, const QString &fullPath) {
+    // Request-line / Host injection guard: fullPath (basePath + wordlist word;
+    // basePath can arrive via a HAR / intercepted request) and host are written
+    // RAW below, so a CR/LF in either injects a header / splits the request line.
+    if (req.host.contains('\r') || req.host.contains('\n')) return {};
+    if (fullPath.contains('\r') || fullPath.contains('\n')) return {};
     QByteArray out = "GET " + fullPath.toUtf8() + " HTTP/1.1\r\n";
     out += "Host: " + req.host.toUtf8() + "\r\n";
     out += "User-Agent: Nullock/content-discovery\r\n";

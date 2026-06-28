@@ -16,6 +16,7 @@
 // Burp surfaces JS in the sitemap but doesn't mine endpoints or confirm
 // source-map exposure; this does both in one call.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QSet>
@@ -79,5 +80,11 @@ QString sourceMappingUrl(const QString &js);
 // stored value is REDACTED -- the finding never carries the secret itself.
 // Deduped within a body. Generic high-entropy hits are graded info (LEADs).
 void    extractSecrets(const QString &js, QList<JsSecret> &out);
+
+// Serialize the probe GET bytes. PURE. Returns {} if req.host or `path` (the
+// request-line target -- often a scan-DISCOVERED script / source-map URL, so
+// response-influenced) carries CR/LF, which would inject a header or split the
+// request line. Carried headers with CR/LF in name/value are skipped.
+QByteArray buildGet(const Request &req, const QString &path);
 
 } // namespace Nullock::Core::JsRecon
