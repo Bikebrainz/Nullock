@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proxy_server.hpp"
+#include "session_manager_logic.hpp"   // CapturedCookie + pure cookie-jar helpers
 
 #include <QHash>
 #include <QList>
@@ -9,20 +10,6 @@
 #include <QString>
 
 namespace Nullock::Core {
-
-// One captured cookie. Per-host (key is `host`), per-name. Holds the raw
-// `Set-Cookie:` value plus the parsed name=value pair so we can both
-// display it and re-inject it on outgoing requests.
-struct CapturedCookie {
-    QString name;
-    QString value;
-    QString raw;          // full Set-Cookie value (everything after the colon)
-    QString path;
-    QString expires;
-    bool    httpOnly = false;
-    bool    secure   = false;
-    QString sameSite;
-};
 
 // Per-host session bag. We currently key on `host` only -- domain
 // inheritance (cookies on .example.com applying to api.example.com)
@@ -72,7 +59,6 @@ public:
     void injectInto(Nullock::Proxy::HttpRequest &req) const;
 
 private:
-    static CapturedCookie parseSetCookie(const QString &raw);
     static QString lowercaseHost(const QString &host);
 
     mutable QMutex                   m_mutex;

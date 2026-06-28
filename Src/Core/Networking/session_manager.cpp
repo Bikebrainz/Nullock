@@ -26,53 +26,9 @@ QString SessionManager::lowercaseHost(const QString &host) {
     return host.toLower();
 }
 
-// Strip CR / LF / NUL and other C0 control bytes. Hostile upstreams that
-// embed \r\n in a Set-Cookie can otherwise cause us to write split
-// headers back out on the next request (HTTP request smuggling).
-static QString stripCtrl(QString s) {
-    QString out;
-    out.reserve(s.size());
-    for (QChar c : s) {
-        const ushort u = c.unicode();
-        if (u == '\r' || u == '\n' || u == '\0') continue;
-        if (u < 0x20) continue;     // other C0
-        out.append(c);
-    }
-    return out;
-}
-
-CapturedCookie SessionManager::parseSetCookie(const QString &raw) {
-    CapturedCookie c;
-    c.raw = stripCtrl(raw);
-    // First "key=value;" is the cookie itself; remaining "; attr[=val]"
-    // segments are attributes.
-    const QStringList parts = c.raw.split(';');
-    if (parts.isEmpty()) return c;
-    const QString first = parts.first().trimmed();
-    const int eq = first.indexOf('=');
-    if (eq <= 0) return c;
-    c.name  = stripCtrl(first.left(eq).trimmed());
-    c.value = stripCtrl(first.mid(eq + 1).trimmed());
-    // The name must also be a "token" per RFC 6265; we don't enforce the
-    // full grammar but at minimum reject names that contain '=' or any
-    // whitespace -- they're meaningless and would produce a broken Cookie
-    // header on inject.
-    if (c.name.contains('=') || c.name.contains(' ') || c.name.contains('\t'))
-        c.name.clear();
-    for (int i = 1; i < parts.size(); ++i) {
-        const QString seg = parts[i].trimmed();
-        if (seg.isEmpty()) continue;
-        const int eq2 = seg.indexOf('=');
-        const QString key  = (eq2 < 0 ? seg : seg.left(eq2)).trimmed().toLower();
-        const QString val  = eq2 < 0 ? QString() : seg.mid(eq2 + 1).trimmed();
-        if      (key == "path")     c.path     = val;
-        else if (key == "expires")  c.expires  = val;
-        else if (key == "httponly") c.httpOnly = true;
-        else if (key == "secure")   c.secure   = true;
-        else if (key == "samesite") c.sameSite = val;
-    }
-    return c;
-}
+// stripCtrl()/parseSetCookie() + the pure inject-decision helpers (pathMatches,
+// injectableOverTransport) live in session_manager_logic.cpp so they can be
+// unit-tested against Qt6::Core alone. This TU keeps the QObject + I/O.
 
 void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
                                         const Nullock::Proxy::HttpResponse &resp) {
@@ -82,7 +38,7 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
     QList<CapturedCookie> fresh;
     for (const auto &h : resp.headers) {
         if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) != 0) continue;
-        const CapturedCookie c = parseSetCookie(h.second);
+        const CapturedCookie c = SessionLogic::parseSetCookie(h.second);
         if (!c.name.isEmpty()) fresh.append(c);
     }
     if (fresh.isEmpty()) return;
@@ -132,10 +88,15 @@ void SessionManager::injectInto(Nullock::Proxy::HttpRequest &req) const {
     }
     if (use.isEmpty()) return;
 
-    // Find or create the request's Cookie header. Build a map of
-    // existing cookies so the client's values stay on conflict-free
-    // names; server-side captured cookies override on same-name.
-    QHash<QString, QString> jar;
+    // Build the outgoing cookie list in a DETERMINISTIC order: the client's
+    // existing cookies in their original order, then captured cookies in capture
+    // order, captured overriding the client value on a same-name (kept in the
+    // client's position). A QHash join order was non-deterministic -- a fingerprint
+    // tell and non-reproducible. Each captured cookie is gated:
+    //   * Secure cookies are NOT injected over a non-TLS request (cleartext leak);
+    //   * a Path-scoped cookie is NOT injected onto a non-matching request path.
+    QList<QPair<QString, QString>> ordered;   // (name, value) in emit order
+    QHash<QString, int> pos;                   // name -> index into `ordered`
     int existingIdx = -1;
     for (int i = 0; i < req.headers.size(); ++i) {
         if (req.headers[i].first.compare("Cookie", Qt::CaseInsensitive) == 0) {
@@ -145,17 +106,23 @@ void SessionManager::injectInto(Nullock::Proxy::HttpRequest &req) const {
                 const QString s = p.trimmed();
                 const int eq = s.indexOf('=');
                 if (eq <= 0) continue;
-                jar.insert(s.left(eq).trimmed(), s.mid(eq + 1).trimmed());
+                const QString n = s.left(eq).trimmed();
+                pos[n] = ordered.size();
+                ordered.append({ n, s.mid(eq + 1).trimmed() });
             }
             break;
         }
     }
-    // Captured cookies overwrite.
-    for (const auto &c : use) jar.insert(c.name, c.value);
+    for (const auto &c : use) {
+        if (!SessionLogic::injectableOverTransport(c, req.port)) continue;  // Secure over cleartext -> skip
+        if (!SessionLogic::pathMatches(c.path, req.path))         continue;  // path-scope mismatch -> skip
+        auto f = pos.find(c.name);
+        if (f != pos.end()) ordered[f.value()].second = c.value;            // override, keep position
+        else { pos[c.name] = ordered.size(); ordered.append({ c.name, c.value }); }
+    }
 
     QStringList combined;
-    for (auto it = jar.constBegin(); it != jar.constEnd(); ++it)
-        combined.append(it.key() + "=" + it.value());
+    for (const auto &kv : ordered) combined.append(kv.first + "=" + kv.second);
     const QString joined = combined.join("; ");
 
     if (existingIdx >= 0) req.headers[existingIdx].second = joined;
@@ -179,7 +146,7 @@ bool SessionManager::clearHost(const QString &host) {
     bool removed = false;
     {
         QMutexLocker lk(&m_mutex);
-        removed = (m_byHost.remove(lowercaseHost(host)) > 0);
+        removed = m_byHost.remove(lowercaseHost(host));   // Qt6 QHash::remove returns bool
     }
     if (removed) emit sessionsChanged();
     return removed;

@@ -274,6 +274,12 @@ add_subdirectory(update_check)
 # Run via: ctest -R chain_runner -V
 add_subdirectory(chain_runner)
 
+# Session-manager cookie-jar logic: honor Secure on inject (no cleartext leak of a
+# captured session token), RFC 6265 path-scope matching (no over-injection), and
+# Set-Cookie parsing/sanitization. Links session_manager_logic.cpp against Qt6::Core.
+# Run via: ctest -R session_manager -V
+add_subdirectory(session_manager)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

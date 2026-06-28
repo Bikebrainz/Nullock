@@ -47,7 +47,9 @@ add_library(Networking STATIC
     recon_logic.hpp
     recon_engine.hpp
     session_manager.cpp
+    session_manager_logic.cpp
     session_manager.hpp
+    session_manager_logic.hpp
     session_rules.cpp
     session_rules_logic.cpp
     session_rules_logic.hpp
