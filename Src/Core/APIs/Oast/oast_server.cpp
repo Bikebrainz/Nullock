@@ -166,10 +166,19 @@ void OastServer::handleClient(QTcpSocket *socket) {
             contentLength = val.toLongLong();
     }
 
-    // Best-effort body read, capped for safety.
+    // Best-effort body read, capped for safety. Like the header read, bound it
+    // with an ABSOLUTE deadline: this sink binds a PUBLIC interface and runs on
+    // the main thread, so without it a remote peer that declares a large
+    // Content-Length and dribbles one byte every <2s would reset the per-read
+    // timeout forever and pin the whole UI/API for the lifetime of the transfer.
     if (contentLength > 0 && contentLength <= 4 * 1024 * 1024) {
+        constexpr qint64 kBodyDeadlineMs = 8'000;
+        QElapsedTimer bodyDeadline; bodyDeadline.start();
         while (rest.size() < contentLength) {
-            if (!socket->waitForReadyRead(2000)) break;
+            const qint64 remaining = kBodyDeadlineMs - bodyDeadline.elapsed();
+            if (remaining <= 0) break;
+            const int waitMs = static_cast<int>(std::min<qint64>(remaining, 2000));
+            if (!socket->waitForReadyRead(waitMs)) break;
             rest.append(socket->readAll());
         }
         rest = rest.left(contentLength);

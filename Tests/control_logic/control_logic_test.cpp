@@ -114,6 +114,28 @@ int main(int argc, char **argv) {
     chk("port: host must match THIS port (4444)",
         isHostAllowed("localhost:4444", 4444) && !isHostAllowed("localhost:8731", 4444));
 
+    // ===== Markdown report-export escaping ==============================
+    // Code span: a backtick would close the span; control chars break it.
+    chk("md-code: plain text unchanged", mdCodeSpanSafe("GET /a") == "GET /a");
+    chk("md-code: backtick removed (can't escape inside a span)", mdCodeSpanSafe("a`b") == "ab");
+    chk("md-code: newline -> space", mdCodeSpanSafe("a\nb") == "a b");
+    chk("md-code: CR + tab -> space", mdCodeSpanSafe("a\r\tb") == "a  b");
+    chk("md-code: no backtick survives a code-span breakout payload",
+        !mdCodeSpanSafe("`](http://evil)`").contains('`'));
+    chk("md-code: DEL control stripped", mdCodeSpanSafe(QString("a") + QChar(0x7F) + "b") == "a b");
+
+    // Plain text: metacharacters backslash-escaped, control -> space.
+    chk("md-text: plain text unchanged", mdTextSafe("normal text") == "normal text");
+    chk("md-text: a link payload is neutralized (brackets/parens escaped)",
+        mdTextSafe("[x](http://evil)") == "\\[x\\]\\(http://evil\\)");
+    chk("md-text: backtick escaped", mdTextSafe("a`b") == "a\\`b");
+    chk("md-text: emphasis escaped", mdTextSafe("*bold* _i_") == "\\*bold\\* \\_i\\_");
+    chk("md-text: newline -> space (can't start a new list item / heading)",
+        mdTextSafe("a\n# heading") == "a \\# heading");
+    chk("md-text: pipe + angle-brackets + bang escaped",
+        mdTextSafe("a|b<c>d!e") == "a\\|b\\<c\\>d\\!e");
+    chk("md-text: backslash itself escaped", mdTextSafe("a\\b") == "a\\\\b");
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

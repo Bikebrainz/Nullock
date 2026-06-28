@@ -35,4 +35,24 @@ bool isReadMethod(const QString &method);
 bool isRequestAuthorized(const QString &method, const QString &origin,
                          const QString &nullockHdr, quint16 port);
 
+// --- Markdown report-export escaping -------------------------------------
+// Finding fields (kind/host/summary/url/evidence) can contain ATTACKER-controlled
+// bytes (e.g. an OAST callback's path/User-Agent, or a reflected payload echoed
+// into a scanner finding's evidence). The JSON/SARIF/HTML report sinks are
+// already escaped by their encoders, but the Markdown export embeds these fields
+// raw, so a backtick/newline/[..](..) could forge report structure (links,
+// images, broken code spans, injected list items). These two helpers neutralize
+// that at the sink, covering ALL findings regardless of source.
+
+// Safe to drop inside a Markdown INLINE CODE SPAN (`...`). Backticks can't be
+// backslash-escaped inside a span, so they are removed; CR/LF/tab/other control
+// chars (which would break the span / line) collapse to a single space.
+QString mdCodeSpanSafe(const QString &s);
+
+// Safe to drop into Markdown INLINE PLAIN TEXT. CR/LF/control chars collapse to a
+// space (so content can never start a new line / list item / heading), and the
+// inline metacharacters (\ ` * _ [ ] ( ) < > | ! #) are backslash-escaped so a
+// payload can't inject a link/image/emphasis/HTML.
+QString mdTextSafe(const QString &s);
+
 } // namespace Nullock::Control::ControlLogic

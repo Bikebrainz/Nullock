@@ -45,4 +45,29 @@ bool isRequestAuthorized(const QString &method, const QString &origin,
     return originOk || tokenOk;
 }
 
+QString mdCodeSpanSafe(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar ch : s) {
+        const ushort u = ch.unicode();
+        if (u == '`') continue;              // can't be escaped inside a code span -> drop
+        if (u < 0x20 || u == 0x7F) { out += QLatin1Char(' '); continue; }  // control -> space
+        out += ch;
+    }
+    return out;
+}
+
+QString mdTextSafe(const QString &s) {
+    static const QString kMeta = QStringLiteral("\\`*_[]()<>|!#");
+    QString out;
+    out.reserve(s.size() + 8);
+    for (const QChar ch : s) {
+        const ushort u = ch.unicode();
+        if (u < 0x20 || u == 0x7F) { out += QLatin1Char(' '); continue; }  // control -> space (no new line/list/heading)
+        if (kMeta.contains(ch)) out += QLatin1Char('\\');                  // backslash-escape inline metacharacters
+        out += ch;
+    }
+    return out;
+}
+
 } // namespace Nullock::Control::ControlLogic

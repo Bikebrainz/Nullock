@@ -4480,10 +4480,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 out += "### " + sev.toUpper() + " (" +
                        QString::number(bySev[sev].size()) + ")\n\n";
                 for (const auto &f : bySev[sev]) {
-                    out += "- **" + f.kind + "** at " + f.host + " — " + f.summary + "\n";
-                    if (!f.url.isEmpty()) out += "  - URL: `" + f.url + "`\n";
+                    // Escape attacker-influenceable finding fields: evidence/url
+                    // can carry OAST-callback bytes or reflected payloads, and
+                    // this Markdown sink (unlike JSON/SARIF/HTML) is otherwise raw.
+                    out += "- **" + ControlLogic::mdTextSafe(f.kind) + "** at "
+                         + ControlLogic::mdTextSafe(f.host) + " — "
+                         + ControlLogic::mdTextSafe(f.summary) + "\n";
+                    if (!f.url.isEmpty())
+                        out += "  - URL: `" + ControlLogic::mdCodeSpanSafe(f.url) + "`\n";
                     if (!f.evidence.isEmpty()) {
-                        out += "  - Evidence: `" + f.evidence.left(200) + "`\n";
+                        out += "  - Evidence: `"
+                             + ControlLogic::mdCodeSpanSafe(f.evidence.left(200)) + "`\n";
                     }
                 }
                 out += "\n";
