@@ -68,6 +68,12 @@ struct Result {
 // signature absent from the baseline, so reflected input can't false-positive.
 // The payloads go into the query string only -- a sink that reads the target
 // URL from a POST body isn't covered here (use the parameter sweep for that).
+//
+// SINGLE-PARAM by design: when `param` is empty, auto-detect picks the FIRST
+// query item whose name is in knownSsrfParams() and stops. If a URL carries
+// several URL-typed params and the sink is not the first, the caller must
+// re-invoke test() once per candidate param (set req.param explicitly) for full
+// coverage -- one test() call probes exactly one parameter.
 Result test(const Request &req);
 
 // Query keys treated as likely URL-typed (SSRF-prone) parameters when

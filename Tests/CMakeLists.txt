@@ -346,6 +346,13 @@ add_subdirectory(h2_logic)
 # Run via: ctest -R dns_logic -V
 add_subdirectory(dns_logic)
 
+# SSRF scanner request builder: the CRLF-injection guard on the raw request line +
+# Host header (method/basePath/host all reject CR/LF), custom-header stripping
+# (Host/Content-Length dropped, CR/LF headers skipped), and the URL-typed
+# auto-detect param list. Compiles ssrf_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R ssrf_logic -V
+add_subdirectory(ssrf_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

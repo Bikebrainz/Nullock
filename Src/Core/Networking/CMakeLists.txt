@@ -147,6 +147,8 @@ add_library(Networking STATIC
     xpath_injection.hpp
     ssrf_scan.cpp
     ssrf_scan.hpp
+    ssrf_logic.cpp
+    ssrf_logic.hpp
     deser_probe.cpp
     deser_logic.cpp
     deser_probe.hpp

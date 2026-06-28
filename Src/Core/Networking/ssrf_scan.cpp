@@ -1,4 +1,5 @@
 #include "ssrf_scan.hpp"
+#include "ssrf_logic.hpp"
 #include "networking.hpp"
 
 #include <QUrl>
@@ -82,48 +83,7 @@ const Probe kProbes[] = {
       "\"Consul\"", "internal-consul", "high", "ssrf-internal" },
 };
 
-QByteArray buildRequest(const Request &req, const QString &query) {
-    // Request-line injection guard: the method and path are written into the
-    // request line raw, so a CR/LF in either would inject a header/line.
-    if (req.method.contains('\r') || req.method.contains('\n')) return {};
-    if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
-
-    const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
-    QByteArray out;
-    out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + req.host.toUtf8() + "\r\n";
-    out += "User-Agent: Nullock/ssrf\r\n";
-    out += "Accept: */*\r\n";
-    out += "Accept-Encoding: identity\r\n";
-    for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.contains('\r') || h.first.contains('\n')) continue;
-        if (h.second.contains('\r') || h.second.contains('\n')) continue;
-        out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
-    }
-    out += "Connection: close\r\n\r\n";
-    return out;
-}
-
 } // namespace
-
-QStringList knownSsrfParams() {
-    // URL-typed sink names only -- generic search/short names (q, query, r, ...)
-    // are deliberately excluded: auto-detect picks the first match and stops,
-    // so a non-sink name would steal the probe budget from the real sink.
-    return { "url", "uri", "target", "targeturl", "dest", "dest_url",
-             "destination", "redirect", "redirect_uri", "redirect_url",
-             "return", "returnurl", "return_url", "callback", "callback_url",
-             "webhook", "feed", "rss", "atom", "image", "image_url", "imageurl",
-             "avatar", "avatar_url", "logo", "thumb", "thumbnail", "preview",
-             "path", "file", "link", "src", "source", "sourceurl", "host",
-             "hostname", "address", "addr", "domain", "site", "page", "fetch",
-             "load", "proxy", "next", "continue", "data", "reference", "ref",
-             "out", "to", "view", "show", "goto", "forward", "forward_url",
-             "origin", "remote", "resource", "document", "wsdl", "xsl",
-             "upload", "endpoint", "server", "u", "uri_ref" };
-}
 
 Result test(const Request &reqIn) {
     Result result;
@@ -203,7 +163,13 @@ Result test(const Request &reqIn) {
                 if (roleLike && !bodyOf(roleResp).contains(sig)) {
                     const auto credResp = sendWith(listUrl + role);
                     if (credResp.ok && bodyOf(credResp).contains(sig)) {
-                        const auto ctl = sendWith(listUrl + kControlTag + "-norole");
+                        // Shaped control: keep the REAL role name as the leaf prefix
+                    // (so a value/length-keyed reflection template still hits the
+                    // same branch) and append a bogus suffix so it can't be a real
+                    // fetch -- mirrors the per-probe "swap only the leaf, keep the
+                    // shape" rule. A kControlTag-only leaf would diverge in both
+                    // content and length, weakening the FP defeater.
+                    const auto ctl = sendWith(listUrl + role + "-" + kControlTag);
                         if (!(ctl.ok && bodyOf(ctl).contains(sig))) {
                             result.hits.append({ QStringLiteral("aws-imds-iam"),
                                                  listUrl + role, sig,
