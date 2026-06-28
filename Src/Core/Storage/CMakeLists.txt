@@ -8,6 +8,8 @@ add_library(Storage STATIC
     project_logic.hpp
     history_index.cpp
     history_index.hpp
+    history_logic.cpp
+    history_logic.hpp
 )
 
 target_link_libraries(Storage PUBLIC

@@ -319,6 +319,13 @@ add_subdirectory(project_logic)
 # Run via: ctest -R intercept_logic -V
 add_subdirectory(intercept_logic)
 
+# History-index find() query builder: the SQL-INJECTION regression lock -- proves
+# the produced SQL depends only on which filter keys are present (never their
+# values, so every operator value is a bound ? parameter) and that `limit` is
+# clamped. Compiles history_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R history_logic -V
+add_subdirectory(history_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

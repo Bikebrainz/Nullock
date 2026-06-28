@@ -46,8 +46,16 @@ public:
     bool isOpen() const;
     int  rowCount() const;
 
-    // Mirror an appendEntry into the index. Safe to call from worker
-    // threads -- we hold m_mutex over the bind+exec.
+    // Mirror an appendEntry into the index. Today every HistoryIndex entry
+    // point runs on the MAIN event loop: the proxy worker emits responseReceived
+    // but the queued AutoConnection marshals appendEntry back to the main thread,
+    // and find()/loadFullRow() run inline in the control server's main-thread
+    // handle() loop -- so access is already serialized. m_mutex additionally
+    // guards the bind+exec to keep the design correct under the documented future
+    // where a worker writes directly. NOTE: one QSqlDatabase connection must not
+    // be used from multiple threads concurrently (Qt-unsupported regardless of
+    // the mutex); if access ever becomes genuinely cross-thread, give each thread
+    // its own connection.
     void append(int rowId,
                 const Nullock::Proxy::HttpRequest &req,
                 const Nullock::Proxy::HttpResponse &resp);
@@ -87,6 +95,10 @@ public:
 
 private:
     bool ensureSchema();
+    // Teardown assuming m_mutex is ALREADY held. open() calls this so its
+    // close-then-reopen is atomic under a single lock (no unlocked window);
+    // the public close() takes the lock then delegates here.
+    void closeLocked();
 
     mutable QMutex m_mutex;
     QSqlDatabase   m_db;

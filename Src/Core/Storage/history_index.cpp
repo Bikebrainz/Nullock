@@ -1,5 +1,7 @@
 #include "history_index.hpp"
 
+#include "history_logic.hpp"
+
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
@@ -17,8 +19,12 @@ HistoryIndex::HistoryIndex(QObject *parent) : QObject(parent) {}
 HistoryIndex::~HistoryIndex() { close(); }
 
 bool HistoryIndex::open(const QString &projectDir) {
-    close();
     QMutexLocker lk(&m_mutex);
+    // Atomic teardown + re-open under ONE lock. Calling the public close()
+    // here would release the lock between teardown and re-create, leaving a
+    // window where another thread (under the documented multi-thread model)
+    // could observe a half-open connection.
+    closeLocked();
     m_dir = projectDir;
     m_dbPath = projectDir + "/history-index.sqlite";
     // Unique connection name so multiple HistoryIndex instances (across
@@ -31,8 +37,10 @@ bool HistoryIndex::open(const QString &projectDir) {
         return false;
     }
     QSqlQuery pragma(m_db);
-    // WAL mode survives concurrent reads / single writer cleanly. The
-    // proxy thread writes; the control server thread reads via find().
+    // WAL keeps reads cheap and tolerates a single writer. Today every
+    // open/append/find/loadFullRow runs on the main event loop (queued
+    // connections marshal the proxy-worker capture path back to it), so access
+    // is already serialized; WAL + m_mutex keep it correct if that ever changes.
     pragma.exec("PRAGMA journal_mode=WAL");
     pragma.exec("PRAGMA synchronous=NORMAL");
     return ensureSchema();
@@ -40,8 +48,15 @@ bool HistoryIndex::open(const QString &projectDir) {
 
 void HistoryIndex::close() {
     QMutexLocker lk(&m_mutex);
+    closeLocked();
+}
+
+void HistoryIndex::closeLocked() {
+    // Caller already holds m_mutex.
     if (m_db.isOpen()) m_db.close();
     if (!m_connName.isEmpty()) {
+        // Drop the member's handle BEFORE removeDatabase so Qt doesn't warn
+        // about a connection still in use.
         m_db = QSqlDatabase();
         QSqlDatabase::removeDatabase(m_connName);
         m_connName.clear();
@@ -188,10 +203,13 @@ QString renderRawRequest(const Nullock::Proxy::HttpRequest &req) {
 
 QString renderRawResponse(const Nullock::Proxy::HttpResponse &resp) {
     QString out;
+    // Simultaneous multi-arg (not chained .arg) so a literal "%2"/"%3" inside the
+    // target-controlled httpVersion/reasonPhrase can't be refilled by a later
+    // .arg -- matches renderRawRequest. Display-only, but keep it placeholder-safe.
     out += QString("%1 %2 %3\n")
-              .arg(resp.httpVersion)
-              .arg(resp.statusCode)
-              .arg(resp.reasonPhrase);
+              .arg(resp.httpVersion,
+                   QString::number(resp.statusCode),
+                   resp.reasonPhrase);
     for (const auto &h : resp.headers)
         out += QString("%1: %2\n").arg(h.first, h.second);
     out += "\n";
@@ -280,48 +298,12 @@ QJsonArray HistoryIndex::find(const QJsonObject &filters) const {
     QJsonArray out;
     if (!m_db.isOpen()) return out;
 
-    QString sql = "SELECT id, ts, method, host, port, path, status, size, tls, mime "
-                  "FROM rows WHERE 1=1";
-    QList<QVariant> binds;
-    if (filters.contains("method")) {
-        sql += " AND UPPER(method) = ?";
-        binds << filters.value("method").toString().toUpper();
-    }
-    if (filters.contains("host")) {
-        // Treat as LIKE; user can pass % wildcards or a literal hostname.
-        sql += " AND host LIKE ?";
-        binds << filters.value("host").toString();
-    }
-    if (filters.contains("path")) {
-        sql += " AND path LIKE ?";
-        binds << filters.value("path").toString();
-    }
-    if (filters.contains("status")) {
-        sql += " AND status = ?";
-        binds << filters.value("status").toInt();
-    }
-    if (filters.contains("minSize")) {
-        sql += " AND size >= ?";
-        binds << static_cast<qint64>(filters.value("minSize").toDouble());
-    }
-    if (filters.contains("maxSize")) {
-        sql += " AND size <= ?";
-        binds << static_cast<qint64>(filters.value("maxSize").toDouble());
-    }
-    if (filters.contains("sinceMs")) {
-        sql += " AND ts >= ?";
-        binds << static_cast<qint64>(filters.value("sinceMs").toDouble());
-    }
-    sql += " ORDER BY id DESC";
-    int limit = filters.value("limit").toInt(200);
-    if (limit <= 0)    limit = 200;
-    if (limit > 5000)  limit = 5000;
-    sql += " LIMIT ?";
-    binds << limit;
-
+    // Build the parameterized SELECT in pure logic (unit-tested for
+    // injection-safety + limit clamping). Every operator value is a bound ?.
+    const HistoryLogic::FindQuery fq = HistoryLogic::buildFindQuery(filters);
     QSqlQuery q(m_db);
-    q.prepare(sql);
-    for (const auto &b : binds) q.addBindValue(b);
+    q.prepare(fq.sql);
+    for (const auto &b : fq.binds) q.addBindValue(b);
     if (!q.exec()) {
         qWarning() << "history-index: find failed:" << q.lastError().text();
         return out;
