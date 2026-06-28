@@ -96,7 +96,12 @@ void classify(quint16 port, const QString &service, const QString &banner,
                                 { set("exposed-cleartext-service", "medium", QStringLiteral("FTP")); return; }
     if (svc.contains("mysql") || svc.contains("mariadb") || svc.contains("postgres")
         || svc.contains("mongo") || svc.contains("redis") || svc.contains("elastic")
-        || svc.contains("memcache")) {
+        || svc.contains("memcache")
+        // Parity with the port table above so a data store moved to a non-standard
+        // port is still flagged (CouchDB/Cassandra/Oracle/SQL Server were covered by
+        // port number but missing from this best-guess service-label fallback).
+        || svc.contains("couch") || svc.contains("cassandra") || svc.contains("oracle")
+        || svc.contains("mssql") || svc.contains("sqlserver")) {
         set("exposed-database", "high", service);
         return;
     }

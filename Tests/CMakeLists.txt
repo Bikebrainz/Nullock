@@ -280,6 +280,12 @@ add_subdirectory(chain_runner)
 # Run via: ctest -R session_manager -V
 add_subdirectory(session_manager)
 
+# Scan-bridge port -> finding classification: the curated port->(kind,severity) map
+# (severity must stay in the enricher's CVSS band), the service-label fallback, and
+# the open-only / info-gating in fromPortResults. Pure; links Qt6::Core.
+# Run via: ctest -R scan_bridge -V
+add_subdirectory(scan_bridge)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403
