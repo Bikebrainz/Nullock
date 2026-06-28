@@ -58,7 +58,6 @@ private slots:
     void onDatagram();
 
 private:
-    static QString extractToken(const QString &qname);
     QByteArray buildResponse(const QByteArray &query, bool &okOut) const;
 
     QUdpSocket *m_socket = nullptr;

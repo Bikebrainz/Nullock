@@ -339,6 +339,13 @@ add_subdirectory(control_logic)
 # Run via: ctest -R h2_logic -V
 add_subdirectory(h2_logic)
 
+# OAST DNS-sink wire parser: memory-safe QNAME parsing of ATTACKER-controlled UDP
+# datagrams -- compression/overrun/unterminated rejection, the 255-octet name cap,
+# QR/opcode/qdcount strictness (no answer-a-response loop), and LDH label
+# sanitization (report-injection defence). Compiles dns_logic.cpp directly; Qt6::Core.
+# Run via: ctest -R dns_logic -V
+add_subdirectory(dns_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

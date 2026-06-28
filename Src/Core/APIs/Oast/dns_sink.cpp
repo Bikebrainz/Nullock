@@ -1,7 +1,8 @@
 #include "dns_sink.hpp"
 
+#include "dns_logic.hpp"
+
 #include <QDateTime>
-#include <QRegularExpression>
 #include <QUdpSocket>
 
 namespace Nullock::Core {
@@ -37,36 +38,15 @@ void DnsSink::stop() {
 bool    DnsSink::running() const { return m_socket && m_socket->state() != QAbstractSocket::UnconnectedState; }
 quint16 DnsSink::port()    const { return m_socket ? m_socket->localPort() : 0; }
 
-// First label of the queried name, if it's exactly 16 hex chars.
-QString DnsSink::extractToken(const QString &qname) {
-    const int dot = qname.indexOf('.');
-    const QString head = (dot > 0 ? qname.left(dot) : qname).toLower();
-    static const QRegularExpression hex16("^[0-9a-f]{16}$");
-    return hex16.match(head).hasMatch() ? head : QString();
-}
-
-// Parse a DNS query datagram. Returns the full queried name (labels
-// joined by '.') in qnameOut, and a minimal valid response in the return
-// value (single A record echoing the question). okOut is false if the
-// packet isn't a parseable single-question query.
+// Build a minimal valid response (single A record echoing the question) for a
+// DNS query datagram. okOut is false if the packet isn't a parseable
+// single-question query. The QNAME parsing lives in the pure, unit-tested
+// DnsLogic::parseDnsQuery so this path and onDatagram() agree byte-for-byte.
 QByteArray DnsSink::buildResponse(const QByteArray &query, bool &okOut) const {
     okOut = false;
-    if (query.size() < 12) return {};
-    const quint16 qdcount = (quint8(query[4]) << 8) | quint8(query[5]);
-    if (qdcount < 1) return {};
-
-    // Walk the QNAME labels starting at offset 12.
-    int pos = 12;
-    while (pos < query.size()) {
-        const quint8 len = quint8(query[pos]);
-        if (len == 0) { pos++; break; }       // root label terminates name
-        if ((len & 0xC0) != 0) return {};       // compression in a query: bail
-        pos += 1 + len;
-        if (pos > query.size()) return {};
-    }
-    // QTYPE(2) + QCLASS(2) follow the name.
-    const int questionEnd = pos + 4;
-    if (questionEnd > query.size()) return {};
+    const DnsLogic::ParsedQuery pq = DnsLogic::parseDnsQuery(query);
+    if (!pq.valid) return {};
+    const int questionEnd = pq.questionEnd;
 
     // Response = header (ID copied, QR=1, AA=1, RD copied, RA=0, RCODE=0)
     // + original question + one A answer pointing at m_answerIp.
@@ -102,28 +82,24 @@ void DnsSink::onDatagram() {
         quint16 senderPort = 0;
         m_socket->readDatagram(buf.data(), buf.size(), &sender, &senderPort);
 
-        // Decode the QNAME for logging + token extraction.
-        QString qname;
-        int pos = 12;
-        bool nameOk = buf.size() >= 12;
-        while (nameOk && pos < buf.size()) {
-            const quint8 len = quint8(buf[pos]);
-            if (len == 0) break;
-            if ((len & 0xC0) != 0) { nameOk = false; break; }
-            if (pos + 1 + len > buf.size()) { nameOk = false; break; }
-            if (!qname.isEmpty()) qname += '.';
-            qname += QString::fromLatin1(buf.constData() + pos + 1, len);
-            pos += 1 + len;
-        }
+        // Parse the QNAME once (memory-safe, length-capped, label-sanitized) --
+        // the same pure parser buildResponse() uses, so the answer decision and
+        // the logged name can never disagree.
+        const DnsLogic::ParsedQuery pq = DnsLogic::parseDnsQuery(buf);
 
-        // Always answer (best-effort) so the resolver doesn't retry and
-        // double-log. Ignore failures.
+        // Answer best-effort so the resolver doesn't retry and double-log.
+        // buildResponse only frames a reply for a well-formed query (respOk ==
+        // pq.valid), so responses / malformed datagrams are not reflected.
         bool respOk = false;
         const QByteArray resp = buildResponse(buf, respOk);
         if (respOk && m_socket)
             m_socket->writeDatagram(resp, sender, senderPort);
 
-        const QString token = extractToken(qname);
+        // Confirm a callback ONLY from a well-formed query -- never auto-confirm
+        // off a malformed datagram (keeps the hit path no more permissive than
+        // the responder).
+        if (!pq.valid) continue;
+        const QString token = DnsLogic::extractToken(pq.qname);
         if (token.isEmpty()) continue;   // not one of ours
 
         OastHit hit;
@@ -132,7 +108,7 @@ void DnsSink::onDatagram() {
         hit.token      = token;
         hit.sourceIp   = sender.toString();
         hit.method     = QStringLiteral("DNS");
-        hit.hostHeader = qname;
+        hit.hostHeader = pq.qname;   // sanitized + length-capped
         hit.path       = QString();
         hit.userAgent  = QStringLiteral("(dns-resolver)");
         ++m_hitCount;
