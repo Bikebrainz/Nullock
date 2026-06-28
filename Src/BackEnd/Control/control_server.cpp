@@ -1,5 +1,6 @@
 #include "control_server.hpp"
 
+#include "control_logic.hpp"
 #include "cert_authority.hpp"
 #include "extensions_api.hpp"
 #include "intercept.hpp"
@@ -946,9 +947,18 @@ void ControlServer::handle(QTcpSocket *socket) {
     // Slowloris defence. Track an absolute wall-clock since accept(); even
     // if the client refills the per-read kReadTimeoutMs by dribbling one
     // byte every 4.9s, the deadline keeps counting and drops them at
-    // kHeaderDeadlineMs. Without this, 50 dribbling sockets would each pin
+    // kHeaderDeadlineMs. Without this, a single dribbling socket would pin
     // the main thread's handle() loop forever and freeze the entire API
     // surface (the UI included, since it polls /api/snapshot).
+    //
+    // LIMITATION (tracked follow-up): this deadline bounds a SINGLE
+    // connection, not the AGGREGATE. handle() runs synchronously on the main
+    // thread (onNewConnection calls it inline) and blocks in waitForReadyRead,
+    // so N slow-but-valid connections serialize into ~kHeaderDeadlineMs * N of
+    // cumulative main-thread freeze -- there is no concurrency cap. The real
+    // fix is a non-blocking / event-driven handle() (readyRead + a QTimer
+    // deadline) plus a hard active-connection cap; until then a flood of slow
+    // sockets can still stall the operator UI for the duration.
     QElapsedTimer deadline;
     deadline.start();
 
@@ -1029,18 +1039,7 @@ void ControlServer::handle(QTcpSocket *socket) {
     // carries `Host: evil.com` because the browser uses the URL the page
     // requested. Refuse anything whose Host isn't bound to us.
     const quint16 myPort = this->listeningPort();
-    const QString portStr = QString::number(myPort);
-    static const QSet<QString> kAllowedHosts = {
-        "127.0.0.1:" + portStr,
-        "localhost:" + portStr,
-        "[::1]:" + portStr,
-        // Some clients omit the port when it's the default; we never
-        // listen on 80 by default, but allow plain hostnames just in case.
-        "127.0.0.1",
-        "localhost",
-        "[::1]",
-    };
-    if (!hostHdr.isEmpty() && !kAllowedHosts.contains(hostHdr.toLower())) {
+    if (!ControlLogic::isHostAllowed(hostHdr, myPort)) {
         socket->write(httpResponse(421, "text/plain",
             "Misdirected Host (DNS rebinding defence)"));
         socket->waitForBytesWritten(kReadTimeoutMs);
@@ -1050,10 +1049,7 @@ void ControlServer::handle(QTcpSocket *socket) {
 
     // Method validation: known HTTP verbs only. Closes the GET-to-mutating-
     // endpoint vector (probe / replay used to accept any method).
-    static const QStringList kAllowed = {
-        "GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"
-    };
-    if (!kAllowed.contains(method)) {
+    if (!ControlLogic::isMethodAllowed(method)) {
         socket->write(httpResponse(405, "text/plain", "Method not allowed"));
         socket->waitForBytesWritten(kReadTimeoutMs);
         socket->disconnectFromHost();
@@ -1071,20 +1067,12 @@ void ControlServer::handle(QTcpSocket *socket) {
     // The custom header costs nothing for scripts (curl sets it via -H),
     // but a malicious cross-origin page can't add it without a CORS
     // preflight, which we never grant.
-    const bool isReadMethod = (method == "GET" || method == "HEAD" || method == "OPTIONS");
-    if (!isReadMethod) {
-        const quint16 myPort = this->listeningPort();
-        const QString expectedHttp  = "http://127.0.0.1:"  + QString::number(myPort);
-        const QString expectedLocal = "http://localhost:"  + QString::number(myPort);
-        const bool originOk = (origin == expectedHttp || origin == expectedLocal);
-        const bool tokenOk  = (nullockHdr == "1" || nullockHdr.toLower() == "true");
-        if (!originOk && !tokenOk) {
-            socket->write(httpResponse(403, "text/plain",
-                "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)"));
-            socket->waitForBytesWritten(kReadTimeoutMs);
-            socket->disconnectFromHost();
-            return;
-        }
+    if (!ControlLogic::isRequestAuthorized(method, origin, nullockHdr, myPort)) {
+        socket->write(httpResponse(403, "text/plain",
+            "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)"));
+        socket->waitForBytesWritten(kReadTimeoutMs);
+        socket->disconnectFromHost();
+        return;
     }
     // Body-side slowloris defence: same absolute-deadline pattern. A POST
     // claiming kMaxBodyBytes that dribbles in below ~2 MB/sec is either a

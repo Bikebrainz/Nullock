@@ -326,6 +326,13 @@ add_subdirectory(intercept_logic)
 # Run via: ctest -R history_logic -V
 add_subdirectory(history_logic)
 
+# Control-server pre-dispatch security gate: the DNS-rebinding Host allowlist, the
+# HTTP-method allowlist, and the CSRF Origin/X-Nullock-UI decision. Locks the
+# boundary that protects private state (history/creds) against rebinding +
+# cross-origin writes. Compiles control_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R control_logic -V
+add_subdirectory(control_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

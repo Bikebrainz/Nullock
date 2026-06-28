@@ -3,6 +3,8 @@
 add_library(Control STATIC
     control_server.cpp
     control_server.hpp
+    control_logic.cpp
+    control_logic.hpp
 )
 
 target_link_libraries(Control PUBLIC
