@@ -312,6 +312,13 @@ add_subdirectory(cert_logic)
 # Run via: ctest -R project_logic -V
 add_subdirectory(project_logic)
 
+# Intercept outgoing-byte fidelity: the resolver that forwards an UNEDITED
+# intercepted request's bytes VERBATIM (preserving a binary body + Content-Length)
+# instead of the lossy QString fromUtf8/toUtf8 round-trip, while re-encoding when
+# the operator actually edits. Compiles intercept_logic.cpp directly; Qt6::Core.
+# Run via: ctest -R intercept_logic -V
+add_subdirectory(intercept_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

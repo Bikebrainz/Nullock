@@ -27,6 +27,13 @@ public:
     int     m_port = 0;
     bool    m_tls  = false;
 
+    // The exact bytes pend() captured (request line + headers + RAW body). Kept
+    // so an unedited forward can return them verbatim instead of re-encoding the
+    // lossy QString round-trip (which would mangle any non-UTF-8 body and break
+    // Content-Length). Written + read only by the capturing worker thread; the
+    // main thread never touches it. See InterceptLogic::resolveForwardBytes.
+    QByteArray m_originalBytes;
+
     QSemaphore done {0};
     QAtomicInt decision {0};  // 0 = forward, 1 = drop
 
@@ -47,7 +54,7 @@ class InterceptController : public QObject {
 public:
     explicit InterceptController(QObject *parent = nullptr);
 
-    bool enabled() const { return m_enabled; }
+    bool enabled() const { return m_enabled.loadAcquire() != 0; }
     Q_INVOKABLE void setEnabled(bool e);
 
     QObject *current() const { return m_current; }
@@ -74,7 +81,11 @@ private:
     void promoteNextLocked();
     void releaseAllAsForward();
 
-    bool                          m_enabled = false;
+    // Atomic: written on the main thread (setEnabled) and read on per-connection
+    // worker threads (pend's early-out). Plain-bool here is a data race; the
+    // QAtomicInt matches the file's own `decision` idiom. The authoritative
+    // drain-race guard remains the under-mutex re-check in addPendingOnMain.
+    QAtomicInt                    m_enabled {0};
     PendingRequest               *m_current = nullptr;
     QQueue<PendingRequest *>      m_queue;
     int                           m_nextId  = 1;

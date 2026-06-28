@@ -1,5 +1,7 @@
 #include "intercept.hpp"
 
+#include "intercept_logic.hpp"
+
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <QThread>
@@ -16,8 +18,11 @@ int InterceptController::queueDepth() const {
 }
 
 void InterceptController::setEnabled(bool e) {
-    if (e == m_enabled) return;
-    m_enabled = e;
+    const int want = e ? 1 : 0;
+    if (want == m_enabled.loadAcquire()) return;
+    // Publish the new state BEFORE draining, so a worker that reads m_enabled
+    // after this point sees the disabled state and auto-forwards via pend().
+    m_enabled.storeRelease(want);
     if (!e) releaseAllAsForward();
     emit enabledChanged();
     emit currentChanged();
@@ -101,7 +106,14 @@ void InterceptController::addPendingOnMain(PendingRequest *p) {
     bool releaseAsForward = false;
     {
         QMutexLocker lk(&m_queueMutex);
-        if (!m_enabled) {
+        const int outstanding = m_queue.size() + (m_current ? 1 : 0);
+        if (m_enabled.loadAcquire() == 0) {
+            releaseAsForward = true;
+        } else if (!InterceptLogic::interceptQueueHasRoom(outstanding)) {
+            // Backpressure: the operator is too far behind. Auto-forward (the
+            // same operator-visible passthrough used for the disabled race)
+            // rather than pin another worker thread + secret-bearing bytes copy
+            // without bound. The request still appears in History as normal.
             releaseAsForward = true;
         } else if (!m_current) {
             m_current = p;
@@ -126,13 +138,14 @@ void InterceptController::deleteLaterOnMain(PendingRequest *p) {
 
 InterceptResult InterceptController::pend(const QByteArray &requestBytes,
                                           const QString &host, int port, bool tls) {
-    if (!m_enabled) return { false, requestBytes };
+    if (m_enabled.loadAcquire() == 0) return { false, requestBytes };
 
     auto *p = new PendingRequest;
     {
         QMutexLocker lk(&m_queueMutex);
         p->m_id = m_nextId++;
     }
+    p->m_originalBytes = requestBytes;
     p->m_text = QString::fromUtf8(requestBytes);
     p->m_host = host;
     p->m_port = port;
@@ -146,7 +159,10 @@ InterceptResult InterceptController::pend(const QByteArray &requestBytes,
 
     InterceptResult r;
     r.dropped = (p->decision.loadAcquire() == 1);
-    if (!r.dropped) r.bytes = p->m_text.toUtf8();
+    // Unedited -> forward the captured bytes verbatim (preserves a binary body
+    // byte-for-byte and keeps Content-Length honest); edited -> re-encode.
+    if (!r.dropped)
+        r.bytes = InterceptLogic::resolveForwardBytes(p->m_originalBytes, p->m_text);
 
     QMetaObject::invokeMethod(this, "deleteLaterOnMain", Qt::QueuedConnection,
                               Q_ARG(Nullock::Proxy::PendingRequest *, p));

@@ -10,6 +10,8 @@ add_library(Proxy STATIC
     cert_logic.hpp
     intercept.cpp
     intercept.hpp
+    intercept_logic.cpp
+    intercept_logic.hpp
     http2_client.cpp
     http2_client.hpp
     websocket.cpp
