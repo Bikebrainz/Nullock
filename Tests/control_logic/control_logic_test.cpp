@@ -185,6 +185,32 @@ int main(int argc, char **argv) {
     chk("redos: anchored line accepted",       !looksLikeCatastrophicRegex("^Set-Cookie: .*$"));
     chk("redos: empty accepted",               !looksLikeCatastrophicRegex(""));
 
+    // ===== path-confinement safeJoin ====================================
+    // Locks the static-file + project-template traversal guard (a compiled
+    // probe proved it holds on Windows; this pins it). Empty return == rejected;
+    // a non-empty return must stay prefixed by the trusted base dir.
+    const QString D = QStringLiteral("/srv/ui");
+    // --- traversal REJECTED (empty) ---
+    chk("safeJoin: ../ rejected",          safeJoin(D, "../etc/passwd").isEmpty());
+    chk("safeJoin: ..\\ rejected",         safeJoin(D, "..\\windows\\win.ini").isEmpty());
+    chk("safeJoin: a/../b rejected",       safeJoin(D, "a/../b").isEmpty());
+    chk("safeJoin: ....// rejected",       safeJoin(D, "....//x").isEmpty());
+    chk("safeJoin: leading-slash + .. rejected", safeJoin(D, "/../etc").isEmpty());
+    chk("safeJoin: bare .. rejected",      safeJoin(D, "..").isEmpty());
+    chk("safeJoin: deep climb rejected",   safeJoin(D, "x/../../../../etc").isEmpty());
+    chk("safeJoin: template-id climb rejected (F1 vector)",
+        safeJoin(D, "../../secret").isEmpty());
+    // --- benign ACCEPTED + confined under D ---
+    chk("safeJoin: file confined",         safeJoin(D, "Nullock.html") == "/srv/ui/Nullock.html");
+    chk("safeJoin: leading-/ stripped",    safeJoin(D, "/Nullock.html") == "/srv/ui/Nullock.html");
+    chk("safeJoin: leading-backslash stripped", safeJoin(D, "\\app.js") == "/srv/ui/app.js");
+    chk("safeJoin: double-leading-/ stripped",  safeJoin(D, "//app.js") == "/srv/ui/app.js");
+    chk("safeJoin: subdir confined",       safeJoin(D, "assets/app.js") == "/srv/ui/assets/app.js");
+    chk("safeJoin: template id confined",  safeJoin(D, "web-app.json") == "/srv/ui/web-app.json");
+    // --- a non-empty result ALWAYS begins with the trusted base (no escape) ---
+    chk("safeJoin: drive-path stays prefixed",
+        safeJoin(D, "C:/Windows/win.ini").startsWith("/srv/ui/"));
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

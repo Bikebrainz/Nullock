@@ -83,4 +83,16 @@ bool hasRequestSmugglingChars(const QString &s);
 // precisely without over-rejecting), so it is a fast-path, NOT the whole defence.
 bool looksLikeCatastrophicRegex(const QString &pattern);
 
+// --- Filesystem path confinement -----------------------------------------
+// Join an attacker-influenced relative path `rel` onto a trusted base `dir`,
+// confining the result to `dir`. Strips leading '/' and '\\' (so an "absolute"
+// request cannot escape) and REJECTS (returns an empty string) any `rel` that
+// contains the substring ".." -- the only up-traversal primitive. Returns
+// dir + "/" + rel when safe; the caller MUST treat the empty return as
+// "not found"/skip. `rel` must already be URL-DECODED (QUrl::path() decodes
+// %2e%2e -> ".." before this runs, so encoded traversal is caught). This is the
+// SINGLE confinement guard every attacker-path file op in the control server
+// routes through -- the static file server AND the project-template loader.
+QString safeJoin(const QString &dir, const QString &rel);
+
 } // namespace Nullock::Control::ControlLogic

@@ -827,14 +827,6 @@ QByteArray httpJson(int status, const QJsonArray &a) {
                         QJsonDocument(a).toJson(QJsonDocument::Compact));
 }
 
-QString safeJoin(const QString &dir, const QString &rel) {
-    // Strip leading slashes, refuse "..", normalize separators.
-    QString r = rel;
-    while (r.startsWith('/') || r.startsWith('\\')) r.remove(0, 1);
-    if (r.contains("..")) return {};
-    return dir + "/" + r;
-}
-
 QJsonArray headersToJson(const QList<QPair<QString, QString>> &headers) {
     QJsonArray arr;
     for (const auto &kv : headers) {
@@ -1137,7 +1129,7 @@ void ControlServer::handle(QTcpSocket *socket) {
 QByteArray ControlServer::staticResponse(const QString &path) const {
     if (m_wiring.uiDir.isEmpty())
         return httpResponse(500, "text/plain", "ui dir not configured");
-    const QString fsPath = safeJoin(m_wiring.uiDir, path);
+    const QString fsPath = ControlLogic::safeJoin(m_wiring.uiDir, path);
     if (fsPath.isEmpty() || !QFileInfo::exists(fsPath))
         return httpResponse(404, "text/plain", "Not found: " + path.toUtf8());
     QFile f(fsPath);
@@ -4448,8 +4440,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        + "/../share/nullock/templates/projects");
         QJsonObject tplObj;
         for (const QString &dir : searchDirs) {
-            const QString fpath = dir + "/" + tplId + ".json";
-            if (!QFileInfo::exists(fpath)) continue;
+            // Confine templateId to the templates dir -- it is an attacker-
+            // supplied JSON field, so a value like "../../<secret>" must not
+            // be able to climb out and read an arbitrary file. safeJoin rejects
+            // any ".." (returns empty -> skip this dir).
+            const QString fpath = ControlLogic::safeJoin(dir, tplId + ".json");
+            if (fpath.isEmpty() || !QFileInfo::exists(fpath)) continue;
             QFile fp(fpath);
             if (!fp.open(QIODevice::ReadOnly)) continue;
             const QJsonDocument d = QJsonDocument::fromJson(fp.readAll());

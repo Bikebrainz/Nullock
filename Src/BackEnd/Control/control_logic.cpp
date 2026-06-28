@@ -79,6 +79,14 @@ bool hasRequestSmugglingChars(const QString &s) {
     return false;
 }
 
+QString safeJoin(const QString &dir, const QString &rel) {
+    // Strip leading slashes, refuse "..", confine to dir.
+    QString r = rel;
+    while (r.startsWith('/') || r.startsWith('\\')) r.remove(0, 1);
+    if (r.contains("..")) return {};
+    return dir + "/" + r;
+}
+
 bool looksLikeCatastrophicRegex(const QString &pattern) {
     // (1) Nested unbounded quantifier: a quantifier INSIDE a group whose group
     //     is itself unbounded-quantified -- (a+)+ / (a*)* / (a{2,})+.
