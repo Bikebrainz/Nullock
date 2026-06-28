@@ -2,6 +2,8 @@
 add_library(Networking STATIC
     networking.cpp
     networking.hpp
+    networking_logic.cpp
+    networking_logic.hpp
     networking_outcome.cpp
     socket_outcome.hpp
     repeater.cpp

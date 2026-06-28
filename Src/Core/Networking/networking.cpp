@@ -1,5 +1,7 @@
 #include "networking.hpp"
 
+#include "networking_logic.hpp"
+
 #include <QAbstractSocket>
 #include <QList>
 #include <QPair>
@@ -17,8 +19,10 @@ constexpr int     kTimeoutMs    = 15'000;
 // Hard cap on the response body we'll accept. A hostile / MitM upstream
 // announcing Content-Length: 10 GiB or streaming forever otherwise OOMs.
 // 128 MB is comfortably larger than any real recon/replay payload we'd
-// look at; anything bigger we just truncate and bail with an error.
-constexpr qint64  kMaxBodyBytes = 128LL * 1024 * 1024;
+// look at; anything bigger we just truncate and bail with an error. Single
+// source of truth lives in networking_logic so the pure parsers and this
+// socket TU can never drift apart.
+constexpr qint64  kMaxBodyBytes = NetworkingLogic::kMaxBodyBytes;
 
 bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
     while (!out.contains("\r\n\r\n")) {
@@ -55,72 +59,26 @@ void readUntilClose(QTcpSocket *socket, QByteArray &out) {
     if (out.size() > kMaxBodyBytes) out.truncate(kMaxBodyBytes);
 }
 
+// Read a chunked body off the socket. The chunk FRAMING is decoded by the pure
+// NetworkingLogic::feedChunked state machine (which enforces the per-chunk,
+// decoded-total, and size-line/trailer caps); this loop only supplies bytes and
+// bounds the RAW accumulator. Without that raw cap a peer could keep `decoded`
+// under kMaxBodyBytes while streaming framing overhead forever (tiny 1-byte
+// chunks are ~6x raw:decoded), OOMing us via allBytes/rawResponse.
 bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded,
                     QByteArray &allBytes) {
+    using NetworkingLogic::ChunkDecode;
     while (true) {
-        int crlf = buffer.indexOf("\r\n");
-        while (crlf < 0) {
-            if (!socket->waitForReadyRead(kTimeoutMs)) return false;
-            const QByteArray chunk = socket->readAll();
-            buffer.append(chunk);
-            allBytes.append(chunk);
-            crlf = buffer.indexOf("\r\n");
-        }
-        QByteArray sizeLine = buffer.left(crlf);
-        const int semi = sizeLine.indexOf(';');
-        if (semi >= 0) sizeLine = sizeLine.left(semi);
-        bool ok = false;
-        const qint64 chunkSize = sizeLine.trimmed().toLongLong(&ok, 16);
-        if (!ok) return false;
-        // Reject negative / absurd chunk sizes that would later overflow
-        // the `buffer.size() < chunkSize + 2` arithmetic.
-        if (chunkSize < 0 || chunkSize > kMaxBodyBytes) return false;
-        if (decoded.size() + chunkSize > kMaxBodyBytes) return false;
-        buffer.remove(0, crlf + 2);
-        if (chunkSize == 0) {
-            while (buffer.indexOf("\r\n") < 0) {
-                if (!socket->waitForReadyRead(kTimeoutMs)) return false;
-                const QByteArray chunk = socket->readAll();
-                buffer.append(chunk);
-                allBytes.append(chunk);
-            }
-            const int end = buffer.indexOf("\r\n");
-            buffer.remove(0, end + 2);
-            return true;
-        }
-        while (buffer.size() < chunkSize + 2) {
-            if (!socket->waitForReadyRead(kTimeoutMs)) return false;
-            const QByteArray chunk = socket->readAll();
-            buffer.append(chunk);
-            allBytes.append(chunk);
-        }
-        decoded.append(buffer.left(chunkSize));
-        buffer.remove(0, chunkSize + 2);
+        const ChunkDecode st = NetworkingLogic::feedChunked(buffer, decoded);
+        if (st == ChunkDecode::Done)  return true;
+        if (st == ChunkDecode::Error) return false;
+        // NeedMore: pull more bytes, then cap the raw accumulator.
+        if (!socket->waitForReadyRead(kTimeoutMs)) return false;
+        const QByteArray chunk = socket->readAll();
+        buffer.append(chunk);
+        allBytes.append(chunk);
+        if (allBytes.size() > kMaxBodyBytes) return false;
     }
-}
-
-QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
-    QList<QPair<QString, QString>> out;
-    const QList<QByteArray> lines = block.split('\n');
-    for (int i = 1; i < lines.size(); ++i) {
-        QByteArray line = lines[i];
-        if (line.endsWith('\r')) line.chop(1);
-        if (line.isEmpty()) continue;
-        const int colon = line.indexOf(':');
-        if (colon <= 0) continue;
-        out.append({
-            QString::fromLatin1(line.left(colon)).trimmed(),
-            QString::fromLatin1(line.mid(colon + 1)).trimmed(),
-        });
-    }
-    return out;
-}
-
-QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name) {
-    for (const auto &kv : h)
-        if (kv.first.compare(name, Qt::CaseInsensitive) == 0)
-            return kv.second;
-    return {};
 }
 
 } // namespace
@@ -220,7 +178,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     // bytes after its CRLFCRLF are the start of the next one, so re-seed
     // readHeaderBlock with them. A guard caps pathological loops.
     QByteArray headerBlock, rest;
-    int sp1 = -1, sp2 = -1;
+    NetworkingLogic::StatusLine status;
     for (int guard = 0; ; ++guard) {
         const int sep = headerBuf.indexOf("\r\n\r\n");
         headerBlock = headerBuf.left(sep);
@@ -228,10 +186,9 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         const int firstLineEnd = headerBlock.indexOf("\r\n");
         const QByteArray statusLine =
             headerBlock.left(firstLineEnd < 0 ? headerBlock.size() : firstLineEnd);
-        sp1 = statusLine.indexOf(' ');
-        sp2 = sp1 < 0 ? -1 : statusLine.indexOf(' ', sp1 + 1);
-        const int code = sp1 < 0 ? 0 : statusLine.mid(sp1 + 1, 3).toInt();
-        if (code >= 100 && code < 200 && guard < 8) {
+        status = NetworkingLogic::parseStatusLine(statusLine);
+        if (status.ok && status.statusCode >= 100 && status.statusCode < 200
+                && guard < 8) {
             headerBuf = rest;                    // next response starts here
             if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
@@ -245,22 +202,22 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     }
     result.rawResponse = headerBuf;
 
-    const QByteArray statusLine =
-        headerBlock.left(qMax(0, headerBlock.indexOf("\r\n")));
-    if (sp1 < 0 || sp2 < 0) {
+    if (!status.ok) {
+        const QByteArray statusLine =
+            headerBlock.left(qMax(0, headerBlock.indexOf("\r\n")));
         result.errorMessage = "malformed status line: " + QString::fromLatin1(statusLine);
         socket->deleteLater();
         return result;
     }
-    result.parsed.httpVersion  = QString::fromLatin1(statusLine.left(sp1));
-    result.parsed.statusCode   = statusLine.mid(sp1 + 1, sp2 - sp1 - 1).toInt();
-    result.parsed.reasonPhrase = QString::fromLatin1(statusLine.mid(sp2 + 1));
-    result.parsed.headers      = parseHeaders(headerBlock);
+    result.parsed.httpVersion  = status.httpVersion;
+    result.parsed.statusCode   = status.statusCode;
+    result.parsed.reasonPhrase = status.reasonPhrase;
+    result.parsed.headers      = NetworkingLogic::parseHeaders(headerBlock);
     result.parsed.peerAddress  = socket->peerAddress().toString();
     result.parsed.wasTls       = useTls;
 
-    const QString te = findHeader(result.parsed.headers, "Transfer-Encoding");
-    const QString cl = findHeader(result.parsed.headers, "Content-Length");
+    const QString te = NetworkingLogic::findHeader(result.parsed.headers, "Transfer-Encoding");
+    const QString cl = NetworkingLogic::findHeader(result.parsed.headers, "Content-Length");
 
     // A response to HEAD, and any 204/304, has NO body regardless of the
     // Content-Length / Transfer-Encoding it advertises (RFC 9110). Reading
@@ -286,7 +243,19 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         }
         result.parsed.body = decoded;
     } else if (!cl.isEmpty()) {
-        const qint64 n = cl.toLongLong();
+        // A present-but-malformed Content-Length (non-numeric, negative, or
+        // over-cap) is a framing error -- reject it rather than silently
+        // truncating to an empty / mis-sized body (cl.toLongLong() with no
+        // &ok would yield 0 on "garbage" and a whole-rest/empty body on a
+        // negative value). The bytes DID arrive, so like the malformed
+        // status-line path we leave outcome == Ok and fail with ok == false.
+        const auto clv = NetworkingLogic::parseContentLength(cl);
+        if (!clv.ok) {
+            result.errorMessage = "invalid Content-Length: " + cl;
+            socket->deleteLater();
+            return result;
+        }
+        const qint64 n = clv.value;
         result.parsed.body = rest;
         if (result.parsed.body.size() < n) {
             QByteArray extra;

@@ -1,0 +1,80 @@
+#pragma once
+
+#include <QByteArray>
+#include <QList>
+#include <QPair>
+#include <QString>
+
+// Pure parsing cores for HttpClient::send (networking.cpp). Every byte these
+// touch is attacker / MitM-controlled (status line, headers, chunk framing,
+// Content-Length), so they are the security-critical heart of the shared HTTP
+// response parser. Lifted out of the socket TU so they can be unit-tested
+// against Qt6::Core ALONE -- no socket, no event loop, no Qt6::Network. See
+// Tests/networking (networking_logic_test).
+namespace Nullock::Core::NetworkingLogic {
+
+// Hard cap on a single response body / decoded chunked stream. A hostile or
+// MitM upstream announcing Content-Length: 10 GiB, or streaming chunks
+// forever, would otherwise OOM us. 128 MB is comfortably larger than any real
+// recon/replay payload; anything bigger we reject. networking.cpp's kMaxBodyBytes
+// is defined from THIS value so the cap has a single source of truth.
+constexpr qint64 kMaxBodyBytes = 128LL * 1024 * 1024;
+
+// A chunk-size line (hex size + optional ";extensions") or a chunked trailer
+// block is never legitimately large. We bound the UNFRAMED bytes buffered while
+// waiting for a size-line / trailer's terminating CRLF, so a peer that dribbles
+// an endless extension or trailer with NO CRLF (under the per-read timeout)
+// cannot grow our buffers without limit. 64 KiB mirrors readHeaderBlock's cap.
+constexpr qint64 kMaxChunkLineBytes = 64 * 1024;
+
+// --- status line: "HTTP/1.1 200 OK" -------------------------------------
+struct StatusLine {
+    bool    ok = false;            // false => no second SP => malformed; reject
+    QString httpVersion;
+    int     statusCode = 0;
+    QString reasonPhrase;
+};
+// Requires the RFC 9112 form "<version> SP <code> SP <reason>": both spaces
+// must be present (reason may be empty). Missing either space => ok=false.
+StatusLine parseStatusLine(const QByteArray &line);
+
+// --- header block (the bytes AFTER the status line, up to CRLFCRLF) ------
+// lines[0] is the status line and is skipped (i starts at 1). A line with no
+// ':' (or ':' at column 0) is ignored. Header COUNT is bounded upstream by
+// readHeaderBlock's 64 KiB cap, not here.
+QList<QPair<QString, QString>> parseHeaders(const QByteArray &block);
+QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name);
+
+// --- Content-Length validation ------------------------------------------
+struct ContentLength {
+    bool   ok = false;   // false => header present but malformed/over-cap; reject
+    qint64 value = 0;
+};
+// Rejects non-numeric ("garbage", "0x10"), negative ("-5"), and over-cap
+// values. A present-but-malformed Content-Length is a framing error: callers
+// must reject it, NOT silently fall back to an empty / close-delimited body.
+ContentLength parseContentLength(const QString &cl);
+
+// --- chunked transfer-encoding ------------------------------------------
+struct ChunkSize {
+    bool   ok = false;
+    qint64 size = 0;
+};
+// Strips a ";ext" suffix, parses the hex size, and rejects negative / over-cap
+// sizes (which would otherwise overflow the `size + 2` framing arithmetic).
+ChunkSize parseChunkSizeLine(const QByteArray &sizeLine);
+
+enum class ChunkDecode { NeedMore, Done, Error };
+// Pure incremental chunked-body decoder. Consumes every COMPLETE chunk present
+// in `buffer` (removing its bytes in place), appending chunk-data to `decoded`.
+// Returns:
+//   Done     -- the terminating 0-size chunk was consumed; `decoded` is final.
+//   NeedMore -- buffer holds a partial chunk; caller must read more and re-call.
+//               On NeedMore nothing is consumed (buffer is left intact).
+//   Error    -- malformed framing, a bad/over-cap chunk size, decoded would
+//               exceed kMaxBodyBytes, OR an unterminated size line / trailer
+//               grew past kMaxChunkLineBytes (the unbounded-stream guard).
+// No socket, no I/O -- the caller owns the read loop and the raw-byte cap.
+ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded);
+
+} // namespace Nullock::Core::NetworkingLogic
