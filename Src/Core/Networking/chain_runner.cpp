@@ -12,53 +12,10 @@ namespace Nullock::Core::ChainRunner {
 
 namespace {
 
-// ---- extraction helpers (mirrors session_rules; kept local so the
-//      chain engine has no dependency on the session-rule object) ------
-QString findHeader(const QList<QPair<QString, QString>> &headers,
-                   const QString &name) {
-    for (const auto &h : headers)
-        if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
-    return {};
-}
-
-QString findCookieValue(const QString &raw, const QString &name) {
-    for (const QString &seg : raw.split(';')) {
-        const QString s = seg.trimmed();
-        const int eq = s.indexOf('=');
-        if (eq <= 0) continue;
-        if (s.left(eq).trimmed().compare(name, Qt::CaseInsensitive) == 0)
-            return s.mid(eq + 1).trimmed();
-    }
-    return {};
-}
-
-QString jsonPathGet(const QByteArray &body, const QString &path) {
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(body, &err);
-    if (err.error != QJsonParseError::NoError) return {};
-    QJsonValue cur = doc.isArray() ? QJsonValue(doc.array())
-                                   : QJsonValue(doc.object());
-    // Accept a leading "$." (jq/JSONPath flavour) and dotted segments.
-    QString p = path;
-    if (p.startsWith("$.")) p = p.mid(2);
-    else if (p.startsWith("$")) p = p.mid(1);
-    for (const QString &seg : p.split('.', Qt::SkipEmptyParts)) {
-        if (cur.isObject()) {
-            cur = cur.toObject().value(seg);
-        } else if (cur.isArray()) {
-            bool ok = false;
-            const int idx = seg.toInt(&ok);
-            if (!ok || idx < 0 || idx >= cur.toArray().size()) return {};
-            cur = cur.toArray().at(idx);
-        } else {
-            return {};
-        }
-    }
-    if (cur.isString()) return cur.toString();
-    if (cur.isDouble()) return QString::number(cur.toDouble());
-    if (cur.isBool())   return cur.toBool() ? "true" : "false";
-    return {};
-}
+// findHeader/findCookieValue/jsonPathGet/sanitizeExtractedValue/substituteStr/
+// normalizeContentLength are pure and live in chain_runner_logic.cpp so they can be
+// unit-tested against Qt6::Core alone. This TU keeps extractOne() (it needs the
+// Proxy::HttpResponse struct) and run() (HttpClient I/O).
 
 QString extractOne(const Extract &e,
                    const Nullock::Proxy::HttpResponse &resp) {
@@ -87,58 +44,6 @@ QString extractOne(const Extract &e,
             return QString::number(resp.statusCode);
     }
     return {};
-}
-
-// ---- {{var}} substitution ---------------------------------------------
-QString substituteStr(const QString &in, const QHash<QString, QString> &vars) {
-    QString out = in;
-    static const QRegularExpression rx(R"(\{\{([A-Za-z_][A-Za-z0-9_]*)\}\})");
-    int offset = 0;
-    while (true) {
-        auto m = rx.match(out, offset);
-        if (!m.hasMatch()) break;
-        auto it = vars.find(m.captured(1));
-        if (it == vars.end()) { offset = m.capturedEnd(); continue; }
-        out.replace(m.capturedStart(), m.capturedLength(), *it);
-        offset = m.capturedStart() + it->size();
-    }
-    return out;
-}
-
-// After substitution the body length may have changed. If the request
-// carries a body, set Content-Length to match so the upstream doesn't
-// read a truncated/over-long body. Leaves bodyless requests untouched.
-QByteArray normalizeContentLength(const QByteArray &req) {
-    const int sep = req.indexOf("\r\n\r\n");
-    if (sep < 0) return req;                       // no header/body split
-    QByteArray head = req.left(sep);
-    const QByteArray bodyAndTail = req.mid(sep + 4);
-    const int bodyLen = bodyAndTail.size();
-
-    // Find an existing Content-Length header (case-insensitive) and rewrite,
-    // else only add one when there's actually a body.
-    const QList<QByteArray> lines = head.split('\n');
-    QByteArray rebuilt;
-    bool sawCl = false;
-    for (QByteArray line : lines) {
-        QByteArray trimmed = line;
-        if (trimmed.endsWith('\r')) trimmed.chop(1);
-        const int colon = trimmed.indexOf(':');
-        if (colon > 0) {
-            const QByteArray name = trimmed.left(colon).trimmed().toLower();
-            if (name == "content-length") {
-                sawCl = true;
-                rebuilt += "Content-Length: " + QByteArray::number(bodyLen) + "\r\n";
-                continue;
-            }
-        }
-        rebuilt += trimmed + "\r\n";
-    }
-    if (!sawCl && bodyLen > 0)
-        rebuilt += "Content-Length: " + QByteArray::number(bodyLen) + "\r\n";
-    rebuilt += "\r\n";
-    rebuilt += bodyAndTail;
-    return rebuilt;
 }
 
 } // namespace
@@ -176,10 +81,13 @@ Result run(const QList<Step> &steps, bool continueOnError) {
         sr.responseSize = static_cast<int>(res.parsed.body.size());
         sr.responsePreview = res.rawResponse.left(2 * 1024);
 
-        // Extract variables from this response into the bag.
+        // Extract variables from this response into the bag. SANITIZE first: the
+        // value is target-controlled and gets substituted into the next on-the-wire
+        // request, so a raw CR/LF (legal in a JSON string / regex capture) would be
+        // a header-injection / request-splitting / Content-Length-desync primitive.
         for (const Extract &e : step.extracts) {
             if (e.var.isEmpty()) continue;
-            const QString val = extractOne(e, res.parsed);
+            const QString val = sanitizeExtractedValue(extractOne(e, res.parsed));
             sr.extracted.insert(e.var, val);
             if (!val.isEmpty()) result.vars.insert(e.var, val);
         }

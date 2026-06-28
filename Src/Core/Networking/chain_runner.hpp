@@ -18,6 +18,7 @@
 #include <QByteArray>
 #include <QHash>
 #include <QList>
+#include <QPair>
 #include <QString>
 
 namespace Nullock::Core::ChainRunner {
@@ -62,5 +63,24 @@ struct Result {
 // send records the error; by default the chain stops there, unless
 // continueOnError is set.
 Result run(const QList<Step> &steps, bool continueOnError = false);
+
+// --- Pure request/response-mutation helpers, exposed for the unit test (no I/O;
+//     in chain_runner_logic.cpp, links Qt6::Core alone -- extractOne()/run()'s
+//     HttpClient work stays in chain_runner.cpp).
+//   findHeader / findCookieValue -- case-insensitive header / cookie lookup.
+//   jsonPathGet           -- dotted/$ JSONPath get; exact integer text preserved.
+//   sanitizeExtractedValue-- strip CR/LF/C0 from a target-derived value before it
+//                            is substituted (kills the header-injection / request-
+//                            split / CL-desync smuggling primitive).
+//   substituteStr         -- {{var}} expansion (no re-scan of inserted values).
+//   normalizeContentLength-- recompute Content-Length; reconcile Transfer-Encoding
+//                            (chunked drops CL) and collapse duplicate CL headers;
+//                            boundary detection tolerant of bare-LF framing.
+QString    findHeader(const QList<QPair<QString, QString>> &headers, const QString &name);
+QString    findCookieValue(const QString &raw, const QString &name);
+QString    jsonPathGet(const QByteArray &body, const QString &path);
+QString    sanitizeExtractedValue(const QString &v);
+QString    substituteStr(const QString &in, const QHash<QString, QString> &vars);
+QByteArray normalizeContentLength(const QByteArray &req);
 
 } // namespace Nullock::Core::ChainRunner

@@ -74,6 +74,7 @@ add_library(Networking STATIC
     intruder_engine.cpp
     intruder_engine.hpp
     chain_runner.cpp
+    chain_runner_logic.cpp
     chain_runner.hpp
     jwt_tool.cpp
     jwt_tool.hpp

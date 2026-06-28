@@ -1,0 +1,125 @@
+// Regression corpus for chain_runner's pure request/response-mutation helpers (no
+// network). Locks the soundness fixes from the adversarial audit (15 confirmed
+// findings, 4 distinct issues):
+//   - sanitizeExtractedValue strips CR/LF/C0 from a TARGET-derived value before it
+//     is substituted into the next on-the-wire request -- killing the header-
+//     injection / request-splitting / Content-Length-desync smuggling primitive
+//     (a JSON string or regex capture can legally carry \r\n);
+//   - normalizeContentLength reconciles Transfer-Encoding (chunked drops CL),
+//     collapses duplicate Content-Length headers, and no longer lets a bare-LF
+//     request bypass normalization (all CL.TE / TE.CL / dup-CL smuggling vectors);
+//   - jsonPathGet preserves exact integer text (a 64-bit id/token is not mangled
+//     to scientific notation by QString::number(double));
+//   - substituteStr does not re-scan an inserted value (no placeholder injection).
+//
+// Run via:  ctest -R chain_runner -V
+
+#include "chain_runner.hpp"
+
+#include <QCoreApplication>
+
+#include <cstdio>
+
+using namespace Nullock::Core::ChainRunner;
+
+namespace {
+int pass = 0, fail = 0;
+void chk(const char *label, bool ok) {
+    if (ok) ++pass;
+    else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; }
+}
+int countOccur(const QByteArray &hay, const char *needle) {
+    int n = 0, i = 0;
+    const QByteArray nd(needle);
+    while ((i = hay.indexOf(nd, i)) >= 0) { ++n; i += nd.size(); }
+    return n;
+}
+QHash<QString, QString> vars(std::initializer_list<QPair<QString, QString>> xs) {
+    QHash<QString, QString> h; for (const auto &p : xs) h.insert(p.first, p.second); return h;
+}
+} // namespace
+
+int main(int argc, char **argv) {
+    QCoreApplication app(argc, argv);
+
+    // ===== sanitizeExtractedValue: kill the CRLF injection sink =========
+    chk("sanitize: CR/LF stripped (header-injection killed)",
+        sanitizeExtractedValue("abc\r\nX-Admin: 1") == "abcX-Admin: 1");
+    chk("sanitize: a \\r\\n\\r\\n cannot survive to split the request",
+        !sanitizeExtractedValue("x\r\n\r\nGET /smuggled HTTP/1.1").contains('\r')
+        && !sanitizeExtractedValue("x\r\n\r\nGET /smuggled HTTP/1.1").contains('\n'));
+    chk("sanitize: a clean token is unchanged", sanitizeExtractedValue("tok_123ABC") == "tok_123ABC");
+    chk("sanitize: NUL and other C0 controls dropped",
+        sanitizeExtractedValue(QString("a") + QChar(0) + QString("b") + QChar(0x07) + QString("c")) == "abc");
+    chk("sanitize: a tab is kept (legal header whitespace)",
+        sanitizeExtractedValue("a\tb") == "a\tb");
+
+    // ===== jsonPathGet: exact integers + paths ==========================
+    chk("json: a 64-bit id is exact, NOT scientific notation",
+        jsonPathGet("{\"id\":123456789012345}", "id") == "123456789012345");
+    chk("json: a small int is exact", jsonPathGet("{\"n\":42}", "n") == "42");
+    chk("json: a non-integer double round-trips", jsonPathGet("{\"v\":3.5}", "v") == "3.5");
+    chk("json: nested object path", jsonPathGet("{\"a\":{\"b\":7}}", "a.b") == "7");
+    chk("json: array index path", jsonPathGet("{\"xs\":[{\"t\":\"ok\"}]}", "xs.0.t") == "ok");
+    chk("json: leading $. prefix accepted", jsonPathGet("{\"a\":1}", "$.a") == "1");
+    chk("json: a bool renders true/false", jsonPathGet("{\"b\":true}", "b") == "true");
+    chk("json: a missing path -> empty", jsonPathGet("{\"a\":1}", "z").isEmpty());
+    chk("json: invalid JSON -> empty", jsonPathGet("not json", "a").isEmpty());
+    chk("json: an out-of-range array index -> empty", jsonPathGet("{\"xs\":[1]}", "xs.5").isEmpty());
+
+    // ===== substituteStr: {{var}} expansion, no re-scan =================
+    chk("subst: a known var is expanded", substituteStr("Hi {{name}}", vars({{"name", "Bob"}})) == "Hi Bob");
+    chk("subst: adjacent vars", substituteStr("{{a}}{{b}}", vars({{"a", "1"}, {"b", "2"}})) == "12");
+    chk("subst: an unknown var is left untouched",
+        substituteStr("x{{nope}}y", vars({{"a", "1"}})) == "x{{nope}}y");
+    chk("subst: an inserted value is NOT re-scanned (no placeholder injection)",
+        substituteStr("{{a}}", vars({{"a", "{{b}}"}, {"b", "X"}})) == "{{b}}");
+
+    // ===== normalizeContentLength: framing soundness ====================
+    {
+        const QByteArray r = normalizeContentLength("POST /x HTTP/1.1\r\nHost: h\r\n\r\nhello");
+        chk("clen: a body with no CL gets one", r.contains("Content-Length: 5\r\n"));
+        chk("clen: exactly one CL header", countOccur(r, "Content-Length:") == 1);
+    }
+    chk("clen: an existing CL is rewritten to the real body length",
+        normalizeContentLength("POST /x HTTP/1.1\r\nContent-Length: 99\r\n\r\nhello").contains("Content-Length: 5\r\n"));
+    {
+        // TE.CL smuggling: chunked is authoritative -> Content-Length is DROPPED.
+        const QByteArray r = normalizeContentLength(
+            "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\nx");
+        chk("clen: Transfer-Encoding:chunked present -> NO Content-Length emitted (TE.CL fix)",
+            !r.contains("Content-Length"));
+        chk("clen: Transfer-Encoding is preserved", r.contains("Transfer-Encoding: chunked\r\n"));
+    }
+    {
+        // Duplicate Content-Length headers collapse to exactly one (smuggling fix).
+        const QByteArray r = normalizeContentLength(
+            "POST /x HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 99\r\n\r\nhello");
+        chk("clen: duplicate Content-Length headers collapse to ONE (dup-CL fix)",
+            countOccur(r, "Content-Length:") == 1);
+        chk("clen: the surviving CL is the real body length", r.contains("Content-Length: 5\r\n"));
+    }
+    {
+        // Bare-LF framing no longer bypasses normalization (desync fix).
+        const QByteArray r = normalizeContentLength("POST /x HTTP/1.1\nHost: h\n\nhello");
+        chk("clen: a bare-LF request is normalized (not passed through) -> gets a CL",
+            r.contains("Content-Length: 5\r\n"));
+        chk("clen: the normalized output uses CRLF", r.contains("Host: h\r\n"));
+    }
+    chk("clen: a bodyless request gets no Content-Length added",
+        !normalizeContentLength("GET /x HTTP/1.1\r\nHost: h\r\n\r\n").contains("Content-Length"));
+
+    // ===== findHeader / findCookieValue =================================
+    {
+        const QList<QPair<QString, QString>> h{ {"Content-Type", "json"}, {"X-Token", "abc"} };
+        chk("findHeader: case-insensitive", findHeader(h, "x-token") == "abc");
+        chk("findHeader: missing -> empty", findHeader(h, "nope").isEmpty());
+    }
+    chk("findCookie: named value", findCookieValue("a=1; sid=xyz; b=2", "sid") == "xyz");
+    chk("findCookie: case-insensitive name", findCookieValue("SID=xyz", "sid") == "xyz");
+    chk("findCookie: a value containing '=' is kept", findCookieValue("t=a=b=c", "t") == "a=b=c");
+    chk("findCookie: missing -> empty", findCookieValue("a=1", "z").isEmpty());
+
+    std::fprintf(stderr, "chain_runner_test: %d passed, %d failed\n", pass, fail);
+    return fail == 0 ? 0 : 1;
+}

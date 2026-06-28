@@ -267,6 +267,13 @@ add_subdirectory(tls_profile)
 # Run via: ctest -R update_check -V
 add_subdirectory(update_check)
 
+# Chain-runner request-mutation logic: extracted-value sanitization (CRLF-injection
+# / request-splitting kill), Content-Length normalization (TE.CL/dup-CL/bare-LF
+# smuggling fixes), exact-integer JSON extraction, and {{var}} substitution.
+# Links chain_runner_logic.cpp against Qt6::Core alone.
+# Run via: ctest -R chain_runner -V
+add_subdirectory(chain_runner)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403
