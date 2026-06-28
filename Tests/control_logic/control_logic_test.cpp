@@ -136,6 +136,27 @@ int main(int argc, char **argv) {
         mdTextSafe("a|b<c>d!e") == "a\\|b\\<c\\>d\\!e");
     chk("md-text: backslash itself escaped", mdTextSafe("a\\b") == "a\\\\b");
 
+    // ===== outbound request-builder CR/LF guard =========================
+    // Locks the /api/oast/blast fix: a url whose QUrl::path() decodes to raw
+    // CR/LF (Qt %0d%0a decoding), or an operator param name carrying CR/LF,
+    // must be rejected before it is concatenated into raw request bytes.
+    chk("smuggle: clean path passes", !hasRequestSmugglingChars("/api/v1/users"));
+    chk("smuggle: empty passes", !hasRequestSmugglingChars(""));
+    chk("smuggle: clean query passes", !hasRequestSmugglingChars("a=1&b=2"));
+    chk("smuggle: encoded-looking %0d%0a (literal text) passes -- not raw bytes",
+        !hasRequestSmugglingChars("/a%0d%0ab"));
+    chk("smuggle: a token-y param name passes", !hasRequestSmugglingChars("redirect_uri"));
+    // --- the rejections (decoded raw control bytes) ---
+    chk("smuggle: raw CR REJECTED", hasRequestSmugglingChars("/a\rX: y"));
+    chk("smuggle: raw LF REJECTED", hasRequestSmugglingChars("/a\nX: y"));
+    chk("smuggle: raw CRLF REJECTED", hasRequestSmugglingChars("/a\r\nHost: evil"));
+    chk("smuggle: NUL REJECTED", hasRequestSmugglingChars(QString("/a") + QChar('\0') + "b"));
+    chk("smuggle: CR-only at end REJECTED", hasRequestSmugglingChars("trailing\r"));
+    chk("smuggle: param name with CRLF REJECTED (the OAST-1 vector)",
+        hasRequestSmugglingChars("x HTTP/1.1\r\nHost: evil.example"));
+    chk("smuggle: decoded path with CRLF REJECTED (the OAST-2 vector)",
+        hasRequestSmugglingChars("/a\r\nX-Injected: pwn"));
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

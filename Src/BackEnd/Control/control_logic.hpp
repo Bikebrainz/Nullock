@@ -55,4 +55,15 @@ QString mdCodeSpanSafe(const QString &s);
 // payload can't inject a link/image/emphasis/HTML.
 QString mdTextSafe(const QString &s);
 
+// --- Outbound request-builder CR/LF guard --------------------------------
+// A request-line / header component (path, query, param name) built from a
+// parsed URL or operator JSON and concatenated RAW into outbound HTTP request
+// bytes must not carry CR, LF, or NUL. QUrl::path() DECODES percent-encoded
+// bytes (incl. %0d%0a -> raw CR/LF on Qt 6.7), so a crafted url could splice a
+// forged header / smuggled second request into every probe a handler builds.
+// Returns true if s contains any such byte, so the caller can reject it --
+// mirroring the reject-on-CRLF convention the Core/Networking buildGet builders
+// already follow.
+bool hasRequestSmugglingChars(const QString &s);
+
 } // namespace Nullock::Control::ControlLogic

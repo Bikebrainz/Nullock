@@ -70,4 +70,12 @@ QString mdTextSafe(const QString &s) {
     return out;
 }
 
+bool hasRequestSmugglingChars(const QString &s) {
+    for (const QChar ch : s) {
+        const ushort u = ch.unicode();
+        if (u == '\r' || u == '\n' || u == '\0') return true;
+    }
+    return false;
+}
+
 } // namespace Nullock::Control::ControlLogic

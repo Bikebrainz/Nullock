@@ -3145,6 +3145,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const bool useTls  = (u.scheme() == "https");
         QString basePath   = u.path().isEmpty() ? "/" : u.path();
         const QString existingQuery = u.query();
+        // basePath/existingQuery come from QUrl path()/query(); QUrl::path()
+        // DECODES percent-encoded bytes (incl. %0d%0a -> raw CR/LF on Qt 6.7),
+        // so a crafted url could splice CR/LF into the request line of every
+        // shot built below. Reject any url whose path/query carries
+        // request-smuggling control bytes (host is already CR/LF-rejected by the
+        // u.isValid() guard above; query() does not decode CR/LF today, but the
+        // check future-proofs it).
+        if (ControlLogic::hasRequestSmugglingChars(basePath)
+            || ControlLogic::hasRequestSmugglingChars(existingQuery))
+            return okJson({{ "ok", false },
+                           { "error", "url path/query contains control characters" }});
 
         // Curated SSRF param names. Server-side code that fetches a
         // user-supplied URL almost always names the param one of these.
@@ -3190,7 +3201,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             const QString cbUrl = tok.value("pathUrl").toString();
             QString q = existingQuery;
             if (!q.isEmpty()) q += "&";
-            q += pname + "=" + QString::fromUtf8(QUrl::toPercentEncoding(cbUrl));
+            // pname is operator-supplied JSON; percent-encode it (not just the
+            // value) so a CR/LF/space in a param name can't split the request
+            // line -- matching the encoding already applied to the value.
+            q += QString::fromUtf8(QUrl::toPercentEncoding(pname))
+               + "=" + QString::fromUtf8(QUrl::toPercentEncoding(cbUrl));
             Shot s;
             s.kind = "ssrf-oast"; s.note = "param:" + pname;
             s.token = tok.value("token").toString(); s.cbUrl = cbUrl;
@@ -3287,7 +3302,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     const QString payload = QString::fromLatin1(cf).arg(cbUrl);
                     QString q = existingQuery;
                     if (!q.isEmpty()) q += "&";
-                    q += pname + "=" + QString::fromUtf8(QUrl::toPercentEncoding(payload));
+                    // pname here is from a static list (kCmdParams) so already
+                    // token-safe, but encode it too for consistency with the
+                    // SSRF path and to stay safe if it ever becomes dynamic.
+                    q += QString::fromUtf8(QUrl::toPercentEncoding(pname))
+                       + "=" + QString::fromUtf8(QUrl::toPercentEncoding(payload));
                     Shot s;
                     s.kind = "rce-oast"; s.note = "param:" + pname;
                     s.token = tok.value("token").toString(); s.cbUrl = cbUrl;
