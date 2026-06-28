@@ -1,5 +1,7 @@
 #include "project_store.hpp"
 
+#include "project_logic.hpp"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -113,31 +115,9 @@ QStringList ProjectStore::listProjects() const {
     return names;
 }
 
-// Strict whitelist. Previously we only blocked `/`, `\\`, and `..`, which
-// missed: Windows drive letters (e.g. "D:foo" placed alongside the path
-// separator quirks), reserved device names (CON/NUL/PRN/COM1..9/LPT1..9/
-// AUX/CONOUT$), trailing dot/space (Win32 silently strips them and the
-// resulting path canonicalises to a sibling), NUL bytes (Qt -> Win32 API
-// boundary truncates), and overlong names.
-static bool isValidProjectName(const QString &name) {
-    if (name.isEmpty() || name.size() > 64) return false;
-    if (name.contains('\0') || name.contains('/') || name.contains('\\')
-        || name.contains("..") || name.startsWith('.') || name.startsWith(' ')
-        || name.endsWith('.') || name.endsWith(' ')) return false;
-    static const QStringList kReserved = {
-        "CON","NUL","PRN","AUX","CONIN$","CONOUT$",
-        "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
-        "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9",
-    };
-    if (kReserved.contains(name.toUpper())) return false;
-    for (QChar c : name) {
-        const ushort u = c.unicode();
-        if (u < 0x20) return false;            // control chars
-        if (!c.isLetterOrNumber()
-            && c != '_' && c != '-' && c != ' ' && c != '.') return false;
-    }
-    return true;
-}
+// The strict project-name whitelist (the path-traversal guard) is pure and lives
+// in project_logic.cpp so it can be unit-tested against Qt6::Core alone.
+using ProjectLogic::isValidProjectName;
 
 bool ProjectStore::openByName(const QString &name) {
     if (!isValidProjectName(name)) return false;

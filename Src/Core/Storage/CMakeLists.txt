@@ -4,6 +4,8 @@
 add_library(Storage STATIC
     project_store.cpp
     project_store.hpp
+    project_logic.cpp
+    project_logic.hpp
     history_index.cpp
     history_index.hpp
 )

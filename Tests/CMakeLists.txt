@@ -306,6 +306,12 @@ add_subdirectory(proxy_logic)
 # Run via: ctest -R cert_logic -V
 add_subdirectory(cert_logic)
 
+# Project-store path-traversal guard: project-name validation (rejects ../, path
+# separators, drive colons, control bytes, and Windows reserved device names incl.
+# the CON.txt stem case). Compiles project_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R project_logic -V
+add_subdirectory(project_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403
