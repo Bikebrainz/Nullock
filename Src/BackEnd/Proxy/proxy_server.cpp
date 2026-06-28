@@ -4,6 +4,7 @@
 #include "extensions_api.hpp"
 #include "http2_client.hpp"
 #include "intercept.hpp"
+#include "proxy_logic.hpp"
 #include "session_manager.hpp"
 #include "session_rules.hpp"
 #include "networking.hpp"
@@ -28,6 +29,13 @@
 namespace Nullock::Proxy {
 
 namespace {
+
+// Pure framing helpers now live in proxy_logic.cpp (unit-tested); pull them in by
+// name so the existing call sites read unchanged.
+using HttpLogic::findHeader;
+using HttpLogic::isChunkedTransfer;
+using HttpLogic::isFramingSafe;
+using HttpLogic::parseHeaders;
 
 constexpr int kReadTimeoutMs      = 15'000;
 constexpr int kHandshakeTimeoutMs = 3'000;  // short so h2-only hosts bypass fast
@@ -65,96 +73,19 @@ void readUntilClose(QTcpSocket *socket, QByteArray &out) {
     out.append(socket->readAll());
 }
 
+// parseHeaders / findHeader / isFramingSafe / isChunkedTransfer and the bounded
+// chunked decoder live in proxy_logic.cpp (pure, Qt6::Core only) so they can be
+// unit-tested; this socket-side wrapper just feeds bytes to the pure decoder.
 bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded) {
+    using HttpLogic::ChunkResult;
     while (true) {
-        int crlf = buffer.indexOf("\r\n");
-        while (crlf < 0) {
-            if (!socket->waitForReadyRead(kReadTimeoutMs)) return false;
-            buffer.append(socket->readAll());
-            crlf = buffer.indexOf("\r\n");
-        }
-        QByteArray sizeLine = buffer.left(crlf);
-        const int semi = sizeLine.indexOf(';');
-        if (semi >= 0) sizeLine = sizeLine.left(semi);
-        bool ok = false;
-        const qint64 chunkSize = sizeLine.trimmed().toLongLong(&ok, 16);
-        if (!ok) return false;
-        buffer.remove(0, crlf + 2);
-        if (chunkSize == 0) {
-            while (buffer.indexOf("\r\n") < 0) {
-                if (!socket->waitForReadyRead(kReadTimeoutMs)) return false;
-                buffer.append(socket->readAll());
-            }
-            const int end = buffer.indexOf("\r\n");
-            buffer.remove(0, end + 2);
-            return true;
-        }
-        while (buffer.size() < chunkSize + 2) {
-            if (!socket->waitForReadyRead(kReadTimeoutMs)) return false;
-            buffer.append(socket->readAll());
-        }
-        decoded.append(buffer.left(chunkSize));
-        buffer.remove(0, chunkSize + 2);
+        const ChunkResult r = HttpLogic::decodeChunkedAvailable(buffer, decoded);
+        if (r == ChunkResult::Complete) return true;
+        if (r == ChunkResult::Error)    return false;   // bad / oversized / overflowing chunk
+        // NeedMore: pull more wire bytes and try again.
+        if (!socket->waitForReadyRead(kReadTimeoutMs)) return false;
+        buffer.append(socket->readAll());
     }
-}
-
-QList<QPair<QString, QString>> parseHeaders(const QByteArray &headerBlock) {
-    QList<QPair<QString, QString>> headers;
-    const QList<QByteArray> lines = headerBlock.split('\n');
-    for (int i = 1; i < lines.size(); ++i) {
-        QByteArray line = lines[i];
-        if (line.endsWith('\r')) line.chop(1);
-        if (line.isEmpty()) continue;
-        const int colon = line.indexOf(':');
-        if (colon <= 0) continue;
-        headers.append({
-            QString::fromLatin1(line.left(colon)).trimmed(),
-            QString::fromLatin1(line.mid(colon + 1)).trimmed()
-        });
-    }
-    return headers;
-}
-
-QString findHeader(const QList<QPair<QString, QString>> &headers, const QString &name) {
-    for (const auto &h : headers)
-        if (h.first.compare(name, Qt::CaseInsensitive) == 0)
-            return h.second;
-    return {};
-}
-
-// RFC 7230 §3.3.3 / RFC 9112 §6.3: a message must not carry both
-// Content-Length and Transfer-Encoding, and must not have conflicting
-// duplicate Content-Length values. A hostile upstream (or hostile client)
-// who sends both can desync the proxy from the next hop and turn one
-// captured request/response into two; the trailing bytes of the "longer"
-// interpretation become the prefix of a smuggled second message on the
-// keep-alive socket. Reject any message that smells like this -- return
-// false from the parser collapses the connection cleanly.
-bool isFramingSafe(const QList<QPair<QString, QString>> &headers) {
-    bool sawTE = false;
-    QString cl;
-    bool clConflict = false;
-    for (const auto &h : headers) {
-        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) {
-            sawTE = true;
-        } else if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) {
-            // A single header value may itself be a comma list ("12, 12");
-            // RFC says reject if the values differ. Compare normalized.
-            const QStringList vals = h.second.split(',', Qt::SkipEmptyParts);
-            for (QString v : vals) {
-                v = v.trimmed();
-                if (v.isEmpty()) { clConflict = true; break; }
-                bool ok = false;
-                const qint64 n = v.toLongLong(&ok);
-                if (!ok || n < 0) { clConflict = true; break; }
-                if (cl.isEmpty()) cl = v;
-                else if (cl != v) { clConflict = true; break; }
-            }
-            if (clConflict) return false;
-        }
-    }
-    if (sawTE && !cl.isEmpty()) return false;
-    return true;
 }
 
 void rewriteHostPort(HttpRequest &req) {
@@ -593,9 +524,10 @@ private:
 
         if (req.method.compare("CONNECT", Qt::CaseInsensitive) == 0) return true;
 
-        // Smuggling defence: refuse messages framed by both CL and TE,
-        // or by conflicting/duplicate Content-Length values.
-        if (!isFramingSafe(req.headers)) return false;
+        // Smuggling defence: refuse messages framed by both CL and TE, conflicting/
+        // duplicate Content-Length, an obfuscated Transfer-Encoding, a control-byte
+        // header, or ANY Transfer-Encoding on a request (no request chunked decoder).
+        if (!isFramingSafe(req.headers, /*isRequest=*/true)) return false;
 
         const QString cl = findHeader(req.headers, "Content-Length");
         if (!cl.isEmpty()) {
@@ -645,12 +577,14 @@ private:
         // once would otherwise let us pick one length and the browser
         // pick the other, splitting one response into two on the
         // keep-alive socket.
-        if (!isFramingSafe(resp.headers)) return false;
+        if (!isFramingSafe(resp.headers, /*isRequest=*/false)) return false;
 
         const QString te = findHeader(resp.headers, "Transfer-Encoding");
         const QString cl = findHeader(resp.headers, "Content-Length");
 
-        if (te.compare("chunked", Qt::CaseInsensitive) == 0) {
+        // Same canonical chunked decision the guard used (last coding == chunked),
+        // so the guard and the decoder can't disagree about the body boundary.
+        if (isChunkedTransfer(te)) {
             QByteArray decoded;
             if (!readChunkedBody(upstream, rest, decoded)) return false;
             resp.body = decoded;

@@ -2,6 +2,8 @@
 add_library(Proxy STATIC
     proxy_server.cpp
     proxy_server.hpp
+    proxy_logic.cpp
+    proxy_logic.hpp
     cert_authority.cpp
     cert_authority.hpp
     intercept.cpp

@@ -292,6 +292,13 @@ add_subdirectory(scan_bridge)
 # Run via: ctest -R websocket -V
 add_subdirectory(websocket)
 
+# Proxy HTTP/1.1 framing logic (request-smuggling defence): CL/TE safety incl.
+# Transfer-Encoding validation + request-side TE rejection, the CRLF-reinjection
+# guard, and the bounded/overflow-safe chunked decoder. Compiles proxy_logic.cpp
+# directly; links Qt6::Core.
+# Run via: ctest -R proxy_logic -V
+add_subdirectory(proxy_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403
