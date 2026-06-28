@@ -1,5 +1,7 @@
 #include "h2_events.hpp"
 
+#include "h2_logic.hpp"
+
 #include <QDateTime>
 #include <QMutexLocker>
 
@@ -42,26 +44,36 @@ void H2EventLog::noteFrame(const QString &conn, int frameType, int flags,
             if (sent) { it->bytesOut += bytes; ++it->framesOut; }
             else      { it->bytesIn  += bytes; ++it->framesIn;  }
         }
+        H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
     }
     emit eventsChanged();
 }
 
 void H2EventLog::noteRequestHeader(const QString &conn, qint32 streamId,
                                    const QString &method, const QString &path) {
-    QMutexLocker lk(&m_mutex);
-    const QString k = streamKey(conn, streamId);
-    auto &s = m_streams[k];
-    s.streamId = streamId;
-    s.conn     = conn;
-    s.method   = method;
-    s.path     = path;
-    if (s.openedAtMs == 0) s.openedAtMs = QDateTime::currentMSecsSinceEpoch();
+    {
+        QMutexLocker lk(&m_mutex);
+        const QString k = streamKey(conn, streamId);
+        auto &s = m_streams[k];
+        s.streamId = streamId;
+        s.conn     = conn;
+        // :method / :path are untrusted proxied bytes -- clamp before storing.
+        s.method   = H2Logic::clampTelemetryField(method, H2Logic::kMaxTelemetryFieldLen);
+        s.path     = H2Logic::clampTelemetryField(path,   H2Logic::kMaxTelemetryFieldLen);
+        if (s.openedAtMs == 0) s.openedAtMs = QDateTime::currentMSecsSinceEpoch();
+        H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
+    }
+    emit eventsChanged();
 }
 
 void H2EventLog::noteResponseStatus(const QString &conn, qint32 streamId, int status) {
-    QMutexLocker lk(&m_mutex);
-    const QString k = streamKey(conn, streamId);
-    m_streams[k].status = status;
+    {
+        QMutexLocker lk(&m_mutex);
+        const QString k = streamKey(conn, streamId);
+        m_streams[k].status = status;
+        H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
+    }
+    emit eventsChanged();
 }
 
 void H2EventLog::noteRstStream(const QString &conn, qint32 streamId, quint32 errCode) {
@@ -71,13 +83,18 @@ void H2EventLog::noteRstStream(const QString &conn, qint32 streamId, quint32 err
         m_streams[k].lastError = errCode;
         m_streams[k].closed    = true;
         if (!m_events.isEmpty()) m_events.last().errorCode = errCode;
+        H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
     }
     emit eventsChanged();
 }
 
 void H2EventLog::noteStreamClosed(const QString &conn, qint32 streamId) {
-    QMutexLocker lk(&m_mutex);
-    m_streams[streamKey(conn, streamId)].closed = true;
+    {
+        QMutexLocker lk(&m_mutex);
+        m_streams[streamKey(conn, streamId)].closed = true;
+        H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
+    }
+    emit eventsChanged();
 }
 
 QList<H2Event> H2EventLog::eventsSince(qint64 sinceTs) const {

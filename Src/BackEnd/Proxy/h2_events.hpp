@@ -13,9 +13,12 @@
 //   * Surface SETTINGS / WINDOW_UPDATE asymmetry that flags weird WAF
 //     behaviour
 //
-// Per-connection state is held in H2EventLog as a ring of
-// kMaxEventsPerConn events; rolling buffer behaviour mirrors
-// WsRepeater so attacker bytes can't pin RAM.
+// State is held in H2EventLog as a single process-wide ring of the most
+// recent kMaxEvents frame events (rolling buffer, mirrors WsRepeater) PLUS a
+// per-stream summary map. BOTH are bounded so proxied (untrusted) traffic
+// can't pin RAM: the event ring drops its oldest, and the summary map is
+// capped at H2Logic::kMaxStreams with oldest/closed-first eviction. Stored
+// :method / :path strings are length-clamped (H2Logic::kMaxTelemetryFieldLen).
 
 #include <QByteArray>
 #include <QMap>
@@ -46,8 +49,8 @@ struct H2StreamSummary {
     int     status     = 0;
     qint64  bytesIn    = 0;
     qint64  bytesOut   = 0;
-    int     framesIn   = 0;
-    int     framesOut  = 0;
+    qint64  framesIn   = 0;   // 64-bit: a long-lived stream can exceed INT_MAX frames
+    qint64  framesOut  = 0;
     quint32 lastError  = 0;
     qint64  openedAtMs = 0;
     bool    closed     = false;

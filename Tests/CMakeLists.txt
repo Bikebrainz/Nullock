@@ -333,6 +333,12 @@ add_subdirectory(history_logic)
 # Run via: ctest -R control_logic -V
 add_subdirectory(control_logic)
 
+# HTTP/2 telemetry-sink bounding: the per-stream summary-map cap (closed-first,
+# then oldest eviction) + the :method/:path field clamp that keep proxied
+# (untrusted) h2 traffic from pinning RAM. Compiles h2_logic.cpp directly; Qt6::Core.
+# Run via: ctest -R h2_logic -V
+add_subdirectory(h2_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

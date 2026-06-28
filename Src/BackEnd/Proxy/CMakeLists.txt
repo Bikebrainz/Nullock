@@ -21,6 +21,8 @@ add_library(Proxy STATIC
     http1_parser.hpp
     h2_events.cpp
     h2_events.hpp
+    h2_logic.cpp
+    h2_logic.hpp
 )
 
 # nghttp2 lives at D:/vcpkg/installed/x64-windows. There's no CMake config
