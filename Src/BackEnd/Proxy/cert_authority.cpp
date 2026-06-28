@@ -1,5 +1,7 @@
 #include "cert_authority.hpp"
 
+#include "cert_logic.hpp"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -77,38 +79,10 @@ void lockdownPrivateKeyFile(const QString &path) {
 #endif
 }
 
-QString sanitize(const QString &host) {
-    QString out;
-    out.reserve(host.size());
-    for (QChar c : host) {
-        const bool ok = c.isLetterOrNumber() || c == '-' || c == '.' || c == '_';
-        out.append(ok ? c : QChar('_'));
-    }
-    return out;
-}
-
-// Strict DNS-host validation. A malicious client that drives a
-// CONNECT to "evil\nbasicConstraints = CA:TRUE" could otherwise inject
-// extension lines into the SAN config file, and "evil/CN=bank.com" could
-// graft extra DN fields onto the cert subject. Cheap to add, defense in
-// depth -- if the client's target isn't a real hostname, refuse to mint.
-bool isValidHostForCert(const QString &host) {
-    if (host.isEmpty() || host.size() > 253) return false;
-    // Refuse leading '-' / '_' -- openssl reads `-subj /CN=<host>` as an
-    // arg-list, and some subcommands still treat a leading dash on a
-    // value position as an option in odd situations. Defence in depth
-    // even though QProcess::setArguments doesn't expand through a shell.
-    if (host.startsWith('-') || host.startsWith('_')) return false;
-    for (QChar c : host) {
-        if (c.isLetterOrNumber()) continue;
-        if (c == QChar('-') || c == QChar('.') || c == QChar('_')) continue;
-        return false;
-    }
-    // No leading/trailing dot, no double dot.
-    if (host.startsWith('.') || host.endsWith('.')) return false;
-    if (host.contains("..")) return false;
-    return true;
-}
+// isValidHostForCert() + sanitize() (the host-injection guard) are pure and live
+// in cert_logic.cpp so they can be unit-tested against Qt6::Core alone.
+using CertLogic::isValidHostForCert;
+using CertLogic::sanitize;
 
 } // namespace
 

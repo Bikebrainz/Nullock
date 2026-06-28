@@ -299,6 +299,13 @@ add_subdirectory(websocket)
 # Run via: ctest -R proxy_logic -V
 add_subdirectory(proxy_logic)
 
+# MITM-CA host-injection guard: the strict DNS-host validation that stops an
+# attacker-controlled SNI/host injecting an x509 extension (CA:TRUE) into the SAN
+# ext file, a DN field into -subj, or path traversal into the leaf-cert files; plus
+# the sanitize()==identity invariant. Compiles cert_logic.cpp directly; Qt6::Core.
+# Run via: ctest -R cert_logic -V
+add_subdirectory(cert_logic)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403
