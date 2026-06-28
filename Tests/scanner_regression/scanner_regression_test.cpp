@@ -115,6 +115,47 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html",
                  "<html><head><script src=\"https://example.test/app.js\"></script></head></html>") });
 
+    // ---- Mass-email outbound (the pii-email-mass ReDoS-fix regression) --
+    tc.append({ "3+ emails outbound to public host -> pii-email-mass", "pii-email-mass", false,
+        makeReq("POST", "analytics.public.test", "/collect", {},
+                "a@one.com b@two.com c@three.com"),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ "only 2 emails -> no pii-email-mass", "pii-email-mass", true,
+        makeReq("POST", "analytics.public.test", "/collect", {},
+                "a@one.com b@two.com"),
+        makeResp(200, "application/json", "{}") });
+
+    // ReDoS regression: a 30KB near-miss body (incomplete emails, no TLD) must
+    // NOT fire AND must complete fast -- the old (?:email.*?){3,} mega-pattern
+    // would catastrophically backtrack here; the linear count-based one does not.
+    tc.append({ "30KB near-miss email body -> no pii-email-mass, no ReDoS", "pii-email-mass", true,
+        makeReq("POST", "analytics.public.test", "/collect", {},
+                QByteArray("user@host ").repeated(3000)),
+        makeResp(200, "application/json", "{}") });
+
+    // ---- Cloud-bucket detection + the O(n^2) ReDoS-fix regression ------
+    tc.append({ "S3 bucket URL in HTML -> cloud-s3-bucket", "cloud-s3-bucket", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>see https://my-bucket.s3.us-east-1.amazonaws.com/k</body></html>") });
+
+    // ReDoS regression: 500KB of dense ".s3." anchors with NO amazonaws tail must
+    // NOT fire AND must complete fast -- the old unbounded [..]+ ... [..]* runs were
+    // O(n^2) here (~35s at 500KB); the length-bounded runs are linear.
+    tc.append({ "500KB dense .s3. body -> no cloud-s3-bucket, no ReDoS", "cloud-s3-bucket", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 QByteArray("<html><body>https://") + QByteArray("x.s3.").repeated(100000)
+                     + QByteArray("</body></html>")) });
+
+    // ---- Subdomain-takeover cargo FP removed ---------------------------
+    tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,
+        makeReq("GET", "example.test", "/missing"),
+        makeResp(404, "text/html",
+                 "<html><head><title>404 Not Found</title></head>"
+                 "<body><h1>404 Not Found</h1><hr>nginx</body></html>") });
+
     // ---- Cookie hardening ----------------------------------------------
     tc.append({ "cookie missing HttpOnly", "cookie-no-httponly", false,
         makeReq("GET", "example.test", "/"),

@@ -24,6 +24,13 @@ const QStringList kSensitiveQueryKeys = {
 
 constexpr int kCap = 1000;
 
+// A hostile response can pack thousands of tiny Set-Cookie headers into the 64KB
+// header budget; the cookie-hardening loops fire up to ~3 findings each, which
+// without a bound would flush the kCap=1000 findings ring many times over and
+// EVICT real findings (leaked keys, RCE, CVEs). Cap how many Set-Cookie headers
+// each loop inspects -- a legitimate response sets a handful.
+constexpr int kMaxCookiesScanned = 40;
+
 bool isHtmlResponse(const QString &contentType) {
     return contentType.contains("text/html",          Qt::CaseInsensitive)
         || contentType.contains("application/xhtml",  Qt::CaseInsensitive);
@@ -227,22 +234,26 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // Set-Cookie hardening flags. Most servers set the cookie multiple
-    // times in one response (auth + csrf + lang) so walk every one.
-    for (const QString &cookie : allHeaderValues(resp.headers, "Set-Cookie")) {
-        const QString lc = cookie.toLower();
-        const QString name = cookie.section('=', 0, 0).trimmed();
-        if (!lc.contains("httponly"))
-            addFinding(rowId, req, resp, "low", "cookie-no-httponly",
-                       "Cookie set without HttpOnly: " + name,
-                       cookie.left(240));
-        if (resp.wasTls && !lc.contains("secure"))
-            addFinding(rowId, req, resp, "low", "cookie-no-secure",
-                       "Cookie set on TLS without Secure: " + name,
-                       cookie.left(240));
-        if (!lc.contains("samesite"))
-            addFinding(rowId, req, resp, "info", "cookie-no-samesite",
-                       "Cookie set without SameSite: " + name,
-                       cookie.left(240));
+    // times in one response (auth + csrf + lang) so walk every one (capped).
+    {
+        int cookieN = 0;
+        for (const QString &cookie : allHeaderValues(resp.headers, "Set-Cookie")) {
+            if (cookieN++ >= kMaxCookiesScanned) break;   // bound finding-spam
+            const QString lc = cookie.toLower();
+            const QString name = cookie.section('=', 0, 0).trimmed();
+            if (!lc.contains("httponly"))
+                addFinding(rowId, req, resp, "low", "cookie-no-httponly",
+                           "Cookie set without HttpOnly: " + name,
+                           cookie.left(240));
+            if (resp.wasTls && !lc.contains("secure"))
+                addFinding(rowId, req, resp, "low", "cookie-no-secure",
+                           "Cookie set on TLS without Secure: " + name,
+                           cookie.left(240));
+            if (!lc.contains("samesite"))
+                addFinding(rowId, req, resp, "info", "cookie-no-samesite",
+                           "Cookie set without SameSite: " + name,
+                           cookie.left(240));
+        }
     }
 
     // Server header version leak. The bare product name is normally
@@ -431,7 +442,9 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- Cookie hardening v2: prefixes + scope ---------------------------
+    int cookieN2 = 0;
     for (const QString &cookie : allHeaderValues(resp.headers, "Set-Cookie")) {
+        if (cookieN2++ >= kMaxCookiesScanned) break;   // bound finding-spam
         const QString lc = cookie.toLower();
         const QString name = cookie.section('=', 0, 0).trimmed();
         // __Secure- prefix requires Secure.
@@ -819,15 +832,21 @@ void PassiveScanner::checkResponse(int rowId,
     if (html && resp.body.size() < 1 * 1024 * 1024) {
         const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
         struct CloudPat { const char *kind; const char *label; QRegularExpression rx; };
+        // The host/bucket character runs are LENGTH-BOUNDED ({0,253}, the max DNS
+        // name) instead of +/*. The S3 pattern has two runs over the same class
+        // separated by a `.s3.` anchor that can REPEAT in a crafted body; an
+        // unbounded run then re-scans to EOF at every anchor -> O(n^2) backtracking
+        // (measured: 320KB ~= 14s) on the MAIN/GUI thread. Bounding each run caps
+        // the per-anchor rescan to 253, making the whole match linear.
         static const CloudPat kCloud[] = {
             { "cloud-s3-bucket", "AWS S3 bucket",
-              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.s3[.\-][a-zA-Z0-9.\-]*amazonaws\.com)") },
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]{1,253}\.s3[.\-][a-zA-Z0-9.\-]{0,253}amazonaws\.com)") },
             { "cloud-gcs-bucket", "GCS bucket",
-              QRegularExpression(R"(https?://storage\.googleapis\.com/[a-zA-Z0-9._\-]+)") },
+              QRegularExpression(R"(https?://storage\.googleapis\.com/[a-zA-Z0-9._\-]{1,253})") },
             { "cloud-azure-blob", "Azure Blob",
-              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.blob\.core\.windows\.net)") },
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]{1,253}\.blob\.core\.windows\.net)") },
             { "cloud-firebase", "Firebase Realtime DB",
-              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]+\.firebaseio\.com)") },
+              QRegularExpression(R"(https?://[a-zA-Z0-9.\-]{1,253}\.firebaseio\.com)") },
             { "cloud-firebase-storage", "Firebase Storage",
               QRegularExpression(R"(https?://firebasestorage\.googleapis\.com)") },
         };
@@ -1198,8 +1217,10 @@ void PassiveScanner::checkResponse(int rowId,
               "Sorry, this shop is currently unavailable" },
             { "takeover-tumblr",    "Tumblr Whatever you were looking",
               "Whatever you were looking for" },
-            { "takeover-cargo",     "Cargo Collective error",
-              "404 Not Found" },  // weakly specific; combine with status
+            // (removed) takeover-cargo: its needle was the literal "404 Not Found",
+            // the stock body of nginx/Apache/IIS/Express/Flask -- so it fired a HIGH
+            // takeover finding on essentially EVERY default 404. A ubiquitous string
+            // must never map to a HIGH on its own; drop it rather than emit noise.
         };
         for (const auto &st : kSTs) {
             if (body.contains(QString::fromLatin1(st.needle), Qt::CaseInsensitive)) {
@@ -1244,9 +1265,6 @@ void PassiveScanner::checkResponse(int rowId,
                   QRegularExpression(R"(\b\d{3}-\d{2}-\d{4}\b)") },
                 { "pii-cc-outbound", "Credit card number (Luhn shape)",
                   QRegularExpression(R"(\b(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6011\d{12})\b)") },
-                { "pii-email-mass", "Email-shape (multiple)",
-                  QRegularExpression(R"((?:[a-zA-Z0-9._-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}.*?){3,})",
-                                     QRegularExpression::DotMatchesEverythingOption) },
                 { "pii-phone-us", "US phone number",
                   QRegularExpression(R"(\b\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b)") },
                 { "pii-iban", "IBAN",
@@ -1257,6 +1275,27 @@ void PassiveScanner::checkResponse(int rowId,
                     addFinding(rowId, req, resp, "medium", p.kind,
                                QString("Outbound %1 in request to public host %2")
                                    .arg(QString::fromLatin1(p.label), req.host),
+                               "review whether this destination is intended for this data class");
+                }
+            }
+
+            // Mass-email leak: 3+ distinct email-shaped tokens. Counted via a
+            // SINGLE linear regex + a bounded globalMatch loop, NOT the old
+            // (?:email.*?){3,} mega-pattern -- that one nested a + inside a {3,}
+            // repeat followed by a lazy .* (DotMatchesEverything), which
+            // catastrophically backtracks on a near-miss body. checkResponse runs
+            // on the MAIN/GUI thread (the queued responseReceived connection), so
+            // that was a per-response main-thread ReDoS / UI freeze.
+            {
+                static const QRegularExpression rxEmail(
+                    R"(\b[a-zA-Z0-9._-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b)");
+                auto eit = rxEmail.globalMatch(combined);
+                int emails = 0;
+                while (eit.hasNext() && emails < 3) { eit.next(); ++emails; }
+                if (emails >= 3) {
+                    addFinding(rowId, req, resp, "medium", "pii-email-mass",
+                               QString("Outbound %1 in request to public host %2")
+                                   .arg(QStringLiteral("Email-shape (multiple)"), req.host),
                                "review whether this destination is intended for this data class");
                 }
             }
