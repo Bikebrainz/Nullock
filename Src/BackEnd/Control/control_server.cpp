@@ -4868,11 +4868,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
         const QJsonObject paths = spec.value("paths").toObject();
         int imported = 0;
+        bool truncated = false;
+        // A hostile / huge spec could otherwise emit (paths x 8 methods)
+        // synthetic entries, each persisted AND signalled synchronously on the
+        // main thread (appendEntry + entryLoaded) -- an unbounded UI-freeze +
+        // DB-bloat DoS. Cap the number of operations we materialize.
+        constexpr int kMaxImportOps = 2000;
         static const QStringList kMethods = {
             "get", "put", "post", "delete", "options", "head", "patch", "trace"
         };
 
-        for (auto it = paths.constBegin(); it != paths.constEnd(); ++it) {
+        for (auto it = paths.constBegin(); it != paths.constEnd() && !truncated; ++it) {
             const QString rawPath = it.key();
             const QJsonObject pathItem = it.value().toObject();
             // Path-level params would apply to every operation -- we don't
@@ -4880,6 +4886,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
             for (const QString &m : kMethods) {
                 if (!pathItem.contains(m)) continue;
+                if (imported >= kMaxImportOps) { truncated = true; break; }
                 const QJsonObject op = pathItem.value(m).toObject();
 
                 // Substitute path templates {paramName} with the param's
@@ -4955,6 +4962,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     finalPath += "?" + parts.join("&");
                 }
 
+                // Don't persist a synthetic request whose path carries raw
+                // CR/LF (a hostile-spec path/template) -- it would render as a
+                // request-line / header split when the operator later sends it.
+                // (host comes from QUrl::host() above, which already rejects
+                // CR/LF.)
+                if (ControlLogic::hasRequestSmugglingChars(finalPath)) continue;
+
                 Nullock::Proxy::HttpRequest req;
                 req.timestamp = QDateTime::currentDateTime();
                 req.method      = m.toUpper();
@@ -4964,8 +4978,14 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 req.host        = hostStr;
                 req.port        = static_cast<quint16>(portInt);
                 req.headers.append({ "Host", hostStr });
-                for (auto hit = headerParams.cbegin(); hit != headerParams.cend(); ++hit)
+                for (auto hit = headerParams.cbegin(); hit != headerParams.cend(); ++hit) {
+                    // Drop a hostile-spec header whose name/value would split
+                    // the request when rendered to raw bytes.
+                    if (ControlLogic::hasRequestSmugglingChars(hit.key())
+                        || ControlLogic::hasRequestSmugglingChars(hit.value()))
+                        continue;
                     req.headers.append({ hit.key(), hit.value() });
+                }
                 if (!bodyJsonStr.isEmpty()) {
                     req.headers.append({ "Content-Type",
                                          bodyCT.isEmpty() ? QString("application/json") : bodyCT });
@@ -4989,10 +5009,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
 
         return okJson({
-            { "ok",       true },
-            { "imported", imported },
-            { "host",     hostStr },
-            { "baseUrl",  baseUrl },
+            { "ok",        true },
+            { "imported",  imported },
+            { "truncated", truncated },
+            { "host",      hostStr },
+            { "baseUrl",   baseUrl },
         });
     }
 
