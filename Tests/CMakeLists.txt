@@ -286,6 +286,12 @@ add_subdirectory(session_manager)
 # Run via: ctest -R scan_bridge -V
 add_subdirectory(scan_bridge)
 
+# WebSocket frame parser (RFC 6455) on attacker-controlled wire bytes: the moving-
+# cursor parse (was O(n^2) front-remove), the fatal absurd-length give-up, and the
+# before-append buffer cap. Compiles websocket.cpp directly; links Qt6::Core.
+# Run via: ctest -R websocket -V
+add_subdirectory(websocket)
+
 # Content-discovery soft-404 classification -- same-depth calibration, the
 # softStatuses-set model, redirect-Location discrimination (a dir-redirect to a
 # different target is reported, not masked by a redirect-soft-404), 401/403

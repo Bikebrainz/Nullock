@@ -26,9 +26,11 @@ public:
     qsizetype bufferedBytes() const { return m_buf.size(); }
 
 private:
-    // Returns the number of bytes consumed if a complete frame was parsed
-    // and filled *out, 0 if the buffer is incomplete, -1 on protocol error.
-    qint64 tryParseOne(WsFrame *out);
+    // Parse one frame starting at byte `start` in m_buf (a moving cursor, so the
+    // caller never has to remove() from the front per frame -- that was O(n^2)).
+    // Returns the frame size in bytes if a complete frame was parsed and filled
+    // *out, 0 if the buffer is incomplete from `start`, -1 on protocol error.
+    qint64 tryParseOne(WsFrame *out, qsizetype start);
 
     QByteArray m_buf;
     // Set true after the per-stream buffer cap was exceeded; future

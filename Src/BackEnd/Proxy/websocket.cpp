@@ -28,50 +28,56 @@ const char *wsOpcodeLabel(quint8 opcode) {
     }
 }
 
-qint64 WsFrameParser::tryParseOne(WsFrame *out) {
-    if (m_buf.size() < 2) return 0;
+qint64 WsFrameParser::tryParseOne(WsFrame *out, qsizetype start) {
+    // All length checks are relative to `start` (the moving cursor), so the bytes
+    // available for THIS frame are `avail`, never the whole buffer.
+    const qsizetype avail = m_buf.size() - start;
+    if (avail < 2) return 0;
 
-    const quint8 b0 = static_cast<quint8>(m_buf.at(0));
-    const quint8 b1 = static_cast<quint8>(m_buf.at(1));
+    const quint8 b0 = static_cast<quint8>(m_buf.at(start));
+    const quint8 b1 = static_cast<quint8>(m_buf.at(start + 1));
     const bool   fin    = (b0 & 0x80) != 0;
     const quint8 opcode = b0 & 0x0F;
     const bool   masked = (b1 & 0x80) != 0;
     qint64       payloadLen = b1 & 0x7F;
 
-    qsizetype offset = 2;
+    qsizetype offset = 2;   // bytes into THIS frame (relative to `start`)
 
     if (payloadLen == 126) {
-        if (m_buf.size() < offset + 2) return 0;
-        payloadLen = (static_cast<quint8>(m_buf.at(offset)) << 8)
-                   |  static_cast<quint8>(m_buf.at(offset + 1));
+        if (avail < offset + 2) return 0;
+        payloadLen = (static_cast<quint8>(m_buf.at(start + offset)) << 8)
+                   |  static_cast<quint8>(m_buf.at(start + offset + 1));
         offset += 2;
     } else if (payloadLen == 127) {
-        if (m_buf.size() < offset + 8) return 0;
+        if (avail < offset + 8) return 0;
         payloadLen = 0;
         for (int i = 0; i < 8; ++i) {
             payloadLen = (payloadLen << 8)
-                       | static_cast<quint8>(m_buf.at(offset + i));
+                       | static_cast<quint8>(m_buf.at(start + offset + i));
         }
         offset += 8;
         if (payloadLen < 0 || payloadLen > kMaxFramePayload) {
-            // Either negative-by-overflow or absurd; bail rather than alloc.
+            // Negative-by-overflow (high bit set) or absurd: a hard RFC 6455
+            // violation. Fatal -- feed() tears the parser down (no resync).
             return -1;
         }
     }
 
     quint8 mask[4] = { 0, 0, 0, 0 };
     if (masked) {
-        if (m_buf.size() < offset + 4) return 0;
+        if (avail < offset + 4) return 0;
         for (int i = 0; i < 4; ++i)
-            mask[i] = static_cast<quint8>(m_buf.at(offset + i));
+            mask[i] = static_cast<quint8>(m_buf.at(start + offset + i));
         offset += 4;
     }
 
-    if (m_buf.size() < offset + payloadLen) return 0;
+    if (avail < offset + payloadLen) return 0;
 
     out->opcode = opcode;
     out->fin    = fin;
-    out->payload = m_buf.mid(static_cast<int>(offset), static_cast<int>(payloadLen));
+    // qsizetype args (no int cast); payloadLen is capped at 16 MiB above so the
+    // offsets are far below INT_MAX, but mid() takes qsizetype so don't truncate.
+    out->payload = m_buf.mid(start + offset, payloadLen);
     if (masked) {
         for (qint64 i = 0; i < payloadLen; ++i) {
             out->payload[i] = static_cast<char>(
@@ -79,39 +85,43 @@ qint64 WsFrameParser::tryParseOne(WsFrame *out) {
         }
     }
 
-    return offset + payloadLen;
+    return offset + payloadLen;   // size of this frame
 }
 
 QList<WsFrame> WsFrameParser::feed(const QByteArray &chunk) {
     if (m_giveUp) {
-        // Stream previously exceeded our buffer cap; keep no state for
-        // it. The caller's raw relay still forwards bytes to the
-        // browser, we just stop emitting frame events.
+        // Stream previously exceeded our buffer cap / hit a protocol error; keep no
+        // state. The caller's raw relay still forwards bytes; we just stop emitting
+        // frame events.
         return {};
     }
-    m_buf.append(chunk);
-    if (m_buf.size() > kMaxBufferBytes) {
-        // Hostile or pathological stream. Drop the reassembly buffer
-        // and mark the parser dead so subsequent feed() calls don't
-        // grow memory again.
+    // Bound the input BEFORE growing m_buf: appending first and checking after let
+    // a single oversized chunk transiently allocate past the cap. m_buf.size() is
+    // always <= kMaxBufferBytes here, so the subtraction can't underflow.
+    if (chunk.size() > kMaxBufferBytes - m_buf.size()) {
         m_buf.clear();
         m_giveUp = true;
         return {};
     }
+    m_buf.append(chunk);
+
     QList<WsFrame> out;
+    qsizetype pos = 0;                 // moving read cursor -> the whole pass is O(n)
     while (true) {
         WsFrame f;
-        const qint64 consumed = tryParseOne(&f);
-        if (consumed <= 0) {
-            // 0 = incomplete (wait for more bytes); -1 = give up on this
-            // stream entirely. Either way we stop emitting and let the
-            // caller forward raw bytes anyway.
-            if (consumed < 0) m_buf.clear();
-            break;
+        const qint64 consumed = tryParseOne(&f, pos);
+        if (consumed < 0) {
+            // Protocol error (absurd length): FATAL. Drop state and give up so the
+            // attacker can't keep the parser in a wedged, mis-resyncing loop.
+            m_buf.clear();
+            m_giveUp = true;
+            return out;
         }
+        if (consumed == 0) break;      // incomplete frame -> wait for more bytes
         out.append(f);
-        m_buf.remove(0, static_cast<int>(consumed));
+        pos += consumed;
     }
+    if (pos > 0) m_buf.remove(0, pos); // compact the consumed prefix ONCE (not per frame)
     return out;
 }
 
