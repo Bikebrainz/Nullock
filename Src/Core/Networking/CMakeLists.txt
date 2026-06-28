@@ -115,6 +115,8 @@ add_library(Networking STATIC
     host_header.hpp
     http3_detect.cpp
     http3_detect.hpp
+    http3_logic.cpp
+    http3_logic.hpp
     open_redirect.cpp
     open_redirect_logic.cpp
     open_redirect.hpp
