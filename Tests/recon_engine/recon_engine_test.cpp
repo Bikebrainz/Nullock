@@ -131,6 +131,37 @@ int main(int argc, char **argv) {
         ipToReverseDnsName("1:2:3:4:5:6:7:8:9").isEmpty());
     chk("rev: IPv6 non-hex group -> empty", ipToReverseDnsName("2001:zzzz::1").isEmpty());
 
+    // ===== whoisReferralServer ==========================================
+    chk("whois-ref: IANA refer:",
+        whoisReferralServer("domain: COM\nrefer:        whois.verisign-grs.com\n")
+            == "whois.verisign-grs.com");
+    chk("whois-ref: 'whois:' key",
+        whoisReferralServer("whois:        whois.nic.uk\n") == "whois.nic.uk");
+    chk("whois-ref: 'Registrar WHOIS Server:' key",
+        whoisReferralServer("Domain: x\nRegistrar WHOIS Server: whois.godaddy.com\n")
+            == "whois.godaddy.com");
+    chk("whois-ref: uppercase key still matches (lowercased)",
+        whoisReferralServer("Refer: whois.example.com\n") == "whois.example.com");
+    chk("whois-ref: strips a scheme + trailing slash",
+        whoisReferralServer("refer: https://whois.example.com/\n") == "whois.example.com");
+    chk("whois-ref: no referral -> empty",
+        whoisReferralServer("Domain Name: example.com\nStatus: ok\n").isEmpty());
+    chk("whois-ref: free-text value (has spaces) is not a server",
+        whoisReferralServer("refer: see the registrar website\n").isEmpty());
+    chk("whois-ref: value without a dot is rejected",
+        whoisReferralServer("refer: localhost\n").isEmpty());
+
+    // ===== sanitizeWhoisQuery (CR/LF / injection guard) =================
+    chk("whois-q: plain domain",     sanitizeWhoisQuery("example.com") == "example.com");
+    chk("whois-q: trims",            sanitizeWhoisQuery("  example.com  ") == "example.com");
+    chk("whois-q: IPv4 allowed",     sanitizeWhoisQuery("8.8.8.8") == "8.8.8.8");
+    chk("whois-q: IPv6 colons allowed", sanitizeWhoisQuery("2001:db8::1") == "2001:db8::1");
+    chk("whois-q: CRLF injection rejected",
+        sanitizeWhoisQuery("example.com\r\nEVIL").isEmpty());
+    chk("whois-q: embedded space rejected", sanitizeWhoisQuery("exa mple.com").isEmpty());
+    chk("whois-q: empty rejected",   sanitizeWhoisQuery("").isEmpty());
+    chk("whois-q: over-length rejected", sanitizeWhoisQuery(QString(256, QChar('a'))).isEmpty());
+
     std::fprintf(stderr, "recon_engine_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

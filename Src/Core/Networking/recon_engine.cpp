@@ -8,7 +8,9 @@
 #include <QDnsMailExchangeRecord>
 #include <QDnsServiceRecord>
 #include <QDnsTextRecord>
+#include <QElapsedTimer>
 #include <QHostAddress>
+#include <QTcpSocket>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -49,6 +51,11 @@ QList<Subdomain> ReconEngine::subdomains() const {
     return m_subdomains;
 }
 
+QString ReconEngine::whois() const {
+    QMutexLocker lk(&m_mutex);
+    return m_whois;
+}
+
 void ReconEngine::clear() {
     if (m_active.loadAcquire() > 0) return;
     m_stopFlag.storeRelease(0);   // a fresh slate must re-arm: a sticky stop flag
@@ -59,9 +66,11 @@ void ReconEngine::clear() {
         m_subdomains.clear();
         m_lastError.clear();
         m_target.clear();
+        m_whois.clear();
     }
     emit dnsRecordsChanged();
     emit subdomainsChanged();
+    emit whoisChanged();
 }
 
 void ReconEngine::stop() {
@@ -116,6 +125,82 @@ void ReconEngine::runReverseDns(const QString &ip) {
     if (wasIdle) emit runningChanged();
     if (arpa.isEmpty()) { emit dnsRecordsChanged(); return; }  // surface the error
     addLookup(QDnsLookup::PTR, arpa);
+}
+
+QString ReconEngine::whoisQuery(const QString &server, const QString &query) {
+    constexpr int    kConnectMs = 8000;
+    constexpr int    kReadMs    = 8000;
+    constexpr qint64 kBudgetMs  = 15000;     // OVERALL wall-clock cap on the read
+    constexpr int    kMaxBytes  = 256 * 1024;
+    QTcpSocket sock;
+    sock.connectToHost(server, 43);
+    if (!sock.waitForConnected(kConnectMs)) return {};
+    sock.write((query + QStringLiteral("\r\n")).toUtf8());
+    if (!sock.waitForBytesWritten(kReadMs)) return {};
+    QByteArray resp;
+    // Per-read timeout alone is NOT an aggregate bound: a server dribbling one
+    // byte every <kReadMs would keep the loop (and this worker thread) alive for
+    // hours until the byte cap. Add an overall wall-clock budget so a hostile /
+    // MITM'd / referral-injected whois server can't pin the thread.
+    QElapsedTimer budget;
+    budget.start();
+    while (sock.state() == QAbstractSocket::ConnectedState && resp.size() < kMaxBytes) {
+        const qint64 left = kBudgetMs - budget.elapsed();
+        if (left <= 0) break;
+        if (!sock.waitForReadyRead(static_cast<int>(qMin<qint64>(left, kReadMs)))) break;
+        resp.append(sock.readAll());
+    }
+    resp.append(sock.readAll());
+    if (resp.size() > kMaxBytes) resp.truncate(kMaxBytes);
+    sock.abort();
+    return QString::fromUtf8(resp);
+}
+
+void ReconEngine::runWhois(const QString &domain) {
+    // sanitizeWhoisQuery blocks CR/LF/space so the single-line TCP/43 request
+    // can't be split into a second command.
+    const QString q = ReconLogic::sanitizeWhoisQuery(domain);
+    const bool wasIdle = (m_active.loadAcquire() == 0);
+    if (wasIdle) m_stopFlag.storeRelease(0);   // re-arm: a prior stop() must not stick
+    {
+        QMutexLocker lk(&m_mutex);
+        m_target = domain.trimmed();
+        m_lastError = q.isEmpty()
+            ? QStringLiteral("whois: refusing malformed query")
+            : QString();
+    }
+    if (q.isEmpty()) { emit whoisChanged(); return; }   // error surfaced via snapshot
+    m_active.fetchAndAddOrdered(1);
+    if (wasIdle) emit runningChanged();
+
+    // TCP/43 blocks, so run the IANA -> registry/registrar referral chain on a
+    // worker thread (mirrors runCertTransparency).
+    (void)QtConcurrent::run([this, q]() {
+        const QString iana = whoisQuery(QStringLiteral("whois.iana.org"), q);
+        QString full = iana;
+        QString src  = QStringLiteral("whois.iana.org");
+        QString next = ReconLogic::whoisReferralServer(iana);
+        QStringList seen{ QStringLiteral("whois.iana.org") };
+        // Follow up to two referrals (IANA -> registry -> registrar), guarding
+        // against a referral loop.
+        for (int hop = 0; hop < 2 && !next.isEmpty() && !seen.contains(next); ++hop) {
+            seen << next;
+            const QString r = whoisQuery(next, q);
+            if (r.trimmed().isEmpty()) break;
+            full = r;
+            src  = next;
+            next = ReconLogic::whoisReferralServer(r);
+        }
+        {
+            QMutexLocker lk(&m_mutex);
+            if (full.trimmed().isEmpty())
+                m_lastError = QStringLiteral("whois: no response (server unreachable)");
+            m_whois = QStringLiteral("; whois server: ") + src
+                    + QStringLiteral("\n\n") + full;
+        }
+        emit whoisChanged();
+        finishOne();
+    });
 }
 
 void ReconEngine::onDnsFinished() {

@@ -899,6 +899,8 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
                 this, bump);
         connect(m_wiring.recon, &Nullock::Core::ReconEngine::runningChanged,
                 this, bump);
+        connect(m_wiring.recon, &Nullock::Core::ReconEngine::whoisChanged,
+                this, bump);
     }
     if (m_wiring.sessions) {
         connect(m_wiring.sessions, &Nullock::Core::SessionManager::sessionsChanged,
@@ -1316,6 +1318,7 @@ QByteArray ControlServer::buildSnapshot() const {
             subs.append(so);
         }
         rec["subdomains"] = subs;
+        rec["whois"] = m_wiring.recon->whois();
         root["recon"] = rec;
     }
 
@@ -8725,6 +8728,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/recon/reverse") {
         if (m_wiring.recon)
             m_wiring.recon->runReverseDns(bodyJson.value("ip").toString());
+        return okJson();
+    }
+    if (path == "/api/recon/whois") {
+        if (m_wiring.recon)
+            m_wiring.recon->runWhois(bodyJson.value("domain").toString());
         return okJson();
     }
     if (path == "/api/recon/crt") {

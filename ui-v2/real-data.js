@@ -181,6 +181,7 @@
     },
     reconDns(domain)            { return post("/api/recon/dns",      { domain }); },
     reconReverse(ip)            { return post("/api/recon/reverse",  { ip }); },
+    reconWhois(domain)          { return post("/api/recon/whois",    { domain }); },
     reconCrt(domain)            { return post("/api/recon/crt",      { domain }); },
     reconWordlist(domain, subdomains) { return post("/api/recon/wordlist", { domain, subdomains }); },
     reconStop()                 { return post("/api/recon/stop"); },

@@ -42,6 +42,7 @@ public:
 
     QList<DnsRecord> dnsRecords() const;
     QList<Subdomain> subdomains() const;
+    QString          whois() const;
 
 public slots:
     // Kick off A/AAAA/MX/TXT/NS lookups for a domain. Results stream in
@@ -62,6 +63,11 @@ public slots:
     // sets lastError() instead.
     Q_INVOKABLE void runReverseDns(const QString &ip);
 
+    // WHOIS lookup of a domain (or IP). Follows the IANA -> registry/registrar
+    // referral chain on a worker thread (TCP port 43 blocks). The raw record
+    // lands in whois(); a malformed query or unreachable server sets lastError().
+    Q_INVOKABLE void runWhois(const QString &domain);
+
     Q_INVOKABLE void clear();
     Q_INVOKABLE void stop();  // best-effort; in-flight lookups complete
 
@@ -69,6 +75,7 @@ signals:
     void runningChanged();
     void dnsRecordsChanged();
     void subdomainsChanged();
+    void whoisChanged();
 
 private slots:
     void onDnsFinished();
@@ -87,12 +94,16 @@ private:
     void               probeWildcardThenSweep(const QString &domain, const QStringList &capped);
     void               runWordlistSweep(const QString &domain, const QStringList &capped);
     void               finishOne();
+    // Blocking single-hop WHOIS over TCP/43 -- ONLY call on a worker thread. The
+    // response is size-capped to guard against a hostile/runaway server.
+    static QString     whoisQuery(const QString &server, const QString &query);
 
     mutable QMutex     m_mutex;
     QString            m_target;
     QString            m_lastError;
     QList<DnsRecord>   m_dnsRecords;
     QList<Subdomain>   m_subdomains;
+    QString            m_whois;
     QStringList        m_wildcardIps;     // calibrated "*.domain" answer set (A+AAAA);
                                           // a candidate resolving only to these is synthesis
     QAtomicInt         m_active{0};       // total in-flight ops

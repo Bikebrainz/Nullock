@@ -1248,6 +1248,8 @@ function ReconTab() {
         <Btn label="Wordlist"   onClick={() => domain && NL.actions.reconWordlist(domain.trim(), SUBDOMAIN_WORDLIST)} />
         <Btn label="Reverse DNS" onClick={() => domain && NL.actions.reconReverse(domain.trim())}
              title="PTR lookup — put an IP (1.2.3.4 or ::1) in the field" />
+        <Btn label="WHOIS" onClick={() => domain && NL.actions.reconWhois(domain.trim())}
+             title="WHOIS lookup — follows the IANA → registry/registrar referral" />
         <Btn label="Stop"  danger onClick={() => NL.actions.reconStop()}  disabled={!rec.running} />
         <Btn label="Clear"        onClick={() => NL.actions.reconClear()} disabled={rec.running} />
         <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
@@ -1255,6 +1257,25 @@ function ReconTab() {
           {rec.error ? " · " + rec.error : ""}
         </span>
       </div>
+
+      {rec.whois ? (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, display: "flex", flexDirection: "column",
+          maxHeight: 260, minHeight: 0,
+        }}>
+          <div style={{
+            padding: "6px 10px", borderBottom: "1px solid var(--line)",
+            fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}>WHOIS</div>
+          <pre style={{
+            overflow: "auto", flex: 1, margin: 0, padding: 10,
+            fontSize: "11.5px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+            whiteSpace: "pre-wrap", wordBreak: "break-word",
+          }}>{rec.whois}</pre>
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
                     flex: 1, minHeight: 0 }}>

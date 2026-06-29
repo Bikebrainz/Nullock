@@ -103,4 +103,40 @@ QString ipToReverseDnsName(const QString &ip) {
     return out;
 }
 
+QString whoisReferralServer(const QString &whoisText) {
+    const QStringList lines = whoisText.split(QLatin1Char('\n'));
+    for (const QString &raw : lines) {
+        const QString line = raw.trimmed();
+        const int colon = line.indexOf(QLatin1Char(':'));
+        if (colon <= 0) continue;
+        const QString key = line.left(colon).trimmed().toLower();
+        if (key != QLatin1String("refer")
+            && key != QLatin1String("whois")
+            && key != QLatin1String("registrar whois server")) continue;
+        QString val = line.mid(colon + 1).trimmed().toLower();
+        // Drop a scheme if present ("https://whois.example" -> "whois.example").
+        const int scheme = val.indexOf(QLatin1String("://"));
+        if (scheme >= 0) val = val.mid(scheme + 3);
+        if (val.endsWith(QLatin1Char('/'))) val.chop(1);
+        // A real whois server is a bare host: has a dot, no whitespace.
+        if (val.isEmpty() || val.contains(QLatin1Char(' ')) || val.contains(QLatin1Char('\t')))
+            continue;
+        if (val.contains(QLatin1Char('.'))) return val;
+    }
+    return {};
+}
+
+QString sanitizeWhoisQuery(const QString &query) {
+    const QString s = query.trimmed();
+    if (s.isEmpty() || s.size() > 255) return {};
+    for (const QChar c : s) {
+        const ushort u = c.unicode();
+        const bool ok = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z')
+                     || (u >= '0' && u <= '9')
+                     || u == '.' || u == '-' || u == ':';   // ':' for IPv6 queries
+        if (!ok) return {};                                 // blocks CR/LF/space/etc.
+    }
+    return s;
+}
+
 } // namespace Nullock::Core::ReconLogic

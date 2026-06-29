@@ -52,4 +52,18 @@ QStringList mergeIps(const QStringList &existing, const QStringList &incoming);
 // (::ffff:1.2.3.4) is rejected (rare for reverse DNS).
 QString ipToReverseDnsName(const QString &ip);
 
+// From a WHOIS response (IANA's, or a registry's), return the next whois server
+// to query: the value of the first "refer:", "whois:", or "Registrar WHOIS
+// Server:" line, lowercased. Used to follow the IANA -> registry -> registrar
+// referral chain. Returns "" if there is no referral (already authoritative).
+// Only accepts a bare-hostname-looking value (a dot, no spaces) so a comment or
+// free-text line can't be mistaken for a server.
+QString whoisReferralServer(const QString &whoisText);
+
+// Sanitize a domain/IP for a WHOIS query line: trimmed, and rejected (returns "")
+// if it is empty, over-length, or contains anything outside a hostname charset
+// (letters/digits/.-/: for IPv6) -- so a caller can't inject CR/LF or a second
+// command into the single-line whois request.
+QString sanitizeWhoisQuery(const QString &query);
+
 } // namespace Nullock::Core::ReconLogic

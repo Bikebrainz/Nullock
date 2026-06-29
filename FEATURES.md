@@ -144,7 +144,7 @@ QA + scope conversations.
 - [ ] Server-side h2 to browser
 - [ ] WebSocket `permessage-deflate`
 - [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
-- [ ] WHOIS in recon tab
+- [x] WHOIS in recon tab — shipped (`/api/recon/whois`, follows IANA → registry/registrar referral)
 - [ ] WebSocket frame grouping (per-session collapsible view in history)
 
 ## Bugs caught + fixed in this codebase
