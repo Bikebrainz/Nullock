@@ -991,7 +991,23 @@ int main(int argc, char *argv[]) {
     // run from project root so this relative path resolves to Nullock/Src/App/app.qml
     const QUrl url(QStringLiteral("./Src/App/app.qml"));
     engine.load(url);
-    if (engine.rootObjects().isEmpty()) return -1;
+    if (engine.rootObjects().isEmpty()) {
+        // The legacy QML window couldn't load -- almost always because the exe
+        // was launched from outside the repo root (so this relative path
+        // doesn't resolve) or the QML runtime isn't deployed next to the binary.
+        // The REAL UI is the browser control panel, which is already serving and
+        // whose tab we auto-opened above, so DON'T exit (-1 here used to kill the
+        // control server out from under the just-opened browser tab). Fall back
+        // to the same event loop the headless path runs.
+        QTextStream(stderr)
+            << "Nullock: QML window unavailable (run from the repo root to use it); "
+               "serving the browser control UI at http://127.0.0.1:"
+            << controlServer.listeningPort() << "/\n";
+        QTextStream(stderr).flush();
+        const int rc = app->exec();
+        QThreadPool::globalInstance()->waitForDone(5000);
+        return rc;
+    }
 
     const int rc = app->exec();
     // Same drain as the headless path -- the GUI run-loop returns at
