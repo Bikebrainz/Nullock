@@ -161,6 +161,7 @@
         .then(r => r.json());
     },
     probeRow(rowId) {
+      // Light active scan: per-param canary injection + reflection check.
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })
         .then(r => r.json());
     },
@@ -181,11 +182,6 @@
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },
     sessionCopyTo(from, to)     { return post("/api/sessions/copyTo",     { from, to }); },
-    probeRow(rowId) {
-      // Light active scan: per-param canary injection + reflection check.
-      return fetch("/api/history/" + rowId + "/probe", { method: "POST" })
-        .then(r => r.json());
-    },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
     ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },
