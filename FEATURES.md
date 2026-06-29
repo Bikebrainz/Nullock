@@ -138,7 +138,7 @@ QA + scope conversations.
 - [x] NDJSON stdout event stream — shipped (`--ndjson`, `--ndjson-include-query`)
 - [x] TLS fingerprint shaping — shipped (`--tls-fingerprint=chrome|firefox|none`); per-connection JA3 *randomization* still open
 - [x] Saved auth-token / session manager — shipped (`session_manager` + session rules)
-- [ ] `nullock` CLI binary OR shell wrapper around REST API (the app's own flags cover most of this today)
+- [x] `nullock` CLI / REST wrapper — shipped (`scripts/nullock`: status, findings, posture, recon, whois, reverse, search, headers, waf, export, report, raw)
 - [ ] Python client library (separate repo)
 - [ ] HTTP/2 multiplexing (single stream per CONNECT today)
 - [ ] Server-side h2 to browser
