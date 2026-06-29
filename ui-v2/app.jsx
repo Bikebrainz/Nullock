@@ -305,9 +305,13 @@ function SettingsTab() {
             a.href = url; a.download = "nullock-ca.crt";
             document.body.appendChild(a); a.click(); a.remove();
           }} />
-          <Btn label="Open CA folder" onClick={() => Qt && Qt.openUrlExternally
-              ? Qt.openUrlExternally("file:///" + (b.caDir || ""))
-              : window.open("file:///" + (b.caDir || ""), "_blank")} />
+          <Btn label="Open CA folder" onClick={() => {
+              // `Qt` is undeclared in a plain browser; a bare `Qt && ...` throws
+              // ReferenceError (only `typeof` short-circuits safely).
+              const u = "file:///" + (b.caDir || "");
+              if (typeof Qt !== "undefined" && Qt.openUrlExternally) Qt.openUrlExternally(u);
+              else window.open(u, "_blank");
+          }} />
           <Btn label="Copy CA path" onClick={() => copy(b.caPath || "")} />
         </div>
         <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 4 }}>

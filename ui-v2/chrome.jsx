@@ -47,6 +47,7 @@ function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks }) {
       </div>
       <div className="tb-right">
         <div className="tb-theme" onClick={() => {
+          if (!NL.themes || !NL.themes.length) return;   // empty list -> NaN index
           const i = NL.themes.indexOf(theme);
           onTheme(NL.themes[(i + 1) % NL.themes.length]);
         }} title="Cycle theme">

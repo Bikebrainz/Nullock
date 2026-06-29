@@ -211,6 +211,15 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
   const [diffMark, setDiffMark] = React.useState(window.__nl_diff_mark || null);
   React.useEffect(() => { window.__nl_diff_mark = diffMark; }, [diffMark]);
   const [diffOpen, setDiffOpen] = React.useState(null); // {idA, idB}
+  // These four hooks MUST run on EVERY render -- before the `if (!row)` early
+  // return below. React requires a stable hook count per render; a row toggling
+  // null<->selected (select a row, then CLEAR) would otherwise change the count
+  // ("Rendered more hooks than during the previous render") and, with no error
+  // boundary, unmount the entire app to a white screen.
+  const reqRef  = React.useRef(null);
+  const respRef = React.useRef(null);
+  const [overlay, setOverlay] = React.useState(null); // { title, body } | null
+  const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
 
   if (!row) {
     return (
@@ -228,11 +237,6 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
 
   const req = NL.requestRawAt(row.id - 1);
   const resp = NL.responseRawAt(row.id - 1);
-
-  const reqRef  = React.useRef(null);
-  const respRef = React.useRef(null);
-  const [overlay, setOverlay] = React.useState(null); // { title, body } | null
-  const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
 
   // Pull either the user's text selection or the entire textarea contents.
   // Clicking a codec button with no selection runs it against the whole

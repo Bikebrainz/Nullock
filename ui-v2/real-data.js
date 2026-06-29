@@ -66,12 +66,18 @@
     }
   }
 
-  // Initial sync load so React renders with real data immediately.
+  // Initial sync load so React renders with real data immediately. ALWAYS call
+  // applySnapshot -- even if the fetch or parse fails -- so every NL.* field
+  // gets its safe default (NL.rows = [], NL.bootInfo = {}, ...). Otherwise a
+  // failed boot snapshot leaves them undefined and app.jsx's initialState
+  // (NL.rows[2]?.id, ...) throws before the app can mount.
   const text = syncFetch("/api/snapshot");
+  let snap = {};
   if (text) {
-    try { applySnapshot(JSON.parse(text)); }
+    try { snap = JSON.parse(text) || {}; }
     catch (e) { console.warn("NL parse failed", e); }
   }
+  applySnapshot(snap);
 
   // Memoized per-row accessors used inside the React reducer.
   NL.requestRawAt = function (rowIndex) {

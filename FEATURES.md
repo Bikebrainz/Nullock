@@ -134,15 +134,15 @@ QA + scope conversations.
 
 ## Future / unbuilt (roadmap)
 
-- [ ] `--headless` flag (skip QML window + browser auto-open)
-- [ ] NDJSON stdout event stream in headless mode
-- [ ] `nullock` CLI binary OR shell wrapper around REST API
+- [x] `--headless` flag (skip QML window + browser auto-open) — shipped
+- [x] NDJSON stdout event stream — shipped (`--ndjson`, `--ndjson-include-query`)
+- [x] TLS fingerprint shaping — shipped (`--tls-fingerprint=chrome|firefox|none`); per-connection JA3 *randomization* still open
+- [x] Saved auth-token / session manager — shipped (`session_manager` + session rules)
+- [ ] `nullock` CLI binary OR shell wrapper around REST API (the app's own flags cover most of this today)
 - [ ] Python client library (separate repo)
 - [ ] HTTP/2 multiplexing (single stream per CONNECT today)
 - [ ] Server-side h2 to browser
 - [ ] WebSocket `permessage-deflate`
-- [ ] TLS fingerprint randomization (JA3 evasion for Cloudflare hosts)
-- [ ] Saved auth-token / session manager
 - [ ] WHOIS + reverse DNS in recon tab
 - [ ] WebSocket frame grouping (per-session collapsible view in history)
 

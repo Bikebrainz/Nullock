@@ -23,7 +23,11 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
           <button className="btn" onClick={() => { onCopyCa(); setCopied(true); setTimeout(() => setCopied(false), 1400); }}>
             {copied ? "✓ COPIED" : "COPY PATH"}
           </button>
-          <button className="btn">OPEN FOLDER</button>
+          <button className="btn" onClick={() => {
+            const u = "file:///" + (bootInfo.caDir || "");
+            if (typeof Qt !== "undefined" && Qt.openUrlExternally) Qt.openUrlExternally(u);
+            else window.open(u, "_blank");
+          }}>OPEN FOLDER</button>
         </div>
       </div>
 
