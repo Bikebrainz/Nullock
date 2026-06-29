@@ -1090,7 +1090,11 @@ void ControlServer::handle(QTcpSocket *socket) {
     const QString query = url.query();
 
     QByteArray response;
-    if (path.startsWith("/api/")) {
+    // /proxy.pac is the browser/OS-friendly alias for /api/pac (proxy
+    // auto-config). It does NOT start with /api/, so route it explicitly to
+    // apiResponse -- where the `path == "/proxy.pac"` PAC handler lives --
+    // instead of letting it fall through to the static file server (404).
+    if (path.startsWith("/api/") || path == "/proxy.pac") {
         response = apiResponse(method, path, body, query);
     } else if (path == "/ca.pem" || path == "/ca.crt") {
         // CA cert download. /ca.crt is an alias that triggers the system
