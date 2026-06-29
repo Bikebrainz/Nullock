@@ -300,14 +300,14 @@ function signRequest(req, now) {
 // Nullock extension hook: called for every captured request before it
 // goes to the wire. Returning a mutated request swaps it in; returning
 // false / nothing leaves the original alone.
-nullock.onRequest = function(req) {
+nullock.onRequest(function(req) {
     try {
         return signRequest(req, new Date());
     } catch (e) {
         nullock.log("aws_sigv4: " + (e && e.message ? e.message : String(e)));
         return req;
     }
-};
+});
 
 nullock.log("aws_sigv4: loaded (signing hosts ending in " + CONFIG.hostSuffix + ")");
 

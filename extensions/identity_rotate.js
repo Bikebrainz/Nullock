@@ -86,7 +86,7 @@ function dropHeader(headers, name) {
     }
 }
 
-nullock.onRequest = function(req) {
+nullock.onRequest(function(req) {
     try {
         var prof = pickFor(req.host);
         setHeader(req.headers, "User-Agent", prof.ua);
@@ -108,7 +108,7 @@ nullock.onRequest = function(req) {
         nullock.log("identity_rotate: " + (e && e.message ? e.message : String(e)));
         return req;
     }
-};
+});
 
 // Optional hook: user can call from the console to drop the sticky
 // bag and re-roll identities on the next request.
