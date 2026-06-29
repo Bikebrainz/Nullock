@@ -42,4 +42,14 @@ bool isWildcardResolved(const QStringList &candidateIps, const QStringList &wild
 // other. Empty incoming entries are skipped.
 QStringList mergeIps(const QStringList &existing, const QStringList &incoming);
 
+// Convert an IP literal to its reverse-DNS (.arpa) PTR-lookup name, or "" if it
+// is not a valid IPv4/IPv6 literal:
+//   "1.2.3.4"      -> "4.3.2.1.in-addr.arpa"
+//   "::1"          -> "1.0.0...0.ip6.arpa"  (IPv6 fully expanded, "::" handled,
+//                                            all 32 nibbles reversed)
+// Pure string work (no QHostAddress, which is QtNetwork) so it stays Core-only
+// and unit-testable. Octets are decimal-normalized; an embedded-IPv4 IPv6 form
+// (::ffff:1.2.3.4) is rejected (rare for reverse DNS).
+QString ipToReverseDnsName(const QString &ip);
+
 } // namespace Nullock::Core::ReconLogic

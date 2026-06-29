@@ -97,6 +97,40 @@ int main(int argc, char **argv) {
         mergeIps(L({"1.2.3.4", "5.6.7.8"}), L({"5.6.7.8", "9.9.9.9"}))
             == L({"1.2.3.4", "5.6.7.8", "9.9.9.9"}));
 
+    // ===== ipToReverseDnsName (reverse-DNS / PTR .arpa name) ============
+    chk("rev: IPv4 1.2.3.4",   ipToReverseDnsName("1.2.3.4")      == "4.3.2.1.in-addr.arpa");
+    chk("rev: IPv4 8.8.8.8",   ipToReverseDnsName("8.8.8.8")      == "8.8.8.8.in-addr.arpa");
+    chk("rev: IPv4 mixed",     ipToReverseDnsName("192.168.1.10") == "10.1.168.192.in-addr.arpa");
+    chk("rev: IPv4 leading zeros normalized",
+        ipToReverseDnsName("01.002.3.4") == "4.3.2.1.in-addr.arpa");
+    chk("rev: IPv4 trims whitespace",
+        ipToReverseDnsName("  10.0.0.1  ") == "1.0.0.10.in-addr.arpa");
+    chk("rev: too few octets -> empty",    ipToReverseDnsName("1.2.3").isEmpty());
+    chk("rev: too many octets -> empty",   ipToReverseDnsName("1.2.3.4.5").isEmpty());
+    chk("rev: octet > 255 -> empty",       ipToReverseDnsName("1.2.3.256").isEmpty());
+    chk("rev: non-numeric octet -> empty", ipToReverseDnsName("1.2.3.x").isEmpty());
+    chk("rev: empty -> empty",             ipToReverseDnsName("").isEmpty());
+    // IPv6: 32 reversed nibbles + "ip6.arpa" == 72 chars
+    {
+        const QString r1 = ipToReverseDnsName("::1");
+        chk("rev: IPv6 ::1 length 72",      r1.size() == 72);
+        chk("rev: IPv6 ::1 ends .ip6.arpa", r1.endsWith(QLatin1String(".ip6.arpa")));
+        chk("rev: IPv6 ::1 reversed starts 1.0.0.0.",
+            r1.startsWith(QLatin1String("1.0.0.0.")));
+        const QString r0 = ipToReverseDnsName("::");
+        chk("rev: IPv6 :: all-zero starts 0.0.0.0.",
+            r0.startsWith(QLatin1String("0.0.0.0.")));
+        chk("rev: IPv6 :: length 72",       r0.size() == 72);
+        const QString r2 = ipToReverseDnsName("2001:db8::1");
+        chk("rev: IPv6 2001:db8::1 length 72", r2.size() == 72);
+        chk("rev: IPv6 2001:db8::1 ends .ip6.arpa",
+            r2.endsWith(QLatin1String(".ip6.arpa")));
+    }
+    chk("rev: IPv6 two '::' -> empty",     ipToReverseDnsName("1::2::3").isEmpty());
+    chk("rev: IPv6 too many groups -> empty",
+        ipToReverseDnsName("1:2:3:4:5:6:7:8:9").isEmpty());
+    chk("rev: IPv6 non-hex group -> empty", ipToReverseDnsName("2001:zzzz::1").isEmpty());
+
     std::fprintf(stderr, "recon_engine_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

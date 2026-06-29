@@ -100,6 +100,24 @@ void ReconEngine::runDns(const QString &domain) {
     addLookup(QDnsLookup::CNAME, domain);
 }
 
+void ReconEngine::runReverseDns(const QString &ip) {
+    const QString trimmed = ip.trimmed();
+    if (trimmed.isEmpty()) return;
+    const QString arpa = ReconLogic::ipToReverseDnsName(trimmed);
+    const bool wasIdle = (m_active.loadAcquire() == 0);
+    if (wasIdle) m_stopFlag.storeRelease(0);   // re-arm: a prior stop() must not stick
+    {
+        QMutexLocker lk(&m_mutex);
+        m_target = trimmed;
+        m_lastError = arpa.isEmpty()
+            ? QStringLiteral("not a valid IP address: ") + trimmed
+            : QString();
+    }
+    if (wasIdle) emit runningChanged();
+    if (arpa.isEmpty()) { emit dnsRecordsChanged(); return; }  // surface the error
+    addLookup(QDnsLookup::PTR, arpa);
+}
+
 void ReconEngine::onDnsFinished() {
     auto *lookup = qobject_cast<QDnsLookup *>(sender());
     if (!lookup) { finishOne(); return; }
@@ -133,6 +151,10 @@ void ReconEngine::onDnsFinished() {
             case QDnsLookup::CNAME:
                 for (const auto &r : lookup->canonicalNameRecords())
                     got.append({ "CNAME", r.value(), 0 });
+                break;
+            case QDnsLookup::PTR:
+                for (const auto &r : lookup->pointerRecords())
+                    got.append({ "PTR", r.value(), 0 });
                 break;
             default: break;
         }

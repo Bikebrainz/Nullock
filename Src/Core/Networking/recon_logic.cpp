@@ -36,4 +36,71 @@ QStringList mergeIps(const QStringList &existing, const QStringList &incoming) {
     return out;
 }
 
+QString ipToReverseDnsName(const QString &ip) {
+    const QString s = ip.trimmed();
+    if (s.isEmpty()) return {};
+
+    // IPv4: exactly 4 decimal octets 0..255, reversed, + .in-addr.arpa.
+    if (!s.contains(QLatin1Char(':'))) {
+        const QStringList parts = s.split(QLatin1Char('.'));
+        if (parts.size() != 4) return {};
+        int o[4];
+        for (int i = 0; i < 4; ++i) {
+            const QString &p = parts[i];
+            if (p.isEmpty() || p.size() > 3) return {};
+            for (const QChar c : p) if (!c.isDigit()) return {};
+            bool ok = false;
+            const int v = p.toInt(&ok);
+            if (!ok || v < 0 || v > 255) return {};
+            o[i] = v;
+        }
+        return QString::number(o[3]) + QLatin1Char('.') + QString::number(o[2])
+             + QLatin1Char('.') + QString::number(o[1]) + QLatin1Char('.')
+             + QString::number(o[0]) + QLatin1String(".in-addr.arpa");
+    }
+
+    // IPv6: expand "::" to 8 groups, then nibble-reverse all 32 hex digits.
+    QString left = s, right;
+    const int dc = s.indexOf(QLatin1String("::"));
+    if (dc >= 0) {
+        if (s.indexOf(QLatin1String("::"), dc + 1) >= 0) return {};  // only one "::"
+        left  = s.left(dc);
+        right = s.mid(dc + 2);
+    }
+    const QStringList lg = left.isEmpty()  ? QStringList() : left.split(QLatin1Char(':'));
+    const QStringList rg = right.isEmpty() ? QStringList() : right.split(QLatin1Char(':'));
+    QStringList groups;
+    if (dc >= 0) {
+        const int fill = 8 - (lg.size() + rg.size());
+        if (fill < 0) return {};                  // too many groups for a "::"
+        groups = lg;
+        for (int i = 0; i < fill; ++i) groups << QStringLiteral("0");
+        groups += rg;
+    } else {
+        groups = lg;
+    }
+    if (groups.size() != 8) return {};
+
+    QString nibbles;
+    nibbles.reserve(32);
+    for (const QString &g : groups) {
+        if (g.isEmpty() || g.size() > 4) return {};
+        for (const QChar c : g) {
+            const char ch = c.toLatin1();
+            const bool hex = (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')
+                          || (ch >= 'A' && ch <= 'F');
+            if (!hex) return {};
+        }
+        nibbles += QString(4 - g.size(), QLatin1Char('0')) + g.toLower();
+    }
+    QString out;                                   // 32 reversed nibbles, dot-separated
+    out.reserve(73);
+    for (int i = nibbles.size() - 1; i >= 0; --i) {
+        out += nibbles[i];
+        out += QLatin1Char('.');
+    }
+    out += QLatin1String("ip6.arpa");
+    return out;
+}
+
 } // namespace Nullock::Core::ReconLogic

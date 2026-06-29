@@ -1189,7 +1189,7 @@ function ReconTab() {
   for (const r of rec.dns) {
     (dnsByType[r.type] = dnsByType[r.type] || []).push(r);
   }
-  const dnsOrder = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"];
+  const dnsOrder = ["A", "AAAA", "CNAME", "MX", "TXT", "NS", "PTR"];
 
   // Sort subdomains: resolved first, alphabetical within
   const sortedSubs = [...rec.subdomains].sort((a, b) => {
@@ -1228,7 +1228,7 @@ function ReconTab() {
           letterSpacing: "0.06em", fontWeight: 600,
         }}>Recon</span>
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>
-          DNS · certificate transparency · wordlist subdomain enum
+          DNS · reverse DNS (PTR) · certificate transparency · wordlist subdomain enum
         </span>
       </div>
 
@@ -1239,13 +1239,15 @@ function ReconTab() {
       }}>
         <input style={{ ...inp, flex: 1, minWidth: 200 }}
                value={domain}
-               placeholder="example.com"
+               placeholder="example.com  (or an IP, e.g. 1.2.3.4, for Reverse DNS)"
                onChange={e => setDomain(e.target.value)}
                onKeyDown={e => { if (e.key === "Enter") runAll(); }} />
         <Btn label="Run all" primary onClick={runAll} disabled={!domain.trim()} />
         <Btn label="DNS only"   onClick={() => domain && NL.actions.reconDns(domain.trim())} />
         <Btn label="crt.sh"     onClick={() => domain && NL.actions.reconCrt(domain.trim())} />
         <Btn label="Wordlist"   onClick={() => domain && NL.actions.reconWordlist(domain.trim(), SUBDOMAIN_WORDLIST)} />
+        <Btn label="Reverse DNS" onClick={() => domain && NL.actions.reconReverse(domain.trim())}
+             title="PTR lookup — put an IP (1.2.3.4 or ::1) in the field" />
         <Btn label="Stop"  danger onClick={() => NL.actions.reconStop()}  disabled={!rec.running} />
         <Btn label="Clear"        onClick={() => NL.actions.reconClear()} disabled={rec.running} />
         <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>

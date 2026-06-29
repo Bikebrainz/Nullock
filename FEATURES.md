@@ -143,7 +143,8 @@ QA + scope conversations.
 - [ ] HTTP/2 multiplexing (single stream per CONNECT today)
 - [ ] Server-side h2 to browser
 - [ ] WebSocket `permessage-deflate`
-- [ ] WHOIS + reverse DNS in recon tab
+- [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
+- [ ] WHOIS in recon tab
 - [ ] WebSocket frame grouping (per-session collapsible view in history)
 
 ## Bugs caught + fixed in this codebase

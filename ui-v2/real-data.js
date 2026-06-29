@@ -180,6 +180,7 @@
       return post("/api/probe/all", { throttleMs, limit }).then(r => r.json());
     },
     reconDns(domain)            { return post("/api/recon/dns",      { domain }); },
+    reconReverse(ip)            { return post("/api/recon/reverse",  { ip }); },
     reconCrt(domain)            { return post("/api/recon/crt",      { domain }); },
     reconWordlist(domain, subdomains) { return post("/api/recon/wordlist", { domain, subdomains }); },
     reconStop()                 { return post("/api/recon/stop"); },

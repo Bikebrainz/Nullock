@@ -57,6 +57,11 @@ public slots:
     Q_INVOKABLE void runSubdomainWordlist(const QString &domain,
                                           const QStringList &subdomains);
 
+    // Reverse-DNS (PTR) lookup of an IP literal (IPv4 or IPv6). The PTR answer
+    // (hostname) lands in dnsRecords() as a record of type "PTR"; an invalid IP
+    // sets lastError() instead.
+    Q_INVOKABLE void runReverseDns(const QString &ip);
+
     Q_INVOKABLE void clear();
     Q_INVOKABLE void stop();  // best-effort; in-flight lookups complete
 

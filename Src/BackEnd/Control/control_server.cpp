@@ -8722,6 +8722,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             m_wiring.recon->runDns(bodyJson.value("domain").toString());
         return okJson();
     }
+    if (path == "/api/recon/reverse") {
+        if (m_wiring.recon)
+            m_wiring.recon->runReverseDns(bodyJson.value("ip").toString());
+        return okJson();
+    }
     if (path == "/api/recon/crt") {
         if (m_wiring.recon)
             m_wiring.recon->runCertTransparency(bodyJson.value("domain").toString());
