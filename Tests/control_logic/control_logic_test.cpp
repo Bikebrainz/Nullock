@@ -211,6 +211,25 @@ int main(int argc, char **argv) {
     chk("safeJoin: drive-path stays prefixed",
         safeJoin(D, "C:/Windows/win.ini").startsWith("/srv/ui/"));
 
+    // ===== XML attribute escaping (nmap-XML / report export) ============
+    // Locks xmlAttrEscape: the 5 predefined entities + control chars (incl
+    // CR/LF/tab) -> space, so attacker scan data (host/service/banner) can't
+    // break attribute framing or inject markup.
+    chk("xml: amp escaped",   xmlAttrEscape("a&b") == "a&amp;b");
+    chk("xml: lt/gt escaped", xmlAttrEscape("<x>") == "&lt;x&gt;");
+    chk("xml: quote escaped", xmlAttrEscape("\"q\"") == "&quot;q&quot;");
+    chk("xml: apos escaped",  xmlAttrEscape("'a'") == "&apos;a&apos;");
+    chk("xml: all five",      xmlAttrEscape("a\"&<>'b") == "a&quot;&amp;&lt;&gt;&apos;b");
+    chk("xml: LF -> space",   xmlAttrEscape("a\nb") == "a b");
+    chk("xml: CR -> space",   xmlAttrEscape("a\rb") == "a b");
+    chk("xml: tab -> space",  xmlAttrEscape("a\tb") == "a b");
+    chk("xml: control byte -> space",
+        xmlAttrEscape(QString("a") + QChar(0x01) + "b") == "a b");
+    chk("xml: plain text unchanged", xmlAttrEscape("nginx/1.21") == "nginx/1.21");
+    chk("xml: attribute-breakout payload neutralized",
+        xmlAttrEscape("\"><script>alert(1)</script>")
+            == "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

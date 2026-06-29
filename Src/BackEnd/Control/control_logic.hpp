@@ -55,6 +55,15 @@ QString mdCodeSpanSafe(const QString &s);
 // payload can't inject a link/image/emphasis/HTML.
 QString mdTextSafe(const QString &s);
 
+// Safe to drop into an XML ATTRIBUTE VALUE (the nmap-XML / report exports embed
+// ATTACKER-controlled scan data -- host, service name, banner -- as attribute
+// values). Control chars (incl. CR/LF/tab) collapse to a space so they cannot
+// break attribute framing or be rejected by a downstream XML parser, and the
+// five predefined entities (& < > " ') are escaped so a payload can't close the
+// attribute / inject markup. Returns a QString; callers serializing to a byte
+// stream apply .toUtf8().
+QString xmlAttrEscape(const QString &s);
+
 // --- Outbound request-builder CR/LF guard --------------------------------
 // A request-line / header component (path, query, param name) built from a
 // parsed URL or operator JSON and concatenated RAW into outbound HTTP request

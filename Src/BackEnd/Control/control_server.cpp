@@ -5133,22 +5133,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QMap<QString, QList<Nullock::Core::PortResult>> byHost;
         for (const auto &r : m_wiring.portScanner->results())
             byHost[r.host].append(r);
+        // Escape attacker-controlled scan data (host / service / banner) for an
+        // XML attribute value via the shared, unit-tested control_logic helper.
         auto xmlEscape = [](const QString &s) {
-            // Replace control chars first so they don't survive as raw
-            // bytes inside an attribute -- many XML parsers reject CR/LF
-            // in attribute values (or silently mangle them).
-            QString cleaned;
-            cleaned.reserve(s.size());
-            for (QChar c : s) {
-                const ushort u = c.unicode();
-                if (u == '\n' || u == '\r' || u == '\t') cleaned.append(' ');
-                else if (u < 0x20) cleaned.append(' ');
-                else cleaned.append(c);
-            }
-            return cleaned.toUtf8()
-                    .replace('&', "&amp;").replace('<', "&lt;")
-                    .replace('>', "&gt;").replace('"', "&quot;")
-                    .replace('\'', "&apos;");
+            return ControlLogic::xmlAttrEscape(s).toUtf8();
         };
         for (auto it = byHost.constBegin(); it != byHost.constEnd(); ++it) {
             const QString host = it.key();

@@ -71,6 +71,27 @@ QString mdTextSafe(const QString &s) {
     return out;
 }
 
+QString xmlAttrEscape(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar c : s) {
+        const ushort u = c.unicode();
+        // Control chars (incl. CR/LF/tab) -> space: a raw control byte would let
+        // attacker content break attribute framing, and many XML parsers reject
+        // or mangle them inside an attribute value.
+        if (u < 0x20) { out += QLatin1Char(' '); continue; }
+        switch (u) {
+        case '&':  out += QStringLiteral("&amp;");  break;
+        case '<':  out += QStringLiteral("&lt;");   break;
+        case '>':  out += QStringLiteral("&gt;");   break;
+        case '"':  out += QStringLiteral("&quot;"); break;
+        case '\'': out += QStringLiteral("&apos;"); break;
+        default:   out += c;
+        }
+    }
+    return out;
+}
+
 bool hasRequestSmugglingChars(const QString &s) {
     for (const QChar ch : s) {
         const ushort u = ch.unicode();
