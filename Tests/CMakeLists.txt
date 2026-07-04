@@ -339,6 +339,13 @@ add_subdirectory(control_logic)
 # Run via: ctest -R h2_logic -V
 add_subdirectory(h2_logic)
 
+# Pure HTTP/2-client logic behind the multi-stream rework: request-header build
+# (pseudo-header order + hop-by-hop strip), exhaustion caps (concurrent-stream +
+# per-stream body), status->reason, and the pump-loop decision (deadlock-avoidance
+# ordering). Compiles h2_client_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R h2_client_logic -V
+add_subdirectory(h2_client_logic)
+
 # OAST DNS-sink wire parser: memory-safe QNAME parsing of ATTACKER-controlled UDP
 # datagrams -- compression/overrun/unterminated rejection, the 255-octet name cap,
 # QR/opcode/qdcount strictness (no answer-a-response loop), and LDH label

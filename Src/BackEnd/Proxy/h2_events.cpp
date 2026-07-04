@@ -82,7 +82,17 @@ void H2EventLog::noteRstStream(const QString &conn, qint32 streamId, quint32 err
         const QString k = streamKey(conn, streamId);
         m_streams[k].lastError = errCode;
         m_streams[k].closed    = true;
-        if (!m_events.isEmpty()) m_events.last().errorCode = errCode;
+        // Stamp the errorCode onto THIS stream's RST event, not just whatever
+        // frame happens to be last: with concurrent multiplexed streams another
+        // stream's frame can land between the RST's noteFrame and this call.
+        // Scan back for the matching (conn, streamId, RST=3) event.
+        for (int i = m_events.size() - 1; i >= 0; --i) {
+            H2Event &e = m_events[i];
+            if (e.frameType == 3 && e.streamId == streamId && e.conn == conn) {
+                e.errorCode = errCode;
+                break;
+            }
+        }
         H2Logic::capStreamSummaries(m_streams, H2Logic::kMaxStreams);
     }
     emit eventsChanged();

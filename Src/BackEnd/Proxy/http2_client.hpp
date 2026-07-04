@@ -3,6 +3,7 @@
 #include "proxy_server.hpp"
 
 #include <QByteArray>
+#include <QList>
 #include <QObject>
 #include <QString>
 
@@ -10,14 +11,19 @@ class QSslSocket;
 
 namespace Nullock::Proxy {
 
-// Synchronous one-shot HTTP/2 client. Speaks h2 over an already-established
-// TLS connection whose ALPN was negotiated to "h2". Translates the response
-// back into our HttpResponse so the rest of the proxy machinery can treat
-// it identically to an HTTP/1.1 reply.
+// Synchronous HTTP/2 client. Speaks h2 over an already-established TLS
+// connection whose ALPN was negotiated to "h2". Translates each response back
+// into our HttpResponse so the rest of the proxy machinery can treat it
+// identically to an HTTP/1.1 reply.
 //
-// Backed by libnghttp2 (vcpkg). We do all the wire/framing through nghttp2
-// and only feed bytes in and out via the QSslSocket; this keeps us out of
-// the HPACK + frame-encoding business entirely.
+// Backed by libnghttp2 (vcpkg). We do all the wire/framing through nghttp2 and
+// only feed bytes in and out via the QSslSocket; this keeps us out of the
+// HPACK + frame-encoding business entirely.
+//
+// A single call opens N concurrent streams over ONE nghttp2 session and one
+// pump loop, so requests are genuinely multiplexed on the wire (interleaved
+// HEADERS/DATA) rather than serialized. Local exhaustion caps bound the stream
+// count and the per-stream response body regardless of what the peer advertises.
 class H2Client {
 public:
     struct Result {
@@ -26,10 +32,18 @@ public:
         Nullock::Proxy::HttpResponse        response;
     };
 
-    // Send one request and read the full response. The socket must already
-    // be encrypted with ALPN == "h2". Connection is left in a usable state
-    // but we don't currently re-use it — caller closes after.
+    // Send one request and read the full response. The socket must already be
+    // encrypted with ALPN == "h2". Thin wrapper over sendConcurrent.
     Result sendRequest(QSslSocket *sock, const Nullock::Proxy::HttpRequest &req);
+
+    // Send N requests concurrently over one h2 session and return one Result
+    // per request, in the SAME order as `reqs`. All streams are submitted up
+    // front (subject to the local concurrency cap) and driven by a single pump
+    // loop, so the origin can interleave their responses. A connection-level
+    // failure fails every outstanding request; a per-stream error (RST, body
+    // over budget) fails only that one. The socket is not reused; caller closes.
+    QList<Result> sendConcurrent(QSslSocket *sock,
+                                 const QList<Nullock::Proxy::HttpRequest> &reqs);
 };
 
 } // namespace Nullock::Proxy

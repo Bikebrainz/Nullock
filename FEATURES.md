@@ -140,8 +140,8 @@ QA + scope conversations.
 - [x] Saved auth-token / session manager — shipped (`session_manager` + session rules)
 - [x] `nullock` CLI / REST wrapper — shipped (`scripts/nullock`: status, findings, posture, recon, whois, reverse, search, headers, waf, export, report, raw)
 - [ ] Python client library (separate repo)
-- [ ] HTTP/2 multiplexing (single stream per CONNECT today)
-- [ ] Server-side h2 to browser
+- [~] HTTP/2 multiplexing — **Phase 1 shipped**: the upstream `H2Client` is now a session-scoped, N-concurrent-stream client (`sendConcurrent`) over one nghttp2 session + one pump loop, with node-stable per-stream state (`std::map<…,unique_ptr>` handed to nghttp2 as `stream_user_data`), local concurrency + per-stream body caps, and a pure `h2_client_logic` seam (40-assert test). Behind the unchanged `sendRequest` wrapper, so the proxy path is byte-for-byte unchanged. Phase 2 (session reuse/keep-alive in the h2 branch) + Phase 3 (browser-side h2 termination — needs ALPN + a server-role nghttp2 session) remain for full end-to-end multiplexing.
+- [ ] Server-side h2 to browser (HTTP/2 multiplexing Phase 3)
 - [x] WebSocket `permessage-deflate` — shipped (RFC 7692); the relay reassembles fragmented messages and inflates RSV1-compressed ones for display via Qt6Core's bundled zlib, with per-direction context-takeover, a 64 MiB zip-bomb cap, and inflate-failure fallback to raw bytes
 - [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
 - [x] WHOIS in recon tab — shipped (`/api/recon/whois`, follows IANA → registry/registrar referral)
