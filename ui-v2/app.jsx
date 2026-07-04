@@ -1193,7 +1193,8 @@ function PayloadsTab() {
     setLoading(false);
   };
 
-  const TECHS = ["all", "ssti", "cmdi", "xxe", "sqli", "xss", "jwt"];
+  const TECHS = ["all", "ssti", "cmdi", "xxe", "sqli", "xss", "jwt",
+                 "lfi", "ssrf", "redirect", "nosqli", "ldap", "crlf"];
   const payloads = (data && data.payloads) || [];
 
   const Btn = ({ label, onClick, primary, disabled, title }) => (

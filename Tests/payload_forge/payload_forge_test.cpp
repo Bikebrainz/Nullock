@@ -52,10 +52,17 @@ int main(int argc, char **argv) {
     // ===== technique registry ==========================================
     {
         const QStringList t = techniques();
-        chk("techniques: six listed", t.size() == 6);
-        chk("techniques: includes the expected set",
+        chk("techniques: twelve listed", t.size() == 12);
+        chk("techniques: includes the core set",
             t.contains("ssti") && t.contains("cmdi") && t.contains("xxe") &&
             t.contains("sqli") && t.contains("xss") && t.contains("jwt"));
+        chk("techniques: includes the extended set",
+            t.contains("lfi") && t.contains("ssrf") && t.contains("redirect") &&
+            t.contains("nosqli") && t.contains("ldap") && t.contains("crlf"));
+        // Every listed technique must actually produce at least one payload.
+        for (const QString &name : t)
+            chk(qPrintable("technique '" + name + "' yields payloads"),
+                !forge(name, withOob).isEmpty());
     }
 
     // ===== placeholders always resolved ================================
@@ -151,6 +158,25 @@ int main(int argc, char **argv) {
             chk("jwt: claims carry role=admin", claims.value("role").toString() == "admin");
             chk("jwt: claims carry the canary marker", claims.value("canary").toString() == MARK);
         }
+    }
+
+    // ===== extended techniques =========================================
+    {
+        const auto lfi = forge("lfi", noOob);
+        chk("lfi: /etc/passwd traversal present", anyContains(lfi, "etc/passwd"));
+        const auto ssrf = forge("ssrf", withOob);
+        chk("ssrf: AWS metadata IP present", anyContains(ssrf, "169.254.169.254"));
+        chk("ssrf: OOB confirm bakes the OAST domain", anyContains(ssrf, OAST));
+        const auto redir = forge("redirect", noOob);
+        chk("redirect: scheme-relative present", anyContains(redir, "//evil.example"));
+        const auto nosql = forge("nosqli", noOob);
+        chk("nosqli: $ne operator bypass present", anyContains(nosql, "$ne"));
+        const auto ldap = forge("ldap", noOob);
+        chk("ldap: wildcard filter present", ldap.size() >= 3);
+        const auto crlf = forge("crlf", noOob);
+        chk("crlf: encoded CRLF present", anyContains(crlf, "%0d%0a"));
+        chk("crlf(no OAST): the OOB Location row is gated out",
+            [&]{ for (const auto &p : crlf) if (p.oob) return false; return true; }());
     }
 
     // ===== unknown technique -> empty ==================================
