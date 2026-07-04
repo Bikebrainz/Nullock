@@ -26,24 +26,31 @@
 # Options:  --port N (default 17777)   --host H (default 127.0.0.1)
 # Env:      NULLOCK_PORT, NULLOCK_HOST override the defaults.
 #
-# Exit status: 0 on a 2xx response, 1 on a transport/HTTP error.
+# Exit status: 0 on a 2xx response; non-zero on a transport/HTTP error
+#              (curl's own exit code), and 2 on a usage error.
 
 set -euo pipefail
 
 HOST="${NULLOCK_HOST:-127.0.0.1}"
 PORT="${NULLOCK_PORT:-17777}"
 
+# Print the leading comment block (the usage header) -- stops at the first
+# non-comment line, so it can never leak script code past the header.
+_usage() { awk 'NR>=2 { if ($0 ~ /^#/) { sub(/^# ?/,""); print } else if ($0 != "") exit }' "$0"; }
+
 # --- option parsing (before the command) ---
 while [ $# -gt 0 ]; do
   case "$1" in
-    --port) PORT="$2"; shift 2 ;;
-    --host) HOST="$2"; shift 2 ;;
+    --port) [ $# -ge 2 ] || { echo "nullock: --port needs a value" >&2; exit 2; }; PORT="$2"; shift 2 ;;
+    --host) [ $# -ge 2 ] || { echo "nullock: --host needs a value" >&2; exit 2; }; HOST="$2"; shift 2 ;;
     --port=*) PORT="${1#*=}"; shift ;;
     --host=*) HOST="${1#*=}"; shift ;;
-    -h|--help|"") sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) _usage; exit 0 ;;
     *) break ;;
   esac
 done
+# Bare `nullock` (no command) -> show usage, not "unknown command".
+[ $# -gt 0 ] || { _usage; exit 0; }
 
 BASE="http://${HOST}:${PORT}"
 # X-Nullock-UI lets a non-browser client pass the CSRF write-gate (same-origin
