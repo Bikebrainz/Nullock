@@ -45,6 +45,14 @@ target_link_libraries(Proxy PUBLIC
 # of the mutation call -- the Proxy public API doesn't expose any Qml type.
 target_link_libraries(Proxy PRIVATE Qt6::Qml)
 
+# websocket.cpp inflates permessage-deflate (RFC 7692) frames for display using
+# the zlib bundled inside Qt6Core. Qt6::ZlibPrivate is an INTERFACE target: it
+# only supplies the <zlib.h> include dir + the QT_ZLIB_LIB define. The actual
+# z_inflate* symbols are already exported by Qt6::Core (linked above), which is
+# why no separate zlib library is needed.
+find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
+target_link_libraries(Proxy PRIVATE Qt6::ZlibPrivate)
+
 # Include directories
 target_include_directories(Proxy PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}

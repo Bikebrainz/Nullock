@@ -1,5 +1,8 @@
 #include "websocket.hpp"
 
+#include <zlib.h>       // Qt6Core's bundled zlib (Z_PREFIX -> z_inflate*)
+#include <cstring>      // memset
+
 namespace Nullock::Proxy {
 
 namespace {
@@ -37,6 +40,7 @@ qint64 WsFrameParser::tryParseOne(WsFrame *out, qsizetype start) {
     const quint8 b0 = static_cast<quint8>(m_buf.at(start));
     const quint8 b1 = static_cast<quint8>(m_buf.at(start + 1));
     const bool   fin    = (b0 & 0x80) != 0;
+    const bool   rsv1   = (b0 & 0x40) != 0;   // permessage-deflate compressed bit
     const quint8 opcode = b0 & 0x0F;
     const bool   masked = (b1 & 0x80) != 0;
     qint64       payloadLen = b1 & 0x7F;
@@ -75,6 +79,7 @@ qint64 WsFrameParser::tryParseOne(WsFrame *out, qsizetype start) {
 
     out->opcode = opcode;
     out->fin    = fin;
+    out->rsv1   = rsv1;
     // qsizetype args (no int cast); payloadLen is capped at 16 MiB above so the
     // offsets are far below INT_MAX, but mid() takes qsizetype so don't truncate.
     out->payload = m_buf.mid(start + offset, payloadLen);
@@ -122,6 +127,75 @@ QList<WsFrame> WsFrameParser::feed(const QByteArray &chunk) {
         pos += consumed;
     }
     if (pos > 0) m_buf.remove(0, pos); // compact the consumed prefix ONCE (not per frame)
+    return out;
+}
+
+// ===================== permessage-deflate (RFC 7692) ======================
+
+namespace {
+constexpr int    kInflateChunk       = 16 * 1024;         // output scratch per pass
+constexpr qint64 kMaxInflatedMessage = 64 * 1024 * 1024;  // 64 MiB zip-bomb guard
+// The 4-octet tail every permessage-deflate sender strips before transmit; we
+// re-append it so zlib sees a flushable empty stored block (RFC 7692 s7.2.2).
+const char kDeflateTail[4] = { '\x00', '\x00', '\xFF', '\xFF' };
+}
+
+WsInflater::WsInflater() {
+    auto *zs = new z_stream;
+    std::memset(zs, 0, sizeof(z_stream));
+    // windowBits = -15 -> RAW DEFLATE (no zlib/gzip wrapper), as RFC 7692 uses.
+    if (inflateInit2(zs, -15) == Z_OK) {
+        m_stream = zs;
+        m_ok = true;
+    } else {
+        delete zs;
+    }
+}
+
+WsInflater::~WsInflater() {
+    if (m_stream) {
+        auto *zs = static_cast<z_stream *>(m_stream);
+        inflateEnd(zs);
+        delete zs;
+    }
+}
+
+QByteArray WsInflater::inflateMessage(const QByteArray &compressed, bool *ok) {
+    if (ok) *ok = false;
+    if (!m_ok || !m_stream) return {};
+    auto *zs = static_cast<z_stream *>(m_stream);
+
+    // Feed the message body followed by the stripped empty-block tail. A local
+    // copy keeps next_in pointing at stable storage for the whole inflate.
+    QByteArray in = compressed;
+    in.append(kDeflateTail, 4);
+    zs->next_in  = reinterpret_cast<Bytef *>(in.data());
+    zs->avail_in = static_cast<uInt>(in.size());
+
+    QByteArray out;
+    char buf[kInflateChunk];
+    for (;;) {
+        zs->next_out  = reinterpret_cast<Bytef *>(buf);
+        zs->avail_out = sizeof(buf);
+        const int ret = inflate(zs, Z_SYNC_FLUSH);
+        // Z_BUF_ERROR just means "no forward progress possible" -- the normal
+        // way a Z_SYNC_FLUSH message ends once its input is drained. Only a hard
+        // error (Z_DATA_ERROR / Z_MEM_ERROR / Z_STREAM_ERROR) poisons us.
+        if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
+            m_ok = false;          // shared window is now untrustworthy
+            return out;
+        }
+        const qint64 produced = static_cast<qint64>(sizeof(buf)) - zs->avail_out;
+        if (produced > 0) out.append(buf, produced);
+        if (out.size() > kMaxInflatedMessage) {
+            m_ok = false;          // refuse to keep expanding a bomb
+            return out;
+        }
+        // Full output buffer => there may be more to drain; otherwise we're done.
+        if (zs->avail_out != 0) break;
+    }
+
+    if (ok) *ok = true;
     return out;
 }
 

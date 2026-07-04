@@ -668,6 +668,16 @@ private:
                            const QString &host, quint16 port) {
         auto clientParser = std::make_shared<WsFrameParser>();
         auto upstreamParser = std::make_shared<WsFrameParser>();
+        // Per-direction permessage-deflate (RFC 7692) state. Each direction has
+        // its own DEFLATE context (shared across that direction's messages under
+        // context-takeover), so it gets its own stateful inflater; the reassembly
+        // buffer accumulates a fragmented message's payload until FIN.
+        struct WsMsgState { bool inMsg = false; bool compressed = false;
+                            quint8 opcode = 0; QByteArray buf; };
+        auto clientInflater   = std::make_shared<WsInflater>();
+        auto upstreamInflater = std::make_shared<WsInflater>();
+        auto clientMsg   = std::make_shared<WsMsgState>();
+        auto upstreamMsg = std::make_shared<WsMsgState>();
         QString hostCopy = host;
         quint16 portCopy = port;
         auto *server = m_server;
@@ -683,31 +693,80 @@ private:
         connect(upstream, &QTcpSocket::disconnected, this,
                 [wsId]{ WsRepeater::instance()->deregisterSession(wsId); });
 
-        auto emitFrame = [server, hostCopy, portCopy](bool fromClient, const WsFrame &f) {
+        // Surface one WebSocket message (already reassembled + inflated) as a
+        // synthetic History entry. `wasDeflated` records that we successfully
+        // decompressed a permessage-deflate message so the UI can flag it.
+        auto emitMessage = [server, hostCopy, portCopy](
+                bool fromClient, quint8 opcode, bool fin,
+                const QByteArray &payload, bool wasDeflated) {
+            const QString label = QString::fromLatin1(wsOpcodeLabel(opcode));
             HttpRequest req;
             req.timestamp = QDateTime::currentDateTime();
             req.method = fromClient ? QStringLiteral("WS↑") : QStringLiteral("WS↓");
             req.host = hostCopy;
             req.port = portCopy;
-            req.path = QString("(%1, %2 B%3)")
-                           .arg(QString::fromLatin1(wsOpcodeLabel(f.opcode)))
-                           .arg(f.payload.size())
-                           .arg(f.fin ? "" : ", continued");
-            req.body = f.payload;
+            req.path = QString("(%1%2, %3 B%4)")
+                           .arg(label)
+                           .arg(wasDeflated ? QStringLiteral(" deflate") : QString())
+                           .arg(payload.size())
+                           .arg(fin ? "" : ", continued");
+            req.body = payload;
             HttpResponse resp;
             resp.httpVersion  = "WS";
             resp.statusCode   = 101;
-            resp.reasonPhrase = QString::fromLatin1(wsOpcodeLabel(f.opcode));
+            resp.reasonPhrase = wasDeflated ? (label + QStringLiteral(" deflate")) : label;
             resp.wasTls       = true;
-            resp.body         = f.payload;
+            resp.body         = payload;
             // Carry the content-type-ish info via a header so the inspector
             // body renderer treats text frames as text.
-            QString mime = (f.opcode == 0x1)
+            QString mime = (opcode == 0x1)
                 ? QStringLiteral("text/plain")
                 : QStringLiteral("application/octet-stream");
             resp.headers.append({ QStringLiteral("Content-Type"), mime });
             emit server->requestReceived(req);
             emit server->responseReceived(req, resp);
+        };
+
+        // Reassemble a data message across fragments and, if permessage-deflate
+        // marked it (RSV1 on the opening frame), inflate it before display.
+        // Control frames pass straight through -- they're never fragmented or
+        // compressed and must not disturb an in-flight data message.
+        auto processFrame = [emitMessage](bool fromClient, WsMsgState &st,
+                                          WsInflater &inf, const WsFrame &f) {
+            constexpr qint64 kMaxWsMessageBytes = 64 * 1024 * 1024;  // reassembly cap
+            if (f.opcode & 0x08) {                 // control frame
+                emitMessage(fromClient, f.opcode, f.fin, f.payload, false);
+                return;
+            }
+            if (f.opcode != 0x0) {                 // first frame of a data message
+                st.inMsg = true;
+                st.compressed = f.rsv1;
+                st.opcode = f.opcode;
+                st.buf = f.payload;
+            } else if (st.inMsg) {                 // continuation
+                st.buf.append(f.payload);
+            } else {                               // stray continuation -> raw
+                emitMessage(fromClient, 0x0, f.fin, f.payload, false);
+                return;
+            }
+            if (st.buf.size() > kMaxWsMessageBytes) {   // bound reassembly memory
+                emitMessage(fromClient, st.opcode, false, st.buf, false);
+                st = WsMsgState{};
+                return;
+            }
+            if (!f.fin) return;                    // more fragments pending
+
+            QByteArray payload = st.buf;
+            bool deflated = false;
+            if (st.compressed) {
+                bool ok = false;
+                const QByteArray dec = inf.inflateMessage(st.buf, &ok);
+                if (ok) { payload = dec; deflated = true; }
+                // On inflate failure fall back to the raw compressed bytes so a
+                // message is still visible rather than silently dropped.
+            }
+            emitMessage(fromClient, st.opcode, true, payload, deflated);
+            st = WsMsgState{};
         };
 
         QEventLoop loop;
@@ -716,20 +775,20 @@ private:
         connect(upstream, &QTcpSocket::disconnected, &loop, quit);
 
         connect(client, &QTcpSocket::readyRead, this,
-            [client, upstream, clientParser, emitFrame, wsId] {
+            [client, upstream, clientParser, clientMsg, clientInflater, processFrame, wsId] {
                 const QByteArray bytes = client->readAll();
                 upstream->write(bytes);
                 for (const WsFrame &f : clientParser->feed(bytes)) {
-                    emitFrame(true, f);
+                    processFrame(true, *clientMsg, *clientInflater, f);
                     WsRepeater::instance()->noteFrame(wsId, true);
                 }
             });
         connect(upstream, &QTcpSocket::readyRead, this,
-            [client, upstream, upstreamParser, emitFrame, wsId] {
+            [client, upstream, upstreamParser, upstreamMsg, upstreamInflater, processFrame, wsId] {
                 const QByteArray bytes = upstream->readAll();
                 client->write(bytes);
                 for (const WsFrame &f : upstreamParser->feed(bytes)) {
-                    emitFrame(false, f);
+                    processFrame(false, *upstreamMsg, *upstreamInflater, f);
                     WsRepeater::instance()->noteFrame(wsId, false);
                 }
             });

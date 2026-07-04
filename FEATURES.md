@@ -142,7 +142,7 @@ QA + scope conversations.
 - [ ] Python client library (separate repo)
 - [ ] HTTP/2 multiplexing (single stream per CONNECT today)
 - [ ] Server-side h2 to browser
-- [ ] WebSocket `permessage-deflate`
+- [x] WebSocket `permessage-deflate` — shipped (RFC 7692); the relay reassembles fragmented messages and inflates RSV1-compressed ones for display via Qt6Core's bundled zlib, with per-direction context-takeover, a 64 MiB zip-bomb cap, and inflate-failure fallback to raw bytes
 - [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
 - [x] WHOIS in recon tab — shipped (`/api/recon/whois`, follows IANA → registry/registrar referral)
 - [ ] WebSocket frame grouping (per-session collapsible view in history)

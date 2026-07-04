@@ -1,14 +1,18 @@
-# websocket.cpp is a pure RFC 6455 frame parser (QByteArray/QList only -- no
-# QtNetwork) but lives in the heavy Proxy lib (nghttp2/Qml/Network). Compile it
-# DIRECTLY into the test so the binary links Qt6::Core alone, avoiding the whole
-# proxy link chain. (This also means the test itself recompiles websocket.cpp.)
+# websocket.cpp is the RFC 6455 frame parser + the RFC 7692 permessage-deflate
+# inflater. It lives in the heavy Proxy lib (nghttp2/Qml/Network) but only needs
+# QByteArray + zlib, so compile it DIRECTLY into the test -- the binary links
+# Qt6::Core alone, avoiding the whole proxy link chain. (This also recompiles
+# websocket.cpp for the test.) The z_inflate*/z_deflate* symbols it uses are
+# exported by Qt6Core; Qt6::ZlibPrivate only adds the <zlib.h> include dir.
 add_executable(websocket_test
     websocket_test.cpp
     ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy/websocket.cpp
 )
 
+find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
 target_link_libraries(websocket_test PRIVATE
     Qt6::Core
+    Qt6::ZlibPrivate
 )
 
 target_include_directories(websocket_test PRIVATE

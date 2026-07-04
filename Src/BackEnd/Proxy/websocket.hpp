@@ -11,6 +11,8 @@ namespace Nullock::Proxy {
 struct WsFrame {
     quint8     opcode = 0;   // 0=cont, 1=text, 2=binary, 8=close, 9=ping, A=pong
     bool       fin    = true;
+    bool       rsv1   = false;  // RFC 7692 "compressed" bit; set only on the
+                                // first frame of a permessage-deflate message
     QByteArray payload;
 };
 
@@ -40,5 +42,34 @@ private:
 
 // Best-effort label for a frame opcode, useful for the GUI URL column.
 const char *wsOpcodeLabel(quint8 opcode);
+
+// Stateful permessage-deflate (RFC 7692) inflater for ONE direction of a
+// WebSocket stream. Maintains the zlib sliding window across messages so it
+// decodes correctly under context-takeover (the negotiated default). This is
+// display-only: the proxy forwards the original compressed bytes unchanged and
+// inflates a copy so the operator can read the traffic. Backed by the zlib
+// bundled in Qt6Core (raw DEFLATE, windowBits = -15); z_stream is hidden behind
+// a void* so <zlib.h> stays out of this widely-included header.
+class WsInflater {
+public:
+    WsInflater();
+    ~WsInflater();
+    WsInflater(const WsInflater &) = delete;
+    WsInflater &operator=(const WsInflater &) = delete;
+
+    // Inflate one COMPLETE compressed message (the concatenated payloads of all
+    // its frames). Appends the RFC 7692 tail (00 00 FF FF) the sender strips.
+    // Returns the decompressed bytes and sets *ok. On a corrupt stream or if the
+    // output exceeds the anti-zip-bomb cap the inflater is permanently poisoned
+    // (healthy() becomes false) since the shared window can no longer be trusted.
+    QByteArray inflateMessage(const QByteArray &compressed, bool *ok);
+
+    // False if init failed or a prior message corrupted the shared context.
+    bool healthy() const { return m_ok; }
+
+private:
+    void *m_stream = nullptr;   // z_streamp
+    bool  m_ok     = false;
+};
 
 } // namespace Nullock::Proxy

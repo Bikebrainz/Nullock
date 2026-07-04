@@ -16,7 +16,9 @@
 #include <QByteArray>
 #include <QCoreApplication>
 
+#include <zlib.h>       // synthesize permessage-deflate messages via z_deflate*
 #include <cstdio>
+#include <cstring>
 
 using namespace Nullock::Proxy;
 
@@ -25,6 +27,26 @@ int pass = 0, fail = 0;
 void chk(const char *label, bool ok) {
     if (ok) ++pass;
     else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; }
+}
+
+// Compress `plain` into the on-wire permessage-deflate payload using a
+// persistent raw-DEFLATE stream, then strip the trailing 00 00 FF FF empty
+// block exactly as an RFC 7692 sender does. Reusing the same `ds` across calls
+// exercises context-takeover (message N back-references message N-1's window).
+QByteArray deflateMsg(z_stream *ds, const QByteArray &plain) {
+    ds->next_in  = reinterpret_cast<Bytef *>(const_cast<char *>(plain.constData()));
+    ds->avail_in = static_cast<uInt>(plain.size());
+    QByteArray out;
+    char buf[16384];
+    do {
+        ds->next_out  = reinterpret_cast<Bytef *>(buf);
+        ds->avail_out = sizeof(buf);
+        deflate(ds, Z_SYNC_FLUSH);          // flush this message, keep stream open
+        out.append(buf, sizeof(buf) - ds->avail_out);
+    } while (ds->avail_out == 0);
+    if (out.endsWith(QByteArray("\x00\x00\xFF\xFF", 4)))   // sender strips the tail
+        out.chop(4);
+    return out;
 }
 // Build one RFC 6455 frame. `payload` is the PLAINTEXT; when masked we XOR it onto
 // the wire with `mask` (the parser must return the plaintext back).
@@ -170,6 +192,80 @@ int main(int argc, char **argv) {
         chk("cap: an oversized chunk is rejected before growing the buffer",
             fs.isEmpty() && p.bufferedBytes() == 0);
         chk("cap: parser gave up after the oversized chunk", p.feed(frame(0x1, "x")).isEmpty());
+    }
+
+    // ===== RSV1 (permessage-deflate "compressed" bit) is surfaced =======
+    {
+        WsFrameParser p;
+        QByteArray f;
+        f += char(0xC1);          // FIN + RSV1 + text  (0x80|0x40|0x01)
+        f += char(0x03);          // unmasked, len 3
+        f += "abc";
+        const auto fs = p.feed(f);
+        chk("rsv1: frame parsed", fs.size() == 1);
+        chk("rsv1: compressed bit read from 0x40", fs.value(0).rsv1);
+        chk("rsv1: opcode masked to text (0x40 not folded in)", fs.value(0).opcode == 0x1);
+    }
+    {
+        WsFrameParser p;
+        const auto fs = p.feed(frame(0x1, "plain"));    // no RSV1
+        chk("rsv1: uncompressed frame has rsv1=false", fs.size() == 1 && !fs.value(0).rsv1);
+    }
+
+    // ===== permessage-deflate inflate round-trips (RFC 7692) ============
+    {
+        z_stream ds; std::memset(&ds, 0, sizeof(ds));
+        const int rc = deflateInit2(&ds, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                                    -15, 8, Z_DEFAULT_STRATEGY);
+        chk("inflate: raw deflateInit2 ok", rc == Z_OK);
+
+        WsInflater inf;
+        chk("inflate: constructed healthy", inf.healthy());
+
+        const QByteArray m1 = "Hello, permessage-deflate world!";
+        const QByteArray c1 = deflateMsg(&ds, m1);
+        bool ok1 = false;
+        const QByteArray d1 = inf.inflateMessage(c1, &ok1);
+        chk("inflate: message 1 ok", ok1);
+        chk("inflate: message 1 round-trips", d1 == m1);
+
+        // Message 2 under context-takeover: the deflater back-references the
+        // window from message 1, so only a stateful inflater decodes it right.
+        const QByteArray m2 = "Hello, permessage-deflate world! (again, compressible)";
+        const QByteArray c2 = deflateMsg(&ds, m2);
+        bool ok2 = false;
+        const QByteArray d2 = inf.inflateMessage(c2, &ok2);
+        chk("inflate: message 2 (context-takeover) ok", ok2);
+        chk("inflate: message 2 round-trips", d2 == m2);
+        chk("inflate: still healthy after two messages", inf.healthy());
+
+        deflateEnd(&ds);
+    }
+    // A large, highly compressible message drives the multi-pass output loop.
+    {
+        z_stream ds; std::memset(&ds, 0, sizeof(ds));
+        deflateInit2(&ds, Z_BEST_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
+        WsInflater inf;
+        const QByteArray big(512 * 1024, 'Q');     // 512 KiB
+        const QByteArray c = deflateMsg(&ds, big);
+        chk("inflate: 512KiB deflates small", c.size() < 4000);
+        bool ok = false;
+        const QByteArray d = inf.inflateMessage(c, &ok);
+        chk("inflate: large message round-trips", ok && d == big);
+        deflateEnd(&ds);
+    }
+    // Corrupt compressed bytes -> not ok AND the inflater is poisoned (the
+    // shared window can no longer be trusted for subsequent messages).
+    {
+        WsInflater inf;
+        const QByteArray garbage("\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8);
+        bool ok = true;
+        inf.inflateMessage(garbage, &ok);
+        chk("inflate: corrupt input -> not ok", !ok);
+        chk("inflate: corrupt input poisons the inflater", !inf.healthy());
+        bool ok2 = true;
+        inf.inflateMessage(QByteArray("anything"), &ok2);
+        chk("inflate: poisoned inflater refuses further messages", !ok2);
     }
 
     std::fprintf(stderr, "websocket_test: %d passed, %d failed\n", pass, fail);
