@@ -145,6 +145,7 @@ QA + scope conversations.
 - [x] WebSocket `permessage-deflate` — shipped (RFC 7692); the relay reassembles fragmented messages and inflates RSV1-compressed ones for display via Qt6Core's bundled zlib, with per-direction context-takeover, a 64 MiB zip-bomb cap, and inflate-failure fallback to raw bytes
 - [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
 - [x] WHOIS in recon tab — shipped (`/api/recon/whois`, follows IANA → registry/registrar referral)
+- [x] Payload Forge — shipped (`GET /api/payloads?technique=`): turns detections into ready-to-run PoCs (SSTI-RCE per engine, cmd-injection, XXE OOB/file-read, SQLi per DBMS, reflected XSS per context, JWT alg=none forgery); OOB payloads bake in a freshly-minted, correlator-registered OAST token; pure `payload_forge` module, 45-assert regression test
 - [ ] WebSocket frame grouping (per-session collapsible view in history)
 
 ## Bugs caught + fixed in this codebase

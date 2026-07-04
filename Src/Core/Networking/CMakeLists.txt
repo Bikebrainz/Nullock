@@ -12,6 +12,8 @@ add_library(Networking STATIC
     intruder.hpp
     passive_scanner.cpp
     passive_scanner.hpp
+    payload_forge.cpp
+    payload_forge.hpp
     port_scanner.cpp
     port_logic.cpp
     port_scanner.hpp

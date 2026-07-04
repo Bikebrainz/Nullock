@@ -353,6 +353,14 @@ add_subdirectory(dns_logic)
 # Run via: ctest -R ssrf_logic -V
 add_subdirectory(ssrf_logic)
 
+# Payload Forge: the pure PoC-payload generator (SSTI/cmdi/XXE/SQLi/XSS/JWT).
+# Locks that placeholders are always resolved (no %OAST%/%MARKER% ever leaks),
+# OOB payloads appear only when an OAST domain is supplied, detection payloads
+# always appear, and alg=none JWTs are structurally valid base64url. Compiles
+# payload_forge.cpp directly; links Qt6::Core.
+# Run via: ctest -R payload_forge -V
+add_subdirectory(payload_forge)
+
 # HTTP/3-detection probe logic: the CRLF-injection guard on the request-line
 # target (path/query) + Host header, and the RFC-7838 Alt-Svc parser (h3 vs h2
 # classification, quote-stripping, ma= overflow-safety, "clear"). Compiles

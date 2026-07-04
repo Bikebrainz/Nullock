@@ -16,6 +16,7 @@
 #include "intruder.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
+#include "payload_forge.hpp"
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
@@ -1579,6 +1580,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/h2/streams"
             || p == "/api/h2/events"
             || p == "/api/oast/poll"
+            || p == "/api/payloads"
             || p == "/api/openapi/export"
             || p == "/api/cookies"
             || p == "/api/project/templates"
@@ -1743,6 +1745,58 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         root["hits"]      = hits;
         root["count"]     = hits.size();
         root["truncated"] = truncated;
+        return httpJson(200, root);
+    }
+
+    // GET /api/payloads?technique=<ssti|cmdi|xxe|sqli|xss|jwt|all>[&marker=<m>]
+    // Forge ready-to-run PoC payloads for authorized testing. When the OAST
+    // server is up a fresh token is minted, baked into out-of-band payloads and
+    // registered so a callback is attributed to "payload-forge"; otherwise only
+    // non-OOB (detection / reflection / time-based) payloads come back.
+    if (path == "/api/payloads") {
+        const QUrlQuery q(query);
+        QString technique = q.queryItemValue("technique");
+        if (technique.isEmpty()) technique = QStringLiteral("all");
+
+        Nullock::Core::PayloadForge::ForgeParams fp;
+        fp.marker = q.queryItemValue("marker");
+        if (fp.marker.isEmpty())
+            fp.marker = QStringLiteral("NULLOCK") +
+                QString::number(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFF, 16).toUpper();
+
+        QString oastDomain;
+        if (m_wiring.oast && m_wiring.oast->running()) {
+            const QJsonObject tok = m_wiring.oast->mintToken();
+            const QString token = tok.value("token").toString();
+            oastDomain = token + QLatin1Char('.') + m_wiring.oast->baseHost();
+            fp.oastDomain = oastDomain;
+            if (m_wiring.oastCorrelator && !token.isEmpty()) {
+                Nullock::Core::OastOrigin origin;
+                origin.kind = QStringLiteral("payload-forge");
+                origin.note = QStringLiteral("forged %1 payload").arg(technique);
+                origin.url  = tok.value("pathUrl").toString();
+                m_wiring.oastCorrelator->registerToken(token, origin);
+            }
+        }
+
+        QJsonArray arr;
+        for (const auto &pl : Nullock::Core::PayloadForge::forge(technique, fp)) {
+            QJsonObject o;
+            o["technique"] = pl.technique;
+            o["variant"]   = pl.variant;
+            o["payload"]   = pl.payload;
+            o["note"]      = pl.note;
+            o["oob"]       = pl.oob;
+            arr.append(o);
+        }
+        QJsonObject root;
+        root["technique"]  = technique;
+        root["count"]      = arr.size();
+        root["marker"]     = fp.marker;
+        root["oastDomain"] = oastDomain;     // empty string when OAST is down
+        root["techniques"] = QJsonArray::fromStringList(
+            Nullock::Core::PayloadForge::techniques());
+        root["payloads"]   = arr;
         return httpJson(200, root);
     }
 
