@@ -7,6 +7,7 @@ const TABS = [
   { id: "issues",    label: "ISSUES" },
   { id: "scans",     label: "SCANS" },
   { id: "recon",     label: "RECON" },
+  { id: "payloads",  label: "PAYLOADS" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
   { id: "repeater",  label: "REPEATER" },
@@ -1163,6 +1164,134 @@ const SUBDOMAIN_WORDLIST = [
 // subdomain enum -- the recon-for-web-testing flavor, not OSINT for
 // people. Pairs with the rest of the workflow: scope a domain here,
 // click a found subdomain to populate the proxy host filter.
+function PayloadsTab() {
+  const [technique, setTechnique] = React.useState("all");
+  const [data, setData]       = React.useState(null);   // server response
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr]         = React.useState("");
+  const [copied, setCopied]   = React.useState(-1);
+
+  const copy = (text, i) => {
+    try {
+      navigator.clipboard?.writeText(text);
+      setCopied(i);
+      setTimeout(() => setCopied(-1), 1000);
+    } catch (e) {}
+  };
+
+  const forge = async (t) => {
+    const tech = t || technique;
+    setTechnique(tech);
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await NL.actions.forgePayloads(tech);
+      setData(r);
+    } catch (e) {
+      setErr(String(e && e.message ? e.message : e));
+    }
+    setLoading(false);
+  };
+
+  const TECHS = ["all", "ssti", "cmdi", "xxe", "sqli", "xss", "jwt"];
+  const payloads = (data && data.payloads) || [];
+
+  const Btn = ({ label, onClick, primary, disabled, title }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)" : primary ? "var(--bg)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)" : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "0.05em", textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Payload Forge</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          ready-to-run PoC payloads · SSTI · cmd-injection · XXE · SQLi · XSS · JWT alg=none
+        </span>
+      </div>
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 12, borderRadius: 4, display: "flex", gap: 8,
+        alignItems: "center", flexWrap: "wrap",
+      }}>
+        {TECHS.map(t => (
+          <Btn key={t} label={t} primary={t === technique}
+               onClick={() => forge(t)} />
+        ))}
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
+          {loading ? "forging…" : (data ? (data.count + " payloads") : "pick a technique")}
+          {err ? " · " + err : ""}
+        </span>
+      </div>
+
+      {data ? (
+        <div style={{ color: "var(--dim)", fontSize: "11px", display: "flex",
+                      gap: 16, flexWrap: "wrap" }}>
+          <span>marker: <span style={{ color: "var(--text)" }}>{data.marker}</span></span>
+          <span>OAST: {data.oastDomain
+            ? <span style={{ color: "var(--text)" }}>{data.oastDomain}</span>
+            : <span style={{ color: "var(--err)" }}>offline — OOB payloads omitted</span>}</span>
+        </div>
+      ) : null}
+
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex",
+                    flexDirection: "column", gap: 8 }}>
+        {payloads.map((p, i) => (
+          <div key={i} style={{
+            background: "var(--pane)", border: "1px solid var(--line)",
+            borderRadius: 4, padding: 10, display: "flex", flexDirection: "column",
+            gap: 6,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "var(--text)", fontSize: "12px", fontWeight: 600 }}>
+                {p.variant}</span>
+              <span style={{
+                fontSize: "9px", color: "var(--dim)", border: "1px solid var(--line)",
+                borderRadius: 3, padding: "1px 5px", textTransform: "uppercase",
+              }}>{p.technique}</span>
+              {p.oob ? (
+                <span style={{
+                  fontSize: "9px", color: "var(--bg)", background: "var(--accent)",
+                  borderRadius: 3, padding: "1px 5px", textTransform: "uppercase",
+                }}>oob</span>
+              ) : null}
+              <div style={{ flex: 1 }} />
+              <Btn label={copied === i ? "copied" : "copy"}
+                   onClick={() => copy(p.payload, i)} />
+            </div>
+            <pre style={{
+              margin: 0, padding: 8, background: "var(--bg-deep)",
+              border: "1px solid var(--line)", borderRadius: 3,
+              fontSize: "11.5px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+              whiteSpace: "pre-wrap", wordBreak: "break-all", overflow: "auto",
+            }}>{p.payload}</pre>
+            {p.note ? (
+              <div style={{ color: "var(--dim)", fontSize: "10.5px" }}>{p.note}</div>
+            ) : null}
+          </div>
+        ))}
+        {!loading && data && payloads.length === 0 ? (
+          <div style={{ color: "var(--dim)", fontSize: "11px", padding: 8 }}>
+            No payloads for this technique.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ReconTab() {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -2025,6 +2154,9 @@ function App() {
         )}
         {tab === "recon" && (
           <ReconTab />
+        )}
+        {tab === "payloads" && (
+          <PayloadsTab />
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />
