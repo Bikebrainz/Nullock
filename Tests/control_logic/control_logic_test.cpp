@@ -210,6 +210,11 @@ int main(int argc, char **argv) {
     // --- a non-empty result ALWAYS begins with the trusted base (no escape) ---
     chk("safeJoin: drive-path stays prefixed",
         safeJoin(D, "C:/Windows/win.ini").startsWith("/srv/ui/"));
+    // The substring ".." reject is deliberately conservative -- it also rejects a
+    // benign filename that merely CONTAINS "..". Pinned so a future "tighten to
+    // only reject '..' path SEGMENTS" is a conscious, tested contract change.
+    chk("safeJoin: benign 'a..b.txt' is (conservatively) rejected",
+        safeJoin(D, "a..b.txt").isEmpty());
 
     // ===== XML attribute escaping (nmap-XML / report export) ============
     // Locks xmlAttrEscape: the 5 predefined entities + control chars (incl

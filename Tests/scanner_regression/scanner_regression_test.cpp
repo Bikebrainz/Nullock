@@ -20,6 +20,7 @@
 #include "proxy_server.hpp"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QString>
 #include <QStringList>
 
@@ -396,27 +397,40 @@ int main(int argc, char **argv) {
     int pass = 0, fail = 0;
     QStringList failures;
 
+    // A linear scan of even the 500KB ReDoS-regression bodies is well under this;
+    // a reintroduced catastrophic / O(n^2) regex on the MAIN-thread passive
+    // scanner blows past it. This turns the "must complete fast" ReDoS-regression
+    // cases into an ENFORCED timed guard instead of only a finding-absence check.
+    constexpr qint64 kPerCaseBudgetMs = 2000;
     for (const auto &t : buildCorpus()) {
         // Fresh scanner per case so finding counters don't bleed.
         PassiveScanner scanner;
         scanner.setNextRowId(1);
+        QElapsedTimer caseTimer;
+        caseTimer.start();
         scanner.onResponseReceived(t.req, t.resp);
+        const qint64 caseMs = caseTimer.elapsed();
         const auto findings = scanner.findings(200);
 
         const QString expected = QString::fromLatin1(t.expectedKind);
         const QString evidence = containsKind(findings, expected);
         const bool present = !evidence.isNull();
-        const bool ok = t.negative ? !present : present;
+        const bool findingOk = t.negative ? !present : present;
+        const bool timeOk = caseMs <= kPerCaseBudgetMs;
 
-        if (ok) {
-            std::fprintf(stderr, "  PASS  %s\n", t.label);
+        if (findingOk && timeOk) {
+            std::fprintf(stderr, "  PASS  %s  (%lldms)\n", t.label, (long long)caseMs);
             ++pass;
         } else {
-            std::fprintf(stderr, "  FAIL  %s  (%s kind=%s, got %s)\n",
-                         t.label,
-                         t.negative ? "did not expect" : "expected",
-                         t.expectedKind,
-                         present ? "present" : "absent");
+            if (!timeOk)
+                std::fprintf(stderr, "  FAIL  %s  (%lldms > %lldms budget -- possible ReDoS)\n",
+                             t.label, (long long)caseMs, (long long)kPerCaseBudgetMs);
+            else
+                std::fprintf(stderr, "  FAIL  %s  (%s kind=%s, got %s)\n",
+                             t.label,
+                             t.negative ? "did not expect" : "expected",
+                             t.expectedKind,
+                             present ? "present" : "absent");
             ++fail;
             failures << QString::fromLatin1(t.label);
         }

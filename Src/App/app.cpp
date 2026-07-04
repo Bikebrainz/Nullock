@@ -999,11 +999,20 @@ int main(int argc, char *argv[]) {
         // whose tab we auto-opened above, so DON'T exit (-1 here used to kill the
         // control server out from under the just-opened browser tab). Fall back
         // to the same event loop the headless path runs.
-        QTextStream(stderr)
-            << "Nullock: QML window unavailable (run from the repo root to use it); "
+        QTextStream err(stderr);
+        if (controlServer.listeningPort() == 0) {
+            // No QML window AND no control server means there is no UI at all --
+            // running an empty event loop forever would be a silent zombie. The
+            // control-server bind must have failed (port in use, etc.); fail loud.
+            err << "Nullock: QML window unavailable and control server not "
+                   "listening (port bind failed?) -- nothing to serve. Exiting.\n";
+            err.flush();
+            return -1;
+        }
+        err << "Nullock: QML window unavailable (run from the repo root to use it); "
                "serving the browser control UI at http://127.0.0.1:"
             << controlServer.listeningPort() << "/\n";
-        QTextStream(stderr).flush();
+        err.flush();
         const int rc = app->exec();
         QThreadPool::globalInstance()->waitForDone(5000);
         return rc;

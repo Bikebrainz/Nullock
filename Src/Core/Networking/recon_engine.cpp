@@ -10,6 +10,7 @@
 #include <QDnsTextRecord>
 #include <QElapsedTimer>
 #include <QHostAddress>
+#include <QPointer>
 #include <QTcpSocket>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -127,27 +128,52 @@ void ReconEngine::runReverseDns(const QString &ip) {
     addLookup(QDnsLookup::PTR, arpa);
 }
 
+// A whois referral server is parsed out of an attacker/MITM-influenceable whois
+// RESPONSE, so it must not steer us at loopback / private / link-local /
+// multicast hosts (an SSRF-shaped probe). A raw IP literal in those ranges (and
+// "localhost") is refused; a public IP or a bare hostname is allowed
+// (hostname->private resolution is out of scope for this port-43 read-only probe).
+static bool whoisServerSafe(const QString &host) {
+    if (host.isEmpty()) return false;
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0) return false;
+    const QHostAddress addr(host);
+    if (addr.isNull()) return true;   // a hostname, not a raw IP literal
+    if (addr.isLoopback() || addr.isLinkLocal() || addr.isMulticast()) return false;
+    if (addr.protocol() == QAbstractSocket::IPv4Protocol) {
+        const quint32 v = addr.toIPv4Address();
+        const quint8 a = (v >> 24) & 0xff, b = (v >> 16) & 0xff;
+        if (a == 0 || a == 10 || a == 127) return false;      // this-net / 10.0.0.0/8 / loopback
+        if (a == 169 && b == 254) return false;               // 169.254.0.0/16 link-local
+        if (a == 172 && b >= 16 && b <= 31) return false;     // 172.16.0.0/12
+        if (a == 192 && b == 168) return false;               // 192.168.0.0/16
+    } else if (addr.protocol() == QAbstractSocket::IPv6Protocol) {
+        if ((addr.toIPv6Address()[0] & 0xfe) == 0xfc) return false;   // fc00::/7 unique-local
+    }
+    return true;
+}
+
 QString ReconEngine::whoisQuery(const QString &server, const QString &query) {
-    constexpr int    kConnectMs = 8000;
-    constexpr int    kReadMs    = 8000;
-    constexpr qint64 kBudgetMs  = 15000;     // OVERALL wall-clock cap on the read
-    constexpr int    kMaxBytes  = 256 * 1024;
-    QTcpSocket sock;
-    sock.connectToHost(server, 43);
-    if (!sock.waitForConnected(kConnectMs)) return {};
-    sock.write((query + QStringLiteral("\r\n")).toUtf8());
-    if (!sock.waitForBytesWritten(kReadMs)) return {};
-    QByteArray resp;
-    // Per-read timeout alone is NOT an aggregate bound: a server dribbling one
-    // byte every <kReadMs would keep the loop (and this worker thread) alive for
-    // hours until the byte cap. Add an overall wall-clock budget so a hostile /
-    // MITM'd / referral-injected whois server can't pin the thread.
+    constexpr qint64 kBudgetMs = 20000;   // ONE aggregate cap: connect + write + read
+    constexpr int    kMaxBytes = 256 * 1024;
     QElapsedTimer budget;
     budget.start();
+    // Remaining budget, clamped per-wait, so connect + write + EVERY read are
+    // folded into a single wall-clock bound (a per-wait timeout alone is not an
+    // aggregate bound -- a dribbling / stalled server could otherwise pin the
+    // worker far longer than any single timeout).
+    auto left = [&budget]() -> int {
+        const qint64 r = kBudgetMs - budget.elapsed();
+        return r <= 0 ? 0 : static_cast<int>(qMin<qint64>(r, 8000));
+    };
+    QTcpSocket sock;
+    sock.connectToHost(server, 43);
+    if (left() <= 0 || !sock.waitForConnected(left())) return {};
+    sock.write((query + QStringLiteral("\r\n")).toUtf8());
+    if (left() <= 0 || !sock.waitForBytesWritten(left())) return {};
+    QByteArray resp;
     while (sock.state() == QAbstractSocket::ConnectedState && resp.size() < kMaxBytes) {
-        const qint64 left = kBudgetMs - budget.elapsed();
-        if (left <= 0) break;
-        if (!sock.waitForReadyRead(static_cast<int>(qMin<qint64>(left, kReadMs)))) break;
+        if (left() <= 0) break;
+        if (!sock.waitForReadyRead(left())) break;
         resp.append(sock.readAll());
     }
     resp.append(sock.readAll());
@@ -174,16 +200,20 @@ void ReconEngine::runWhois(const QString &domain) {
     if (wasIdle) emit runningChanged();
 
     // TCP/43 blocks, so run the IANA -> registry/registrar referral chain on a
-    // worker thread (mirrors runCertTransparency).
-    (void)QtConcurrent::run([this, q]() {
+    // worker thread. The worker touches `this` ONLY at the very end (all blocking
+    // whois I/O uses the static whoisQuery), so a QPointer guard keeps it safe if
+    // the engine is destroyed on shutdown while the worker is still draining.
+    QPointer<ReconEngine> self(this);
+    (void)QtConcurrent::run([self, q]() {
         const QString iana = whoisQuery(QStringLiteral("whois.iana.org"), q);
         QString full = iana;
         QString src  = QStringLiteral("whois.iana.org");
         QString next = ReconLogic::whoisReferralServer(iana);
         QStringList seen{ QStringLiteral("whois.iana.org") };
-        // Follow up to two referrals (IANA -> registry -> registrar), guarding
-        // against a referral loop.
-        for (int hop = 0; hop < 2 && !next.isEmpty() && !seen.contains(next); ++hop) {
+        // Follow up to two referrals (IANA -> registry -> registrar); stop on a
+        // loop OR a referral pointing at a non-public host (SSRF guard).
+        for (int hop = 0; hop < 2 && !next.isEmpty() && !seen.contains(next)
+                          && whoisServerSafe(next); ++hop) {
             seen << next;
             const QString r = whoisQuery(next, q);
             if (r.trimmed().isEmpty()) break;
@@ -191,15 +221,19 @@ void ReconEngine::runWhois(const QString &domain) {
             src  = next;
             next = ReconLogic::whoisReferralServer(r);
         }
+        if (!self) return;   // engine destroyed while we ran -> don't touch freed memory
         {
-            QMutexLocker lk(&m_mutex);
-            if (full.trimmed().isEmpty())
-                m_lastError = QStringLiteral("whois: no response (server unreachable)");
-            m_whois = QStringLiteral("; whois server: ") + src
-                    + QStringLiteral("\n\n") + full;
+            QMutexLocker lk(&self->m_mutex);
+            if (full.trimmed().isEmpty()) {
+                self->m_lastError = QStringLiteral("whois: no response (server unreachable)");
+                self->m_whois.clear();   // no bare "; whois server:" banner on total failure
+            } else {
+                self->m_whois = QStringLiteral("; whois server: ") + src
+                              + QStringLiteral("\n\n") + full;
+            }
         }
-        emit whoisChanged();
-        finishOne();
+        emit self->whoisChanged();
+        self->finishOne();
     });
 }
 

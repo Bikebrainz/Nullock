@@ -3156,8 +3156,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QString host = u.host();
         const int port     = u.port(u.scheme() == "https" ? 443 : 80);
         const bool useTls  = (u.scheme() == "https");
-        QString basePath   = u.path().isEmpty() ? "/" : u.path();
-        const QString existingQuery = u.query();
+        // FullyEncoded: QUrl::path() DECODES %20/%09/%0d%0a, and a decoded space
+        // or tab concatenated into "GET " + basePath + " HTTP/1.1" splits the
+        // request line just like a CR/LF would. Keep the wire-safe encoded form
+        // (the hasRequestSmugglingChars guard below is then belt-and-suspenders).
+        QString basePath   = u.path(QUrl::FullyEncoded).isEmpty()
+                                 ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QString existingQuery = u.query(QUrl::FullyEncoded);
         // basePath/existingQuery come from QUrl path()/query(); QUrl::path()
         // DECODES percent-encoded bytes (incl. %0d%0a -> raw CR/LF on Qt 6.7),
         // so a crafted url could splice CR/LF into the request line of every
@@ -4485,22 +4490,22 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         QString out;
         const QString proj = m_wiring.projectStore
             ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
-        out += "# Nullock engagement report -- " + proj + "\n\n";
+        out += "# Nullock engagement report -- " + ControlLogic::mdTextSafe(proj) + "\n\n";
         out += "*Generated " + QDateTime::currentDateTime().toString(Qt::ISODate) + "*\n\n";
 
         out += "## Scope\n\n";
         if (m_wiring.projectStore) {
             const auto meta = m_wiring.projectStore->metadata();
             out += "**In-scope hosts:**\n";
-            for (const auto &s : meta.inScope) out += "- `" + s + "`\n";
+            for (const auto &s : meta.inScope) out += "- `" + ControlLogic::mdCodeSpanSafe(s) + "`\n";
             if (meta.inScope.isEmpty()) out += "_(no hosts configured)_\n";
             out += "\n**Out-of-scope hosts:**\n";
-            for (const auto &s : meta.outOfScope) out += "- `" + s + "`\n";
+            for (const auto &s : meta.outOfScope) out += "- `" + ControlLogic::mdCodeSpanSafe(s) + "`\n";
             if (meta.outOfScope.isEmpty()) out += "_(none)_\n";
             out += "\n";
             if (!meta.notes.isEmpty()) {
                 out += "## Notes\n\n";
-                out += meta.notes + "\n\n";
+                out += ControlLogic::mdTextSafe(meta.notes) + "\n\n";
             }
         }
 

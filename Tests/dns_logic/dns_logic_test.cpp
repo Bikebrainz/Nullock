@@ -198,14 +198,17 @@ int main(int argc, char **argv) {
 
     // ===== memory-safety fuzz: never crash on arbitrary short packets ===
     {
-        int survived = 0;
+        bool qnameCapped = true, endInBounds = true;
         for (int n = 0; n <= 40; ++n) {
             QByteArray q(n, '\0');
             for (int i = 0; i < n; ++i) q[i] = char((i * 37 + 0xC0) & 0xFF);  // hostile-ish bytes
-            (void)parseDnsQuery(q);     // must not crash / OOB
-            ++survived;
+            const auto p = parseDnsQuery(q);     // must not crash / OOB
+            // Non-vacuous invariants on the result of parsing arbitrary bytes:
+            if (p.qname.size() > kMaxDnsNameChars) qnameCapped = false;
+            if (p.valid && p.questionEnd > q.size()) endInBounds = false;
         }
-        chk("fuzz: 41 hostile short packets parsed without crashing", survived == 41);
+        chk("fuzz: qname stays <= kMaxDnsNameChars on every hostile packet", qnameCapped);
+        chk("fuzz: a valid parse never claims to consume past the datagram", endInBounds);
     }
 
     std::fprintf(stderr, "dns_logic_test: %d passed, %d failed\n", pass, fail);

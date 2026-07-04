@@ -1290,9 +1290,13 @@ void PassiveScanner::checkResponse(int rowId,
                 static const QRegularExpression rxEmail(
                     R"(\b[a-zA-Z0-9._-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b)");
                 auto eit = rxEmail.globalMatch(combined);
-                int emails = 0;
-                while (eit.hasNext() && emails < 3) { eit.next(); ++emails; }
-                if (emails >= 3) {
+                QSet<QString> emails;          // DISTINCT (the finding claims "3+ distinct")
+                int scanned = 0;
+                while (eit.hasNext() && emails.size() < 3 && scanned < 512) {
+                    emails.insert(eit.next().captured().toLower());
+                    ++scanned;
+                }
+                if (emails.size() >= 3) {
                     addFinding(rowId, req, resp, "medium", "pii-email-mass",
                                QString("Outbound %1 in request to public host %2")
                                    .arg(QStringLiteral("Email-shape (multiple)"), req.host),

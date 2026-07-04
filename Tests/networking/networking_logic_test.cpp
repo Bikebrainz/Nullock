@@ -240,6 +240,19 @@ int main(int argc, char **argv) {
         QByteArray buf = "zz\r\nhello\r\n0\r\n\r\n", dec;
         chkd("feed bad-size error", feedChunked(buf, dec), ChunkDecode::Error);
     }
+    {
+        // A chunk's trailing CRLF replaced by other bytes must be REJECTED, not
+        // silently swallowed (would let a hostile upstream steer the decode).
+        QByteArray buf = "5\r\nhelloXX3\r\nfoo\r\n0\r\n\r\n", dec;
+        chkd("feed mis-framed inter-chunk CRLF -> error",
+             feedChunked(buf, dec), ChunkDecode::Error);
+    }
+    {
+        // Sanity: the same stream with the correct CRLF decodes cleanly.
+        QByteArray buf = "5\r\nhello\r\n3\r\nfoo\r\n0\r\n\r\n", dec;
+        chkd("feed two-chunk done", feedChunked(buf, dec), ChunkDecode::Done);
+        chks("feed two-chunk decoded", QString::fromLatin1(dec), "hellofoo");
+    }
 
     // ===== feedChunked: the MED unbounded-stream LOCKS (§2) ==============
     {

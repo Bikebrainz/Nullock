@@ -87,6 +87,13 @@ ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded) {
         // is already <= kMaxBodyBytes, so this sum cannot overflow qint64.
         const qint64 need = qint64(crlf) + 2 + cs.size + 2;
         if (buffer.size() < need) return ChunkDecode::NeedMore;
+        // RFC 9112: chunk-data MUST be followed by CRLF. Validate it rather than
+        // blindly removing two bytes -- a hostile upstream that replaces the
+        // trailing CRLF with other bytes would otherwise be silently swallowed,
+        // resuming the next chunk-size parse at the wrong offset and steering
+        // which bytes land in the decoded body (a response-desync integrity bug).
+        if (buffer.mid(crlf + 2 + cs.size, 2) != QByteArrayLiteral("\r\n"))
+            return ChunkDecode::Error;
         decoded.append(buffer.mid(crlf + 2, cs.size));
         buffer.remove(0, crlf + 2 + cs.size + 2);
     }
