@@ -116,7 +116,18 @@ class Connection : public QObject {
 public:
     // No QObject parent: the Connection lives on a worker thread and
     // owning it from main-thread server would cross thread boundaries.
-    // Lifetime is bound to its QThread's run() stack frame instead.
+    // Lifetime is bound to its QThread's run() stack frame instead:
+    // onNewConnection() stack-allocates `Connection conn(...)` inside the
+    // QThread::create lambda, so run() returning destroys it exactly once
+    // and the destructor closes both child sockets.
+    //
+    // It must therefore NEVER self-delete -- do not wire
+    // connect(..., this, &QObject::deleteLater). deleteLater() on stack
+    // storage is UB: a nested relay QEventLoop (runRawRelay /
+    // runWebSocketRelay) could dispatch the DeferredDelete and `delete this`
+    // on a stack object, then the run()-returns unwind double-destroys it.
+    // Break out of a nested relay loop on disconnect via the local
+    // connect(disconnected, &loop, quit) wiring instead.
     Connection(QTcpSocket *client, ProxyServer *server)
         : QObject(nullptr), m_client(client), m_server(server) {
         m_client->setParent(this);
@@ -211,7 +222,6 @@ public:
     void runBlindTunnel(HttpRequest &req, const QString &host, quint16 port,
                         bool emitSignals = true) {
         m_upstream = new QTcpSocket(this);
-        connect(m_upstream, &QTcpSocket::disconnected, this, &QObject::deleteLater);
 
         m_upstream->connectToHost(host, port);
         if (!m_upstream->waitForConnected(kReadTimeoutMs)) {
@@ -295,7 +305,6 @@ public:
         //    the client sends inside this tunnel (HTTP/1.1 keep-alive).
         auto *upstream = new QSslSocket(this);
         m_upstream = upstream;
-        connect(upstream, &QSslSocket::disconnected, this, &QObject::deleteLater);
 
         // Advertise both h2 and http/1.1 ALPN to upstream. If the server
         // picks h2 we hand the request off to H2Client (libnghttp2 wrapper);
