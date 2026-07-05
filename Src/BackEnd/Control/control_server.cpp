@@ -8804,6 +8804,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/transcode") {
         const QString op    = bodyJson.value("op").toString();
         const QString input = bodyJson.value("input").toString();
+        // Workbench transforms run synchronously on this (GUI) thread and several
+        // amplify their input; bound it so a giant paste can't freeze the UI.
+        if (input.size() > 4 * 1024 * 1024)
+            return httpJson(413, QJsonObject{{ "ok", false },
+                { "error", QStringLiteral("input too large (cap 4 MB)") }});
         QJsonObject root;
         root["operations"] = QJsonArray::fromStringList(Nullock::Core::Transcode::operations());
         if (op == "smart") {
@@ -8852,6 +8857,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // filter/WAF-coverage testing. Returns one {name, output, note} per transform.
     if (path == "/api/process") {
         const QString payload = bodyJson.value("payload").toString();
+        // Real payloads are short bypass strings; process() emits 12 variants
+        // (some ~6x-amplifying) synchronously on this thread, so cap the input.
+        if (payload.size() > 256 * 1024)
+            return httpJson(413, QJsonObject{{ "error",
+                QStringLiteral("payload too large (cap 256 KB)") }});
         QJsonArray vs;
         for (const auto &v : Nullock::Core::Processor::process(payload)) {
             QJsonObject o;

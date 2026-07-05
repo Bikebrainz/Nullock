@@ -41,6 +41,8 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QTextStream>
+
+#include <cstdio>
 #include <QTimer>
 
 namespace {
@@ -704,8 +706,34 @@ int main(int argc, char *argv[]) {
         scanner.clear();
     });
 
-    if (wantedProxyPort > 0) proxy.start(QHostAddress::LocalHost, wantedProxyPort);
-    else                     proxy.start();
+    // Startup banner goes to stdout via QTextStream with an explicit flush:
+    // this is a GUI-subsystem exe, so qInfo() is routed to the debugger (invisible
+    // to a headless operator redirecting output) and stdout is block-buffered when
+    // redirected -- so we must flush each line to make it appear live.
+    auto banner = [](const QString &line) {
+        const QByteArray b = (line + QLatin1Char('\n')).toUtf8();
+        std::fwrite(b.constData(), 1, static_cast<size_t>(b.size()), stdout);
+        std::fflush(stdout);   // block-buffered when redirected to a file/pipe
+    };
+
+    const bool proxyStarted = (wantedProxyPort > 0)
+        ? proxy.start(QHostAddress::LocalHost, wantedProxyPort)
+        : proxy.start();
+    if (!proxyStarted || proxy.listeningPort() == 0) {
+        // The proxy is the whole point -- if it can't bind, don't limp along
+        // silently. Tell the user exactly why + how to fix it, and exit non-zero.
+        QTextStream es(stderr);
+        es << "FATAL: could not start the proxy listener"
+           << (wantedProxyPort ? QStringLiteral(" on 127.0.0.1:%1").arg(wantedProxyPort)
+                               : QStringLiteral(" (auto-port)"))
+           << " -- is that port already in use? Pick a free one with --proxy-port=N.\n";
+        es.flush();
+        return 1;
+    }
+    // Always surface where the proxy is listening -- it's what the user points
+    // their browser at, and the auto-port fallback may have landed off 8080.
+    banner("  proxy     http://127.0.0.1:" + QString::number(proxy.listeningPort())
+           + "/   <- set your browser's HTTP proxy here");
 
     Nullock::Core::Repeater repeater(&model);
     Nullock::Core::Intruder intruder(&model);
@@ -817,8 +845,7 @@ int main(int argc, char *argv[]) {
     Nullock::Core::OastServer oast;
     const quint16 oastPort = oast.start(oastBindPort, oastHost);
     if (oastPort) {
-        qInfo().noquote() << "  oast      http://" + oastHost + ":"
-                             + QString::number(oastPort) + "/";
+        banner("  oast      http://" + oastHost + ":" + QString::number(oastPort) + "/");
     }
     wiring.oast = &oast;
 
@@ -846,8 +873,7 @@ int main(int argc, char *argv[]) {
     // an IP literal so a resolved name points back at this box.
     const quint16 dnsPort = dnsSink.start(dnsBindPort, oastHost, oastHost);
     if (dnsPort) {
-        qInfo().noquote() << "  oast-dns  udp/" + QString::number(dnsPort)
-                             + " (lab: point resolver here)";
+        banner("  oast-dns  udp/" + QString::number(dnsPort) + " (lab: point resolver here)");
         QObject::connect(&dnsSink, &Nullock::Core::DnsSink::hitReceived,
                          &oastCorrelator, &Nullock::Core::OastCorrelator::onHit);
     }
@@ -896,7 +922,7 @@ int main(int argc, char *argv[]) {
     if (controlServer.start(QHostAddress::LocalHost, ctlPort)) {
         const QString url = QString("http://127.0.0.1:%1/")
                                 .arg(controlServer.listeningPort());
-        qInfo().noquote() << "Nullock UI:" << url;
+        banner("Nullock UI:  " + url);
         if (!headless) QDesktopServices::openUrl(QUrl(url));
     }
 

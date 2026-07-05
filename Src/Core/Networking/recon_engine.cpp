@@ -348,9 +348,14 @@ void ReconEngine::runCertTransparency(const QString &domain) {
         return;
     }
 
-    // crt.sh hosts a JSON endpoint that returns every cert mentioning the
-    // given domain. Run on a worker thread because HttpClient blocks.
-    (void)QtConcurrent::run([this, domain]() {
+    // crt.sh hosts a JSON endpoint that returns every cert mentioning the given
+    // domain. Run on a worker thread because HttpClient blocks. crt.sh is
+    // Cloudflare-fronted -- the slowest recon leg -- so the engine can be
+    // destroyed while this blocks; capture a QPointer and touch NO member state
+    // until we've confirmed we're still alive, and keep finishOne() OUTSIDE the
+    // mutex (it locks m_mutex). Mirrors runWhois.
+    QPointer<ReconEngine> self(this);
+    (void)QtConcurrent::run([self, domain]() {
         Nullock::Core::HttpClient client;
         // crt.sh wants the bare domain with a % wildcard prefix to catch
         // subdomains too.
@@ -362,29 +367,29 @@ void ReconEngine::runCertTransparency(const QString &domain) {
             "Accept: application/json\r\n"
             "Connection: close\r\n\r\n";
         const auto res = client.send("crt.sh", 443, /*useTls=*/true, req);
+        if (!self) return;   // engine destroyed during the blocking I/O -> bail
         if (!res.ok) {
-            QMutexLocker lk(&m_mutex);
-            // crt.sh sits behind Cloudflare which rejects Qt's TLS
-            // fingerprint (same JA3-fingerprinting issue we hit
-            // elsewhere). Surface a useful message instead of the
-            // raw socket error.
-            m_lastError = "crt.sh unreachable (likely TLS fingerprint "
-                          "rejection by Cloudflare). DNS + wordlist still "
-                          "work. Detail: " + res.errorMessage;
-            finishOne();
+            {
+                QMutexLocker lk(&self->m_mutex);
+                self->m_lastError = "crt.sh unreachable (likely TLS fingerprint "
+                              "rejection by Cloudflare). DNS + wordlist still "
+                              "work. Detail: " + res.errorMessage;
+            }
+            self->finishOne();
             return;
         }
-        // crt.sh sometimes returns NDJSON-ish output or pure JSON. Try
-        // parsing as JSON first. Cap the body size we'll try to parse so
-        // a hostile/MITM response can't OOM us on JSON parse.
+        // crt.sh sometimes returns NDJSON-ish output or pure JSON. Try parsing as
+        // JSON first. Cap the body so a hostile/MITM response can't OOM the parse.
         constexpr int kMaxCrtJsonBytes = 32 * 1024 * 1024;
         QByteArray body = res.parsed.body;
         if (body.size() > kMaxCrtJsonBytes) body.truncate(kMaxCrtJsonBytes);
         const QJsonDocument doc = QJsonDocument::fromJson(body);
         if (!doc.isArray()) {
-            QMutexLocker lk(&m_mutex);
-            m_lastError = "crt.sh: unexpected response shape";
-            finishOne();
+            {
+                QMutexLocker lk(&self->m_mutex);
+                self->m_lastError = "crt.sh: unexpected response shape";
+            }
+            self->finishOne();
             return;
         }
         QSet<QString> seen;
@@ -395,7 +400,7 @@ void ReconEngine::runCertTransparency(const QString &domain) {
         // resolved to confirm which are live.
         constexpr int kMaxCrtResolve = 1000;
         for (const QJsonValue &v : doc.array()) {
-            if (m_stopFlag.loadAcquire() != 0) break;
+            if (self->m_stopFlag.loadAcquire() != 0) break;
             const QJsonObject o = v.toObject();
             // name_value can be multi-line (multi-SAN cert).
             const QStringList names =
@@ -408,26 +413,29 @@ void ReconEngine::runCertTransparency(const QString &domain) {
                 if (!acceptCertName(name, domain)) continue;
                 if (seen.contains(name)) continue;
                 seen.insert(name);
-                addSubdomain({ name, "crt.sh", {} });        // the lead (recorded even if not live)
+                self->addSubdomain({ name, "crt.sh", {} });   // the lead (recorded even if not live)
                 if (toResolve.size() < kMaxCrtResolve) toResolve.append(name);
                 ++added;
             }
         }
-        if (added > 0) emit subdomainsChanged();
+        if (added > 0) emit self->subdomainsChanged();
         // Resolve the CT leads (A + AAAA) to mark which actually resolve. QDnsLookup
         // must be created on the object's OWN thread, so hop off this worker; a
-        // batch-holder on m_active keeps running() stable across the hand-off.
+        // batch-holder on m_active keeps running() stable across the hand-off. The
+        // QueuedConnection is tied to `self` as context, so Qt discards it if the
+        // engine is gone; the inner lambda re-guards for good measure.
         if (!toResolve.isEmpty()) {
-            m_active.fetchAndAddOrdered(1);
-            QMetaObject::invokeMethod(this, [this, toResolve]() {
+            self->m_active.fetchAndAddOrdered(1);
+            QMetaObject::invokeMethod(self.data(), [self, toResolve]() {
+                if (!self) return;
                 for (const QString &n : toResolve) {
-                    if (m_stopFlag.loadAcquire() != 0) break;
-                    resolveName(n, QStringLiteral("crt.sh"));
+                    if (self->m_stopFlag.loadAcquire() != 0) break;
+                    self->resolveName(n, QStringLiteral("crt.sh"));
                 }
-                finishOne();   // release the batch holder
+                self->finishOne();   // release the batch holder
             }, Qt::QueuedConnection);
         }
-        finishOne();
+        self->finishOne();
     });
 }
 

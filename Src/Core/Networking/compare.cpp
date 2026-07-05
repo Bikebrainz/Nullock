@@ -15,9 +15,11 @@ QStringList tokenizeWords(const QString &s) {
     // Each token is a word plus its TRAILING whitespace (or a leading-whitespace
     // run on its own), so "a b" -> ["a ", "b"] and inserting one word counts as
     // one token -- while the join of all tokens still reproduces the input.
+    // Stop once we're one past the cap so a huge paste can't build a giant list
+    // before lcsDiff truncates (which would freeze the GUI thread).
     QStringList out;
     int i = 0;
-    while (i < s.size()) {
+    while (i < s.size() && out.size() <= kMaxTokens) {
         int j = i;
         if (s[i].isSpace()) {                                  // leading whitespace run
             while (j < s.size() && s[j].isSpace()) ++j;
@@ -34,17 +36,20 @@ QStringList tokenizeWords(const QString &s) {
 QStringList tokenizeLines(const QString &s) {
     QStringList out;
     int start = 0;
-    for (int i = 0; i < s.size(); ++i) {
+    for (int i = 0; i < s.size() && out.size() <= kMaxTokens; ++i) {
         if (s[i] == QLatin1Char('\n')) { out << s.mid(start, i - start + 1); start = i + 1; }
     }
-    if (start < s.size()) out << s.mid(start);
+    if (start < s.size() && out.size() <= kMaxTokens) out << s.mid(start);
     return out;
 }
 
 QStringList tokenizeChars(const QString &s) {
+    // Cap DURING tokenization: chars mode is one token per character, so a large
+    // paste would otherwise allocate millions of QStrings on the GUI thread.
+    const qsizetype lim = qMin<qsizetype>(s.size(), qsizetype(kMaxTokens) + 1);
     QStringList out;
-    out.reserve(s.size());
-    for (const QChar c : s) out << QString(c);
+    out.reserve(lim);
+    for (qsizetype i = 0; i < lim; ++i) out << QString(s[i]);
     return out;
 }
 
