@@ -453,6 +453,31 @@ void enrich(Finding &f) {
     f.compliance.clear();
     if (!comp.isEmpty())
         f.compliance = comp.split(',', Qt::SkipEmptyParts);
+
+    // Confidence: only fill in a default; a scanner that ran its own proof
+    // (e.g. an OAST-confirmed blind vuln) may have set it already -- preserve.
+    if (f.confidence.isEmpty())
+        f.confidence = confidenceForKind(f.kind);
+}
+
+QString confidenceForKind(const QString &kind) {
+    const QString k = kind.toLower();
+    // Proven out-of-band / by an active control round -> confirmed.
+    if (k.contains(QLatin1String("oast"))
+        || k.contains(QLatin1String("confirmed"))
+        || k.contains(QLatin1String("interactsh"))
+        || k.contains(QLatin1String("-oob"))
+        || k.contains(QLatin1String("time-based"))
+        || k.contains(QLatin1String("blind-confirmed")))
+        return QStringLiteral("confirmed");
+    // Explicitly heuristic -> tentative.
+    if (k.contains(QLatin1String("possible"))
+        || k.contains(QLatin1String("-lead"))
+        || k.contains(QLatin1String("maybe"))
+        || k.contains(QLatin1String("heuristic"))
+        || k.contains(QLatin1String("reflected-uncorroborated")))
+        return QStringLiteral("tentative");
+    return QStringLiteral("firm");
 }
 
 } // namespace Nullock::Core::FindingEnricher

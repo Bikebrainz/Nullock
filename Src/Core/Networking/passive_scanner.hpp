@@ -35,6 +35,15 @@ struct Finding {
     QString    cvssVector;   // full vector string
     QStringList compliance;  // ["PCI-DSS-6.5.7", "SOC2-CC6.1"]
     QString    fixSummary;   // one-sentence fix guidance
+    // Certainty of the finding, for triage + CI gating (a build gate can fail
+    // only on "confirmed"). Burp-style taxonomy:
+    //   "confirmed" -- proven out-of-band / by an active control round (OAST
+    //                  callback, time-based reproduce): true positive by
+    //                  construction.
+    //   "firm"      -- strong signal, low false-positive risk (default).
+    //   "tentative" -- heuristic / needs manual confirmation.
+    // Set by the enricher from the kind when a scanner didn't set it explicitly.
+    QString    confidence;
 };
 
 // Passive scanner consumes every response that flows through the proxy

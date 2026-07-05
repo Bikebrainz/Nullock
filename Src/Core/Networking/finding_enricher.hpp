@@ -17,4 +17,14 @@ void enrich(Finding &f);
 // mapping. False = we've just got generic severity-based defaults.
 bool hasMapping(const QString &kind);
 
+// Default confidence for a finding kind (Burp-style taxonomy):
+//   "confirmed" -- proven out-of-band or by an active control round: any OAST
+//                  callback kind, or a *-confirmed / time-based-reproduced kind.
+//   "tentative" -- explicitly heuristic (*-possible, *-lead, reflected-* that
+//                  wasn't corroborated).
+//   "firm"      -- everything else (strong signal, low FP risk).
+// enrich() applies this only when the finding didn't already carry a confidence
+// (a scanner that did its own proof can set "confirmed" and we preserve it).
+QString confidenceForKind(const QString &kind);
+
 } // namespace Nullock::Core::FindingEnricher

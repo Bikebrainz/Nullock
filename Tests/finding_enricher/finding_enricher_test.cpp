@@ -211,6 +211,32 @@ int main(int argc, char **argv) {
                   && qFuzzyCompare(f.cvssScore + 1.0, 8.8 + 1.0));
     }
 
+    // 5) Confidence taxonomy + preserve-explicit contract.
+    {
+        auto conf = [&](const char *kind) {
+            Finding f; f.kind = kind; f.severity = "medium";
+            FindingEnricher::enrich(f);
+            return f.confidence;
+        };
+        auto ck = [&](const char *label, bool ok) {
+            if (ok) ++pass; else { ++fail; failures << label;
+                std::fprintf(stderr, "  FAIL  %s\n", label); }
+        };
+        ck("oast kind -> confirmed",        conf("ssrf-oast-callback") == "confirmed");
+        ck("time-based kind -> confirmed",  conf("sqli-time-based")    == "confirmed");
+        ck("*-confirmed -> confirmed",      conf("rce-blind-confirmed")== "confirmed");
+        ck("possible kind -> tentative",    conf("xxe-possible")       == "tentative");
+        ck("-lead kind -> tentative",       conf("cors-lead")          == "tentative");
+        ck("plain kind -> firm",            conf("missing-csp")        == "firm");
+        // A scanner that already proved it keeps its explicit confidence.
+        {
+            Finding f; f.kind = "missing-csp"; f.severity = "medium";
+            f.confidence = "confirmed";
+            FindingEnricher::enrich(f);
+            ck("explicit confidence preserved", f.confidence == "confirmed");
+        }
+    }
+
     std::fprintf(stderr,
         "\n========================================\n"
         "Finding enricher regression: %d passed, %d failed\n"

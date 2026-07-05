@@ -1297,6 +1297,7 @@ QByteArray ControlServer::buildSnapshot() const {
             for (const QString &c : f.compliance) comp.append(c);
             fo["compliance"] = comp;
             fo["fixSummary"] = f.fixSummary;
+            fo["confidence"] = f.confidence;
             findingsArr.append(fo);
         }
         root["findingsCount"] = m_wiring.scanner->count();
@@ -3722,6 +3723,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 // baseline, keeps it too). Identity key ignores these fields.
                 { "cwe", f.cwe }, { "owasp", f.owasp },
                 { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary },
+                { "confidence", f.confidence },
             };
         };
 
@@ -3878,6 +3880,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 { "severity", canonSev(f.severity) }, { "kind", f.kind },
                 { "host", f.host }, { "url", f.url },
                 { "cvssScore", f.cvssScore }, { "summary", f.summary },
+                { "confidence", f.confidence },
             });
         }
 
@@ -4862,6 +4865,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 { "summary", f.summary }, { "host", f.host }, { "url", f.url },
                 { "cwe", f.cwe }, { "owasp", f.owasp },
                 { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary },
+                { "confidence", f.confidence },
             });
         }
 
@@ -5311,6 +5315,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (f.severity == "low")    sarifLevel = "note";
             if (f.severity == "info")   sarifLevel = "note";
             result["level"]  = sarifLevel;
+            // Confidence in a properties bag so a CI gate can fail only on
+            // confirmed true positives (e.g. jq 'select(.properties.confidence
+            // == "confirmed")'). SARIF has no first-class confidence field.
+            if (!f.confidence.isEmpty()) {
+                QJsonObject props;
+                props["confidence"] = f.confidence;
+                if (f.cvssScore > 0.0) props["cvssScore"] = f.cvssScore;
+                result["properties"] = props;
+            }
             QJsonObject msg;
             msg["text"] = f.summary + (f.evidence.isEmpty() ? QString() : "\n\n" + f.evidence);
             result["message"] = msg;
