@@ -995,6 +995,17 @@ int main(int argc, char *argv[]) {
         QTextStream(stdout).flush();
     }
 
+    // On every exit path, ask the long-running recon workers to stop BEFORE
+    // draining the pool, so their loops break at the next checkpoint instead of
+    // running to completion -- otherwise a quit taken mid crawl/scan/attack
+    // stalls shutdown for the full run. Each object's destructor still
+    // stop-joins as the hard guarantee; this only makes the drain prompt.
+    auto stopWorkers = [&] {
+        crawler.stop();
+        intruder.stop();
+        portScanner.stop();
+    };
+
     if (headless) {
         // Skip the QML window entirely. Event loop runs via QCoreApplication.
         const int rc = app->exec();
@@ -1003,6 +1014,7 @@ int main(int argc, char *argv[]) {
         // stack objects above (Wiring); if we let main() unwind while
         // they're mid-run, the pointers dangle. Cap the wait at 5s so a
         // hung worker doesn't block shutdown forever.
+        stopWorkers();
         QThreadPool::globalInstance()->waitForDone(5000);
         return rc;
     }
@@ -1046,6 +1058,7 @@ int main(int argc, char *argv[]) {
             << controlServer.listeningPort() << "/\n";
         err.flush();
         const int rc = app->exec();
+        stopWorkers();
         QThreadPool::globalInstance()->waitForDone(5000);
         return rc;
     }
@@ -1055,6 +1068,7 @@ int main(int argc, char *argv[]) {
     // window close, and any port-scan / probe / replay worker still in
     // flight needs to finish (or time out) before main()'s locals
     // destruct out from under them.
+    stopWorkers();
     QThreadPool::globalInstance()->waitForDone(5000);
     return rc;
 }
