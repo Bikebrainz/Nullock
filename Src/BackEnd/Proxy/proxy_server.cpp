@@ -639,6 +639,9 @@ private:
         const QString cl = findHeader(req.headers, "Content-Length");
         if (!cl.isEmpty()) {
             const qint64 n = cl.toLongLong();
+            // Attacker-controlled Content-Length (MITM); cap it so a huge value
+            // can't buffer an unbounded request body -> memory DoS.
+            if (n < 0 || n > 128LL * 1024 * 1024) return false;
             req.body = rest;
             if (req.body.size() < n) {
                 QByteArray extra;
@@ -697,6 +700,10 @@ private:
             resp.body = decoded;
         } else if (!cl.isEmpty()) {
             const qint64 n = cl.toLongLong();
+            // A peer-declared Content-Length is attacker-controlled in a MITM;
+            // cap it (like the chunked path's kMaxBodyBytes) so a huge value can't
+            // buffer an unbounded body into one QByteArray -> memory DoS.
+            if (n < 0 || n > 128LL * 1024 * 1024) return false;
             resp.body = rest;
             if (resp.body.size() < n) {
                 QByteArray extra;

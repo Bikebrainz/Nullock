@@ -48,6 +48,7 @@ struct ServerSession {
     std::map<int32_t, std::unique_ptr<ServerStream>> streams;
     QList<int32_t> readyQueue;   // streams whose request just completed
     qint64 bufferedBytes = 0;    // sum of all streams' buffered request bodies
+    qint64 respBufferedBytes = 0; // sum of all streams' buffered response bodies
     bool fatal = false;
 };
 
@@ -122,7 +123,8 @@ int onStreamClose(nghttp2_session *, int32_t streamId, uint32_t, void *user) {
     // data provider is done reading respBody, so it is safe to free the stream.
     auto it = sess->streams.find(streamId);
     if (it != sess->streams.end()) {
-        sess->bufferedBytes -= it->second->reqBody.size();   // release its buffered body
+        sess->bufferedBytes     -= it->second->reqBody.size();    // release buffered request body
+        sess->respBufferedBytes -= it->second->respBody.size();   // release buffered response body
         sess->streams.erase(it);
     }
     return 0;
@@ -229,8 +231,17 @@ void H2Terminator::run(QSslSocket *browser, const QString &connName,
                 nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, sid, NGHTTP2_INTERNAL_ERROR);
                 continue;
             }
+            // Bound aggregate RESPONSE buffering too (mirror of the request-side
+            // kMaxServerBufferedBytes): a browser that opens many streams and
+            // stalls its receive window would otherwise pin one upstream body per
+            // stream resident. RST rather than buffer past the cap.
+            if (sess.respBufferedBytes + qint64(resp.body.size()) > kMaxServerBufferedBytes) {
+                nghttp2_submit_rst_stream(session, NGHTTP2_FLAG_NONE, sid, NGHTTP2_ENHANCE_YOUR_CALM);
+                continue;
+            }
             st->respBody = resp.body;
             st->respOffset = 0;
+            sess.respBufferedBytes += qint64(st->respBody.size());
 
             const auto nvList = H2ServerLogic::responseHeaders(resp.statusCode, resp.headers);
             std::vector<nghttp2_nv> nvs;

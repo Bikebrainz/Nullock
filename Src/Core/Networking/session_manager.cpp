@@ -46,6 +46,20 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
     const QString hostKey = lowercaseHost(req.host);
     {
         QMutexLocker lk(&m_mutex);
+        // Bound the number of distinct hosts retained: the page chooses which
+        // origins to fetch, so a hostile page fanning out to thousands of
+        // subdomains could otherwise grow this map unboundedly (every sibling
+        // store in the codebase is capped). Evict the least-recently-seen host
+        // (LRU by lastSeen) when a NEW host would exceed the cap.
+        constexpr int kMaxHosts = 4096;
+        if (!m_byHost.contains(hostKey) && m_byHost.size() >= kMaxHosts) {
+            QString oldestKey;
+            qint64 oldest = QDateTime::currentMSecsSinceEpoch() + 1;   // > any existing lastSeen
+            for (auto it = m_byHost.constBegin(); it != m_byHost.constEnd(); ++it) {
+                if (it.value().lastSeen < oldest) { oldest = it.value().lastSeen; oldestKey = it.key(); }
+            }
+            if (!oldestKey.isEmpty()) m_byHost.remove(oldestKey);
+        }
         HostSession &s = m_byHost[hostKey];
         s.host     = req.host;
         s.lastSeen = QDateTime::currentMSecsSinceEpoch();
