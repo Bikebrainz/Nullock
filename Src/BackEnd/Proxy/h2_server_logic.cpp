@@ -27,6 +27,11 @@ QList<HeaderNV> responseHeaders(int status,
         const QString lower = kv.first.toLower();
         // h2 forbids connection-specific response headers (RFC 9113 s8.2.2).
         if (H2ClientLogic::isHopByHopHeader(lower)) continue;
+        // Drop content-length: we RE-FRAME the body ourselves (our own DATA frames
+        // + END_STREAM define the length authoritatively). Forwarding the upstream's
+        // value risks a client-side length mismatch -> STREAM_ERROR if our
+        // re-serialized body differs from it by even one byte.
+        if (lower == QLatin1String("content-length")) continue;
         out.push_back({ lower.toUtf8(), kv.second.toUtf8() });
     }
     return out;

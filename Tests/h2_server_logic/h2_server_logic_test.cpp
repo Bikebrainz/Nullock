@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
         QList<QPair<QString, QString>> h = {
             { "Content-Type", "text/html" }, { "Connection", "keep-alive" },
             { "Transfer-Encoding", "chunked" }, { "Set-Cookie", "a=b" },
-            { "Keep-Alive", "5" }, { "", "empty" },
+            { "Keep-Alive", "5" }, { "Content-Length", "908" }, { "", "empty" },
         };
         const QList<HeaderNV> nv = responseHeaders(200, h);
         chk("resp: :status is first", nv.value(0).name == ":status" && nv.value(0).value == "200");
@@ -77,6 +77,9 @@ int main(int argc, char **argv) {
         chk("resp: connection stripped", nvIdx(nv, "connection") < 0);
         chk("resp: transfer-encoding stripped", nvIdx(nv, "transfer-encoding") < 0);
         chk("resp: keep-alive stripped", nvIdx(nv, "keep-alive") < 0);
+        // We re-frame the body, so content-length must be dropped (else a length
+        // mismatch trips the h2 client -> STREAM_ERROR, e.g. on a favicon).
+        chk("resp: content-length stripped", nvIdx(nv, "content-length") < 0);
         chk("resp: empty-name skipped -> :status + 2 kept", nv.size() == 3);
     }
     {
