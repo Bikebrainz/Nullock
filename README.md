@@ -1,6 +1,6 @@
 # Nullock
 
-**FOSS web security toolkit.** MITM proxy + repeater + intruder + scanner + OAST + native gRPC/GraphQL/CBOR/SAML decoders + AI-assisted triage. Self-host-first. No telemetry. MIT licensed.
+**FOSS web security toolkit.** MITM proxy + repeater + intruder + scanner + OAST + GraphQL/JWT tooling + AI-assisted payload generation. Self-host-first. No telemetry. MIT licensed.
 
 [Download](https://github.com/Bikebrainz/Nullock/releases/latest) · [Docs](https://bikebrainz.github.io/Nullock/docs/getting-started.html) · [Marketplace](https://bikebrainz.github.io/Nullock/marketplace/) · [Discord (TBD)](https://github.com/Bikebrainz/Nullock/discussions)
 
@@ -37,10 +37,11 @@ Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + 
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
-Decoders          JWT (security-annotated) + forge, GraphQL, gRPC, CBOR, SAML, base64, hex, JSON
+Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64, hex, JSON transcode
+Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy
-AI triage         Local Ollama for impact/fix/FP-likelihood per finding
+AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
 Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/)
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
@@ -50,23 +51,23 @@ Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 
 ### Windows
 ```cmd
-:: download Nullock-1.0.0-win64.exe from Releases, run it
+:: download Nullock-3.6.0-win64.exe from Releases, run it
 NullockApp --proxy-port=8080 --control-port=17777
 ```
 
 ### Linux
 ```sh
 # Debian/Ubuntu
-sudo apt install ./Nullock-1.0.0-Linux.deb
+sudo apt install ./Nullock-3.6.0-Linux.deb
 # Fedora/RHEL
-sudo dnf install ./Nullock-1.0.0-Linux.rpm
+sudo dnf install ./Nullock-3.6.0-Linux.rpm
 # any distro
 chmod +x Nullock-x86_64.AppImage && ./Nullock-x86_64.AppImage
 ```
 
 ### macOS
 ```sh
-# download Nullock-1.0.0-Darwin.dmg, right-click -> Open the first time
+# download Nullock-3.6.0-Darwin.dmg, right-click -> Open the first time
 ```
 
 On first launch it prints where everything is listening (`proxy http://127.0.0.1:8080`, `Nullock UI …`). Two one-time steps before any HTTPS traffic shows up:
@@ -98,8 +99,8 @@ Full quickstart: <https://bikebrainz.github.io/Nullock/docs/getting-started.html
 | Session handling rules | ✓ | — | ✓ | — |
 | CLI control of every panel | ✓ | — | jython | ✓ |
 | SQLite history at 200k+ | ✓ | — | partial | — |
-| AI triage | local Ollama | — | — | — |
-| Native gRPC/GraphQL | ✓ | — | paid addons | — |
+| AI payload generation | local Ollama | — | — | — |
+| GraphQL + JWT tooling | ✓ | — | paid addons | — |
 | HTTP/3 / QUIC | — | — | — | — |
 | Brand recognition | v1 | huge | huge | large |
 
@@ -147,7 +148,7 @@ cmake --build build -j
 To produce installer artifacts:
 ```sh
 cd build && cpack
-# outputs Nullock-1.0.0-<platform>.<ext>
+# outputs Nullock-3.6.0-<platform>.<ext>
 ```
 
 Per-platform packaging notes: [`packaging/README.md`](packaging/README.md).
