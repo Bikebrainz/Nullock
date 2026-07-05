@@ -128,6 +128,13 @@ public:
     Q_INVOKABLE int h2UpstreamCount() const { return m_h2UpstreamCount.loadAcquire(); }
     void noteH2Upstream();
 
+    // Experimental (Phase 3, OFF by default): terminate the BROWSER's HTTP/2 too
+    // (advertise h2 on the server-side ALPN + run a server nghttp2 session), so a
+    // browser multiplexes one connection to the proxy. Enabled with
+    // --h2-termination. Set once at startup, read on worker threads.
+    void setH2Termination(bool on) { m_h2Termination = on; }
+    bool h2Termination() const { return m_h2Termination; }
+
     // Set a file path where the blocked-host list is persisted. The file is
     // loaded immediately and rewritten on every mark/clear. Plain text, one
     // host per line.
@@ -170,6 +177,7 @@ private:
     Nullock::Core::ExtensionsApi *m_extensions = nullptr;
     Nullock::Core::SessionManager *m_sessionManager = nullptr;
     Nullock::Core::SessionRules   *m_sessionRules   = nullptr;
+    bool m_h2Termination = false;   // --h2-termination (Phase 3, experimental)
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;

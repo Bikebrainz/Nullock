@@ -3,6 +3,8 @@
 #include "cert_authority.hpp"
 #include "extensions_api.hpp"
 #include "http2_client.hpp"
+#include "h2_server.hpp"
+#include "h2_server_logic.hpp"
 #include "intercept.hpp"
 #include "proxy_logic.hpp"
 #include "session_manager.hpp"
@@ -269,6 +271,12 @@ public:
         cfg.setLocalCertificate(cert);
         cfg.setPrivateKey(key);
         cfg.setPeerVerifyMode(QSslSocket::VerifyNone);
+        // Phase 3 (experimental, off by default): advertise h2 to the browser so
+        // it can multiplex one connection to us. Only when --h2-termination is on,
+        // because without the terminator a raw-h2 browser would break.
+        if (m_server->h2Termination())
+            cfg.setAllowedNextProtocols({ QByteArrayLiteral("h2"),
+                                          QByteArrayLiteral("http/1.1") });
         sslClient->setSslConfiguration(cfg);
         sslClient->startServerEncryption();
         if (!sslClient->waitForEncrypted(kReadTimeoutMs)) {
@@ -279,6 +287,9 @@ public:
             fail("mitm: client TLS handshake failed (host blocked for future MITM): " + sslClient->errorString());
             return;
         }
+        // Did the browser accept our h2 offer? (Only possible with --h2-termination.)
+        const bool browserIsH2 = m_server->h2Termination()
+            && sslClient->sslConfiguration().nextNegotiatedProtocol() == QByteArrayLiteral("h2");
 
         // 3. Open ONE upstream TLS connection and reuse it for every request
         //    the client sends inside this tunnel (HTTP/1.1 keep-alive).
@@ -347,6 +358,74 @@ public:
         if (!negotiated.isEmpty() && negotiated != "http/1.1" && !upstreamIsH2) {
             m_server->markMitmBlocked(host);
             fail("mitm: upstream negotiated unexpected ALPN: " + QString::fromLatin1(negotiated));
+            return;
+        }
+
+        // ── Phase 3 (experimental): the browser negotiated h2 with US ────
+        // Terminate the browser's h2 and bridge each browser request stream to
+        // the upstream (h2 via the persistent H2Client, or h1). The upstream send
+        // + history/rules/extensions/intercept live in the callback.
+        if (browserIsH2) {
+            H2Client upstreamH2;   // reused across all of this tunnel's streams
+            bool served = false;   // did any request complete upstream on this session?
+            H2Terminator term;
+            term.run(sslClient, host + ":" + QString::number(port),
+                [this, upstream, upstreamIsH2, host, port, &upstreamH2, &served](
+                    const QList<QPair<QString, QString>> &h2h, const QByteArray &body,
+                    HttpResponse &out) -> H2Terminator::UpstreamOutcome {
+                    using UO = H2Terminator::UpstreamOutcome;
+                    const auto f = Nullock::Proxy::H2ServerLogic::parseRequestHeaders(h2h);
+                    if (!f.valid) return UO::RejectStream;
+                    HttpRequest req;
+                    req.timestamp = QDateTime::currentDateTime();
+                    req.method = f.method;
+                    req.host   = host;
+                    req.port   = port;
+                    req.path   = f.path.startsWith('/') ? f.path : ("/" + f.path);
+                    req.headers = f.headers;
+                    req.body    = body;
+                    emit m_server->requestReceived(req);
+                    if (auto *ext = m_server->extensions()) req = ext->applyRequestMutation(req);
+                    m_server->applyRequestRules(req);
+                    if (auto *ic = m_server->interceptController()) {
+                        QByteArray dummy = serializeRequestForOrigin(req);
+                        const InterceptResult ir = ic->pend(dummy, host, port, /*tls=*/true);
+                        if (ir.dropped) return UO::RejectStream;   // drop one stream, keep the tunnel
+                    }
+                    HttpResponse resp;
+                    if (upstreamIsH2) {
+                        const auto r = upstreamH2.send(upstream, req);
+                        if (!r.ok) {
+                            if (r.connectionFailed) {
+                                // Genuine upstream connection death: tear the tunnel
+                                // down (browser reconnects with a fresh session) and,
+                                // if it was the FIRST request, learn to blind-tunnel
+                                // this host -- mirrors the h1/h2 sibling branches.
+                                if (!served) m_server->markMitmBlocked(host);
+                                return UO::TunnelDead;
+                            }
+                            return UO::RejectStream;   // per-stream error -> RST just this one
+                        }
+                        resp = r.response;
+                    } else {
+                        if (upstream->state() != QAbstractSocket::ConnectedState)
+                            return UO::TunnelDead;
+                        upstream->write(serializeRequestForOrigin(req));
+                        if (!upstream->waitForBytesWritten(kReadTimeoutMs)) return UO::TunnelDead;
+                        resp.peerAddress = upstream->peerAddress().toString();
+                        resp.wasTls = true;
+                        if (!readResponse(upstream, resp)) return UO::TunnelDead;   // h1 upstream broke
+                    }
+                    served = true;
+                    if (auto *ext = m_server->extensions()) resp = ext->applyResponseMutation(req, resp);
+                    m_server->applyResponseRules(req, resp);
+                    emit m_server->responseReceived(req, resp);
+                    out = resp;
+                    return UO::Ok;
+                });
+            sslClient->disconnectFromHost();
+            if (upstream->state() == QAbstractSocket::ConnectedState)
+                upstream->disconnectFromHost();
             return;
         }
 

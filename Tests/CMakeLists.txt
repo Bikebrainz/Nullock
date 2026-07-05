@@ -346,6 +346,12 @@ add_subdirectory(h2_logic)
 # Run via: ctest -R h2_client_logic -V
 add_subdirectory(h2_client_logic)
 
+# Pure server-side h2 translation (Phase 3): request-field extraction from a
+# browser stream's h2 headers + h2 response-header building from an h1 response.
+# Compiles h2_server_logic.cpp + h2_client_logic.cpp directly; links Qt6::Core.
+# Run via: ctest -R h2_server_logic -V
+add_subdirectory(h2_server_logic)
+
 # OAST DNS-sink wire parser: memory-safe QNAME parsing of ATTACKER-controlled UDP
 # datagrams -- compression/overrun/unterminated rejection, the 255-octet name cap,
 # QR/opcode/qdcount strictness (no answer-a-response loop), and LDH label

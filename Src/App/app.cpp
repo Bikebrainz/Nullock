@@ -588,6 +588,8 @@ int main(int argc, char *argv[]) {
             << "  --oast-port=N         OAST HTTP sink port (default 18080)\n"
             << "  --dns-port=N          OAST DNS sink UDP port (default 8053; use 53 with a\n"
             << "                        wildcard NS delegation for real-internet targets)\n"
+            << "  --h2-termination      EXPERIMENTAL: also terminate the browser's HTTP/2\n"
+            << "                        (advertise h2 to the browser; off by default)\n"
             << "  --smoke-test          Run the self-test and exit\n"
             << "  --help / -h           This message\n"
             << "\n"
@@ -635,6 +637,10 @@ int main(int argc, char *argv[]) {
     // Persist the MITM bypass list next to the CA. Cert-pinned hosts stay
     // on the list across app restarts so we never re-fail their handshake.
     proxy.setBlocklistPath(certAuthority.caDir() + "/mitm_blocked.txt");
+    // Experimental (Phase 3): terminate the browser's HTTP/2 too. OFF by default
+    // -- advertising h2 to the browser without the terminator would break h2
+    // clients, so it is strictly opt-in.
+    proxy.setH2Termination(hasFlag(argc, argv, "--h2-termination"));
 
     Nullock::FrontEnd::ProxyModel model;
     if (wantedMaxRows > 0) model.setMaxRowsInMemory(wantedMaxRows);

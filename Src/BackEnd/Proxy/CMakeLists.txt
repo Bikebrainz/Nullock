@@ -16,6 +16,10 @@ add_library(Proxy STATIC
     http2_client.hpp
     h2_client_logic.cpp
     h2_client_logic.hpp
+    h2_server_logic.cpp
+    h2_server_logic.hpp
+    h2_server.cpp
+    h2_server.hpp
     websocket.cpp
     websocket.hpp
     ws_repeater.cpp
