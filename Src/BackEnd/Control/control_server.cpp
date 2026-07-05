@@ -916,6 +916,15 @@ void ControlServer::bumpSeq() { ++m_seq; }
 
 bool ControlServer::start(const QHostAddress &address, quint16 port) {
     if (m_server->isListening()) return true;
+    // Safety rule: never expose the control API (private proxy history, captured
+    // credentials, the whole attack surface) unauthenticated off-loopback. The
+    // SOP/CSRF/Host-rebinding defences only protect a loopback browser; a remote
+    // client bypasses all of them. So an off-loopback bind REQUIRES a token, and
+    // when bound off-loopback the token becomes mandatory for every request.
+    const bool loopback = (address == QHostAddress::LocalHost
+                        || address == QHostAddress::LocalHostIPv6);
+    if (!loopback && m_apiToken.isEmpty()) return false;  // caller must fail loud
+    m_tokenMandatory = !loopback;
     // 9000/9001 are MinIO defaults so we skip them. 9090 is Prometheus.
     // Pick high-obscure-ports that no common service squats on.
     const QList<quint16> tries = {
@@ -1004,6 +1013,7 @@ void ControlServer::handle(QTcpSocket *socket) {
     QString origin;
     QString nullockHdr;
     QString hostHdr;
+    QString authHdr;
     for (const QByteArray &line : header.split('\n')) {
         QByteArray l = line; if (l.endsWith('\r')) l.chop(1);
         const int c = l.indexOf(':');
@@ -1026,6 +1036,26 @@ void ControlServer::handle(QTcpSocket *socket) {
             nullockHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
         else if (key.compare("Host", Qt::CaseInsensitive) == 0)
             hostHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+        else if (key.compare("Authorization", Qt::CaseInsensitive) == 0)
+            authHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
+    }
+
+    // Bearer-token auth. Two modes, decided at bind time:
+    //   * Off-loopback (m_tokenMandatory): the token is the ONLY boundary --
+    //     SOP/CSRF/Host-rebinding are loopback-browser defences that a remote
+    //     client bypasses -- so EVERY request must present a valid token, and a
+    //     valid token then satisfies those checks (we skip them below).
+    //   * Loopback: the token is additive. A valid token authorizes writes
+    //     (like the X-Nullock-UI header does) so an API client can drive us
+    //     without the Origin dance; no/invalid token simply falls through to the
+    //     existing SOP + CSRF path, so the local browser UI is unaffected.
+    const bool tokenValid = ControlLogic::isTokenAuthorized(authHdr, m_apiToken);
+    if (m_tokenMandatory && !tokenValid) {
+        socket->write(httpResponse(401, "text/plain",
+            "Unauthorized (bearer token required)"));
+        socket->waitForBytesWritten(kReadTimeoutMs);
+        socket->disconnectFromHost();
+        return;
     }
 
     // DNS-rebinding defence. The browser's same-origin policy is "scheme +
@@ -1037,7 +1067,7 @@ void ControlServer::handle(QTcpSocket *socket) {
     // carries `Host: evil.com` because the browser uses the URL the page
     // requested. Refuse anything whose Host isn't bound to us.
     const quint16 myPort = this->listeningPort();
-    if (!ControlLogic::isHostAllowed(hostHdr, myPort)) {
+    if (!tokenValid && !ControlLogic::isHostAllowed(hostHdr, myPort)) {
         socket->write(httpResponse(421, "text/plain",
             "Misdirected Host (DNS rebinding defence)"));
         socket->waitForBytesWritten(kReadTimeoutMs);
@@ -1065,7 +1095,7 @@ void ControlServer::handle(QTcpSocket *socket) {
     // The custom header costs nothing for scripts (curl sets it via -H),
     // but a malicious cross-origin page can't add it without a CORS
     // preflight, which we never grant.
-    if (!ControlLogic::isRequestAuthorized(method, origin, nullockHdr, myPort)) {
+    if (!tokenValid && !ControlLogic::isRequestAuthorized(method, origin, nullockHdr, myPort)) {
         socket->write(httpResponse(403, "text/plain",
             "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)"));
         socket->waitForBytesWritten(kReadTimeoutMs);

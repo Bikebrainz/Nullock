@@ -35,6 +35,31 @@ bool isReadMethod(const QString &method);
 bool isRequestAuthorized(const QString &method, const QString &origin,
                          const QString &nullockHdr, quint16 port);
 
+// --- Bearer-token API auth (for off-loopback / remote-drive) --------------
+// When the operator binds the control server off-loopback (CI, a shared scan
+// host), same-origin policy and the CSRF Origin check are meaningless -- any
+// page the attacker loads from the server IS same-origin. A bearer token is
+// then the real boundary: an API client (curl/CI) presents it, and a hostile
+// browser page cannot add an Authorization header cross-origin without a CORS
+// preflight the server never grants.
+
+// Extract the token from an Authorization header VALUE ("Bearer <token>").
+// Case-insensitive scheme, tolerant of surrounding whitespace. Returns the
+// token, or an empty string if the value isn't a well-formed Bearer credential.
+QString bearerToken(const QString &authHeaderValue);
+
+// Constant-time equality over the UTF-8 bytes of a and b: runs in time
+// proportional to the longer input regardless of where they first differ, so a
+// network attacker cannot recover the configured token byte-by-byte via timing.
+bool constantTimeEquals(const QString &a, const QString &b);
+
+// Full token decision: true iff configuredToken is NON-EMPTY and the
+// Authorization header carries a Bearer token that constant-time-equals it. An
+// empty configuredToken (auth disabled) returns FALSE -- callers must not treat
+// "no token configured" as authorized; that case is gated separately by whether
+// the bind is loopback.
+bool isTokenAuthorized(const QString &authHeaderValue, const QString &configuredToken);
+
 // --- Markdown report-export escaping -------------------------------------
 // Finding fields (kind/host/summary/url/evidence) can contain ATTACKER-controlled
 // bytes (e.g. an OAST callback's path/User-Agent, or a reflected payload echoed

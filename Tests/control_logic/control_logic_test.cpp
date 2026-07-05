@@ -235,6 +235,36 @@ int main(int argc, char **argv) {
         xmlAttrEscape("\"><script>alert(1)</script>")
             == "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
 
+    // ===== bearer-token API auth =========================================
+    // bearerToken: parse "Bearer <token>" tolerantly.
+    chk("bearer: extracts token",         bearerToken("Bearer abc123") == "abc123");
+    chk("bearer: scheme case-insensitive", bearerToken("bEaReR abc123") == "abc123");
+    chk("bearer: leading/trailing ws",    bearerToken("  Bearer   abc123  ") == "abc123");
+    chk("bearer: empty on wrong scheme",  bearerToken("Basic abc123").isEmpty());
+    chk("bearer: empty on no scheme",     bearerToken("abc123").isEmpty());
+    chk("bearer: empty on scheme only",   bearerToken("Bearer").isEmpty());
+    chk("bearer: empty on scheme+space",  bearerToken("Bearer ").isEmpty());
+    chk("bearer: empty input",            bearerToken("").isEmpty());
+
+    // constantTimeEquals: correct result (the timing property isn't unit-testable).
+    chk("cteq: equal strings",            constantTimeEquals("s3cret-token", "s3cret-token"));
+    chk("cteq: one-char diff",           !constantTimeEquals("s3cret-token", "s3cret-tokeX"));
+    chk("cteq: length diff (prefix)",    !constantTimeEquals("s3cret", "s3cret-token"));
+    chk("cteq: length diff (suffix)",    !constantTimeEquals("s3cret-token", "s3cret"));
+    chk("cteq: both empty equal",         constantTimeEquals("", ""));
+    chk("cteq: empty vs non-empty",      !constantTimeEquals("", "x"));
+    chk("cteq: unicode equal",            constantTimeEquals(QString::fromUtf8("t\xC3\xB6k\xC3\xA9n"),
+                                                             QString::fromUtf8("t\xC3\xB6k\xC3\xA9n")));
+
+    // isTokenAuthorized: an empty config (auth disabled) is NEVER authorized here.
+    chk("tokauth: empty config -> false",       !isTokenAuthorized("Bearer anything", ""));
+    chk("tokauth: empty config, no header",     !isTokenAuthorized("", ""));
+    chk("tokauth: matching bearer -> true",      isTokenAuthorized("Bearer s3cret", "s3cret"));
+    chk("tokauth: wrong bearer -> false",       !isTokenAuthorized("Bearer nope", "s3cret"));
+    chk("tokauth: no auth header -> false",     !isTokenAuthorized("", "s3cret"));
+    chk("tokauth: wrong scheme -> false",       !isTokenAuthorized("Basic s3cret", "s3cret"));
+    chk("tokauth: case-insensitive scheme",      isTokenAuthorized("bearer s3cret", "s3cret"));
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

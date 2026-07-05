@@ -46,6 +46,39 @@ bool isRequestAuthorized(const QString &method, const QString &origin,
     return originOk || tokenOk;
 }
 
+QString bearerToken(const QString &authHeaderValue) {
+    const QString v = authHeaderValue.trimmed();
+    static const QString scheme = QStringLiteral("bearer");
+    if (v.size() <= scheme.size()) return {};
+    if (v.left(scheme.size()).toLower() != scheme) return {};
+    if (!v.at(scheme.size()).isSpace()) return {};   // must be "Bearer <token>"
+    return v.mid(scheme.size()).trimmed();
+}
+
+bool constantTimeEquals(const QString &a, const QString &b) {
+    const QByteArray ab = a.toUtf8();
+    const QByteArray bb = b.toUtf8();
+    if (ab.isEmpty() || bb.isEmpty()) return ab.isEmpty() && bb.isEmpty();
+    // Fold the length difference into the accumulator, then compare every byte
+    // (indexing modulo each length so a size mismatch never short-circuits the
+    // loop). diff stays non-zero if any byte or the lengths differ.
+    unsigned diff = static_cast<unsigned>(ab.size()) ^ static_cast<unsigned>(bb.size());
+    const int n = qMax(ab.size(), bb.size());
+    for (int i = 0; i < n; ++i) {
+        const unsigned ca = static_cast<unsigned char>(ab.at(i % ab.size()));
+        const unsigned cb = static_cast<unsigned char>(bb.at(i % bb.size()));
+        diff |= (ca ^ cb);
+    }
+    return diff == 0;
+}
+
+bool isTokenAuthorized(const QString &authHeaderValue, const QString &configuredToken) {
+    if (configuredToken.isEmpty()) return false;          // auth disabled -> not authorized here
+    const QString presented = bearerToken(authHeaderValue);
+    if (presented.isEmpty()) return false;
+    return constantTimeEquals(presented, configuredToken);
+}
+
 QString mdCodeSpanSafe(const QString &s) {
     QString out;
     out.reserve(s.size());

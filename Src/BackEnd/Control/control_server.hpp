@@ -72,6 +72,11 @@ class ControlServer : public QObject {
 public:
     explicit ControlServer(const Wiring &w, QObject *parent = nullptr);
 
+    // Configure the bearer token that gates the API. Empty (default) = auth
+    // disabled (loopback + CSRF only). MUST be called before start() when
+    // binding off-loopback; start() refuses a non-loopback bind without one.
+    void setApiToken(const QString &token) { m_apiToken = token; }
+
     bool start(const QHostAddress &address = QHostAddress::LocalHost,
                quint16 port = 9000);
     void stop();
@@ -101,6 +106,8 @@ private:
     Wiring     m_wiring;
     QTcpServer *m_server = nullptr;
     quint64    m_seq = 1;
+    QString    m_apiToken;              // bearer token; empty = auth disabled
+    bool       m_tokenMandatory = false; // true when bound off-loopback: token required for EVERY request
 };
 
 } // namespace Nullock::Control

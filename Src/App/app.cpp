@@ -584,6 +584,12 @@ int main(int argc, char *argv[]) {
             << "                        Windows ignores cipher order anyway.\n"
             << "  --proxy-port=N        Proxy listen port (default 8080)\n"
             << "  --control-port=N      Control server port (default 17777)\n"
+            << "  --listen=ADDR         Bind the control API to ADDR (default 127.0.0.1).\n"
+            << "                        Off-loopback (e.g. 0.0.0.0) REQUIRES a token and makes\n"
+            << "                        it mandatory on every request.\n"
+            << "  --api-token=TOK       Bearer token gating the control API (prefer the\n"
+            << "                        NULLOCK_API_TOKEN env var). Clients send\n"
+            << "                        'Authorization: Bearer TOK'.\n"
             << "  --oast-host=HOST      Host/IP embedded in OAST callback URLs\n"
             << "                        (default 127.0.0.1; set to a LAN/public IP or a\n"
             << "                        wildcard DNS name reachable from your targets)\n"
@@ -919,11 +925,50 @@ int main(int argc, char *argv[]) {
     // 17777 by default; MinIO owns 9000/9001 on this box and that's a
     // common collision so we steer well clear by default.
     const quint16 ctlPort = wantedControlPort > 0 ? wantedControlPort : 17777;
-    if (controlServer.start(QHostAddress::LocalHost, ctlPort)) {
-        const QString url = QString("http://127.0.0.1:%1/")
-                                .arg(controlServer.listeningPort());
-        banner("Nullock UI:  " + url);
-        if (!headless) QDesktopServices::openUrl(QUrl(url));
+
+    // API auth for remote-drive / CI. Token from NULLOCK_API_TOKEN (preferred --
+    // not visible in the process list) or --api-token=<tok>. --listen=<addr>
+    // opts into an off-loopback bind (e.g. 0.0.0.0 for a shared scan host);
+    // default stays loopback-only.
+    QString apiToken = qEnvironmentVariable("NULLOCK_API_TOKEN");
+    if (apiToken.isEmpty()) apiToken = flagValue(argc, argv, "--api-token");
+    controlServer.setApiToken(apiToken);
+
+    QHostAddress ctlAddr = QHostAddress::LocalHost;
+    const QString listenArg = flagValue(argc, argv, "--listen");
+    if (!listenArg.isEmpty()) {
+        if (listenArg == "0.0.0.0" || listenArg.compare("any", Qt::CaseInsensitive) == 0)
+            ctlAddr = QHostAddress::Any;
+        else if (listenArg == "::")
+            ctlAddr = QHostAddress::AnyIPv6;
+        else if (!ctlAddr.setAddress(listenArg)) {
+            QTextStream(stderr) << "FATAL: --listen=" << listenArg
+                                << " is not a valid IP address\n";
+            QTextStream(stderr).flush();
+            return 1;
+        }
+    }
+    const bool ctlLoopback = (ctlAddr == QHostAddress::LocalHost
+                           || ctlAddr == QHostAddress::LocalHostIPv6);
+    if (!ctlLoopback && apiToken.isEmpty()) {
+        // Never expose the control API (private history, captured creds, the full
+        // attack surface) unauthenticated on a routable address.
+        QTextStream(stderr)
+            << "FATAL: --listen=" << listenArg << " binds the control API off "
+            << "loopback, which requires a token. Set NULLOCK_API_TOKEN "
+            << "(or --api-token=<tok>) and have clients send "
+            << "'Authorization: Bearer <tok>'. Refusing to start.\n";
+        QTextStream(stderr).flush();
+        return 1;
+    }
+
+    if (controlServer.start(ctlAddr, ctlPort)) {
+        const QString shown = ctlLoopback ? QStringLiteral("127.0.0.1") : ctlAddr.toString();
+        const QString url = QString("http://%1:%2/").arg(shown).arg(controlServer.listeningPort());
+        banner("Nullock UI:  " + url
+               + (apiToken.isEmpty() ? QString()
+                                     : QStringLiteral("  (API bearer-token auth enabled)")));
+        if (!headless && ctlLoopback) QDesktopServices::openUrl(QUrl(url));
     }
 
     // NDJSON event stream. Wired here so we get every event from now on
