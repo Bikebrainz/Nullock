@@ -69,10 +69,16 @@ chmod +x Nullock-x86_64.AppImage && ./Nullock-x86_64.AppImage
 # download Nullock-1.0.0-Darwin.dmg, right-click -> Open the first time
 ```
 
-Then in another terminal:
+On first launch it prints where everything is listening (`proxy http://127.0.0.1:8080`, `Nullock UI …`). Two one-time steps before any HTTPS traffic shows up:
+
+1. **Trust the CA** it generated, so it can read TLS — easiest via the browser extension's one-click install, or import `ca.pem` from Nullock's data dir (`%APPDATA%\Nullock\Nullock\ca\` on Windows, `~/.local/share/Nullock/Nullock/ca/` on Linux/macOS) into your browser/OS trust store.
+2. **Point your browser's HTTP proxy at `127.0.0.1:8080`** (the port from the startup banner).
+
+Then browse your target and it flows into the history. From another terminal you can drive the same control server:
 ```sh
 nullock status
 nullock history 10
+nullock scope add 'https://target.example/*'   # scope MITM to your target
 nullock scan target.example top100
 nullock oast mint            # for blind-bug testing
 nullock crawler start https://target.example

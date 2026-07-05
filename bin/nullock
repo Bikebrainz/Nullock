@@ -1668,10 +1668,10 @@ cmd_cve() {
 }
 
 cmd_help() {
-    cat <<EOF
+    cat <<'EOF'
 nullock -- CLI for a running Nullock instance
 
-Targets \$NULLOCK_API (default $API).
+Targets the NULLOCK_API env var (default http://127.0.0.1:17777).
 Requires curl + jq.
 
 Status / inspection:
