@@ -9,6 +9,7 @@ const TABS = [
   { id: "recon",     label: "RECON" },
   { id: "payloads",  label: "PAYLOADS" },
   { id: "decoder",   label: "DECODER" },
+  { id: "comparer",  label: "COMPARER" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
   { id: "repeater",  label: "REPEATER" },
@@ -1165,6 +1166,102 @@ const SUBDOMAIN_WORDLIST = [
 // subdomain enum -- the recon-for-web-testing flavor, not OSINT for
 // people. Pairs with the rest of the workflow: scope a domain here,
 // click a found subdomain to populate the proxy host filter.
+function ComparerTab() {
+  const [a, setA]         = React.useState("");
+  const [b, setB]         = React.useState("");
+  const [mode, setMode]   = React.useState("words");
+  const [result, setRes]  = React.useState(null);
+  const [err, setErr]     = React.useState("");
+
+  const run = async (m) => {
+    const mm = m || mode;
+    setMode(mm); setErr("");
+    try {
+      const r = await NL.actions.compareBlobs(mm, a, b);
+      setRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+  };
+
+  const Btn = ({ label, onClick, primary, disabled, title }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)" : primary ? "var(--bg)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)" : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px", fontFamily: "var(--ff-mono)",
+        cursor: disabled ? "not-allowed" : "pointer", letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  const area = {
+    width: "100%", boxSizing: "border-box", background: "var(--bg-deep)",
+    color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4,
+    padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)", resize: "none",
+    flex: 1, minHeight: 0, whiteSpace: "pre-wrap", wordBreak: "break-all",
+  };
+  const segStyle = (op) => ({
+    background: op === "ins" ? "rgba(70,200,120,0.22)"
+              : op === "del" ? "rgba(220,80,80,0.22)" : "transparent",
+    color: op === "ins" ? "var(--ok, #6c8)" : op === "del" ? "var(--err)" : "var(--text)",
+    textDecoration: op === "del" ? "line-through" : "none",
+    whiteSpace: "pre-wrap", wordBreak: "break-all",
+  });
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+                       letterSpacing: "0.06em", fontWeight: 600 }}>Comparer</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          diff two blobs — word / line / char level
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+                    minHeight: 0, height: "38%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                        letterSpacing: "0.06em" }}>A</div>
+          <textarea style={area} value={a} placeholder="first blob…"
+                    onChange={e => setA(e.target.value)} spellCheck={false} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                        letterSpacing: "0.06em" }}>B</div>
+          <textarea style={area} value={b} placeholder="second blob…"
+                    onChange={e => setB(e.target.value)} spellCheck={false} />
+        </div>
+      </div>
+
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)",
+                    padding: 10, borderRadius: 4, display: "flex", gap: 6, flexWrap: "wrap",
+                    alignItems: "center" }}>
+        <Btn label="compare words" primary={mode === "words"} onClick={() => run("words")} />
+        <Btn label="lines" primary={mode === "lines"} onClick={() => run("lines")} />
+        <Btn label="chars" primary={mode === "chars"} onClick={() => run("chars")} />
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
+          {err ? err
+            : result
+              ? (result.identical ? "identical"
+                 : ("+" + result.added + " / -" + result.removed + " · " + result.common + " common")
+                   + (result.truncated ? " · (truncated)" : ""))
+              : "enter two blobs and compare"}
+        </span>
+      </div>
+
+      <div style={{ ...area, flex: 1, overflow: "auto", background: "var(--pane)" }}>
+        {result && result.segments
+          ? result.segments.map((s, i) => (
+              <span key={i} style={segStyle(s.op)}>{s.text}</span>
+            ))
+          : <span style={{ color: "var(--dim)" }}>diff appears here — green = added in B, red = removed from A</span>}
+      </div>
+    </div>
+  );
+}
+
 function DecoderTab() {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
@@ -2263,6 +2360,9 @@ function App() {
         )}
         {tab === "decoder" && (
           <DecoderTab />
+        )}
+        {tab === "comparer" && (
+          <ComparerTab />
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />

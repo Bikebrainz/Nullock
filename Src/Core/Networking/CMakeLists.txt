@@ -16,6 +16,8 @@ add_library(Networking STATIC
     payload_forge.hpp
     transcode.cpp
     transcode.hpp
+    compare.cpp
+    compare.hpp
     port_scanner.cpp
     port_logic.cpp
     port_scanner.hpp

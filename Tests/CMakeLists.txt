@@ -374,6 +374,12 @@ add_subdirectory(payload_forge)
 # Run via: ctest -R transcode -V
 add_subdirectory(transcode)
 
+# Compare workbench: pure LCS word/line/char diff -- identical detection, insert/
+# delete/mixed edits, eq/del/ins segment coalescing, exact reassembly, and the
+# cell-budget truncation. Compiles compare.cpp directly; links Qt6::Core.
+# Run via: ctest -R compare -V
+add_subdirectory(compare)
+
 # HTTP/3-detection probe logic: the CRLF-injection guard on the request-line
 # target (path/query) + Host header, and the RFC-7838 Alt-Svc parser (h3 vs h2
 # classification, quote-stripping, ma= overflow-safety, "clear"). Compiles

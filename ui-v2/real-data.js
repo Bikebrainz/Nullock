@@ -188,6 +188,7 @@
     reconClear()                { return post("/api/recon/clear"); },
     forgePayloads(technique)    { return fetch("/api/payloads?technique=" + encodeURIComponent(technique || "all")).then(r => r.json()); },
     transcode(op, input)        { return post("/api/transcode", { op, input }).then(r => r.json()); },
+    compareBlobs(mode, a, b)    { return post("/api/compare", { mode, a, b }).then(r => r.json()); },
     sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },

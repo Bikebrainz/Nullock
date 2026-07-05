@@ -18,6 +18,7 @@
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
 #include "transcode.hpp"
+#include "compare.hpp"
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
@@ -8818,6 +8819,30 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             const auto r = Nullock::Core::Transcode::apply(op, input);
             root["ok"] = r.ok; root["output"] = r.output; root["error"] = r.error;
         }
+        return httpJson(200, root);
+    }
+
+    // POST /api/compare { mode, a, b } -- LCS diff of two blobs (Burp-Comparer
+    // style). mode is words|lines|chars. Returns eq/del/ins segments + counts.
+    if (path == "/api/compare") {
+        const auto d = Nullock::Core::Compare::diff(bodyJson.value("mode").toString(),
+                                                    bodyJson.value("a").toString(),
+                                                    bodyJson.value("b").toString());
+        QJsonArray segs;
+        for (const auto &s : d.segments) {
+            QJsonObject o;
+            o["op"]   = s.op;
+            o["text"] = s.text;
+            segs.append(o);
+        }
+        QJsonObject root;
+        root["segments"]  = segs;
+        root["added"]     = d.added;
+        root["removed"]   = d.removed;
+        root["common"]    = d.common;
+        root["identical"] = d.identical;
+        root["truncated"] = d.truncated;
+        root["modes"]     = QJsonArray::fromStringList(Nullock::Core::Compare::modes());
         return httpJson(200, root);
     }
     if (path == "/api/recon/crt") {
