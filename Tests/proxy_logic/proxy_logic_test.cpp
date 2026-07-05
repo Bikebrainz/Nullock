@@ -137,6 +137,62 @@ int main(int argc, char **argv) {
         chk("chunk: a non-hex chunk size -> Error", decodeChunkedAvailable(buf, dec) == ChunkResult::Error);
     }
 
+    // ===== memory-safety + anti-smuggling fuzz over the header/framing parser =====
+    // parseHeaders / isFramingSafe run on attacker-controlled upstream RESPONSE
+    // (and client REQUEST) header blocks in the MITM path. Throw thousands of
+    // hostile byte blobs at the full chain and assert three things:
+    //   (a) it never crashes / hangs on arbitrary bytes;
+    //   (b) the parsed header count stays bounded by the line count (no blowup);
+    //   (c) the load-bearing anti-smuggling invariant holds -- if isFramingSafe()
+    //       blesses a header set as safe to re-serialize, NO parsed name/value may
+    //       still carry a CR/LF/NUL. A survivor would inject a header line the
+    //       framing guard never saw (a duplicate CL/TE) -> request smuggling.
+    // Deterministic xorshift so a failure is reproducible; mirrors the feedChunked
+    // and WsFrameParser fuzz loops.
+    {
+        auto hasCtl = [](const QString &x) {
+            for (const QChar c : x) {
+                const ushort u = c.unicode();
+                if (u == '\r' || u == '\n' || u == '\0') return true;
+            }
+            return false;
+        };
+        uint32_t s = 0x9e3779b9u;
+        auto rnd = [&s]() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; };
+        static const char pool[] = {
+            'G','E','T',' ','/','H','T','P','1','.','a','b','c','X','-',
+            ':',';',',','=','\r','\n','\t','\0','\x01','\x0b','\x7f',
+            'C','o','n','t','e','L','g','h','k','d','2','5','0','q'
+        };
+        const int poolN = int(sizeof(pool));
+        const int iters = 12000;
+        int  bounded = 0;
+        bool invariantHeld = true;
+        for (int it = 0; it < iters; ++it) {
+            const int len = int(rnd() % 220);
+            QByteArray block;
+            block.reserve(len + 16);
+            for (int i = 0; i < len; ++i) block.append(pool[rnd() % poolN]);
+            // 1-in-4 gets a realistic status/request line so the happy path (and
+            // a real Content-Length / Transfer-Encoding) is exercised too.
+            if ((rnd() & 3) == 0) block.prepend("HTTP/1.1 200 OK\nContent-Length: 12\n");
+
+            const auto hs = parseHeaders(block);
+            if (hs.size() <= block.count('\n') + 1) ++bounded;   // never more than the lines
+
+            for (int req = 0; req <= 1; ++req) {
+                if (!isFramingSafe(hs, req != 0)) continue;
+                for (const auto &h : hs)
+                    if (hasCtl(h.first) || hasCtl(h.second)) invariantHeld = false;
+            }
+            (void)isChunkedTransfer(findHeader(hs, "Transfer-Encoding"));
+        }
+        // Reaching this line at all means no blob crashed or hung the parser.
+        chk("fuzz: header/framing parser survived 12000 hostile blobs (no crash)", true);
+        chk("fuzz: parsed header count stayed bounded by line count", bounded == iters);
+        chk("fuzz: isFramingSafe(safe) => no CR/LF/NUL survives in any name/value", invariantHeld);
+    }
+
     std::fprintf(stderr, "proxy_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
