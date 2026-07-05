@@ -380,6 +380,13 @@ add_subdirectory(transcode)
 # Run via: ctest -R compare -V
 add_subdirectory(compare)
 
+# Payload Processor: pure filter-bypass variant generator (url/double-url/case/
+# html-entity/unicode/comment/whitespace/nullbyte transforms). Locks each
+# transform's exact output + the process() fan-out. Compiles processor.cpp
+# directly; links Qt6::Core.
+# Run via: ctest -R processor -V
+add_subdirectory(processor)
+
 # HTTP/3-detection probe logic: the CRLF-injection guard on the request-line
 # target (path/query) + Host header, and the RFC-7838 Alt-Svc parser (h3 vs h2
 # classification, quote-stripping, ma= overflow-safety, "clear"). Compiles

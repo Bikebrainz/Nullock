@@ -10,6 +10,7 @@ const TABS = [
   { id: "payloads",  label: "PAYLOADS" },
   { id: "decoder",   label: "DECODER" },
   { id: "comparer",  label: "COMPARER" },
+  { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
   { id: "repeater",  label: "REPEATER" },
@@ -1166,6 +1167,87 @@ const SUBDOMAIN_WORDLIST = [
 // subdomain enum -- the recon-for-web-testing flavor, not OSINT for
 // people. Pairs with the rest of the workflow: scope a domain here,
 // click a found subdomain to populate the proxy host filter.
+function ProcessorTab() {
+  const [payload, setPayload] = React.useState("");
+  const [variants, setVariants] = React.useState([]);
+  const [err, setErr] = React.useState("");
+  const [copied, setCopied] = React.useState(-1);
+
+  const run = async () => {
+    setErr("");
+    try {
+      const r = await NL.actions.processPayload(payload);
+      setVariants(r.variants || []);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+  };
+  const copy = (text, i) => {
+    try { navigator.clipboard?.writeText(text); setCopied(i); setTimeout(() => setCopied(-1), 1000); } catch (e) {}
+  };
+
+  const Btn = ({ label, onClick, primary, disabled, title }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)" : primary ? "var(--bg)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)" : "var(--accent)"),
+        padding: "4px 10px", fontSize: "11px", fontFamily: "var(--ff-mono)",
+        cursor: disabled ? "not-allowed" : "pointer", letterSpacing: "0.04em",
+        textTransform: "uppercase",
+      }}>{label}</button>
+  );
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+                       letterSpacing: "0.06em", fontWeight: 600 }}>Processor</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          filter-bypass variants of a payload — for authorized WAF/filter-coverage testing
+        </span>
+      </div>
+
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)",
+                    padding: 12, borderRadius: 4, display: "flex", gap: 8, alignItems: "center" }}>
+        <input style={{ flex: 1, background: "var(--bg-deep)", color: "var(--text)",
+                        border: "1px solid var(--line)", padding: "5px 8px",
+                        fontSize: "12px", fontFamily: "var(--ff-mono)" }}
+               value={payload} placeholder="' OR 1=1 --   or   <script>alert(1)</script>"
+               onChange={e => setPayload(e.target.value)}
+               onKeyDown={e => { if (e.key === "Enter") run(); }} />
+        <Btn label="process" primary onClick={run} disabled={!payload} />
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {err ? err : (variants.length ? variants.length + " variants" : "")}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex",
+                    flexDirection: "column", gap: 6 }}>
+        {variants.map((v, i) => (
+          <div key={i} style={{ background: "var(--pane)", border: "1px solid var(--line)",
+                                borderRadius: 4, padding: 8, display: "flex",
+                                flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "var(--accent)", fontSize: "11px", fontWeight: 600 }}>{v.name}</span>
+              <span style={{ color: "var(--dim)", fontSize: "10px", flex: 1 }}>{v.note}</span>
+              <Btn label={copied === i ? "copied" : "copy"} onClick={() => copy(v.output, i)} />
+            </div>
+            <pre style={{ margin: 0, padding: 6, background: "var(--bg-deep)",
+                          border: "1px solid var(--line)", borderRadius: 3,
+                          fontSize: "11.5px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+                          whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{v.output}</pre>
+          </div>
+        ))}
+        {!variants.length ? (
+          <div style={{ color: "var(--dim)", fontSize: "11px", padding: 8 }}>
+            Enter a payload and press process to generate encoding/casing/comment bypass variants.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ComparerTab() {
   const [a, setA]         = React.useState("");
   const [b, setB]         = React.useState("");
@@ -2363,6 +2445,9 @@ function App() {
         )}
         {tab === "comparer" && (
           <ComparerTab />
+        )}
+        {tab === "processor" && (
+          <ProcessorTab />
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />

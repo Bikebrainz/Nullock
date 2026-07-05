@@ -18,6 +18,8 @@ add_library(Networking STATIC
     transcode.hpp
     compare.cpp
     compare.hpp
+    processor.cpp
+    processor.hpp
     port_scanner.cpp
     port_logic.cpp
     port_scanner.hpp

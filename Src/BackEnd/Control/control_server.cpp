@@ -19,6 +19,7 @@
 #include "payload_forge.hpp"
 #include "transcode.hpp"
 #include "compare.hpp"
+#include "processor.hpp"
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
@@ -8843,6 +8844,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         root["identical"] = d.identical;
         root["truncated"] = d.truncated;
         root["modes"]     = QJsonArray::fromStringList(Nullock::Core::Compare::modes());
+        return httpJson(200, root);
+    }
+
+    // POST /api/process { payload } -- generate filter-bypass variants of a
+    // payload (Burp payload-processing / sqlmap-tamper style) for authorized
+    // filter/WAF-coverage testing. Returns one {name, output, note} per transform.
+    if (path == "/api/process") {
+        const QString payload = bodyJson.value("payload").toString();
+        QJsonArray vs;
+        for (const auto &v : Nullock::Core::Processor::process(payload)) {
+            QJsonObject o;
+            o["name"]   = v.name;
+            o["output"] = v.output;
+            o["note"]   = v.note;
+            vs.append(o);
+        }
+        QJsonObject root;
+        root["variants"]   = vs;
+        root["transforms"] = QJsonArray::fromStringList(Nullock::Core::Processor::transforms());
         return httpJson(200, root);
     }
     if (path == "/api/recon/crt") {
