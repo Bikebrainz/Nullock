@@ -14,6 +14,8 @@ add_library(Networking STATIC
     passive_scanner.hpp
     payload_forge.cpp
     payload_forge.hpp
+    transcode.cpp
+    transcode.hpp
     port_scanner.cpp
     port_logic.cpp
     port_scanner.hpp

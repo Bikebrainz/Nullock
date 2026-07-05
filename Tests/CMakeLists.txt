@@ -368,6 +368,12 @@ add_subdirectory(ssrf_logic)
 # Run via: ctest -R payload_forge -V
 add_subdirectory(payload_forge)
 
+# Transcode workbench: 18 encode/decode/hash transforms + smart recursive
+# auto-decode (with hex-vs-base64 disambiguation) + JWT decode + hash-id.
+# Compiles transcode.cpp directly; links Qt6::Core.
+# Run via: ctest -R transcode -V
+add_subdirectory(transcode)
+
 # HTTP/3-detection probe logic: the CRLF-injection guard on the request-line
 # target (path/query) + Host header, and the RFC-7838 Alt-Svc parser (h3 vs h2
 # classification, quote-stripping, ma= overflow-safety, "clear"). Compiles

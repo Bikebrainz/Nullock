@@ -187,6 +187,7 @@
     reconStop()                 { return post("/api/recon/stop"); },
     reconClear()                { return post("/api/recon/clear"); },
     forgePayloads(technique)    { return fetch("/api/payloads?technique=" + encodeURIComponent(technique || "all")).then(r => r.json()); },
+    transcode(op, input)        { return post("/api/transcode", { op, input }).then(r => r.json()); },
     sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },

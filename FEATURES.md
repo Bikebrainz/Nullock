@@ -146,6 +146,7 @@ QA + scope conversations.
 - [x] Reverse DNS (PTR) in recon tab — shipped (`/api/recon/reverse`, IPv4 + IPv6)
 - [x] WHOIS in recon tab — shipped (`/api/recon/whois`, follows IANA → registry/registrar referral)
 - [x] Payload Forge — shipped (`GET /api/payloads?technique=` + a **PAYLOADS** tab with per-payload copy): turns detections into ready-to-run PoCs across **12 techniques** — SSTI-RCE per engine, cmd-injection, XXE OOB/file-read, SQLi per DBMS, reflected XSS per context, JWT alg=none forgery, path-traversal/LFI, SSRF (cloud-metadata + IP-encoding bypasses), open-redirect, NoSQLi, LDAP injection, CRLF/response-splitting; OOB payloads bake in a freshly-minted, correlator-registered OAST token; pure `payload_forge` module, 66-assert regression test
+- [x] Decoder / Transcode workbench — shipped (`POST /api/transcode` + a **DECODER** tab): 18 transforms (base64/base64url/url/html/hex encode+decode, unicode escape/unescape, rot13, md5/sha1/sha256/sha512), full JWT decode with weak-alg warnings, **smart recursive auto-decode** (detects + chains base64/url/html/hex/JWT, with a printable-heuristic that disambiguates hex from base64), and hash identification by length+charset (MD5/NTLM/SHA family, bcrypt/argon2). Pure `transcode` module, 44-assert test. (Above Burp's Decoder: adds smart-chain + hash-ID + JWT.)
 - [ ] WebSocket frame grouping (per-session collapsible view in history)
 
 ## Bugs caught + fixed in this codebase

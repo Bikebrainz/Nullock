@@ -17,6 +17,7 @@
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
+#include "transcode.hpp"
 #include "param_miner.hpp"
 #include "idor_tester.hpp"
 #include "mass_assign.hpp"
@@ -8793,6 +8794,31 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.recon)
             m_wiring.recon->runWhois(bodyJson.value("domain").toString());
         return okJson();
+    }
+
+    // POST /api/transcode { op, input } -- the encode/decode/hash workbench.
+    // op is one of Transcode::operations(), or "smart" (recursive auto-decode)
+    // or "identify" (hash-algorithm identification). Pure + synchronous.
+    if (path == "/api/transcode") {
+        const QString op    = bodyJson.value("op").toString();
+        const QString input = bodyJson.value("input").toString();
+        QJsonObject root;
+        root["operations"] = QJsonArray::fromStringList(Nullock::Core::Transcode::operations());
+        if (op == "smart") {
+            QStringList chain;
+            const auto r = Nullock::Core::Transcode::smartDecode(input, &chain);
+            root["ok"] = r.ok; root["output"] = r.output; root["error"] = r.error;
+            root["chain"] = QJsonArray::fromStringList(chain);
+        } else if (op == "identify") {
+            const QStringList cands = Nullock::Core::Transcode::identifyHash(input);
+            root["ok"]         = !cands.isEmpty();
+            root["candidates"] = QJsonArray::fromStringList(cands);
+            root["output"]     = cands.join(QStringLiteral(", "));
+        } else {
+            const auto r = Nullock::Core::Transcode::apply(op, input);
+            root["ok"] = r.ok; root["output"] = r.output; root["error"] = r.error;
+        }
+        return httpJson(200, root);
     }
     if (path == "/api/recon/crt") {
         if (m_wiring.recon)

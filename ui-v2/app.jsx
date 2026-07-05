@@ -8,6 +8,7 @@ const TABS = [
   { id: "scans",     label: "SCANS" },
   { id: "recon",     label: "RECON" },
   { id: "payloads",  label: "PAYLOADS" },
+  { id: "decoder",   label: "DECODER" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
   { id: "repeater",  label: "REPEATER" },
@@ -1164,6 +1165,107 @@ const SUBDOMAIN_WORDLIST = [
 // subdomain enum -- the recon-for-web-testing flavor, not OSINT for
 // people. Pairs with the rest of the workflow: scope a domain here,
 // click a found subdomain to populate the proxy host filter.
+function DecoderTab() {
+  const [input, setInput]   = React.useState("");
+  const [output, setOutput] = React.useState("");
+  const [activeOp, setOp]   = React.useState("");
+  const [err, setErr]       = React.useState("");
+  const [chain, setChain]   = React.useState([]);
+  const [copied, setCopied] = React.useState(false);
+
+  const OPS = [
+    "base64-encode", "base64-decode", "base64url-encode", "base64url-decode",
+    "url-encode", "url-decode", "html-encode", "html-decode",
+    "hex-encode", "hex-decode", "unicode-escape", "unicode-unescape",
+    "rot13", "jwt-decode", "md5", "sha1", "sha256", "sha512",
+  ];
+
+  const run = async (operation) => {
+    setOp(operation); setErr(""); setChain([]);
+    try {
+      const r = await NL.actions.transcode(operation, input);
+      setOutput(r.output || "");
+      if (r.chain && r.chain.length) setChain(r.chain);
+      if (!r.ok) setErr(r.error || "failed");
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+  };
+
+  const copy = () => {
+    try { navigator.clipboard?.writeText(output); setCopied(true); setTimeout(() => setCopied(false), 1000); } catch (e) {}
+  };
+  const useOutputAsInput = () => { setInput(output); setOutput(""); setChain([]); setErr(""); };
+
+  const Btn = ({ label, onClick, primary, disabled, title }) => (
+    <button onClick={onClick} disabled={disabled} title={title}
+      style={{
+        background: primary ? "var(--accent)" : "transparent",
+        color: disabled ? "var(--dim)" : primary ? "var(--bg)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)" : "var(--accent)"),
+        padding: "4px 9px", fontSize: "10.5px", fontFamily: "var(--ff-mono)",
+        cursor: disabled ? "not-allowed" : "pointer", letterSpacing: "0.04em",
+        textTransform: "uppercase", whiteSpace: "nowrap",
+      }}>{label}</button>
+  );
+
+  const area = {
+    width: "100%", boxSizing: "border-box", background: "var(--bg-deep)",
+    color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4,
+    padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)", resize: "none",
+    flex: 1, minHeight: 0, whiteSpace: "pre-wrap", wordBreak: "break-all",
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column",
+                  gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+                       letterSpacing: "0.06em", fontWeight: 600 }}>Decoder</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          encode · decode · hash · smart auto-decode · JWT · hash-ID
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+                    flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                        letterSpacing: "0.06em" }}>Input</div>
+          <textarea style={area} value={input} placeholder="paste text to transform…"
+                    onChange={e => setInput(e.target.value)} spellCheck={false} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                          letterSpacing: "0.06em", flex: 1 }}>
+              Output {activeOp ? "· " + activeOp : ""}
+              {chain.length ? " · chain: " + chain.join(" → ") : ""}
+            </div>
+            <Btn label={copied ? "copied" : "copy"} onClick={copy} disabled={!output} />
+            <Btn label="↑ input" title="Use output as the new input (chain transforms)"
+                 onClick={useOutputAsInput} disabled={!output} />
+          </div>
+          <textarea style={{ ...area, color: err ? "var(--err)" : "var(--text)" }}
+                    value={err ? (output ? output + "\n\n[" + err + "]" : "[" + err + "]") : output}
+                    readOnly spellCheck={false} />
+        </div>
+      </div>
+
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)",
+                    padding: 10, borderRadius: 4, display: "flex", gap: 6, flexWrap: "wrap",
+                    alignItems: "center" }}>
+        <Btn label="✦ smart decode" primary onClick={() => run("smart")}
+             title="Auto-detect the encoding and recursively decode" />
+        <Btn label="identify hash" onClick={() => run("identify")}
+             title="Guess the hash algorithm by length + charset" />
+        <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 2px" }} />
+        {OPS.map(o => (
+          <Btn key={o} label={o} primary={o === activeOp} onClick={() => run(o)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PayloadsTab() {
   const [technique, setTechnique] = React.useState("all");
   const [data, setData]       = React.useState(null);   // server response
@@ -2158,6 +2260,9 @@ function App() {
         )}
         {tab === "payloads" && (
           <PayloadsTab />
+        )}
+        {tab === "decoder" && (
+          <DecoderTab />
         )}
         {tab === "stats" && (
           <StatsTab dispatch={dispatch} />
