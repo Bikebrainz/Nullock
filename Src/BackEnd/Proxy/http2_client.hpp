@@ -7,6 +7,8 @@
 #include <QObject>
 #include <QString>
 
+#include <memory>
+
 class QSslSocket;
 
 namespace Nullock::Proxy {
@@ -30,10 +32,23 @@ public:
         bool                                ok = false;
         QString                             errorMessage;
         Nullock::Proxy::HttpResponse        response;
+        // True only for a genuine connection-level failure (can't create/keep an
+        // h2 session), NOT a per-stream error / truncation / timeout. Lets the
+        // proxy decide whether an origin is really h2-incompatible before it
+        // permanently bypasses MITM for that host.
+        bool                                connectionFailed = false;
     };
 
+    // ctor + dtor are out-of-line so the unique_ptr<Session> (incomplete here)
+    // deleter is only instantiated in the .cpp where Session is complete.
+    H2Client();
+    ~H2Client();
+    H2Client(const H2Client &) = delete;
+    H2Client &operator=(const H2Client &) = delete;
+
     // Send one request and read the full response. The socket must already be
-    // encrypted with ALPN == "h2". Thin wrapper over sendConcurrent.
+    // encrypted with ALPN == "h2". Thin wrapper over sendConcurrent (one-shot;
+    // creates + tears down its own session).
     Result sendRequest(QSslSocket *sock, const Nullock::Proxy::HttpRequest &req);
 
     // Send N requests concurrently over one h2 session and return one Result
@@ -41,9 +56,25 @@ public:
     // front (subject to the local concurrency cap) and driven by a single pump
     // loop, so the origin can interleave their responses. A connection-level
     // failure fails every outstanding request; a per-stream error (RST, body
-    // over budget) fails only that one. The socket is not reused; caller closes.
+    // over budget) fails only that one. Creates + tears down its own session.
     QList<Result> sendConcurrent(QSslSocket *sock,
                                  const QList<Nullock::Proxy::HttpRequest> &reqs);
+
+    // Persistent-session send (Phase 2). REUSES one nghttp2 session across calls
+    // bound to `sock`, so sequential requests on a kept-alive tunnel share the
+    // upstream h2 connection (no per-request TCP+TLS+h2 handshake). The session
+    // is opened lazily on the first call and torn down by the destructor (or when
+    // `sock` changes). Once a connection-level failure occurs the session is
+    // marked dead: this and every later send() returns ok=false and the caller
+    // should stop reusing this H2Client.
+    Result send(QSslSocket *sock, const Nullock::Proxy::HttpRequest &req);
+
+    // False until send() has opened a session, and false again once it died.
+    bool alive() const;
+
+private:
+    struct Session;                       // persistent per-tunnel session (pImpl)
+    std::unique_ptr<Session> m_sess;
 };
 
 } // namespace Nullock::Proxy

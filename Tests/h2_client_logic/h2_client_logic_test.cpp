@@ -103,6 +103,24 @@ int main(int argc, char **argv) {
         chk("pump invariant: never Done while streams open", ok);
     }
 
+    // ===== assembleOutcome ==============================================
+    using AO = AssembleOutcome;
+    // (done, status, hadError, fatal)
+    chk("assemble: clean finish -> Success",       assembleOutcome(true, 200, false, false) == AO::Success);
+    chk("assemble: not-done + fatal -> Fatal",     assembleOutcome(false, 200, false, true) == AO::Fatal);
+    // A cleanly-completed stream survives a later connection fatal (the Phase-1
+    // completedOk-survives-fatal fix): Success, NOT Fatal.
+    chk("assemble: completed stream survives a later fatal",
+        assembleOutcome(true, 200, false, true)  == AO::Success);
+    chk("assemble: per-stream error -> StreamError", assembleOutcome(false, 200, true, false) == AO::StreamError);
+    chk("assemble: no status at all -> NoStatus",  assembleOutcome(false, 0, false, false)  == AO::NoStatus);
+    // The regression the refactor introduced + this pins: :status received but
+    // END_STREAM never arrived (truncated body) must still be served (Success),
+    // NOT failed.
+    chk("assemble: status-but-not-done (truncated) -> Success",
+        assembleOutcome(false, 200, false, false) == AO::Success);
+    chk("assemble: truncated with error still fails", assembleOutcome(false, 200, true, false) == AO::StreamError);
+
     std::fprintf(stderr, "h2_client_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -351,60 +351,79 @@ public:
         }
 
         // ── h2 upstream path: bridge h1-client to h2-server ──────────────
-        // Browser side stays HTTP/1.1 (we never advertised h2 on the
-        // server socket). Read one h1 request, fire it through H2Client,
-        // translate the h2 response back to h1 for the browser, close.
-        // No keep-alive in this branch -- each request gets a fresh
-        // tunnel. (Real h2 multiplexing is out of scope; we just want to
-        // unblock h2-only origins.)
+        // Browser side stays HTTP/1.1 (we never advertised h2 on the server
+        // socket). Phase 2: keep-alive loop -- read each h1 request the browser
+        // sends on this tunnel, translate it to an h2 stream on ONE reused
+        // nghttp2 session (H2Client::send), and translate the h2 response back
+        // to h1. Reusing the session means sequential requests share the upstream
+        // TCP+TLS+h2 connection instead of paying a fresh handshake each time.
         if (upstreamIsH2) {
             m_server->noteH2Upstream();
-            HttpRequest req;
-            req.timestamp = QDateTime::currentDateTime();
-            if (!readRequestFrom(sslClient, req)) {
-                fail("mitm/h2: malformed inner request");
-                return;
-            }
-            req.host = host;
-            req.port = port;
-            if (req.path.isEmpty() || !req.path.startsWith('/'))
-                req.path = "/" + req.path;
-            emit m_server->requestReceived(req);
-
-            if (auto *ext = m_server->extensions())
-                req = ext->applyRequestMutation(req);
-            m_server->applyRequestRules(req);
-
-            // Intercept still works -- pend before sending upstream.
-            if (auto *ic = m_server->interceptController()) {
-                QByteArray dummyBytes = serializeRequestForOrigin(req);
-                const InterceptResult ir = ic->pend(dummyBytes, host, port, true);
-                if (ir.dropped) { sslClient->disconnectFromHost(); return; }
-                // For h2 we send via H2Client which takes an HttpRequest, not
-                // bytes -- so we just use the (possibly user-edited) bytes to
-                // re-derive the request fields. Keep it simple: re-use the
-                // original req. (Editing intercept text in h2 mode is a known
-                // limitation; documented in README.)
-            }
-
             H2Client h2;
-            const auto h2res = h2.sendRequest(upstream, req);
-            if (!h2res.ok) {
-                qWarning().noquote() << "mitm/h2 failed for" << host
-                                     << ":" << h2res.errorMessage;
-                m_server->markMitmBlocked(host);
-                fail("mitm/h2: " + h2res.errorMessage);
-                return;
-            }
-            HttpResponse h2resp = h2res.response;
-            if (auto *ext = m_server->extensions())
-                h2resp = ext->applyResponseMutation(req, h2resp);
-            m_server->applyResponseRules(req, h2resp);
-            emit m_server->responseReceived(req, h2resp);
+            bool served = false;   // did at least one request complete on this session?
+            while (sslClient->state() == QAbstractSocket::ConnectedState
+                   && upstream->state() == QAbstractSocket::ConnectedState) {
+                HttpRequest req;
+                req.timestamp = QDateTime::currentDateTime();
+                if (!readRequestFrom(sslClient, req))
+                    break;   // clean keep-alive close (empty read), not an error
+                req.host = host;
+                req.port = port;
+                if (req.path.isEmpty() || !req.path.startsWith('/'))
+                    req.path = "/" + req.path;
+                emit m_server->requestReceived(req);
 
-            sslClient->write(serializeResponse(h2resp));
-            sslClient->waitForBytesWritten(kReadTimeoutMs);
+                if (auto *ext = m_server->extensions())
+                    req = ext->applyRequestMutation(req);
+                m_server->applyRequestRules(req);
+
+                // Intercept still pends before sending upstream. (Editing the
+                // request text in h2 mode is a known limitation; documented.)
+                if (auto *ic = m_server->interceptController()) {
+                    QByteArray dummyBytes = serializeRequestForOrigin(req);
+                    const InterceptResult ir = ic->pend(dummyBytes, host, port, true);
+                    if (ir.dropped) { sslClient->disconnectFromHost(); return; }
+                }
+
+                const auto h2res = h2.send(upstream, req);
+                if (!h2res.ok) {
+                    qWarning().noquote() << "mitm/h2 failed for" << host
+                                         << ":" << h2res.errorMessage;
+                    // Permanently bypass MITM for this host ONLY when the FIRST
+                    // request hit a genuine connection-level h2 failure (the origin
+                    // can't hold an h2 session with us). A per-stream error, a
+                    // truncation, a timeout, or any failure AFTER serving is NOT
+                    // grounds to block a provably-h2 origin (ALPN already agreed
+                    // "h2") -- just close the tunnel and let the browser reconnect.
+                    if (!served && h2res.connectionFailed) {
+                        m_server->markMitmBlocked(host);
+                        fail("mitm/h2: " + h2res.errorMessage);
+                        return;
+                    }
+                    break;
+                }
+                served = true;
+
+                HttpResponse h2resp = h2res.response;
+                if (auto *ext = m_server->extensions())
+                    h2resp = ext->applyResponseMutation(req, h2resp);
+                m_server->applyResponseRules(req, h2resp);
+                emit m_server->responseReceived(req, h2resp);
+
+                sslClient->write(serializeResponse(h2resp));
+                if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+                    fail("mitm/h2: response write to client failed");
+                    return;
+                }
+
+                // The browser leg is h1: honor an explicit Connection: close.
+                if (findHeader(req.headers, "Connection")
+                        .compare("close", Qt::CaseInsensitive) == 0)
+                    break;
+            }
             sslClient->disconnectFromHost();
+            if (upstream->state() == QAbstractSocket::ConnectedState)
+                upstream->disconnectFromHost();
             return;
         }
 

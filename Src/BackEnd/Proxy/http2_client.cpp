@@ -177,102 +177,78 @@ bool drainSend(nghttp2_session *session, QSslSocket *sock, SessionState &sess, b
     }
 }
 
-} // namespace
+// ---- shared session helpers (used by both sendConcurrent + persistent send) --
 
-QList<H2Client::Result> H2Client::sendConcurrent(QSslSocket *sock,
-                                                 const QList<HttpRequest> &reqs) {
-    QList<Result> results;
-    for (int i = 0; i < reqs.size(); ++i) results.append(Result{});
-
-    if (!sock) {
-        for (auto &r : results) r.errorMessage = QStringLiteral("h2: null socket");
-        return results;
-    }
-    if (reqs.isEmpty()) return results;
-
+// Build the callback set every session uses. Returns null on allocation failure.
+nghttp2_session_callbacks *makeCallbacks() {
     nghttp2_session_callbacks *cbs = nullptr;
-    if (nghttp2_session_callbacks_new(&cbs) != 0) {
-        for (auto &r : results) r.errorMessage = QStringLiteral("h2: callbacks_new failed");
-        return results;
-    }
+    if (nghttp2_session_callbacks_new(&cbs) != 0) return nullptr;
     nghttp2_session_callbacks_set_on_header_callback(cbs, onHeader);
     nghttp2_session_callbacks_set_on_data_chunk_recv_callback(cbs, onDataChunk);
     nghttp2_session_callbacks_set_on_frame_recv_callback(cbs, onFrameRecv);
     nghttp2_session_callbacks_set_on_stream_close_callback(cbs, onStreamClose);
+    return cbs;
+}
 
-    SessionState sess;
-    sess.connName = reqs.first().host + ":" + QString::number(reqs.first().port);
-
-    nghttp2_session *session = nullptr;
-    if (nghttp2_session_client_new(&session, cbs, &sess) != 0) {
-        nghttp2_session_callbacks_del(cbs);
-        for (auto &r : results) r.errorMessage = QStringLiteral("h2: session_client_new failed");
-        return results;
-    }
-
+void submitSettings(nghttp2_session *session) {
     nghttp2_settings_entry iv[] = {
         { NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE,    1 << 24 },
         { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, kMaxConcurrentStreamsLocal },
-        // Refuse server push: a PUSH_PROMISE opens a peer-initiated stream that
-        // our submit-time concurrency cap never sees, and its DATA would land in
-        // a StreamState we didn't budget. We only want the responses we asked for.
+        // Refuse server push: a PUSH_PROMISE opens a peer-initiated stream our
+        // submit-time cap never sees. We only want the responses we asked for.
         { NGHTTP2_SETTINGS_ENABLE_PUSH,            0 },
     };
     nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, sizeof(iv) / sizeof(iv[0]));
+}
 
-    // Submit all requests up front (subject to the local concurrency cap) so the
-    // origin can interleave their responses over the one session.
-    for (int i = 0; i < reqs.size(); ++i) {
-        const HttpRequest &req = reqs.at(i);
-        if (H2ClientLogic::shouldRejectSubmit(sess.openStreams, kMaxConcurrentStreamsLocal)) {
-            results[i].errorMessage = QStringLiteral("h2: local concurrent-stream cap reached");
-            continue;
-        }
-        const auto nvList = H2ClientLogic::buildRequestHeaders(req.method, req.host,
-                                                              req.path, req.headers);
-        std::vector<nghttp2_nv> nvs;
-        nvs.reserve(nvList.size());
-        for (const auto &h : nvList) {
-            nghttp2_nv nv;
-            nv.name     = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(h.name.constData()));
-            nv.namelen  = size_t(h.name.size());
-            nv.value    = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(h.value.constData()));
-            nv.valuelen = size_t(h.value.size());
-            nv.flags    = NGHTTP2_NV_FLAG_NONE;   // nghttp2 copies on submit
-            nvs.push_back(nv);
-        }
-
-        auto st = std::make_unique<StreamState>();
-        st->resultIndex = i;
-        nghttp2_data_provider dp;
-        nghttp2_data_provider *dpPtr = nullptr;
-        if (!req.body.isEmpty()) {
-            st->reqBody   = &req.body;   // `reqs` outlives this synchronous call
-            dp.source.ptr = st.get();    // bodyRead actually routes via stream_user_data
-            dp.read_callback = bodyRead;
-            dpPtr = &dp;
-        }
-
-        StreamState *raw = st.get();     // stable heap address; survives the move
-        const int32_t sid = nghttp2_submit_request(session, nullptr, nvs.data(),
-                                                   nvs.size(), dpPtr, raw);
-        if (sid < 0) {
-            results[i].errorMessage = QStringLiteral("h2: submit_request failed (%1)").arg(sid);
-            continue;
-        }
-        raw->streamId = sid;
-        sess.streams.emplace(sid, std::move(st));
-        ++sess.openStreams;
-        H2EventLog::instance()->noteRequestHeader(sess.connName, sid, req.method, req.path);
-        H2EventLog::instance()->noteFrame(sess.connName, /*HEADERS*/1, 0, sid, 0, /*sent=*/true);
+// Submit one request on an existing session, tagging its stream with resultIndex
+// for later mapping. Returns the stream id, or the nghttp2 error (<0) on failure.
+// The StreamState is owned by sess.streams (node-stable) and its address is the
+// nghttp2 stream_user_data. Body is streamed from `req` -- the caller must keep
+// `req` alive until this stream completes.
+int32_t submitOne(nghttp2_session *session, SessionState &sess,
+                  const HttpRequest &req, int resultIndex) {
+    const auto nvList = H2ClientLogic::buildRequestHeaders(req.method, req.host,
+                                                          req.path, req.headers);
+    std::vector<nghttp2_nv> nvs;
+    nvs.reserve(nvList.size());
+    for (const auto &h : nvList) {
+        nghttp2_nv nv;
+        nv.name     = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(h.name.constData()));
+        nv.namelen  = size_t(h.name.size());
+        nv.value    = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(h.value.constData()));
+        nv.valuelen = size_t(h.value.size());
+        nv.flags    = NGHTTP2_NV_FLAG_NONE;   // nghttp2 copies on submit
+        nvs.push_back(nv);
     }
+    auto st = std::make_unique<StreamState>();
+    st->resultIndex = resultIndex;
+    nghttp2_data_provider dp;
+    nghttp2_data_provider *dpPtr = nullptr;
+    if (!req.body.isEmpty()) {
+        st->reqBody   = &req.body;
+        dp.source.ptr = st.get();     // bodyRead routes via stream_user_data
+        dp.read_callback = bodyRead;
+        dpPtr = &dp;
+    }
+    StreamState *raw = st.get();       // stable heap address; survives the move
+    const int32_t sid = nghttp2_submit_request(session, nullptr, nvs.data(),
+                                               nvs.size(), dpPtr, raw);
+    if (sid < 0) return sid;
+    raw->streamId = sid;
+    sess.streams.emplace(sid, std::move(st));
+    ++sess.openStreams;
+    H2EventLog::instance()->noteRequestHeader(sess.connName, sid, req.method, req.path);
+    H2EventLog::instance()->noteFrame(sess.connName, /*HEADERS*/1, 0, sid, 0, /*sent=*/true);
+    return sid;
+}
 
-    // Pump loop. Each iteration FULLY drains outbound first (so no stream's
-    // frames sit unsent behind a blocking read -> the deadlock the design flags),
-    // then reads inbound, until every stream is closed. An absolute deadline
-    // backstops a peer that dribbles bytes forever to keep the loop alive
-    // (a per-wait timeout resets on every byte; only a wall-clock budget bounds
-    // the aggregate -- mirrors the WHOIS/PCRE2 aggregate-budget pattern).
+// Drive the session until every open stream closes or a fatal occurs. Each
+// iteration FULLY drains outbound before a blocking read (so no stream's frames
+// sit unsent behind a wait). An absolute deadline backstops a peer that dribbles
+// bytes forever (a per-wait timeout resets on every byte). On return sess.fatal
+// reflects any connection-level failure.
+void pump(nghttp2_session *session, QSslSocket *sock, SessionState &sess) {
     QElapsedTimer clock;
     clock.start();
     while (sock->state() == QAbstractSocket::ConnectedState) {
@@ -302,37 +278,101 @@ QList<H2Client::Result> H2Client::sendConcurrent(QSslSocket *sock,
             break;
         }
     }
-
-    // Final outbound flush (our own GOAWAY ack etc.).
     bool flushed = false;
-    drainSend(session, sock, sess, &flushed);
-    sock->waitForBytesWritten(1000);
+    drainSend(session, sock, sess, &flushed);   // flush our own final acks
+    if (flushed) sock->waitForBytesWritten(1000);
+}
 
-    // Assemble per-request results, mapped back to the original request order.
+// Turn one finished StreamState into a Result, via the pure decision in
+// h2_client_logic so the one-shot + persistent paths can never diverge. A stream
+// that reached a full terminal state -- OR received :status but not END_STREAM
+// (a truncated body) -- is served; only a connection fatal / per-stream error /
+// no-status fails.
+H2Client::Result assembleResult(const StreamState *st, QSslSocket *sock,
+                                bool fatal, const QString &fatalMsg) {
+    H2Client::Result r;
+    const int  status  = st ? st->statusCode : 0;
+    const bool hadErr  = st && st->hadError;
+    const bool done    = st && st->done;
+    switch (H2ClientLogic::assembleOutcome(done, status, hadErr, fatal)) {
+        case H2ClientLogic::AssembleOutcome::Fatal:
+            r.errorMessage = fatalMsg; r.connectionFailed = true; return r;
+        case H2ClientLogic::AssembleOutcome::StreamError:
+            r.errorMessage = st->errorMessage; return r;
+        case H2ClientLogic::AssembleOutcome::NoStatus:
+            r.errorMessage = QStringLiteral("h2: no :status received"); return r;
+        case H2ClientLogic::AssembleOutcome::Success:
+            break;   // st is non-null with a status here
+    }
+    r.response.httpVersion  = QStringLiteral("HTTP/1.1");
+    r.response.statusCode   = st->statusCode;
+    r.response.reasonPhrase = QString::fromLatin1(H2ClientLogic::reasonFor(st->statusCode));
+    r.response.headers      = st->headers;
+    r.response.body         = st->body;
+    r.response.peerAddress  = sock->peerAddress().toString();
+    r.response.wasTls       = true;
+    r.ok = true;
+    return r;
+}
+
+} // namespace
+
+// The persistent per-tunnel session (Phase 2). Its address-stable SessionState
+// backs the nghttp2 stream_user_data routing; it outlives individual send()s.
+struct H2Client::Session {
+    nghttp2_session           *session = nullptr;
+    nghttp2_session_callbacks *cbs     = nullptr;
+    SessionState               state;
+    QSslSocket                *sock    = nullptr;
+    bool                       dead    = false;
+    ~Session() {
+        if (session) nghttp2_session_del(session);
+        if (cbs)     nghttp2_session_callbacks_del(cbs);
+    }
+};
+
+QList<H2Client::Result> H2Client::sendConcurrent(QSslSocket *sock,
+                                                 const QList<HttpRequest> &reqs) {
+    QList<Result> results;
+    for (int i = 0; i < reqs.size(); ++i) results.append(Result{});
+    if (!sock) {
+        for (auto &r : results) r.errorMessage = QStringLiteral("h2: null socket");
+        return results;
+    }
+    if (reqs.isEmpty()) return results;
+
+    nghttp2_session_callbacks *cbs = makeCallbacks();
+    if (!cbs) {
+        for (auto &r : results) r.errorMessage = QStringLiteral("h2: callbacks_new failed");
+        return results;
+    }
+    SessionState sess;
+    sess.connName = reqs.first().host + ":" + QString::number(reqs.first().port);
+    nghttp2_session *session = nullptr;
+    if (nghttp2_session_client_new(&session, cbs, &sess) != 0) {
+        nghttp2_session_callbacks_del(cbs);
+        for (auto &r : results) r.errorMessage = QStringLiteral("h2: session_client_new failed");
+        return results;
+    }
+    submitSettings(session);
+
+    for (int i = 0; i < reqs.size(); ++i) {
+        if (H2ClientLogic::shouldRejectSubmit(sess.openStreams, kMaxConcurrentStreamsLocal)) {
+            results[i].errorMessage = QStringLiteral("h2: local concurrent-stream cap reached");
+            continue;
+        }
+        const int32_t sid = submitOne(session, sess, reqs.at(i), i);
+        if (sid < 0)
+            results[i].errorMessage = QStringLiteral("h2: submit_request failed (%1)").arg(sid);
+    }
+
+    pump(session, sock, sess);
+
     for (const auto &kv : sess.streams) {
         StreamState *st = kv.second.get();
         if (st->resultIndex < 0 || st->resultIndex >= results.size()) continue;
-        Result &r = results[st->resultIndex];
-        // A stream that already received its full response (headers + :status +
-        // END_STREAM, no error) is valid REGARDLESS of a later connection-level
-        // stall: a single hung sibling driving the pump to its deadline must not
-        // clobber responses that already completed in earlier iterations.
-        const bool completedOk = st->done && st->statusCode != 0 && !st->hadError;
-        if (!completedOk) {
-            if (sess.fatal)          { r.ok = false; r.errorMessage = sess.fatalMessage; continue; }
-            if (st->hadError)        { r.ok = false; r.errorMessage = st->errorMessage;  continue; }
-            if (st->statusCode == 0) { r.ok = false; r.errorMessage = QStringLiteral("h2: no :status received"); continue; }
-        }
-        r.response.httpVersion  = QStringLiteral("HTTP/1.1");
-        r.response.statusCode   = st->statusCode;
-        r.response.reasonPhrase = QString::fromLatin1(H2ClientLogic::reasonFor(st->statusCode));
-        r.response.headers      = st->headers;
-        r.response.body         = st->body;
-        r.response.peerAddress  = sock->peerAddress().toString();
-        r.response.wasTls       = true;
-        r.ok = true;
+        results[st->resultIndex] = assembleResult(st, sock, sess.fatal, sess.fatalMessage);
     }
-    // A connection-level failure fails even requests that never opened a stream.
     if (sess.fatal)
         for (auto &r : results)
             if (!r.ok && r.errorMessage.isEmpty()) r.errorMessage = sess.fatalMessage;
@@ -341,6 +381,58 @@ QList<H2Client::Result> H2Client::sendConcurrent(QSslSocket *sock,
     nghttp2_session_callbacks_del(cbs);
     return results;
 }
+
+H2Client::Result H2Client::send(QSslSocket *sock, const HttpRequest &req) {
+    Result r;
+    if (!sock) { r.errorMessage = QStringLiteral("h2: null socket"); return r; }
+
+    // A different socket means a new tunnel -> drop the old session.
+    if (m_sess && m_sess->sock != sock) m_sess.reset();
+    if (!m_sess) {
+        m_sess = std::make_unique<Session>();
+        m_sess->sock = sock;
+        m_sess->state.connName = req.host + ":" + QString::number(req.port);
+        m_sess->cbs = makeCallbacks();
+        if (!m_sess->cbs) {
+            m_sess->dead = true; r.errorMessage = QStringLiteral("h2: callbacks_new failed");
+            r.connectionFailed = true; return r;
+        }
+        if (nghttp2_session_client_new(&m_sess->session, m_sess->cbs, &m_sess->state) != 0) {
+            m_sess->dead = true; r.errorMessage = QStringLiteral("h2: session_client_new failed");
+            r.connectionFailed = true; return r;
+        }
+        submitSettings(m_sess->session);
+    }
+    if (m_sess->dead) {
+        r.errorMessage = m_sess->state.fatalMessage.isEmpty()
+            ? QStringLiteral("h2: session no longer usable") : m_sess->state.fatalMessage;
+        return r;
+    }
+
+    Session &s = *m_sess;
+    // Fresh per-request tracking: the prior request's stream has already closed.
+    s.state.streams.clear();
+    s.state.openStreams = 0;
+
+    const int32_t sid = submitOne(s.session, s.state, req, 0);
+    if (sid < 0) { r.errorMessage = QStringLiteral("h2: submit_request failed (%1)").arg(sid); return r; }
+
+    pump(s.session, sock, s.state);
+
+    const StreamState *st = s.state.streams.empty() ? nullptr : s.state.streams.begin()->second.get();
+    r = assembleResult(st, sock, s.state.fatal, s.state.fatalMessage);
+    // Only reuse the session if this request finished cleanly. A fatal, OR a
+    // stream still open at pump-exit (peer FIN mid-body / truncation), leaves the
+    // session in a state we must not reuse -- the next send() would clear the map
+    // out from under nghttp2's still-live stream. Mark it dead so it's torn down.
+    if (s.state.fatal || s.state.openStreams > 0) s.dead = true;
+    return r;
+}
+
+bool H2Client::alive() const { return m_sess && !m_sess->dead; }
+
+H2Client::H2Client() = default;
+H2Client::~H2Client() = default;   // ~unique_ptr<Session> tears the session down
 
 H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req) {
     const QList<Result> rs = sendConcurrent(sock, { req });

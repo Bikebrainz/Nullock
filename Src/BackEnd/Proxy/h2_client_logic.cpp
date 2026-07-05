@@ -83,4 +83,17 @@ PumpAction nextPumpAction(int openStreams, bool wrotePending, bool fatal) {
     return PumpAction::ReadOnly;
 }
 
+AssembleOutcome assembleOutcome(bool done, int statusCode, bool hadError, bool fatal) {
+    // A cleanly-finished stream is always a success.
+    if (done && statusCode != 0 && !hadError) return AssembleOutcome::Success;
+    // Otherwise classify why it did not finish cleanly (order matters: a
+    // connection fatal dominates a per-stream error, which dominates no-status).
+    if (fatal)            return AssembleOutcome::Fatal;
+    if (hadError)         return AssembleOutcome::StreamError;
+    if (statusCode == 0)  return AssembleOutcome::NoStatus;
+    // :status arrived but END_STREAM never did (peer FIN mid-body): serve the
+    // partial response, as the pre-refactor code did.
+    return AssembleOutcome::Success;
+}
+
 } // namespace Nullock::Proxy::H2ClientLogic

@@ -62,4 +62,17 @@ bool bodyOverBudget(qint64 accumulated, qint64 cap);
 enum class PumpAction { WriteThenRead, ReadOnly, Done, Fatal };
 PumpAction nextPumpAction(int openStreams, bool wrotePending, bool fatal);
 
+// How to turn a finished stream's state into a Result. Extracted so the exact
+// outcome for each state is unit-tested and can't silently drift between the
+// one-shot (sendConcurrent) and persistent (send) paths.
+//   Success     -> a usable response (either fully closed, OR :status received
+//                  but END_STREAM never arrived -- a truncated body we still
+//                  serve, matching the original behavior).
+//   Fatal       -> a connection-level failure (the whole session is unusable).
+//   StreamError -> a per-stream failure (RST, local body-budget) -- this stream
+//                  only; the connection itself is fine.
+//   NoStatus    -> nothing usable arrived (no :status at all).
+enum class AssembleOutcome { Success, Fatal, StreamError, NoStatus };
+AssembleOutcome assembleOutcome(bool done, int statusCode, bool hadError, bool fatal);
+
 } // namespace Nullock::Proxy::H2ClientLogic
