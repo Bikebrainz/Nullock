@@ -250,14 +250,15 @@ public:
             return;
         }
 
-        QTcpSocket *client = m_client;
-        QTcpSocket *up = m_upstream;
-        connect(client, &QTcpSocket::readyRead, this, [client, up]() {
-            up->write(client->readAll());
-        });
-        connect(up, &QTcpSocket::readyRead, this, [client, up]() {
-            client->write(up->readAll());
-        });
+        // Pump both directions until either side closes. This previously just
+        // connected the readyRead relays and returned -- but run() then returns
+        // too, and the stack-allocated Connection (which owns m_client, m_upstream
+        // and these relay connections) is destroyed immediately, so the tunnel
+        // tore down without ever forwarding a byte: out-of-scope / cert-pinned
+        // HTTPS browsing silently broke. runRawRelay runs a local QEventLoop that
+        // keeps the relay alive for the life of the connection (the same helper
+        // the post-101 WebSocket/raw path already uses).
+        runRawRelay(m_client, m_upstream);
     }
 
     void runMitmTunnel(HttpRequest &connectReq, QSslSocket *sslClient,
@@ -769,6 +770,14 @@ private:
         connect(upstream, &QTcpSocket::readyRead, this, [client, upstream] {
             client->write(upstream->readAll());
         });
+        // Drain anything that arrived between the handshake ack and now. A peer
+        // that pipelines data right after the ack (curl fires the TLS ClientHello
+        // the instant it sees our "200 Connection Established") emits readyRead
+        // for those bytes BEFORE we connected the relay above; readyRead is
+        // edge-triggered and won't re-fire for already-buffered data, so without
+        // this initial drain the relay would sit idle and the connection hangs.
+        if (client->bytesAvailable())   upstream->write(client->readAll());
+        if (upstream->bytesAvailable()) client->write(upstream->readAll());
         if (client->state() == QAbstractSocket::ConnectedState
             && upstream->state() == QAbstractSocket::ConnectedState)
             loop.exec();
