@@ -268,6 +268,45 @@ int main(int argc, char **argv) {
         chk("inflate: poisoned inflater refuses further messages", !ok2);
     }
 
+    // ===== fuzz: WsFrameParser must never crash / hang / grow unbounded on
+    // arbitrary bytes -- it eats frames from BOTH ends of a MITM'd tunnel, so
+    // every byte is attacker-influenced. Deterministic PRNG for reproducibility.
+    {
+        uint32_t rng = 0x1234abcdu;
+        auto rnd = [&rng]() {
+            rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng;
+        };
+        constexpr qsizetype kHardCap = 2 * (16 * 1024 * 1024) + 4096;  // > parser's cap
+        bool bounded = true;
+        for (int iter = 0; iter < 8000; ++iter) {
+            QByteArray buf;
+            const int n = int(rnd() % 260);
+            for (int i = 0; i < n; ++i) buf += char(rnd() & 0xFF);
+            // ~1/4: prepend a real-ish frame header (FIN+opcode, mask bit, a
+            // length byte that may select the 126/127 extended-length path).
+            if ((rnd() & 3) == 0) {
+                QByteArray hdr;
+                hdr += char(0x80 | (rnd() & 0x0F));
+                hdr += char((rnd() & 0x80) | (rnd() % 128));
+                buf.prepend(hdr);
+            }
+            WsFrameParser whole;
+            (void)whole.feed(buf);                       // must not crash
+            if (whole.bufferedBytes() > kHardCap) bounded = false;
+            // Incremental feed in 1-3 byte chunks exercises the partial-frame
+            // state machine (the classic incremental-parser bug source).
+            WsFrameParser split;
+            for (qsizetype off = 0; off < buf.size(); ) {
+                const qsizetype step = 1 + qsizetype(rnd() % 3);
+                (void)split.feed(buf.mid(off, step));
+                if (split.bufferedBytes() > kHardCap) { bounded = false; break; }
+                off += step;
+            }
+        }
+        chk("fuzz: WsFrameParser survived 8k random whole+split feeds (no crash/hang)", true);
+        chk("fuzz: WsFrameParser buffer stayed bounded across the fuzz run", bounded);
+    }
+
     std::fprintf(stderr, "websocket_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

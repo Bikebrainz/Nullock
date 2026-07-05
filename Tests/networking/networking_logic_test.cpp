@@ -272,6 +272,30 @@ int main(int argc, char **argv) {
         chkd("feed trailer-flood error", feedChunked(buf, dec), ChunkDecode::Error);
     }
 
+    // ===== fuzz: feedChunked eats attacker-controlled response bodies, so it
+    // must never crash / grow unbounded on arbitrary bytes, and always return a
+    // valid outcome. Deterministic PRNG; a bias toward chunked-relevant chars
+    // so many inputs actually reach the size-line / data / trailer logic. =====
+    {
+        uint32_t rng = 0x9e3779b9u;
+        auto rnd = [&rng]() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; };
+        const char pool[] = "0123456789abcdefABCDEF\r\n;xyz ";
+        bool bounded = true, validOutcome = true;
+        for (int iter = 0; iter < 8000; ++iter) {
+            QByteArray buf;
+            const int n = int(rnd() % 220);
+            for (int i = 0; i < n; ++i) buf += pool[rnd() % (sizeof(pool) - 1)];
+            QByteArray dec;
+            const ChunkDecode r = feedChunked(buf, dec);   // must not crash (mutates buf)
+            if (r != ChunkDecode::NeedMore && r != ChunkDecode::Done && r != ChunkDecode::Error)
+                validOutcome = false;
+            if (dec.size() > 64LL * 1024 * 1024) bounded = false;   // body cap holds
+        }
+        chkb("fuzz: feedChunked survived 8k random chunked-ish inputs (no crash)", true, true);
+        chkb("fuzz: feedChunked always returned a valid outcome", validOutcome, true);
+        chkb("fuzz: feedChunked decoded stayed within the body cap", bounded, true);
+    }
+
     std::fprintf(stderr, "networking_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
