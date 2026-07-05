@@ -1,6 +1,7 @@
 #include "proxy_server.hpp"
 
 #include "cert_authority.hpp"
+#include "content_decode.hpp"
 #include "extensions_api.hpp"
 #include "http2_client.hpp"
 #include "h2_server.hpp"
@@ -718,6 +719,12 @@ private:
             readUntilClose(upstream, tail);
             resp.body = rest + tail;
         }
+        // Decode Content-Encoding for inspection (history/search, passive scan,
+        // evidence, reports). resp.body stays the exact wire bytes we forward to
+        // the client -- only this readable copy is decompressed.
+        const QByteArray dec = decodeContentEncoding(
+            findHeader(resp.headers, "Content-Encoding"), resp.body);
+        if (!dec.isEmpty()) resp.decodedBody = dec;
         return true;
     }
 

@@ -22,6 +22,8 @@ add_library(Proxy STATIC
     h2_server.hpp
     websocket.cpp
     websocket.hpp
+    content_decode.cpp
+    content_decode.hpp
     ws_repeater.cpp
     ws_repeater.hpp
     http1_parser.hpp

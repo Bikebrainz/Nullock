@@ -299,6 +299,11 @@ add_subdirectory(websocket)
 # Run via: ctest -R proxy_logic -V
 add_subdirectory(proxy_logic)
 
+# HTTP Content-Encoding decode (gzip/deflate) for body inspection. Compiles
+# content_decode.cpp directly; links Qt6::Core + Qt6::ZlibPrivate.
+# Run via: ctest -R content_decode -V
+add_subdirectory(content_decode)
+
 # MITM-CA host-injection guard: the strict DNS-host validation that stops an
 # attacker-controlled SNI/host injecting an x509 extension (CA:TRUE) into the SAN
 # ext file, a DN field into -subj, or path traversal into the leaf-cert files; plus

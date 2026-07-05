@@ -168,7 +168,11 @@ QString ProxyModel::responseRawAt(int row) const {
     for (const auto &h : resp.headers)
         out += QString("%1: %2\n").arg(h.first, h.second);
     out += "\n";
-    out += renderBody(resp.body, resp.headers, "Content-Type");
+    // Render the DECODED body (gzip/deflate inflated by the proxy) so the
+    // response view and /api/search see readable content instead of compressed
+    // bytes -- like Burp/ZAP, which display the decoded body. Falls back to the
+    // raw body when it wasn't compressed.
+    out += renderBody(resp.bodyForInspection(), resp.headers, "Content-Type");
     return out;
 }
 

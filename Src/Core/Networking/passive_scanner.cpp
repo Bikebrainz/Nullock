@@ -174,6 +174,11 @@ void PassiveScanner::addFinding(int rowId,
 void PassiveScanner::checkResponse(int rowId,
                                    const Nullock::Proxy::HttpRequest &req,
                                    const Nullock::Proxy::HttpResponse &resp) {
+    // Scan the DECODED body (gzip/deflate inflated by the proxy) so compressed
+    // responses -- most of the real web -- are actually inspected instead of
+    // being seen as opaque bytes. Falls back to the raw body when it wasn't
+    // compressed. Size gates below therefore bound the decoded size.
+    const QByteArray &scanBody = resp.bodyForInspection();
     // Only audit HTML pages for the missing-header set -- application/json
     // / images / etc don't need a CSP. The cookie checks fire regardless.
     const QString contentType = headerOf(resp.headers, "Content-Type");
@@ -192,7 +197,7 @@ void PassiveScanner::checkResponse(int rowId,
         QString detail = "path looks GraphQL-shaped";
         // Cheap introspection sniff -- if the response body contains
         // "__schema" or "__typename" the endpoint allowed introspection.
-        if (QString::fromUtf8(resp.body.left(8 * 1024))
+        if (QString::fromUtf8(scanBody.left(8 * 1024))
                 .contains("__schema", Qt::CaseInsensitive)) {
             detail = "introspection ENABLED -- production servers usually disable";
             addFinding(rowId, req, resp, "low", "graphql-introspection",
@@ -488,7 +493,7 @@ void PassiveScanner::checkResponse(int rowId,
 
     // ---- Mixed content on HTTPS pages -----------------------------------
     if (html && resp.wasTls) {
-        const QString bodyText = QString::fromUtf8(resp.body.left(256 * 1024));
+        const QString bodyText = QString::fromUtf8(scanBody.left(256 * 1024));
         // src="http://..." or href="http://..." without the s
         static const QRegularExpression rxMixed(
             R"#((?:src|href|action)\s*=\s*['"]http://[^'"\s]+['"])#",
@@ -514,7 +519,7 @@ void PassiveScanner::checkResponse(int rowId,
     // Only cross-origin (different host) scripts are flagged -- SRI is not
     // expected for first-party scripts, so requiring it there would be noise.
     if (html) {
-        const QString bodyText = QString::fromUtf8(resp.body.left(256 * 1024));
+        const QString bodyText = QString::fromUtf8(scanBody.left(256 * 1024));
         static const QRegularExpression rxScript(
             R"#(<script\b[^>]*\bsrc\s*=\s*['"](https?://[^'"]+)['"][^>]*>)#",
             QRegularExpression::CaseInsensitiveOption);
@@ -544,7 +549,7 @@ void PassiveScanner::checkResponse(int rowId,
     if (contentType.contains("javascript", Qt::CaseInsensitive)
         || contentType.contains("application/json", Qt::CaseInsensitive)
         || req.path.endsWith(".js") || req.path.endsWith(".mjs")) {
-        const QString bodyText = QString::fromUtf8(resp.body.right(2048));
+        const QString bodyText = QString::fromUtf8(scanBody.right(2048));
         static const QRegularExpression rxSourceMap(
             R"#(//[#@]\s*sourceMappingURL\s*=\s*([^\s\r\n]+))#",
             QRegularExpression::CaseInsensitiveOption);
@@ -559,8 +564,8 @@ void PassiveScanner::checkResponse(int rowId,
     // ---- API key / secret patterns in any response body -----------------
     // These regex patterns catch the most common providers' tokens. Each
     // match is treated as high severity because leaked keys = direct compromise.
-    if (resp.statusCode == 200 && resp.body.size() < 4 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(4 * 1024 * 1024));
+    if (resp.statusCode == 200 && scanBody.size() < 4 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(4 * 1024 * 1024));
         struct SecretPattern {
             const char *kind;
             const char *label;
@@ -610,8 +615,8 @@ void PassiveScanner::checkResponse(int rowId,
     // ---- Stack-trace fragments -----------------------------------------
     // A 500-class response leaking internal stack lines tells the attacker
     // which framework + line numbers to target.
-    if (resp.statusCode >= 500 && resp.body.size() < 1 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(64 * 1024));
+    if (resp.statusCode >= 500 && scanBody.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(64 * 1024));
         struct Trace {
             const char *kind;
             const char *needle;
@@ -672,8 +677,8 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- Internal hostname / private IP exposure ------------------------
-    if (html && resp.body.size() < 2 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(2 * 1024 * 1024));
+    if (html && scanBody.size() < 2 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(2 * 1024 * 1024));
         static const QRegularExpression rxPrivIP(
             R"(\b(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)");
         const auto mIP = rxPrivIP.match(body);
@@ -693,8 +698,8 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- HTML comment leaks (TODO / FIXME / credentials) ----------------
-    if (html && resp.body.size() < 512 * 1024) {
-        const QString body = QString::fromUtf8(resp.body);
+    if (html && scanBody.size() < 512 * 1024) {
+        const QString body = QString::fromUtf8(scanBody);
         static const QRegularExpression rxComments(
             R"#(<!--([\s\S]*?)-->)#", QRegularExpression::CaseInsensitiveOption);
         auto it = rxComments.globalMatch(body);
@@ -829,8 +834,8 @@ void PassiveScanner::checkResponse(int rowId,
     // ---- Cloud bucket / storage endpoints exposed ---------------------
     // S3 / GCS / Azure Blob URLs in response body suggest public storage
     // or hard-coded references the user can probe directly.
-    if (html && resp.body.size() < 1 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+    if (html && scanBody.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(1 * 1024 * 1024));
         struct CloudPat { const char *kind; const char *label; QRegularExpression rx; };
         // The host/bucket character runs are LENGTH-BOUNDED ({0,253}, the max DNS
         // name) instead of +/*. The S3 pattern has two runs over the same class
@@ -903,7 +908,7 @@ void PassiveScanner::checkResponse(int rowId,
 
     // ---- phpinfo() output detection ------------------------------------
     if (resp.statusCode == 200 && html) {
-        const QString body = QString::fromUtf8(resp.body.left(64 * 1024));
+        const QString body = QString::fromUtf8(scanBody.left(64 * 1024));
         if (body.contains("phpinfo()", Qt::CaseInsensitive)
             && body.contains("PHP Version", Qt::CaseInsensitive)
             && body.contains("System ", Qt::CaseInsensitive)) {
@@ -916,7 +921,7 @@ void PassiveScanner::checkResponse(int rowId,
     // ---- Robots.txt / sitemap.xml sensitive paths ----------------------
     // Crawlers like to publish private endpoints in their disallow rules.
     if (resp.statusCode == 200 && req.path.endsWith("/robots.txt", Qt::CaseInsensitive)) {
-        const QString body = QString::fromUtf8(resp.body.left(128 * 1024));
+        const QString body = QString::fromUtf8(scanBody.left(128 * 1024));
         static const QStringList kRobotsSnitch = {
             "admin", "private", "secret", "internal", "staging",
             "backup", "test", "debug", "/api/", "/v1/", "/dev/",
@@ -954,8 +959,8 @@ void PassiveScanner::checkResponse(int rowId,
                    "JWT-shape token visible in URL",
                    "path: " + req.path.left(200));
     }
-    if (resp.body.size() > 0 && resp.body.size() < 256 * 1024) {
-        const QString body = QString::fromUtf8(resp.body);
+    if (scanBody.size() > 0 && scanBody.size() < 256 * 1024) {
+        const QString body = QString::fromUtf8(scanBody);
         const auto mJ = rxJwt.match(body);
         if (mJ.hasMatch()) {
             // Don't double-flag obvious places like an /auth/login response.
@@ -1044,8 +1049,8 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- DOM-XSS sink patterns in inline scripts ----------------------
-    if (html && resp.body.size() < 1 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+    if (html && scanBody.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(1 * 1024 * 1024));
         struct DomPat { const char *kind; const char *label; QRegularExpression rx; };
         static const DomPat kDom[] = {
             { "dom-xss-innerhtml-location",
@@ -1075,8 +1080,8 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- Local / session storage of secrets in inline JS --------------
-    if (html && resp.body.size() < 1 * 1024 * 1024) {
-        const QString body = QString::fromUtf8(resp.body.left(1 * 1024 * 1024));
+    if (html && scanBody.size() < 1 * 1024 * 1024) {
+        const QString body = QString::fromUtf8(scanBody.left(1 * 1024 * 1024));
         static const QRegularExpression rxStoreSecret(
             R"((?:localStorage|sessionStorage)\.setItem\s*\(\s*['"](?:token|auth|jwt|password|secret|apiKey|api_key|access)['"])",
             QRegularExpression::CaseInsensitiveOption);
@@ -1089,8 +1094,8 @@ void PassiveScanner::checkResponse(int rowId,
 
     // ---- Verbose 4xx errors leaking SQL / framework info --------------
     if (resp.statusCode >= 400 && resp.statusCode < 500
-        && resp.body.size() < 256 * 1024) {
-        const QString body = QString::fromUtf8(resp.body);
+        && scanBody.size() < 256 * 1024) {
+        const QString body = QString::fromUtf8(scanBody);
         struct ErrPat { const char *kind; const char *needle; };
         static const ErrPat kErrPats[] = {
             { "verbose-sql-err",      "ORA-" },
@@ -1186,7 +1191,7 @@ void PassiveScanner::checkResponse(int rowId,
     if (contentType.contains("text/csv", Qt::CaseInsensitive)
         || contentType.contains("application/csv", Qt::CaseInsensitive)
         || req.path.endsWith(".csv", Qt::CaseInsensitive)) {
-        const QString body = QString::fromUtf8(resp.body.left(256 * 1024));
+        const QString body = QString::fromUtf8(scanBody.left(256 * 1024));
         static const QRegularExpression rxFormula(R"((^|\n)[=+\-@][A-Za-z])");
         if (rxFormula.match(body).hasMatch()) {
             addFinding(rowId, req, resp, "medium", "csv-formula-injection",
@@ -1200,7 +1205,7 @@ void PassiveScanner::checkResponse(int rowId,
     // 404 / 503 response bodies with vendor-specific error pages
     // suggest a CNAME pointing at an unclaimed cloud resource.
     if (resp.statusCode == 404 || resp.statusCode == 503) {
-        const QString body = QString::fromUtf8(resp.body.left(32 * 1024));
+        const QString body = QString::fromUtf8(scanBody.left(32 * 1024));
         struct STPat { const char *kind; const char *label; const char *needle; };
         static const STPat kSTs[] = {
             { "takeover-s3",        "AWS S3 NoSuchBucket",
@@ -1327,7 +1332,7 @@ void PassiveScanner::checkResponse(int rowId,
     // path + header + body signature.
     // ========================================================
     if (resp.statusCode >= 200 && resp.statusCode < 400) {
-        const QString bodyHead = QString::fromUtf8(resp.body.left(64 * 1024));
+        const QString bodyHead = QString::fromUtf8(scanBody.left(64 * 1024));
         const QString xPoweredBy = headerOf(resp.headers, "X-Powered-By");
         const QString genHdr = headerOf(resp.headers, "X-Generator");
         // Cached "have we already flagged a CMS for this row?" -- one

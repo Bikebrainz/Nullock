@@ -45,9 +45,18 @@ struct HttpResponse {
     int statusCode = 0;
     QString reasonPhrase;
     QList<QPair<QString, QString>> headers;
-    QByteArray body;
+    QByteArray body;         // exact wire bytes (may be gzip/deflate compressed)
+    // Content-Encoding-decoded copy of `body`, for INSPECTION (history search,
+    // passive scanning, evidence, reporting). Empty when the body wasn't
+    // compressed or couldn't be decoded; the wire body is never altered.
+    QByteArray decodedBody;
     QString peerAddress;
     bool wasTls = false;
+
+    // The best readable view of the body: decoded when available, else raw.
+    const QByteArray &bodyForInspection() const {
+        return decodedBody.isEmpty() ? body : decodedBody;
+    }
 };
 
 // Serialize an HttpRequest back into HTTP/1.1 wire bytes (request-line +
