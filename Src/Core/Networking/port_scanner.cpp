@@ -83,6 +83,18 @@ PortResult probeOne(const QString &host, quint16 port,
 
 PortScanner::PortScanner(QObject *parent) : QObject(parent) {}
 
+PortScanner::~PortScanner() {
+    // Stop-join. run() launches child probe threads that lock m_mutex and append
+    // to m_results; if this object is destroyed while the launcher (or a probe)
+    // is mid-flight, those accesses are a use-after-free. Signal stop, then block
+    // until the launcher future returns -- run() itself t->wait()s every child
+    // probe before returning, so joining the outer future drains them all. The
+    // launch loop checks m_stopFlag each iteration, so only already-launched
+    // probes (bounded by the probe timeout) are waited out, not the whole scan.
+    m_stopFlag.storeRelease(1);
+    if (m_worker.isRunning()) m_worker.waitForFinished();
+}
+
 QString PortScanner::host() const {
     QMutexLocker lk(&m_mutex);
     return m_host;
@@ -128,7 +140,7 @@ bool PortScanner::start(const ScanRequest &req) {
     emit progressChanged();
     emit resultsChanged();
 
-    (void)QtConcurrent::run([this, expanded] { run(expanded); });
+    m_worker = QtConcurrent::run([this, expanded] { run(expanded); });
     return true;
 }
 

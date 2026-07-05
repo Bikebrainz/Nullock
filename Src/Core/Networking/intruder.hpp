@@ -3,10 +3,13 @@
 #include "networking.hpp"
 
 #include <QAbstractListModel>
+#include <QFuture>
 #include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
+
+#include <atomic>
 
 namespace Nullock::FrontEnd {
 class ProxyModel;
@@ -178,8 +181,15 @@ private:
 
     QList<IntruderAttack *> m_attacks;
     bool    m_running = false;
-    bool    m_stopRequested = false;
+    // Written from the GUI thread (start/stop/dtor), read from the worker
+    // thread's fire loop -- must be atomic to avoid a data race + torn read.
+    std::atomic<bool> m_stopRequested { false };
     int     m_completedCount = 0;
+    // Handles to the off-thread workers, joined in ~Intruder() so neither can
+    // touch m_attacks after we begin tearing it down. attack and resend are
+    // separate so a resend future isn't lost when start() overwrites it.
+    QFuture<void> m_worker;
+    QFuture<void> m_resendWorker;
 };
 
 } // namespace Nullock::Core

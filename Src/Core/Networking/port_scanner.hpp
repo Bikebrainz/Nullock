@@ -2,6 +2,7 @@
 
 #include <QAtomicInt>
 #include <QByteArray>
+#include <QFuture>
 #include <QList>
 #include <QMutex>
 #include <QObject>
@@ -49,6 +50,7 @@ class PortScanner : public QObject {
     Q_PROPERTY(int  total   READ total   NOTIFY progressChanged)
 public:
     explicit PortScanner(QObject *parent = nullptr);
+    ~PortScanner() override;   // stop-join: the probe worker must not outlive us
 
     bool running() const { return m_running.loadAcquire() != 0; }
     int  done() const    { return m_done.loadAcquire(); }
@@ -88,6 +90,7 @@ private:
     QAtomicInt         m_stopFlag{0};
     QAtomicInt         m_done{0};
     QAtomicInt         m_total{0};
+    QFuture<void>      m_worker;   // handle to the probe-launcher, joined in ~PortScanner()
 };
 
 } // namespace Nullock::Core

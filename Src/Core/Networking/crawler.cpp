@@ -20,6 +20,17 @@ bool Crawler::inScope(const QString &scheme, const QString &host, int port) cons
 
 Crawler::Crawler(QObject *parent) : QObject(parent) {}
 
+Crawler::~Crawler() {
+    // Stop-join. The BFS worker captures `this` and touches non-atomic members
+    // (m_queue, m_seenUrls, m_visited) between blocking fetches. If we let this
+    // object be destroyed while the worker is mid-crawl, those accesses become a
+    // use-after-free. Signal stop, then block until the worker has fully
+    // returned. The loop checks m_stopRequested every iteration, so this waits
+    // out at most one in-flight fetch, not the whole crawl.
+    m_stopRequested.storeRelease(1);
+    if (m_worker.isRunning()) m_worker.waitForFinished();
+}
+
 bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttleMs) {
     // Refuse if a previous crawl is still in flight. The caller has to
     // stop() and wait. Without this, two starts would race -- one
@@ -68,7 +79,8 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     emit progressChanged();
 
     // Run the BFS off-thread so the GUI / control API stay responsive.
-    (void)QtConcurrent::run([this]() {
+    // Keep the future so ~Crawler() can join the worker (see the destructor).
+    m_worker = QtConcurrent::run([this]() {
         while (m_running.loadAcquire() != 0
                && m_stopRequested.loadAcquire() == 0
                && m_visited < m_maxPages

@@ -55,8 +55,17 @@ UpdateInfo UpdateChecker::doCheck(const QString &currentVersion) {
     return r;
 }
 
+UpdateChecker::~UpdateChecker() {
+    // Stop-join. The worker does blocking TLS I/O in doCheck(), then locks m_mu,
+    // writes m_last, and emits updated() -- all touching `this`. Block until it
+    // has fully returned so it can never touch a freed object. The check is a
+    // single request fired once at startup, so by shutdown this is almost always
+    // already done; worst case we wait out one in-flight HTTPS GET.
+    if (m_worker.isRunning()) m_worker.waitForFinished();
+}
+
 void UpdateChecker::checkAsync(const QString &currentVersion) {
-    (void)QtConcurrent::run([this, currentVersion]() {
+    m_worker = QtConcurrent::run([this, currentVersion]() {
         const UpdateInfo r = doCheck(currentVersion);
         {
             QMutexLocker lk(&m_mu);

@@ -18,6 +18,7 @@
 // Honours an offline mode + treats any 4xx/5xx/timeout as "no update,
 // move on" -- never blocks startup, never prompts errors.
 
+#include <QFuture>
 #include <QMutex>
 #include <QObject>
 #include <QString>
@@ -53,6 +54,7 @@ class UpdateChecker : public QObject {
     Q_OBJECT
 public:
     explicit UpdateChecker(QObject *parent = nullptr) : QObject(parent) {}
+    ~UpdateChecker() override;   // stop-join: the check worker must not outlive us
 
     // Run the check on a worker thread; the result is published via
     // updated() AND made available via lastResult() so the snapshot
@@ -67,6 +69,7 @@ private:
     static UpdateInfo doCheck(const QString &currentVersion);
     UpdateInfo m_last;
     mutable QMutex m_mu;
+    QFuture<void> m_worker;   // handle to the check worker, joined in ~UpdateChecker()
 };
 
 } // namespace Nullock::Core

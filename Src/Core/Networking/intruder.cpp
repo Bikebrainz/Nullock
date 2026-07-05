@@ -40,7 +40,14 @@ Intruder::Intruder(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent)
     : QAbstractListModel(parent), m_model(historyModel) {}
 
 Intruder::~Intruder() {
-    stop();
+    // Stop-join. Both the attack worker and any in-flight resend worker capture
+    // `this` and reach back into m_attacks (via a queued call, and the attack
+    // worker also reads m_stopRequested directly). Signal stop, then block until
+    // both have fully returned BEFORE qDeleteAll frees the rows they index --
+    // otherwise a shutdown mid-attack is a use-after-free.
+    m_stopRequested.store(true);
+    if (m_worker.isRunning())       m_worker.waitForFinished();
+    if (m_resendWorker.isRunning()) m_resendWorker.waitForFinished();
     qDeleteAll(m_attacks);
 }
 
@@ -217,8 +224,8 @@ void Intruder::start() {
     const bool tlsCopy = m_useTls;
     const QList<QStringList> combosCopy = combos;
 
-    (void)QtConcurrent::run([this, combosCopy, templateCopy,
-                             hostCopy, portCopy, tlsCopy]() {
+    m_worker = QtConcurrent::run([this, combosCopy, templateCopy,
+                                  hostCopy, portCopy, tlsCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy);
     });
 }
@@ -314,7 +321,7 @@ bool Intruder::resend(int row) {
     const int     portCopy = m_port;
     const bool    tlsCopy  = m_useTls;
 
-    (void)QtConcurrent::run([this, row, combo, templateCopy,
+    m_resendWorker = QtConcurrent::run([this, row, combo, templateCopy,
                              hostCopy, portCopy, tlsCopy]() {
         HttpClient client;
         QString req = IE::applyPayloads(templateCopy, combo);

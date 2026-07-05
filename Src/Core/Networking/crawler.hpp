@@ -22,6 +22,7 @@
 #include "proxy_server.hpp"
 
 #include <QAtomicInteger>
+#include <QFuture>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -38,6 +39,7 @@ class Crawler : public QObject {
     Q_PROPERTY(QString seed    READ seed       NOTIFY seedChanged)
 public:
     explicit Crawler(QObject *parent = nullptr);
+    ~Crawler() override;   // stop-join: the BFS worker must not outlive us
 
     bool    running() const { return m_running.loadAcquire() != 0; }
     int     visited() const { return m_visited; }
@@ -88,6 +90,7 @@ private:
     // atomic to avoid UB on the cross-thread access.
     QAtomicInteger<int> m_running        { 0 };
     QAtomicInteger<int> m_stopRequested  { 0 };
+    QFuture<void>       m_worker;   // handle to the BFS worker, joined in ~Crawler()
     QString   m_seed;
     QString   m_seedHost;        // the seed's host -- the authority for the default scope
     QString   m_seedScheme;      // the seed's scheme (with m_seedPort -> the default-scope origin port)
