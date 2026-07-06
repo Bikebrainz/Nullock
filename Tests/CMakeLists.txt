@@ -26,6 +26,12 @@ add_subdirectory(request_export)
 # Run via: ctest -R intruder_engine -V
 add_subdirectory(intruder_engine)
 
+# Intruder payload-processing rules -- pure transform chain (prefix/suffix/case/
+# reverse/match-replace + delegated Transcode encode/hash ops), with the no-op
+# safety contract. Compiles intruder_rules.cpp + transcode.cpp; Qt6::Core.
+# Run via: ctest -R intruder_rules -V
+add_subdirectory(intruder_rules)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V
