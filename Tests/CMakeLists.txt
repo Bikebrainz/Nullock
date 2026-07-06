@@ -57,6 +57,12 @@ add_subdirectory(intruder_pool_logic)
 # Run via: ctest -R intruder_persist_logic -V
 add_subdirectory(intruder_persist_logic)
 
+# CI security gate -- fail-on severity threshold -> pass/fail + exit code. An
+# unknown threshold defaults to "high" (never "never-fail"); "none" never trips.
+# Compiles ci_gate_logic.cpp; Qt6::Core.
+# Run via: ctest -R ci_gate_logic -V
+add_subdirectory(ci_gate_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

@@ -15,6 +15,7 @@
 #include "sequencer.hpp"
 #include "intruder.hpp"
 #include "intruder_generators.hpp"
+#include "ci_gate_logic.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -1630,6 +1631,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
+            || p == "/api/gate"
             || p == "/api/compliance"
             || p == "/api/report/json"
             || p == "/api/cve/overlay"
@@ -3973,6 +3975,42 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
 
         return okJson({{ "ok", false }, { "error", "unknown baseline action" }});
+    }
+
+    // ---- CI security gate --------------------------------------------
+    // GET /api/gate?fail-on=high -- a CI pipeline primitive. Evaluates the
+    // current findings against a fail-on severity threshold and returns a
+    // pass/fail verdict plus a process exit code (0 pass, 1 fail). A CI job runs
+    // Nullock headless, drives its scans, then: `code=$(curl -s
+    // localhost:17777/api/gate?fail-on=high | jq .exitCode); exit $code`.
+    // Threshold defaults to "high"; "none" runs the scan without gating.
+    // Read-only aggregation; no network. (Burp gates CI only in Enterprise.)
+    if (path == "/api/gate") {
+        const QUrlQuery q(query);
+        QString failOn = q.queryItemValue("fail-on");
+        if (failOn.isEmpty()) failOn = q.queryItemValue("failOn");   // camelCase alias
+
+        QList<QString> severities;
+        if (m_wiring.scanner)
+            for (const auto &f : m_wiring.scanner->findings(0))
+                severities.append(f.severity);
+
+        const Nullock::Core::CiGate::GateResult g =
+            Nullock::Core::CiGate::evaluate(severities, failOn);
+
+        QJsonObject bySev;
+        for (auto it = g.bySeverity.constBegin(); it != g.bySeverity.constEnd(); ++it)
+            bySev.insert(it.key(), it.value());
+
+        return okJson({
+            { "ok", true },
+            { "pass", g.pass },
+            { "exitCode", g.exitCode },
+            { "failOn", g.threshold },
+            { "offendingCount", g.offendingCount },
+            { "totalFindings", g.total },
+            { "bySeverity", bySev },
+        });
     }
 
     // ---- Security posture / grade ------------------------------------
