@@ -107,6 +107,34 @@ jobs:
         shell: bash
         run: bash scripts/probe_smoke.sh "build/Src/App/Release/NullockApp.exe"
 
+  build-linux:
+    name: build NullockApp (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtwebsockets'
+      - name: install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential \
+            libnghttp2-dev libssl-dev
+      - name: configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: build (guards cross-platform compile/link regressions)
+        # The app had only ever been built on Windows until the v3.7.0 release
+        # surfaced a stack of Linux portability breaks (Qt6::ZlibPrivate absent,
+        # GNU-ld static-lib link order, a hardcoded Windows nghttp2 path, a
+        # case-sensitive Tests/fuzz path, ...). This job catches a Linux
+        # compile/link regression before it reaches a release. It mirrors the
+        # proven-green release build-linux configure+build; running ctest on
+        # Linux is a follow-up (not yet validated there).
+        run: cmake --build build -j
+
   fuzz-corpus-replay:
     name: replay fuzz corpus (standalone)
     runs-on: ubuntu-latest
@@ -114,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: skip if no corpus
         run: |
-          if [ ! -d tests/fuzz/corpus ] || [ -z "$(ls -A tests/fuzz/corpus 2>/dev/null)" ]; then
+          if [ ! -d Tests/fuzz/corpus ] || [ -z "$(ls -A Tests/fuzz/corpus 2>/dev/null)" ]; then
             echo "no fuzz corpus checked in -- skipping (intended)"
             exit 0
           fi
