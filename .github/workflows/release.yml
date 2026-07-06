@@ -118,6 +118,10 @@ jobs:
         run: |
           DESTDIR=stage cmake --install build --prefix /usr
       - name: AppImage
+        # The .deb/.rpm/.tgz are already built by the cpack step above; don't let
+        # an AppImage-only hiccup (linuxdeploy/FUSE quirks) block them from
+        # uploading. The AppImage attaches too when it succeeds.
+        continue-on-error: true
         run: bash packaging/appimage/build_appimage.sh stage
       - uses: actions/upload-artifact@v4
         with:

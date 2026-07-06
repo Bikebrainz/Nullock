@@ -86,6 +86,20 @@ if(WIN32)
     )
 endif()
 
+# Linux: FrontEndGUI is a SHARED library NullockApp links. It must be installed
+# next to the binary so linuxdeploy can find + bundle it into the AppImage
+# (otherwise: "Could not find dependency: libFrontEndGUI.so"). Point the app's
+# install RPATH at $ORIGIN so it resolves the .so from its own dir. Windows uses
+# the POST_BUILD copy + windeployqt; macOS's .app + macdeployqt already handle it
+# (its .dmg builds green) -- leave that path untouched.
+if(UNIX AND NOT APPLE)
+    install(TARGETS FrontEndGUI
+        LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT Runtime
+    )
+    set_target_properties(NullockApp PROPERTIES INSTALL_RPATH "$ORIGIN")
+endif()
+
 # UI assets + extensions + labs.
 install(
     DIRECTORY ui-v2/
