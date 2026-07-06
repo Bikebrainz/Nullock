@@ -35,7 +35,8 @@ enable_testing()
 add_subdirectory(Tests)
 
 # Fuzz harnesses (off by default; -DNULLOCK_FUZZ=ON to opt in).
-add_subdirectory(tests/fuzz)
+# NOTE: capital-T "Tests" -- Linux's case-sensitive FS rejects "tests/fuzz".
+add_subdirectory(Tests/fuzz)
 
 # ---- Packaging / installers (CPack) -------------------------------------
 #
