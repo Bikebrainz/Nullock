@@ -58,8 +58,18 @@ target_link_libraries(Proxy PRIVATE Qt6::Qml)
 # only supplies the <zlib.h> include dir + the QT_ZLIB_LIB define. The actual
 # z_inflate* symbols are already exported by Qt6::Core (linked above), which is
 # why no separate zlib library is needed.
-find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
-target_link_libraries(Proxy PRIVATE Qt6::ZlibPrivate)
+# Windows Qt bundles zlib and ships Qt6::ZlibPrivate (the <zlib.h> include +
+# Z_PREFIX define; the z_* symbols come from Qt6::Core). Linux/macOS Qt is built
+# against the SYSTEM zlib and does NOT ship that private config, so fall back to
+# the system zlib there. Either way <zlib.h> + inflate*/deflate* resolve for
+# websocket.cpp (permessage-deflate) and content_decode.cpp (Content-Encoding).
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS ZlibPrivate)
+if(TARGET Qt6::ZlibPrivate)
+    target_link_libraries(Proxy PRIVATE Qt6::ZlibPrivate)
+else()
+    find_package(ZLIB REQUIRED)
+    target_link_libraries(Proxy PRIVATE ZLIB::ZLIB)
+endif()
 
 # Include directories
 target_include_directories(Proxy PUBLIC

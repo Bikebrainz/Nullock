@@ -9,10 +9,17 @@ add_executable(websocket_test
     ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy/websocket.cpp
 )
 
-find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
+# Qt6::ZlibPrivate on Windows (bundled zlib); system zlib on Linux/macOS.
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS ZlibPrivate)
+if(TARGET Qt6::ZlibPrivate)
+    set(_ws_zlib Qt6::ZlibPrivate)
+else()
+    find_package(ZLIB REQUIRED)
+    set(_ws_zlib ZLIB::ZLIB)
+endif()
 target_link_libraries(websocket_test PRIVATE
     Qt6::Core
-    Qt6::ZlibPrivate
+    ${_ws_zlib}
 )
 
 target_include_directories(websocket_test PRIVATE

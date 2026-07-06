@@ -1,7 +1,15 @@
 # content_decode.cpp uses <zlib.h> (Qt6Core's bundled zlib) but is otherwise a
 # pure QByteArray helper. Compile it DIRECTLY into the test so the binary links
 # Qt6::Core + Qt6::ZlibPrivate alone, avoiding the heavy Proxy link chain.
-find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
+# Qt6::ZlibPrivate on Windows (bundled zlib); system zlib on Linux/macOS (Qt
+# there builds against it and ships no private config).
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS ZlibPrivate)
+if(TARGET Qt6::ZlibPrivate)
+    set(_content_decode_zlib Qt6::ZlibPrivate)
+else()
+    find_package(ZLIB REQUIRED)
+    set(_content_decode_zlib ZLIB::ZLIB)
+endif()
 
 add_executable(content_decode_test
     content_decode_test.cpp
@@ -10,7 +18,7 @@ add_executable(content_decode_test
 
 target_link_libraries(content_decode_test PRIVATE
     Qt6::Core
-    Qt6::ZlibPrivate
+    ${_content_decode_zlib}
 )
 
 target_include_directories(content_decode_test PRIVATE
