@@ -296,6 +296,27 @@ int main(int argc, char **argv) {
         chkb("fuzz: feedChunked decoded stayed within the body cap", bounded, true);
     }
 
+    // ===== fuzz: parseStatusLine reads the origin's HTTP status line, which is
+    // attacker-controlled upstream in a MITM, so it must never crash on arbitrary
+    // bytes. Locked invariant: ok is true IFF the line carries >= 2 spaces (the
+    // version / code / reason splitter needs both); the middle token parses to
+    // whatever int it is (0 when non-numeric), never a crash. =====
+    {
+        uint32_t rng = 0x01234567u;
+        auto rnd = [&rng]() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; };
+        const char pool[] = "HTTP/1.0 209OKk \t\r\n?abc";   // two ' ' chars -> mixes ok / !ok
+        bool okInvariant = true;
+        for (int iter = 0; iter < 8000; ++iter) {
+            QByteArray line;
+            const int n = int(rnd() % 60);
+            for (int i = 0; i < n; ++i) line += pool[rnd() % (sizeof(pool) - 1)];
+            const auto s = parseStatusLine(line);           // must not crash
+            if (s.ok != (line.count(' ') >= 2)) okInvariant = false;
+        }
+        chkb("fuzz: parseStatusLine survived 8k random status lines (no crash)", true, true);
+        chkb("fuzz: parseStatusLine ok <=> line has >= 2 spaces", okInvariant, true);
+    }
+
     std::fprintf(stderr, "networking_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
