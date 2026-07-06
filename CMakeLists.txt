@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 project(Nullock
-    VERSION 3.6.0
+    VERSION 3.7.0
     DESCRIPTION "FOSS web security toolkit (proxy, repeater, intruder, scanner, OAST)"
     HOMEPAGE_URL "https://github.com/Bikebrainz/Nullock"
     LANGUAGES CXX

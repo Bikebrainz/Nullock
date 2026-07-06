@@ -10,6 +10,13 @@ developer-facing record.
 
 ## [Unreleased]
 
+## [3.7.0] — 2026-07-05
+The academy + platform-completion release: the full 50-lab Web Security Academy
+clone, the OWASP injection family completed (LDAP / XPath / SSRF /
+deserialization / active JWT / CSWSH / host-header / prototype-pollution), OAST
+out-of-band auto-confirmation, and the deployable standalone **nullock-oast**
+sink + **nullock-workspace** team findings-sync server (both Dockerized).
+
 ### Added
 - **Web Security Academy clone — 50 labs.** `labs/01`…`labs/50`, each a
   single-file intentionally-vulnerable app mapped to a Nullock probe
@@ -155,4 +162,5 @@ First native desktop release: cross-platform Qt6/C++20 app over the same
 control server the CLI drives, SQLite-backed history (200k+ rows), config
 under `~/.nullock/`.
 
-[Unreleased]: https://github.com/Bikebrainz/Nullock/compare/v3.6.0...Nullock
+[Unreleased]: https://github.com/Bikebrainz/Nullock/compare/v3.7.0...Nullock
+[3.7.0]: https://github.com/Bikebrainz/Nullock/compare/v3.6.0...v3.7.0

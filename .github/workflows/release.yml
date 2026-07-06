@@ -204,6 +204,10 @@ jobs:
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
+          # Staged as a DRAFT: CI builds + attaches all three platforms' installers,
+          # then a maintainer reviews the artifacts and clicks Publish. Flip to
+          # false once the release flow is trusted for hands-off publishing.
+          draft: true
           generate_release_notes: true
           files: |
             artifacts/windows/*

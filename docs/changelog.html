@@ -42,9 +42,27 @@
 
       <article class="rel">
         <div class="rel-meta">
+          <span class="rel-ver">v3.7.0</span>
+          <span class="caption">Jul 5, 2026</span>
+          <span class="badge ok"><span class="dot"></span>latest</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">The academy + platform-completion release: the full 50-lab Web Security Academy clone, the OWASP injection family completed, out-of-band auto-confirmation, and deployable standalone OAST + team-sync servers. Each feature shipped with an adversarial review and a regression test.</p>
+          <ul>
+            <li><span class="tag add">add</span> <strong>50-lab Web Security Academy clone.</strong> <code class="inline">labs/01</code>&hellip;<code class="inline">labs/50</code>, each a single-file intentionally-vulnerable app mapped to a Nullock probe (XSS, SQLi, SSRF, XXE, IDOR, OAuth, GraphQL, deserialization, cache poisoning/deception, and more), verified end-to-end against its detector.</li>
+            <li><span class="tag add">add</span> <strong>OWASP injection family completed.</strong> LDAP + XPath injection (error-based with safe-value corroboration), first-class fetch-proven SSRF (cloud-metadata / <code class="inline">file://</code> / internal, with encoding-bypass denylist), insecure deserialization (Java/PHP/Python/Ruby/.NET), active JWT attacks (alg:none / not-verified / weak-secret / RS256&rarr;HS256), cross-site WebSocket hijacking, host-header injection, and server-side prototype pollution.</li>
+            <li><span class="tag add">add</span> <strong>OAST out-of-band auto-confirmation.</strong> <code class="inline">nullock oast blast</code> sprays blind SSRF / OS-command-injection / XXE / Log4Shell payloads; a callback to the in-process HTTP or DNS sink auto-confirms the class via the correlator &mdash; a true-positive no response echo can give.</li>
+            <li><span class="tag add">add</span> <strong>Standalone deployable servers.</strong> <code class="inline">nullock-oast</code> (public callback sink) and <code class="inline">nullock-workspace</code> (team findings-sync, SQLite + bearer-key auth, identity-key merge), both Dockerized with deploy guides.</li>
+            <li><span class="tag add">add</span> <strong>Recon + discovery.</strong> Certificate transparency (crt.sh) in <code class="inline">nullock recon</code>, soft-404-calibrated content/directory discovery, CSRF-PoC generator, and copy-as-curl.</li>
+            <li><span class="tag fix">fix</span> <strong>CVE database + enricher accuracy.</strong> Web-verified every CVE entry against NVD/vendor advisories (corrected ~11 over-broad/mis-scored entries, removed 3 bogus); every emitted finding kind now enriches to CWE/OWASP via family-prefix fallbacks.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
           <span class="rel-ver">v3.6.0</span>
           <span class="caption">Jun 17, 2026</span>
-          <span class="badge ok"><span class="dot"></span>latest</span>
         </div>
         <div class="rel-body">
           <p class="rel-note">The platform release. The scanner grew a network layer and a full reporting + recon suite: a port-scan&rarr;findings bridge, a point-at-a-host recon&rarr;vuln pipeline, WAF/CDN and robots/sitemap recon, a live CVE-feed overlay, and engagement reporting (HTML with an A&ndash;F grade, JSON bundle, CycloneDX SBOM, OWASP/compliance coverage, asset inventory, posture grade, baseline diff). Each feature shipped with a multi-lens adversarial review and a regression test.</p>

@@ -51,23 +51,23 @@ Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 
 ### Windows
 ```cmd
-:: download Nullock-3.6.0-win64.exe from Releases, run it
+:: download Nullock-3.7.0-win64.exe from Releases, run it
 NullockApp --proxy-port=8080 --control-port=17777
 ```
 
 ### Linux
 ```sh
 # Debian/Ubuntu
-sudo apt install ./Nullock-3.6.0-Linux.deb
+sudo apt install ./Nullock-3.7.0-Linux.deb
 # Fedora/RHEL
-sudo dnf install ./Nullock-3.6.0-Linux.rpm
+sudo dnf install ./Nullock-3.7.0-Linux.rpm
 # any distro
 chmod +x Nullock-x86_64.AppImage && ./Nullock-x86_64.AppImage
 ```
 
 ### macOS
 ```sh
-# download Nullock-3.6.0-Darwin.dmg, right-click -> Open the first time
+# download Nullock-3.7.0-Darwin.dmg, right-click -> Open the first time
 ```
 
 On first launch it prints where everything is listening (`proxy http://127.0.0.1:8080`, `Nullock UI …`). Two one-time steps before any HTTPS traffic shows up:
@@ -148,7 +148,7 @@ cmake --build build -j
 To produce installer artifacts:
 ```sh
 cd build && cpack
-# outputs Nullock-3.6.0-<platform>.<ext>
+# outputs Nullock-3.7.0-<platform>.<ext>
 ```
 
 Per-platform packaging notes: [`packaging/README.md`](packaging/README.md).
