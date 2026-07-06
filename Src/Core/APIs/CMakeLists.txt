@@ -8,6 +8,8 @@ add_library(APIs STATIC
     ManagerAPI/manager_api.hpp
     Oast/oast_server.cpp
     Oast/oast_server.hpp
+    Oast/oast_logic.cpp
+    Oast/oast_logic.hpp
     Oast/oast_correlator.cpp
     Oast/oast_correlator.hpp
     Oast/dns_sink.cpp

@@ -364,6 +364,12 @@ add_subdirectory(h2_server_logic)
 # Run via: ctest -R dns_logic -V
 add_subdirectory(dns_logic)
 
+# OAST HTTP-callback token extractor: attacker-controlled Host header + request
+# path -> exact-16-hex token or nothing. Locks the shape contract (no looser
+# match can forge a correlation) + a fuzz loop. Compiles oast_logic.cpp; Qt6::Core.
+# Run via: ctest -R oast_logic -V
+add_subdirectory(oast_logic)
+
 # SSRF scanner request builder: the CRLF-injection guard on the raw request line +
 # Host header (method/basePath/host all reject CR/LF), custom-header stripping
 # (Host/Content-Length dropped, CR/LF headers skipped), and the URL-typed

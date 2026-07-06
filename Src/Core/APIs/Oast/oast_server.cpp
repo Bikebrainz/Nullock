@@ -1,5 +1,7 @@
 #include "oast_server.hpp"
 
+#include "oast_logic.hpp"
+
 #include <QByteArray>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -90,22 +92,9 @@ QJsonObject OastServer::mintToken() {
 }
 
 QString OastServer::extractToken(const QString &hostHeader, const QString &path) {
-    // Subdomain form: <token>.<base-host>:<port>
-    const int dot = hostHeader.indexOf('.');
-    if (dot > 0) {
-        const QString head = hostHeader.left(dot).toLower();
-        // 16 hex chars exactly.
-        static const QRegularExpression hex16("^[0-9a-f]{16}$");
-        if (hex16.match(head).hasMatch()) return head;
-    }
-    // Path form: /oast/<token>/...
-    if (path.startsWith("/oast/")) {
-        const int next = path.indexOf('/', 6);
-        const QString seg = next > 0 ? path.mid(6, next - 6) : path.mid(6);
-        static const QRegularExpression hex16p("^[0-9a-f]{16}$");
-        if (hex16p.match(seg).hasMatch()) return seg;
-    }
-    return {};
+    // Pure logic in oast_logic.cpp so it can be unit-tested against Qt6::Core
+    // alone (this TU pulls QtNetwork). Both inputs are attacker-controlled.
+    return OastLogic::extractToken(hostHeader, path);
 }
 
 void OastServer::onNewConnection() {

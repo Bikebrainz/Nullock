@@ -7,6 +7,8 @@ qt_add_executable(nullock-oast
     oast_server_main.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast/oast_server.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast/oast_server.hpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast/oast_logic.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast/oast_logic.hpp
 )
 
 target_include_directories(nullock-oast PRIVATE
