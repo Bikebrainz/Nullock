@@ -69,6 +69,12 @@ add_subdirectory(ci_gate_logic)
 # Run via: ctest -R template_engine_logic -V
 add_subdirectory(template_engine_logic)
 
+# Template HTTP request builder -- variable substitution ({{BaseURL}}/{{payload}})
+# + payload expansion (cluster/pitchfork, capped) + CRLF-safe header assembly.
+# Compiles template_request_logic.cpp; Qt6::Core.
+# Run via: ctest -R template_request_logic -V
+add_subdirectory(template_request_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

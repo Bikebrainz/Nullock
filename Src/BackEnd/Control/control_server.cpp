@@ -17,6 +17,7 @@
 #include "intruder_generators.hpp"
 #include "ci_gate_logic.hpp"
 #include "template_engine_logic.hpp"
+#include "template_request_logic.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -3335,16 +3336,21 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
     // POST /api/template/run { template: {...}, url: "..." }
     //   Runs a user-authored detection template (nuclei-style matchers +
-    //   extractors) against one URL: fetch once, evaluate. On a match a finding
-    //   is reported so templates feed the panel / gate / baseline like any other
-    //   result. The template-driven scanning Burp has no native answer for.
+    //   extractors) against a URL. If the template carries a "request" object it
+    //   CRAFTS the request(s) -- method/path/headers/body with {{BaseURL}}/
+    //   {{payload}} substitution + payload expansion -- and evaluates the
+    //   matchers against EACH response; otherwise it does a plain GET. On a match
+    //   a finding is reported so templates feed the panel / gate / baseline. The
+    //   template-driven scanning Burp has no native answer for.
     if (path == "/api/template/run") {
         namespace TE = Nullock::Core::TemplateEngine;
+        namespace TR = Nullock::Core::TemplateRequest;
         const QString urlStr = bodyJson.value("url").toString();
         const QUrl u(urlStr);
         if (!u.isValid() || u.host().isEmpty())
             return okJson({{ "ok", false }, { "error", "valid url required" }});
-        const TE::Template tpl = TE::parseTemplate(bodyJson.value("template").toObject());
+        const QJsonObject tplObj = bodyJson.value("template").toObject();
+        const TE::Template tpl = TE::parseTemplate(tplObj);
         if (tpl.matchers.isEmpty() && tpl.extractors.isEmpty())
             return okJson({{ "ok", false }, { "error", "template has no matchers or extractors" }});
         if (blocksScope(u.host()))
@@ -3354,58 +3360,100 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QString host = u.host();
         const int  port = u.port(u.scheme() == "https" ? 443 : 80);
         const bool tls  = (u.scheme() == "https");
-        QString target = u.path(QUrl::FullyEncoded).isEmpty()
-                         ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        QString urlPath = u.path(QUrl::FullyEncoded).isEmpty()
+                          ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         const QString rawQuery = u.query(QUrl::FullyEncoded);
-        if (!rawQuery.isEmpty()) target += "?" + rawQuery;
+        if (!rawQuery.isEmpty()) urlPath += "?" + rawQuery;
 
-        const QByteArray req = "GET " + target.toUtf8() + " HTTP/1.1\r\n"
-                               "Host: " + host.toUtf8() + "\r\n"
-                               "Connection: close\r\n\r\n";
+        // Assemble the request(s): the template's own request spec, or a GET.
+        QList<TR::BuiltRequest> reqs;
+        if (tplObj.contains("request")) {
+            const QJsonObject reqObj = tplObj.value("request").toObject();
+            TR::RequestSpec spec = TR::parseRequest(reqObj);
+            if (!reqObj.contains("path")) spec.path = urlPath;   // default to the URL's path
+            TR::Vars vars;
+            vars.baseUrl  = u.scheme() + "://" + u.authority();
+            vars.hostname = host;
+            reqs = TR::buildRequests(spec, vars);
+        } else {
+            TR::BuiltRequest g;
+            g.bytes = "GET " + urlPath.toUtf8() + " HTTP/1.1\r\n"
+                      "Host: " + host.toUtf8() + "\r\nConnection: close\r\n\r\n";
+            reqs.append(g);
+        }
+        if (reqs.isEmpty())
+            return okJson({{ "ok", false }, { "error", "template expanded to zero requests" }});
+
+        // Bound how many we actually fire from one API call so the control server
+        // stays responsive (the builder already caps expansion at kMaxRequests).
+        const int kSendCap = 500;
+        const bool capped = reqs.size() > kSendCap;
+
         Nullock::Core::HttpClient client;
-        const auto r = client.send(host, static_cast<quint16>(port), tls, req);
-        if (!r.ok)
-            return okJson({{ "ok", false }, { "error", r.errorMessage }});
+        QJsonArray results;
+        int matchedCount = 0;
+        for (int i = 0; i < reqs.size() && i < kSendCap; ++i) {
+            const auto r = client.send(host, static_cast<quint16>(port), tls, reqs[i].bytes);
 
-        QString headersText;
-        for (const auto &h : r.parsed.headers) {
-            headersText += h.first; headersText += ": ";
-            headersText += h.second; headersText += '\n';
+            QJsonObject row;
+            row["payloads"] = QJsonArray::fromStringList(reqs[i].usedPayloads);
+            if (!r.ok) { row["error"] = r.errorMessage; results.append(row); continue; }
+
+            QString headersText;
+            for (const auto &h : r.parsed.headers) {
+                headersText += h.first; headersText += ": ";
+                headersText += h.second; headersText += '\n';
+            }
+            TE::Response resp;
+            resp.statusCode  = r.parsed.statusCode;
+            resp.headersText = headersText;
+            resp.body        = QString::fromUtf8(r.parsed.bodyForInspection());
+
+            const TE::MatchResult mr = TE::evaluate(tpl, resp);
+            if (mr.matched) ++matchedCount;
+
+            if (mr.matched && m_wiring.scanner) {
+                auto *sc = m_wiring.scanner;
+                const QString sev = tpl.severity.isEmpty() ? QStringLiteral("info") : tpl.severity;
+                const QString kind = "template-" + (tpl.id.isEmpty() ? QStringLiteral("match") : tpl.id);
+                const QString summary = tpl.name.isEmpty()
+                    ? ("Template " + tpl.id + " matched") : tpl.name;
+                const QString ev = reqs[i].usedPayloads.isEmpty()
+                    ? QStringLiteral("template matched")
+                    : ("template matched (payload " + reqs[i].usedPayloads.join(", ") + ")");
+                QMetaObject::invokeMethod(sc, [sc, sev, kind, summary, ev, host, urlStr]() {
+                    sc->reportFinding(0, sev, kind, summary, ev, host, urlStr);
+                }, Qt::QueuedConnection);
+            }
+
+            QJsonObject extracted;
+            for (auto it = mr.extracted.constBegin(); it != mr.extracted.constEnd(); ++it)
+                extracted.insert(it.key(), QJsonArray::fromStringList(it.value()));
+            row["status"] = r.parsed.statusCode;
+            row["matched"] = mr.matched;
+            row["extracted"] = extracted;
+            results.append(row);
         }
-        TE::Response resp;
-        resp.statusCode  = r.parsed.statusCode;
-        resp.headersText = headersText;
-        resp.body        = QString::fromUtf8(r.parsed.bodyForInspection());
 
-        const TE::MatchResult mr = TE::evaluate(tpl, resp);
-
-        // On a match, report a finding (marshalled to the scanner thread like the
-        // deep audit) so it lands in the panel and counts toward the gate.
-        if (mr.matched && m_wiring.scanner) {
-            auto *sc = m_wiring.scanner;
-            const QString sev = tpl.severity.isEmpty() ? QStringLiteral("info") : tpl.severity;
-            const QString kind = "template-" + (tpl.id.isEmpty() ? QStringLiteral("match") : tpl.id);
-            const QString summary = tpl.name.isEmpty()
-                ? ("Template " + tpl.id + " matched") : tpl.name;
-            QMetaObject::invokeMethod(sc, [sc, sev, kind, summary, host, urlStr]() {
-                sc->reportFinding(0, sev, kind, summary, "template matched", host, urlStr);
-            }, Qt::QueuedConnection);
-        }
-
-        QJsonObject extracted;
-        for (auto it = mr.extracted.constBegin(); it != mr.extracted.constEnd(); ++it)
-            extracted.insert(it.key(), QJsonArray::fromStringList(it.value()));
-
-        return okJson({
+        QJsonObject out{
             { "ok", true },
-            { "matched", mr.matched },
-            { "extracted", extracted },
-            { "status", r.parsed.statusCode },
+            { "matched", matchedCount > 0 },
+            { "matchedCount", matchedCount },
+            { "requests", results.size() },
+            { "capped", capped },
+            { "results", results },
             { "templateId", tpl.id },
             { "name", tpl.name },
             { "severity", tpl.severity },
             { "url", urlStr },
-        });
+        };
+        // Back-compat: for a single request, also surface the flat fields.
+        if (results.size() == 1) {
+            const QJsonObject r0 = results.first().toObject();
+            out["status"] = r0.value("status");
+            out["extracted"] = r0.value("extracted");
+        }
+        return okJson(out);
     }
 
     // POST /api/oast/mint -- mints a new token + URL.

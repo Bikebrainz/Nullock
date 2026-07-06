@@ -99,6 +99,8 @@ add_library(Networking STATIC
     ci_gate_logic.hpp
     template_engine_logic.cpp
     template_engine_logic.hpp
+    template_request_logic.cpp
+    template_request_logic.hpp
     chain_runner.cpp
     chain_runner_logic.cpp
     chain_runner.hpp
