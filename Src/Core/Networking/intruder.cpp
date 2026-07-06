@@ -230,6 +230,92 @@ void Intruder::loadFromHistory(int row) {
     emit templateChanged();
 }
 
+QByteArray Intruder::saveRun() const {
+    IntruderPersist::SavedRun run;
+    IntruderPersist::RunConfig &c = run.config;
+    c.host            = m_host;
+    c.port            = m_port;
+    c.tls             = m_useTls;
+    c.requestTemplate = m_template;
+    c.attackType      = m_attackType;
+    c.payloadSets     = m_payloadSets;
+    c.rules           = m_payloadRules;
+    c.grepMatch       = m_grepMatch;
+    c.grepExtract     = m_grepExtract;
+    c.concurrency     = m_maxConcurrency;
+    c.throttleMs      = m_throttleMs;
+
+    for (const IntruderAttack *a : m_attacks) {
+        IntruderPersist::ResultRow r;
+        r.id            = a->m_id;
+        r.payloadValues = a->m_payloadValues;
+        r.combo         = a->m_combo;          // raw combo, nulls included
+        r.statusCode    = a->m_statusCode;
+        r.responseSize  = a->m_responseSize;
+        r.elapsedMs     = a->m_elapsedMs;
+        r.errorMessage  = a->m_errorMessage;
+        r.complete      = a->m_complete;
+        r.matched       = a->m_matched;
+        r.extracted     = a->m_extracted;
+        run.rows.append(r);
+    }
+    return IntruderPersist::toBytes(run);
+}
+
+bool Intruder::loadRun(const QByteArray &bytes) {
+    // Never clobber a live attack -- the worker is mid-flight over m_attacks.
+    if (m_running) return false;
+
+    const IntruderPersist::SavedRun run = IntruderPersist::fromBytes(bytes);
+    const IntruderPersist::RunConfig &c = run.config;
+
+    // Restore config. Concurrency/throttle go through the clamping setters; the
+    // rest are plain fields (attackType is bounded to the valid enum range).
+    m_host        = c.host;
+    m_port        = c.port;
+    m_useTls      = c.tls;
+    m_template    = c.requestTemplate;
+    m_attackType  = qBound(static_cast<int>(Sniper), c.attackType,
+                           static_cast<int>(ClusterBomb));
+    m_payloadSets = c.payloadSets;
+    m_payloadRules = c.rules;
+    m_grepMatch   = c.grepMatch;
+    m_grepExtract = c.grepExtract;
+    setMaxConcurrency(c.concurrency);
+    setThrottleMs(c.throttleMs);
+
+    // Rebuild the result rows.
+    beginResetModel();
+    qDeleteAll(m_attacks);
+    m_attacks.clear();
+    m_completedCount = 0;
+    for (const IntruderPersist::ResultRow &r : run.rows) {
+        auto *a = new IntruderAttack(this);
+        a->m_id            = r.id;
+        a->m_payloadValues = r.payloadValues;
+        a->m_payload       = r.payloadValues.join(QStringLiteral(" / "));
+        a->m_combo         = r.combo;
+        a->m_statusCode    = r.statusCode;
+        a->m_responseSize  = r.responseSize;
+        a->m_elapsedMs     = r.elapsedMs;
+        a->m_errorMessage  = r.errorMessage;
+        a->m_complete      = r.complete;
+        a->m_matched       = r.matched;
+        a->m_extracted     = r.extracted;
+        if (r.complete) ++m_completedCount;
+        m_attacks.append(a);
+    }
+    endResetModel();
+
+    // Nudge every bound property so the UI re-reads the restored state.
+    emit targetChanged();
+    emit templateChanged();
+    emit payloadsChanged();
+    emit attackTypeChanged();
+    emit progressChanged();
+    return true;
+}
+
 void Intruder::clear() {
     stop();
     if (m_attacks.isEmpty()) return;

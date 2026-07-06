@@ -51,6 +51,12 @@ add_subdirectory(intruder_grep)
 # Run via: ctest -R intruder_pool_logic -V
 add_subdirectory(intruder_pool_logic)
 
+# Intruder save/resume serialization -- config + result rows round-trip through
+# JSON (null combo entries preserved as null), and malformed/empty JSON parses
+# to safe defaults. Compiles intruder_persist_logic.cpp.
+# Run via: ctest -R intruder_persist_logic -V
+add_subdirectory(intruder_persist_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

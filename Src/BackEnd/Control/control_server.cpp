@@ -1626,6 +1626,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/project/templates"
             || p == "/api/intruder/rule-ops"
             || p == "/api/intruder/generator-types"
+            || p == "/api/intruder/export"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
@@ -3247,6 +3248,21 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/intruder/resend") {
         bool ok = m_wiring.intruder
                && m_wiring.intruder->resend(bodyJson.value("row").toInt(-1));
+        return okJson({{ "ok", ok }});
+    }
+    // GET /api/intruder/export -- the whole attack (config + result rows) as a
+    // saved-run JSON document. Feed it straight back to /api/intruder/load.
+    if (path == "/api/intruder/export") {
+        if (!m_wiring.intruder) return okJson({{ "ok", false }});
+        return httpResponse(200, "application/json; charset=utf-8",
+                            m_wiring.intruder->saveRun());
+    }
+    // POST /api/intruder/load { ...saved-run json... } -- restore a saved attack
+    // into the model (does NOT re-fire). Refused while an attack is running.
+    if (path == "/api/intruder/load") {
+        bool ok = m_wiring.intruder
+               && m_wiring.intruder->loadRun(
+                      QJsonDocument(bodyJson).toJson(QJsonDocument::Compact));
         return okJson({{ "ok", ok }});
     }
 

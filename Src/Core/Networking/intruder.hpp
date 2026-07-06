@@ -4,6 +4,7 @@
 #include "intruder_rules.hpp"
 #include "intruder_grep.hpp"
 #include "intruder_pool_logic.hpp"
+#include "intruder_persist_logic.hpp"
 
 #include <QAbstractListModel>
 #include <QFuture>
@@ -170,6 +171,13 @@ public:
     Q_INVOKABLE void    syncSetsToPositions();
 
     Q_INVOKABLE void loadFromHistory(int row);
+    // Save/resume (Burp "save attack"): serialize the whole run -- target,
+    // template, payloads, rules, grep, pool config, and every result row -- to
+    // JSON bytes, and restore it. loadRun refuses while an attack is running and
+    // does NOT re-fire; it just repopulates the table (resend() still works
+    // because the raw combo, nulls included, round-trips).
+    Q_INVOKABLE QByteArray saveRun() const;
+    Q_INVOKABLE bool       loadRun(const QByteArray &bytes);
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
