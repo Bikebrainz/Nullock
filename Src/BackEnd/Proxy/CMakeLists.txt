@@ -33,14 +33,22 @@ add_library(Proxy STATIC
     h2_logic.hpp
 )
 
-# nghttp2 lives at D:/vcpkg/installed/x64-windows. There's no CMake config
-# file shipped, so we point at the lib and include dir directly. If this
-# tree gets relocated, override NULLOCK_NGHTTP2_ROOT from the configure.
-if(NOT DEFINED NULLOCK_NGHTTP2_ROOT)
-    set(NULLOCK_NGHTTP2_ROOT "D:/vcpkg/installed/x64-windows")
+# nghttp2. On Windows it comes from vcpkg (no CMake config shipped, so point at
+# the import lib + include dir directly; override NULLOCK_NGHTTP2_ROOT to relocate).
+# On Linux/macOS it's the system package (apt libnghttp2-dev / brew nghttp2),
+# found via pkg-config -- the hardcoded vcpkg .lib path is Windows-only and a
+# raw Windows path fed to ld/clang breaks the non-Windows link.
+if(WIN32)
+    if(NOT DEFINED NULLOCK_NGHTTP2_ROOT)
+        set(NULLOCK_NGHTTP2_ROOT "D:/vcpkg/installed/x64-windows")
+    endif()
+    target_include_directories(Proxy PRIVATE "${NULLOCK_NGHTTP2_ROOT}/include")
+    target_link_libraries(Proxy PRIVATE "${NULLOCK_NGHTTP2_ROOT}/lib/nghttp2.lib")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(NGHTTP2 REQUIRED IMPORTED_TARGET libnghttp2)
+    target_link_libraries(Proxy PRIVATE PkgConfig::NGHTTP2)
 endif()
-target_include_directories(Proxy PRIVATE "${NULLOCK_NGHTTP2_ROOT}/include")
-target_link_libraries(Proxy PRIVATE "${NULLOCK_NGHTTP2_ROOT}/lib/nghttp2.lib")
 
 # Qt6::Network is PUBLIC because proxy_server.hpp uses QHostAddress in its
 # public API, so anyone who links Proxy needs the Network includes too.

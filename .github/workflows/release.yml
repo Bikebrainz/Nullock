@@ -192,6 +192,12 @@ jobs:
 
   release:
     needs: [build-windows, build-linux, build-macos]
+    # Publish as soon as the Windows build is green; Linux/macOS are still being
+    # brought up (the app had only ever been built on Windows). `always()` lets
+    # this run even if those two fail, and it attaches whichever platform
+    # artifacts exist -- so the Windows installer ships now and Linux/macOS join
+    # the draft automatically once their builds go green.
+    if: ${{ always() && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

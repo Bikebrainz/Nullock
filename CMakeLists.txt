@@ -66,16 +66,25 @@ install(
     TARGETS NullockApp
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             COMPONENT Runtime
+    BUNDLE  DESTINATION .            # macOS: NullockApp is a MACOSX_BUNDLE (.app)
+            COMPONENT Runtime
 )
-install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/Src/App/$<CONFIG>/
-    DESTINATION ${CMAKE_INSTALL_BINDIR}
-    COMPONENT Runtime
-    PATTERN "*.exe" EXCLUDE     # exe already installed via TARGETS rule
-    PATTERN "*.pdb" EXCLUDE     # don't ship debug symbols
-    PATTERN "*.lib" EXCLUDE
-    PATTERN "*.exp" EXCLUDE
-)
+# Windows only: windeployqt copies the Qt runtime DLLs + FrontEndGUI.dll +
+# sqldrivers/ next to the exe as a post-build step, so we ship that whole dir.
+# On Linux/macOS the Qt runtime comes from the .deb/.rpm deps and the AppImage /
+# .app bundling steps, not a sibling-dir copy -- and this $<CONFIG> path doesn't
+# exist there.
+if(WIN32)
+    install(
+        DIRECTORY ${CMAKE_BINARY_DIR}/Src/App/$<CONFIG>/
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT Runtime
+        PATTERN "*.exe" EXCLUDE     # exe already installed via TARGETS rule
+        PATTERN "*.pdb" EXCLUDE     # don't ship debug symbols
+        PATTERN "*.lib" EXCLUDE
+        PATTERN "*.exp" EXCLUDE
+    )
+endif()
 
 # UI assets + extensions + labs.
 install(
