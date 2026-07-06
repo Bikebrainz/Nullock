@@ -97,6 +97,8 @@ add_library(Networking STATIC
     intruder_persist_logic.hpp
     ci_gate_logic.cpp
     ci_gate_logic.hpp
+    template_engine_logic.cpp
+    template_engine_logic.hpp
     chain_runner.cpp
     chain_runner_logic.cpp
     chain_runner.hpp

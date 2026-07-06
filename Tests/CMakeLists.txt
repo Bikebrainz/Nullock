@@ -63,6 +63,12 @@ add_subdirectory(intruder_persist_logic)
 # Run via: ctest -R ci_gate_logic -V
 add_subdirectory(ci_gate_logic)
 
+# Template/signature match engine (nuclei-style) -- status/word/regex matchers
+# with and/or + negative, part selection, regex extractors, invalid-regex
+# safety, and a bounded scan. Compiles template_engine_logic.cpp; Qt6::Core.
+# Run via: ctest -R template_engine_logic -V
+add_subdirectory(template_engine_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

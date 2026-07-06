@@ -16,6 +16,7 @@
 #include "intruder.hpp"
 #include "intruder_generators.hpp"
 #include "ci_gate_logic.hpp"
+#include "template_engine_logic.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -3330,6 +3331,81 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "positions", positions },
                        { "requests", results.size() },
                        { "results", results }});
+    }
+
+    // POST /api/template/run { template: {...}, url: "..." }
+    //   Runs a user-authored detection template (nuclei-style matchers +
+    //   extractors) against one URL: fetch once, evaluate. On a match a finding
+    //   is reported so templates feed the panel / gate / baseline like any other
+    //   result. The template-driven scanning Burp has no native answer for.
+    if (path == "/api/template/run") {
+        namespace TE = Nullock::Core::TemplateEngine;
+        const QString urlStr = bodyJson.value("url").toString();
+        const QUrl u(urlStr);
+        if (!u.isValid() || u.host().isEmpty())
+            return okJson({{ "ok", false }, { "error", "valid url required" }});
+        const TE::Template tpl = TE::parseTemplate(bodyJson.value("template").toObject());
+        if (tpl.matchers.isEmpty() && tpl.extractors.isEmpty())
+            return okJson({{ "ok", false }, { "error", "template has no matchers or extractors" }});
+        if (blocksScope(u.host()))
+            return okJson({{ "ok", false }, { "scopeBlocked", true },
+                { "error", "template target '" + u.host() + "' is out of scope" }});
+
+        const QString host = u.host();
+        const int  port = u.port(u.scheme() == "https" ? 443 : 80);
+        const bool tls  = (u.scheme() == "https");
+        QString target = u.path(QUrl::FullyEncoded).isEmpty()
+                         ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+        const QString rawQuery = u.query(QUrl::FullyEncoded);
+        if (!rawQuery.isEmpty()) target += "?" + rawQuery;
+
+        const QByteArray req = "GET " + target.toUtf8() + " HTTP/1.1\r\n"
+                               "Host: " + host.toUtf8() + "\r\n"
+                               "Connection: close\r\n\r\n";
+        Nullock::Core::HttpClient client;
+        const auto r = client.send(host, static_cast<quint16>(port), tls, req);
+        if (!r.ok)
+            return okJson({{ "ok", false }, { "error", r.errorMessage }});
+
+        QString headersText;
+        for (const auto &h : r.parsed.headers) {
+            headersText += h.first; headersText += ": ";
+            headersText += h.second; headersText += '\n';
+        }
+        TE::Response resp;
+        resp.statusCode  = r.parsed.statusCode;
+        resp.headersText = headersText;
+        resp.body        = QString::fromUtf8(r.parsed.bodyForInspection());
+
+        const TE::MatchResult mr = TE::evaluate(tpl, resp);
+
+        // On a match, report a finding (marshalled to the scanner thread like the
+        // deep audit) so it lands in the panel and counts toward the gate.
+        if (mr.matched && m_wiring.scanner) {
+            auto *sc = m_wiring.scanner;
+            const QString sev = tpl.severity.isEmpty() ? QStringLiteral("info") : tpl.severity;
+            const QString kind = "template-" + (tpl.id.isEmpty() ? QStringLiteral("match") : tpl.id);
+            const QString summary = tpl.name.isEmpty()
+                ? ("Template " + tpl.id + " matched") : tpl.name;
+            QMetaObject::invokeMethod(sc, [sc, sev, kind, summary, host, urlStr]() {
+                sc->reportFinding(0, sev, kind, summary, "template matched", host, urlStr);
+            }, Qt::QueuedConnection);
+        }
+
+        QJsonObject extracted;
+        for (auto it = mr.extracted.constBegin(); it != mr.extracted.constEnd(); ++it)
+            extracted.insert(it.key(), QJsonArray::fromStringList(it.value()));
+
+        return okJson({
+            { "ok", true },
+            { "matched", mr.matched },
+            { "extracted", extracted },
+            { "status", r.parsed.statusCode },
+            { "templateId", tpl.id },
+            { "name", tpl.name },
+            { "severity", tpl.severity },
+            { "url", urlStr },
+        });
     }
 
     // POST /api/oast/mint -- mints a new token + URL.
