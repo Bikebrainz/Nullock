@@ -19,6 +19,11 @@ if [ ! -d "$STAGE/usr" ]; then
     exit 1
 fi
 
+# Repo root (this script lives in packaging/appimage/) so we can find the
+# shipped logo regardless of the caller's CWD.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # linuxdeploy + the Qt plugin handle Qt-aware bundling. They're both
 # free and self-contained.
 if ! command -v linuxdeploy >/dev/null 2>&1; then
@@ -52,19 +57,25 @@ Categories=Network;Security;Development;
 Terminal=false
 EOF
 
-# Use a placeholder icon if we don't ship one. linuxdeploy needs SOMETHING.
-if [ ! -f "$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png" ]; then
-    # A 256x256 PNG with the literal text "Nullock" works as a stop-gap.
-    # `convert` is part of ImageMagick which is in every distro.
-    if command -v convert >/dev/null 2>&1; then
-        convert -size 256x256 xc:'#0d0d12' \
-            -fill '#9d4edd' -gravity center \
-            -pointsize 36 -annotate 0 'Nullock' \
-            "$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png"
+# linuxdeploy needs an icon. Prefer the REAL shipped logo, resized to 256x256 --
+# a pure raster op with NO font dependency. Fall back to a font-free solid
+# brand-colour square, then a 1x1 PNG.
+#
+# NB: the old placeholder used `convert -annotate 'Nullock'`, which pulls
+# ImageMagick's default 'helvetica' font. That font isn't installed on CI
+# runners, so the build died with "unable to read font `helvetica'". Never use
+# -annotate/-draw text here without shipping a font.
+ICON="$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png"
+LOGO="$REPO_ROOT/Src/FrontEnd/Resources/nullock_logo.png"
+if [ ! -f "$ICON" ]; then
+    if command -v convert >/dev/null 2>&1 && [ -f "$LOGO" ]; then
+        convert "$LOGO" -resize 256x256 "$ICON"
+    elif command -v convert >/dev/null 2>&1; then
+        convert -size 256x256 xc:'#9d4edd' "$ICON"
     else
         # Synthesize a 1x1 transparent PNG as a last resort.
         printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\x00\x00\x00\x03\x00\x01\xc8\xd7\xd5\xa0\x00\x00\x00\x00IEND\xaeB`\x82' \
-            > "$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png"
+            > "$ICON"
     fi
 fi
 
