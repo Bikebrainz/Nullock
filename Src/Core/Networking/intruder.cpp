@@ -34,6 +34,19 @@ QStringList displayValues(const QStringList &combo) {
     return out;
 }
 
+// Thread each NON-null payload value through the processing rule chain before it
+// reaches the request. A null value means "leave this marker at its default" and
+// must never be transformed. No rules -> the combo is returned unchanged.
+QStringList applyRulesToCombo(const QStringList &combo,
+                              const QList<IntruderRules::Rule> &rules) {
+    if (rules.isEmpty()) return combo;
+    QStringList out;
+    out.reserve(combo.size());
+    for (const QString &v : combo)
+        out.append(v.isNull() ? v : IntruderRules::applyRules(v, rules));
+    return out;
+}
+
 } // namespace
 
 Intruder::Intruder(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent)
@@ -114,6 +127,10 @@ void Intruder::setAttackType(int t) {
     if (t < Sniper || t > ClusterBomb || t == m_attackType) return;
     m_attackType = t;
     emit attackTypeChanged();
+}
+
+void Intruder::setPayloadRules(const QList<IntruderRules::Rule> &rules) {
+    m_payloadRules = rules;
 }
 
 int Intruder::positionCount() const {
@@ -223,22 +240,26 @@ void Intruder::start() {
     const int portCopy = m_port;
     const bool tlsCopy = m_useTls;
     const QList<QStringList> combosCopy = combos;
+    const QList<IntruderRules::Rule> rulesCopy = m_payloadRules;   // copy: worker reads it off-thread
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy,
-                                  hostCopy, portCopy, tlsCopy]() {
-        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy);
+                                  hostCopy, portCopy, tlsCopy, rulesCopy]() {
+        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy, rulesCopy);
     });
 }
 
 void Intruder::runWorker(const QList<QStringList> &combos,
                          const QString &templateCopy,
-                         const QString &host, int port, bool useTls) {
+                         const QString &host, int port, bool useTls,
+                         const QList<IntruderRules::Rule> &rules) {
     HttpClient client;
 
     for (int i = 0; i < combos.size(); ++i) {
         if (m_stopRequested) break;
 
-        QString req = IE::applyPayloads(templateCopy, combos[i]);
+        // Payload-processing: transform each value through the rule chain before
+        // it goes into the request (the results table still shows the original).
+        QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combos[i], rules));
         // Normalize line endings for the wire.
         req.replace("\r\n", "\n");
         req.replace("\n", "\r\n");
@@ -306,7 +327,10 @@ bool Intruder::resend(int row) {
 
     // Reset the target row so the UI shows it as pending again.
     auto *a = m_attacks[row];
-    const QStringList combo = a->m_combo;
+    // Apply the same payload-processing rules as a full run (safe to read
+    // m_payloadRules here -- we're on the GUI thread; the worker captures the
+    // already-transformed combo).
+    const QStringList combo = applyRulesToCombo(a->m_combo, m_payloadRules);
     a->m_statusCode   = 0;
     a->m_responseSize = 0;
     a->m_elapsedMs    = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "networking.hpp"
+#include "intruder_rules.hpp"
 
 #include <QAbstractListModel>
 #include <QFuture>
@@ -128,6 +129,10 @@ public:
     void setPayloads(const QString &p);
     void setPayloadSets(const QStringList &s);
     void setAttackType(int t);
+    // Payload-processing rule chain (Burp-parity): each non-null payload value is
+    // threaded through these transforms before it's substituted into the request.
+    // A single global chain applied to every position (v1). Operator-configured.
+    void setPayloadRules(const QList<Nullock::Core::IntruderRules::Rule> &rules);
 
     // Per-set helpers for QML multi-position editing. Indices past the end
     // grow the list; reads past the end return an empty string.
@@ -166,7 +171,8 @@ private:
     void attackFinished(int row);
     void runWorker(const QList<QStringList> &combos,
                    const QString &templateCopy,
-                   const QString &host, int port, bool useTls);
+                   const QString &host, int port, bool useTls,
+                   const QList<Nullock::Core::IntruderRules::Rule> &rules);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 
@@ -177,6 +183,7 @@ private:
     // Canonical payload sets, each a newline-separated block. Index 0 is the
     // "payloads" alias. Empty list == no payloads configured.
     QStringList m_payloadSets;
+    QList<Nullock::Core::IntruderRules::Rule> m_payloadRules;
     int     m_attackType = Sniper;
 
     QList<IntruderAttack *> m_attacks;

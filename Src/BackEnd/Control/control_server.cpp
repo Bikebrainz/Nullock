@@ -1618,6 +1618,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/openapi/export"
             || p == "/api/cookies"
             || p == "/api/project/templates"
+            || p == "/api/intruder/rule-ops"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
@@ -3115,8 +3116,29 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     m_wiring.intruder->setPayloads(p.toString());
                 }
             }
+            if (bodyJson.contains("rules")) {
+                // Payload-processing rule chain: [{op, arg?}, ...]. Each generated
+                // payload is threaded through these before it goes on the wire
+                // (prefix/suffix/case/reverse/match-replace + base64/url/hex/html/
+                // hashes). An empty array clears the rules. GET /api/intruder/
+                // rule-ops lists the valid op names.
+                QList<Nullock::Core::IntruderRules::Rule> rules;
+                for (const QJsonValue &rv : bodyJson.value("rules").toArray()) {
+                    const QJsonObject ro = rv.toObject();
+                    const QString op = ro.value("op").toString();
+                    if (op.isEmpty()) continue;
+                    rules.append({ op, ro.value("arg").toString() });
+                }
+                m_wiring.intruder->setPayloadRules(rules);
+            }
         }
         return okJson();
+    }
+    if (path == "/api/intruder/rule-ops") {
+        // Discovery: the payload-processing ops the rule engine understands.
+        return httpJson(200, QJsonObject{
+            { "operations",
+              QJsonArray::fromStringList(Nullock::Core::IntruderRules::operations()) } });
     }
     if (path == "/api/intruder/start") {
         if (m_wiring.intruder && blocksScope(m_wiring.intruder->host()))
