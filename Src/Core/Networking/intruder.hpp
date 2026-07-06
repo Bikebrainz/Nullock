@@ -2,6 +2,7 @@
 
 #include "networking.hpp"
 #include "intruder_rules.hpp"
+#include "intruder_grep.hpp"
 
 #include <QAbstractListModel>
 #include <QFuture>
@@ -32,6 +33,10 @@ class IntruderAttack : public QObject {
     Q_PROPERTY(int         elapsedMs     MEMBER m_elapsedMs     NOTIFY changed)
     Q_PROPERTY(QString     errorMessage  MEMBER m_errorMessage  NOTIFY changed)
     Q_PROPERTY(bool        complete      MEMBER m_complete      NOTIFY changed)
+    // Grep columns (Burp "Grep - Match" / "Grep - Extract"): did the response
+    // hit any configured match needle, and the value pulled out of it.
+    Q_PROPERTY(bool        matched       MEMBER m_matched       NOTIFY changed)
+    Q_PROPERTY(QString     extracted     MEMBER m_extracted     NOTIFY changed)
 public:
     explicit IntruderAttack(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -48,6 +53,8 @@ public:
     int         m_elapsedMs = 0;
     QString     m_errorMessage;
     bool        m_complete = false;
+    bool        m_matched = false;   // any grep-match needle hit this response
+    QString     m_extracted;         // grep-extract value (empty if none)
 signals:
     void changed();
 };
@@ -97,6 +104,8 @@ public:
         TimeRole,
         ErrorRole,
         CompleteRole,
+        MatchedRole,
+        ExtractedRole,
     };
 
     explicit Intruder(Nullock::FrontEnd::ProxyModel *historyModel,
@@ -133,6 +142,13 @@ public:
     // threaded through these transforms before it's substituted into the request.
     // A single global chain applied to every position (v1). Operator-configured.
     void setPayloadRules(const QList<Nullock::Core::IntruderRules::Rule> &rules);
+    // Result-grep config (Burp-parity): after each response lands it's scanned
+    // for these match needles (any-hit -> matched=true) and this extract spec
+    // (regex capture or start/end delimiters -> extracted). Both are bounded and
+    // safe against malformed regex / huge bodies (see IntruderGrep). Empty
+    // needles / empty spec = column stays off.
+    void setGrepMatch(const QStringList &needles);
+    void setGrepExtract(const Nullock::Core::IntruderGrep::ExtractSpec &spec);
 
     // Per-set helpers for QML multi-position editing. Indices past the end
     // grow the list; reads past the end return an empty string.
@@ -172,7 +188,9 @@ private:
     void runWorker(const QList<QStringList> &combos,
                    const QString &templateCopy,
                    const QString &host, int port, bool useTls,
-                   const QList<Nullock::Core::IntruderRules::Rule> &rules);
+                   const QList<Nullock::Core::IntruderRules::Rule> &rules,
+                   const QStringList &grepMatch,
+                   const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 
@@ -184,6 +202,8 @@ private:
     // "payloads" alias. Empty list == no payloads configured.
     QStringList m_payloadSets;
     QList<Nullock::Core::IntruderRules::Rule> m_payloadRules;
+    QStringList m_grepMatch;                              // grep-match needles
+    Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
     int     m_attackType = Sniper;
 
     QList<IntruderAttack *> m_attacks;

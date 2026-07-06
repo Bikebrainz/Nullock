@@ -38,6 +38,13 @@ add_subdirectory(intruder_rules)
 # Run via: ctest -R intruder_generators -V
 add_subdirectory(intruder_generators)
 
+# Intruder result grep -- "Grep - Match" / "Grep - Extract" columns. Regex +
+# literal match, capture-group + delimiter extraction, invalid-regex safety, and
+# the kMaxScan bound (a token past the cap is never found, scan stays fast).
+# Compiles intruder_grep.cpp; Qt6::Core.
+# Run via: ctest -R intruder_grep -V
+add_subdirectory(intruder_grep)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

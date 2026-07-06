@@ -1508,6 +1508,9 @@ QByteArray ControlServer::buildSnapshot() const {
             r["ms"]     = ms;
             r["time"]   = ms;      // alias
             r["err"]    = m_wiring.intruder->data(idx, Intruder::ErrorRole).toString();
+            // Grep columns (Burp "Grep - Match" / "Grep - Extract").
+            r["matched"]   = m_wiring.intruder->data(idx, Intruder::MatchedRole).toBool();
+            r["extracted"] = m_wiring.intruder->data(idx, Intruder::ExtractedRole).toString();
             results.append(r);
         }
         intruder["results"] = results;
@@ -3159,6 +3162,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 // payloadSets/payloads instead; generator is the compact form.
                 const QStringList gen = expandGen(bodyJson.value("generator").toObject());
                 if (!gen.isEmpty()) m_wiring.intruder->setPayloads(gen.join('\n'));
+            }
+            if (bodyJson.contains("grepMatch")) {
+                // Grep - Match: an array of needles (each tried as regex, else
+                // literal). Any hit flags the result row's `matched`. An empty
+                // array clears the column.
+                QStringList needles;
+                for (const QJsonValue &nv : bodyJson.value("grepMatch").toArray()) {
+                    const QString s = nv.toString();
+                    if (!s.isEmpty()) needles.append(s);
+                }
+                m_wiring.intruder->setGrepMatch(needles);
+            }
+            if (bodyJson.contains("grepExtract")) {
+                // Grep - Extract: { regex } OR { start, end }. regex wins; the
+                // first capture group (or whole match) is pulled out. An empty
+                // object clears the column.
+                const QJsonObject g = bodyJson.value("grepExtract").toObject();
+                Nullock::Core::IntruderGrep::ExtractSpec spec;
+                spec.regex = g.value("regex").toString();
+                spec.start = g.value("start").toString();
+                spec.end   = g.value("end").toString();
+                m_wiring.intruder->setGrepExtract(spec);
             }
         }
         return okJson();
