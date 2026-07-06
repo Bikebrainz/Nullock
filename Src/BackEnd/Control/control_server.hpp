@@ -110,4 +110,13 @@ private:
     bool       m_tokenMandatory = false; // true when bound off-loopback: token required for EVERY request
 };
 
+// One-shot CI scan gate (no server, no event loop). Runs the deep-audit battery
+// against `url` synchronously, evaluates the findings against a `failOn`
+// severity threshold (see Nullock::Core::CiGate), prints a summary to stdout
+// (one NDJSON line when `ndjson` is true, else a human table), and RETURNS the
+// process exit code: 0 = pass (no finding at/above the threshold), 1 = fail.
+// A malformed URL prints an error and returns 2. Requires a live
+// QCoreApplication (for blocking sockets) but does NOT need app->exec().
+int runGateScan(const QString &url, const QString &failOn, bool ndjson);
+
 } // namespace Nullock::Control

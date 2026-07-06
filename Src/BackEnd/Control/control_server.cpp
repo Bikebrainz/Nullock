@@ -105,6 +105,7 @@
 #include <QUuid>
 #include <QTcpSocket>
 #include <QElapsedTimer>
+#include <QTextStream>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -471,6 +472,10 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
                     const QString &sev, const QString &kind, const QString &summary) {
         reportsOut.append(QJsonObject{
             { "tester", tester }, { "items", items }, { "detail", detail },
+            // severity is carried so a caller (the CLI gate) can decide pass/fail
+            // straight from the report without waiting on the queued finding
+            // emission below. Only meaningful when items > 0.
+            { "severity", sev }, { "kind", kind },
             { "url", t.url } });
         if (items > 0) {
             ++total;
@@ -9231,6 +9236,77 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
 
     (void)method;
     return httpResponse(404, "text/plain", "Not found: " + path.toUtf8());
+}
+
+// ---- One-shot CI scan gate (headless, no server, no event loop) ----------
+int runGateScan(const QString &url, const QString &failOn, bool ndjson) {
+    const QUrl u(url);
+    if (url.isEmpty() || !u.isValid() || u.host().isEmpty()) {
+        QTextStream(stderr) << "nullock --scan: invalid url: " << url << "\n";
+        return 2;
+    }
+
+    // Build the audit target from the URL (mirrors /api/audit/run).
+    AuditTarget t;
+    t.host = u.host();
+    t.port = u.port(u.scheme() == "https" ? 443 : 80);
+    t.tls  = (u.scheme() == "https");
+    QString basePath = u.path(QUrl::FullyEncoded).isEmpty()
+                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
+    const QString rawQuery = u.query(QUrl::FullyEncoded);
+    if (!rawQuery.isEmpty()) basePath += "?" + rawQuery;
+    t.method   = QStringLiteral("GET");
+    t.basePath = basePath;
+    t.url      = url;
+
+    // Run the whole battery synchronously. Pass a null scanner -- we gate on the
+    // per-tester report (which now carries severity), so we don't need the
+    // queued finding emission (which would require a running event loop).
+    QJsonArray reports;
+    runDeepAudit(nullptr, t, /*include*/ {}, reports);
+
+    QList<QString> severities;
+    for (const QJsonValue &v : reports) {
+        const QJsonObject o = v.toObject();
+        if (o.value("items").toInt() > 0)
+            severities.append(o.value("severity").toString());
+    }
+
+    const Nullock::Core::CiGate::GateResult g =
+        Nullock::Core::CiGate::evaluate(severities, failOn);
+
+    if (ndjson) {
+        const QJsonObject line{
+            { "event", "gate" }, { "url", url },
+            { "pass", g.pass }, { "exitCode", g.exitCode },
+            { "failOn", g.threshold }, { "offendingCount", g.offendingCount },
+            { "totalFindings", g.total },
+        };
+        QTextStream(stdout)
+            << QString::fromUtf8(QJsonDocument(line).toJson(QJsonDocument::Compact))
+            << "\n";
+    } else {
+        QTextStream out(stdout);
+        out << "Nullock scan gate: " << url << "\n";
+        out << "  findings: " << g.total
+            << "  (critical " << g.bySeverity.value("critical")
+            << ", high "   << g.bySeverity.value("high")
+            << ", medium " << g.bySeverity.value("medium")
+            << ", low "    << g.bySeverity.value("low")
+            << ", info "   << g.bySeverity.value("info") << ")\n";
+        out << "  fail-on: " << g.threshold
+            << "   offending: " << g.offendingCount << "\n";
+        for (const QJsonValue &v : reports) {
+            const QJsonObject o = v.toObject();
+            if (o.value("items").toInt() > 0)
+                out << "  - [" << o.value("severity").toString() << "] "
+                    << o.value("tester").toString() << ": "
+                    << o.value("detail").toString() << "\n";
+        }
+        out << (g.pass ? "  RESULT: PASS (exit 0)\n"
+                       : "  RESULT: FAIL (exit 1)\n");
+    }
+    return g.exitCode;
 }
 
 } // namespace Nullock::Control

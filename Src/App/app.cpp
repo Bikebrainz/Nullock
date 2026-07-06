@@ -558,10 +558,13 @@ int main(int argc, char *argv[]) {
 #endif
     );
 
+    // One-shot CI scan gate. --scan=URL runs the deep audit and exits with the
+    // gate code -- it implies headless (no window, no display needed).
+    const QString scanUrl = flagValue(argc, argv, "--scan");
     // Headless mode: no QML window, no auto-browser-open. Just proxy +
     // control server. Useful for CI / Docker / scripting -- and any
     // workflow where the React UI gets driven from another machine.
-    const bool headless = hasFlag(argc, argv, "--headless");
+    const bool headless = hasFlag(argc, argv, "--headless") || !scanUrl.isEmpty();
     // NDJSON event stream on stdout. Each line is a JSON object describing
     // one event (response, finding, port scan result). tail-friendly,
     // pipes cleanly into `jq` and `grep`.
@@ -598,6 +601,11 @@ int main(int argc, char *argv[]) {
             << "                        wildcard NS delegation for real-internet targets)\n"
             << "  --h2-termination      EXPERIMENTAL: also terminate the browser's HTTP/2\n"
             << "                        (advertise h2 to the browser; off by default)\n"
+            << "  --scan=URL            CI gate: run the deep audit against URL and exit\n"
+            << "                        (0 pass / 1 findings at-or-above --fail-on / 2 bad URL).\n"
+            << "                        Implies headless; no server. Combine with --ndjson.\n"
+            << "  --fail-on=SEV         Gate threshold for --scan: critical|high|medium|low|info\n"
+            << "                        or none (never fail). Default high.\n"
             << "  --smoke-test          Run the self-test and exit\n"
             << "  --help / -h           This message\n"
             << "\n"
@@ -635,6 +643,16 @@ int main(int argc, char *argv[]) {
     if (!tlsFingerprint.isEmpty()) {
         const auto p = Nullock::Core::TlsProfile::fromName(tlsFingerprint);
         Nullock::Core::HttpClient::setDefaultProfile(p);
+    }
+
+    // One-shot CI scan gate: run the deep-audit battery against --scan=URL and
+    // exit with the gate code (0 pass / 1 fail / 2 bad url). Runs synchronously
+    // on this thread -- no server, no proxy, no event loop -- so it returns a
+    // process exit code a CI job can act on directly.
+    if (!scanUrl.isEmpty()) {
+        QString failOn = flagValue(argc, argv, "--fail-on");
+        if (failOn.isEmpty()) failOn = QStringLiteral("high");
+        return Nullock::Control::runGateScan(scanUrl, failOn, ndjsonOut);
     }
 
     Nullock::Proxy::CertAuthority certAuthority;
