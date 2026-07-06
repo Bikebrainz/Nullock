@@ -130,7 +130,7 @@ jobs:
             build/Nullock-*-Linux.deb
             build/Nullock-*-Linux.rpm
             build/Nullock-*-Linux.tar.gz
-            Nullock-*.AppImage
+            *.AppImage
 
   build-macos:
     runs-on: macos-14
@@ -219,7 +219,11 @@ jobs:
           # false once the release flow is trusted for hands-off publishing.
           draft: true
           generate_release_notes: true
+          # ** (recursive) because the Linux artifact preserves its build/ dir
+          # (artifacts/linux/build/Nullock-*.deb) while windows/macos sit flat --
+          # a single-level `*` matched the build/ directory, not the files, and
+          # silently dropped every Linux installer.
           files: |
-            artifacts/windows/*
-            artifacts/linux/*
-            artifacts/macos/*
+            artifacts/windows/**
+            artifacts/linux/**
+            artifacts/macos/**
