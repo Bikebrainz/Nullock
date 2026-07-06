@@ -3,6 +3,7 @@
 #include "networking.hpp"
 #include "intruder_rules.hpp"
 #include "intruder_grep.hpp"
+#include "intruder_pool_logic.hpp"
 
 #include <QAbstractListModel>
 #include <QFuture>
@@ -10,6 +11,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QThreadPool>
 
 #include <atomic>
 
@@ -149,6 +151,14 @@ public:
     // needles / empty spec = column stays off.
     void setGrepMatch(const QStringList &needles);
     void setGrepExtract(const Nullock::Core::IntruderGrep::ExtractSpec &spec);
+    // Request-pool config (Burp-parity "resource pool"): how many requests may be
+    // in flight at once, and an optional inter-dispatch delay (rate limit). Both
+    // are clamped (see IntruderPool) so a caller can't spawn unbounded threads or
+    // park the run. Concurrency 1 == the old fully-serial behaviour.
+    void setMaxConcurrency(int n);
+    void setThrottleMs(int ms);
+    int  maxConcurrency() const { return m_maxConcurrency; }
+    int  throttleMs() const { return m_throttleMs; }
 
     // Per-set helpers for QML multi-position editing. Indices past the end
     // grow the list; reads past the end return an empty string.
@@ -190,7 +200,8 @@ private:
                    const QString &host, int port, bool useTls,
                    const QList<Nullock::Core::IntruderRules::Rule> &rules,
                    const QStringList &grepMatch,
-                   const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract);
+                   const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
+                   int concurrency, int throttleMs);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 
@@ -204,6 +215,8 @@ private:
     QList<Nullock::Core::IntruderRules::Rule> m_payloadRules;
     QStringList m_grepMatch;                              // grep-match needles
     Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
+    int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
+    int     m_throttleMs = 0;                            // inter-dispatch delay
     int     m_attackType = Sniper;
 
     QList<IntruderAttack *> m_attacks;
@@ -217,6 +230,12 @@ private:
     // separate so a resend future isn't lost when start() overwrites it.
     QFuture<void> m_worker;
     QFuture<void> m_resendWorker;
+    // Owned request pool for a concurrent attack. The dispatcher (m_worker)
+    // submits per-request tasks here and blocks on waitForDone() before it
+    // returns, so joining m_worker in the dtor transitively joins every in-flight
+    // request BEFORE m_attacks is freed. Only the attack path uses it; resend
+    // stays on the global pool.
+    QThreadPool m_pool;
 };
 
 } // namespace Nullock::Core

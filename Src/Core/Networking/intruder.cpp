@@ -1,10 +1,12 @@
 #include "intruder.hpp"
 
 #include "intruder_engine.hpp"
+#include "intruder_pool_logic.hpp"
 #include "Proxy/proxy_model.hpp"
 
 #include <QElapsedTimer>
 #include <QMetaObject>
+#include <QSemaphore>
 #include <QThread>
 #include <QtConcurrent/QtConcurrent>
 
@@ -96,6 +98,10 @@ Intruder::~Intruder() {
     m_stopRequested.store(true);
     if (m_worker.isRunning())       m_worker.waitForFinished();
     if (m_resendWorker.isRunning()) m_resendWorker.waitForFinished();
+    // m_worker only returns after it has waited on the pool, but wait again here
+    // as a belt-and-suspenders join: no request task may still touch m_attacks
+    // once we start freeing the rows below.
+    m_pool.waitForDone();
     qDeleteAll(m_attacks);
 }
 
@@ -178,6 +184,14 @@ void Intruder::setGrepMatch(const QStringList &needles) {
 
 void Intruder::setGrepExtract(const IntruderGrep::ExtractSpec &spec) {
     m_grepExtract = spec;
+}
+
+void Intruder::setMaxConcurrency(int n) {
+    m_maxConcurrency = IntruderPool::clampConcurrency(n);
+}
+
+void Intruder::setThrottleMs(int ms) {
+    m_throttleMs = IntruderPool::clampThrottleMs(ms);
 }
 
 int Intruder::positionCount() const {
@@ -290,12 +304,16 @@ void Intruder::start() {
     const QList<IntruderRules::Rule> rulesCopy = m_payloadRules;   // copy: worker reads it off-thread
     const QStringList grepMatchCopy = m_grepMatch;                 // copy: scanned off-thread
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
+    const int concurrencyCopy = m_maxConcurrency;
+    const int throttleCopy = m_throttleMs;
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
-                                  grepMatchCopy, grepExtractCopy]() {
+                                  grepMatchCopy, grepExtractCopy,
+                                  concurrencyCopy, throttleCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
-                  rulesCopy, grepMatchCopy, grepExtractCopy);
+                  rulesCopy, grepMatchCopy, grepExtractCopy,
+                  concurrencyCopy, throttleCopy);
     });
 }
 
@@ -304,15 +322,29 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const QString &host, int port, bool useTls,
                          const QList<IntruderRules::Rule> &rules,
                          const QStringList &grepMatch,
-                         const IntruderGrep::ExtractSpec &grepExtract) {
-    HttpClient client;
+                         const IntruderGrep::ExtractSpec &grepExtract,
+                         int concurrency, int throttleMs) {
+    // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
+    // size the owned pool. `concurrency` is the max number of requests in flight
+    // at once; `throttleMs` an optional pause between dispatches (rate limit).
+    concurrency = IntruderPool::clampConcurrency(concurrency);
+    m_pool.setMaxThreadCount(concurrency);
 
-    for (int i = 0; i < combos.size(); ++i) {
-        if (m_stopRequested) break;
+    // The semaphore bounds queued+running work to `concurrency`: the dispatcher
+    // acquires a permit before each submit and the task releases it when its
+    // request completes. So even a 100k-combo run never queues more than
+    // `concurrency` tasks, and the pool queue can't blow up memory.
+    QSemaphore inFlight(concurrency);
 
-        // Payload-processing: transform each value through the rule chain before
-        // it goes into the request (the results table still shows the original).
-        QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combos[i], rules));
+    // Fire one request. Runs on a POOL THREAD with its OWN HttpClient --
+    // HttpClient is not thread-safe, so a concurrent attack must never share
+    // one instance across tasks. Grep runs here (bounded, off the GUI thread);
+    // the queued callback only assigns the finished values.
+    auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
+                    grepMatch, grepExtract](int row, const QStringList &combo) {
+        HttpClient client;
+
+        QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
         // Normalize line endings for the wire.
         req.replace("\r\n", "\n");
         req.replace("\n", "\r\n");
@@ -324,14 +356,11 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                                         useTls, req.toUtf8());
         const qint64 elapsedMs = t.elapsed();
 
-        const int row = i;
         const int statusCode = result.ok ? result.parsed.statusCode : 0;
-        // Rate-limit awareness. If the target returns 429, pause for
-        // Retry-After (capped at 60s so a malicious header can't park
-        // the whole fuzz run). Without this, intruder runs against
-        // production-grade WAFs hit a wall of 429s the moment they
-        // exceed the per-source limit, and the entire payload set
-        // returns as 429 noise.
+        // Rate-limit awareness. On 429, this task pauses for Retry-After (capped
+        // at 60s so a malicious header can't park the run). Only this task's
+        // pool thread sleeps -- the other in-flight requests keep going, which
+        // is correct: one 429'd request shouldn't stall the whole pool.
         if (statusCode == 429) {
             int waitMs = 1000;
             for (const auto &h : result.parsed.headers) {
@@ -346,9 +375,6 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         const int size       = result.parsed.body.size();
         const QString errMsg = result.ok ? QString() : result.errorMessage;
 
-        // Grep the response HERE on the worker thread (bounded + safe) so the
-        // GUI-thread callback below only assigns the finished bool/string --
-        // never runs a regex over a huge body on the UI thread.
         bool matched = false;
         QString extracted;
         if (result.ok)
@@ -370,7 +396,25 @@ void Intruder::runWorker(const QList<QStringList> &combos,
             emit dataChanged(idx, idx);
             attackFinished(row);
         }, Qt::QueuedConnection);
+
+        inFlight.release();
+    };
+
+    // Dispatch loop. Stop is checked before AND after the (possibly blocking)
+    // acquire so a stop() request lands promptly even when the pool is saturated.
+    // Row index i maps 1:1 to m_attacks[i] regardless of completion order.
+    for (int i = 0; i < combos.size(); ++i) {
+        if (m_stopRequested) break;
+        inFlight.acquire();
+        if (m_stopRequested) { inFlight.release(); break; }
+        const QStringList combo = combos[i];
+        QtConcurrent::run(&m_pool, [fireOne, i, combo]() { fireOne(i, combo); });
+        if (throttleMs > 0) QThread::msleep(throttleMs);
     }
+
+    // Join every submitted task before returning. The dtor's wait on m_worker
+    // then transitively guarantees no request task outlives m_attacks.
+    m_pool.waitForDone();
 
     QMetaObject::invokeMethod(this, [this]() {
         m_running = false;

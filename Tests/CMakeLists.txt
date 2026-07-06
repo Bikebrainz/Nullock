@@ -45,6 +45,12 @@ add_subdirectory(intruder_generators)
 # Run via: ctest -R intruder_grep -V
 add_subdirectory(intruder_grep)
 
+# Intruder concurrency/throttle config math -- clamp concurrency to [1,64],
+# throttle to [0,60000], and rps->delay without divide-by-zero. The clamps are
+# the safety contract for the request pool. Compiles intruder_pool_logic.cpp.
+# Run via: ctest -R intruder_pool_logic -V
+add_subdirectory(intruder_pool_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

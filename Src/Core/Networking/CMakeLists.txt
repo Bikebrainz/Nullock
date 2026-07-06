@@ -91,6 +91,8 @@ add_library(Networking STATIC
     intruder_generators.hpp
     intruder_grep.cpp
     intruder_grep.hpp
+    intruder_pool_logic.cpp
+    intruder_pool_logic.hpp
     chain_runner.cpp
     chain_runner_logic.cpp
     chain_runner.hpp

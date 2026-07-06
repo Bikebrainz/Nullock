@@ -1489,6 +1489,8 @@ QByteArray ControlServer::buildSnapshot() const {
             setsArr.append(QJsonArray::fromStringList(block.split('\n', Qt::SkipEmptyParts)));
         intruder["payloadSets"] = setsArr;
         intruder["running"]     = m_wiring.intruder->running();
+        intruder["concurrency"] = m_wiring.intruder->maxConcurrency();
+        intruder["throttleMs"]  = m_wiring.intruder->throttleMs();
         QJsonArray results;
         const int n = m_wiring.intruder->rowCount();
         for (int i = 0; i < n; ++i) {
@@ -3185,6 +3187,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 spec.end   = g.value("end").toString();
                 m_wiring.intruder->setGrepExtract(spec);
             }
+            // Request-pool config. "concurrency" = max in-flight requests
+            // (clamped 1..64). "throttleMs" = inter-dispatch delay; "rps" is an
+            // alternative rate expressed as requests/second (converted to a
+            // per-dispatch delay). Both clamp inside the model.
+            if (bodyJson.contains("concurrency"))
+                m_wiring.intruder->setMaxConcurrency(bodyJson.value("concurrency").toInt());
+            if (bodyJson.contains("throttleMs"))
+                m_wiring.intruder->setThrottleMs(bodyJson.value("throttleMs").toInt());
+            else if (bodyJson.contains("rps"))
+                m_wiring.intruder->setThrottleMs(
+                    Nullock::Core::IntruderPool::rpsToDelayMs(bodyJson.value("rps").toInt()));
         }
         return okJson();
     }
