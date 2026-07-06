@@ -120,6 +120,32 @@ int main(int argc, char **argv) {
     chk("findCookie: a value containing '=' is kept", findCookieValue("t=a=b=c", "t") == "a=b=c");
     chk("findCookie: missing -> empty", findCookieValue("a=1", "z").isEmpty());
 
+    // ===== fuzz: sanitizeExtractedValue is the CRLF-injection sink -- a
+    // TARGET-controlled value flows through it and is substituted into the NEXT
+    // on-the-wire request. Locked invariant, on ANY input: the output never
+    // carries a char below 0x20 except tab (in particular no CR/LF, which would
+    // split the request / inject a header), and it never crashes. =====
+    {
+        uint32_t rng = 0x00c0ffeeu;
+        auto rnd = [&rng]() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; };
+        bool invariant = true;
+        for (int it = 0; it < 8000; ++it) {
+            QString v;
+            const int n = int(rnd() % 60);
+            for (int i = 0; i < n; ++i) {
+                const uint r = rnd();
+                // 1-in-4 forces a pure C0 control char; the rest span 0x00..0x7F
+                // (still includes CR/LF/controls). Heavily exercises the strip.
+                v += (r & 3) ? QChar(ushort(r % 0x80)) : QChar(ushort(r % 0x20));
+            }
+            const QString out = sanitizeExtractedValue(v);   // must not crash
+            for (const QChar c : out)
+                if (c.unicode() < 0x20 && c != QChar('\t')) { invariant = false; break; }
+        }
+        chk("fuzz: sanitizeExtractedValue survived 8k random values (no crash)", true);
+        chk("fuzz: output never carries a C0 control char except tab (no CR/LF)", invariant);
+    }
+
     std::fprintf(stderr, "chain_runner_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
