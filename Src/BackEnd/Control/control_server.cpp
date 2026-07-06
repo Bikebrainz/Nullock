@@ -14,6 +14,7 @@
 #include "update_check.hpp"
 #include "sequencer.hpp"
 #include "intruder.hpp"
+#include "intruder_generators.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -1619,6 +1620,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/cookies"
             || p == "/api/project/templates"
             || p == "/api/intruder/rule-ops"
+            || p == "/api/intruder/generator-types"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
@@ -3070,6 +3072,27 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "index", idx }});
     }
 
+    // Expand a generator spec {type, ...} into a payload list (server-side,
+    // hard-capped at IntruderGenerators::kMaxCount). Shared by /api/intruder/set
+    // (populates set 0) and /api/intruder/generate (preview).
+    auto expandGen = [](const QJsonObject &g) -> QStringList {
+        namespace IG = Nullock::Core::IntruderGenerators;
+        const QString t = g.value("type").toString();
+        if (t == QLatin1String("numbers"))
+            return IG::numbers(g.value("from").toVariant().toLongLong(),
+                               g.value("to").toVariant().toLongLong(),
+                               g.value("step").toVariant().toLongLong(),
+                               g.value("width").toInt(), g.value("hex").toBool());
+        if (t == QLatin1String("brute"))
+            return IG::brute(g.value("charset").toString(),
+                             g.value("minLen").toInt(), g.value("maxLen").toInt());
+        if (t == QLatin1String("dates"))
+            return IG::dates(g.value("from").toString(), g.value("to").toString(),
+                             g.value("stepDays").toInt(),
+                             g.value("format").toString(QStringLiteral("yyyy-MM-dd")));
+        return {};
+    };
+
     if (path == "/api/intruder/set") {
         if (m_wiring.intruder) {
             if (bodyJson.contains("host"))     m_wiring.intruder->setHost(bodyJson.value("host").toString());
@@ -3131,6 +3154,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 }
                 m_wiring.intruder->setPayloadRules(rules);
             }
+            if (bodyJson.contains("generator")) {
+                // Expand the generator into set 0 (capped). A caller can pass
+                // payloadSets/payloads instead; generator is the compact form.
+                const QStringList gen = expandGen(bodyJson.value("generator").toObject());
+                if (!gen.isEmpty()) m_wiring.intruder->setPayloads(gen.join('\n'));
+            }
         }
         return okJson();
     }
@@ -3139,6 +3168,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, QJsonObject{
             { "operations",
               QJsonArray::fromStringList(Nullock::Core::IntruderRules::operations()) } });
+    }
+    if (path == "/api/intruder/generate") {
+        // Preview: expand a generator spec ({type,...} or a bare {generator:{...}})
+        // and return the total count + a bounded sample (the full set can be up to
+        // kMaxCount, too large to echo). POST because it carries a body.
+        const QJsonObject g = bodyJson.value("generator").isObject()
+            ? bodyJson.value("generator").toObject() : bodyJson;
+        const QStringList gen = expandGen(g);
+        QJsonArray sample;
+        for (int i = 0; i < gen.size() && i < 500; ++i) sample.append(gen.at(i));
+        return httpJson(200, QJsonObject{
+            { "type",       g.value("type").toString() },
+            { "count",      gen.size() },
+            { "capped",     gen.size() >= Nullock::Core::IntruderGenerators::kMaxCount },
+            { "sampleSize", sample.size() },
+            { "sample",     sample } });
+    }
+    if (path == "/api/intruder/generator-types") {
+        // Discovery: the generator types this build understands.
+        return httpJson(200, QJsonObject{
+            { "types",
+              QJsonArray::fromStringList(Nullock::Core::IntruderGenerators::types()) } });
     }
     if (path == "/api/intruder/start") {
         if (m_wiring.intruder && blocksScope(m_wiring.intruder->host()))

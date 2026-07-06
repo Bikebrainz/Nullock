@@ -32,6 +32,12 @@ add_subdirectory(intruder_engine)
 # Run via: ctest -R intruder_rules -V
 add_subdirectory(intruder_rules)
 
+# Intruder payload generators -- numbers/brute/dates expansion with a HARD count
+# cap (no OOM on a huge range / charset^length) + degenerate-arg safety.
+# Compiles intruder_generators.cpp; Qt6::Core.
+# Run via: ctest -R intruder_generators -V
+add_subdirectory(intruder_generators)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

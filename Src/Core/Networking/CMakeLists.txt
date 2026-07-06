@@ -87,6 +87,8 @@ add_library(Networking STATIC
     intruder_engine.hpp
     intruder_rules.cpp
     intruder_rules.hpp
+    intruder_generators.cpp
+    intruder_generators.hpp
     chain_runner.cpp
     chain_runner_logic.cpp
     chain_runner.hpp
