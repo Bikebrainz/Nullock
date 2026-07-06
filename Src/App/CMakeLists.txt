@@ -17,22 +17,34 @@ qt_add_qml_module(NullockApp
     QML_FILES app.qml
 )
 
-# Link all Core modules (both static and shared)
-target_link_libraries(NullockApp PRIVATE
-    AppController
-    APIs
-    Storage
-    Networking
-    Nullem
-    Utils
-)
-
-# Link all BackEnd modules (static)
-target_link_libraries(NullockApp PRIVATE
-    Cache
-    Proxy
-    Control
-)
+# Link all Core + BackEnd static modules.
+#
+# GNU ld (Linux) links static libraries in a SINGLE pass: a lib that provides a
+# symbol must appear AFTER the objects that reference it. These libs
+# cross-reference each other (e.g. Control's control_server.cpp calls
+# Networking's scanner ::test() functions), so no fixed order satisfies every
+# edge -- ld drops the Networking members before it sees Control needs them and
+# the final link fails with "undefined reference". On Linux, wrap them in a
+# RESCAN link group so ld re-scans the archives until all symbols resolve. MSVC
+# and Apple ld rescan by default, so those platforms (both already green) keep
+# the plain list untouched.
+if(UNIX AND NOT APPLE)
+    target_link_libraries(NullockApp PRIVATE
+        "$<LINK_GROUP:RESCAN,AppController,APIs,Storage,Networking,Nullem,Utils,Cache,Proxy,Control>"
+    )
+else()
+    target_link_libraries(NullockApp PRIVATE
+        AppController
+        APIs
+        Storage
+        Networking
+        Nullem
+        Utils
+        Cache
+        Proxy
+        Control
+    )
+endif()
 
 # Link FrontEnd QML module
 target_link_libraries(NullockApp PRIVATE
