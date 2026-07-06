@@ -15,6 +15,7 @@
 #include "js_recon.hpp"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QSet>
 
 #include <cstdio>
@@ -175,6 +176,33 @@ int main(int argc, char **argv) {
         const QByteArray out = buildGet(r, "/x");
         chk("get: CR/LF carried-header skipped (request still built)", !out.isEmpty() && !out.contains("X-Bad"));
         chk("get: no smuggled header leaks from a CRLF header value", !out.contains("X-Smug"));
+    }
+
+    // ===== timed ReDoS guard: extractEndpoints runs its URL/path regexes over
+    // ATTACKER-controlled JS response bodies. The patterns are linear by
+    // construction today (bounded [^"'`]{1,2048} captures; the (?:[\w.@-]+/)+
+    // path group has a MANDATORY '/' delimiter, so its partition is unambiguous
+    // -- no catastrophic backtracking). Lock that: a large hostile body must
+    // scan fast, so a future regex edit that reintroduces a nested unbounded
+    // quantifier trips this instead of freezing the scan on a real target. =====
+    {
+        QString hostile;
+        hostile.reserve(300000);
+        hostile += QLatin1Char('"');
+        for (int i = 0; i < 20000; ++i) hostile += QLatin1String("abc/");  // path-group iterations
+        hostile += QLatin1String("\" \"");
+        for (int i = 0; i < 60000; ++i) hostile += QLatin1Char('a');       // slash-free run -> backtrack-and-fail
+        hostile += QLatin1String("\" ");
+        for (int i = 0; i < 20000; ++i) hostile += QLatin1String("\"x\""); // dense quote pairs (many start positions)
+
+        QSet<QString> sink;
+        QElapsedTimer t; t.start();
+        extractEndpoints(hostile, sink);                                   // must not hang
+        const qint64 ms = t.elapsed();
+        std::fprintf(stderr, "  [timing] extractEndpoints on %d KB hostile JS: %lld ms\n",
+                     int(hostile.size() / 1024), static_cast<long long>(ms));
+        chk("redos-guard: large hostile JS body scans well under 2s (linear, not catastrophic)",
+            ms < 2000);
     }
 
     std::fprintf(stderr, "js_recon_test: %d passed, %d failed\n", pass, fail);
