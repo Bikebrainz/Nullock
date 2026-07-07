@@ -191,6 +191,16 @@ cd build && cpack
 
 Per-platform packaging notes: [`packaging/README.md`](packaging/README.md).
 
+## Extensions
+
+Extensions are small JavaScript files that hook the proxy — observe responses,
+rewrite outgoing requests, or emit findings — evaluated in an embedded,
+sandboxed `QJSEngine` (no filesystem, no network). Traffic-mutation is
+capability-gated and default-deny: an extension must declare
+`// nullock:permissions modify-requests` (or `modify-responses`) or it stays
+observe-only. Full authoring guide, API reference, and the permission model:
+[`EXTENSIONS.md`](EXTENSIONS.md).
+
 ## Security model
 
 Nullock by design handles untrusted bytes. The threat model + 23 explicit attack surfaces we defend against are documented in [`SECURITY.md`](SECURITY.md). We aim to respond to security reports within 72 hours; full SLA in the docs.
