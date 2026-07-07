@@ -103,6 +103,8 @@ add_library(Networking STATIC
     template_request_logic.hpp
     nuclei_yaml_logic.cpp
     nuclei_yaml_logic.hpp
+    inspector_logic.cpp
+    inspector_logic.hpp
     chain_runner.cpp
     chain_runner_logic.cpp
     chain_runner.hpp

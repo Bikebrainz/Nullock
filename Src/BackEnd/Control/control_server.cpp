@@ -19,6 +19,7 @@
 #include "template_engine_logic.hpp"
 #include "template_request_logic.hpp"
 #include "nuclei_yaml_logic.hpp"
+#include "inspector_logic.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -9203,6 +9204,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             root["ok"] = r.ok; root["output"] = r.output; root["error"] = r.error;
         }
         return httpJson(200, root);
+    }
+
+    // POST /api/inspect { raw, kind: "request"|"response" } -- a structured view
+    //   of a raw HTTP message (Burp Inspector): request line / status, headers,
+    //   cookies, query + body params, content-type, and decoded JWTs found in a
+    //   header or cookie. kind auto-detects from the first line when omitted.
+    if (path == "/api/inspect") {
+        namespace IN = Nullock::Core::Inspector;
+        const QByteArray raw = bodyJson.value("raw").toString().toUtf8();
+        if (raw.size() > IN::kMaxInput)
+            return httpJson(413, QJsonObject{{ "ok", false },
+                { "error", QStringLiteral("input too large") }});
+        QString kind = bodyJson.value("kind").toString().toLower();
+        if (kind.isEmpty())   // auto-detect: a response starts with "HTTP/"
+            kind = raw.trimmed().startsWith("HTTP/") ? QStringLiteral("response")
+                                                     : QStringLiteral("request");
+        const QJsonObject view = (kind == QLatin1String("response"))
+            ? IN::inspectResponse(raw) : IN::inspectRequest(raw);
+        return httpJson(200, QJsonObject{{ "ok", true }, { "kind", kind }, { "view", view }});
     }
 
     // POST /api/compare { mode, a, b } -- LCS diff of two blobs (Burp-Comparer

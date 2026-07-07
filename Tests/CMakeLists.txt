@@ -81,6 +81,11 @@ add_subdirectory(template_request_logic)
 # Run via: ctest -R nuclei_yaml_logic -V
 add_subdirectory(nuclei_yaml_logic)
 
+# Request/response Inspector -- structured view (params/cookies/headers/JWT) of a
+# raw HTTP message. Compiles inspector_logic.cpp; Qt6::Core.
+# Run via: ctest -R inspector_logic -V
+add_subdirectory(inspector_logic)
+
 # Bundled detection template library well-formedness (templates/detections/*.json).
 # Run via: ctest -R template_library -V
 add_subdirectory(template_library)
