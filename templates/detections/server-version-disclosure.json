@@ -1,0 +1,13 @@
+{
+  "id": "server-version-disclosure",
+  "name": "Server version disclosure",
+  "severity": "low",
+  "description": "The Server response header reveals the server software and a version number, helping an attacker target known CVEs. Suppress or genericize the Server header.",
+  "request": { "method": "GET", "path": "/" },
+  "matchers": [
+    { "type": "regex", "part": "header", "regex": ["(?im)^Server:\\s*\\S+/\\d"] }
+  ],
+  "extractors": [
+    { "type": "regex", "part": "header", "name": "server", "regex": ["(?im)^Server:\\s*(.+)$"] }
+  ]
+}

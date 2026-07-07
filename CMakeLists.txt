@@ -112,6 +112,13 @@ install(
     DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/extensions
     COMPONENT Runtime
 )
+# Bundled detection templates + project templates -- read at runtime relative to
+# the UI dir (uiDir/../templates), so they install next to nullock/ui.
+install(
+    DIRECTORY templates/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/templates
+    COMPONENT Runtime
+)
 install(
     DIRECTORY browser-ext/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/browser-ext

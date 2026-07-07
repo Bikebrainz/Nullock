@@ -1,0 +1,12 @@
+{
+  "id": "exposed-ds-store",
+  "name": "Exposed .DS_Store",
+  "severity": "medium",
+  "description": "A publicly readable .DS_Store (macOS Finder metadata) leaks the directory's file and folder listing, aiding content discovery.",
+  "request": { "method": "GET", "path": "/.DS_Store" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "words": ["Bud1"] }
+  ]
+}

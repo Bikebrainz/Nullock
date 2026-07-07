@@ -81,6 +81,10 @@ add_subdirectory(template_request_logic)
 # Run via: ctest -R nuclei_yaml_logic -V
 add_subdirectory(nuclei_yaml_logic)
 
+# Bundled detection template library well-formedness (templates/detections/*.json).
+# Run via: ctest -R template_library -V
+add_subdirectory(template_library)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

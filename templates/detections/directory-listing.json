@@ -1,0 +1,12 @@
+{
+  "id": "directory-listing",
+  "name": "Directory listing enabled",
+  "severity": "low",
+  "description": "The server returns an auto-generated index page, exposing the file tree of the requested directory.",
+  "request": { "method": "GET", "path": "/" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "condition": "or", "words": ["<title>Index of /", "Directory listing for", "<h1>Index of /"] }
+  ]
+}

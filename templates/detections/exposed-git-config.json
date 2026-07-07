@@ -1,0 +1,15 @@
+{
+  "id": "exposed-git-config",
+  "name": "Exposed .git/config",
+  "severity": "medium",
+  "description": "A publicly readable .git/config leaks the repository URL, branches, and remotes, and often signals the whole .git directory is exposed (source-code disclosure).",
+  "request": { "method": "GET", "path": "/.git/config" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "condition": "and", "words": ["[core]", "repositoryformatversion"] }
+  ],
+  "extractors": [
+    { "type": "regex", "part": "body", "name": "remote", "regex": ["url = (.+)"] }
+  ]
+}

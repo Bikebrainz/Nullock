@@ -1636,6 +1636,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/intruder/rule-ops"
             || p == "/api/intruder/generator-types"
             || p == "/api/intruder/export"
+            || p == "/api/template/list"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
             || p == "/api/posture"
@@ -3335,6 +3336,27 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                        { "results", results }});
     }
 
+    // GET /api/template/list -- the bundled detection template library
+    //   (templates/detections/*.json). Returns id/name/severity/description so a
+    //   caller can pick one and run it by id via /api/template/run {templateId}.
+    if (path == "/api/template/list") {
+        QJsonArray arr;
+        QDir d(m_wiring.uiDir + "/../templates/detections");
+        for (const QString &fn : d.entryList({ "*.json" }, QDir::Files, QDir::Name)) {
+            QFile f(d.filePath(fn));
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+            if (o.value("id").toString().isEmpty()) continue;
+            arr.append(QJsonObject{
+                { "id",          o.value("id") },
+                { "name",        o.value("name") },
+                { "severity",    o.value("severity") },
+                { "description", o.value("description") },
+            });
+        }
+        return okJson({{ "ok", true }, { "count", arr.size() }, { "templates", arr }});
+    }
+
     // POST /api/template/run { template: {...}, url: "..." }
     //   Runs a user-authored detection template (nuclei-style matchers +
     //   extractors) against a URL. If the template carries a "request" object it
@@ -3350,11 +3372,24 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QUrl u(urlStr);
         if (!u.isValid() || u.host().isEmpty())
             return okJson({{ "ok", false }, { "error", "valid url required" }});
-        // The template is either JSON ("template") or a nuclei .yaml string
-        // ("yaml"), converted to the same JSON shape via the shim.
-        const QJsonObject tplObj = bodyJson.contains("yaml")
-            ? Nullock::Core::NucleiYaml::nucleiYamlToTemplate(bodyJson.value("yaml").toString())
-            : bodyJson.value("template").toObject();
+        // The template is a JSON object ("template"), a nuclei .yaml string
+        // ("yaml", converted via the shim), or a library id ("templateId",
+        // loaded from templates/detections/<id>.json).
+        QJsonObject tplObj;
+        if (bodyJson.contains("yaml")) {
+            tplObj = Nullock::Core::NucleiYaml::nucleiYamlToTemplate(bodyJson.value("yaml").toString());
+        } else if (bodyJson.contains("templateId")) {
+            const QString id = bodyJson.value("templateId").toString();
+            static const QRegularExpression idRe(QStringLiteral("^[A-Za-z0-9._-]+$"));
+            if (!idRe.match(id).hasMatch())
+                return okJson({{ "ok", false }, { "error", "invalid templateId" }});
+            QFile tf(m_wiring.uiDir + "/../templates/detections/" + id + ".json");
+            if (!tf.open(QIODevice::ReadOnly))
+                return okJson({{ "ok", false }, { "error", "unknown templateId '" + id + "'" }});
+            tplObj = QJsonDocument::fromJson(tf.readAll()).object();
+        } else {
+            tplObj = bodyJson.value("template").toObject();
+        }
         const TE::Template tpl = TE::parseTemplate(tplObj);
         if (tpl.matchers.isEmpty() && tpl.extractors.isEmpty())
             return okJson({{ "ok", false }, { "error", "template has no matchers or extractors" }});

@@ -1,0 +1,13 @@
+{
+  "id": "missing-security-headers",
+  "name": "Missing security headers (CSP and X-Frame-Options)",
+  "severity": "info",
+  "description": "The response carries neither Content-Security-Policy nor X-Frame-Options, leaving the page without clickjacking or content-injection defenses. Informational: confirm the endpoint renders HTML before acting.",
+  "request": { "method": "GET", "path": "/" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "header", "negative": true, "words": ["Content-Security-Policy"] },
+    { "type": "word", "part": "header", "negative": true, "words": ["X-Frame-Options"] }
+  ]
+}

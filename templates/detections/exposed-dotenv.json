@@ -1,0 +1,15 @@
+{
+  "id": "exposed-dotenv",
+  "name": "Exposed .env file",
+  "severity": "high",
+  "description": "A publicly readable .env commonly exposes application secrets: database credentials, framework app keys, and third-party API keys.",
+  "request": { "method": "GET", "path": "/.env" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "regex", "part": "body", "regex": ["(?m)^(APP_KEY|APP_SECRET|DB_PASSWORD|DB_HOST|DB_USERNAME|SECRET_KEY|AWS_SECRET_ACCESS_KEY|API_KEY)="] }
+  ],
+  "extractors": [
+    { "type": "regex", "part": "body", "name": "keys", "regex": ["(?m)^([A-Z0-9_]+)="] }
+  ]
+}
