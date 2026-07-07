@@ -75,6 +75,12 @@ add_subdirectory(template_engine_logic)
 # Run via: ctest -R template_request_logic -V
 add_subdirectory(template_request_logic)
 
+# nuclei YAML -> Nullock template shim -- a nuclei-http-subset YAML parser + the
+# mapping to the template JSON the engine consumes, verified by a round-trip
+# through template_engine_logic. Compiles nuclei_yaml_logic.cpp; Qt6::Core.
+# Run via: ctest -R nuclei_yaml_logic -V
+add_subdirectory(nuclei_yaml_logic)
+
 # CORS tester -- the registrable-domain heuristic, the suffix-domain /
 # trailing-dot probe battery, and buildRequest's CR/LF guards (pure logic).
 # Run via: ctest -R cors_tester -V

@@ -18,6 +18,7 @@
 #include "ci_gate_logic.hpp"
 #include "template_engine_logic.hpp"
 #include "template_request_logic.hpp"
+#include "nuclei_yaml_logic.hpp"
 #include "chain_runner.hpp"
 #include "jwt_tool.hpp"
 #include "payload_forge.hpp"
@@ -3349,7 +3350,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QUrl u(urlStr);
         if (!u.isValid() || u.host().isEmpty())
             return okJson({{ "ok", false }, { "error", "valid url required" }});
-        const QJsonObject tplObj = bodyJson.value("template").toObject();
+        // The template is either JSON ("template") or a nuclei .yaml string
+        // ("yaml"), converted to the same JSON shape via the shim.
+        const QJsonObject tplObj = bodyJson.contains("yaml")
+            ? Nullock::Core::NucleiYaml::nucleiYamlToTemplate(bodyJson.value("yaml").toString())
+            : bodyJson.value("template").toObject();
         const TE::Template tpl = TE::parseTemplate(tplObj);
         if (tpl.matchers.isEmpty() && tpl.extractors.isEmpty())
             return okJson({{ "ok", false }, { "error", "template has no matchers or extractors" }});
