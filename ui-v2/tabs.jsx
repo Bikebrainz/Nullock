@@ -247,7 +247,7 @@ function RepeaterTab({ rep, dispatch }) {
 }
 
 // ===================== INTERCEPT =====================
-function InterceptTab({ intercept, intercepted, dispatch }) {
+function InterceptTab({ intercept, interceptResponses, intercepted, dispatch }) {
   const current = intercepted[0] || null;
   const more = Math.max(0, intercepted.length - 1);
 
@@ -257,20 +257,33 @@ function InterceptTab({ intercept, intercepted, dispatch }) {
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto 1fr" }}>
       <div className="icp-toggle">
-        <div className={"pwr" + (intercept ? " on" : "")} onClick={() => dispatch({ type: "intercept-toggle" })} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--dim)" }}>
-            INTERCEPT MODE
-          </span>
-          <span style={{ fontSize: "var(--fz-md)", color: intercept ? "var(--err)" : "var(--text-2)" }}>
-            {intercept ? "ON — outbound requests paused" : "off — requests pass through"}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className={"pwr" + (intercept ? " on" : "")} onClick={() => dispatch({ type: "intercept-toggle" })} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--dim)" }}>
+              REQUESTS
+            </span>
+            <span style={{ fontSize: "var(--fz-md)", color: intercept ? "var(--err)" : "var(--text-2)" }}>
+              {intercept ? "held" : "pass through"}
+            </span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className={"pwr" + (interceptResponses ? " on" : "")} onClick={() => dispatch({ type: "intercept-responses-toggle" })} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--dim)" }}>
+              RESPONSES
+            </span>
+            <span style={{ fontSize: "var(--fz-md)", color: interceptResponses ? "var(--err)" : "var(--text-2)" }}>
+              {interceptResponses ? "held" : "pass through"}
+            </span>
+          </div>
         </div>
         <span style={{ flex: 1 }} />
         <div className="chip">
           QUEUE <span style={{ color: "var(--accent)", marginLeft: 8, fontSize: "var(--fz-md)" }}>{intercepted.length}</span>
         </div>
-        <button className="btn" onClick={() => dispatch({ type: "intercept-forward-all" })} disabled={!intercept || intercepted.length === 0}>
+        <button className="btn" onClick={() => dispatch({ type: "intercept-forward-all" })} disabled={(!intercept && !interceptResponses) || intercepted.length === 0}>
           FORWARD ALL
         </button>
       </div>
@@ -279,7 +292,7 @@ function InterceptTab({ intercept, intercepted, dispatch }) {
         <div className="icp-current">
           <div className="icp-meta">
             <span className="id">#{current.id}</span>
-            <span className="chip accent">PENDING</span>
+            <span className="chip accent">{current.kind === 1 ? "RESPONSE" : "REQUEST"}</span>
             <span className="url">
               <span className="proto">{current.tls ? "https://" : "http://"}</span>
               {current.host}<span className="proto">:{current.port}</span>
@@ -310,8 +323,8 @@ function InterceptTab({ intercept, intercepted, dispatch }) {
         </div>
       ) : (
         <div className="icp-empty">
-          {intercept
-            ? <AsciiRadar label="awaiting next request" />
+          {(intercept || interceptResponses)
+            ? <AsciiRadar label="awaiting next message" />
             : "── intercept off · no queue ──"}
         </div>
       )}

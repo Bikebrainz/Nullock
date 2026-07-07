@@ -799,11 +799,13 @@ int main(int argc, char *argv[]) {
                      &intruder, &Nullock::Core::Intruder::clearAll);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intercept, [&intercept]() {
-        // Drop any in-flight intercepted requests as forward (so the
-        // worker threads waiting on done.acquire() can complete and
-        // unwind their captured bodies from memory).
+        // Drop any in-flight intercepted requests/responses as forward (so the
+        // worker threads waiting on done.acquire() can complete and unwind
+        // their captured bodies from memory), then turn BOTH directions off so
+        // the new engagement starts with interception idle.
         intercept.forwardAll();
         intercept.setEnabled(false);
+        intercept.setResponsesEnabled(false);
     });
 
     if (smokeTest) {

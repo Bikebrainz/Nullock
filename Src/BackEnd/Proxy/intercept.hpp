@@ -10,28 +10,42 @@
 
 namespace Nullock::Proxy {
 
-// One in-flight request that the user can edit / forward / drop. Owned
-// by the InterceptController on the main thread; worker threads only
-// touch the semaphore and the atomically-set decision after acquire().
+// One in-flight message -- an outbound REQUEST or an upstream RESPONSE --
+// that the user can edit / forward / drop. Owned by the InterceptController
+// on the main thread; worker threads only touch the semaphore and the
+// atomically-set decision after acquire(). (Class name kept as
+// PendingRequest for source-compat with the QML/control-API bindings that
+// already reference it; a `kind` field distinguishes the two directions.)
 class PendingRequest : public QObject {
     Q_OBJECT
     Q_PROPERTY(int id MEMBER m_id CONSTANT)
+    Q_PROPERTY(int kind MEMBER m_kind CONSTANT)
     Q_PROPERTY(QString text MEMBER m_text NOTIFY textChanged)
     Q_PROPERTY(QString host MEMBER m_host CONSTANT)
     Q_PROPERTY(int port MEMBER m_port CONSTANT)
     Q_PROPERTY(bool tls MEMBER m_tls CONSTANT)
 public:
+    // Which half of the round-trip is parked. Surfaced to the control API /
+    // GUI as the `kind` field so the intercept view can render + label a
+    // request editor vs a response editor. Requests and responses share ONE
+    // queue and ONE m_current: the operator resolves them FIFO exactly as
+    // Burp does, and forward()/drop() act on whatever is current regardless
+    // of kind.
+    enum Kind { Request = 0, Response = 1 };
+
     int     m_id   = 0;
+    int     m_kind = Request;
     QString m_text;
     QString m_host;
     int     m_port = 0;
     bool    m_tls  = false;
 
-    // The exact bytes pend() captured (request line + headers + RAW body). Kept
-    // so an unedited forward can return them verbatim instead of re-encoding the
-    // lossy QString round-trip (which would mangle any non-UTF-8 body and break
-    // Content-Length). Written + read only by the capturing worker thread; the
-    // main thread never touches it. See InterceptLogic::resolveForwardBytes.
+    // The exact bytes pend()/pendResponse() captured (start line + headers +
+    // RAW body). Kept so an unedited forward can return them verbatim instead
+    // of re-encoding the lossy QString round-trip (which would mangle any
+    // non-UTF-8 body and break Content-Length). Written + read only by the
+    // capturing worker thread; the main thread never touches it. See
+    // InterceptLogic::resolveForwardBytes.
     QByteArray m_originalBytes;
 
     QSemaphore done {0};
@@ -48,7 +62,8 @@ struct InterceptResult {
 
 class InterceptController : public QObject {
     Q_OBJECT
-    Q_PROPERTY(bool   enabled     READ enabled     WRITE setEnabled NOTIFY enabledChanged)
+    Q_PROPERTY(bool   enabled          READ enabled          WRITE setEnabled          NOTIFY enabledChanged)
+    Q_PROPERTY(bool   responsesEnabled READ responsesEnabled WRITE setResponsesEnabled NOTIFY responsesEnabledChanged)
     Q_PROPERTY(QObject* current   READ current     NOTIFY currentChanged)
     Q_PROPERTY(int    queueDepth  READ queueDepth  NOTIFY currentChanged)
 public:
@@ -57,6 +72,12 @@ public:
     bool enabled() const { return m_enabled.loadAcquire() != 0; }
     Q_INVOKABLE void setEnabled(bool e);
 
+    // Independent toggle for the RESPONSE direction so enabling response
+    // interception does not force request interception (and vice versa) --
+    // the operator can hold requests, responses, both, or neither.
+    bool responsesEnabled() const { return m_enabledResponses.loadAcquire() != 0; }
+    Q_INVOKABLE void setResponsesEnabled(bool e);
+
     QObject *current() const { return m_current; }
     int queueDepth() const;
 
@@ -64,13 +85,21 @@ public:
     Q_INVOKABLE void drop();
     Q_INVOKABLE void forwardAll();
 
-    // Worker-thread API. Blocks until the user resolves (or until intercept
-    // is disabled, in which case all pending requests auto-forward).
+    // Worker-thread API. Blocks the calling per-connection worker until the
+    // operator resolves the message (or until the matching intercept toggle
+    // is turned off / the queue overflows, in which case it auto-forwards --
+    // the proxy must never deadlock on a parked message). pend() parks an
+    // outbound REQUEST before it goes upstream; pendResponse() parks an
+    // upstream RESPONSE before it is written back to the client. Both share
+    // the same queue + semaphore + main-thread promote machinery.
     InterceptResult pend(const QByteArray &requestBytes,
                          const QString &host, int port, bool tls);
+    InterceptResult pendResponse(const QByteArray &responseBytes,
+                                 const QString &host, int port, bool tls);
 
 signals:
     void enabledChanged();
+    void responsesEnabledChanged();
     void currentChanged();
 
 private slots:
@@ -78,14 +107,24 @@ private slots:
     void deleteLaterOnMain(Nullock::Proxy::PendingRequest *p);
 
 private:
+    // Shared body of pend()/pendResponse(): capture the bytes into a pending
+    // of the given kind, hand it to the main thread, block on the semaphore,
+    // and resolve the outgoing bytes once the operator (or a drain) releases.
+    InterceptResult pendImpl(const QByteArray &bytes, const QString &host,
+                             int port, bool tls, int kind);
     void promoteNextLocked();
     void releaseAllAsForward();
+    // Auto-forward every parked message of one kind (used when that kind's
+    // toggle flips off), leaving the other kind's pendings untouched.
+    void releaseKindAsForward(int kind);
 
-    // Atomic: written on the main thread (setEnabled) and read on per-connection
-    // worker threads (pend's early-out). Plain-bool here is a data race; the
-    // QAtomicInt matches the file's own `decision` idiom. The authoritative
-    // drain-race guard remains the under-mutex re-check in addPendingOnMain.
+    // Atomic: written on the main thread (setEnabled / setResponsesEnabled)
+    // and read on per-connection worker threads (pend/pendResponse early-out).
+    // Plain-bool here is a data race; the QAtomicInt matches the file's own
+    // `decision` idiom. The authoritative drain-race guard remains the
+    // under-mutex re-check in addPendingOnMain.
     QAtomicInt                    m_enabled {0};
+    QAtomicInt                    m_enabledResponses {0};
     PendingRequest               *m_current = nullptr;
     QQueue<PendingRequest *>      m_queue;
     int                           m_nextId  = 1;

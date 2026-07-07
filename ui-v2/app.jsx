@@ -39,6 +39,7 @@ function reducer(state, action) {
         scope: NL.scope || state.scope,
         intercepted: NL.intercepted || state.intercepted,
         intercept: NL.interceptEnabled !== undefined ? NL.interceptEnabled : state.intercept,
+        interceptResponses: NL.interceptResponsesEnabled !== undefined ? NL.interceptResponsesEnabled : state.interceptResponses,
         repeater: NL.repeater ? { ...state.repeater, ...NL.repeater } : state.repeater,
         intruder: NL.intruder ? { ...state.intruder, ...NL.intruder } : state.intruder,
         proxyOn: NL.bootInfo && NL.bootInfo.proxyOn !== undefined ? NL.bootInfo.proxyOn : state.proxyOn,
@@ -126,6 +127,9 @@ function reducer(state, action) {
     case "intercept-toggle":
       act("toggleIntercept");
       return { ...state, intercept: !state.intercept };
+    case "intercept-responses-toggle":
+      act("toggleInterceptResponses");
+      return { ...state, interceptResponses: !state.interceptResponses };
     case "intercept-forward": {
       const current = state.intercepted[0];
       act("interceptForward", current ? current.text : "");
@@ -2302,6 +2306,7 @@ function App() {
     selectedHost: null,
     proxyOn: true,
     intercept: false,
+    interceptResponses: false,
     intercepted: NL.intercepted,
     scope: NL.scope,
     repeater: NL.repeater,
@@ -2381,7 +2386,7 @@ function App() {
 
   const tabsWithDots = TABS.map(t => ({
     ...t,
-    dot: (t.id === "intercept" && state.intercept) || (t.id === "intruder" && state.intruder.running),
+    dot: (t.id === "intercept" && (state.intercept || state.interceptResponses)) || (t.id === "intruder" && state.intruder.running),
   }));
 
   const copyCa = () => navigator.clipboard?.writeText(NL.bootInfo.caPath);
@@ -2402,7 +2407,7 @@ function App() {
         h2Count={h2Count}
         filtered={hidden}
         total={state.rows.length}
-        intercept={state.intercept}
+        intercept={state.intercept || state.interceptResponses}
         queue={state.intercepted.length}
         project={NL.bootInfo.project}
         intruderRunning={state.intruder.running}
@@ -2430,6 +2435,7 @@ function App() {
         {tab === "intercept" && (
           <InterceptTab
             intercept={state.intercept}
+            interceptResponses={state.interceptResponses}
             intercepted={state.intercepted}
             dispatch={dispatch}
           />
@@ -2477,7 +2483,7 @@ function App() {
         total={state.rows.length}
         filtered={hidden}
         scope={state.scope}
-        intercept={state.intercept}
+        intercept={state.intercept || state.interceptResponses}
         queue={state.intercepted.length}
         har={NL.bootInfo.harPath}
         onExport={() => {

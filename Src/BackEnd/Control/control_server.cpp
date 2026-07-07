@@ -1449,20 +1449,24 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     root["sitemap"] = sitemap;
 
-    // intercepted queue (current + future-pending count)
+    // intercepted queue (current + future-pending count). `kind` tells the UI
+    // whether the held message is an outbound request (0) or an upstream
+    // response (1) so it can render + label the right editor.
     QJsonArray intercepted;
     if (m_wiring.intercept && m_wiring.intercept->current()) {
         QObject *cur = m_wiring.intercept->current();
         QJsonObject e;
         e["id"]   = cur->property("id").toInt();
+        e["kind"] = cur->property("kind").toInt();
         e["host"] = cur->property("host").toString();
         e["port"] = cur->property("port").toInt();
         e["tls"]  = cur->property("tls").toBool();
         e["text"] = cur->property("text").toString();
         intercepted.append(e);
     }
-    root["intercepted"]      = intercepted;
-    root["interceptEnabled"] = m_wiring.intercept ? m_wiring.intercept->enabled() : false;
+    root["intercepted"]               = intercepted;
+    root["interceptEnabled"]          = m_wiring.intercept ? m_wiring.intercept->enabled() : false;
+    root["interceptResponsesEnabled"] = m_wiring.intercept ? m_wiring.intercept->responsesEnabled() : false;
 
     // repeater
     QJsonObject repeater;
@@ -2950,6 +2954,14 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.intercept)
             m_wiring.intercept->setEnabled(!m_wiring.intercept->enabled());
         return okJson({{ "enabled", m_wiring.intercept && m_wiring.intercept->enabled() }});
+    }
+    if (path == "/api/intercept/responses/toggle") {
+        // Independent from /api/intercept/toggle: the operator can hold
+        // requests, responses, both, or neither.
+        if (m_wiring.intercept)
+            m_wiring.intercept->setResponsesEnabled(!m_wiring.intercept->responsesEnabled());
+        return okJson({{ "responsesEnabled",
+                         m_wiring.intercept && m_wiring.intercept->responsesEnabled() }});
     }
     if (path == "/api/intercept/forward") {
         if (m_wiring.intercept) {

@@ -23,8 +23,21 @@ void InterceptController::setEnabled(bool e) {
     // Publish the new state BEFORE draining, so a worker that reads m_enabled
     // after this point sees the disabled state and auto-forwards via pend().
     m_enabled.storeRelease(want);
-    if (!e) releaseAllAsForward();
+    // Only drain REQUEST pendings -- a held response must survive a request
+    // toggle-off (its own toggle governs it).
+    if (!e) releaseKindAsForward(PendingRequest::Request);
     emit enabledChanged();
+    emit currentChanged();
+}
+
+void InterceptController::setResponsesEnabled(bool e) {
+    const int want = e ? 1 : 0;
+    if (want == m_enabledResponses.loadAcquire()) return;
+    // Same publish-before-drain ordering as setEnabled: a worker that reads
+    // m_enabledResponses after this store sees disabled and auto-forwards.
+    m_enabledResponses.storeRelease(want);
+    if (!e) releaseKindAsForward(PendingRequest::Response);
+    emit responsesEnabledChanged();
     emit currentChanged();
 }
 
@@ -83,6 +96,36 @@ void InterceptController::releaseAllAsForward() {
     emit currentChanged();
 }
 
+void InterceptController::releaseKindAsForward(int kind) {
+    // Drain only pendings of `kind` (used when that kind's toggle flips off).
+    // The other kind's parked messages -- including m_current if it is the
+    // other kind -- stay exactly where they are.
+    QList<PendingRequest *> toRelease;
+    {
+        QMutexLocker lk(&m_queueMutex);
+        // Rebuild the FIFO keeping the other-kind pendings in order; pull the
+        // matching-kind ones out to auto-forward.
+        QQueue<PendingRequest *> keep;
+        while (!m_queue.isEmpty()) {
+            PendingRequest *p = m_queue.dequeue();
+            if (p->m_kind == kind) toRelease.append(p);
+            else                   keep.enqueue(p);
+        }
+        m_queue = keep;
+        // If the currently-shown pending is this kind, release it and promote
+        // the next waiting pending (of whatever kind) into its place.
+        if (m_current && m_current->m_kind == kind) {
+            toRelease.append(m_current);
+            m_current = m_queue.isEmpty() ? nullptr : m_queue.dequeue();
+        }
+    }
+    for (auto *p : toRelease) {
+        p->decision.storeRelease(0);
+        p->done.release();
+    }
+    emit currentChanged();
+}
+
 void InterceptController::promoteNextLocked() {
     // Caller already holds m_queueMutex. Do NOT emit currentChanged here:
     // QML's intercept.queueDepth binding evaluates synchronously on the
@@ -107,7 +150,14 @@ void InterceptController::addPendingOnMain(PendingRequest *p) {
     {
         QMutexLocker lk(&m_queueMutex);
         const int outstanding = m_queue.size() + (m_current ? 1 : 0);
-        if (m_enabled.loadAcquire() == 0) {
+        // Re-check the toggle that governs THIS pending's direction under the
+        // mutex -- a response pending is gated by m_enabledResponses, a request
+        // by m_enabled. (The cap below counts both kinds: it is a total cap on
+        // parked worker threads + secret-bearing byte copies, direction-agnostic.)
+        const bool kindEnabled = (p->m_kind == PendingRequest::Response)
+            ? (m_enabledResponses.loadAcquire() != 0)
+            : (m_enabled.loadAcquire() != 0);
+        if (!kindEnabled) {
             releaseAsForward = true;
         } else if (!InterceptLogic::interceptQueueHasRoom(outstanding)) {
             // Backpressure: the operator is too far behind. Auto-forward (the
@@ -138,15 +188,28 @@ void InterceptController::deleteLaterOnMain(PendingRequest *p) {
 
 InterceptResult InterceptController::pend(const QByteArray &requestBytes,
                                           const QString &host, int port, bool tls) {
+    // Worker-thread early-out: interception off -> pass the bytes straight
+    // through without touching the main thread or allocating a pending.
     if (m_enabled.loadAcquire() == 0) return { false, requestBytes };
+    return pendImpl(requestBytes, host, port, tls, PendingRequest::Request);
+}
 
+InterceptResult InterceptController::pendResponse(const QByteArray &responseBytes,
+                                                  const QString &host, int port, bool tls) {
+    if (m_enabledResponses.loadAcquire() == 0) return { false, responseBytes };
+    return pendImpl(responseBytes, host, port, tls, PendingRequest::Response);
+}
+
+InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QString &host,
+                                              int port, bool tls, int kind) {
     auto *p = new PendingRequest;
     {
         QMutexLocker lk(&m_queueMutex);
         p->m_id = m_nextId++;
     }
-    p->m_originalBytes = requestBytes;
-    p->m_text = QString::fromUtf8(requestBytes);
+    p->m_kind = kind;
+    p->m_originalBytes = bytes;
+    p->m_text = QString::fromUtf8(bytes);
     p->m_host = host;
     p->m_port = port;
     p->m_tls  = tls;
@@ -161,6 +224,7 @@ InterceptResult InterceptController::pend(const QByteArray &requestBytes,
     r.dropped = (p->decision.loadAcquire() == 1);
     // Unedited -> forward the captured bytes verbatim (preserves a binary body
     // byte-for-byte and keeps Content-Length honest); edited -> re-encode.
+    // Identical resolver for requests and responses.
     if (!r.dropped)
         r.bytes = InterceptLogic::resolveForwardBytes(p->m_originalBytes, p->m_text);
 

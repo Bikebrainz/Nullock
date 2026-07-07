@@ -64,6 +64,20 @@ int actualBodyLength(const QByteArray &req) {
     if (sep < 0) return -1;
     return req.size() - (sep + 4);
 }
+
+// A response with a binary body and a matching Content-Length. Response-side
+// interception (pendResponse) reuses the SAME resolveForwardBytes() as the
+// request side, so the faithful-passthrough / edited-re-encode guarantees must
+// hold verbatim for a status line + response headers + body too.
+QByteArray binaryResponse(const QByteArray &body) {
+    QByteArray resp;
+    resp += "HTTP/1.1 200 OK\r\n";
+    resp += "Content-Type: application/octet-stream\r\n";
+    resp += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
+    resp += "\r\n";
+    resp += body;
+    return resp;
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -141,6 +155,44 @@ int main(int argc, char **argv) {
         const QString edited = QString::fromUtf8(req) + QString("X-Added: yes\r\n");
         const QByteArray out = resolveForwardBytes(req, edited);
         chk("edited binary: returns edited text's utf8", out == edited.toUtf8());
+    }
+
+    // ===== RESPONSE direction reuses the same faithful resolver ==========
+    // pendResponse() serializes an upstream response and runs it through the
+    // exact same resolveForwardBytes(). These lock that a response is passed
+    // through byte-for-byte when the operator doesn't touch it (so we never
+    // silently corrupt a gzip/binary response body or desync Content-Length)
+    // and re-encoded only on an explicit edit -- e.g. flipping an auth flag or
+    // injecting a test marker before the browser sees it.
+    {
+        // full 0..255 response body, unedited -> byte-for-byte identical.
+        QByteArray body;
+        for (int b = 0; b < 256; ++b) body.append(char(b));
+        const QByteArray resp = binaryResponse(body);
+        const QByteArray out = resolveForwardBytes(resp, QString::fromUtf8(resp));
+        chk("response unedited: full 0..255 body preserved verbatim", out == resp);
+        chk("response unedited: not the corrupting naive path", out == resp && out != naiveRoundTrip(resp));
+        chk("response unedited: Content-Length still matches body",
+            declaredContentLength(out) == actualBodyLength(out));
+    }
+    {
+        // gzip-magic-prefixed binary response, unedited -> preserved (the common
+        // real case: a compressed response the operator forwards untouched).
+        QByteArray body;
+        body.append(char(0x1F)).append(char(0x8B)).append(char(0x08)).append(char(0x00)).append(char(0xFF));
+        const QByteArray resp = binaryResponse(body);
+        const QByteArray out = resolveForwardBytes(resp, QString::fromUtf8(resp));
+        chk("response unedited: gzip-magic body preserved", out == resp);
+    }
+    {
+        // operator edits a response before it reaches the browser (flip status,
+        // inject a marker header): the edited text wins, encoded to utf8.
+        const QByteArray resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        const QString edited = QString::fromUtf8(
+            "HTTP/1.1 403 Forbidden\r\nX-Marker: tampered\r\nContent-Length: 0\r\n\r\n");
+        const QByteArray out = resolveForwardBytes(resp, edited);
+        chk("response edited: returns the edited status/headers encoded", out == edited.toUtf8());
+        chk("response edited: differs from the original", out != resp);
     }
 
     // ===== intercept queue backpressure cap =============================

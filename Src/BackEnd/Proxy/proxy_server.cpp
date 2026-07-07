@@ -188,7 +188,13 @@ public:
         m_server->applyResponseRules(req, resp);
         if (inScope) emit m_server->responseReceived(req, resp);
 
-        m_client->write(serializeResponse(resp));
+        // Response interception: hold the response for the operator (edit/
+        // forward/drop) before it reaches the client, mirroring the request
+        // pend() above. Scope-gated like the request side.
+        const InterceptResult ir =
+            resolveResponseForClient(resp, req.host, req.port, /*tls=*/false, inScope);
+        if (ir.dropped) { m_client->disconnectFromHost(); return; }
+        m_client->write(ir.bytes);
         m_client->waitForBytesWritten(kReadTimeoutMs);
         m_client->disconnectFromHost();
     }
@@ -431,6 +437,12 @@ public:
                     if (auto *ext = m_server->extensions()) resp = ext->applyResponseMutation(req, resp);
                     m_server->applyResponseRules(req, resp);
                     emit m_server->responseReceived(req, resp);
+                    // Response interception is intentionally NOT hooked on the
+                    // h2-terminated browser leg: H2Terminator re-serializes this
+                    // struct into h2 frames, so there are no raw h1 response
+                    // bytes for the operator to edit. Same documented limitation
+                    // as request editing on this path (drop-only above). h1 and
+                    // h2-upstream->h1 legs carry the full edit/forward/drop.
                     out = resp;
                     return UO::Ok;
                 });
@@ -500,7 +512,15 @@ public:
                 m_server->applyResponseRules(req, h2resp);
                 emit m_server->responseReceived(req, h2resp);
 
-                sslClient->write(serializeResponse(h2resp));
+                // Response interception on the h2-upstream bridge too: the
+                // browser leg is h1, so the operator edits the same serialized
+                // response bytes as any other h1 response.
+                {
+                    const InterceptResult ir =
+                        resolveResponseForClient(h2resp, host, port, /*tls=*/true, /*inScope=*/true);
+                    if (ir.dropped) { sslClient->disconnectFromHost(); return; }
+                    sslClient->write(ir.bytes);
+                }
                 if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
                     fail("mitm/h2: response write to client failed");
                     return;
@@ -582,7 +602,14 @@ public:
                 return;
             }
 
-            sslClient->write(serializeResponse(resp));
+            // Response interception before the client sees it. The tunnel is
+            // only MITM'd for in-scope hosts, so inScope is implicitly true.
+            {
+                const InterceptResult ir =
+                    resolveResponseForClient(resp, host, port, /*tls=*/true, /*inScope=*/true);
+                if (ir.dropped) { sslClient->disconnectFromHost(); return; }
+                sslClient->write(ir.bytes);
+            }
             if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
                 fail("mitm: response write to client failed");
                 return;
@@ -744,6 +771,28 @@ private:
         out += "\r\n";
         out += resp.body;
         return out;
+    }
+
+    // Serialize `resp` and, if response interception is enabled (and the host
+    // is in scope), park the raw bytes for the operator to edit / forward /
+    // drop BEFORE they reach the client -- the response-side mirror of the
+    // request pend() at the top of run(). Returns the (possibly edited) bytes
+    // to write and sets `dropped` when the operator dropped the response (the
+    // caller then tears the client connection down, so the browser gets
+    // nothing). When response interception is off this is a cheap serialize +
+    // verbatim pass-through, exactly like the old direct serializeResponse()
+    // write. `tls` records whether the client leg is encrypted, purely for the
+    // operator-facing display. This blocks the per-connection worker thread on
+    // the intercept semaphore; the cap + toggle-off drain in InterceptController
+    // guarantee it can never deadlock the proxy.
+    InterceptResult resolveResponseForClient(const HttpResponse &resp,
+                                             const QString &host, int port,
+                                             bool tls, bool inScope) {
+        QByteArray bytes = serializeResponse(resp);
+        auto *ic = m_server->interceptController();
+        if (ic && inScope && ic->responsesEnabled())
+            return ic->pendResponse(bytes, host, port, tls);
+        return { false, bytes };
     }
 
     // Serialize a protocol-switching response (101 Switching Protocols and
