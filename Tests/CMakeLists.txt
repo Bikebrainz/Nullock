@@ -92,6 +92,11 @@ add_subdirectory(inspector_logic)
 # Run via: ctest -R extension_perms_logic -V
 add_subdirectory(extension_perms_logic)
 
+# Deterministic fuzz-lock across the new untrusted-input parsers (nuclei YAML,
+# Inspector, template engine, template request builder): no crash/hang + bounds.
+# Run via: ctest -R parser_fuzz -V
+add_subdirectory(parser_fuzz)
+
 # Bundled detection template library well-formedness (templates/detections/*.json).
 # Run via: ctest -R template_library -V
 add_subdirectory(template_library)
