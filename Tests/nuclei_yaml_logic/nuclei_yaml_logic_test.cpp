@@ -124,6 +124,87 @@ int main(int argc, char **argv) {
         chk("round-trip: 404 -> no match", !TemplateEngine::evaluate(t, r404).matched);
     }
 
+    // ----- block scalars (| literal, > folded, chomping, literal #) -----
+    {
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "id: t\n"
+            "body: |\n"
+            "  line one\n"
+            "  line two\n"
+            "next: x\n").toObject();
+        chk("literal | preserves newlines (clip trailing \\n)",
+            o.value("body").toString() == QStringLiteral("line one\nline two\n"));
+        chk("key after a block scalar is still parsed", o.value("next").toString() == "x");
+    }
+    {
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "text: >\n"
+            "  hello\n"
+            "  world\n").toObject();
+        chk("folded > joins lines with a space",
+            o.value("text").toString() == QStringLiteral("hello world\n"));
+    }
+    {
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "b: |-\n"
+            "  a\n"
+            "  b\n").toObject();
+        chk("|- strips the trailing newline", o.value("b").toString() == QStringLiteral("a\nb"));
+    }
+    {
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "b: |+\n"
+            "  a\n"
+            "\n"
+            "\n").toObject();
+        chk("|+ keeps trailing blank lines", o.value("b").toString().startsWith(QStringLiteral("a\n\n")));
+    }
+    {
+        // a '#' inside a block scalar is LITERAL, not a comment; a colon there is
+        // not a map key -- the block content must not be re-parsed as YAML.
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "body: |\n"
+            "  GET / HTTP/1.1\n"
+            "  X-Frag: a#b\n").toObject();
+        chk("literal # inside a block scalar stays literal",
+            o.value("body").toString().contains(QStringLiteral("a#b")));
+        chk("colon inside a block scalar isn't a map key",
+            o.value("body").toString().contains(QStringLiteral("X-Frag: a#b")));
+    }
+    {
+        // CRLF-terminated block scalar (the Windows-write path).
+        const QJsonObject o = NucleiYaml::parseYaml(
+            "b: |\r\n  x\r\n  y\r\n").toObject();
+        chk("block scalar works with CRLF input",
+            o.value("b").toString() == QStringLiteral("x\ny\n"));
+    }
+    {
+        // Full nuclei template: a POST with a multi-line body block reaches
+        // template.request.body verbatim, and the following matchers still parse.
+        const QString y =
+            "id: post-tpl\n"
+            "info:\n"
+            "  name: N\n"
+            "  severity: info\n"
+            "http:\n"
+            "  - method: POST\n"
+            "    path:\n"
+            "      - \"{{BaseURL}}/submit\"\n"
+            "    body: |\n"
+            "      name=alice\n"
+            "      role=admin\n"
+            "    matchers:\n"
+            "      - type: status\n"
+            "        status:\n"
+            "          - 200\n";
+        const QJsonObject tpl = NucleiYaml::nucleiYamlToTemplate(y);
+        const QJsonObject req = tpl.value("request").toObject();
+        chk("template request method POST", req.value("method").toString() == "POST");
+        chk("template request body from block scalar",
+            req.value("body").toString() == QStringLiteral("name=alice\nrole=admin\n"));
+        chk("matchers after the body block still parse", tpl.value("matchers").toArray().size() == 1);
+    }
+
     // ----- default-safe -----
     chk("empty yaml -> empty object", NucleiYaml::nucleiYamlToTemplate("").isEmpty());
     chk("garbage yaml -> no crash, id empty",
