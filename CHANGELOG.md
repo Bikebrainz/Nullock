@@ -10,6 +10,44 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Added
+- **Nuclei-style template scanner.** Author detection templates (JSON) or feed
+  real nuclei `.yaml` templates: matchers (status / word / regex with and/or +
+  negative, over body / header / all), regex extractors, and an active request
+  template (method / path / headers / body with `{{BaseURL}}` / `{{payload}}`
+  substitution + cluster / pitchfork payload expansion, all bounded). `POST
+  /api/template/run` (`{template | yaml | templateId}`) fires the request(s),
+  matches each response, and reports a finding per match — so hits feed the
+  panel, the CI gate, and the baseline diff. A bundled starter library
+  (`templates/detections/`) ships six detections (exposed `.git/config` /
+  `.env` / `.DS_Store`, directory listing, missing security headers,
+  server-version disclosure); `GET /api/template/list` enumerates them and
+  `templateId` runs one by id (path-traversal-guarded).
+- **CI security gate.** `GET /api/gate?fail-on=<sev>` returns a pass/fail
+  verdict plus a process exit code from the current findings; the one-shot CLI
+  `NullockApp --scan <url> --fail-on <sev>` runs the deep audit headless and
+  exits `0` / `1` / `2` for direct use in a pipeline. A composite GitHub Action
+  (`.github/actions/nullock-scan`) and a reference multi-stage `Dockerfile` wrap
+  it.
+- **Intruder parity.** Payload-processing rules, payload generators
+  (numbers / brute / dates, hard-capped), Grep-Match / Grep-Extract result
+  columns, a bounded concurrency + throttle request pool, and save / resume of
+  an attack run.
+- **Transparent response decompression** (gzip / deflate) so inspection,
+  matching, and reporting see the decoded body.
+- **Bearer-token auth** on the control API, mandatory for any off-loopback bind.
+- **Asset-dir resolution** via `--ui-dir` / `NULLOCK_UI_DIR` plus auto-detection
+  of the install layout.
+
+### Changed
+- Passive and active findings carry an explicit `confidence`
+  (confirmed / firm / tentative).
+
+### Fixed
+- Blind-tunnel (`CONNECT`) passthrough no longer drops the relayed connection.
+- Installed and containerized binaries now locate `ui-v2` and the detection
+  templates instead of relying on a dev-only relative path.
+
 ## [3.7.0] — 2026-07-05
 The academy + platform-completion release: the full 50-lab Web Security Academy
 clone, the OWASP injection family completed (LDAP / XPath / SSRF /

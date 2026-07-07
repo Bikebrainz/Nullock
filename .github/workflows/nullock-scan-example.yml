@@ -1,0 +1,49 @@
+name: nullock-scan-example
+
+# Example CI security gate: build NullockApp, then fail the job if the target
+# has a finding at or above the chosen severity. Manual-dispatch only so it
+# never runs against a target without an explicit opt-in.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to scan (only scan hosts you are authorized to test)'
+        required: true
+        default: 'https://example.com/'
+      fail-on:
+        description: 'Severity threshold: critical|high|medium|low|info|none'
+        required: false
+        default: 'high'
+
+env:
+  QT_VERSION: 6.7.3
+
+jobs:
+  gate:
+    name: security gate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtwebsockets'
+
+      - name: install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build build-essential libnghttp2-dev libssl-dev
+
+      - name: build NullockApp
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target NullockApp -j
+
+      - name: security gate
+        uses: ./.github/actions/nullock-scan
+        with:
+          url: ${{ inputs.url }}
+          fail-on: ${{ inputs.fail-on }}
+          binary: build/Src/App/NullockApp

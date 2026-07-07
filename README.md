@@ -32,6 +32,10 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
                   confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
                   plus a deployable standalone server (nullock-oast) for a public / hosted tier
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
+Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
+                  + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
+CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +
+                  GET /api/gate pipeline pass/fail; composite GitHub Action + reference Dockerfile
 Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
                   asset inventory, findings baseline/diff for repeat engagements
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
@@ -100,11 +104,45 @@ Full quickstart: <https://bikebrainz.github.io/Nullock/docs/getting-started.html
 | CLI control of every panel | ✓ | — | jython | ✓ |
 | SQLite history at 200k+ | ✓ | — | partial | — |
 | AI payload generation | local Ollama | — | — | — |
+| Template scanning (nuclei) | ✓ (JSON + .yaml) | — | — | — |
+| CI security gate (exit code) | ✓ + GH Action | — | Enterprise | — |
 | GraphQL + JWT tooling | ✓ | — | paid addons | — |
 | HTTP/3 / QUIC | — | — | — | — |
 | Brand recognition | v1 | huge | huge | large |
 
 Full honest comparison: <https://bikebrainz.github.io/Nullock/#compare>
+
+## CI security gate & template scanning
+
+Run Nullock headless in a pipeline and fail the build on findings:
+
+```sh
+# one-shot: scan a URL, exit nonzero if anything is high or worse
+NullockApp --scan https://staging.example.com/ --fail-on high
+echo $?          # 0 clean · 1 finding >= threshold · 2 bad URL
+
+# or drive scans over the API, then read the gate for a pass/fail + exit code
+curl -s localhost:17777/api/gate?fail-on=high    # {"pass":false,"exitCode":1,...}
+```
+
+A composite GitHub Action wraps the one-shot gate (`.github/actions/nullock-scan`,
+with a build-then-gate example in `.github/workflows/nullock-scan-example.yml`),
+and a reference multi-stage `Dockerfile` runs the headless server — or a one-shot
+scan — in a container.
+
+**Template scanning** runs your own nuclei-style detection templates — JSON *or*
+a real nuclei `.yaml` — with matchers, extractors, and request crafting
+(`{{BaseURL}}` / `{{payload}}` + payload expansion). A bundled starter library
+ships under `templates/detections/`:
+
+```sh
+curl -s  localhost:17777/api/template/list        # the bundled detections
+curl -sX POST localhost:17777/api/template/run -H 'X-Nullock-UI: 1' \
+  -d '{"url":"https://target.example/","templateId":"exposed-git-config"}'
+```
+
+Template hits report as findings, so they feed the same panel, gate, and
+baseline diff as everything else.
 
 ## Architecture
 

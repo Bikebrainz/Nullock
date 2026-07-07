@@ -1,0 +1,41 @@
+name: 'Nullock Security Gate'
+description: >-
+  Run the Nullock headless deep-audit against a URL and fail the job when a
+  finding at or above a severity threshold is present (a CI security gate).
+author: 'Bikebrainz'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  url:
+    description: 'Target URL to scan, e.g. https://staging.example.com/'
+    required: true
+  fail-on:
+    description: 'Severity threshold that fails the job: critical | high | medium | low | info | none'
+    required: false
+    default: 'high'
+  ndjson:
+    description: 'Emit one machine-readable NDJSON line instead of a human summary'
+    required: false
+    default: 'false'
+  binary:
+    description: 'Path to a built NullockApp binary (default: on PATH). See the example workflow for building it.'
+    required: false
+    default: 'NullockApp'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Nullock scan gate
+      shell: bash
+      run: |
+        args=( --scan "${{ inputs.url }}" --fail-on "${{ inputs.fail-on }}" )
+        if [ "${{ inputs.ndjson }}" = "true" ]; then args+=( --ndjson ); fi
+        echo "::group::nullock --scan ${{ inputs.url }} --fail-on ${{ inputs.fail-on }}"
+        # NullockApp exits 0 (clean) / 1 (finding >= threshold) / 2 (bad URL);
+        # the nonzero exit fails this step, and therefore the job.
+        "${{ inputs.binary }}" "${args[@]}"
+        code=$?
+        echo "::endgroup::"
+        exit $code

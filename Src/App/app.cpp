@@ -32,6 +32,7 @@
 #include <QThreadPool>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -601,6 +602,9 @@ int main(int argc, char *argv[]) {
             << "                        wildcard NS delegation for real-internet targets)\n"
             << "  --h2-termination      EXPERIMENTAL: also terminate the browser's HTTP/2\n"
             << "                        (advertise h2 to the browser; off by default)\n"
+            << "  --ui-dir=PATH         Path to the ui-v2 asset dir (also NULLOCK_UI_DIR env).\n"
+            << "                        Auto-detected next to the binary or in share/nullock/ui\n"
+            << "                        if unset; templates/ + extensions/ are resolved beside it.\n"
             << "  --scan=URL            CI gate: run the deep audit against URL and exit\n"
             << "                        (0 pass / 1 findings at-or-above --fail-on / 2 bad URL).\n"
             << "                        Implies headless; no server. Combine with --ndjson.\n"
@@ -935,9 +939,29 @@ int main(int argc, char *argv[]) {
     wiring.crawler = &crawler;
     wiring.updates = &updateChecker;
 
-    wiring.uiDir        = QCoreApplication::applicationDirPath() + "/../../../../ui-v2";
-    // dev-run path: project root has ui-v2/. For installed binaries we'd
-    // bundle this into a Qt resource; not done yet.
+    // Resolve the UI/asset dir (ui-v2, plus its sibling templates/ and
+    // extensions/). Priority: --ui-dir flag, NULLOCK_UI_DIR env, then a search of
+    // the standard install + portable layouts relative to the binary, then the
+    // dev-run path. The old hardcoded dev-run relative path climbed above the
+    // filesystem root for an installed/containerized binary, so it never found
+    // ui-v2 (or the detection templates) outside a source checkout.
+    {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        QString ui = flagValue(argc, argv, "--ui-dir");
+        if (ui.isEmpty()) ui = qEnvironmentVariable("NULLOCK_UI_DIR");
+        if (ui.isEmpty()) {
+            const QStringList candidates = {
+                appDir + "/../share/nullock/ui",   // <prefix>/bin -> <prefix>/share/nullock/ui
+                appDir + "/share/nullock/ui",      // portable: share/ next to the binary
+                appDir + "/ui-v2",                 // portable: ui-v2 next to the binary
+                appDir + "/../../../../ui-v2",      // dev-run: build/Src/App/<cfg> -> repo/ui-v2
+            };
+            for (const QString &c : candidates)
+                if (QFileInfo::exists(c + "/Nullock.html")) { ui = c; break; }
+            if (ui.isEmpty()) ui = appDir + "/../../../../ui-v2";   // dev-run fallback
+        }
+        wiring.uiDir = ui;
+    }
 
     Nullock::Control::ControlServer controlServer(wiring);
     // 17777 by default; MinIO owns 9000/9001 on this box and that's a
