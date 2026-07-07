@@ -1,0 +1,15 @@
+{
+  "id": "exposed-spring-actuator-env",
+  "name": "Exposed Spring Boot Actuator /env",
+  "severity": "high",
+  "description": "The Spring Boot Actuator /env endpoint is publicly reachable and leaks environment/property sources — often including database URLs, credentials, and API keys. Restrict actuator endpoints or require authentication.",
+  "request": { "method": "GET", "path": "/actuator/env" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "condition": "or", "words": ["\"activeProfiles\"", "\"propertySources\"", "systemEnvironment"] }
+  ],
+  "extractors": [
+    { "type": "regex", "part": "body", "name": "sources", "regex": ["\"name\":\"([^\"]+)\""] }
+  ]
+}

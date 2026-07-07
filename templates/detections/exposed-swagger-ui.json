@@ -1,0 +1,12 @@
+{
+  "id": "exposed-swagger-ui",
+  "name": "Exposed Swagger / OpenAPI UI",
+  "severity": "low",
+  "description": "A public Swagger/OpenAPI UI enumerates the API surface — every endpoint, parameter, and schema — which streamlines an attacker's mapping of the app. Informational: exposing docs may be intentional; confirm it doesn't reveal internal/admin routes.",
+  "request": { "method": "GET", "path": "/swagger-ui/index.html" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "condition": "or", "words": ["Swagger UI", "swagger-ui", "swagger-initializer"] }
+  ]
+}

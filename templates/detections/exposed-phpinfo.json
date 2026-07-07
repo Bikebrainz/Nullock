@@ -1,0 +1,15 @@
+{
+  "id": "exposed-phpinfo",
+  "name": "Exposed phpinfo()",
+  "severity": "medium",
+  "description": "A reachable phpinfo() page discloses the full PHP configuration, loaded modules, absolute paths, environment variables, and often internal IPs — a rich reconnaissance surface. Remove phpinfo pages from production.",
+  "request": { "method": "GET", "path": "/phpinfo.php" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "word", "part": "body", "condition": "and", "words": ["phpinfo()", "PHP Version"] }
+  ],
+  "extractors": [
+    { "type": "regex", "part": "body", "name": "phpVersion", "regex": ["PHP Version </td><td[^>]*>([0-9.]+)"] }
+  ]
+}

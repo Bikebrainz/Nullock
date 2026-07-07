@@ -1,0 +1,12 @@
+{
+  "id": "exposed-sql-dump",
+  "name": "Exposed SQL database dump",
+  "severity": "high",
+  "description": "A publicly readable SQL dump (e.g. backup.sql) exposes the entire database schema and data — credentials, PII, secrets. Remove database dumps from the web root.",
+  "request": { "method": "GET", "path": "/backup.sql" },
+  "matchers-condition": "and",
+  "matchers": [
+    { "type": "status", "status": [200] },
+    { "type": "regex", "part": "body", "regex": ["(?i)(CREATE TABLE|INSERT INTO|-- MySQL dump|PostgreSQL database dump|DROP TABLE IF EXISTS)"] }
+  ]
+}
