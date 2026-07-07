@@ -12,8 +12,10 @@ developer-facing record.
 
 ### Added
 - **Nuclei-style template scanner.** Author detection templates (JSON) or feed
-  real nuclei `.yaml` templates: matchers (status / word / regex with and/or +
-  negative, over body / header / all), regex extractors, and an active request
+  real nuclei `.yaml` templates (including `|` literal / `>` folded block
+  scalars with chomping, for multi-line request bodies): matchers (status / word
+  / regex with and/or + negative, over body / header / all), regex extractors,
+  and an active request
   template (method / path / headers / body with `{{BaseURL}}` / `{{payload}}`
   substitution + cluster / pitchfork payload expansion, all bounded). `POST
   /api/template/run` (`{template | yaml | templateId}`) fires the request(s),
@@ -33,6 +35,19 @@ developer-facing record.
   (numbers / brute / dates, hard-capped), Grep-Match / Grep-Extract result
   columns, a bounded concurrency + throttle request pool, and save / resume of
   an attack run.
+- **Inspector.** `POST /api/inspect` returns a structured view of a raw HTTP
+  request/response — parsed query / form / JSON body params, cookies, headers,
+  `Set-Cookie` breakdown, and any JWT (decoded header + payload) found in a
+  header or cookie.
+- **Response-side interception.** The intercepting proxy now holds and lets the
+  operator edit/forward/drop *responses*, not just requests.
+- **Extension permission model.** JS extensions run in a sandboxed `QJSEngine`
+  (no filesystem/network); rewriting traffic is now capability-gated and
+  default-deny — an extension must declare `// nullock:permissions
+  modify-requests` (or `modify-responses`) or it stays observe-only. Documented
+  in `EXTENSIONS.md`.
+- **Offline UI.** The web UI vendors React / Babel locally (`ui-v2/vendor/`) and
+  drops its CDN dependency, so it runs fully air-gapped.
 - **Transparent response decompression** (gzip / deflate) so inspection,
   matching, and reporting see the decoded body.
 - **Bearer-token auth** on the control API, mandatory for any off-loopback bind.
