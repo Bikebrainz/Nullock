@@ -46,7 +46,8 @@
                                             statusLine: "" };
     NL.intruder    = snap.intruder    || { host: "", port: 443, tls: true,
                                             template: "", payloads: [],
-                                            results: [], running: false };
+                                            results: [], running: false,
+                                            concurrency: 10, throttleMs: 0 };
     NL.currentTheme       = snap.currentTheme || "cyber";
     NL.interceptEnabled   = snap.interceptEnabled === true;
     NL.themeColors        = snap.themeColors || {};
@@ -146,6 +147,11 @@
     intruderStop()          { return post("/api/intruder/stop"); },
     intruderClear()         { return post("/api/intruder/clear"); },
     intruderResend(row)     { return post("/api/intruder/resend", { row }); },
+    // Save the whole attack (config + result rows) as a JSON document, and
+    // restore one. GET /export returns the saved-run doc; feed it straight
+    // back to POST /load. The backend refuses /load while an attack runs.
+    intruderExport()        { return fetch("/api/intruder/export").then(r => r.json()); },
+    intruderLoad(doc)       { return post("/api/intruder/load", doc).then(r => r.json()); },
     setTheme(name)          { return post("/api/theme", { name }); },
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },

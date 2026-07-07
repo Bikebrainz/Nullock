@@ -476,8 +476,41 @@ function IntruderTab({ intruder, dispatch }) {
     setPresetMenuOpen(false);
   };
 
+  // Save/load the whole attack (config + result rows) as a JSON document.
+  // Export is a GET that returns the saved-run doc; we hand it to the browser
+  // as a file download. Load reads a JSON file and POSTs it back (the backend
+  // refuses while an attack is running).
+  const fileRef = React.useRef(null);
+  const doExport = () => {
+    NL.actions.intruderExport().then(doc => {
+      const safe = (intruder.host || "attack").replace(/[^a-z0-9._-]/gi, "_");
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nullock-intruder-" + safe + ".json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }).catch(() => alert("Export failed"));
+  };
+  const doLoad = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let doc;
+      try { doc = JSON.parse(reader.result); }
+      catch { alert("That file isn't valid JSON"); return; }
+      NL.actions.intruderLoad(doc).then(res => {
+        if (res && res.ok === false)
+          alert("Load refused -- stop the running attack first, then load.");
+      }).catch(() => alert("Load failed"));
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="tab-body" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
+    <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
       <div className="pane-head">
         <span className="ph-corner">▸</span>
         <span>INTRUDER · sniper mode</span>
@@ -514,6 +547,54 @@ function IntruderTab({ intruder, dispatch }) {
         ) : (
           <button className="btn primary" onClick={() => dispatch({ type: "intruder-start" })}>▶ START</button>
         )}
+      </div>
+
+      <div className="target-row">
+        <span className="arrow">▶</span>
+        <div className="fld" style={{ flex: "1 1 auto" }}>
+          <span className="pre">GREP·MATCH</span>
+          <input
+            placeholder="needles, comma-separated (regex or literal) — flags the Grep column"
+            value={intruder.grepMatchText || ""}
+            onChange={e => dispatch({ type: "intruder-set", payload: {
+              grepMatchText: e.target.value,
+              grepMatch: e.target.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean),
+            }})}
+          />
+        </div>
+        <div className="fld" style={{ flex: "1 1 auto" }}>
+          <span className="pre">GREP·EXTRACT</span>
+          <input
+            placeholder="regex — 1st capture group fills the Extract column"
+            value={intruder.grepExtractRegex || ""}
+            onChange={e => dispatch({ type: "intruder-set", payload: {
+              grepExtractRegex: e.target.value,
+              grepExtract: e.target.value ? { regex: e.target.value } : {},
+            }})}
+          />
+        </div>
+        <div className="fld" style={{ flex: "0 0 92px" }}>
+          <span className="pre">CONC</span>
+          <input
+            type="number" min="1" max="64"
+            value={intruder.concurrency ?? 10}
+            onChange={e => dispatch({ type: "intruder-set", payload: { concurrency: parseInt(e.target.value, 10) || 1 }})}
+            title="Max in-flight requests (backend clamps 1..64)"
+          />
+        </div>
+        <div className="fld" style={{ flex: "0 0 120px" }}>
+          <span className="pre">THROTTLE·MS</span>
+          <input
+            type="number" min="0"
+            value={intruder.throttleMs ?? 0}
+            onChange={e => dispatch({ type: "intruder-set", payload: { throttleMs: parseInt(e.target.value, 10) || 0 }})}
+            title="Inter-dispatch delay in milliseconds (0 = as fast as concurrency allows)"
+          />
+        </div>
+        <button className="btn" onClick={doExport} title="Save this attack (config + results) to a JSON file">⭳ SAVE</button>
+        <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} title="Load a saved attack from JSON (refused while running)">⭱ LOAD</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }}
+               onChange={e => { const f = e.target.files && e.target.files[0]; if (f) doLoad(f); e.target.value = ""; }} />
       </div>
 
       <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
@@ -632,14 +713,16 @@ function IntruderTab({ intruder, dispatch }) {
                 <col style={{ width: 80 }} />
                 <col style={{ width: 100 }} />
                 <col style={{ width: 80 }} />
+                <col style={{ width: 56 }} />
+                <col style={{ width: 150 }} />
                 <col />
               </colgroup>
               <thead>
-                <tr><th>#</th><th>Payload</th><th>Status</th><th>Size</th><th>Time</th><th>Error</th><th></th></tr>
+                <tr><th>#</th><th>Payload</th><th>Status</th><th>Size</th><th>Time</th><th title="Grep-match hit">Grep</th><th title="Grep-extract capture">Extract</th><th>Error</th><th></th></tr>
               </thead>
               <tbody>
                 {intruder.payloads.map((p, i) => {
-                  const r = intruder.results[i] || { status: null, size: 0, ms: 0, err: "" };
+                  const r = intruder.results[i] || { status: null, size: 0, ms: 0, err: "", matched: false, extracted: "" };
                   const pending = r.status === null;
                   const cls = (r.status >= 400) ? "s4" : (r.status >= 300) ? "s3" : (r.status >= 200) ? "s2" : "";
                   if (hide404 && r.status === 404) return null;
@@ -650,6 +733,11 @@ function IntruderTab({ intruder, dispatch }) {
                       <td><span className={"status " + cls}>{pending ? "—" : r.status}</span></td>
                       <td>{pending ? "—" : (r.size + " B")}</td>
                       <td>{pending ? "—" : (r.ms + " ms")}</td>
+                      <td style={{ textAlign: "center" }}>{pending ? "—" : (r.matched
+                        ? <span style={{ color: "var(--accent)", fontWeight: 600 }} title="grep-match hit">✓</span>
+                        : <span style={{ color: "var(--dim)" }}>·</span>)}</td>
+                      <td style={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: r.extracted ? "var(--text)" : "var(--dim)" }}
+                          title={r.extracted || ""}>{pending ? "" : (r.extracted || "·")}</td>
                       <td style={{ color: r.err ? "var(--err)" : "var(--dim)" }}>{r.err || (pending ? "queued" : "")}</td>
                       <td>
                         {!intruder.running && !pending && (

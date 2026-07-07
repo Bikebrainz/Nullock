@@ -2306,6 +2306,18 @@ function App() {
     scope: NL.scope,
     repeater: NL.repeater,
     intruder: {
+      // UI-only grep fields: the snapshot never echoes these back, so the
+      // nl-snapshot merge ({...state.intruder, ...NL.intruder}) preserves
+      // whatever the user typed. grepMatch/grepExtract are what we POST to
+      // the backend; grepMatchText/grepExtractRegex are the raw inputs.
+      grepMatch: [],
+      grepExtract: {},
+      grepMatchText: "",
+      grepExtractRegex: "",
+      // Backend echoes concurrency/throttleMs in every snapshot; these are
+      // just first-paint defaults matching IntruderPool::kDefaultConcurrency.
+      concurrency: 10,
+      throttleMs: 0,
       ...NL.intruder,
       running: false,
     },
