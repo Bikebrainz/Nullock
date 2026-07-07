@@ -1227,6 +1227,14 @@ QByteArray ControlServer::buildSnapshot() const {
             scripts.append(s);
         bootInfo["extensionScripts"]  = scripts;
         bootInfo["extensionsDir"]     = m_wiring.extensions->extensionsDir();
+        // Per-script granted dangerous capabilities (modify-requests/responses),
+        // so the UI can flag which extensions may rewrite traffic. A script
+        // absent here (or with an empty array) is observe-only.
+        QJsonObject grants;
+        const auto &sg = m_wiring.extensions->scriptGrants();
+        for (auto it = sg.constBegin(); it != sg.constEnd(); ++it)
+            grants.insert(it.key(), QJsonArray::fromStringList(it.value()));
+        bootInfo["extensionGrants"]   = grants;
     }
     root["bootInfo"] = bootInfo;
 
