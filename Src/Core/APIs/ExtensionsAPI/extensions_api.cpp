@@ -1,4 +1,5 @@
 #include "extensions_api.hpp"
+#include "extension_perms_logic.hpp"
 #include "passive_scanner.hpp"
 
 #include <QDateTime>
@@ -30,12 +31,27 @@ void ExtensionsApiBridge::onResponse(const QJSValue &callback) {
         m_owner->appendLog("[ext] onResponse: argument is not a function");
         return;
     }
-    m_owner->m_onResponseHandlers.append(callback);
+    // Observation always registers; whether a returned mutation is applied
+    // depends on the extension's "modify-responses" grant (enforced in
+    // doMutateResponse). Registering is safe -- the read-only path always runs.
+    const bool mayMutate = Nullock::Core::ExtensionPerms::isAllowed(
+        m_owner->m_currentGrants, Nullock::Core::ExtensionPerms::kModifyResponses);
+    m_owner->m_onResponseHandlers.append({ callback, mayMutate });
 }
 
 void ExtensionsApiBridge::onRequest(const QJSValue &callback) {
     if (!callback.isCallable()) {
         m_owner->appendLog("[ext] onRequest: argument is not a function");
+        return;
+    }
+    // onRequest ALWAYS mutates the upstream request -- deny it unless the
+    // extension declared "modify-requests" (default-deny). The handler is not
+    // registered, so a non-permitted extension simply can't touch requests.
+    if (!Nullock::Core::ExtensionPerms::isAllowed(
+            m_owner->m_currentGrants, Nullock::Core::ExtensionPerms::kModifyRequests)) {
+        m_owner->appendLog(
+            "[ext] onRequest DENIED: extension lacks the 'modify-requests' "
+            "permission (add `// nullock:permissions modify-requests`)");
         return;
     }
     m_owner->m_onRequestHandlers.append(callback);
@@ -88,6 +104,8 @@ bool ExtensionsApi::reload() {
     m_onResponseHandlers.clear();
     m_onRequestHandlers.clear();
     m_loadedScripts.clear();
+    m_scriptGrants.clear();
+    m_currentGrants.clear();
     // Reset the engine by clearing the global except our nullock object.
     // Easier: recreate the engine altogether.
     m_engine.collectGarbage();
@@ -107,6 +125,11 @@ void ExtensionsApi::loadAll() {
         QFile f(fi.absoluteFilePath());
         if (!f.open(QIODevice::ReadOnly)) continue;
         const QString source = QString::fromUtf8(f.readAll());
+        // Parse the extension's declared permissions and make them the active
+        // grant set for its evaluate() -- the bridge reads m_currentGrants when
+        // the script registers onRequest / onResponse handlers.
+        m_currentGrants = Nullock::Core::ExtensionPerms::parsePermissions(source);
+        m_scriptGrants.insert(fi.fileName(), QStringList(m_currentGrants.begin(), m_currentGrants.end()));
         const QJSValue result = m_engine.evaluate(source, fi.fileName());
         if (result.isError()) {
             appendLog(QString("[ext] %1: %2 at line %3")
@@ -116,8 +139,12 @@ void ExtensionsApi::loadAll() {
             continue;
         }
         m_loadedScripts.append(fi.fileName());
-        appendLog(QString("[ext] loaded %1").arg(fi.fileName()));
+        const QStringList g = m_scriptGrants.value(fi.fileName());
+        appendLog(g.isEmpty()
+            ? QString("[ext] loaded %1 (observe-only)").arg(fi.fileName())
+            : QString("[ext] loaded %1 (granted: %2)").arg(fi.fileName(), g.join(", ")));
     }
+    m_currentGrants.clear();   // not evaluating any extension now
     emit loadedChanged();
 }
 
@@ -167,8 +194,8 @@ void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &reques
     entry.setProperty("headers", headers);
 
     QJSValueList args = { entry };
-    for (QJSValue &handler : m_onResponseHandlers) {
-        const QJSValue r = handler.call(args);
+    for (ResponseHandler &h : m_onResponseHandlers) {
+        const QJSValue r = h.fn.call(args);
         if (r.isError()) {
             appendLog(QString("[ext] handler threw: %1 at line %2")
                           .arg(r.toString())
@@ -335,14 +362,16 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
     entry.setProperty("bodyText", QString::fromUtf8(resp.body));
     entry.setProperty("responseSize", static_cast<int>(resp.body.size()));
 
-    for (QJSValue &handler : m_onResponseHandlers) {
-        const QJSValue r = handler.call({ entry });
+    for (ResponseHandler &h : m_onResponseHandlers) {
+        const QJSValue r = h.fn.call({ entry });
         if (r.isError()) {
             appendLog(QString("[ext] onResponse threw: %1 at line %2")
                           .arg(r.toString()).arg(r.property("lineNumber").toInt()));
             continue;
         }
-        if (r.isObject()) entry = r;
+        // Apply a returned mutation only if this extension holds the
+        // "modify-responses" grant (default-deny); otherwise it's observe-only.
+        if (r.isObject() && h.mayMutate) entry = r;
     }
 
     // Clamp the JS-returned status to a valid HTTP code; reject CR/LF

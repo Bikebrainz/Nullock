@@ -5,8 +5,11 @@
 #include <QJSEngine>
 #include <QJSValue>
 #include <QList>
+#include <QMap>
 #include <QObject>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 
 namespace Nullock::Core {
 
@@ -40,6 +43,9 @@ public:
 
     int loadedCount() const { return m_loadedScripts.size(); }
     QStringList loadedScripts() const { return m_loadedScripts; }
+    // Per-script granted dangerous capabilities (modify-requests/responses).
+    // A script absent here (or mapped to empty) holds no mutation grant.
+    const QMap<QString, QStringList> &scriptGrants() const { return m_scriptGrants; }
     QString extensionsDir() const;
     int logLineCount() const { return m_logLines.size(); }
 
@@ -85,13 +91,26 @@ private:
     void loadAll();
     void appendLog(const QString &message);
 
+    // An onResponse handler carries whether its extension was granted the
+    // "modify-responses" capability -- observation always runs, but a mutated
+    // return value is only applied when mayMutate is true.
+    struct ResponseHandler {
+        QJSValue fn;
+        bool     mayMutate = false;
+    };
+
     QJSEngine            m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
     PassiveScanner      *m_scanner = nullptr;
-    QList<QJSValue>      m_onResponseHandlers;
-    QList<QJSValue>      m_onRequestHandlers;
+    QList<ResponseHandler> m_onResponseHandlers;
+    QList<QJSValue>      m_onRequestHandlers;   // only permitted extensions get in
     QStringList          m_loadedScripts;
     QStringList          m_logLines;
+    // Capabilities granted to the extension currently being evaluated (set
+    // before each evaluate() in loadAll); the bridge reads it at registration.
+    QSet<QString>        m_currentGrants;
+    // Per-script granted capabilities, for display / the API.
+    QMap<QString, QStringList> m_scriptGrants;
 };
 
 // The C++ object the JS side calls into. Lives inside ExtensionsApi.

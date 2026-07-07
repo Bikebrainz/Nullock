@@ -1,5 +1,7 @@
 // aws_sigv4.js -- AWS SigV4 request signer.
 //
+// nullock:permissions modify-requests
+//
 // Hooks the request-mutation pipeline. Any request whose host ends with
 // ".amazonaws.com" (configurable) gets signed with AWS Signature v4
 // using credentials read from a project config object.

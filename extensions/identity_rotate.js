@@ -1,5 +1,7 @@
 // identity_rotate.js -- per-request identity rotation.
 //
+// nullock:permissions modify-requests
+//
 // Rotates User-Agent, Accept-Language, Sec-CH-UA, and a handful of
 // other browser-fingerprint headers across a pool of realistic
 // browsers. Useful for testing apps that key on user identity for

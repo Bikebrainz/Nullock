@@ -86,6 +86,12 @@ add_subdirectory(nuclei_yaml_logic)
 # Run via: ctest -R inspector_logic -V
 add_subdirectory(inspector_logic)
 
+# Extension permission gate -- parse a JS extension's declared permissions and
+# default-DENY the dangerous capabilities (modify-requests/responses).
+# Compiles extension_perms_logic.cpp; Qt6::Core.
+# Run via: ctest -R extension_perms_logic -V
+add_subdirectory(extension_perms_logic)
+
 # Bundled detection template library well-formedness (templates/detections/*.json).
 # Run via: ctest -R template_library -V
 add_subdirectory(template_library)
