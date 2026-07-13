@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>nullock — open-source web &amp; network security toolkit</title>
+<meta name="description" content="Open-source, MIT-licensed web &amp; network security toolkit. Intercept and replay traffic, run the full active-testing battery, port-scan and correlate CVEs, and ship engagement reports — self-hosted, no license server.">
+<link rel="canonical" href="https://bikebrainz.github.io/Nullock/">
+<meta name="theme-color" content="#0b0b10">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="nullock">
+<meta property="og:title" content="nullock — open-source web &amp; network security toolkit">
+<meta property="og:description" content="MIT-licensed, self-hosted alternative to Burp Suite. Proxy, Repeater, a full active-testing battery, port/CVE recon, and CI reporting — free.">
+<meta property="og:url" content="https://bikebrainz.github.io/Nullock/">
+<meta property="og:image" content="https://bikebrainz.github.io/Nullock/screenshots/landing-demo.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="nullock — open-source web &amp; network security toolkit">
+<meta name="twitter:description" content="MIT-licensed, self-hosted alternative to Burp Suite. Free.">
+<meta name="twitter:image" content="https://bikebrainz.github.io/Nullock/screenshots/landing-demo.png">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="assets/nullock.css">
 </head>
@@ -24,7 +37,7 @@
       <a href="changelog.html">Changelog</a>
       <a href="about.html">About</a>
       <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
-      <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
+      <a href="index.html#download" class="btn btn-primary btn-sm" data-dl-primary>Download</a>
     </div>
   </div>
 </nav>
@@ -40,10 +53,10 @@
     <h1 class="h1-hero grad-text" style="margin:0 auto;max-width:16ch;">The security toolkit built for 2026</h1>
     <p class="lead" style="margin:20px auto 0;max-width:60ch;text-align:center;">Open-source web <em>and</em> network security toolkit. MIT licensed. Self-host first. Intercept &amp; replay traffic, run the full active-testing battery, scan the network and correlate CVEs, and ship engagement reports — all without a license server phoning home.</p>
     <div class="row center" style="margin-top:30px;">
-      <a href="#download" class="btn btn-primary btn-lg">Download</a>
+      <a href="#download" class="btn btn-primary btn-lg" data-dl-primary>Download<span data-dl-oslabel></span></a>
       <a href="https://github.com/Bikebrainz/Nullock" class="btn btn-ghost btn-lg">★ Star on GitHub</a>
     </div>
-    <p class="caption" style="margin-top:16px;">v3.7.0 · MIT · macOS · Linux · Windows · ~14 MB</p>
+    <p class="caption" style="margin-top:16px;"><span data-version>v3.7.0</span> · MIT · macOS · Linux · Windows · ~14 MB</p>
   </div>
 
   <!-- ===== PRODUCT DEMO: live capture ===== -->
@@ -100,7 +113,7 @@
       </div>
       <div class="card">
         <h3>Scoped history</h3>
-        <p>200k+ rows on a 16GB box. SQLite-backed, full-text searchable, filtered by host, method, or status.</p>
+        <p>200k+ rows on a 16GB box. SQLite-backed, indexed and filterable by host, method, path, or status.</p>
       </div>
       <div class="card">
         <h3>Match &amp; replace</h3>
@@ -108,7 +121,7 @@
       </div>
       <div class="card">
         <h3>Extensions</h3>
-        <p>Drop a single file into the extensions dir. Hook the request lifecycle in JS or Python. No marketplace gate.</p>
+        <p>Drop a single file into the extensions dir. Hook the request lifecycle in JavaScript. No marketplace gate.</p>
       </div>
       <div class="card">
         <h3>Local first</h3>
@@ -133,9 +146,9 @@
           <tr><td>License</td><td class="feat-col">MIT, free</td><td>Commercial</td><td>MIT, free</td></tr>
           <tr><td>Desktop GUI</td><td class="feat-col yes">✓ native</td><td class="yes">✓</td><td class="no">terminal / web</td></tr>
           <tr><td>Repeater + diff</td><td class="feat-col yes">✓</td><td class="yes">✓ (Pro)</td><td class="no">manual</td></tr>
-          <tr><td>Scriptable extensions</td><td class="feat-col yes">✓ JS / Py</td><td class="yes">✓ Java</td><td class="yes">✓ Py</td></tr>
+          <tr><td>Scriptable extensions</td><td class="feat-col yes">✓ JavaScript</td><td class="yes">✓ Java</td><td class="yes">✓ Py</td></tr>
           <tr><td>History at 200k rows</td><td class="feat-col yes">✓ SQLite</td><td class="no">heavy</td><td class="no">in-memory</td></tr>
-          <tr><td>Passive detectors</td><td class="feat-col yes">✓ 135+ kinds</td><td class="yes">✓ ~70</td><td class="no">none</td></tr>
+          <tr><td>Passive detectors</td><td class="feat-col yes">✓ 100+ kinds</td><td class="yes">✓ ~70</td><td class="no">none</td></tr>
           <tr><td>CWE / OWASP / CVSS tags</td><td class="feat-col yes">✓ on every finding</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
           <tr><td>CVE correlation</td><td class="feat-col yes">✓ built-in</td><td class="no">add-on</td><td class="no">—</td></tr>
           <tr><td>GraphQL attack probes + schema audit</td><td class="feat-col yes">✓ 5 attacks + introspection</td><td class="no">add-on</td><td class="no">—</td></tr>
@@ -204,20 +217,21 @@
     <h2 class="h2-section center" style="margin-top:8px;">Install, capture, done</h2>
     <div class="qs-grid" style="margin-top:32px;">
       <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="brew install nullock&#10;nullock --proxy :8080">Copy</button></div>
-        <pre><span class="c-comment"># macOS — Homebrew</span>
-<span class="c-purple">brew</span> install nullock
-<span class="c-purple">nullock</span> --proxy :8080
-<span class="c-comment"># [nul-] listening on :8080 — system proxy set</span>
-<span class="c-ok"># ─── working ───</span></pre>
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'https://target.example/*'&#10;nullock scan target.example top100">Copy</button></div>
+        <pre><span class="c-comment"># grab the binary for your OS from Releases, then:</span>
+<span class="c-purple">NullockApp</span> --proxy-port=8080 --control-port=17777
+<span class="c-comment"># trust the generated CA · point your browser at 127.0.0.1:8080</span>
+<span class="c-purple">nullock</span> scope add 'https://target.example/*'
+<span class="c-purple">nullock</span> scan target.example top100
+<span class="c-ok"># ─── running · findings streaming in ───</span></pre>
       </div>
       <div class="install-os">
         <h3 style="color:var(--headline);">Pick your platform</h3>
         <div class="os-list">
-          <a class="os-row" href="#"><span class="mono">macOS</span><span class="dim mono">.dmg · arm64 / x64</span><span class="badge ok"><span class="dot"></span>live</span></a>
-          <a class="os-row" href="#"><span class="mono">Linux</span><span class="dim mono">.AppImage · .deb</span><span class="badge ok"><span class="dot"></span>live</span></a>
-          <a class="os-row" href="#"><span class="mono">Windows</span><span class="dim mono">.msi · x64</span><span class="badge ok"><span class="dot"></span>live</span></a>
-          <a class="os-row" href="#"><span class="mono">Source</span><span class="dim mono">cargo build --release</span><span class="badge">MIT</span></a>
+          <a class="os-row" data-dl="macos" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">macOS</span><span class="dim mono">.dmg · right-click → Open</span><span class="badge ok"><span class="dot"></span>latest</span></a>
+          <a class="os-row" data-dl="linux-appimage linux-deb" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">Linux</span><span class="dim mono">.AppImage · .deb · .rpm</span><span class="badge ok"><span class="dot"></span>latest</span></a>
+          <a class="os-row" data-dl="windows" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">Windows</span><span class="dim mono">.exe · x64</span><span class="badge ok"><span class="dot"></span>latest</span></a>
+          <a class="os-row" href="https://github.com/Bikebrainz/Nullock/blob/HEAD/INSTALL.md"><span class="mono">Source</span><span class="dim mono">Qt 6.7+ · CMake · C++20</span><span class="badge">MIT</span></a>
         </div>
       </div>
     </div>
@@ -230,10 +244,10 @@
     <p class="eyebrow center">// roadmap</p>
     <h2 class="h2-section center" style="margin-top:8px;">What's coming</h2>
     <div class="roadmap" style="margin-top:30px;">
-      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>WebSocket interception</strong><p>Pause and rewrite frames, same as HTTP. Targeting v3.3.</p></div></div>
-      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>HTTP/3 + QUIC capture</strong><p>Decode QUIC streams with a local key log. In review.</p></div></div>
-      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Collaborative scopes</strong><p>Share a read-only capture session over the LAN. Self-hosted relay.</p></div></div>
-      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Headless CI mode</strong><p>Run scoped scans from a pipeline and emit JSON findings.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>Browser-driven DAST</strong><p>Render SPAs in a headless browser to confirm DOM-XSS sinks in-page and crawl client-rendered routes.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>building</span><div><strong>HTTP/3 + QUIC capture</strong><p>Decode QUIC streams with a local key log — detection already ships.</p></div></div>
+      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Collaborative scopes</strong><p>Share a read-only capture session over the LAN with a self-hosted relay.</p></div></div>
+      <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Signed &amp; notarized installers</strong><p>One-click first run — notarized macOS .dmg and signed Windows builds.</p></div></div>
     </div>
   </div>
 </section>
@@ -263,9 +277,6 @@
   </div>
   <div>nul·lock ▸ &nbsp;built in the open · MIT · © 2026</div>
 </footer>
-
-<!-- mount point for tweaks panel -->
-<div id="tweaks-root"></div>
 
 <style>
 /* ----- page-specific: feature grid, proxy demo, quickstart, roadmap, cta ----- */
@@ -325,10 +336,6 @@
 </style>
 
 <script src="assets/demo.js"></script>
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="assets/tweaks.jsx"></script>
+<script src="assets/download.js"></script>
 </body>
 </html>

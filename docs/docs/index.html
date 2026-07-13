@@ -50,7 +50,7 @@
 
   <!-- CONTENT -->
   <main class="docs-content">
-    <p class="eyebrow">// docs · v3.2.0</p>
+    <p class="eyebrow">// docs · v3.7.0</p>
     <h1 class="h1-page" style="margin:8px 0 0;">Documentation</h1>
     <p class="lead" style="margin:14px 0 0;">Self-host first. Everything here runs on your machine, offline, with no account.</p>
 
@@ -66,37 +66,34 @@
 
     <section id="install" class="doc-sec">
       <h2 class="h2-section">Install</h2>
-      <p>Pick a platform. All builds are signed and reproducible from source.</p>
+      <p>Grab a build for your OS from <a href="https://github.com/Bikebrainz/Nullock/releases/latest">Releases</a>, or compile from source.</p>
       <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="brew install nullock">Copy</button></div>
-        <pre><span class="c-comment"># macOS</span>
-<span class="c-purple">brew</span> install nullock
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="cmake -B build -DCMAKE_BUILD_TYPE=Release&#10;cmake --build build --target NullockApp">Copy</button></div>
+        <pre><span class="c-comment"># prebuilt: github.com/Bikebrainz/Nullock/releases/latest</span>
+<span class="c-comment">#   Windows   Nullock-&lt;ver&gt;-win64.exe</span>
+<span class="c-comment">#   Linux     .AppImage · .deb · .rpm</span>
+<span class="c-comment">#   macOS     Nullock-&lt;ver&gt;-Darwin.dmg   (right-click &rarr; Open)</span>
 
-<span class="c-comment"># Linux (Debian / Ubuntu)</span>
-<span class="c-purple">curl</span> -L https://get.nullock.dev | sh
-
-<span class="c-comment"># From source — needs Rust 1.78+</span>
-<span class="c-purple">cargo</span> install --git https://github.com/nullock/cli</pre>
+<span class="c-comment"># or build from source — Qt 6.7 + CMake + nghttp2:</span>
+<span class="c-purple">cmake</span> -B build -DCMAKE_BUILD_TYPE=Release
+<span class="c-purple">cmake</span> --build build --target NullockApp</pre>
       </div>
-      <p>Trust the CA so TLS sites stop warning. nullock prints the exact path on first run:</p>
-      <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="nullock ca install">Copy</button></div>
-        <pre><span class="c-purple">nullock</span> ca install
-<span class="c-ok"># [nul-] CA added to system trust store ✓</span></pre>
-      </div>
+      <p>On first run the app generates a local CA and prints its path. Trust that CA in your OS store so TLS sites stop warning — it's yours, and it never leaves the machine.</p>
     </section>
 
     <section id="first-capture" class="doc-sec">
       <h2 class="h2-section">Your first capture</h2>
       <p>Start the proxy on a port and point your client at it. The desktop app does this with one click; from the CLI:</p>
       <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="nullock --proxy :8080 --scope app.local">Copy</button></div>
-        <pre><span class="c-purple">nullock</span> --proxy :8080 --scope app.local
-<span class="c-comment"># [nul-] listening on :8080 — system proxy set</span>
-<span class="c-comment"># [nul-] scope: app.local (3 hosts matched)</span>
-<span class="c-ok"># ─── working ───</span></pre>
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'http://app.local/*'&#10;nullock status">Copy</button></div>
+        <pre><span class="c-purple">NullockApp</span> --proxy-port=8080 --control-port=17777
+<span class="c-comment"># [nul-] proxy on :8080 · control API on :17777</span>
+<span class="c-comment"># then, in another shell — set scope, watch it fill:</span>
+<span class="c-purple">nullock</span> scope add <span class="c-ok">'http://app.local/*'</span>
+<span class="c-purple">nullock</span> status
+<span class="c-ok"># ─── 42 rows · scope: app.local ───</span></pre>
       </div>
-      <p>Everything matching <code class="inline">--scope</code> lands in the history table. Click a row to inspect the raw exchange, or hit <code class="inline">r</code> to send it to Repeater.</p>
+      <p>Everything in scope lands in the history table. Click a row to inspect the raw exchange, or send it to Repeater.</p>
       <div class="callout">
         <span class="badge"><span class="dot"></span>tip</span>
         <p style="margin:0;">Out of scope traffic is still proxied — it just won't clutter your history. Widen scope later without losing rows.</p>
@@ -105,33 +102,32 @@
 
     <section id="cli" class="doc-sec">
       <h2 class="h2-section">CLI</h2>
-      <p>The desktop app is a front end over the same binary. Anything you do in the UI, you can script.</p>
+      <p>The CLI drives a running instance over its local control API (<code class="inline">$NULLOCK_API</code>, default <code class="inline">127.0.0.1:17777</code>) — it needs <code class="inline">curl</code> and <code class="inline">jq</code>. Anything you do in the UI, you can script.</p>
       <table class="matrix" style="margin-top:16px;">
         <thead><tr><th>Command</th><th>What it does</th></tr></thead>
         <tbody>
-          <tr><td><code class="inline">nullock --proxy :PORT</code></td><td>Start capturing on a port</td></tr>
+          <tr><td><code class="inline">nullock status</code></td><td>Proxy, scope &amp; findings summary</td></tr>
+          <tr><td><code class="inline">nullock scope add &lt;glob&gt;</code></td><td>Add a target to scope (e.g. <code class="inline">http://app.local/*</code>)</td></tr>
+          <tr><td><code class="inline">nullock scan &lt;host&gt; [top100]</code></td><td>Port-scan &amp; run the active battery against a host</td></tr>
+          <tr><td><code class="inline">nullock findings</code></td><td>List findings as JSON (filter by severity)</td></tr>
+          <tr><td><code class="inline">nullock export sarif|sbom|nmap|har</code></td><td>Export for CI &amp; other tooling</td></tr>
           <tr><td><code class="inline">nullock replay &lt;id&gt;</code></td><td>Re-send a captured request</td></tr>
-          <tr><td><code class="inline">nullock export --json</code></td><td>Dump scoped history to JSON</td></tr>
-          <tr><td><code class="inline">nullock rules add</code></td><td>Add a match &amp; replace rule</td></tr>
-          <tr><td><code class="inline">nullock ca install</code></td><td>Trust the local CA</td></tr>
-          <tr><td><code class="inline">nullock vacuum</code></td><td>Compact the SQLite history file</td></tr>
         </tbody>
       </table>
     </section>
 
     <section id="extensions" class="doc-sec">
       <h2 class="h2-section">Extensions</h2>
-      <p>Drop a single file into the extensions directory. It's loaded on next start — no build step, no marketplace gate. Hook the request lifecycle in JS or Python:</p>
+      <p>Drop a single <code class="inline">.js</code> file into the extensions directory. It's loaded on next start — no build step, no marketplace gate. Each file runs in a sandboxed <code class="inline">QJSEngine</code> and hooks the proxy pipeline:</p>
       <div class="code">
-        <div class="code-head"><span>strip-tracking.js</span><button class="copy" data-copy="export function onRequest(req) {&#10;  if (req.host.endsWith('telemetry.vendor.io')) req.block('blocked by ext');&#10;  return req;&#10;}">Copy</button></div>
-<pre><span class="c-comment">// ~/.nullock/ext/strip-tracking.js</span>
-<span class="c-purple">export function</span> onRequest(req) {
-  <span class="c-purple">if</span> (req.host.endsWith(<span class="c-ok">'telemetry.vendor.io'</span>))
-    req.block(<span class="c-ok">'blocked by ext'</span>);
+        <div class="code-head"><span>tag-outgoing.js</span><button class="copy" data-copy="// nullock:permissions modify-requests&#10;nullock.onRequest(req =&gt; {&#10;  req.headers.push([&quot;X-Debug&quot;, &quot;nullock&quot;]);&#10;  return req;&#10;});">Copy</button></div>
+<pre><span class="c-comment">// nullock:permissions modify-requests</span>
+<span class="c-purple">nullock</span>.onRequest(req =&gt; {
+  req.headers.push([<span class="c-ok">"X-Debug"</span>, <span class="c-ok">"nullock"</span>]);
   <span class="c-purple">return</span> req;
-}</pre>
+});</pre>
       </div>
-      <p>Available hooks: <code class="inline">onRequest</code>, <code class="inline">onResponse</code>, <code class="inline">onConnect</code>. Each gets a mutable object and returns it. Throw to drop the connection.</p>
+      <p>Hooks: <code class="inline">nullock.onRequest(fn)</code> and <code class="inline">nullock.onResponse(fn)</code> — mutating traffic needs the <code class="inline">modify-requests</code> / <code class="inline">modify-responses</code> permission (declared in a header comment); observing and <code class="inline">nullock.reportFinding(...)</code> need none. Full guide: <a href="https://github.com/Bikebrainz/Nullock/blob/HEAD/EXTENSIONS.md">EXTENSIONS.md</a>.</p>
     </section>
 
     <section id="security-model" class="doc-sec">
