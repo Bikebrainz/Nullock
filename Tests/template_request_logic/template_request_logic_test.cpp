@@ -111,6 +111,31 @@ int main(int argc, char **argv) {
         chk("payload folded into header value", contains(r[0].bytes, "X-Test: vEvil-Header: 1\r\n"));
         chk("CRLF stripped from path", !contains(r[0].bytes, "/q=v\r\nEvil"));
     }
+    // ----- CRLF safety: a template's OWN literal CR/LF (no {{token}}) is stripped
+    //       too, not only substituted values -- a hostile nuclei template can't
+    //       smuggle a header or split the request line from its authored text. -----
+    {
+        RequestSpec s; s.method = "GET";
+        s.path = QStringLiteral("/a\r\nX-Path-Inject: 1");              // CRLF in path
+        s.headers = { { QStringLiteral("X-Foo"),
+                        QStringLiteral("bar\r\nX-Injected: evil") } };  // CRLF in header value
+        const auto r = buildRequests(s, v);
+        chk("literal CRLF in header value not a new header line",
+            !contains(r[0].bytes, "\r\nX-Injected: evil"));
+        chk("literal CRLF header value folded",
+            contains(r[0].bytes, "X-Foo: barX-Injected: evil\r\n"));
+        chk("literal CRLF in path not splitting request line",
+            !contains(r[0].bytes, "/a\r\nX-Path-Inject"));
+    }
+    {
+        // CRLF in a header NAME must not create a new line either.
+        RequestSpec s; s.path = "/";
+        s.headers = { { QStringLiteral("X-A\r\nX-B"), QStringLiteral("v") } };
+        const auto r = buildRequests(s, v);
+        chk("literal CRLF in header name not a new header line",
+            !contains(r[0].bytes, "\r\nX-B: v"));
+        chk("header name CRLF folded", contains(r[0].bytes, "X-AX-B: v\r\n"));
+    }
     // ----- body: length-delimited, so payload CR/LF is preserved (harmless) -----
     {
         RequestSpec s; s.method = "POST"; s.path = "/"; s.body = "data={{payload}}";

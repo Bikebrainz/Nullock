@@ -56,6 +56,23 @@ int main(int argc, char **argv) {
         chk("comment stripped", !o.contains("# a comment"));
     }
 
+    // ----- flow sequence: a comma INSIDE a quoted element is not a separator
+    //       (regression: plain split(',') corrupted "foo,bar" -> the matcher word
+    //       "foo,bar" was shredded into '"foo' + 'bar"' and never fired). -----
+    {
+        const QJsonArray a = NucleiYaml::parseYaml(
+            "words: [\"foo,bar\", baz]\n").toObject().value("words").toArray();
+        chk("quoted comma stays in one element", a.size() == 2);
+        chk("quoted element keeps its comma", a.at(0).toString() == QStringLiteral("foo,bar"));
+        chk("second flow element intact", a.at(1).toString() == QStringLiteral("baz"));
+    }
+    {
+        const QJsonArray a = NucleiYaml::parseYaml(
+            "v: ['a,b', 'c']\n").toObject().value("v").toArray();
+        chk("single-quoted comma stays in one element",
+            a.size() == 2 && a.at(0).toString() == QStringLiteral("a,b"));
+    }
+
     // ----- realistic nuclei template -----
     const QString yaml =
         "id: git-config-exposure\n"

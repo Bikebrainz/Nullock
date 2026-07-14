@@ -80,6 +80,24 @@ QJsonValue scalar(const QString &raw) {
     return t;
 }
 
+// Split an inline-flow inner ("a, \"b,c\", d") on TOP-LEVEL commas only, so a
+// comma inside a quoted scalar stays part of that scalar (same inS/inD quote
+// tracking used by keyColon/stripComment). Plain inner.split(',') would corrupt
+// a quoted element like "foo,bar" and the matcher word would never fire.
+QStringList splitFlow(const QString &inner) {
+    QStringList parts;
+    bool inS = false, inD = false;
+    int start = 0;
+    for (int i = 0; i < inner.size(); ++i) {
+        const QChar c = inner[i];
+        if (c == '\'' && !inD) inS = !inS;
+        else if (c == '"' && !inS) inD = !inD;
+        else if (c == ',' && !inS && !inD) { parts.append(inner.mid(start, i - start)); start = i + 1; }
+    }
+    parts.append(inner.mid(start));
+    return parts;
+}
+
 // Parse a scalar or an inline "[a, b, c]" flow sequence.
 QJsonValue scalarOrFlow(const QString &raw) {
     const QString t = raw.trimmed();
@@ -87,7 +105,7 @@ QJsonValue scalarOrFlow(const QString &raw) {
         QJsonArray arr;
         const QString inner = t.mid(1, t.size() - 2).trimmed();
         if (!inner.isEmpty())
-            for (const QString &part : inner.split(','))
+            for (const QString &part : splitFlow(inner))
                 arr.append(scalar(part.trimmed()));
         return arr;
     }

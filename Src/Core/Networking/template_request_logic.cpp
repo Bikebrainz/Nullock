@@ -15,17 +15,20 @@ QString stripCrlf(const QString &s) {
 }
 
 // Substitute {{Key}} tokens. `values` maps token name -> replacement. When
-// `sanitize` is true (request-line / headers) the replacement has CR/LF removed;
-// the body path passes sanitize=false (length-delimited, newlines are fine).
+// `sanitize` is true (request line / headers) the FINAL result has all CR/LF
+// stripped -- covering both the template's own literal text and any substituted
+// value -- so neither can smuggle a header or split the request. (Stripping only
+// the replacement values would leave a template-authored CR/LF in a header
+// name/value, method, or path intact, which is header injection.) The body path
+// passes sanitize=false: it is length-delimited, so embedded newlines are fine.
 QString substitute(const QString &text, const QList<QPair<QString, QString>> &values,
                    bool sanitize) {
     QString out = text;
     for (const auto &kv : values) {
         const QString token = QStringLiteral("{{") + kv.first + QStringLiteral("}}");
-        const QString val = sanitize ? stripCrlf(kv.second) : kv.second;
-        out.replace(token, val);
+        out.replace(token, kv.second);
     }
-    return out;
+    return sanitize ? stripCrlf(out) : out;
 }
 
 // Expand payload sets into combos. Empty sets -> a single empty combo (no
