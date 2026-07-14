@@ -76,7 +76,10 @@ QJsonValue scalar(const QString &raw) {
     if (t == QLatin1String("null") || t == QLatin1String("~")) return QJsonValue();
     bool ok = false;
     const qlonglong n = t.toLongLong(&ok);
-    if (ok) return static_cast<double>(n);
+    // Only coerce to a number when it round-trips exactly. Otherwise a
+    // leading-zero / hex-like / overflowing token (e.g. a matcher word "0755")
+    // would silently change form ("0755" -> 755 -> "755") and the matcher miss.
+    if (ok && QString::number(n) == t) return static_cast<double>(n);
     return t;
 }
 

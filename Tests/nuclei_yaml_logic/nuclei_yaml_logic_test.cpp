@@ -73,6 +73,17 @@ int main(int argc, char **argv) {
             a.size() == 2 && a.at(0).toString() == QStringLiteral("a,b"));
     }
 
+    // ----- numeric coercion only when a token round-trips: a leading-zero /
+    //       hex-like bare token stays a string so a matcher value keeps its form
+    //       ("0755" must not become 755). Canonical ints still coerce. -----
+    {
+        const QJsonArray a = NucleiYaml::parseYaml(
+            "words: [0755, 200, 0x1F]\n").toObject().value("words").toArray();
+        chk("leading-zero token kept as string", a.at(0).toString() == QStringLiteral("0755"));
+        chk("canonical int still a number", a.at(1).toInt() == 200);
+        chk("hex-like token kept as string", a.at(2).toString() == QStringLiteral("0x1F"));
+    }
+
     // ----- realistic nuclei template -----
     const QString yaml =
         "id: git-config-exposure\n"
