@@ -44,6 +44,11 @@ QByteArray buildRequest(const Request &req, const QString &hostLine,
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // This probe carries no body, so a copied Content-Length / Transfer-Encoding
+        // from the original request would strand it (the server waits for a body
+        // that never arrives). Drop both -- buildRequest emits a body-less request.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (!extraHeader.isEmpty() && h.first.compare(extraHeader, Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;

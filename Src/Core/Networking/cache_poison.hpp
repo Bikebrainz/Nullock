@@ -74,6 +74,11 @@ QString randTok();
 // First header value matching `name` (case-insensitive), or empty.
 QString headerValue(const Headers &headers, const QString &name);
 
+// ALL values of a (possibly duplicated) header, joined with ", " -- so parsing
+// Cache-Control / Vary sees no-store and every Vary token even when a server
+// splits them across multiple header lines. Empty if the header is absent.
+QString headerValueAll(const Headers &headers, const QString &name);
+
 // Where, if anywhere, a SHARED cache would serve `tok` back to other users:
 // the body, or one of the few headers a compliant cache stores and replays
 // (Location / Content-Location / Link). Per-response / hop-by-hop headers
@@ -88,7 +93,9 @@ bool cacheHitSignal(const Headers &headers);
 
 // Parse a Cache-Control directive's seconds value; -1 if the directive is
 // absent. Tells a shareable fresh lifetime (>0) from max-age=0 (revalidate).
-int ccSeconds(const QString &cc, const QString &directive);
+// qlonglong so a huge (>INT_MAX) max-age isn't truncated to 0 and mis-read as
+// non-cacheable; a value beyond qlonglong saturates to LLONG_MAX (still huge).
+qlonglong ccSeconds(const QString &cc, const QString &directive);
 
 // Would a shared cache store and re-serve this response to OTHER users?
 // `injectedHeader` is the unkeyed header we set: if the response Varys on it

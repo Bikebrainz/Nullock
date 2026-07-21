@@ -61,6 +61,16 @@ int main(int argc, char **argv) {
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "victim.tld", QString(), QString()).contains("X-Smuggled"));
 
+        // webattack-01: this probe carries NO body, so a copied Content-Length /
+        // Transfer-Encoding would strand the request (server waits for a body that
+        // never comes) -- both must be dropped from the carried headers.
+        Request carried = req;
+        carried.headers.append(qMakePair(QString("Content-Length"), QString("123")));
+        carried.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray cr = buildRequest(carried, "victim.tld", QString(), QString());
+        chk("build: carried Content-Length dropped (bodyless probe won't strand)", !cr.contains("Content-Length"));
+        chk("build: carried Transfer-Encoding dropped", !cr.contains("Transfer-Encoding"));
+
         Request badMethod = req; badMethod.method = "GET\r\nX-Injected: 1";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "victim.tld", QString(), QString()).isEmpty());
         Request badPath = req; badPath.basePath = "/p\r\nX: y";

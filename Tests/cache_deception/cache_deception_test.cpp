@@ -66,6 +66,16 @@ int main(int argc, char **argv) {
         chk("build: drops CRLF carried header",
             !buildGet(injHdr, "/account").contains("X-Smuggled"));
 
+        // webattack-02: body-less GET probe -- a carried Content-Length /
+        // Transfer-Encoding from the original request would strand it, so both
+        // must be dropped.
+        Request carried = req;
+        carried.headers.append(qMakePair(QString("Content-Length"), QString("500")));
+        carried.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray cg = buildGet(carried, "/account");
+        chk("build: carried Content-Length dropped (GET probe)", !cg.contains("Content-Length"));
+        chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
+
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildGet(badHost, "/account").isEmpty());
         chk("build: CRLF path -> empty",

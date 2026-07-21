@@ -96,6 +96,20 @@ int main(int argc, char **argv) {
                         QStringLiteral("X-Forwarded-Host")));
     // An actual cache hit overrides cacheability heuristics regardless of Vary.
     chk("cacheable: explicit hit wins", looksCacheable(H({{"X-Cache", "HIT"}, {"Vary", "*"}})));
+    // webattack-03: a header split across DUPLICATE lines must be read as a whole
+    // (headerValueAll), or a no-store / an injected-header Vary in the SECOND line
+    // is missed and the response wrongly looks cacheable.
+    chk("cacheable: Vary on injected header split across dup lines -> false (dup-header fix)",
+        !looksCacheable(H({{"Cache-Control", "public, max-age=60"},
+                           {"Vary", "Accept-Encoding"},
+                           {"Vary", "X-Forwarded-Host"}}),
+                        QStringLiteral("X-Forwarded-Host")));
+    chk("cacheable: no-store in a duplicate Cache-Control line -> false (dup-header fix)",
+        !looksCacheable(H({{"Cache-Control", "public"}, {"Cache-Control", "no-store"}})));
+    // webattack-04: a max-age beyond INT_MAX must NOT truncate to 0 and be mis-read
+    // as non-cacheable; qlonglong keeps it a huge (cacheable) lifetime.
+    chk("cacheable: max-age beyond INT_MAX -> cacheable (no int truncation)",
+        looksCacheable(H({{"Cache-Control", "max-age=999999999999"}})));
 
     // ---- buildRequest: CR/LF guards -------------------------------------
     {

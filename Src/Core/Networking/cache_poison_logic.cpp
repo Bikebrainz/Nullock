@@ -11,6 +11,8 @@
 #include <QStringList>
 #include <QUrlQuery>
 
+#include <climits>   // LLONG_MAX (ccSeconds saturation)
+
 namespace Nullock::Core::CachePoison {
 
 QString randTok() {
@@ -25,6 +27,13 @@ QString headerValue(const Headers &headers, const QString &name) {
     for (const auto &h : headers)
         if (h.first.compare(name, Qt::CaseInsensitive) == 0) return h.second;
     return QString();
+}
+
+QString headerValueAll(const Headers &headers, const QString &name) {
+    QStringList vals;
+    for (const auto &h : headers)
+        if (h.first.compare(name, Qt::CaseInsensitive) == 0) vals << h.second;
+    return vals.join(QStringLiteral(", "));
 }
 
 QString reflectionSite(const QByteArray &body, const Headers &headers, const QString &tok) {
@@ -57,11 +66,14 @@ bool cacheHitSignal(const Headers &headers) {
     return xc.contains("hit", Qt::CaseInsensitive);
 }
 
-int ccSeconds(const QString &cc, const QString &directive) {
+qlonglong ccSeconds(const QString &cc, const QString &directive) {
     QRegularExpression re(directive + "\\s*=\\s*\"?(\\d+)",
                           QRegularExpression::CaseInsensitiveOption);
     const auto m = re.match(cc);
-    return m.hasMatch() ? m.captured(1).toInt() : -1;
+    if (!m.hasMatch()) return -1;
+    bool ok = false;
+    const qlonglong v = m.captured(1).toLongLong(&ok);
+    return ok ? v : LLONG_MAX;    // beyond qlonglong -> still a huge lifetime, cacheable
 }
 
 bool looksCacheable(const Headers &headers, const QString &injectedHeader) {
@@ -70,7 +82,7 @@ bool looksCacheable(const Headers &headers, const QString &injectedHeader) {
     // cache stores one entry per header value, so a victim sending a different
     // (or no) value is served a different entry -- not poisonable cross-user.
     // "*" means uncacheable by definition. Mirrors passive_scanner's Vary read.
-    const QString vary = headerValue(headers, "Vary");
+    const QString vary = headerValueAll(headers, "Vary");
     if (!vary.isEmpty()) {
         if (vary.contains('*')) return false;
         if (!injectedHeader.isEmpty()) {
@@ -80,16 +92,16 @@ bool looksCacheable(const Headers &headers, const QString &injectedHeader) {
                     return false;
         }
     }
-    const QString cc = headerValue(headers, "Cache-Control").toLower();
+    const QString cc = headerValueAll(headers, "Cache-Control").toLower();
     // no-store / private are never shared. (no-cache means store-but-
     // revalidate, so it does NOT by itself rule out a shared hit.)
     if (cc.contains("no-store") || cc.contains("private")) return false;
     // s-maxage is the shared-cache directive and wins; then max-age. A zero
     // lifetime is revalidate-on-every-use, not a free shareable hit.
-    const int s = ccSeconds(cc, "s-maxage");
+    const qlonglong s = ccSeconds(cc, "s-maxage");
     if (s > 0) return true;
     if (s == 0) return false;
-    const int ma = ccSeconds(cc, "max-age");
+    const qlonglong ma = ccSeconds(cc, "max-age");
     if (ma > 0) return true;
     if (ma == 0) return false;
     if (cc.contains("public")) return true;

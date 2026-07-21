@@ -48,6 +48,10 @@ QByteArray buildGet(const Request &req, const QString &path) {
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Body-less GET probe: a carried Content-Length / Transfer-Encoding from
+        // the original request would strand it (server waits for an absent body).
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }
