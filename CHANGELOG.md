@@ -207,8 +207,8 @@ Linux CA install fix under Wayland; match-and-replace empty-body fix;
 `nullock vacuum` to compact history.
 
 ## [3.1.0] — 2026-04-29
-Python extensions alongside JS; full-text search over request/response
-bodies; glob scope syntax; large-response streaming leak fix.
+JavaScript extension API (onRequest/onResponse hooks); glob scope syntax;
+large-response streaming leak fix.
 
 ## [3.0.0] — 2026-03-11
 First native desktop release: cross-platform Qt6/C++20 app over the same

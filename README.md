@@ -2,7 +2,7 @@
 
 **FOSS web security toolkit.** MITM proxy + repeater + intruder + scanner + OAST + GraphQL/JWT tooling + AI-assisted payload generation. Self-host-first. No telemetry. MIT licensed.
 
-[Download](https://github.com/Bikebrainz/Nullock/releases/latest) · [Docs](https://bikebrainz.github.io/Nullock/docs/getting-started.html) · [Marketplace](https://bikebrainz.github.io/Nullock/marketplace/) · [Discord (TBD)](https://github.com/Bikebrainz/Nullock/discussions)
+[Download](https://github.com/Bikebrainz/Nullock/releases/latest) · [Docs](https://bikebrainz.github.io/Nullock/docs/index.html) · [Marketplace](https://bikebrainz.github.io/Nullock/marketplace/) · [Discussions](https://github.com/Bikebrainz/Nullock/discussions)
 
 ---
 
@@ -89,7 +89,7 @@ nullock oast mint            # for blind-bug testing
 nullock crawler start https://target.example
 ```
 
-Full quickstart: <https://bikebrainz.github.io/Nullock/docs/getting-started.html>
+Full quickstart: <https://bikebrainz.github.io/Nullock/docs/index.html>
 
 ## Why Nullock vs Burp / ZAP / mitmproxy
 

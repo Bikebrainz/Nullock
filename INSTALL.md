@@ -57,4 +57,4 @@ nullock status
 nullock scan target.example top100
 ```
 
-Full quickstart: <https://bikebrainz.github.io/Nullock/docs/getting-started.html>
+Full quickstart: <https://bikebrainz.github.io/Nullock/docs/index.html>
