@@ -1,5 +1,11 @@
 # Nullock
 
+[![Release](https://img.shields.io/github/v/release/Bikebrainz/Nullock?color=9d4edd)](https://github.com/Bikebrainz/Nullock/releases/latest)
+[![CI](https://github.com/Bikebrainz/Nullock/actions/workflows/ci.yml/badge.svg?branch=Nullock)](https://github.com/Bikebrainz/Nullock/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
+![C++20 / Qt6](https://img.shields.io/badge/C%2B%2B-20%20%2F%20Qt6-00599C?logo=cplusplus&logoColor=white)
+
 **FOSS web security toolkit.** MITM proxy + repeater + intruder + scanner + OAST + GraphQL/JWT tooling + AI-assisted payload generation. Self-host-first. No telemetry. MIT licensed.
 
 [Download](https://github.com/Bikebrainz/Nullock/releases/latest) · [Docs](https://bikebrainz.github.io/Nullock/docs/index.html) · [Marketplace](https://bikebrainz.github.io/Nullock/marketplace/) · [Discussions](https://github.com/Bikebrainz/Nullock/discussions)
