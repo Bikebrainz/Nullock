@@ -104,6 +104,17 @@ int main(int argc, char **argv) {
 
         // "2.3" has a DIFFERING prefix from the 2.4.x range -> certain (no match).
         chk("apache 2.3 (differing prefix) -> no 2.4.x range hit", !has(cves("apache", "2.3"), "CVE-2023-25690"));
+
+        // F1: the same truncation logic must apply to EXACT-match CVEs. A scanned
+        // "2.4" is LESS precise than the exact CVE-2021-41773 version (2.4.49); the
+        // hidden patch level could BE .49, so it is an affected LEAD (imprecise),
+        // not a silent drop. A differing prefix ("2.5") is still certainly-not.
+        chk("apache 2.4 (truncated) -> EXACT CVE-2021-41773 matched as a LEAD (F1)",
+            has(cves("apache", "2.4"), "CVE-2021-41773"));
+        chk("apache 2.4 -> that exact-CVE match is flagged imprecise (lead)",
+            matchPrec("apache", "2.4", "CVE-2021-41773") == 0);
+        chk("apache 2.5 (differing prefix) -> NOT the 2.4.49-exact CVE-2021-41773 (certain)",
+            !has(cves("apache", "2.5"), "CVE-2021-41773"));
     }
 
     // ===== lettered patch/build ordering (#2) ============================

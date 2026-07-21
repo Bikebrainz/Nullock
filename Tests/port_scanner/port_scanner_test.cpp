@@ -109,6 +109,15 @@ int main(int argc, char **argv) {
     chk("SSH- prefix -> ssh", cls(22, "SSH-2.0-OpenSSH_8.9") == "ssh");
     chk("'220 ' + FTP -> ftp", cls(21, "220 ProFTPD Server ready") == "ftp");
     chk("'220-' multiline -> ftp", cls(21, "220-Welcome\r\n220 ready") == "ftp");
+    // F2: a 220 greeting -- single-line OR multi-line "220-" continuation -- keys
+    // on the PROTOCOL WORD, not the dash. "220-...ESMTP..." is SMTP, not FTP (old
+    // code hard-coded 220- => ftp). Non-tabled ports so the classifier decides.
+    chk("'220-' multiline ESMTP greeting -> smtp (F2: word, not dash)",
+        cls(40019, "220-mail.example.com ESMTP Exim 4.94\r\n220-No auth\r\n") == "smtp");
+    chk("'220-' multiline FTP greeting -> ftp (word, any port)",
+        cls(40020, "220-ProFTPD Server ready\r\n220 features\r\n") == "ftp");
+    chk("'220 ' single-line ESMTP on a non-tabled port -> smtp",
+        cls(40021, "220 smtp.example.com ESMTP ready") == "smtp");
     chk("HTTP/ start -> http", cls(80, "HTTP/1.1 200 OK") == "http");
     chk("RFB -> vnc", cls(5900, "RFB 003.008") == "vnc");
     chk("MySQL handshake string -> mysql", cls(3306, "\x0a" "5.7.40-log\x00mysql_native") == "mysql");

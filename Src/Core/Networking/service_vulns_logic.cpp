@@ -220,8 +220,15 @@ bool truncatedAgainst(const QString &version, const QString &boundary) {
 // min side, never a false confirm on the max side.
 struct Verdict { bool affected; bool precise; };
 Verdict evalCve(const QString &version, const QString &minVer, const QString &maxVer, bool exact) {
-    if (exact)
+    if (exact) {
+        // A scanned version LESS precise than the exact CVE version (e.g. "2.4"
+        // vs "2.4.49") can't be confirmed equal, but the hidden patch level could
+        // BE the vulnerable one -- report an affected LEAD (imprecise), never a
+        // silent drop that also lies about precision.
+        if (truncatedAgainst(version, minVer))
+            return { true, false };
         return { verCmp(version, minVer) == 0, true };
+    }
     const bool hasMin = !minVer.isEmpty();
     const bool hasMax = !maxVer.isEmpty();
     const bool minTrunc = hasMin && truncatedAgainst(version, minVer);

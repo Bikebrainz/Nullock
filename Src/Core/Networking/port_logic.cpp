@@ -109,9 +109,14 @@ bool looksLikeRedisReply(const QByteArray &b) {
 QString classifyBanner(quint16 port, const QByteArray &banner) {
     // Known wire prefixes first -- they're more reliable than port-only.
     if (banner.startsWith("SSH-"))            return "ssh";
-    if (banner.startsWith("220 ") && banner.contains("FTP"))    return "ftp";
-    if (banner.startsWith("220 ") && banner.contains("SMTP"))   return "smtp";
-    if (banner.startsWith("220-")) return "ftp";
+    // A 220 greeting -- single-line ("220 ") OR multi-line continuation ("220-").
+    // Both forms are used by SMTP *and* FTP, so key on the protocol word, not the
+    // dash: "220-mail.example ESMTP Exim" is SMTP, not FTP. Neither word -> fall
+    // through to the port-based classification below.
+    if (banner.startsWith("220 ") || banner.startsWith("220-")) {
+        if (banner.contains("SMTP")) return "smtp";
+        if (banner.contains("FTP"))  return "ftp";
+    }
     if (banner.startsWith("HTTP/"))           return "http";
     // An HTTP status line anywhere (a server that prepends a blank line, or a
     // banner-grab GET answered after some preamble) is HTTP -- catch it BEFORE
