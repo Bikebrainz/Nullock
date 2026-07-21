@@ -56,7 +56,7 @@ QPair<QString, QString> matchError(const QByteArray &body) {
 }
 
 QByteArray buildRequest(const Request &req, const QString &query) {
-    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath)) return {};
+    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath) || crlf(query)) return {};
     const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
     QByteArray out;
     out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
@@ -77,7 +77,7 @@ QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QS
     QString method = req.method;
     if (method.isEmpty() || method.compare("GET", Qt::CaseInsensitive) == 0)
         method = QStringLiteral("POST");
-    if (crlf(method) || crlf(req.host) || crlf(req.basePath)) return {};
+    if (crlf(method) || crlf(req.host) || crlf(req.basePath) || crlf(req.query)) return {};
     const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
     QByteArray out;
     out  = method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
@@ -107,7 +107,7 @@ QStringList knownCookieNames() {
 
 QByteArray buildCookieRequest(const Request &req, const QString &cookieName,
                               const QString &value) {
-    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath) || crlf(cookieName)) return {};
+    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath) || crlf(cookieName) || crlf(req.query)) return {};
     const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
     QString safeVal = value;
     safeVal.remove('\r'); safeVal.remove('\n'); safeVal.remove(';');  // cookie-value-safe
@@ -137,7 +137,7 @@ QByteArray buildFieldRequest(const Request &req, const QString &field, const QSt
     QString method = req.method;
     if (method.isEmpty() || method.compare("GET", Qt::CaseInsensitive) == 0)
         method = QStringLiteral("POST");
-    if (crlf(method) || crlf(req.host) || crlf(req.basePath)) return {};
+    if (crlf(method) || crlf(req.host) || crlf(req.basePath) || crlf(req.query)) return {};
     const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
     const QByteArray body = QUrl::toPercentEncoding(field) + "=" + QUrl::toPercentEncoding(value);
     QByteArray out;

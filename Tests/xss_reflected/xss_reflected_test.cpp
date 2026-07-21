@@ -67,6 +67,16 @@ int main(int argc, char **argv) {
         runs("<script>a</script ><div><nlk0a1b2c3d></div>"));
     chk("comment closed by bogus '--!>' -> following content runs",
         runs("<!-- note --!><div><nlk0a1b2c3d></div>"));
+    // FN fix: a "<!...":  markup declaration that is NOT "<!--" is a BOGUS COMMENT
+    // -- it ends at the very next '>' with NO attribute quote-tracking. Routing it
+    // through the tag branch let a '"' inside open a fake quoted value that
+    // swallowed the terminating '>' and hid the following <div> (false negative).
+    chk("FN fix: bogus comment '<!x=\">' ends at first '>' -> following content runs",
+        runs("<!x=\"><div><nlk0a1b2c3d></div>"));
+    chk("FN fix: PI-like '<?x=\">' ends at first '>' -> following content runs",
+        runs("<?x=\"><div><nlk0a1b2c3d></div>"));
+    chk("DOCTYPE does not swallow the following content -> marker runs",
+        runs("<!DOCTYPE html><div><nlk0a1b2c3d></div>"));
 
     // ===== FALSE-POSITIVE FIXES: marker is inert, must NOT run ============
     chk("HEADLINE FP: marker in attribute, earlier quoted attr has '>' -> NOT run",
@@ -95,6 +105,8 @@ int main(int argc, char **argv) {
         !runs("<script><nlk0a1b2c3d></scriptx>"));
     chk("unterminated comment swallows the marker -> NOT run",
         !runs("<!-- unterminated <nlk0a1b2c3d>"));
+    chk("a bogus comment still SUPPRESSES a marker sitting inside it -> NOT run",
+        !runs("<div>text<!note <nlk0a1b2c3d> more>tail</div>"));
 
     // ===== isHtmlContentType (caller lower-cases the value) ===============
     chk("CT empty -> sniffable HTML", isHtmlContentType(""));

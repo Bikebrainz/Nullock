@@ -81,6 +81,20 @@ bool inExecutingHtmlContext(const QString &body, int at) {
         // element content
         if (ch == '<') {
             if (body.mid(i, 4) == QLatin1String("<!--")) { inComment = true; i += 3; continue; }
+            // Markup declaration ("<!...", e.g. <!DOCTYPE>, <![CDATA[...>, a bogus
+            // "<!x=\">") or a PI-like "<?...": HTML tokenizes ALL of these as a
+            // BOGUS COMMENT -- consume to the very next '>' with NO attribute
+            // quote-tracking. Routing them through the tag branch lets a '"'
+            // inside open a fake quoted value that swallows the terminating '>'
+            // and hides a following <script> (a false negative). A '>' ends the
+            // construct even inside a quoted DOCTYPE identifier (spec: the
+            // abrupt-identifier parse error still emits the token there).
+            if (i + 1 < body.size() && (body[i + 1] == '!' || body[i + 1] == '?')) {
+                const int gt = body.indexOf('>', i + 1);
+                if (gt < 0 || gt >= n) { inComment = true; break; }  // reaches past `at` -> at is inert
+                i = gt;                                              // loop's ++i steps past '>'
+                continue;
+            }
             int j = i + 1;
             const bool closing = (j < body.size() && body[j] == '/');
             if (closing) ++j;

@@ -86,6 +86,16 @@ int main(int argc, char **argv) {
         Request badPath = req; badPath.basePath = "/svc\r\nX: y";
         chk("buildRequest: CRLF path -> empty", buildRequest(badPath, "data=x").isEmpty());
 
+        // Query CR/LF guard: buildRequest takes the query as a PARAM; the other
+        // three splice req.query into the request-line target. A CR/LF in the
+        // query would inject a header / split the request, so ALL must refuse it.
+        chk("buildRequest: CRLF query param -> empty", buildRequest(req, "data=x\r\nX-Smuggled: 1").isEmpty());
+        Request crlfQ = req; crlfQ.query = "a=1\r\nX-Smuggled: 1";
+        chk("buildBody: CRLF req.query -> empty",
+            buildBodyRequest(crlfQ, QByteArray("b"), "application/octet-stream").isEmpty());
+        chk("buildCookie: CRLF req.query -> empty", buildCookieRequest(crlfQ, "rememberMe", "v").isEmpty());
+        chk("buildField: CRLF req.query -> empty", buildFieldRequest(crlfQ, "__VIEWSTATE", "v").isEmpty());
+
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("Cookie"), QString("a=1\r\nX-Smuggled: 1")));
         chk("buildRequest: drops CRLF carried header",
