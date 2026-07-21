@@ -56,9 +56,12 @@ Result run(const QList<Step> &steps, bool continueOnError) {
         StepResult sr;
         sr.name = step.name;
 
-        // Substitute {{var}} into the host + raw request, then fix length.
+        // Substitute {{var}} into the host + raw request, then fix length. The
+        // request is substituted at the BYTE level (substituteBytes) so a binary
+        // body / 0x80-0xFF byte in the template survives -- a QString UTF-8 round
+        // trip would corrupt it into U+FFFD before it ever hit the wire.
         const QString host = substituteStr(step.host, result.vars);
-        QByteArray req = substituteStr(QString::fromUtf8(step.request), result.vars).toUtf8();
+        QByteArray req = substituteBytes(step.request, result.vars);
         req = normalizeContentLength(req);
         sr.requestSize = static_cast<int>(req.size());
 

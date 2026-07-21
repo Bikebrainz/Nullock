@@ -100,15 +100,57 @@ QString substituteStr(const QString &in, const QHash<QString, QString> &vars) {
     return out;
 }
 
+QByteArray substituteBytes(const QByteArray &in, const QHash<QString, QString> &vars) {
+    // Byte-safe {{var}} substitution. The request template is RAW bytes -- it may
+    // carry a binary body or lone 0x80-0xFF bytes -- so a QString::fromUtf8/toUtf8
+    // round trip would replace every non-UTF-8 byte with U+FFFD (EF BF BD) and put
+    // a corrupted request on the wire. Locate the ASCII {{var}} tokens over a
+    // LOSSLESS Latin-1 view (1 byte == 1 code unit, so a QChar index IS a byte
+    // offset), then splice each value's UTF-8 bytes into the ORIGINAL QByteArray,
+    // copying every other byte verbatim. Unknown tokens are left in place, and an
+    // inserted value is never re-scanned (matches substituteStr's contract).
+    const QString view = QString::fromLatin1(in);
+    static const QRegularExpression rx(QStringLiteral(R"(\{\{([A-Za-z_][A-Za-z0-9_]*)\}\})"));
+    QByteArray out;
+    out.reserve(in.size());
+    int last = 0, offset = 0;
+    while (true) {
+        auto m = rx.match(view, offset);
+        if (!m.hasMatch()) break;
+        auto it = vars.find(m.captured(1));
+        if (it == vars.end()) { offset = m.capturedEnd(); continue; }
+        out += in.mid(last, m.capturedStart() - last);   // raw bytes before token
+        out += it->toUtf8();                             // value as UTF-8
+        last = m.capturedEnd();
+        offset = m.capturedEnd();                        // no re-scan of the value
+    }
+    out += in.mid(last);
+    return out;
+}
+
 QByteArray normalizeContentLength(const QByteArray &req) {
-    // Locate the header/body boundary tolerant of CRLF *and* bare-LF framing -- a
-    // bare-LF request must not bypass normalization (a desync source); use the
-    // EARLIEST blank line by either terminator.
-    const int crlf = req.indexOf("\r\n\r\n");
-    const int lf   = req.indexOf("\n\n");
+    // Locate the header/body boundary with a TERMINATOR-AGNOSTIC empty-line scan:
+    // the blank line that separates head from body may use any pair of line
+    // terminators (CRLF, bare LF, bare CR) and they may be MIXED -- "\r\n\r\n",
+    // "\n\n", "\n\r\n", "\r\n\n", "\r\r". A boundary that only matched "\r\n\r\n"
+    // or "\n\n" would miss the mixed forms and let the request bypass Content-
+    // Length reconciliation entirely (a request-smuggling desync source). Find the
+    // EARLIEST position where a terminator is immediately followed by another.
+    auto termLen = [&](int i) -> int {
+        if (i >= req.size()) return 0;
+        const char c = req[i];
+        if (c == '\r') return (i + 1 < req.size() && req[i + 1] == '\n') ? 2 : 1;
+        if (c == '\n') return 1;
+        return 0;
+    };
     int sep = -1, sepLen = 0;
-    if (crlf >= 0 && (lf < 0 || crlf <= lf)) { sep = crlf; sepLen = 4; }
-    else if (lf >= 0)                        { sep = lf;   sepLen = 2; }
+    for (int i = 0; i < req.size();) {
+        const int t1 = termLen(i);
+        if (t1 == 0) { ++i; continue; }
+        const int t2 = termLen(i + t1);
+        if (t2 > 0) { sep = i; sepLen = t1 + t2; break; }   // two terminators = blank line
+        i += t1;                                            // skip a full terminator, not one byte
+    }
     if (sep < 0) return req;                            // no header/body split at all
 
     const QByteArray head = req.left(sep);

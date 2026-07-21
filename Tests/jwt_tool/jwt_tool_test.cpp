@@ -124,6 +124,18 @@ int main(int argc, char **argv) {
         chk("analyze: non-numeric exp -> jwt-exp-malformed", hasId(bad, "jwt-exp-malformed"));
         chk("analyze: non-numeric exp -> NOT jwt-no-exp", !hasId(bad, "jwt-no-exp"));
     }
+    {
+        // An exp beyond qint64's range (1e19 > INT64_MAX) must NOT hit the
+        // undefined-behavior double->qint64 cast: it saturates and classifies as
+        // an excessive lifetime rather than crashing or wrapping to a garbage year.
+        const auto huge = analyze(decode(mkToken("{\"alg\":\"HS256\"}", "{\"exp\":1e19}")), kNow);
+        chk("analyze: out-of-qint64-range exp -> jwt-long-exp (no UB)", hasId(huge, "jwt-long-exp"));
+        chk("analyze: out-of-range exp -> NOT jwt-exp-malformed", !hasId(huge, "jwt-exp-malformed"));
+        chk("analyze: out-of-range exp -> NOT jwt-expired", !hasId(huge, "jwt-expired"));
+        // A hugely-negative exp is nonsensical -> malformed, still no UB / crash.
+        const auto neg = analyze(decode(mkToken("{\"alg\":\"HS256\"}", "{\"exp\":-1e19}")), kNow);
+        chk("analyze: hugely-negative exp -> jwt-exp-malformed (no UB)", hasId(neg, "jwt-exp-malformed"));
+    }
 
     // ===== analyze: privilege claims (all, not just the first) ==========
     {

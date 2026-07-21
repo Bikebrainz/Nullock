@@ -75,6 +75,27 @@ int main(int argc, char **argv) {
     chk("subst: an inserted value is NOT re-scanned (no placeholder injection)",
         substituteStr("{{a}}", vars({{"a", "{{b}}"}, {"b", "X"}})) == "{{b}}");
 
+    // ===== substituteBytes: BYTE-safe expansion (binary body preserved) ==
+    // The request TEMPLATE is raw bytes -- a QString UTF-8 round trip would
+    // replace a lone 0x80 (a binary body) with U+FFFD (EF BF BD) and corrupt the
+    // request put on the wire. substituteBytes must preserve every non-token byte.
+    {
+        const QByteArray out = substituteBytes(QByteArray("A\x80" "{{tok}}B"), vars({{"tok", "Z"}}));
+        chk("subBytes: a lone 0x80 binary byte survives verbatim (no corruption)",
+            out == QByteArray("A\x80" "ZB"));
+        chk("subBytes: no U+FFFD replacement char is introduced", !out.contains("\xEF\xBF\xBD"));
+    }
+    chk("subBytes: an unknown var is left untouched",
+        substituteBytes(QByteArray("x{{nope}}y"), vars({{"a", "1"}})) == QByteArray("x{{nope}}y"));
+    chk("subBytes: an inserted value is NOT re-scanned",
+        substituteBytes(QByteArray("{{a}}"), vars({{"a", "{{b}}"}, {"b", "X"}})) == QByteArray("{{b}}"));
+    chk("subBytes: a Unicode value is spliced as its UTF-8 bytes",
+        substituteBytes(QByteArray("[{{v}}]"), vars({{"v", QString::fromUtf8("\xC3\xA9")}}))
+            == QByteArray("[\xC3\xA9]"));
+    chk("subBytes: the CRLF head/body boundary in the template is preserved",
+        substituteBytes(QByteArray("POST / HTTP/1.1\r\n\r\n{{b}}"), vars({{"b", "hi"}}))
+            == QByteArray("POST / HTTP/1.1\r\n\r\nhi"));
+
     // ===== normalizeContentLength: framing soundness ====================
     {
         const QByteArray r = normalizeContentLength("POST /x HTTP/1.1\r\nHost: h\r\n\r\nhello");
@@ -106,6 +127,15 @@ int main(int argc, char **argv) {
             r.contains("Content-Length: 5\r\n"));
         chk("clen: the normalized output uses CRLF", r.contains("Host: h\r\n"));
     }
+    // MIXED / CR-only blank lines must ALSO be found (terminator-agnostic scan).
+    // A boundary that only matched "\r\n\r\n" or "\n\n" would miss these and let
+    // the request bypass CL reconciliation entirely (a smuggling desync source).
+    chk("clen: '\\n\\r\\n' mixed-terminator boundary is normalized (gets a CL)",
+        normalizeContentLength(QByteArray("POST /x HTTP/1.1\r\nHost: h\n\r\nbody")).contains("Content-Length: 4\r\n"));
+    chk("clen: '\\r\\n\\n' mixed-terminator boundary is normalized (gets a CL)",
+        normalizeContentLength(QByteArray("POST /x HTTP/1.1\r\nHost: h\r\n\nbody")).contains("Content-Length: 4\r\n"));
+    chk("clen: CR-only '\\r\\r' boundary is found (not passed through)",
+        normalizeContentLength(QByteArray("POST /x HTTP/1.1\rHost: h\r\rbody")).contains("Content-Length: 4\r\n"));
     chk("clen: a bodyless request gets no Content-Length added",
         !normalizeContentLength("GET /x HTTP/1.1\r\nHost: h\r\n\r\n").contains("Content-Length"));
 

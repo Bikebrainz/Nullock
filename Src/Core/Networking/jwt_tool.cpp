@@ -150,7 +150,17 @@ QList<Weakness> analyze(const Decoded &d, qint64 nowEpoch) {
         const QJsonValue ev = d.payload.value("exp");
         qint64 exp = 0;
         bool expOk = false;
-        if (ev.isDouble()) { exp = static_cast<qint64>(ev.toDouble()); expOk = true; }
+        if (ev.isDouble()) {
+            const double ed = ev.toDouble();
+            // static_cast<qint64>(ed) is UNDEFINED BEHAVIOR when ed falls outside
+            // qint64's range (a JSON exp such as 1e309). Saturate before casting:
+            // a huge positive exp keeps its ordering so it still lands in
+            // jwt-long-exp below; a huge negative is nonsensical and falls through
+            // to jwt-exp-malformed (expOk stays false).
+            if (ed >= 9.2e18)       { exp = 9223372036854775807LL; expOk = true; }
+            else if (ed <= -9.2e18) { expOk = false; }
+            else                    { exp = static_cast<qint64>(ed); expOk = true; }
+        }
         else if (ev.isString()) { exp = ev.toString().toLongLong(&expOk); }
         if (!expOk || exp <= 0) {
             out.append({ "jwt-exp-malformed", "medium",

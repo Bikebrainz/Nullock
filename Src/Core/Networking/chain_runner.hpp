@@ -72,7 +72,11 @@ Result run(const QList<Step> &steps, bool continueOnError = false);
 //   sanitizeExtractedValue-- strip CR/LF/C0 from a target-derived value before it
 //                            is substituted (kills the header-injection / request-
 //                            split / CL-desync smuggling primitive).
-//   substituteStr         -- {{var}} expansion (no re-scan of inserted values).
+//   substituteStr         -- {{var}} expansion over TEXT (no re-scan of inserted).
+//   substituteBytes       -- {{var}} expansion over RAW request bytes: preserves a
+//                            binary body / 0x80-0xFF bytes (a fromUtf8/toUtf8 round
+//                            trip would replace them with U+FFFD and corrupt the
+//                            request put on the wire); values spliced in as UTF-8.
 //   normalizeContentLength-- recompute Content-Length; reconcile Transfer-Encoding
 //                            (chunked drops CL) and collapse duplicate CL headers;
 //                            boundary detection tolerant of bare-LF framing.
@@ -81,6 +85,7 @@ QString    findCookieValue(const QString &raw, const QString &name);
 QString    jsonPathGet(const QByteArray &body, const QString &path);
 QString    sanitizeExtractedValue(const QString &v);
 QString    substituteStr(const QString &in, const QHash<QString, QString> &vars);
+QByteArray substituteBytes(const QByteArray &in, const QHash<QString, QString> &vars);
 QByteArray normalizeContentLength(const QByteArray &req);
 
 } // namespace Nullock::Core::ChainRunner
