@@ -69,6 +69,15 @@ int main(int argc, char **argv) {
     chk("call: new EventSource", has("new EventSource(\"/stream/events\")", "/stream/events"));
     chk("abs: new WebSocket wss:// captured", has("new WebSocket(\"wss://x.test/socket\")", "wss://x.test/socket"));
     chk("abs: https URL captured", has("var u=\"https://api.example.com/v1/me\"", "https://api.example.com/v1/me"));
+    // recon-1: the authority accepts an explicit :port and the path/query accepts
+    // any non-quote/non-space char, so a ported endpoint or a path with special
+    // chars ( , + @ ; ) isn't truncated by the extractor (old pattern dropped them).
+    chk("abs: an explicit :port is kept (recon-1)",
+        has("var u=\"https://api.example.com:8443/v1/me\"", "https://api.example.com:8443/v1/me"));
+    chk("abs: a path/query with special chars (, +) is not truncated (recon-1)",
+        has("x=\"https://h.test/v1/list?ids=1,2,3+4\"", "https://h.test/v1/list?ids=1,2,3+4"));
+    chk("abs: a wss:// with an explicit port is kept (recon-1)",
+        has("new WebSocket(\"wss://h.test:9001/rt\")", "wss://h.test:9001/rt"));
 
     // ===== xhr.open(method, url) + bare .open ===========================
     chk("xhr.open: captures the URL (2nd arg), not the verb",

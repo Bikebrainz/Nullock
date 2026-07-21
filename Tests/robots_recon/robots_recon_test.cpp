@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
             "Disallow: *\n"              // pattern
             "Disallow: /\n"              // whole-site -> skipped
             "Disallow: https://cdn.other.com/private\n"  // absolute URL -> dropped
+            "Disallow: /go?next=https://ext.example/cb\n"// path w/ URL in query -> KEPT (recon-3)
             "Disallow: # empty after comment\n"          // empty -> skipped
             "Allow: /admin/public/\n"    // allow ignored
             "Sitemap: https://h/sitemap.xml\n"
@@ -69,6 +70,9 @@ int main(int argc, char **argv) {
             !has(dis, "/") && !has(pat, "/"));
         chk("parseRobots: an absolute-URL Disallow value is dropped (not a same-host path)",
             !has(dis, "https://cdn.other.com/private") && !has(pat, "https://cdn.other.com/private"));
+        chk("parseRobots: a same-host path whose QUERY contains '://' is KEPT (recon-3)",
+            has(dis, "/go?next=https://ext.example/cb")
+            && !has(dis, "https://cdn.other.com/private"));  // absolute still dropped
         chk("parseRobots: Allow lines are ignored", !has(dis, "/admin/public/"));
         chk("parseRobots: Sitemap ref captured + deduped", sm.size() == 1 && has(sm, "https://h/sitemap.xml"));
         chk("parseRobots: not truncated on a small list", !trunc);

@@ -42,8 +42,8 @@ public:
     ~Crawler() override;   // stop-join: the BFS worker must not outlive us
 
     bool    running() const { return m_running.loadAcquire() != 0; }
-    int     visited() const { return m_visited; }
-    int     queued()  const { return m_queue.size(); }
+    int     visited() const { return m_visited.loadAcquire(); }
+    int     queued()  const { return m_queuedCount.loadAcquire(); }
     QString seed()    const { return m_seed; }
 
     // Inject the project's scope checker so the crawler refuses to walk
@@ -98,7 +98,11 @@ private:
     int       m_maxPages = 200;
     int       m_maxDepth = 4;
     int       m_throttleMs = 200;
-    int       m_visited = 0;
+    // Read from the GUI thread (visited()/queued() progress) while the BFS worker
+    // mutates them -> atomic. m_queuedCount mirrors m_queue.size(), updated by the
+    // sole m_queue mutator, so the getter never touches the QQueue cross-thread.
+    QAtomicInteger<int> m_visited     { 0 };
+    QAtomicInteger<int> m_queuedCount { 0 };
     QSet<QString>    m_seenUrls;
     QQueue<PendingUrl> m_queue;
     ScopeFn   m_scope;

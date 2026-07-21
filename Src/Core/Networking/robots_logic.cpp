@@ -47,8 +47,11 @@ void parseRobots(const QString &body, QStringList &disallowed, QStringList &disa
         if (key == QLatin1String("disallow")) {
             if (val == QLatin1String("/")) continue;        // whole-site, not a specific lead
             // An absolute-URL Disallow value is malformed (RFC 9309 values are
-            // same-authority paths) -- not a path lead on the scanned host. Drop.
-            if (val.contains(QLatin1String("://"))) continue;
+            // same-authority paths) -- not a path lead on the scanned host. Reject
+            // only a value that IS an absolute URL (scheme at the START); a path
+            // whose query merely contains "://" (e.g. /go?url=http://x) is a lead.
+            static const QRegularExpression absRx(QStringLiteral("^[a-zA-Z][a-zA-Z0-9+.-]*://"));
+            if (absRx.match(val).hasMatch()) continue;
             const bool pattern = isDisallowPattern(val);
             QStringList &bucket = pattern ? disallowedPatterns : disallowed;
             QSet<QString> &seen = pattern ? seenPat : seenDis;

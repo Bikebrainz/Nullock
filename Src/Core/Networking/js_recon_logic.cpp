@@ -96,9 +96,11 @@ void extractEndpoints(const QString &js, QSet<QString> &out) {
     // XHR open(method, url) -- capture the SECOND string (the URL), not the verb.
     static const QRegularExpression rxXhrOpen(
         R"(\.open\s*\(\s*["'`][A-Za-z]+["'`]\s*,\s*["'`]([^"'`]{1,2048})["'`])");
-    // Absolute URLs, http(s) AND ws(s).
+    // Absolute URLs, http(s) AND ws(s). Authority allows an explicit :port, and
+    // the path/query accepts any non-quote/non-space char (so a ported endpoint
+    // or a path with + @ ~ , ; ( ) etc. isn't dropped by the extractor).
     static const QRegularExpression rxAbs(
-        R"(["'`]((?:https?|wss?)://[\w.-]+(?:/[\w./?=&%-]*)?)["'`])");
+        R"(["'`]((?:https?|wss?)://[\w.-]+(?::\d+)?(?:/[^"'`\s]*)?)["'`])");
     // Path-shaped strings (relative slash optional) -- KEPT only when api-shaped.
     static const QRegularExpression rxPath(
         R"(["'`](/?(?:[\w.@-]+/)+[\w.@-]*)["'`])");

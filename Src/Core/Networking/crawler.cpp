@@ -67,10 +67,11 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     m_maxPages   = qBound(1, maxPages, 5000);
     m_maxDepth   = qBound(0, maxDepth, 10);
     m_throttleMs = qBound(0, throttleMs, 60'000);
-    m_visited    = 0;
+    m_visited.storeRelease(0);
     m_seenUrls.clear();
     m_queue.clear();
     m_queue.enqueue({ canonSeed, 0 });
+    m_queuedCount.storeRelease(m_queue.size());
     m_seenUrls.insert(canonSeed);
     m_stopRequested.storeRelease(0);
     m_running.storeRelease(1);
@@ -83,12 +84,13 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     m_worker = QtConcurrent::run([this]() {
         while (m_running.loadAcquire() != 0
                && m_stopRequested.loadAcquire() == 0
-               && m_visited < m_maxPages
+               && m_visited.loadAcquire() < m_maxPages
                && !m_queue.isEmpty()) {
             const PendingUrl u = m_queue.dequeue();
+            m_queuedCount.storeRelease(m_queue.size());
             emit progressChanged();
             crawlOne(u);
-            ++m_visited;
+            m_visited.fetchAndAddOrdered(1);
             emit progressChanged();
             if (m_throttleMs > 0) QThread::msleep(m_throttleMs);
         }
@@ -175,6 +177,7 @@ void Crawler::extractAndEnqueue(const QString &fromUrl, const QByteArray &body, 
         if (m_seenUrls.contains(canon)) continue;
         m_seenUrls.insert(canon);
         m_queue.enqueue({ canon, depth });
+        m_queuedCount.storeRelease(m_queue.size());
     }
     emit progressChanged();
 }
