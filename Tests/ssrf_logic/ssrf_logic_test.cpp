@@ -128,6 +128,20 @@ int main(int argc, char **argv) {
         chk("params: a sane non-empty list", ps.size() > 30);
     }
 
+    // ===== controlProvesFetch: the FAIL-CLOSED confirmation gate ==========
+    // The shaped "control" (same-shape, non-fetchable sibling) is the only signal
+    // that separates a real fetch from a reflection/echo template. A hit is
+    // reported ONLY when the control ran cleanly AND did not reproduce the sig.
+    chk("gate: control ran + no sig reproduced -> fetch-proven (report)",
+        controlProvesFetch(true, false));
+    chk("gate: control ran + sig reproduced -> shape-tracking (suppress)",
+        !controlProvesFetch(true, true));
+    // THE FIX: a FAILED control must NOT license a finding (was fail-open).
+    chk("gate(FIX): control FAILED, no sig -> unproven (suppress, fail-closed)",
+        !controlProvesFetch(false, false));
+    chk("gate(FIX): control FAILED, sig present -> suppress",
+        !controlProvesFetch(false, true));
+
     std::fprintf(stderr, "ssrf_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

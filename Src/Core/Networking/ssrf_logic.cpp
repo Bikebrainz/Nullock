@@ -49,4 +49,12 @@ QStringList knownSsrfParams() {
              "upload", "endpoint", "server", "u", "uri_ref" };
 }
 
+bool controlProvesFetch(bool controlOk, bool controlReproducedSig) {
+    // FAIL CLOSED: report only when the shaped control RAN and did NOT carry the
+    // signature. A control that reproduced the signature means shape-tracking
+    // (not a fetch); a control that failed to run leaves the FP defeater unrun,
+    // so the hit is unproven -- either way, do not report.
+    return controlOk && !controlReproducedSig;
+}
+
 } // namespace Nullock::Core::SsrfScan

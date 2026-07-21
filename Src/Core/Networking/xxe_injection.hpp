@@ -64,10 +64,15 @@ Result test(const Request &req);
 QString matchSig(const QRegularExpression &re, const QByteArray &body);
 // Confirm a real external-entity read: signature in the SYSTEM response
 // (status < 500) but absent from both the benign baseline and the inert-DOCTYPE
-// control. Returns the matched signature, or "" if not confirmed.
+// control. `inertOk` reports whether the inert-control request actually
+// succeeded -- confirmation FAILS CLOSED if it did not (the control is the only
+// thing that distinguishes a genuine read from a hardened server's file-shaped
+// error page, so an unrun control cannot license a finding). Returns the matched
+// signature, or "" if not confirmed.
 QString confirmReadSig(const QRegularExpression &sig,
                        const QByteArray &systemBody, int systemStatus,
-                       const QByteArray &baselineBody, const QByteArray &inertBody);
+                       const QByteArray &baselineBody,
+                       bool inertOk, const QByteArray &inertBody);
 // Build the XML POST, CR/LF-guarding method/host/path/Content-Type (returns {}
 // if any is tainted) and dropping any CR/LF-bearing carried header.
 QByteArray buildRequest(const Request &req, const QByteArray &body);

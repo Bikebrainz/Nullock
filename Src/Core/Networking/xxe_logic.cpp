@@ -28,11 +28,18 @@ QString matchSig(const QRegularExpression &re, const QByteArray &body) {
 // resolved external entity appears in the SYSTEM response alone.
 QString confirmReadSig(const QRegularExpression &sig,
                        const QByteArray &systemBody, int systemStatus,
-                       const QByteArray &baselineBody, const QByteArray &inertBody) {
+                       const QByteArray &baselineBody,
+                       bool inertOk, const QByteArray &inertBody) {
     if (systemStatus >= 500) return QString();                 // error body, not a read
     const QString hit = matchSig(sig, systemBody);
     if (hit.isEmpty()) return QString();
     if (!matchSig(sig, baselineBody).isEmpty()) return QString();   // present without any DOCTYPE
+    // FAIL CLOSED on the inert control. It is the ONLY signal that separates a
+    // real external-entity read from a hardened (disallow-doctype) server whose
+    // error page merely carries a file-shaped string. If that control request did
+    // not succeed we cannot subtract its error page, so the read is unproven --
+    // refuse to confirm rather than emit a possible false positive.
+    if (!inertOk) return QString();
     if (!matchSig(sig, inertBody).isEmpty())    return QString();   // present from DOCTYPE rejection, not a read
     return hit;
 }

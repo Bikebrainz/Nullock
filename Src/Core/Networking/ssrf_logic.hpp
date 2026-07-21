@@ -24,4 +24,14 @@ namespace Nullock::Core::SsrfScan {
 // omitted for these bodyless probes).
 QByteArray buildRequest(const Request &req, const QString &query);
 
+// The FAIL-CLOSED confirmation gate for an SSRF hit. A probe only reports after a
+// same-shape, non-fetchable "control" request has proven the signature tracks a
+// FETCH and not the input shape (an error/WAF/echo template). Given whether that
+// control request SUCCEEDED (`controlOk`) and whether it REPRODUCED the signature
+// (`controlReproducedSig`), returns true only when the control ran cleanly AND
+// did not carry the signature -- i.e. the finding is fetch-proven. A FAILED
+// control leaves the FP defeater unrun and must NOT license a finding, so this
+// returns false (suppress) rather than fail open. PURE (no I/O).
+bool controlProvesFetch(bool controlOk, bool controlReproducedSig);
+
 } // namespace Nullock::Core::SsrfScan

@@ -137,7 +137,10 @@ Result test(const Request &reqIn) {
         // is here too, it tracks the input shape (error/WAF/echo template), not
         // a fetch -- suppress to keep the finding fetch-proven.
         const auto c = sendWith(QString::fromLatin1(p.control));
-        if (c.ok && bodyOf(c).contains(sig)) return;
+        // FAIL CLOSED via the shared gate: report only when the control ran AND
+        // did not reproduce the signature. A reproduced sig is shape-tracking; a
+        // FAILED control leaves the FP defeater unrun -- neither is fetch-proven.
+        if (!controlProvesFetch(c.ok, bodyOf(c).contains(sig))) return;
         result.hits.append({ QString::fromLatin1(p.technique),
                              QString::fromLatin1(p.url), sig,
                              QString::fromLatin1(p.severity),
@@ -170,7 +173,10 @@ Result test(const Request &reqIn) {
                     // shape" rule. A kControlTag-only leaf would diverge in both
                     // content and length, weakening the FP defeater.
                     const auto ctl = sendWith(listUrl + role + "-" + kControlTag);
-                        if (!(ctl.ok && bodyOf(ctl).contains(sig))) {
+                        // FAIL CLOSED via the shared gate (same rule as the
+                        // per-probe control): a failed control leaves the FP
+                        // defeater unrun, so it cannot license the IAM finding.
+                        if (controlProvesFetch(ctl.ok, bodyOf(ctl).contains(sig))) {
                             result.hits.append({ QStringLiteral("aws-imds-iam"),
                                                  listUrl + role, sig,
                                                  QStringLiteral("critical"),

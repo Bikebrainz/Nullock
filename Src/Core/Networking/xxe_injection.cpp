@@ -69,13 +69,15 @@ Result test(const Request &req) {
     // external entity appears in a SYSTEM response but not here.
     const auto inert = send("<?xml version=\"1.0\"?>"
                             "<!DOCTYPE r [<!ENTITY xxe \"nullock-inert-control\">]><r>&xxe;</r>");
-    const QByteArray inertBody = inert.ok ? inert.parsed.body : QByteArray();
 
     for (const Payload &p : payloads()) {
         const auto r = send(p.xml);
         if (!r.ok) continue;
+        // Pass inert.ok so confirmReadSig fails closed when the inert control did
+        // not run -- an unrun control cannot subtract a doctype-rejection error
+        // page, so it must not license a finding.
         const QString sig = confirmReadSig(p.sig, r.parsed.body, r.parsed.statusCode,
-                                           base.parsed.body, inertBody);
+                                           base.parsed.body, inert.ok, inert.parsed.body);
         if (!sig.isEmpty()) {
             result.hits.append({ QString::fromUtf8(p.technique),
                                  QString::fromUtf8(p.target), sig });
