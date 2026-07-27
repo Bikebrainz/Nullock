@@ -5122,7 +5122,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 if (n <= 0) continue;
                 const double pct = 100.0 * n / findings.size();
                 h += "<span style=\"width:" + QString::number(pct, 'f', 2) + "%;background:"
-                     + sevColor(sev) + "\" title=\"" + sev + ": " + QString::number(n) + "\"></span>";
+                     + sevColor(sev) + "\" title=\"" + esc(sev) + ": " + QString::number(n) + "\"></span>";
             }
             h += "</div>";
         }
