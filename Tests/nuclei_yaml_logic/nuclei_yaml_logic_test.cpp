@@ -78,6 +78,18 @@ int main(int argc, char **argv) {
         chk("single-quoted '' decodes to a literal apostrophe",
             NucleiYaml::parseYaml("k: 'a''b'\n").toObject().value("k").toString() == QStringLiteral("a'b"));
     }
+    {
+        // A mid-token apostrophe is a LITERAL char, not a quote-region delimiter, so it
+        // must NOT disable comment-stripping / comma-splitting / key parsing for the
+        // rest of the line (the naive inS toggle treated "can't"/"it's" as an open quote).
+        chk("plain scalar with an apostrophe still strips the trailing comment",
+            NucleiYaml::parseYaml("name: can't stop # note\n").toObject().value("name").toString()
+                == QStringLiteral("can't stop"));
+        chk("flow element with an apostrophe still splits on the comma",
+            NucleiYaml::parseYaml("words: [it's, ok]\n").toObject().value("words").toArray().size() == 2);
+        chk("a map key with an apostrophe still parses (keyColon not fooled)",
+            NucleiYaml::parseYaml("it's: 5\n").toObject().value("it's").toInt() == 5);
+    }
 
     // ----- double-quote escape decoding: a SINGLE pass, no double-unescape.
     //       (regression: a staged .replace() chain collapsed "\\n" (a literal

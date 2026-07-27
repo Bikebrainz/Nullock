@@ -17,15 +17,36 @@ struct Line { int indent; QString text; int rawIdx; };
 // that block scalars read verbatim from.
 struct Ctx { QList<Line> lines; QStringList raw; };
 
+// A single/double quote only STARTS a flow scalar at a "node start" -- the
+// beginning of the string, or right after whitespace / ',' / '[' / '{'. A quote
+// anywhere else is a LITERAL character of a plain scalar (an apostrophe in "can't"
+// or "it's"), NOT a region delimiter. Without this, a mid-token apostrophe wrongly
+// opened a single-quoted region and disabled comment-stripping (stripComment),
+// comma-splitting (splitFlow), and key/value separation (keyColon) for the rest of
+// the line. Used by all three single-line scanners so they stay consistent.
+bool atNodeStart(const QString &s, int i) {
+    if (i == 0) return true;
+    const QChar p = s[i - 1];
+    return p.isSpace() || p == QLatin1Char(',') || p == QLatin1Char('[') || p == QLatin1Char('{');
+}
+
 // Strip a trailing "# comment" that is not inside quotes, plus trailing space.
 QString stripComment(const QString &raw) {
     bool inS = false, inD = false;
     for (int i = 0; i < raw.size(); ++i) {
         const QChar c = raw[i];
-        if (c == '\'' && !inD) inS = !inS;
-        else if (c == '"' && !inS) inD = !inD;
-        else if (c == '#' && !inS && !inD && (i == 0 || raw[i - 1].isSpace()))
+        if (c == '\'' && !inD) {
+            if (inS) {                                          // inside a single-quoted region
+                if (i + 1 < raw.size() && raw[i + 1] == '\'') { ++i; continue; }  // '' escape -> stay in
+                inS = false;                                    // a lone ' closes the region
+            } else if (atNodeStart(raw, i)) {
+                inS = true;                                     // opens only at a node start
+            }                                                   // else: literal apostrophe
+        } else if (c == '"' && !inS) {
+            inD = !inD;
+        } else if (c == '#' && !inS && !inD && (i == 0 || raw[i - 1].isSpace())) {
             return raw.left(i);
+        }
     }
     return raw;
 }
@@ -112,9 +133,18 @@ QStringList splitFlow(const QString &inner) {
     int start = 0;
     for (int i = 0; i < inner.size(); ++i) {
         const QChar c = inner[i];
-        if (c == '\'' && !inD) inS = !inS;
-        else if (c == '"' && !inS) inD = !inD;
-        else if (c == ',' && !inS && !inD) { parts.append(inner.mid(start, i - start)); start = i + 1; }
+        if (c == '\'' && !inD) {
+            if (inS) {
+                if (i + 1 < inner.size() && inner[i + 1] == '\'') { ++i; continue; }  // '' escape
+                inS = false;
+            } else if (atNodeStart(inner, i)) {
+                inS = true;
+            }                                                   // else: literal apostrophe (it's)
+        } else if (c == '"' && !inS) {
+            inD = !inD;
+        } else if (c == ',' && !inS && !inD) {
+            parts.append(inner.mid(start, i - start)); start = i + 1;
+        }
     }
     parts.append(inner.mid(start));
     return parts;
@@ -141,11 +171,19 @@ int keyColon(const QString &s) {
     bool inS = false, inD = false;
     for (int i = 0; i < s.size(); ++i) {
         const QChar c = s[i];
-        if (c == '\'' && !inD) inS = !inS;
-        else if (c == '"' && !inS) inD = !inD;
-        else if (c == ':' && !inS && !inD &&
-                 (i + 1 == s.size() || s[i + 1] == ' '))
+        if (c == '\'' && !inD) {
+            if (inS) {
+                if (i + 1 < s.size() && s[i + 1] == '\'') { ++i; continue; }  // '' escape
+                inS = false;
+            } else if (atNodeStart(s, i)) {
+                inS = true;
+            }                                                   // else: literal apostrophe (it's:)
+        } else if (c == '"' && !inS) {
+            inD = !inD;
+        } else if (c == ':' && !inS && !inD &&
+                   (i + 1 == s.size() || s[i + 1] == ' ')) {
             return i;
+        }
     }
     return -1;
 }
