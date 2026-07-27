@@ -72,6 +72,15 @@ int main(int argc, char **argv) {
         && !corruptSignature("aaa.bbb").split('.').value(2).isEmpty());
     chk("corrupt: a token with an EMPTY sig (a.b.) gets a junk 3rd segment",
         !corruptSignature("aaa.bbb.").split('.').value(2).isEmpty());
+    // A 3-part token whose signature segment is PRESENT but decodes to zero bytes
+    // (a single base64 char) must take the empty-decoded-sig guard -- NOT sig[0]^=1
+    // on an empty QByteArray (that would be an out-of-bounds write). It still
+    // yields a valid 3-part token with a non-empty (junk) signature.
+    {
+        const QStringList cp = corruptSignature("aaa.bbb.X").split('.');
+        chk("corrupt: a present-but-undecodable sig is guarded (no OOB), stays 3-part w/ non-empty sig",
+            cp.size() == 3 && !cp.value(2).isEmpty());
+    }
 
     // ===== algNoneVariants ===============================================
     {
@@ -144,6 +153,19 @@ int main(int argc, char **argv) {
         Request gc = mk(); gc.method = "POST"; gc.body = "{\"x\":1}"; gc.contentType = "application/xml";
         chk("build: a clean custom contentType still builds",
             buildRequest(gc, "TOK").contains("Content-Type: application/xml\r\n"));
+        // A caller-supplied Content-Length must be DROPPED: on a bodyless shot it
+        // would make the server wait for a body that never comes (hang/desync); on
+        // a body shot it must be replaced by the correct computed length. This drop
+        // (the header loop's Content-Length skip) was untested.
+        Request clg = mk();   // bodyless GET
+        clg.headers.append({ QStringLiteral("Content-Length"), QStringLiteral("999") });
+        chk("build: a caller Content-Length is dropped on a bodyless shot (no desync)",
+            !buildRequest(clg, "TOK").contains("Content-Length"));
+        Request clp = mk(); clp.method = "POST"; clp.body = "{\"x\":1}";
+        clp.headers.append({ QStringLiteral("Content-Length"), QStringLiteral("999") });
+        const QByteArray rclp = buildRequest(clp, "TOK");
+        chk("build: a caller Content-Length is replaced by the computed one (7, not 999)",
+            rclp.contains("Content-Length: 7\r\n") && !rclp.contains("Content-Length: 999"));
     }
 
     // ===== isCredentialHeader / defaultSecrets ===========================
