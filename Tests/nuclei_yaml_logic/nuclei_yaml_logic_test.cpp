@@ -73,6 +73,25 @@ int main(int argc, char **argv) {
             a.size() == 2 && a.at(0).toString() == QStringLiteral("a,b"));
     }
 
+    // ----- double-quote escape decoding: a SINGLE pass, no double-unescape.
+    //       (regression: a staged .replace() chain collapsed "\\n" (a literal
+    //       backslash+n) to "\n" and then re-read it as a NEWLINE, corrupting a
+    //       matcher word / path in an imported nuclei template.) -----
+    {
+        // YAML value  "a\\nb"  = backslash, backslash, n  -> literal  a \ n b .
+        chk("dquote: escaped backslash + n stays literal (no double-unescape)",
+            NucleiYaml::parseYaml("k: \"a\\\\nb\"\n").toObject().value("k").toString()
+                == QStringLiteral("a\\nb"));
+        // A real \n escape still decodes to a newline (positive control).
+        chk("dquote: a real \\n escape still decodes to a newline",
+            NucleiYaml::parseYaml("k: \"a\\nb\"\n").toObject().value("k").toString()
+                == QStringLiteral("a\nb"));
+        // YAML value  "C:\\node"  -> C:\node , NOT C:<newline>ode .
+        chk("dquote: escaped backslash before 'node' stays a backslash",
+            NucleiYaml::parseYaml("k: \"C:\\\\node\"\n").toObject().value("k").toString()
+                == QStringLiteral("C:\\node"));
+    }
+
     // ----- numeric coercion only when a token round-trips: a leading-zero /
     //       hex-like bare token stays a string so a matcher value keeps its form
     //       ("0755" must not become 755). Canonical ints still coerce. -----

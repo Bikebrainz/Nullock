@@ -53,15 +53,31 @@ QString unquote(const QString &s) {
     const QString t = s.trimmed();
     if (t.size() >= 2 &&
         ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith('\'') && t.endsWith('\'')))) {
-        QString inner = t.mid(1, t.size() - 2);
-        if (t.startsWith('"')) {
-            inner.replace(QStringLiteral("\\\""), QStringLiteral("\""));
-            inner.replace(QStringLiteral("\\\\"), QStringLiteral("\\"));
-            inner.replace(QStringLiteral("\\n"), QStringLiteral("\n"));
-            inner.replace(QStringLiteral("\\r"), QStringLiteral("\r"));
-            inner.replace(QStringLiteral("\\t"), QStringLiteral("\t"));
+        const QString inner = t.mid(1, t.size() - 2);
+        if (t.startsWith('\'')) return inner;          // single-quoted: no escapes (YAML)
+        // Double-quoted: resolve escapes in a SINGLE left-to-right pass. A staged
+        // .replace() chain (\\ -> \, THEN \n -> newline, ...) double-unescapes: an
+        // escaped backslash "\\n" (a literal backslash + n) collapses to "\n" and
+        // is then re-read as a newline. One pass consumes each escape's two source
+        // chars verbatim (the transcode/html-decode class of bug).
+        QString out;
+        out.reserve(inner.size());
+        for (int i = 0; i < inner.size(); ++i) {
+            const QChar c = inner[i];
+            if (c == QLatin1Char('\\') && i + 1 < inner.size()) {
+                switch (inner[i + 1].unicode()) {
+                    case '"':  out += QLatin1Char('"');  ++i; break;
+                    case '\\': out += QLatin1Char('\\'); ++i; break;
+                    case 'n':  out += QLatin1Char('\n'); ++i; break;
+                    case 'r':  out += QLatin1Char('\r'); ++i; break;
+                    case 't':  out += QLatin1Char('\t'); ++i; break;
+                    default:   out += c; break;          // unknown escape: keep the backslash
+                }
+            } else {
+                out += c;
+            }
         }
-        return inner;
+        return out;
     }
     return t;
 }
