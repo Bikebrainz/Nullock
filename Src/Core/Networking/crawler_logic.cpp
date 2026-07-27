@@ -4,6 +4,7 @@
 #include "crawler_logic.hpp"
 
 #include <QRegularExpression>
+#include <QSet>
 
 namespace Nullock::Core::CrawlerLogic {
 
@@ -133,12 +134,40 @@ static QString apexOf(const QString &host) {
     return h;
 }
 
+// An apex that is itself a PUBLIC SUFFIX (a bare TLD like "com", or a two-level
+// suffix like "co.uk") must NOT be broadened with the endsWith("."+apex) test --
+// that would scope the ENTIRE TLD (a fail-open the scope contract forbids). This
+// arises when the seed is a "www.<public-suffix>" host (apexOf strips the "www."
+// and exposes the suffix) or a bare-TLD seed. We ship no full PSL: the single-
+// label check covers every TLD, and a curated set covers the common multi-level
+// suffixes -- enough to keep the default scope fail-closed on realistic seeds.
+static bool isPublicSuffix(const QString &apex) {
+    if (!apex.contains(QLatin1Char('.'))) return true;   // a bare TLD label
+    static const QSet<QString> twoLevel = {
+        QStringLiteral("co.uk"),  QStringLiteral("org.uk"), QStringLiteral("gov.uk"),
+        QStringLiteral("ac.uk"),  QStringLiteral("me.uk"),  QStringLiteral("net.uk"),
+        QStringLiteral("com.au"), QStringLiteral("net.au"), QStringLiteral("org.au"),
+        QStringLiteral("gov.au"), QStringLiteral("edu.au"), QStringLiteral("co.nz"),
+        QStringLiteral("net.nz"), QStringLiteral("org.nz"), QStringLiteral("co.jp"),
+        QStringLiteral("or.jp"),  QStringLiteral("ne.jp"),  QStringLiteral("go.jp"),
+        QStringLiteral("co.za"),  QStringLiteral("org.za"), QStringLiteral("com.br"),
+        QStringLiteral("net.br"), QStringLiteral("com.cn"), QStringLiteral("net.cn"),
+        QStringLiteral("org.cn"), QStringLiteral("gov.cn"), QStringLiteral("co.in"),
+        QStringLiteral("com.mx"), QStringLiteral("com.tr"), QStringLiteral("com.sg"),
+    };
+    return twoLevel.contains(apex);
+}
+
 bool inDefaultScope(const QString &host, const QString &seedHost) {
     if (host.isEmpty() || seedHost.isEmpty()) return false;
     const QString h = host.toLower();
     const QString seed = seedHost.toLower();
     if (h == seed) return true;
     const QString apex = apexOf(seed);
+    // If the apex collapsed to a public suffix (e.g. a "www.<tld>" seed), only the
+    // exact seed host is in scope -- broadening here would crawl the whole TLD.
+    // Fail closed, per the .hpp "never broader than the seed's registrable domain".
+    if (isPublicSuffix(apex)) return false;
     return h == apex || h.endsWith(QLatin1Char('.') + apex);
 }
 

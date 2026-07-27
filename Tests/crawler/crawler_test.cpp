@@ -52,6 +52,18 @@ int main(int argc, char **argv) {
         !inDefaultScope("example.com.evil.com", "example.com"));
     chk("default scope: a bare TLD-ish seed does not scope the whole TLD",
         !inDefaultScope("other.com", "site.com"));
+    // A "www.<public-suffix>" seed must NOT scope the whole TLD: apexOf strips the
+    // "www." and would otherwise expose a bare suffix ("com" / "co.uk"), making
+    // endsWith("."+apex) match every registered domain -- a fail-open the contract
+    // forbids. (Currently returned true before the public-suffix guard.)
+    chk("default scope: 'www.com' seed does NOT scope all of .com",
+        !inDefaultScope("evil.com", "www.com"));
+    chk("default scope: 'www.co.uk' seed does NOT scope all of .co.uk",
+        !inDefaultScope("evil.co.uk", "www.co.uk"));
+    // ...but a genuine registrable domain UNDER a two-level suffix still scopes its
+    // own subtree (the guard must not over-narrow a real site).
+    chk("default scope: 'www.example.co.uk' still scopes its own subdomains",
+        inDefaultScope("api.example.co.uk", "www.example.co.uk"));
     chk("default scope: empty host is out", !inDefaultScope("", "example.com"));
     chk("default scope: empty seed is out (nothing in scope)", !inDefaultScope("example.com", ""));
 
