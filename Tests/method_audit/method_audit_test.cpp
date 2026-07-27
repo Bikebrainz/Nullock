@@ -143,6 +143,33 @@ int main(int argc, char **argv) {
         chk("build: CRLF method -> no injected header", !buildReq(req, "OPT\r\nEvil: 1").contains("\r\nEvil: 1"));
         Request bhe = req; bhe.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nEvil: 1")});
         chk("build: CRLF carried header dropped", !buildReq(bhe, "OPTIONS").contains("Evil: 1"));
+
+        // A carried Accept-Encoding must be dropped so the forced "identity" stands
+        // alone -- else the server gzips and traceEchoed() scans a compressed echo,
+        // missing a real TRACE/XST loopback (reported CLEAN).
+        Request ae = req;
+        ae.headers.append({QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br")});
+        const QByteArray aeb = buildReq(ae, "TRACE");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.toLower().count(QByteArray("accept-encoding:")) == 1 && !aeb.contains("gzip"));
+
+        // Carried Content-Length / Transfer-Encoding must be dropped on this body-less
+        // probe, else it advertises a body that never arrives (server 400/hang) and the
+        // TRACE echo probe fails -> no XST finding for a vulnerable server.
+        Request cl = req;
+        cl.headers.append({QStringLiteral("Content-Length"), QStringLiteral("137")});
+        cl.headers.append({QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked")});
+        const QByteArray clb = buildReq(cl, "TRACE");
+        chk("build: carried Content-Length/Transfer-Encoding dropped (bodyless probe)",
+            !clb.toLower().contains("content-length:") && !clb.toLower().contains("transfer-encoding:"));
+
+        // A carried Host must be deduped away -- only the authoritative req.host is sent.
+        Request hh; hh.host = "real.tld"; hh.basePath = "/";
+        hh.headers.append({QStringLiteral("Host"), QStringLiteral("evil.tld")});
+        const QByteArray hhb = buildReq(hh, "OPTIONS");
+        chk("build: carried Host deduped -> only the authoritative Host",
+            hhb.contains("Host: real.tld\r\n") && !hhb.contains("evil.tld")
+            && hhb.toLower().count(QByteArray("host:")) == 1);
     }
 
     std::fprintf(stderr, "method_audit_test: %d passed, %d failed\n", pass, fail);

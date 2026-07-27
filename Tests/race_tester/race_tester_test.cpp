@@ -84,6 +84,31 @@ int main(int argc, char **argv) {
         // audit-3: contentType is spliced into a Content-Type header -> guard it.
         Request badCt = req; badCt.contentType = "application/x-www-form-urlencoded\r\nX-Injected: 1";
         chk("build: CRLF contentType -> empty", buildRequest(badCt).isEmpty());
+
+        // Carried framing/encoding headers must be dropped so the ones we force stand
+        // alone (prior tests never carried them):
+        //  - Accept-Encoding: else the server gzips and the raw-byte successMatch scan
+        //    misses the marker -> a real double-spend/over-grant race reads CLEAN.
+        Request aeReq = req;
+        aeReq.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray ae = buildRequest(aeReq);
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
+        //  - Transfer-Encoding: coexisting with the computed Content-Length is a CL.TE
+        //    ambiguity an intermediary can desync.
+        Request teReq = req;
+        teReq.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray te = buildRequest(teReq);
+        chk("build: carried Transfer-Encoding dropped -> only computed Content-Length",
+            !te.contains("Transfer-Encoding") && te.contains("Content-Length: 8\r\n"));
+        //  - Connection: we force "close"; a carried "keep-alive" would let the target
+        //    reuse the socket and SERIALIZE the burst, hiding the very race.
+        Request coReq = req;
+        coReq.headers.append(qMakePair(QString("Connection"), QString("keep-alive")));
+        const QByteArray co = buildRequest(coReq);
+        chk("build: carried Connection dropped -> exactly one, close",
+            co.count("Connection:") == 1 && !co.contains("keep-alive"));
     }
 
     std::fprintf(stderr, "race_tester_test: %d passed, %d failed\n", pass, fail);

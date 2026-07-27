@@ -178,6 +178,17 @@ QByteArray buildGet(const Request &req) {
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers on this body-less GET:
+        //  - Accept-Encoding: line 178 forces "identity" so detect() scans a PLAINTEXT
+        //    body; a surviving "gzip,.." lets the server compress (client never
+        //    inflates) -> the whole tech-fingerprint / CVE-correlation table reports
+        //    CLEAN (a WordPress/Apache/Grafana site and any CVE-bearing version missed).
+        //  - Content-Length / Transfer-Encoding: a copied framing header on a bodyless
+        //    GET strands the request (server waits for a body that never arrives) or
+        //    desyncs the socket, so the fingerprint response never parses.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

@@ -137,6 +137,20 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty",   buildRequest(badHost, "url=x").isEmpty());
         Request badPath = req; badPath.basePath = "/r\r\nX: y";
         chk("build: CRLF path -> empty",   buildRequest(badPath, "url=x").isEmpty());
+        // The query is spliced into the request line like basePath; a CR/LF in it must
+        // abort the build too. Live callers pre-encode it, but the public builder
+        // guards symmetrically (else it splits the request line, unlike a tainted path).
+        chk("build: CRLF query -> empty",  buildRequest(req, "url=x\r\nX-Smuggled: 1").isEmpty());
+
+        // A carried Accept-Encoding must be dropped so the forced "identity" stands
+        // alone -- else the server gzips and the client-side <meta>/JS redirect body
+        // scan runs on compressed bytes, missing a real sentinel redirect (false clean).
+        Request aeHdr = req;
+        aeHdr.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray ae = buildRequest(aeHdr, "url=x");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
     }
 
     std::fprintf(stderr, "open_redirect_test: %d passed, %d failed\n", pass, fail);

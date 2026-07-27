@@ -64,6 +64,13 @@ QByteArray writeHeaders(const Request &req, bool withContentType) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 61 forces "identity" so jsonSpacesReflected
+        // scans a PLAINTEXT body; a surviving "gzip,.." lets the server compress (client
+        // never inflates) -> encodingUnreadable() flags it and test() bails
+        // vulnerable=false (silent false clean). And drop a carried Transfer-Encoding: on
+        // buildPollute it would coexist with the computed Content-Length (CL.TE desync).
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (withContentType && h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;

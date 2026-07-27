@@ -43,6 +43,15 @@ QByteArray buildReq(const Request &req, const QString &method) {
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers on this body-less probe:
+        //  - Accept-Encoding: line 43 forces "identity" so traceEchoed() scans a
+        //    PLAINTEXT echo; a surviving "gzip,.." lets the server compress (client
+        //    never inflates) -> a real TRACE/XST loopback reads CLEAN.
+        //  - Content-Length / Transfer-Encoding: a copied framing header on a bodyless
+        //    request strands it (server waits for an absent body) or desyncs the socket.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

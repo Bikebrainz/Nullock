@@ -54,6 +54,18 @@ QByteArray buildRequest(const Request &req) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that would fight the ones we force:
+        //  - Accept-Encoding: line 52 forces "identity" so the raw-byte successMatch
+        //    scan sees a PLAINTEXT body; a surviving "gzip,.." combines (RFC 7230
+        //    3.2.2), the server compresses, the client never inflates -> a real race
+        //    win (2xx + marker) is scored non-success (false clean).
+        //  - Transfer-Encoding: coexisting with the computed Content-Length (line 64)
+        //    is a CL.TE-ambiguous request an intermediary can desync.
+        //  - Connection: line 65 forces "close"; a carried "keep-alive" would let the
+        //    target reuse the socket and SERIALIZE the burst, hiding the very race.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) haveCt = true;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

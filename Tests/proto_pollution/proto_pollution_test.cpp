@@ -100,6 +100,25 @@ int main(int argc, char **argv) {
             && !pd.contains("Content-Length: 999"));
         chk("pollute: carried Host dropped -> exactly one Host (framework's own)",
             pd.count("Host:") == 1 && pd.contains("Host: victim.tld\r\n") && !pd.contains("evil.tld"));
+
+        // A carried Accept-Encoding must be dropped so writeHeaders' forced "identity"
+        // stands alone -- else the server gzips the observation body, encodingUnreadable()
+        // flags it, and test() bails vulnerable=false on a truly pollutable server.
+        Request aeReq = req;
+        aeReq.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray g2 = buildGet(aeReq, "/api/me", QString());
+        chk("get: carried Accept-Encoding dropped -> exactly one, identity",
+            g2.count("Accept-Encoding:") == 1
+            && g2.contains("Accept-Encoding: identity\r\n") && !g2.contains("gzip"));
+
+        // A carried Transfer-Encoding must be dropped: on buildPollute it would coexist
+        // with the computed Content-Length -> a CL.TE-ambiguous request an intermediary
+        // can desync (smuggling on the exact prototype-pollution write endpoint).
+        Request teReq = req;
+        teReq.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray p2 = buildPollute(teReq, "/api/merge", body);
+        chk("pollute: carried Transfer-Encoding dropped -> only the computed Content-Length",
+            !p2.contains("Transfer-Encoding") && p2.count("Content-Length:") == 1);
     }
 
     std::fprintf(stderr, "proto_pollution_test: %d passed, %d failed\n", pass, fail);

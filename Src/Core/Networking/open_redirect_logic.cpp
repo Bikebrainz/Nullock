@@ -105,6 +105,12 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     if (req.method.contains('\r')   || req.method.contains('\n'))   return {};
     if (req.host.contains('\r')     || req.host.contains('\n'))     return {};
     if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
+    // The query is spliced into the SAME request line as basePath (target below).
+    // The live caller pre-encodes it (FullyEncoded), but this public builder must
+    // guard the query symmetrically with basePath -- else a CR/LF in it splits the
+    // request line, whereas a tainted basePath correctly aborts. (Every sibling probe
+    // now guards the query.)
+    if (query.contains('\r') || query.contains('\n')) return {};
     const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
     QByteArray out;
     out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
@@ -115,6 +121,11 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 114 forces "identity" so the client-side
+        // <meta>/JS redirect body scan sees PLAINTEXT; a surviving "gzip,.." lets the
+        // server compress (client never inflates) -> a real body-based sentinel redirect
+        // reads clean (vulnerable=false).
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

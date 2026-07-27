@@ -104,6 +104,26 @@ int main(int argc, char **argv) {
         cleanHdr.headers.append({ QStringLiteral("X-Trace"), QStringLiteral("ok") });
         chk("build: a clean custom header IS emitted (guard is not over-broad)",
             buildGet(cleanHdr).contains("X-Trace: ok\r\n"));
+
+        // A carried Accept-Encoding must be dropped so the forced "identity" stands
+        // alone -- else the server gzips, detect() scans compressed bytes, and the
+        // whole tech-fingerprint / CVE table reports CLEAN.
+        Request aeHdr = req;
+        aeHdr.headers.append({ QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br") });
+        const QByteArray ae = buildGet(aeHdr);
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
+
+        // A carried Content-Length / Transfer-Encoding on this body-less GET must be
+        // dropped, else the server waits for an absent body / desyncs and the
+        // fingerprint response never parses.
+        Request frHdr = req;
+        frHdr.headers.append({ QStringLiteral("Content-Length"), QStringLiteral("34") });
+        frHdr.headers.append({ QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked") });
+        const QByteArray fr = buildGet(frHdr);
+        chk("build: carried Content-Length/Transfer-Encoding dropped on body-less GET",
+            !fr.contains("Content-Length") && !fr.contains("Transfer-Encoding"));
     }
 
     std::fprintf(stderr, "http_fingerprint_test: %d passed, %d failed\n", pass, fail);
