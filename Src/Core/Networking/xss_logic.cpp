@@ -41,6 +41,15 @@ bool inExecutingHtmlContext(const QString &body, int at) {
         return c == '>' || c == '/' || c == ' ' || c == '\t'
             || c == '\n' || c == '\f' || c == '\r';
     };
+    // HTML5 tag-open / end-tag-open: a tag name starts with an ASCII letter ONLY.
+    // QChar::isLetter() is Unicode-aware (Cyrillic/Greek/CJK/accented letters all
+    // return true), so a '<' + a NON-ASCII letter would wrongly open a phantom tag
+    // and swallow a following reflected <marker> -- the same false negative already
+    // fixed for '<'+space/digit/'=', just missed for non-ASCII letters.
+    auto isAsciiAlpha = [](QChar c) {
+        return (c >= QLatin1Char('a') && c <= QLatin1Char('z'))
+            || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'));
+    };
     QString openRaw;       // current raw-text element name, or empty
     bool inComment = false;
     bool inTag = false;    // between '<' and its (unquoted) '>'
@@ -104,7 +113,7 @@ bool inExecutingHtmlContext(const QString &body, int at) {
             // reconsumed in the data state. Opening a phantom tag here swallowed a
             // following reflected <marker> -- a false negative on bodies like
             // "1 < 2 <marker>" or "i <3 you <marker>".
-            if (j >= body.size() || !body[j].isLetter()) continue;
+            if (j >= body.size() || !isAsciiAlpha(body[j])) continue;
             QString nameStr;
             while (j < body.size() && body[j].isLetterOrNumber()) { nameStr += body[j].toLower(); ++j; }
             if (!closing && rawText.contains(nameStr)) openRaw = nameStr;

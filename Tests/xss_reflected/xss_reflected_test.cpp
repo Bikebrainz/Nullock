@@ -86,6 +86,13 @@ int main(int argc, char **argv) {
         runs("<p>price < $10 <nlk0a1b2c3d></p>"));
     chk("'<3' (digit after '<', not a tag) before marker -> runs",
         runs("<p>i <3 you <nlk0a1b2c3d></p>"));
+    // unicode: a '<' followed by a NON-ASCII letter is a parse error too (HTML5
+    // tag-open accepts ASCII letters only), so it is literal text, not a phantom
+    // tag that swallows the following reflected marker. "\xcf\x89" is U+03C9 (Greek
+    // omega). Before the isAsciiAlpha fix, isLetter() opened a phantom "<ω" tag and
+    // this reflection was missed (a false negative on math/foreign-text pages).
+    chk("'<' + a NON-ASCII letter is text, not a phantom tag -> later marker runs",
+        runs("<p>x<\xcf\x89 range <nlk0a1b2c3d></p>"));
 
     // ===== FALSE-POSITIVE FIXES: marker is inert, must NOT run ============
     chk("HEADLINE FP: marker in attribute, earlier quoted attr has '>' -> NOT run",
