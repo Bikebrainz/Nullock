@@ -44,6 +44,12 @@ QByteArray buildRequest(const Request &req, const QString &method,
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 43 forces "identity" so the override-
+        // redundancy (byte body compare) and HEAD Content-Length corroboration run on
+        // a PLAINTEXT body; a surviving "gzip, deflate, br" combines (RFC 7230 3.2.2),
+        // the server compresses, the client does NOT inflate -> those comparisons run
+        // on compressed bytes and the bypass decision is corrupted.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

@@ -96,6 +96,16 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "<r>x</r>").contains("X-Smuggled"));
+
+        // A carried Accept-Encoding must be dropped so line 63's forced "identity"
+        // stands alone -- else the server gzips and matchSig scans compressed bytes,
+        // missing the /etc/passwd signature: a real XXE file read reports CLEAN.
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, "<r>x</r>");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
     }
 
     std::fprintf(stderr, "xxe_injection_test: %d passed, %d failed\n", pass, fail);

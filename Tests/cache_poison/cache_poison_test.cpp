@@ -147,6 +147,22 @@ int main(int argc, char **argv) {
             buildRequest(badPath, "ncb=x", QString(), QString()).isEmpty());
         chk("build: CRLF extra header dropped",
             !buildRequest(req, "ncb=x", "X-Inj\r\nEvil", "v").contains("Evil"));
+
+        // A carried Accept-Encoding must be dropped so line 128's forced "identity"
+        // stands alone -- else the server gzips and reflectionSite scans compressed
+        // bytes, missing a real cache-poisoning reflection (false clean).
+        Request carriedAE = req;
+        carriedAE.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(carriedAE, "ncb=x", QString(), QString());
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
+
+        // The query is spliced into the request line like basePath, so a CR/LF in it
+        // must abort the build too (basePath's does). Live callers pre-encode via
+        // withBuster()->QUrl::FullyEncoded, but the public builder guards symmetrically.
+        chk("build: CRLF query -> empty (request-line splice guard)",
+            buildRequest(req, "ncb=x\r\nX-Smuggled: 1", QString(), QString()).isEmpty());
     }
 
     // ---- withBuster -----------------------------------------------------

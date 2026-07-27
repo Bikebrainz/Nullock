@@ -52,6 +52,11 @@ QByteArray buildGet(const Request &req, const QString &path) {
         // the original request would strand it (server waits for an absent body).
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 48 forces "identity" so the body-length
+        // similarity test compares PLAINTEXT sizes; a surviving "gzip, deflate, br"
+        // combines (RFC 7230 3.2.2), the server compresses, and the two conflicting
+        // Accept-Encoding lines can also 400 the probe -- mirrors the Host/CL/TE drops.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

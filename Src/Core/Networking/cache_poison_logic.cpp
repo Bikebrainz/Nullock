@@ -118,6 +118,11 @@ QByteArray buildRequest(const Request &req, const QString &query,
     // request line or header -- refuse to build rather than emit it.
     if (crlf(req.method) || crlf(req.host) || crlf(req.basePath))
         return QByteArray();
+    // The query is spliced into the SAME request line as basePath (target below), so
+    // a CR/LF in it splits the request just like basePath -- guard it symmetrically.
+    // The live callers pre-encode via withBuster()->QUrl::FullyEncoded, but this
+    // public builder carries no such contract; every sibling probe guards the query.
+    if (crlf(query)) return QByteArray();
 
     const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
     QByteArray out;
@@ -129,6 +134,11 @@ QByteArray buildRequest(const Request &req, const QString &query,
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 128 forces "identity" so reflectionSite
+        // scans a PLAINTEXT body; a surviving "gzip, deflate, br" combines (RFC 7230
+        // 3.2.2), the server compresses, the client does NOT inflate -> the sentinel
+        // is scanned over gzip bytes and a real cache-poisoning reflection reports CLEAN.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

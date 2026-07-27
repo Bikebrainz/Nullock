@@ -66,6 +66,11 @@ QByteArray buildRequest(const Request &req, const QByteArray &body) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 63 forces "identity" so matchSig scans
+        // a PLAINTEXT body; a surviving "gzip, deflate, br" combines (RFC 7230 3.2.2),
+        // the server compresses, the client does NOT inflate -> the file-content
+        // signature is scanned over gzip bytes and a real XXE read reports CLEAN.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

@@ -91,6 +91,24 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildGet(badHost, "/account").isEmpty());
         chk("build: CRLF path -> empty",
             buildGet(req, "/account\r\nX-Smuggled: 1").isEmpty());
+
+        // A carried Accept-Encoding must be dropped so line 48's forced "identity"
+        // stands alone -- else the server gzips, the body-length similarity compares
+        // compressed sizes, and two conflicting Accept-Encoding lines can 400 the
+        // probe. Mirrors the Host/CL/TE drops.
+        Request carriedAE = req;
+        carriedAE.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeg = buildGet(carriedAE, "/account");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeg.count("Accept-Encoding:") == 1
+            && aeg.contains("Accept-Encoding: identity\r\n") && !aeg.contains("gzip"));
+
+        // CR/LF in the header NAME (not just the value) must also be dropped, else
+        // "X-Evil\r\nX-Smuggled: 1" splices a second header line. The value case is
+        // covered above; the crlf(h.first) name branch was not.
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-Evil\r\nX-Smuggled: 1"), QString("v")));
+        chk("build: drops CRLF header NAME", !buildGet(injName, "/account").contains("X-Smuggled"));
     }
 
     // ---- randTok --------------------------------------------------------

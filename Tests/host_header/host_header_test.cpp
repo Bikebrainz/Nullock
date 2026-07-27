@@ -92,6 +92,17 @@ int main(int argc, char **argv) {
         chk("build: carried Content-Length dropped (bodyless probe won't strand)", !cr.contains("Content-Length"));
         chk("build: carried Transfer-Encoding dropped", !cr.contains("Transfer-Encoding"));
 
+        // A carried Accept-Encoding must be dropped so line 44's forced "identity"
+        // stands alone -- else the server gzips and the sentinel body-URL scan
+        // (bodyHasUrl) runs on compressed bytes, missing a real //sentinel reflection
+        // (host-header injection reported CLEAN). Sibling to the CL/TE drops above.
+        Request carriedAE = req;
+        carriedAE.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray ae = buildRequest(carriedAE, "victim.tld", QString(), QString());
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
+
         Request badMethod = req; badMethod.method = "GET\r\nX-Injected: 1";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "victim.tld", QString(), QString()).isEmpty());
         Request badPath = req; badPath.basePath = "/p\r\nX: y";

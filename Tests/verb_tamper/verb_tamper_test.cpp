@@ -99,6 +99,17 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost, "GET", {}).isEmpty());
         Request badPath = req; badPath.basePath = "/admin\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath, "GET", {}).isEmpty());
+
+        // A carried Accept-Encoding must be dropped so line 43's forced "identity"
+        // stands alone -- else the server gzips and the override-redundancy body
+        // compare / HEAD Content-Length corroboration run on compressed bytes,
+        // corrupting the bypass decision. (Prior tests never carried Accept-Encoding.)
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, "GET", {});
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
     }
 
     std::fprintf(stderr, "verb_tamper_test: %d passed, %d failed\n", pass, fail);

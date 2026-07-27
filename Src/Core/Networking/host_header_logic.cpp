@@ -49,6 +49,12 @@ QByteArray buildRequest(const Request &req, const QString &hostLine,
         // that never arrives). Drop both -- buildRequest emits a body-less request.
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 44 forces "identity" so the sentinel
+        // body-URL scan (bodyHasUrl) runs on a PLAINTEXT body; a surviving
+        // "gzip, deflate, br" combines (RFC 7230 3.2.2), the server compresses, the
+        // client does NOT inflate -> the reflected "//sentinel" is never seen and a
+        // real host-header injection reports CLEAN.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (!extraHeader.isEmpty() && h.first.compare(extraHeader, Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
