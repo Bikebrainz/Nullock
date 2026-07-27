@@ -116,6 +116,17 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 5000; ++i) big += "x ";   // 10000 tokens > 2000 cap
         const auto d = diff("words", big, big + "y");
         chk("truncate: flagged when over the token cap", d.truncated);
+        // audit-9: a truncated diff compared only the clipped prefix, so it must
+        // NOT report two inputs (that differ past the cap) as identical.
+        chk("truncate: NOT identical (differs past the cap)", !d.identical);
+    }
+
+    // ===== chars mode is code-point aware (audit-9) ====================
+    {
+        const char32_t a1[] = { 0x1F600 }, b1[] = { 0x1F601 };   // grinning vs beaming face
+        const auto d = diff("chars", QString::fromUcs4(a1, 1), QString::fromUcs4(b1, 1));
+        chk("chars: distinct non-BMP glyphs share no whole char (no surrogate split)",
+            d.common == 0);
     }
 
     // ===== unknown mode falls back to words ============================

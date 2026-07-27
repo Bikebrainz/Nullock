@@ -1,5 +1,7 @@
 #include "compare.hpp"
 
+#include <QHash>
+
 #include <algorithm>
 #include <vector>
 
@@ -44,12 +46,20 @@ QStringList tokenizeLines(const QString &s) {
 }
 
 QStringList tokenizeChars(const QString &s) {
-    // Cap DURING tokenization: chars mode is one token per character, so a large
-    // paste would otherwise allocate millions of QStrings on the GUI thread.
-    const qsizetype lim = qMin<qsizetype>(s.size(), qsizetype(kMaxTokens) + 1);
+    // Cap DURING tokenization (chars mode is one token per CODE POINT). Advance by
+    // whole code points so a non-BMP character is ONE token, not two lone
+    // surrogates -- which render as replacement glyphs AND false-match distinct
+    // emoji (each shares a high surrogate).
     QStringList out;
-    out.reserve(lim);
-    for (qsizetype i = 0; i < lim; ++i) out << QString(s[i]);
+    out.reserve(qMin<qsizetype>(s.size(), qsizetype(kMaxTokens) + 1));
+    const qsizetype size = s.size();
+    for (qsizetype i = 0; i < size && out.size() <= kMaxTokens; ) {
+        if (s[i].isHighSurrogate() && i + 1 < size && s[i + 1].isLowSurrogate()) {
+            out << s.mid(i, 2); i += 2;
+        } else {
+            out << QString(s[i]); ++i;
+        }
+    }
     return out;
 }
 
@@ -60,14 +70,32 @@ DiffResult lcsDiff(QStringList a, QStringList b) {
     if (b.size() > kMaxTokens) { b = b.mid(0, kMaxTokens); res.truncated = true; }
     const int n = a.size(), m = b.size();
 
+    // Intern tokens to integer ids so each DP cell compares in O(1) regardless of
+    // token byte-size. The count cap bounds n*m, but a raw QString== per cell would
+    // make the DP O(n*m*tokenLen) -- a multi-second GUI-thread freeze on large
+    // repetitive input (2000x2000 cells x multi-KB tokens). Interning restores the
+    // "tens of ms" guarantee the cap is meant to provide.
+    QHash<QString, int> ids;
+    ids.reserve(n + m);
+    auto idOf = [&ids](const QString &t) {
+        const auto it = ids.constFind(t);
+        if (it != ids.constEnd()) return it.value();
+        const int id = ids.size();
+        ids.insert(t, id);
+        return id;
+    };
+    std::vector<int> ai(n), bi(m);
+    for (int i = 0; i < n; ++i) ai[i] = idOf(a[i]);
+    for (int j = 0; j < m; ++j) bi[j] = idOf(b[j]);
+
     // dp[i][j] = LCS length of a[i:] and b[j:]. Flat (n+1)*(m+1) table.
     std::vector<int> dp(static_cast<size_t>(n + 1) * (m + 1), 0);
     const int stride = m + 1;
     auto cell = [&dp, stride](int i, int j) -> int & { return dp[static_cast<size_t>(i) * stride + j]; };
     for (int i = n - 1; i >= 0; --i)
         for (int j = m - 1; j >= 0; --j)
-            cell(i, j) = (a[i] == b[j]) ? cell(i + 1, j + 1) + 1
-                                        : std::max(cell(i + 1, j), cell(i, j + 1));
+            cell(i, j) = (ai[i] == bi[j]) ? cell(i + 1, j + 1) + 1
+                                          : std::max(cell(i + 1, j), cell(i, j + 1));
     res.common = (n && m) ? cell(0, 0) : 0;
 
     auto push = [&res](const char *op, const QString &text) {
@@ -79,14 +107,17 @@ DiffResult lcsDiff(QStringList a, QStringList b) {
 
     int i = 0, j = 0;
     while (i < n && j < m) {
-        if (a[i] == b[j])                        { push("eq",  a[i]); ++i; ++j; }
+        if (ai[i] == bi[j])                        { push("eq",  a[i]); ++i; ++j; }
         else if (cell(i + 1, j) >= cell(i, j + 1)) { push("del", a[i]); ++i; ++res.removed; }
-        else                                      { push("ins", b[j]); ++j; ++res.added; }
+        else                                       { push("ins", b[j]); ++j; ++res.added; }
     }
     while (i < n) { push("del", a[i]); ++i; ++res.removed; }
     while (j < m) { push("ins", b[j]); ++j; ++res.added; }
 
-    res.identical = (res.added == 0 && res.removed == 0);
+    // A TRUNCATED diff compared only the clipped prefix, so it must NEVER assert
+    // identity -- two inputs equal in the first kMaxTokens but differing after
+    // would otherwise be wrongly reported identical.
+    res.identical = (!res.truncated && res.added == 0 && res.removed == 0);
     return res;
 }
 
