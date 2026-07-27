@@ -111,6 +111,22 @@ int main(int argc, char **argv) {
         // cookie builder strips ; CR LF from the value
         const QByteArray c = buildCookieRequest(req, "rememberMe", "abc;def");
         chk("buildCookie: strips semicolon from value", c.contains("Cookie: rememberMe=abcdef\r\n"));
+        // CR/LF in the cookie VALUE must be stripped (the hand-rolled remove('\r')/
+        // remove('\n') is its ONLY header-injection defense -- the value is neither
+        // crlf()-guarded nor percent-encoded). Only the ';' case was tested. Exact-
+        // line assertion (a mere !contains("X-Injected: 1\r\n") is non-discriminating,
+        // since the stripped value legitimately renders "...vX-Injected: 1\r\n").
+        const QByteArray cc = buildCookieRequest(req, "rememberMe", "v\r\nX-Injected: 1");
+        chk("buildCookie: strips CR/LF from the value (one Cookie line, no header split)",
+            cc.contains("Cookie: rememberMe=vX-Injected: 1\r\n")
+            && !cc.contains("Cookie: rememberMe=v\r\n"));
+        // kindForFormat: engine-label -> finding-kind, incl. the fragile label!=kind
+        // rows (Python->deser-pickle, .NET->deser-dotnet); never called by a test.
+        chk("kindForFormat: Java/PHP/Ruby direct", kindForFormat("Java") == "deser-java"
+            && kindForFormat("PHP") == "deser-php" && kindForFormat("Ruby") == "deser-ruby");
+        chk("kindForFormat: Python -> deser-pickle (label != kind)", kindForFormat("Python") == "deser-pickle");
+        chk("kindForFormat: .NET -> deser-dotnet (label != kind)", kindForFormat(".NET") == "deser-dotnet");
+        chk("kindForFormat: unknown -> deser-unknown (default)", kindForFormat("nonsense") == "deser-unknown");
     }
 
     std::fprintf(stderr, "deser_probe_test: %d passed, %d failed\n", pass, fail);

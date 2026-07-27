@@ -86,6 +86,31 @@ int main(int argc, char **argv) {
             && jwts[0].toObject().value("payload").toObject().value("role").toString() == "admin");
     }
 
+    // ----- decodeJwt guards (both previously untested) -------------------
+    {
+        // (a) alg-gate: an x.y.z whose header decodes to a JSON object WITHOUT "alg"
+        // is NOT a JWT (stops flagging arbitrary structured header/cookie values).
+        const QString noAlg =
+            b64url(QJsonDocument(QJsonObject{{"foo", 1}}).toJson(QJsonDocument::Compact)) + "."
+          + b64url(QJsonDocument(QJsonObject{{"bar", 2}}).toJson(QJsonDocument::Compact)) + ".sig_abc123";
+        const QByteArray raw =
+            ("GET / HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + noAlg + "\r\n\r\n").toUtf8();
+        chk("jwt alg-gate: an x.y.z header JSON with no 'alg' is NOT a JWT",
+            inspectRequest(raw).value("jwts").toArray().isEmpty());
+
+        // (b) a valid JOSE header with a NON-JSON payload is still reported, with
+        // payload:null (graceful partial decode -- not dropped, not a crash).
+        const QString nullPay =
+            b64url(QJsonDocument(QJsonObject{{"alg", "none"}}).toJson(QJsonDocument::Compact)) + "."
+          + b64url(QByteArray("notjson")) + ".sig_abc123";
+        const QByteArray raw2 =
+            ("GET / HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + nullPay + "\r\n\r\n").toUtf8();
+        const QJsonArray j2 = inspectRequest(raw2).value("jwts").toArray();
+        chk("jwt payload:null: valid header + non-JSON payload -> one jwt, alg=none, payload null",
+            j2.size() == 1 && j2[0].toObject().value("alg").toString() == "none"
+            && j2[0].toObject().value("payload").isNull());
+    }
+
     // ----- inspectRequest: JSON body -----
     {
         const QByteArray raw =

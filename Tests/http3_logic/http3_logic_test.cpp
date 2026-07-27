@@ -90,6 +90,14 @@ int main(int argc, char **argv) {
         const QByteArray out = buildGet(r);
         chk("hdr: custom Host dropped (no duplicate)", countSub(out, "Host: ") == 1 && !out.contains("evil.example"));
     }
+    {
+        // The header-NAME CR/LF guard (line 21) is a DISTINCT barrier from the value
+        // guard (line 22): a name carrying CR/LF must be skipped so it can't split
+        // the request line / inject a header. The value case above never exercises it.
+        Request r = baseReq(); r.headers = { {"X\r\nInjected: 1", "v"} };
+        const QByteArray out = buildGet(r);
+        chk("hdr: CR/LF in a header NAME is skipped (nothing injected)", !out.contains("Injected"));
+    }
 
     // ===== looksHttp3 ==================================================
     chk("h3: 'h3' is h3", looksHttp3("h3"));

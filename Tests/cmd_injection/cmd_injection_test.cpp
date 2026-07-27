@@ -57,6 +57,12 @@ int main(int argc, char **argv) {
         // A region longer than 64 chars is skipped.
         chk("regions: >64 skipped",
             renderedRegions("zPRE" + QString(80, 'x') + "SUFz", pre, suf).isEmpty());
+        // ...but an oversized region must not STOP the scan: a LATER valid product
+        // region is still found (the double-reflection FN fix relies on continue-
+        // after-skip, not break). A skip->break regression returns [] here.
+        chk("regions: oversized region skipped, a later valid region still found",
+            renderedRegions("zPRE" + QString(80, 'x') + "SUFz mid zPRE7006652SUFz", pre, suf)
+                == QStringList{"7006652"});
     }
 
     // ---- buildRequest: CR/LF guards ---------------------------------------
@@ -70,6 +76,17 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF header", !buildRequest(injHdr, "cmd=x").contains("X-Smuggled"));
+        // Positive coverage for the emit + Host-dedup paths (only the CR/LF-drop was
+        // tested): a clean carried header IS emitted, and a carried Host is dropped
+        // in favor of the one canonical Host. A regression dropping benign headers
+        // would silently scan authenticated targets UNauthenticated (false clean).
+        Request carried = req;
+        carried.headers.append(qMakePair(QString("Cookie"), QString("session=abc")));
+        carried.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        const QByteArray cb = buildRequest(carried, "cmd=x");
+        chk("build: a clean carried header IS emitted", cb.contains("Cookie: session=abc\r\n"));
+        chk("build: a carried Host is deduped to the one canonical Host",
+            cb.count("Host: ") == 1 && cb.contains("Host: victim.tld\r\n") && !cb.contains("attacker.tld"));
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "cmd=x").isEmpty());

@@ -45,6 +45,20 @@ int main(int argc, char **argv) {
     chk("html decode numeric dec", ap("html-decode", "&#65;&#66;") == "AB");
     chk("html decode numeric hex", ap("html-decode", "&#x41;&#x42;") == "AB");
     chk("html decode no double-decode of &amp;lt;", ap("html-decode", "&amp;lt;") == "&lt;");
+    // ASTRAL (supplementary plane): a numeric entity > U+FFFF decodes via
+    // QString::fromUcs4 to a surrogate PAIR (transcode.cpp:76). Every case above is
+    // <= U+FFFF (line-75 branch); a truncating regression (char16_t(cp)) would emit
+    // the wrong BMP char (128512 & 0xFFFF == U+8600).
+    chk("html decode astral entity &#128512; -> U+1F600 (surrogate pair)",
+        ap("html-decode", "&#128512;") == QString::fromUcs4(U"\U0001F600"));
+    chk("html decode astral hex &#x1F600; -> U+1F600",
+        ap("html-decode", "&#x1F600;") == QString::fromUcs4(U"\U0001F600"));
+    // Upper-bound FAIL-CLOSED: a code point past U+10FFFF is NOT decoded -- the
+    // entity stays literal (transcode.cpp:74 guard); the max valid U+10FFFF decodes.
+    chk("html decode rejects > U+10FFFF (stays literal)",
+        ap("html-decode", "&#1114112;") == "&#1114112;");
+    chk("html decode accepts the max valid U+10FFFF",
+        ap("html-decode", "&#1114111;") == QString::fromUcs4(U"\U0010FFFF"));
     // audit-4: a numeric entity must not be re-combined into a named one by a
     // second decode pass ("&#38;lt;" is '&' then literal "lt;", NOT "<").
     chk("html decode no numeric->named recombine (dec)", ap("html-decode", "&#38;lt;") == "&lt;");

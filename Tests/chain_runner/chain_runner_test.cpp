@@ -66,6 +66,12 @@ int main(int argc, char **argv) {
     chk("json: a missing path -> empty", jsonPathGet("{\"a\":1}", "z").isEmpty());
     chk("json: invalid JSON -> empty", jsonPathGet("not json", "a").isEmpty());
     chk("json: an out-of-range array index -> empty", jsonPathGet("{\"xs\":[1]}", "xs.5").isEmpty());
+    // ROOT array: a response whose top-level JSON is an array (a common API shape)
+    // is seeded via the doc.isArray() arm (line 45); every case above uses a
+    // top-level OBJECT, so that arm was untested. A regression to always-object
+    // seeding returns empty for a root-array doc, silently breaking value extraction.
+    chk("json: top-level array root, index+key path", jsonPathGet("[{\"t\":\"ok\"}]", "0.t") == "ok");
+    chk("json: bare top-level array index", jsonPathGet("[\"a\",\"b\"]", "1") == "b");
 
     // ===== substituteStr: {{var}} expansion, no re-scan =================
     chk("subst: a known var is expanded", substituteStr("Hi {{name}}", vars({{"name", "Bob"}})) == "Hi Bob");
