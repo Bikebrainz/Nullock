@@ -69,7 +69,17 @@ int main(int argc, char **argv) {
         RequestSpec s; s.path = "/a={{payload1}}&b={{payload2}}";
         s.payloads = { QStringList{ "1", "2" }, QStringList{ "x", "y" } };
         s.pitchfork = false;
-        chk("cluster 2x2 -> 4", buildRequests(s, v).size() == 4);
+        const auto cb = buildRequests(s, v);
+        chk("cluster 2x2 -> 4", cb.size() == 4);
+        // Odometer DIRECTION is a behavioral contract, not just a count: the LAST
+        // payload var varies FASTEST. A reversed carry would still produce 4
+        // requests but reorder them, silently mislabeling which payload produced
+        // which request (the usedPayloads the user sees). Lock the exact order.
+        chk("cluster order r0 = 1,x", contains(cb[0].bytes, "/a=1&b=x "));
+        chk("cluster order r1 = 1,y (last var fastest)", contains(cb[1].bytes, "/a=1&b=y "));
+        chk("cluster order r2 = 2,x", contains(cb[2].bytes, "/a=2&b=x "));
+        chk("cluster order r3 = 2,y", contains(cb[3].bytes, "/a=2&b=y "));
+        chk("cluster usedPayloads track the combo", cb[2].usedPayloads == (QStringList{ "2", "x" }));
         s.pitchfork = true;
         const auto z = buildRequests(s, v);
         chk("pitchfork zip -> 2", z.size() == 2);
