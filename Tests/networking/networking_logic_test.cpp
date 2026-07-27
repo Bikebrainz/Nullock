@@ -157,6 +157,7 @@ int main(int argc, char **argv) {
     chkb("CL over cap => !ok",
          parseContentLength(QString::number(kMaxBodyBytes + 1)).ok, false);
     chkb("CL huge => !ok",           parseContentLength("999999999999").ok, false);
+    chkb("CL leading-plus => !ok",   parseContentLength("+5").ok,           false);  // audit-4
 
     // ===== parseChunkSizeLine ============================================
     {
@@ -186,6 +187,11 @@ int main(int argc, char **argv) {
     chki("chunk at cap value",    parseChunkSizeLine("8000000").size, kMaxBodyBytes);
     chkb("chunk over cap => !ok", parseChunkSizeLine("8000001").ok, false);
     chkb("chunk FFFFFFFF => !ok", parseChunkSizeLine("FFFFFFFF").ok, false);
+    // audit-4: chunk-size is 1*HEXDIG -- reject a 0x prefix / +sign (Qt toLongLong
+    // honors both, which would truncate or desync the decoded body).
+    chkb("chunk 0x0 => !ok (no 0x prefix)", parseChunkSizeLine("0x0").ok,  false);
+    chkb("chunk 0x1f => !ok",               parseChunkSizeLine("0x1f").ok, false);
+    chkb("chunk +1f => !ok (no sign)",      parseChunkSizeLine("+1f").ok,  false);
 
     // ===== feedChunked: happy paths ======================================
     {

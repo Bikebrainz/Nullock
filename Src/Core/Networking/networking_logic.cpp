@@ -40,8 +40,14 @@ QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name)
 
 ContentLength parseContentLength(const QString &cl) {
     ContentLength out;
+    const QString t = cl.trimmed();
+    // RFC 9112: Content-Length is 1*DIGIT. Reject empty and any sign/hex/junk up
+    // front -- toLongLong() alone accepts a leading '+' ("+5"), which would frame
+    // the response as well-formed instead of a protocol error.
+    if (t.isEmpty()) return out;
+    for (const QChar c : t) { const ushort u = c.unicode(); if (u < '0' || u > '9') return out; }
     bool ok = false;
-    const qint64 n = cl.trimmed().toLongLong(&ok);
+    const qint64 n = t.toLongLong(&ok);
     if (!ok || n < 0 || n > kMaxBodyBytes) return out;   // ok stays false
     out.ok    = true;
     out.value = n;
@@ -53,8 +59,16 @@ ChunkSize parseChunkSizeLine(const QByteArray &sizeLine) {
     QByteArray s = sizeLine;
     const int semi = s.indexOf(';');
     if (semi >= 0) s = s.left(semi);
+    s = s.trimmed();
+    // RFC 9112: chunk-size is 1*HEXDIG. Reject empty and any 0x-prefix / sign / junk
+    // up front -- toLongLong(&ok,16) accepts "0x0" (Qt honors the 0x prefix and a
+    // leading +/-), which would truncate or desync the decoded body vs ground truth.
+    if (s.isEmpty()) return out;
+    for (const char c : s)
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            return out;
     bool ok = false;
-    const qint64 sz = s.trimmed().toLongLong(&ok, 16);
+    const qint64 sz = s.toLongLong(&ok, 16);
     if (!ok || sz < 0 || sz > kMaxBodyBytes) return out;   // ok stays false
     out.ok   = true;
     out.size = sz;
