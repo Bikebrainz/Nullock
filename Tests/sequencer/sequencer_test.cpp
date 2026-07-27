@@ -110,6 +110,12 @@ int main(int argc, char **argv) {
         analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["looksSequential"].toBool());
     chk("decimal counter crossing 99->100 -> sequential (base auto-detect)",
         analyze(L({"97","98","99","100","101","102"}))["sequential"].toObject()["looksSequential"].toBool());
+    // A DESCENDING counter (delta -1) is as predictable as an ascending one.
+    chk("descending decimal counter 102..97 -> sequential (negative delta)",
+        analyze(L({"102","101","100","99","98","97"}))["sequential"].toObject()["looksSequential"].toBool());
+    // A HEX-base counter (unambiguous hex tokens) -> sequential via base auto-detect.
+    chk("hex counter aa..b0 -> sequential (hex base auto-detect)",
+        analyze(L({"aa","ab","ac","ad","ae","af","b0"}))["sequential"].toObject()["looksSequential"].toBool());
 
     // ===== #2 n=3 threshold: unrelated third token is NOT sequential ======
     chk("3 tokens 5,10,9999 (unrelated third) -> NOT sequential (FP fix)",
