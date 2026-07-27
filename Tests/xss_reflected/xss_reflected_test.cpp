@@ -77,6 +77,15 @@ int main(int argc, char **argv) {
         runs("<?x=\"><div><nlk0a1b2c3d></div>"));
     chk("DOCTYPE does not swallow the following content -> marker runs",
         runs("<!DOCTYPE html><div><nlk0a1b2c3d></div>"));
+    // audit-3 FN fix: a literal '<' in element content that is NOT a real tag
+    // start (followed by space/digit/punct) is text, not a phantom tag that
+    // swallows a following reflected marker.
+    chk("stray '< ' in content does not swallow a later marker -> runs",
+        runs("<div>1 < 2 and <nlk0a1b2c3d></div>"));
+    chk("literal '< $' (price < $10) before marker -> runs",
+        runs("<p>price < $10 <nlk0a1b2c3d></p>"));
+    chk("'<3' (digit after '<', not a tag) before marker -> runs",
+        runs("<p>i <3 you <nlk0a1b2c3d></p>"));
 
     // ===== FALSE-POSITIVE FIXES: marker is inert, must NOT run ============
     chk("HEADLINE FP: marker in attribute, earlier quoted attr has '>' -> NOT run",

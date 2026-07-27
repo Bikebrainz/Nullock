@@ -98,6 +98,13 @@ bool inExecutingHtmlContext(const QString &body, int at) {
             int j = i + 1;
             const bool closing = (j < body.size() && body[j] == '/');
             if (closing) ++j;
+            // A tag name MUST start with an ASCII letter (HTML5 tag-open / end-tag-
+            // open state). A '<' followed by a space, digit, '=', '<', etc. is a
+            // parse error: the '<' is literal character DATA and the next char is
+            // reconsumed in the data state. Opening a phantom tag here swallowed a
+            // following reflected <marker> -- a false negative on bodies like
+            // "1 < 2 <marker>" or "i <3 you <marker>".
+            if (j >= body.size() || !body[j].isLetter()) continue;
             QString nameStr;
             while (j < body.size() && body[j].isLetterOrNumber()) { nameStr += body[j].toLower(); ++j; }
             if (!closing && rawText.contains(nameStr)) openRaw = nameStr;

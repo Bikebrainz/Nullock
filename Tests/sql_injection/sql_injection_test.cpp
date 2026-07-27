@@ -38,6 +38,15 @@ int main(int argc, char **argv) {
     // ---- matchError: GENERIC (status-gated) -- the WAF-block-prone phrasings -
     chk("sig: generic SQL syntax error", dbms("Request blocked: SQL syntax error detected") == "generic");
     chk("sig: generic SQLSTATE", dbms("SQLSTATE[42000]: Syntax error") == "generic");
+    // audit-3: WAF-carryable Oracle PROSE is status-gated (generic), not trusted
+    // as an ungated DBMS-specific hit -- a 403 block page can't confirm it. A real
+    // ORA-##### code (a WAF page won't carry) is still trusted as Oracle.
+    chk("sig: 'Oracle error' prose -> generic (was ungated Oracle)",
+        dbms("Request blocked: Oracle error detected") == "generic");
+    chk("sig: 'quoted string not properly terminated' prose -> generic",
+        dbms("DB message: quoted string not properly terminated") == "generic");
+    chk("sig: a real ORA-##### code still trusted as Oracle (even with the prose)",
+        dbms("ORA-01756: quoted string not properly terminated") == "Oracle");
     chk("sig: unrelated -> none", dbms("<html>0 results</html>").isEmpty());
 
     // ---- isBlockStatus ---------------------------------------------------

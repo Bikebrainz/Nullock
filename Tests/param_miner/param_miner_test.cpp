@@ -39,6 +39,10 @@ int main(int argc, char **argv) {
         !statusFlipConfirmed(500, 500, 500, 200));
     chk("flip: first didn't flip -> rejected",
         !statusFlipConfirmed(200, 200, 500, 200));
+    // audit-3: a re-send that lands on a DIFFERENT non-baseline status than the
+    // first observation did NOT reproduce the flip -- reject (transient flap).
+    chk("flip: re-send flipped to a DIFFERENT status than first -> rejected",
+        !statusFlipConfirmed(500, 200, 404, 200));
 
     // ---- canaryReflected: body OR header (FN fix) -----------------------
     chk("reflect: in body", canaryReflected(QByteArray("<p>qm5zabcdef</p>"), {}, "qm5zabcdef"));

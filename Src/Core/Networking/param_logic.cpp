@@ -88,8 +88,12 @@ bool statusFlipConfirmed(int firstStatus, int reBaselineStatus,
     // still equal the original baseline (else the baseline DRIFTED -- the
     // "flip" was load/deploy noise, not the param). Defeats a transient flap
     // mis-attributed to whatever name bisection happened to land on.
+    // (b) requires the re-send to reproduce the SAME status as the first
+    // observation -- a re-send that lands on a DIFFERENT non-baseline status is a
+    // transient flap, not a deterministic param-driven flip. (reSendStatus ==
+    // firstStatus implies reSendStatus != baseStatus, since firstStatus != base.)
     return firstStatus != baseStatus
-        && reSendStatus != baseStatus
+        && reSendStatus == firstStatus
         && reBaselineStatus == baseStatus;
 }
 

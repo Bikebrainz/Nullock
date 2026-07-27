@@ -27,14 +27,17 @@ const QList<Sig> &signatures() {
         { "MSSQL",      QRegularExpression("Microsoft SQL (Server|Native)|ODBC SQL Server Driver|"
                                            "Unclosed quotation mark|SqlException|System\\.Data\\.SqlClient|"
                                            "Incorrect syntax near", ci) },
-        { "Oracle",     QRegularExpression("\\bORA-[0-9]{4,5}|Oracle error|quoted string not properly terminated|"
-                                           "oracle\\.jdbc", ci) },
+        // ORA-##### / oracle.jdbc are true backend fingerprints a WAF page won't
+        // carry. The prose "Oracle error" / "quoted string not properly
+        // terminated" ARE WAF-carryable, so they live in the status-gated generic
+        // family below (an unbalanced ORA-01756 still surfaces its ORA- code).
+        { "Oracle",     QRegularExpression("\\bORA-[0-9]{4,5}|oracle\\.jdbc", ci) },
         { "SQLite",     QRegularExpression("SQLite/JDBCDriver|SQLite\\.Exception|System\\.Data\\.SQLite|"
                                            "SQLITE_ERROR|sqlite3\\.OperationalError|unrecognized token", ci) },
         // GENERIC, low-distinctiveness phrasings a WAF/edge block page can also
         // carry ("SQL syntax error detected", "SQLSTATE[..]"). Gated on status
         // (see isBlockStatus) so a 4xx block page can't confirm.
-        { "generic",    QRegularExpression("SQL syntax error|syntax error at or near|"
+        { "generic",    QRegularExpression("SQL syntax error|syntax error at or near|Oracle error|"
                                            "unterminated quoted string|quoted string not properly terminated|"
                                            "SQLSTATE\\[", ci) },
     };
