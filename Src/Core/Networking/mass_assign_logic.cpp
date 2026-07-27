@@ -45,6 +45,11 @@ QByteArray buildRequest(const Request &req, bool json, const QByteArray &body) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: we force "identity" above (line 43) so a
+        // gzip response can't hide the echoed marker; a surviving "gzip, deflate, br"
+        // combines (RFC 7230 3.2.2) to let the server compress and the client does
+        // NOT inflate -> the marker scan sees compressed bytes and reports false clean.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) haveCt = true;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

@@ -74,6 +74,11 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost, "q=x").isEmpty());
         Request badPath = req; badPath.basePath = "/list\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath, "q=x").isEmpty());
+        // The query is spliced into the request line; the baseline send passes it
+        // verbatim (only probe values are pre-encoded), so a CR/LF in it must abort
+        // the build like the path guard -- else it splits the request line / injects.
+        chk("build: CRLF query -> empty (request-line injection guard)",
+            buildRequest(req, "id=1\r\nX-Injected: evil").isEmpty());
     }
 
     std::fprintf(stderr, "sql_injection_test: %d passed, %d failed\n", pass, fail);

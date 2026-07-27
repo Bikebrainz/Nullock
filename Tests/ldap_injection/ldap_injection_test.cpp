@@ -71,6 +71,15 @@ int main(int argc, char **argv) {
         chk("build: CRLF path -> empty", buildRequest(badPath, "q=x").isEmpty());
         // audit-5: the query is spliced into the request line -> guard it too.
         chk("build: CRLF query -> empty", buildRequest(req, "q=x\r\nEvil: 1").isEmpty());
+        // A carried Accept-Encoding must be dropped so only the forced "identity"
+        // survives -- else the server may gzip and matchError scans compressed bytes,
+        // missing the LDAP error fingerprint (false clean).
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, "q=x");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
     }
 
     std::fprintf(stderr, "ldap_injection_test: %d passed, %d failed\n", pass, fail);

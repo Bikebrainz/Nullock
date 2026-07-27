@@ -70,6 +70,11 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     if (req.method.contains('\r')   || req.method.contains('\n'))   return {};
     if (req.host.contains('\r')     || req.host.contains('\n'))     return {};
     if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
+    // The query is spliced into the request line below (basePath + "?" + query), so
+    // a CR/LF in it is request-line/header injection just like a tainted path. The
+    // baseline send passes req.query verbatim (only probe values are pre-encoded),
+    // so guard it too -- a tainted query ABORTS the build (matches the sibling probes).
+    if (query.contains('\r')        || query.contains('\n'))        return {};
     const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
     QByteArray out;
     out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";

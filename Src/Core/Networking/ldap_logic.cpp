@@ -76,6 +76,11 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: the forced "identity" above is what lets
+        // matchError scan a PLAINTEXT body; a surviving "gzip, deflate, br" combines
+        // (RFC 7230 3.2.2) to let the server compress and the client does NOT
+        // inflate -> the LDAP error fingerprint is missed and a real hit is clean.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

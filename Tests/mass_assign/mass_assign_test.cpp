@@ -80,6 +80,15 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost, true, body).isEmpty());
         Request badPath = req; badPath.basePath = "/api\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath, true, body).isEmpty());
+        // A carried Accept-Encoding must be dropped so only the forced "identity"
+        // survives -- else the server may gzip and the raw-byte marker scan misses a
+        // real privileged-field bind (false clean). Mirrors the Host/Content-Length drops.
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, true, body);
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
     }
 
     std::fprintf(stderr, "mass_assign_test: %d passed, %d failed\n", pass, fail);

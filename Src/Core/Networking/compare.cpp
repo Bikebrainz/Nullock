@@ -20,9 +20,14 @@ QStringList tokenizeWords(const QString &s) {
     // Stop once we're one past the cap so a huge paste can't build a giant list
     // before lcsDiff truncates (which would freeze the GUI thread).
     QStringList out;
-    int i = 0;
+    // qsizetype (not int) indices: QString::size() is qsizetype, and the inner word
+    // scan advances per code UNIT while the cap is only checked per emitted TOKEN --
+    // so a single >2GB whitespace-free token would overflow a 32-bit index (signed
+    // UB -> runaway loop / crash on the GUI thread), the very freeze the cap prevents.
+    // tokenizeChars already uses qsizetype; bring words/lines in line.
+    qsizetype i = 0;
     while (i < s.size() && out.size() <= kMaxTokens) {
-        int j = i;
+        qsizetype j = i;
         if (s[i].isSpace()) {                                  // leading whitespace run
             while (j < s.size() && s[j].isSpace()) ++j;
         } else {                                               // word + trailing whitespace
@@ -37,8 +42,8 @@ QStringList tokenizeWords(const QString &s) {
 
 QStringList tokenizeLines(const QString &s) {
     QStringList out;
-    int start = 0;
-    for (int i = 0; i < s.size() && out.size() <= kMaxTokens; ++i) {
+    qsizetype start = 0;   // qsizetype, not int: a >2GB single line would overflow (see tokenizeWords)
+    for (qsizetype i = 0; i < s.size() && out.size() <= kMaxTokens; ++i) {
         if (s[i] == QLatin1Char('\n')) { out << s.mid(start, i - start + 1); start = i + 1; }
     }
     if (start < s.size() && out.size() <= kMaxTokens) out << s.mid(start);
