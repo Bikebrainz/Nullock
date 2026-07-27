@@ -78,6 +78,16 @@ QByteArray buildRequest(const Request &req, const QString &token) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that fight the ones this builder forces
+        // (Accept-Encoding: identity line 72, Connection: close line 99/102, and its own
+        // computed Content-Length line 98):
+        //  - Accept-Encoding: else the server gzips and body-length grading is unreliable.
+        //  - Transfer-Encoding: coexisting with the emitted Content-Length is a CL.TE
+        //    smuggling/desync vector emitted by the scanner itself.
+        //  - Connection: a carried "keep-alive" defeats the intended clean-close framing.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (!req.body.isEmpty() && h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (!authHeaderName.isEmpty()
             && h.first.compare(authHeaderName, Qt::CaseInsensitive) == 0) continue;

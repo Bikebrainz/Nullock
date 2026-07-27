@@ -22,8 +22,13 @@ bool acceptCertName(const QString &cleaned, const QString &domainIn) {
 }
 
 bool recordMatchesQuery(const QString &recordName, const QString &askedName) {
-    return recordName.compare(askedName, Qt::CaseInsensitive) == 0
-        || recordName.endsWith(QLatin1Char('.') + askedName, Qt::CaseInsensitive);
+    // A DNS answer name is commonly ROOTED (a single trailing '.'); strip it so an
+    // exact rooted FQDN of the asked name still matches -- otherwise the host's own
+    // record is filtered out and the subdomain is wrongly reported as non-resolving.
+    QString rec = recordName;
+    if (rec.endsWith(QLatin1Char('.'))) rec.chop(1);
+    return rec.compare(askedName, Qt::CaseInsensitive) == 0
+        || rec.endsWith(QLatin1Char('.') + askedName, Qt::CaseInsensitive);
 }
 
 bool isWildcardResolved(const QStringList &candidateIps, const QStringList &wildcardIps) {
@@ -121,9 +126,15 @@ QString whoisReferralServer(const QString &whoisText) {
         // Drop a scheme if present ("https://whois.example" -> "whois.example").
         const int scheme = val.indexOf(QLatin1String("://"));
         if (scheme >= 0) val = val.mid(scheme + 3);
-        if (val.endsWith(QLatin1Char('/'))) val.chop(1);
-        // A real whois server is a bare host: has a dot, no whitespace.
-        if (val.isEmpty() || val.contains(QLatin1Char(' ')) || val.contains(QLatin1Char('\t')))
+        // Keep only the host: cut any path (or a trailing slash) at the first '/', so
+        // "whois.example.com/foo" -> "whois.example.com" (was returned with the path).
+        const int slash = val.indexOf(QLatin1Char('/'));
+        if (slash >= 0) val = val.left(slash);
+        // A real whois server is a bare host: has a dot, no whitespace AND no embedded
+        // control char -- a raw CR/LF (which .trimmed() only strips from the ENDS)
+        // would concatenate two hostnames / smuggle a value, so reject it.
+        if (val.isEmpty() || val.contains(QLatin1Char(' ')) || val.contains(QLatin1Char('\t'))
+            || val.contains(QLatin1Char('\r')) || val.contains(QLatin1Char('\n')))
             continue;
         if (val.contains(QLatin1Char('.'))) return val;
     }

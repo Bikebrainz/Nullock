@@ -70,6 +70,9 @@ int main(int argc, char **argv) {
     chk("json-path: a bool leaf", jsonPathGet("{\"ok\":true}", "ok") == "true");
     chk("json-path: an array index", jsonPathGet("{\"a\":[10,20,30]}", "a.1") == "20");
     chk("json-path: a miss -> empty", jsonPathGet("{\"a\":1}", "b").isEmpty());
+    chk("json-path: indexes a ROOT array", jsonPathGet("[10,20,30]", "1") == "20");
+    chk("json-path: a non-numeric array index -> empty (type guard, fail-closed)",
+        jsonPathGet("{\"a\":[10]}", "a.x").isEmpty());
 
     // ===== findCookieValue (first segment only) =========================
     chk("cookie-extract: the cookie value is read", findCookieValue("sid=real; Path=/; HttpOnly", "sid") == "real");
@@ -77,6 +80,8 @@ int main(int argc, char **argv) {
         findCookieValue("sid=real; Domain=evil.example; Path=/", "Domain").isEmpty());
     chk("cookie-extract: Path attribute not returned", findCookieValue("sid=real; Path=/admin", "Path").isEmpty());
     chk("cookie-extract: a missing cookie -> empty", findCookieValue("sid=real", "other").isEmpty());
+    chk("cookie-extract: '=' inside the value is preserved (split on the FIRST '=')",
+        findCookieValue("sid=a=b==; Path=/", "sid") == "a=b==");
 
     // ===== firstCapture (first participating group) =====================
     chk("regex: an alternation where group 1 didn't participate uses group 2",
@@ -96,6 +101,11 @@ int main(int argc, char **argv) {
     chk("glob: exact host does not match a different host",
         !globToRx("api.example.com").match("evil.com").hasMatch());
     chk("glob: '/admin*' prefix", globToRx("/admin*").match("/admin/users").hasMatch());
+    // \A..\z anchoring (not ^..$): an exact glob must NOT over-match a trailing-newline
+    // variant -- PCRE2 $ matches before a final \n, so the scope gate would fire on
+    // "api.example.com\n" (a path/host whose trailing %0a decodes to a raw newline).
+    chk("glob: exact glob does NOT over-match a trailing-newline variant",
+        !globToRx("api.example.com").match("api.example.com\n").hasMatch());
 
     // ===== substitute (single-pass, no re-expansion) ====================
     // The security-critical primitive: {{var}} tokens are replaced, unknown vars

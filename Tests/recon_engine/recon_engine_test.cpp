@@ -71,6 +71,8 @@ int main(int argc, char **argv) {
         !recordMatchesQuery("ftp.example.com.corp.local", "ftp.example.com"));
     chk("recordMatchesQuery: an unrelated host is rejected",
         !recordMatchesQuery("other.example.com", "ftp.example.com"));
+    chk("recordMatchesQuery: a trailing-dot (rooted) FQDN of the asked name matches",
+        recordMatchesQuery("ftp.example.com.", "ftp.example.com"));
 
     // ===== isWildcardResolved (the wildcard-DNS FP suppression) =========
     chk("wildcard: candidate resolving ONLY to the wildcard IP is a wildcard hit",
@@ -136,6 +138,10 @@ int main(int argc, char **argv) {
     chk("rev: IPv6 too many groups -> empty",
         ipToReverseDnsName("1:2:3:4:5:6:7:8:9").isEmpty());
     chk("rev: IPv6 non-hex group -> empty", ipToReverseDnsName("2001:zzzz::1").isEmpty());
+    chk("rev: IPv6 embedded IPv4 (::ffff:1.2.3.4) -> empty",
+        ipToReverseDnsName("::ffff:1.2.3.4").isEmpty());
+    chk("rev: IPv6 uppercase hex normalized identical to lowercase",
+        ipToReverseDnsName("2001:DB8::1") == ipToReverseDnsName("2001:db8::1"));
 
     // ===== whoisReferralServer ==========================================
     chk("whois-ref: IANA refer:",
@@ -156,6 +162,10 @@ int main(int argc, char **argv) {
         whoisReferralServer("refer: see the registrar website\n").isEmpty());
     chk("whois-ref: value without a dot is rejected",
         whoisReferralServer("refer: localhost\n").isEmpty());
+    chk("whois-ref: an embedded CR in the value is rejected (no host concatenation)",
+        whoisReferralServer("refer: whois.example.com\revil.com\n").isEmpty());
+    chk("whois-ref: a value with a path returns only the host (path cut at first '/')",
+        whoisReferralServer("refer: https://whois.example.com/foo\n") == "whois.example.com");
 
     // ===== sanitizeWhoisQuery (CR/LF / injection guard) =================
     chk("whois-q: plain domain",     sanitizeWhoisQuery("example.com") == "example.com");

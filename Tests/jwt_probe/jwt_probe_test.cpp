@@ -150,6 +150,22 @@ int main(int argc, char **argv) {
         Request bc = mk(); bc.method = "POST"; bc.body = "{\"x\":1}";
         bc.contentType = "application/json\r\nX-Smuggled: 1";
         chk("build: CR/LF contentType -> abort {}", buildRequest(bc, "TOK").isEmpty());
+
+        // Carried framing/encoding headers must be dropped so the ones this builder
+        // forces stand alone -- else body-length grading is corrupted or the scanner
+        // emits its own CL.TE smuggling/desync.
+        Request pae = mk(); pae.method = "POST"; pae.body = "{\"x\":1}";
+        pae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        pae.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        pae.headers.append(qMakePair(QString("Connection"), QString("keep-alive")));
+        const QByteArray p = buildRequest(pae, "TOK");
+        chk("build: carried Accept-Encoding dropped -> only forced identity",
+            !p.contains("gzip") && p.contains("Accept-Encoding: identity\r\n")
+            && p.toLower().count("accept-encoding:") == 1);
+        chk("build: carried Transfer-Encoding dropped -> only computed Content-Length",
+            !p.contains("Transfer-Encoding") && p.contains("Content-Length: 7\r\n"));
+        chk("build: carried Connection dropped -> only forced close",
+            !p.contains("keep-alive") && p.contains("Connection: close\r\n"));
         Request gc = mk(); gc.method = "POST"; gc.body = "{\"x\":1}"; gc.contentType = "application/xml";
         chk("build: a clean custom contentType still builds",
             buildRequest(gc, "TOK").contains("Content-Type: application/xml\r\n"));

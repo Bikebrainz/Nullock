@@ -72,6 +72,10 @@ int main(int argc, char **argv) {
     // seeding returns empty for a root-array doc, silently breaking value extraction.
     chk("json: top-level array root, index+key path", jsonPathGet("[{\"t\":\"ok\"}]", "0.t") == "ok");
     chk("json: bare top-level array index", jsonPathGet("[\"a\",\"b\"]", "1") == "b");
+    // 2^53+1 is the smallest integer NOT exactly representable as a double; the qint64
+    // preservation path must render it exactly, not round to 9007199254740992.
+    chk("json: a 64-bit id above 2^53 is exact, not rounded to double",
+        jsonPathGet("{\"id\":9007199254740993}", "id") == "9007199254740993");
 
     // ===== substituteStr: {{var}} expansion, no re-scan =================
     chk("subst: a known var is expanded", substituteStr("Hi {{name}}", vars({{"name", "Bob"}})) == "Hi Bob");
@@ -117,6 +121,15 @@ int main(int argc, char **argv) {
         chk("clen: Transfer-Encoding:chunked present -> NO Content-Length emitted (TE.CL fix)",
             !r.contains("Content-Length"));
         chk("clen: Transfer-Encoding is preserved", r.contains("Transfer-Encoding: chunked\r\n"));
+    }
+    {
+        // Order-independent TE.CL: Content-Length listed BEFORE Transfer-Encoding must
+        // STILL drop the CL. The pre-pass scans all lines for chunked first; a
+        // single-pass regression would emit the CL before reaching the chunked line.
+        const QByteArray r = normalizeContentLength(
+            "POST /x HTTP/1.1\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\nx");
+        chk("clen: CL-before-TE chunked still drops Content-Length (order-independent)",
+            !r.contains("Content-Length") && r.contains("Transfer-Encoding: chunked\r\n"));
     }
     {
         // Duplicate Content-Length headers collapse to exactly one (smuggling fix).

@@ -10,13 +10,17 @@
 namespace Nullock::Core::SessionRulesLogic {
 
 QRegularExpression globToRx(const QString &glob) {
-    QString rx = "^";
+    // Anchor with \A ... \z (absolute start/end), NOT ^ ... $: PCRE2's $ (without
+    // DollarEndOnly) also matches immediately BEFORE a trailing newline, so
+    // "api.example.com$" would over-match "api.example.com\n" and the scope gate
+    // would fire on a trailing-newline variant of the host/path it should reject.
+    QString rx = "\\A";
     for (QChar c : glob) {
         if (c == '*')      rx += ".*";
         else if (c == '?') rx += ".";
         else               rx += QRegularExpression::escape(QString(c));
     }
-    rx += "$";
+    rx += "\\z";
     return QRegularExpression(rx, QRegularExpression::CaseInsensitiveOption);
 }
 
