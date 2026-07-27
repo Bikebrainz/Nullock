@@ -27,15 +27,18 @@ QString toggleCase(const QString &s) {
     return o;
 }
 QString htmlHexEntities(const QString &s) {
+    // Iterate CODE POINTS (toUcs4), not UTF-16 code units -- emitting one entity
+    // per code unit turns a non-BMP payload char into two lone-surrogate refs an
+    // HTML parser renders as U+FFFD U+FFFD, not the intended char.
     QString o;
-    for (const QChar c : s)
-        o += QStringLiteral("&#x%1;").arg(c.unicode(), 0, 16);
+    for (const uint cp : s.toUcs4())
+        o += QStringLiteral("&#x%1;").arg(cp, 0, 16);
     return o;
 }
 QString htmlDecEntities(const QString &s) {
     QString o;
-    for (const QChar c : s)
-        o += QStringLiteral("&#%1;").arg(c.unicode());
+    for (const uint cp : s.toUcs4())
+        o += QStringLiteral("&#%1;").arg(cp);
     return o;
 }
 QString unicodeEscape(const QString &s) {

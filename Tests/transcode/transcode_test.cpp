@@ -45,6 +45,10 @@ int main(int argc, char **argv) {
     chk("html decode numeric dec", ap("html-decode", "&#65;&#66;") == "AB");
     chk("html decode numeric hex", ap("html-decode", "&#x41;&#x42;") == "AB");
     chk("html decode no double-decode of &amp;lt;", ap("html-decode", "&amp;lt;") == "&lt;");
+    // audit-4: a numeric entity must not be re-combined into a named one by a
+    // second decode pass ("&#38;lt;" is '&' then literal "lt;", NOT "<").
+    chk("html decode no numeric->named recombine (dec)", ap("html-decode", "&#38;lt;") == "&lt;");
+    chk("html decode no numeric->named recombine (hex)", ap("html-decode", "&#x26;gt;") == "&gt;");
     chk("hex encode", ap("hex-encode", "ABC") == "414243");
     chk("hex decode", ap("hex-decode", "414243") == "ABC");
     chk("hex decode spaced", ap("hex-decode", "41 42 43") == "ABC");

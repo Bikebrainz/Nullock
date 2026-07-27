@@ -37,6 +37,12 @@ int main(int argc, char **argv) {
                                           || one("toggle-case", "a1b2c") == "A1B2c");
     chk("html-hex-entities", one("html-hex-entities", "<") == "&#x3c;");
     chk("html-dec-entities", one("html-dec-entities", "<") == "&#60;");
+    // audit-4: a non-BMP (astral) char must encode as ONE scalar-valued entity,
+    // not two lone-surrogate refs (which render as U+FFFD U+FFFD).
+    chk("html-hex-entities astral (U+1F600)",
+        one("html-hex-entities", QString::fromUcs4(U"\U0001F600")) == "&#x1f600;");
+    chk("html-dec-entities astral (U+1F600)",
+        one("html-dec-entities", QString::fromUcs4(U"\U0001F600")) == "&#128512;");
     chk("unicode-escape", one("unicode-escape", "<") == "\\u003c");
     chk("sql-comment-space", one("sql-comment-space", "OR 1=1") == "OR/**/1=1");
     chk("tab-for-space", one("tab-for-space", "a b") == "a%09b");

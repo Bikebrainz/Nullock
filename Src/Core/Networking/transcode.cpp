@@ -49,35 +49,46 @@ QString htmlEncode(const QString &in) {
     return o;
 }
 Result htmlDecode(const QString &in) {
-    auto replaceNumeric = [](QString s, const QRegularExpression &re, int base) {
-        QString out; qsizetype last = 0;
-        auto it = re.globalMatch(s);
-        while (it.hasNext()) {
-            const auto m = it.next();
-            out += s.mid(last, m.capturedStart() - last);
-            bool okc = false;
-            const uint cp = m.captured(1).toUInt(&okc, base);
-            if (okc && cp <= 0x10FFFFu) {
-                if (cp <= 0xFFFFu) out += QChar(char16_t(cp));
-                else { const char32_t u = cp; out += QString::fromUcs4(&u, 1); }
+    // SINGLE left-to-right pass: at each '&', resolve at most ONE entity (named or
+    // numeric &#dd; / &#xhh;) and copy its replacement verbatim WITHOUT rescanning
+    // the produced characters. A staged numeric-then-named approach double-decodes
+    // ("&#38;lt;" -> '&' + "lt;" -> "<"), corrupting the exact bytes the tester relies
+    // on; "&amp;lt;" must stay "&lt;", "&#38;lt;" must stay "&lt;".
+    QString o;
+    o.reserve(in.size());
+    const int n = in.size();
+    int i = 0;
+    while (i < n) {
+        if (in[i] != QLatin1Char('&')) { o += in[i]; ++i; continue; }
+        const int semi = in.indexOf(QLatin1Char(';'), i + 1);
+        bool decoded = false;
+        if (semi > i + 1 && semi - i <= 32) {           // bounded entity length
+            const QString body = in.mid(i + 1, semi - i - 1);   // chars between '&' and ';'
+            if (body.startsWith(QLatin1Char('#'))) {
+                bool okc = false;
+                uint cp = 0;
+                if (body.size() > 1 && (body[1] == QLatin1Char('x') || body[1] == QLatin1Char('X')))
+                    cp = body.mid(2).toUInt(&okc, 16);
+                else
+                    cp = body.mid(1).toUInt(&okc, 10);
+                if (okc && cp <= 0x10FFFFu) {
+                    if (cp <= 0xFFFFu) o += QChar(char16_t(cp));
+                    else { const char32_t u = cp; o += QString::fromUcs4(&u, 1); }
+                    i = semi + 1;
+                    decoded = true;
+                }
             } else {
-                out += m.captured(0);
+                QString rep;
+                if      (body == QLatin1String("lt"))   rep = QLatin1String("<");
+                else if (body == QLatin1String("gt"))   rep = QLatin1String(">");
+                else if (body == QLatin1String("quot")) rep = QLatin1String("\"");
+                else if (body == QLatin1String("apos")) rep = QLatin1String("'");
+                else if (body == QLatin1String("amp"))  rep = QLatin1String("&");
+                if (!rep.isEmpty()) { o += rep; i = semi + 1; decoded = true; }
             }
-            last = m.capturedEnd();
         }
-        out += s.mid(last);
-        return out;
-    };
-    static const QRegularExpression hexRe(QStringLiteral("&#[xX]([0-9a-fA-F]+);"));
-    static const QRegularExpression decRe(QStringLiteral("&#(\\d+);"));
-    QString o = in;
-    o = replaceNumeric(o, hexRe, 16);
-    o = replaceNumeric(o, decRe, 10);
-    o.replace(QLatin1String("&lt;"), QLatin1String("<"))
-     .replace(QLatin1String("&gt;"), QLatin1String(">"))
-     .replace(QLatin1String("&quot;"), QLatin1String("\""))
-     .replace(QLatin1String("&apos;"), QLatin1String("'"))
-     .replace(QLatin1String("&amp;"), QLatin1String("&"));   // amp LAST
+        if (!decoded) { o += in[i]; ++i; }              // literal '&'
+    }
     return ok(o);
 }
 
