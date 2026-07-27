@@ -68,6 +68,19 @@ int main(int argc, char **argv) {
         resolvedRedirectHost(base, "/path#https://" + SENT) == "trusted.example");
     chk("resolve: relative stays same-origin",
         resolvedRedirectHost(base, "/account") == "trusted.example");
+    // userinfo-@ bypass (the classic CWE-601 whitelist evasion): the browser
+    // navigates to the host AFTER the '@', not the trusted-looking name before it.
+    // The module lists "userinfo" as a technique but never locked host resolution
+    // of one -- a regression that read the authority before the '@' would misroute.
+    chk("resolve: userinfo-@ bypass resolves to the host after '@'",
+        resolvedRedirectHost(base, "https://trusted.example@" + SENT) == SENT);
+    chk("resolve: scheme-relative userinfo-@ bypass resolves past the '@'",
+        resolvedRedirectHost(base, "//trusted.example@" + SENT) == SENT);
+    // Negative control: the sentinel sitting in the USERINFO (not the host) is NOT
+    // where navigation goes -- it must resolve to the real host, never the sentinel
+    // (guards against a naive "resolved string contains the sentinel" regression).
+    chk("resolve: sentinel in userinfo (not host) stays same-origin (no FP)",
+        resolvedRedirectHost(base, "https://" + SENT + "@trusted.example") == "trusted.example");
 
     // ---- clientSideRedirectHost: FALSE-POSITIVE cases (must NOT match) ----
     // The headline FP: a rejected payload echoed as inert prose near "location".
