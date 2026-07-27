@@ -259,6 +259,36 @@ int main(int argc, char **argv) {
         chk("fingerprint: no version -> manual-triage leads, all imprecise",
             !m.isEmpty() && anyImprecise);
     }
+    // audit-6: a FOREIGN generic-infra-header version must NOT confirm a CVE -- a
+    // PHP X-Powered-By / nginx Server version can't confirm a CMS/lib CVE. (The
+    // selection loop tracked vendor-match but ignored it at the precise gate.)
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.xGenerator = "WordPress";          // names the vendor but carries no version
+        fp.xPoweredBy = "PHP/5.4.49";         // foreign generic header WITH a version
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        bool anyPrecise = false;
+        for (const auto &x : m) if (x.precise) anyPrecise = true;
+        chk("fingerprint: foreign X-Powered-By PHP version -> no precise CVE (FP fix)", !anyPrecise);
+    }
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.server = "nginx/1.18.0";           // foreign Server version, vendor not named
+        const auto m = CveDatabase::lookupByFingerprint("lib-jquery", fp);
+        bool anyPrecise = false;
+        for (const auto &x : m) if (x.precise) anyPrecise = true;
+        chk("fingerprint: foreign Server nginx version -> no precise jQuery CVE (FP fix)", !anyPrecise);
+    }
+    // ...and a bare, KIND-SCOPED bodyVersion still drives a precise lookup -- the
+    // FP fix must not regress into a false negative.
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.bodyVersion = "6.4.1";             // bare version, sniffed by a kind-specific pattern
+        bool prec = false;
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        for (const auto &x : m) if (x.cveId == "CVE-2024-31210") prec = x.precise;
+        chk("fingerprint: bare kind-scoped bodyVersion 6.4.1 -> still precise (no FN regression)", prec);
+    }
     // parseVersion must pick the most-dotted run, not a digit inside the product
     // name: "Mag9 2.4.7" -> the version is 2.4.7 (in range), not "9" (out of range).
     {

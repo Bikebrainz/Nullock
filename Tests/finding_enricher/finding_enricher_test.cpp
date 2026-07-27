@@ -224,6 +224,10 @@ int main(int argc, char **argv) {
         };
         ck("oast kind -> confirmed",        conf("ssrf-oast-callback") == "confirmed");
         ck("time-based kind -> confirmed",  conf("sqli-time-based")    == "confirmed");
+        // audit-6: the REAL emitted blind time-based SQLi kind is sqli-blind-time-*
+        // (contains "blind-time", not "time-based") -- it must resolve to confirmed.
+        ck("blind-time kind -> confirmed (real emitted kind)",
+                                            conf("sqli-blind-time-mysql") == "confirmed");
         ck("*-confirmed -> confirmed",      conf("rce-blind-confirmed")== "confirmed");
         ck("possible kind -> tentative",    conf("xxe-possible")       == "tentative");
         ck("-lead kind -> tentative",       conf("cors-lead")          == "tentative");

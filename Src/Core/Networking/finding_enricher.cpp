@@ -468,6 +468,7 @@ QString confidenceForKind(const QString &kind) {
         || k.contains(QLatin1String("interactsh"))
         || k.contains(QLatin1String("-oob"))
         || k.contains(QLatin1String("time-based"))
+        || k.contains(QLatin1String("blind-time"))    // sqli-blind-time-{mysql,...}: reproduced timing proof
         || k.contains(QLatin1String("blind-confirmed")))
         return QStringLiteral("confirmed");
     // Explicitly heuristic -> tentative.

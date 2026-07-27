@@ -783,21 +783,30 @@ QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp)
     // header's Apache version for a CMS kind) doesn't drive the lookup.
     const QString vendor = kind.section('-', 1, 1).toLower();
     const QString sources[] = { fp.bodyVersion, fp.xGenerator, fp.xPoweredBy, fp.server };
-    QString best; int bestComp = -1; bool bestVendor = false; bool anyParseable = false;
-    for (const QString &v : sources) {
+    // bodyVersion / xGenerator are already KIND-SCOPED by the fingerprinter (a
+    // version sniffed via a kind-specific pattern, or the generator meta), so a
+    // bare number there is trusted. server / X-Powered-By are GENERIC shared-infra
+    // headers -- a version there only counts if it actually NAMES this kind's
+    // vendor; otherwise a foreign version (a PHP X-Powered-By on a WordPress kind)
+    // would drive a precise, CVSS-escalated CVE match it has no business confirming.
+    const bool vendorScoped[] = { true, true, false, false };
+    QString best; int bestComp = -1; bool bestVendor = false; bool anyUsable = false;
+    for (int i = 0; i < 4; ++i) {
+        const QString &v = sources[i];
         if (v.isEmpty()) continue;
         const Ver pv = parseVersion(v);
         if (!pv.valid) continue;
-        anyParseable = true;
         const bool vendorMatch = !vendor.isEmpty() && v.toLower().contains(vendor);
+        if (!(vendorScoped[i] || vendorMatch)) continue;   // generic header must name the vendor
+        anyUsable = true;
         if ((vendorMatch && !bestVendor) ||
             (vendorMatch == bestVendor && pv.ncomp > bestComp)) {
             best = v; bestComp = pv.ncomp; bestVendor = vendorMatch;
         }
     }
 
-    if (anyParseable) {
-        // We HAVE a real version -> a clean, version-confirmed lookup. If it
+    if (anyUsable) {
+        // We HAVE a trustworthy version -> a clean, version-confirmed lookup. If it
         // matches nothing, the host is patched / out of range -> return EMPTY.
         // Dumping the whole table here flagged a patched host with every
         // historical CVE (escalated to critical by the CVSS-based severity).
