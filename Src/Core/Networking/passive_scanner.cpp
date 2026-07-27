@@ -462,8 +462,11 @@ void PassiveScanner::checkResponse(int rowId,
         if (name.startsWith("__Host-", Qt::CaseInsensitive)) {
             const bool hasDomain = lc.contains("domain=");
             const bool hasSecure = lc.contains("secure");
-            const bool pathRoot = lc.contains("path=/") && !lc.contains("path=/;path=/"
-                                                                        );
+            // Path must be EXACTLY "/" (RFC 6265bis). A substring contains("path=/")
+            // wrongly accepts a non-root Path=/app; check the tokenized value.
+            bool pathRoot = false;
+            for (const QString &attr : lc.split(';'))
+                if (attr.trimmed() == "path=/") { pathRoot = true; break; }
             if (hasDomain || !hasSecure || !pathRoot) {
                 addFinding(rowId, req, resp, "medium", "cookie-host-prefix-violation",
                            "__Host- prefixed cookie missing Secure / Path=/ or has Domain",
@@ -679,8 +682,12 @@ void PassiveScanner::checkResponse(int rowId,
     // ---- Internal hostname / private IP exposure ------------------------
     if (html && scanBody.size() < 2 * 1024 * 1024) {
         const QString body = QString::fromUtf8(scanBody.left(2 * 1024 * 1024));
+        // Per-prefix octet counts: the 10/127 branches carry ONE leading octet
+        // (+3 = 4 total), while 192.168 and 172.1x already carry TWO (+2 = 4).
+        // The old shared "+3 octets" tail made 192.168.x.x / 172.16-31.x.x need a
+        // spurious 5th octet, so those two common private ranges never matched.
         static const QRegularExpression rxPrivIP(
-            R"(\b(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)");
+            R"(\b(?:10|127)\.\d{1,3}(?:\.\d{1,3}){2}\b|\b192\.168(?:\.\d{1,3}){2}\b|\b172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}\b)");
         const auto mIP = rxPrivIP.match(body);
         if (mIP.hasMatch()) {
             addFinding(rowId, req, resp, "info", "internal-ip-leak",
@@ -1038,9 +1045,13 @@ void PassiveScanner::checkResponse(int rowId,
             QString originHost;
             const QUrl ou = QUrl::fromUserInput(origin);
             if (ou.isValid()) originHost = ou.host();
+            // Dot-anchor the comparison: cross-origin unless the Origin host
+            // equals req.host or is a TRUE subdomain. A bare endsWith let an
+            // attacker sibling (evil-example.com vs example.com) slip past.
             if (!originHost.isEmpty()
-                && !originHost.endsWith(req.host, Qt::CaseInsensitive)
-                && !req.host.endsWith(originHost, Qt::CaseInsensitive)) {
+                && originHost.compare(req.host, Qt::CaseInsensitive) != 0
+                && !originHost.endsWith("." + req.host, Qt::CaseInsensitive)
+                && !req.host.endsWith("." + originHost, Qt::CaseInsensitive)) {
                 addFinding(rowId, req, resp, "medium", "ws-cross-origin-accepted",
                            "WebSocket upgrade accepted with cross-origin Origin",
                            "Origin: " + origin + " · host: " + req.host);

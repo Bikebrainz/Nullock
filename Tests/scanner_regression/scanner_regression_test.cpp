@@ -377,6 +377,48 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "api.example.test", "/v1/users/42"),
         makeResp(200, "application/json", "{\"id\":42}") });
 
+    // ---- audit-4: internal-ip-leak on the two most common private ranges ----
+    // (the old regex required a spurious 5th octet, so 192.168.x.x / 172.16-31.x.x
+    //  never matched -- only 10.x and 127.x did.)
+    tc.append({ "192.168.x.x private IP in HTML body -> internal-ip-leak",
+                "internal-ip-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><body>gateway at 192.168.1.1</body></html>") });
+
+    tc.append({ "172.16.x.x private IP in HTML body -> internal-ip-leak",
+                "internal-ip-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><body>host 172.16.0.1 internal</body></html>") });
+
+    tc.append({ "public IP 8.8.8.8 -> no internal-ip-leak",
+                "internal-ip-leak", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><body>resolver 8.8.8.8</body></html>") });
+
+    // ---- audit-4: CSWSH sibling-domain must not slip past a dot-anchor -------
+    tc.append({ "101 WS accept from attacker sibling origin -> ws-cross-origin-accepted",
+                "ws-cross-origin-accepted", false,
+        makeReq("GET", "example.com", "/socket", {{"Origin", "https://evil-example.com"}}),
+        makeResp(101, "", {}) });
+
+    tc.append({ "101 WS accept from a true subdomain origin -> no ws-cross-origin-accepted",
+                "ws-cross-origin-accepted", true,
+        makeReq("GET", "example.com", "/socket", {{"Origin", "https://app.example.com"}}),
+        makeResp(101, "", {}) });
+
+    // ---- audit-4: __Host- cookie with a non-root Path is a prefix violation --
+    tc.append({ "__Host- cookie with Path=/app (non-root) -> cookie-host-prefix-violation",
+                "cookie-host-prefix-violation", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Set-Cookie", "__Host-sid=abc; Secure; Path=/app"}}) });
+
+    tc.append({ "__Host- cookie Secure + Path=/ (valid) -> no violation",
+                "cookie-host-prefix-violation", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Set-Cookie", "__Host-sid=abc; Secure; Path=/"}}) });
+
     return tc;
 }
 
