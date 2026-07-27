@@ -55,6 +55,12 @@ int main(int argc, char **argv) {
         !acceptCertName("notexample.com", "example.com"));
     chk("acceptCertName: empty inputs rejected",
         !acceptCertName("", "example.com") && !acceptCertName("mail.example.com", ""));
+    // audit-8: a mixed-case target domain must still accept its subdomains
+    // (case-insensitive), else crt.sh discovery silently returns zero.
+    chk("acceptCertName: a mixed-case target accepts subdomains",
+        acceptCertName("mail.example.com", "Example.com"));
+    chk("acceptCertName: mixed-case apex still rejected",
+        !acceptCertName("example.com", "Example.com"));
 
     // ===== recordMatchesQuery (search-domain expansion guard) ===========
     chk("recordMatchesQuery: exact match", recordMatchesQuery("ftp.example.com", "ftp.example.com"));

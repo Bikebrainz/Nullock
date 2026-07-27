@@ -10,8 +10,12 @@ QString cleanName(QString s) {
     return s;
 }
 
-bool acceptCertName(const QString &cleaned, const QString &domain) {
-    if (cleaned.isEmpty() || domain.isEmpty()) return false;
+bool acceptCertName(const QString &cleaned, const QString &domainIn) {
+    if (cleaned.isEmpty() || domainIn.isEmpty()) return false;
+    // `cleaned` is already lower-cased by cleanName(); normalize the target the
+    // same way so a mixed-case target ("Example.com") doesn't reject EVERY
+    // subdomain under Qt's default case-sensitive endsWith/==.
+    const QString domain = domainIn.trimmed().toLower();
     if (cleaned.contains(QLatin1Char('*'))) return false;       // residual partial wildcard -> not a host
     if (cleaned == domain) return false;                        // the apex is not a subdomain
     return cleaned.endsWith(QLatin1Char('.') + domain);
