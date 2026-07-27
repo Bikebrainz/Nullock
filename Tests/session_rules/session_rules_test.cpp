@@ -97,6 +97,50 @@ int main(int argc, char **argv) {
         !globToRx("api.example.com").match("evil.com").hasMatch());
     chk("glob: '/admin*' prefix", globToRx("/admin*").match("/admin/users").hasMatch());
 
+    // ===== substitute (single-pass, no re-expansion) ====================
+    // The security-critical primitive: {{var}} tokens are replaced, unknown vars
+    // stay literal, and -- crucially -- a REPLACEMENT that itself looks like a
+    // token is NOT re-scanned. Response-derived data bound into a var must never
+    // pull in ANOTHER var (e.g. a target echoing "{{Authorization}}" must stay
+    // literal, not expand to the scanner's own auth token). Was untested.
+    {
+        QHash<QString, QString> vars;
+        vars.insert("tok", "abc123");
+        chk("subst: a known {{var}} is replaced",
+            substitute("Bearer {{tok}}", vars) == "Bearer abc123");
+    }
+    {
+        QHash<QString, QString> vars;
+        vars.insert("a", "X");   // 'b' is deliberately absent
+        chk("subst: an unknown {{var}} stays literal, a later known one still fires",
+            substitute("{{a}}{{b}}", vars) == "X{{b}}");
+    }
+    {
+        // The discriminating security lock: {{a}} -> "{{b}}", and even though 'b'
+        // IS defined, the injected "{{b}}" must NOT be re-expanded to SECRET. A
+        // naive replace()-loop (or a re-scanning rewrite) would return "SECRET".
+        QHash<QString, QString> vars;
+        vars.insert("a", "{{b}}");
+        vars.insert("b", "SECRET");
+        chk("subst: a substituted value that looks like a token is NOT re-expanded",
+            substitute("{{a}}", vars) == "{{b}}");
+    }
+    {
+        QHash<QString, QString> vars;
+        vars.insert("a", "x");
+        chk("subst: every occurrence of a repeated var is replaced",
+            substitute("{{a}}/{{a}}", vars) == "x/x");
+    }
+
+    // ===== findHeader (case-insensitive, first match) ===================
+    {
+        const QList<QPair<QString, QString>> hs = {
+            { "Content-Type", "text/html" }, { "X-Dup", "first" }, { "X-Dup", "second" } };
+        chk("find-header: case-insensitive name match", findHeader(hs, "content-TYPE") == "text/html");
+        chk("find-header: returns the FIRST value on a duplicate name", findHeader(hs, "X-Dup") == "first");
+        chk("find-header: a missing header -> empty", findHeader(hs, "X-Absent").isEmpty());
+    }
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
