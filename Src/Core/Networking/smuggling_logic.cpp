@@ -32,6 +32,13 @@ QByteArray commonHeaders(const Request &req) {
         if (kv.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (kv.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
         if (kv.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        // Strip a caller Connection too: every builder appends its own
+        // "Connection: close" as a load-bearing SAFETY invariant (the torn-down
+        // connection is what stops stranded smuggling bytes from prepending onto a
+        // real user's request on a pooled connection). A surviving caller
+        // "Connection: keep-alive" -- honored by a front-end that reads the first
+        // token -- would defeat that guarantee and fail OPEN into production traffic.
+        if (kv.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (kv.first.contains('\r') || kv.first.contains('\n')) continue;
         if (kv.second.contains('\r') || kv.second.contains('\n')) continue;
         h += kv.first.toUtf8() + ": " + kv.second.toUtf8() + "\r\n";

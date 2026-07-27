@@ -174,7 +174,16 @@ bool splitConfirmed(const QByteArray &rawResponse,
     // scanning body content. (HttpClient always provides a separator.)
     if (sep < 0) return false;
     const QString headerBlock = text.left(sep);
-    const QStringList lines = headerBlock.split('\n');
+    // Map a BARE CR to a line boundary too. The probe ships a "cr-only" technique
+    // (%0d with no LF); several HTTP stacks/proxies honor a lone CR as a line
+    // terminator, so a genuine cr-only split glues our marker header onto the
+    // previous header's value with a bare '\r'. A plain '\n' split would never see
+    // it and the whole cr-only class would be un-confirmable (a fail-open FN).
+    // CR->LF makes both CRLF and lone-CR splits visible; scanning stays confined to
+    // the header block with a random marker, so no new false positive.
+    QString normalized = headerBlock;
+    normalized.replace('\r', '\n');
+    const QStringList lines = normalized.split('\n');
     for (int i = 1; i < lines.size(); ++i) {   // skip the status line (index 0)
         const QString ln = lines[i].trimmed(); // trims a trailing '\r' too
         if (ln.startsWith(markerName, Qt::CaseInsensitive) && ln.contains(marker))

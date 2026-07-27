@@ -111,6 +111,16 @@ int main(int argc, char **argv) {
         r2.headers.append({QStringLiteral("Content-Length"), QStringLiteral("999")});
         chk("caller Content-Length is dropped (probe sets its own)",
             !clteProbe(r2).contains("Content-Length: 999"));
+        // A caller Connection is ALSO stripped: the probe appends its own
+        // Connection: close as the safety invariant that guarantees the connection
+        // tears down. A surviving "keep-alive" (honored first-token) would pool the
+        // connection and let stranded smuggling bytes desync into a real request.
+        Request r3 = mk();
+        r3.headers.append({QStringLiteral("Connection"), QStringLiteral("keep-alive")});
+        const QByteArray p3 = clteProbe(r3);
+        chk("caller Connection is dropped -> exactly one Connection: close (safety intact)",
+            !p3.contains("keep-alive") && p3.count("Connection:") == 1
+            && p3.contains("Connection: close\r\n"));
     }
 
     // ===== CR/LF in basePath/host ABORTS the build ======================

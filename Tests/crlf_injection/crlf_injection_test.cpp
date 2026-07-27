@@ -82,6 +82,18 @@ int main(int argc, char **argv) {
         chk("marker mid-line in a Location value -> NOT confirmed (no FP)",
             !splitConfirmed(raw, H({{"Location", "nlk%0d%0aX-Nullock-Crlf%3anlk424242"}}), NAME, MARK));
     }
+    // cr-only (bare CR) split: the probe ships a %0d-with-no-LF technique because
+    // several stacks honor a lone CR as a line terminator. When such a server
+    // decodes it, the marker header is glued onto the previous header's value with
+    // a bare '\r' (no '\n'). parseHeaders (splits on '\n') sees one Location value,
+    // so the primary check misses it; the raw fallback must normalize the lone CR
+    // to a boundary and CONFIRM -- else the entire cr-only technique is a dead probe.
+    {
+        QByteArray raw = "HTTP/1.1 302 Found\r\n"
+                         "Location: nlk\rX-Nullock-Crlf:nlk424242\r\n\r\n";
+        chk("bare-CR (cr-only) decoded split -> confirmed (raw fallback normalizes lone CR)",
+            splitConfirmed(raw, H({{"Location", "nlk\rX-Nullock-Crlf:nlk424242"}}), NAME, MARK));
+    }
     // Baseline-clean: nothing planted -> not confirmed.
     chk("clean response -> NOT confirmed",
         !splitConfirmed(QByteArray("HTTP/1.1 200 OK\r\nServer: nginx\r\n\r\nhi"),

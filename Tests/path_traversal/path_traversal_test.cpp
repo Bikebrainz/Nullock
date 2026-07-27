@@ -60,6 +60,11 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost, "file=x").isEmpty());
         Request badPath = req; badPath.basePath = "/dl\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath, "file=x").isEmpty());
+        // The query is spliced into the request line (basePath + "?" + query), so a
+        // CR/LF in it is header injection just like the path. The baseline path
+        // sends req.query raw, so a tainted query must abort the build too.
+        chk("build: CRLF query -> empty (request-line injection guard)",
+            buildRequest(req, "file=x\r\nX-Smuggled: 1").isEmpty());
     }
 
     std::fprintf(stderr, "path_traversal_test: %d passed, %d failed\n", pass, fail);
