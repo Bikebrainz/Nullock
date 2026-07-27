@@ -33,6 +33,12 @@ int main(int argc, char **argv) {
     chk("uppercase",         applyRule("aBc", rule("uppercase"))     == "ABC");
     chk("lowercase",         applyRule("aBc", rule("lowercase"))     == "abc");
     chk("reverse",           applyRule("abc", rule("reverse"))       == "cba");
+    {
+        // audit-6: reverse operates on CODE POINTS -- a non-BMP glyph must survive
+        // (a naive std::reverse over QChars swaps the surrogate pair -> U+FFFD).
+        const QString smile = QString::fromUcs4(U"\U0001F600");   // U+1F600
+        chk("reverse preserves a non-BMP glyph", applyRule(smile, rule("reverse")) == smile);
+    }
     chk("op name is case-insensitive", applyRule("aBc", rule("UPPERCASE")) == "ABC");
     chk("op name trimmed",   applyRule("aBc", rule("  uppercase  ")) == "ABC");
 

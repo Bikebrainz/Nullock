@@ -44,14 +44,23 @@ QStringList brute(const QString &charset, int minLen, int maxLen) {
     if (minLen < 1) minLen = 1;
     if (maxLen < minLen) return out;
 
-    const int base = charset.size();
-    for (int len = minLen; len <= maxLen && out.size() < kMaxCount; ++len) {
+    // Enumerate by CODE POINT (toUcs4), not UTF-16 unit, so a non-BMP charset
+    // symbol is emitted whole -- charset.at() splits a surrogate pair into two
+    // lone surrogates. And bound cumulative CHAR volume, not just string COUNT: a
+    // single-char charset yields exactly one string per length, so kMaxCount alone
+    // lets total length grow to O(maxLen^2) -> a multi-GB OOM.
+    const QList<uint> cps = charset.toUcs4();
+    const int base = cps.size();
+    constexpr qint64 kMaxChars = static_cast<qint64>(kMaxCount) * 64;   // ~6.4M cap
+    qint64 emitted = 0;
+    for (int len = minLen; len <= maxLen && out.size() < kMaxCount && emitted < kMaxChars; ++len) {
         QVector<int> idx(len, 0);               // odometer of `len` charset indices
-        while (out.size() < kMaxCount) {
+        while (out.size() < kMaxCount && emitted < kMaxChars) {
             QString s;
             s.reserve(len);
-            for (int k = 0; k < len; ++k) s.append(charset.at(idx[k]));
+            for (int k = 0; k < len; ++k) { const char32_t u = cps[idx[k]]; s.append(QString::fromUcs4(&u, 1)); }
             out.append(s);
+            emitted += len;
             // increment: rightmost digit fastest; carry left.
             int pos = len - 1;
             for (; pos >= 0; --pos) {

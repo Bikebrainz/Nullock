@@ -15,8 +15,14 @@ QString applyRule(const QString &value, const Rule &rule) {
     if (op == QLatin1String("uppercase")) return value.toUpper();
     if (op == QLatin1String("lowercase")) return value.toLower();
     if (op == QLatin1String("reverse")) {
-        QString s = value;
-        std::reverse(s.begin(), s.end());
+        // Reverse by CODE POINT, not UTF-16 unit -- a naive std::reverse over
+        // QChars swaps a surrogate pair into two lone surrogates, corrupting any
+        // non-BMP payload char to U+FFFD on the wire.
+        QList<uint> cps = value.toUcs4();
+        std::reverse(cps.begin(), cps.end());
+        QString s;
+        s.reserve(cps.size());
+        for (const uint cp : cps) { const char32_t u = cp; s.append(QString::fromUcs4(&u, 1)); }
         return s;
     }
     if (op == QLatin1String("match-replace")) {

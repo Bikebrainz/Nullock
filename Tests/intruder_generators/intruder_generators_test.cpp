@@ -58,6 +58,22 @@ int main(int argc, char **argv) {
         const QStringList r = brute("0123456789", 1, 6);
         chk("brute huge combinatorial capped at kMaxCount", r.size() == kMaxCount);
     }
+    // audit-6: a single-char charset caps by CHAR VOLUME, not just string count --
+    // the old code let total length grow O(maxLen^2) into a multi-GB OOM.
+    {
+        const QStringList r = brute("A", 1, 100000);
+        qint64 chars = 0;
+        for (const QString &s : r) chars += s.size();
+        chk("brute single-char large maxLen -> bounded char volume (no OOM)",
+            chars < 10 * 1000 * 1000);
+    }
+    // audit-6: a non-BMP charset symbol is emitted WHOLE (enumerate code points),
+    // not split into two lone surrogates.
+    {
+        const QString smile = QString::fromUcs4(U"\U0001F600");   // U+1F600
+        chk("brute keeps a non-BMP charset glyph intact",
+            brute(smile, 1, 1) == (QStringList{ smile }));
+    }
 
     // ----- dates -----
     chk("dates range step1",
