@@ -126,6 +126,37 @@ int main(int argc, char **argv) {
         chk("build: CRLF query -> no injected header", !buildRequest(req, "a\r\nEvil: 1").contains("\r\nEvil: 1"));
         Request bhe = req; bhe.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nEvil: 1")});
         chk("build: CRLF carried header dropped", !buildRequest(bhe, "").contains("Evil: 1"));
+
+        // Carried encoding/framing headers must be dropped so the ones buildRequest
+        // forces stand alone:
+        //  - Accept-Encoding: else the server gzips and splitConfirmed scans compressed
+        //    bytes; defeats the forced identity.
+        Request ae = req;
+        ae.headers.append({QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br")});
+        const QByteArray aeb = buildRequest(ae, "");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
+        //  - Connection: a carried keep-alive contradicts the forced close.
+        Request cn = req;
+        cn.headers.append({QStringLiteral("Connection"), QStringLiteral("keep-alive")});
+        const QByteArray cnb = buildRequest(cn, "");
+        chk("build: carried Connection dropped -> exactly one, close",
+            cnb.count("Connection:") == 1 && cnb.contains("Connection: close\r\n") && !cnb.contains("keep-alive"));
+        //  - Content-Length on a body-less request (GET): the prior guard only dropped
+        //    it when withBody, so a body-less GET carried it -> stranded request.
+        Request cl = req;
+        cl.headers.append({QStringLiteral("Content-Length"), QStringLiteral("100")});
+        const QByteArray clb = buildRequest(cl, "");
+        chk("build: carried Content-Length dropped on body-less GET",
+            !clb.contains("Content-Length") && clb.endsWith("\r\n\r\n"));
+        //  - Transfer-Encoding on a POST: it would coexist with our emitted
+        //    Content-Length -> a CL.TE self-desync. Drop the carried TE, keep our CL.
+        Request post = req; post.method = "POST";
+        post.headers.append({QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked")});
+        const QByteArray pb = buildRequest(post, "", QByteArray("x=1"));
+        chk("build POST: carried Transfer-Encoding dropped, our Content-Length kept",
+            !pb.contains("Transfer-Encoding") && pb.contains("Content-Length: 3\r\n"));
     }
 
     // ===== buildRequest: POST body emission (the body gate) ===============
@@ -194,6 +225,16 @@ int main(int argc, char **argv) {
         Request oc = req; oc.headers.append({QStringLiteral("X-Other"), QStringLiteral("ok\r\nEvil: 1")});
         chk("hdr-probe: OTHER carried CRLF header still dropped",
             !buildHeaderProbe(oc, "Referer", "x").contains("Evil: 1"));
+        // A carried Accept-Encoding / Connection is dropped on this body-less probe too:
+        // it forces "Accept-Encoding: identity" and "Connection: close", so a surviving
+        // carried copy would defeat the forced value (same hygiene as buildRequest).
+        Request enc = req;
+        enc.headers.append({QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br")});
+        enc.headers.append({QStringLiteral("Connection"), QStringLiteral("keep-alive")});
+        const QByteArray encp = buildHeaderProbe(enc, "Referer", "x");
+        chk("hdr-probe: carried Accept-Encoding/Connection dropped -> only forced identity+close",
+            encp.count("Accept-Encoding:") == 1 && !encp.contains("gzip")
+            && encp.count("Connection:") == 1 && !encp.contains("keep-alive"));
         // A carried header colliding with the probe name is replaced, not duplicated.
         Request col = req; col.headers.append({QStringLiteral("Referer"), QStringLiteral("orig")});
         const QByteArray cb = buildHeaderProbe(col, "Referer", "nlkPAYLOAD");

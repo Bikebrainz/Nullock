@@ -121,6 +121,29 @@ int main(int argc, char **argv) {
         chk("caller Connection is dropped -> exactly one Connection: close (safety intact)",
             !p3.contains("keep-alive") && p3.count("Connection:") == 1
             && p3.contains("Connection: close\r\n"));
+
+        // A caller Transfer-Encoding must be dropped so ONLY the probe's own deliberate
+        // "Transfer-Encoding: chunked" (its load-bearing CL.TE payload) remains -- a
+        // second, caller TE would alter the exact framing bytes the timing depends on,
+        // making a vulnerable server parse it as well-formed (false clean). Untested.
+        Request rte = mk();
+        rte.headers.append({QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked")});
+        chk("caller Transfer-Encoding dropped -> exactly one TE (the probe's own)",
+            clteProbe(rte).count("Transfer-Encoding:") == 1);
+
+        // A caller Host must be deduped away (commonHeaders emits its own) -- two Host
+        // lines make a conformant front-end 400 the probe -> false CLEAN. Untested.
+        Request rhost = mk();
+        rhost.headers.append({QStringLiteral("Host"), QStringLiteral("evil.example")});
+        const QByteArray phost = clteProbe(rhost);
+        chk("caller Host dropped -> exactly one Host (framework's own)",
+            phost.count("Host:") == 1 && !phost.contains("evil.example"));
+
+        // CR/LF in the header NAME (not only the value) must be dropped -- else
+        // "X\r\nEvil: 1" splices a second header line. The value case is covered above.
+        Request rname = mk();
+        rname.headers.append({QStringLiteral("X\r\nEvil: 1"), QStringLiteral("ok")});
+        chk("caller header NAME CR/LF dropped", !clteProbe(rname).contains("Evil: 1"));
     }
 
     // ===== CR/LF in basePath/host ABORTS the build ======================

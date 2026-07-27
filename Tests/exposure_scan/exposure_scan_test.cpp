@@ -102,6 +102,30 @@ int main(int argc, char **argv) {
         clean.headers.append(qMakePair(QString("X-Trace"), QString("ok")));
         chk("build: a clean carried header IS emitted (guard not over-broad)",
             buildGet(clean, "/.env").contains("X-Trace: ok\r\n"));
+
+        // Carried framing/encoding headers must be dropped so the ones this body-less
+        // GET forces stand alone (prior tests never carried them):
+        //  - Accept-Encoding: else the server gzips and the file-content signature
+        //    matcher scans compressed bytes -> a real exposed .env reads CLEAN.
+        Request aeReq = req;
+        aeReq.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray ae = buildGet(aeReq, "/.env");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
+        //  - Connection: a carried keep-alive contradicts the forced close.
+        Request cnReq = req;
+        cnReq.headers.append(qMakePair(QString("Connection"), QString("keep-alive")));
+        const QByteArray cn = buildGet(cnReq, "/.env");
+        chk("build: carried Connection dropped -> exactly one, close",
+            cn.count("Connection:") == 1 && cn.contains("Connection: close\r\n") && !cn.contains("keep-alive"));
+        //  - Content-Length / Transfer-Encoding: a body-less GET must not advertise a body.
+        Request frReq = req;
+        frReq.headers.append(qMakePair(QString("Content-Length"), QString("27")));
+        frReq.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray fr = buildGet(frReq, "/.env");
+        chk("build: carried Content-Length/Transfer-Encoding dropped (body-less GET)",
+            !fr.contains("Content-Length:") && !fr.contains("Transfer-Encoding:"));
     }
 
     std::fprintf(stderr, "exposure_scan_test: %d passed, %d failed\n", pass, fail);

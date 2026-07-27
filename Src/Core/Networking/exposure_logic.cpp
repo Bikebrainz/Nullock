@@ -108,6 +108,18 @@ QByteArray buildGet(const Request &req, const QString &path) {
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that fight the ones this body-less GET
+        // forces (Accept-Encoding: identity line 108, Connection: close line 115):
+        //  - Accept-Encoding: else the server gzips and the file-content signature
+        //    matcher scans compressed bytes -> a real exposed .env/.git/credentials
+        //    file reads CLEAN.
+        //  - Connection: a carried "keep-alive" contradicts the forced close.
+        //  - Content-Length / Transfer-Encoding: a copied framing header on a body-less
+        //    GET strands the request (server waits for an absent body) or desyncs.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

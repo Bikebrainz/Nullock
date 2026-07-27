@@ -68,6 +68,20 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildGet(badHost).isEmpty());
         Request badPath = req; badPath.basePath = "/\r\nX: y";
         chk("build: CRLF path -> empty", buildGet(badPath).isEmpty());
+
+        // The forced "Accept-Encoding: identity" is load-bearing: if it were weakened
+        // to admit gzip, match() would scan compressed bytes and a genuine takeover
+        // page (e.g. Heroku "No such app") would never match -> false-clean. Lock it.
+        chk("build: forces identity encoding (no gzip)",
+            g.contains("Accept-Encoding: identity\r\n") && !g.toLower().contains("gzip"));
+
+        // The host/basePath CR/LF guards are per-character (contains '\r'/'\n'), so a
+        // LONE LF or LONE CR (no full "\r\n") must also abort -- guards against a
+        // regression that only checks for the "\r\n" substring.
+        Request loneLf = req; loneLf.host = "sub.victim.tld\nX: y";
+        chk("build: lone-LF host -> empty", buildGet(loneLf).isEmpty());
+        Request loneCr = req; loneCr.basePath = "/\rX: y";
+        chk("build: lone-CR path -> empty", buildGet(loneCr).isEmpty());
     }
 
     std::fprintf(stderr, "takeover_scan_test: %d passed, %d failed\n", pass, fail);

@@ -117,6 +117,26 @@ int main(int argc, char **argv) {
         Request badHdr = req;
         badHdr.headers.append({QStringLiteral("X-Test"), QStringLiteral("ok\r\nInjected: 1")});
         chk("build: CRLF carried header dropped", !buildGet(badHdr).contains("Injected: 1"));
+
+        // Carried framing/encoding headers must be dropped so the ones this body-less
+        // GET forces stand alone (prior tests never carried them):
+        Request aeReq = req;
+        aeReq.headers.append({QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br")});
+        const QByteArray ae = buildGet(aeReq);
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
+        Request cnReq = req;
+        cnReq.headers.append({QStringLiteral("Connection"), QStringLiteral("keep-alive")});
+        const QByteArray cn = buildGet(cnReq);
+        chk("build: carried Connection dropped -> exactly one, close",
+            cn.count("Connection:") == 1 && cn.contains("Connection: close\r\n") && !cn.contains("keep-alive"));
+        Request frReq = req;
+        frReq.headers.append({QStringLiteral("Content-Length"), QStringLiteral("100")});
+        frReq.headers.append({QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked")});
+        const QByteArray fr = buildGet(frReq);
+        chk("build: carried Content-Length/Transfer-Encoding dropped (body-less GET)",
+            !fr.contains("Content-Length") && !fr.contains("Transfer-Encoding"));
     }
 
     std::fprintf(stderr, "waf_detect_test: %d passed, %d failed\n", pass, fail);

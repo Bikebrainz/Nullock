@@ -41,9 +41,21 @@ QByteArray buildRequest(const Request &req, const QString &query, const QByteArr
     bool haveContentType = false;
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        // We emit our own Content-Length for the body; never carry a caller's
-        // (it would mismatch and desync the request).
-        if (withBody && h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Never carry a caller's Content-Length: when withBody we emit our own (a
+        // carried one would mismatch and desync); when body-less a carried one strands
+        // the request (the server waits for a body that never arrives). Drop it EITHER
+        // way -- the prior `withBody &&` guard left a body-less GET carrying it.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried encoding/framing headers that fight the ones we force
+        // (Accept-Encoding: identity line 40, Connection: close line 57):
+        //  - Accept-Encoding: else the server gzips and splitConfirmed scans compressed
+        //    bytes; and it defeats the forced-identity guarantee.
+        //  - Transfer-Encoding: coexisting with our emitted Content-Length is a CL.TE
+        //    self-desync -- the probe would send itself a malformed dual-framed request.
+        //  - Connection: a carried "keep-alive" contradicts the forced close.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) haveContentType = true;
@@ -119,6 +131,14 @@ QByteArray buildHeaderProbe(const Request &req, const QString &headerName,
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare(name, Qt::CaseInsensitive) == 0) continue;   // probe header wins
+        // Same carried-framing hygiene as buildRequest: this body-less probe forces
+        // "Accept-Encoding: identity" (118) and "Connection: close" (127), and carries
+        // no body, so a carried Accept-Encoding/Connection/Content-Length/Transfer-
+        // Encoding would defeat identity/close or strand/desync the request.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
