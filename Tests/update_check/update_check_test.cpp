@@ -61,6 +61,12 @@ int main(int argc, char **argv) {
         sign(compareSemver("1.0.0-alpha.1", "1.0.0-alpha.beta")) == -1);
     chk("semver: fewer pre-release fields rank lower (alpha < alpha.1)",
         sign(compareSemver("1.0.0-alpha", "1.0.0-alpha.1")) == -1);
+    // TWO numeric pre-release identifiers must compare NUMERICALLY, not lexically:
+    // beta.2 < beta.10 (2 < 10). The existing cases only pit numeric vs alphanumeric
+    // (alpha.1 < alpha.beta) or single alphanumeric tokens (rc1 < rc2); a regression
+    // to a string compare of the numeric identifier would order beta.10 before beta.2.
+    chk("semver: numeric pre-release identifiers compare numerically (beta.2 < beta.10)",
+        sign(compareSemver("1.0.0-beta.2", "1.0.0-beta.10")) == -1);
     chk("semver: identical pre-release -> equal", compareSemver("1.0.0-rc1", "1.0.0-rc1") == 0);
     chk("semver: a pre-release of a NEWER core still beats the older release (1.2.0 < 1.3.0-rc1)",
         sign(compareSemver("1.2.0", "1.3.0-rc1")) == -1);
@@ -75,6 +81,12 @@ int main(int argc, char **argv) {
     chk("url: a non-github host rejected", !isTrustedReleaseUrl("https://evil.com/x"));
     chk("url: a look-alike host rejected (github.com.evil.com)",
         !isTrustedReleaseUrl("https://github.com.evil.com/x"));
+    // userinfo-@ bypass: the browser navigates to the host AFTER '@' (evil.com), so
+    // this must be rejected. The UI opens this link; a naive substring match on
+    // "github.com" would accept it and surface a phishing page. Distinct from the
+    // suffix look-alike above.
+    chk("url: a userinfo-@ bypass rejected (github.com@evil.com -> host evil.com)",
+        !isTrustedReleaseUrl("https://github.com@evil.com/x"));
     chk("url: a javascript: scheme rejected", !isTrustedReleaseUrl("javascript:alert(1)"));
     chk("url: a file: scheme rejected", !isTrustedReleaseUrl("file:///etc/passwd"));
     chk("url: empty rejected", !isTrustedReleaseUrl(""));
