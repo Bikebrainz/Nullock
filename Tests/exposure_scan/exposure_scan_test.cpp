@@ -82,6 +82,26 @@ int main(int argc, char **argv) {
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildGet(badHost, "/.env").isEmpty());
         chk("build: CRLF path -> empty", buildGet(req, "/.env\r\nX: y").isEmpty());
+        // The custom-header loop (Host-skip + per-header CR/LF drop) was untested --
+        // no test populated req.headers, though that is where attacker-influenced
+        // auth/cookie values arrive. Lock all three behaviors.
+        Request evilVal = req;
+        evilVal.headers.append(qMakePair(QString("X-Custom"), QString("a\r\nEvil-Header: injected")));
+        chk("build: CR/LF in a carried header value -> injected line dropped",
+            !buildGet(evilVal, "/.env").contains("Evil-Header: injected"));
+        Request evilName = req;
+        evilName.headers.append(qMakePair(QString("X-A\r\nEvil-Header"), QString("1")));
+        chk("build: CR/LF in a carried header name -> dropped",
+            !buildGet(evilName, "/.env").contains("Evil-Header"));
+        Request dupHost = req;
+        dupHost.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        const QByteArray dh = buildGet(dupHost, "/.env");
+        chk("build: a carried Host is skipped (exactly one canonical Host line)",
+            dh.count("Host: ") == 1 && dh.contains("Host: victim.tld\r\n") && !dh.contains("attacker.tld"));
+        Request clean = req;
+        clean.headers.append(qMakePair(QString("X-Trace"), QString("ok")));
+        chk("build: a clean carried header IS emitted (guard not over-broad)",
+            buildGet(clean, "/.env").contains("X-Trace: ok\r\n"));
     }
 
     std::fprintf(stderr, "exposure_scan_test: %d passed, %d failed\n", pass, fail);

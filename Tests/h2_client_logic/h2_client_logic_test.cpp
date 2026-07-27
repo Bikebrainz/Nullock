@@ -94,6 +94,13 @@ int main(int argc, char **argv) {
     chk("pump: open + wrote -> WriteThenRead", nextPumpAction(3, true, false) == PumpAction::WriteThenRead);
     chk("pump: fatal beats open+write",   nextPumpAction(3, true, true)  == PumpAction::Fatal);
     chk("pump: fatal beats done",         nextPumpAction(0, false, true) == PumpAction::Fatal);
+    // done-beats-write: when the LAST stream closes in the same iteration that
+    // flushed trailing outbound bytes (SETTINGS/WINDOW_UPDATE ACK, final RST),
+    // openStreams<=0 AND wrotePending=true both hold -- the done-gate must win, or
+    // the pump loops into a blocking read with zero open streams and hangs until
+    // the read-timeout. This precedence was untested (0,true,false was never fed).
+    chk("pump: 0 open + wrote -> Done (done beats write, no post-close read hang)",
+        nextPumpAction(0, true, false) == PumpAction::Done);
     // invariant: never Done while a stream is still open (and not fatal)
     {
         bool ok = true;
