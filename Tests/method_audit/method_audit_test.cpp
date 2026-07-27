@@ -73,6 +73,17 @@ int main(int argc, char **argv) {
         chk("no webdav in a plain allowed set", dangerousWebdavMethods(allowed).isEmpty());
     }
     {
+        // PATCH is the THIRD write verb (writeMethods = PUT/DELETE/PATCH) but was
+        // never exercised: every other dangerousWriteMethods case uses only
+        // PUT/DELETE. Dropping PATCH from writeMethods() would compile and pass the
+        // whole suite while silently no longer flagging an advertised PATCH endpoint.
+        const QStringList allowed = parseAllow("GET, HEAD, PATCH");
+        chk("write subset includes PATCH", has(dangerousWriteMethods(allowed), "PATCH"));
+        chk("PATCH is the only dangerous write verb here", dangerousWriteMethods(allowed).size() == 1);
+        chk("PATCH is absent from a benign GET/HEAD/POST set",
+            dangerousWriteMethods(parseAllow("GET, HEAD, POST")).isEmpty());
+    }
+    {
         const QStringList allowed = parseAllow("OPTIONS, PROPFIND, MKCOL, LOCK, GET");
         const QStringList d = dangerousWebdavMethods(allowed);
         chk("webdav subset = PROPFIND, MKCOL, LOCK",

@@ -87,6 +87,23 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildGet(badHost).isEmpty());
         Request badPath = req; badPath.basePath = "/\r\nX: y";
         chk("build: CRLF path -> empty", buildGet(badPath).isEmpty());
+        // The per-EXTRA-header CR/LF guard (the req.headers serialization loop) was
+        // untested -- req.headers was never populated. It is exactly where
+        // attacker-influenced/templated header values are written verbatim, so a
+        // regression that dropped it would silently re-enable header/request
+        // splitting while every other test stayed green.
+        Request evilVal = req;
+        evilVal.headers.append({ QStringLiteral("X-Trace"), QStringLiteral("abc\r\nX-Injected: evil") });
+        chk("build: CRLF in a header VALUE -> injected line dropped",
+            !buildGet(evilVal).contains("X-Injected"));
+        Request evilName = req;
+        evilName.headers.append({ QStringLiteral("X-A\r\nEvil"), QStringLiteral("y") });
+        chk("build: CRLF in a header NAME -> injected line dropped",
+            !buildGet(evilName).contains("\r\nEvil: y"));
+        Request cleanHdr = req;
+        cleanHdr.headers.append({ QStringLiteral("X-Trace"), QStringLiteral("ok") });
+        chk("build: a clean custom header IS emitted (guard is not over-broad)",
+            buildGet(cleanHdr).contains("X-Trace: ok\r\n"));
     }
 
     std::fprintf(stderr, "http_fingerprint_test: %d passed, %d failed\n", pass, fail);

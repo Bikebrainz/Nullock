@@ -48,6 +48,12 @@ int main(int argc, char **argv) {
     chk("name none stays none",      thresholdName("none") == QStringLiteral("none"));
     chk("name unknown -> high",      thresholdName("xyz") == QStringLiteral("high"));
     chk("name preserves medium",     thresholdName("MEDIUM") == QStringLiteral("medium"));
+    // fail-on=info is the always-offend boundary (rank 0): the ONE threshold that
+    // fails on every finding. Previously "info" was only ever a finding severity,
+    // never a threshold -- a regression dropping ci_gate_logic.cpp:33 would let
+    // thresholdRank("info") fall through to the default 3 and silently stop gating.
+    chk("threshold info -> 0 (always-offend boundary)", thresholdRank("info") == 0);
+    chk("name info stays info",      thresholdName("info") == QStringLiteral("info"));
 
     // ----- evaluate -----
     {
@@ -86,6 +92,17 @@ int main(int argc, char **argv) {
         const QList<QString> f{ "", "  ", "info" };
         const GateResult r = evaluate(f, "high");
         chk("eval blank severities -> info, gate passes", r.pass && r.bySeverity.value("info") == 3);
+    }
+    {
+        // fail-on=info (rank 0): EVERY finding offends, down to a lone info. This
+        // threshold path was never evaluated. A regression making thresholdRank
+        // ("info") fall through to the default 3 would flip these to pass/exit-0.
+        const GateResult r = evaluate({ "info" }, "info");
+        chk("eval fail-on info: a lone info finding FAILS the gate",
+            !r.pass && r.exitCode == kExitFail && r.offendingCount == 1
+            && r.threshold == QStringLiteral("info") && r.thresholdRank == 0);
+        const GateResult r2 = evaluate({ "low", "medium" }, "info");
+        chk("eval fail-on info: low+medium both offend", r2.offendingCount == 2 && !r2.pass);
     }
     {
         // default threshold (unknown) behaves as high.

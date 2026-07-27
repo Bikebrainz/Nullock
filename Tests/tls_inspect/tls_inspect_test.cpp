@@ -114,6 +114,15 @@ int main(int argc, char **argv) {
     chk("NULL by name even with nonzero bits -> weak-cipher", cipherKind("NULL-SHA", 0) == "tls-weak-cipher");
     chk("anonymous DH (ADH) -> weak-cipher", cipherKind("ADH-AES128-SHA", 128) == "tls-weak-cipher");
     chk("anonymous ECDH (AECDH) -> weak-cipher", cipherKind("AECDH-AES256-SHA", 256) == "tls-weak-cipher");
+    // IANA/RFC cipher-name form (uppercased "..._ANON_..."): matched ONLY by the
+    // contains("_ANON") alternative, which the OpenSSL short-name cases above never
+    // reach. A Schannel/IANA-normalizing backend surfaces anon suites in this
+    // spelling; dropping the _ANON alternative would silently pass an unauthenticated
+    // (trivially-MITM'd) suite as sound.
+    chk("IANA-form anonymous DH (_ANON) -> weak-cipher",
+        cipherKind("TLS_DH_anon_WITH_AES_128_GCM_SHA256", 128) == "tls-weak-cipher");
+    chk("IANA-form anonymous ECDH (_ANON) -> weak-cipher",
+        cipherKind("TLS_ECDH_anon_WITH_AES_256_CBC_SHA", 256) == "tls-weak-cipher");
     chk("EXPORT-grade -> weak-cipher", cipherKind("EXP-RC2-CBC-MD5", 40) == "tls-weak-cipher");
     chk("RC4 -> weak-cipher", cipherKind("ECDHE-RSA-RC4-SHA", 128) == "tls-weak-cipher");
     chk("single DES -> weak-cipher", cipherKind("DES-CBC-SHA", 56) == "tls-weak-cipher");
