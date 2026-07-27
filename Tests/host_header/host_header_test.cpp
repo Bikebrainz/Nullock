@@ -57,6 +57,27 @@ int main(int argc, char **argv) {
         const QByteArray fwd = buildRequest(req, "victim.tld", "X-Forwarded-Host", S);
         chk("build: appends forwarding header", fwd.contains("X-Forwarded-Host: " + S.toUtf8() + "\r\n"));
 
+        // A carried Host must be DROPPED: buildRequest emits its own Host: hostLine,
+        // and a captured/HAR request commonly already carries a Host. Two Host lines
+        // are an RFC-7230 violation (target 400s or front/back-end disagree, defeating
+        // the probe). This dedup branch was untested.
+        Request carriedHost = req;
+        carriedHost.headers.append(qMakePair(QString("Host"), QString("original.example")));
+        const QByteArray ch = buildRequest(carriedHost, "victim.tld", QString(), QString());
+        chk("build: carried Host dropped -> exactly one Host line (victim.tld)",
+            ch.count("Host: ") == 1 && ch.contains("Host: victim.tld\r\n") && !ch.contains("original.example"));
+
+        // When we inject a forwarding header, a carried duplicate of the SAME name
+        // must be dropped so the sentinel isn't fighting the real proxy value (a
+        // target that honors the first/real value would defeat detection). Untested.
+        Request carriedFwd = req;
+        carriedFwd.headers.append(qMakePair(QString("X-Forwarded-Host"), QString("real-proxy.example")));
+        const QByteArray cf = buildRequest(carriedFwd, "victim.tld", "X-Forwarded-Host", S);
+        chk("build: carried forwarding header deduped -> sentinel wins, exactly once",
+            cf.count("X-Forwarded-Host:") == 1
+            && cf.contains("X-Forwarded-Host: " + S.toUtf8() + "\r\n")
+            && !cf.contains("real-proxy.example"));
+
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "victim.tld", QString(), QString()).contains("X-Smuggled"));

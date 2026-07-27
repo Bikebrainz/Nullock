@@ -85,6 +85,21 @@ int main(int argc, char **argv) {
         chk("pollute: CRLF host -> empty", buildPollute(badHost, "/api/merge", body).isEmpty());
         chk("get: CRLF path -> empty", buildGet(req, "/api\r\nX: y", QString()).isEmpty());
         chk("pollute: CRLF path -> empty", buildPollute(req, "/api\r\nX: y", body).isEmpty());
+
+        // A carried Host / Content-Length must be dropped: buildPollute emits its
+        // own computed Content-Length (and writeHeaders its own Host), so a carried
+        // duplicate would produce two framing headers -> request smuggling/desync
+        // against the merge endpoint. Only the Cookie-CRLF drop was exercised.
+        Request dupFraming = req;
+        dupFraming.headers.append(qMakePair(QString("Content-Length"), QString("999")));
+        dupFraming.headers.append(qMakePair(QString("Host"), QString("evil.tld")));
+        const QByteArray pd = buildPollute(dupFraming, "/api/merge", body);
+        chk("pollute: carried Content-Length dropped -> exactly the computed one (no desync)",
+            pd.count("Content-Length:") == 1
+            && pd.contains("Content-Length: " + QByteArray::number(body.size()) + "\r\n")
+            && !pd.contains("Content-Length: 999"));
+        chk("pollute: carried Host dropped -> exactly one Host (framework's own)",
+            pd.count("Host:") == 1 && pd.contains("Host: victim.tld\r\n") && !pd.contains("evil.tld"));
     }
 
     std::fprintf(stderr, "proto_pollution_test: %d passed, %d failed\n", pass, fail);

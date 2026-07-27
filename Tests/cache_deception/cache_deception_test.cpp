@@ -76,6 +76,17 @@ int main(int argc, char **argv) {
         chk("build: carried Content-Length dropped (GET probe)", !cg.contains("Content-Length"));
         chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
 
+        // A carried Host must be dropped: buildGet emits its own Host, and a captured/
+        // HAR request always carries a Host. Two Host lines (RFC-7230 violation) make
+        // the target 400 or mis-route the probe -> a real cache-deception finding turns
+        // into a silent false negative. This dedup branch (the most common carried
+        // header) was untested while CL/TE drops were.
+        Request carriedHost = req;
+        carriedHost.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        const QByteArray chg = buildGet(carriedHost, "/account");
+        chk("build: carried Host dropped -> exactly one Host line (victim.tld)",
+            chg.count("Host:") == 1 && chg.contains("Host: victim.tld\r\n") && !chg.contains("attacker.tld"));
+
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildGet(badHost, "/account").isEmpty());
         chk("build: CRLF path -> empty",

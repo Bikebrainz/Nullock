@@ -110,6 +110,15 @@ int main(int argc, char **argv) {
     // as non-cacheable; qlonglong keeps it a huge (cacheable) lifetime.
     chk("cacheable: max-age beyond INT_MAX -> cacheable (no int truncation)",
         looksCacheable(H({{"Cache-Control", "max-age=999999999999"}})));
+    // no-cache is store-but-revalidate, so it does NOT by itself rule out a shared
+    // hit (only no-store/private do). A CDN emitting "no-cache" with a shared
+    // lifetime is still poisonable. This deliberate true-branch was untested -- a
+    // plausible "fix" folding no-cache into the no-store guard would silently drop
+    // a whole class of poisonable responses while the suite stayed green.
+    chk("cacheable: no-cache + max-age still cacheable (revalidate, not uncacheable)",
+        looksCacheable(H({{"Cache-Control", "no-cache, max-age=60"}})));
+    chk("cacheable: bare no-cache (no lifetime) -> false",
+        !looksCacheable(H({{"Cache-Control", "no-cache"}})));
 
     // ---- buildRequest: CR/LF guards -------------------------------------
     {

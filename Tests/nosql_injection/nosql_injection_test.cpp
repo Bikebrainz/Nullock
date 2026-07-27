@@ -61,6 +61,13 @@ int main(int argc, char **argv) {
     // Type confusion: $ne errors (5xx) over an OK literal -> object rejection.
     chk("confirm: $ne 5xx over ok literal -> NO",
         !confirmsInjection(520,200, 520,200, 300,500, 1000,200));
+    // Type confusion where BOTH always-true ops error IDENTICALLY over an OK literal
+    // (same 5xx, similar length) -- an object-where-a-string-was-wanted crash, NOT an
+    // over-match. This is the type-confusion guard's actual job (two AGREEING errors);
+    // the case above disagrees (gt=200) so trueGroupAgrees already blocks it. Removing
+    // the guard makes THIS return true (a spurious injection) -- so it is discriminating.
+    chk("confirm: $ne AND $gt error identically over an OK literal -> NO (type confusion)",
+        !confirmsInjection(520,200, 520,200, 300,500, 300,500));
     // Per-request jitter: $ne happens large but $gt (second sample) does not.
     chk("confirm: jitter ($gt disagrees) -> NO",
         !confirmsInjection(520,200, 520,200, 900,200, 520,200));
