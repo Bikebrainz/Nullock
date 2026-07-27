@@ -113,6 +113,18 @@ int main(int argc, char **argv) {
         const QByteArray cg = buildGet(carried, "/app", QString());
         chk("build: carried Content-Length dropped (body-less GET won't strand)", !cg.contains("Content-Length"));
         chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
+        // The per-carried-header CR/LF drop (name AND value) was untested -- the loop
+        // only ever saw Content-Length/Transfer-Encoding, dropped earlier by name, so
+        // control never reached the CR/LF guard. A regression removing it would splice
+        // an injected header straight into the request bytes.
+        Request crlfVal; crlfVal.host = "victim.tld";
+        crlfVal.headers.append(qMakePair(QString("X-Foo"), QString("bar\r\nEvil-Injected: 1")));
+        chk("build: CR/LF in a carried header VALUE dropped (no header injection)",
+            !buildGet(crlfVal, "/app", QString()).contains("Evil-Injected"));
+        Request crlfName; crlfName.host = "victim.tld";
+        crlfName.headers.append(qMakePair(QString("X-A\r\nEvil-Injected"), QString("1")));
+        chk("build: CR/LF in a carried header NAME dropped",
+            !buildGet(crlfName, "/app", QString()).contains("Evil-Injected"));
     }
 
     // ---- sameOriginScripts: same host/scheme/port only ------------------
@@ -125,6 +137,18 @@ int main(int argc, char **argv) {
         const QStringList s = sameOriginScripts(html, base, 12);
         chk("scripts: same-origin kept", s.contains("/a.js") && s.contains("/c.js"));
         chk("scripts: cross-origin excluded", !s.filter("b.js").size());
+        // scheme + port axes (only the host axis was exercised above):
+        //  - a different explicit PORT is excluded by the port check (line 142);
+        //  - a cross-SCHEME script at the SAME effective port (http on :443) is
+        //    excluded ONLY by the scheme check (line 141) -- the port check, seeing
+        //    equal ports, can't catch it, so this discriminates the scheme axis.
+        //  - a same-scheme/same-port control confirms the guard isn't over-broad.
+        chk("scripts: a different explicit port is excluded (port axis)",
+            sameOriginScripts("<script src=\"https://app.victim.tld:8443/x.js\"></script>", base, 12).isEmpty());
+        chk("scripts: a cross-scheme http-on-443 script is excluded (scheme axis)",
+            sameOriginScripts("<script src=\"http://app.victim.tld:443/z.js\"></script>", base, 12).isEmpty());
+        chk("scripts: a same-scheme same-port script IS kept (guard not over-broad)",
+            sameOriginScripts("<script src=\"https://app.victim.tld/ok.js\"></script>", base, 12).contains("/ok.js"));
     }
 
     std::fprintf(stderr, "secret_scanner_test: %d passed, %d failed\n", pass, fail);

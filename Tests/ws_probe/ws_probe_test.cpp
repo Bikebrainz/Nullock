@@ -87,6 +87,16 @@ int main(int argc, char **argv) {
         r2.headers.append({QStringLiteral("Origin"), QStringLiteral("https://override")});
         chk("build: a caller Origin header is dropped (probe controls Origin)",
             !buildHandshake(r2, "https://evil.example", "k==").contains("Origin: https://override"));
+        // The symmetric caller-Host drop (buildHandshake sets its own Host) was
+        // untested though the Origin drop is. A captured/authed handshake commonly
+        // carries a Host; two Host lines on an upgrade are host-header-injection /
+        // smuggling. Assert exactly one, the generated victim.tld.
+        Request rHost = mk();
+        rHost.headers.append({QStringLiteral("Host"), QStringLiteral("attacker.tld")});
+        const QByteArray hh = buildHandshake(rHost, "https://evil.example", "k==");
+        chk("build: a caller Host header is dropped (exactly one Host: victim.tld)",
+            !hh.contains("Host: attacker.tld") && hh.count("Host: ") == 1
+            && hh.contains("Host: victim.tld\r\n"));
         Request r3 = mk();
         r3.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nInjected: 1")});
         chk("build: a CR/LF carried header is dropped",
