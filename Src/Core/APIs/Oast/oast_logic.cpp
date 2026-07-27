@@ -5,10 +5,13 @@
 namespace Nullock::Core::OastLogic {
 
 QString extractToken(const QString &hostHeader, const QString &path) {
-    // The token is exactly 16 lowercase-hex chars. The regex is fixed-length and
-    // anchored (^[0-9a-f]{16}$) -- linear, no backtracking, so no ReDoS on the
-    // attacker-controlled label.
-    static const QRegularExpression hex16(QStringLiteral("^[0-9a-f]{16}$"));
+    // The token is exactly 16 lowercase-hex chars. Anchor with \A...\z, NOT ^...$:
+    // PCRE2's $ (default) also matches immediately before a single trailing '\n',
+    // so ^[0-9a-f]{16}$ would accept a 17-char "….abcdef\n" label and return it --
+    // violating the exact-16-hex contract and leaking a raw LF into downstream
+    // sinks. \z matches ONLY the very end of the subject. Still fixed-length and
+    // linear (no backtracking), so no ReDoS on the attacker-controlled label.
+    static const QRegularExpression hex16(QStringLiteral("\\A[0-9a-f]{16}\\z"));
 
     // Subdomain form: <token>.<base-host>:<port>
     const int dot = hostHeader.indexOf('.');

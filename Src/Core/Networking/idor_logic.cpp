@@ -14,8 +14,15 @@ bool looksLikeIdParam(const QString &name) {
     // Param names that typically carry an object identifier worth probing.
     // Deliberately excludes pagination/cursor names (page, no, offset) and
     // vague ones (key, ref, node) -- those mutate fine but aren't object ids.
+    // The overall match is case-insensitive, but the ".*Id" alternative must stay
+    // CASE-SENSITIVE -- it exists to catch camelCase object ids (orderId/userId), a
+    // capital 'I'. Under CaseInsensitiveOption a bare ".*Id" degrades to ".*id",
+    // matching any word merely ending in the letters i,d (grid, valid, hybrid,
+    // solid, rapid, fluid) and firing IDOR replays on benign params. A local
+    // (?-i:...) group pins that one alternative to a literal capital-I suffix while
+    // the rest (id, .*_id, uid, ...) stays case-insensitive.
     static const QRegularExpression rx(
-        R"(^(id|.*_id|.*Id|uid|guid|pid|oid|account|order|doc|file|record|item|object|entity|user|customer|invoice|ticket|message|msg|post|comment)$)",
+        R"(^(id|.*_id|(?-i:.*Id)|uid|guid|pid|oid|account|order|doc|file|record|item|object|entity|user|customer|invoice|ticket|message|msg|post|comment)$)",
         QRegularExpression::CaseInsensitiveOption);
     return rx.match(name).hasMatch();
 }
@@ -108,6 +115,12 @@ QByteArray buildRequest(const Request &req, const QString &path) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding too: we set our own "identity" above so the
+        // length-based discriminator sees real object sizes. A carried
+        // "gzip, deflate, br" would combine (RFC 7230 3.2.2) to let the server gzip,
+        // and the client does NOT inflate -- so the comparison would run on
+        // compression-ratio noise, defeating the very invariant identity protects.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

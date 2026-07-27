@@ -37,6 +37,13 @@ int main(int argc, char **argv) {
     chk("subdomain non-hex rejected",  extractToken("0123456789abcdeg.oast.x", "/").isEmpty());
     chk("no dot -> no subdomain token", extractToken("localhost", "/").isEmpty());
     chk("leading dot -> no token",     extractToken(".oast.x", "/").isEmpty());
+    // A trailing newline after the 16 hex must be REJECTED: PCRE2's $ matches
+    // before a final '\n', so ^...$ would accept "…abcdef\n" and return a 17-char,
+    // LF-bearing "token" (a downstream CR/LF-injection / mis-correlation vector).
+    // \A…\z rejects it. Discriminating: on the old ^…$ regex this returned the
+    // newline-suffixed string, not empty.
+    chk("subdomain trailing-newline rejected (exact-16 contract, \\A..\\z anchor)",
+        extractToken(TOK + "\n.oast.x", "/").isEmpty());
 
     // ----- path form: /oast/<token>/... -----
     chk("path token",                  extractToken("evil.com", "/oast/" + TOK + "/cb") == TOK);
@@ -44,6 +51,8 @@ int main(int argc, char **argv) {
     chk("path 15-hex rejected",        extractToken("evil.com", "/oast/0123456789abcde/x").isEmpty());
     chk("path wrong prefix rejected",  extractToken("evil.com", "/xoast/" + TOK).isEmpty());
     chk("path empty segment rejected", extractToken("evil.com", "/oast//x").isEmpty());
+    chk("path trailing-newline rejected (no LF-bearing token)",
+        extractToken("evil.com", "/oast/" + TOK + "\n").isEmpty());
     chk("empty host + path -> empty",  extractToken("", "").isEmpty());
 
     // subdomain is checked first, so it wins even when the path also carries one.
@@ -57,8 +66,10 @@ int main(int argc, char **argv) {
     {
         uint32_t rng = 0x0a571c0du;
         auto rnd = [&rng]() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; };
-        const char pool[] = "0123456789abcdefABCDEFgh.:/oast-_ ";
-        static const QRegularExpression exact16(QStringLiteral("^[0-9a-f]{16}$"));
+        const char pool[] = "0123456789abcdefABCDEFgh.:/oast-_ \n\r";   // incl. CR/LF
+        // \A..\z (not ^..$) so the checker itself doesn't share the trailing-newline
+        // blind spot it is meant to catch.
+        static const QRegularExpression exact16(QStringLiteral("\\A[0-9a-f]{16}\\z"));
         bool invariant = true;
         for (int it = 0; it < 8000; ++it) {
             QString host, path;

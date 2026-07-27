@@ -67,8 +67,16 @@ int main(int argc, char **argv) {
 
     // ---- id recognition -------------------------------------------------
     chk("idparam: 'user_id' yes", looksLikeIdParam("user_id"));
-    chk("idparam: 'orderId' yes", looksLikeIdParam("orderId"));
+    chk("idparam: 'orderId' yes (camelCase, capital-I suffix)", looksLikeIdParam("orderId"));
     chk("idparam: 'page' no", !looksLikeIdParam("page"));
+    // The ".*Id" alternative must be CASE-SENSITIVE: a benign word merely ending in
+    // the letters i,d ("grid"/"valid") is NOT an object id and must not trip IDOR
+    // replays. (Before the (?-i:) fix, CaseInsensitiveOption made ".*Id" match these.)
+    chk("idparam: 'grid' no (not a trailing-'Id' object id)", !looksLikeIdParam("grid"));
+    chk("idparam: 'valid' no", !looksLikeIdParam("valid"));
+    chk("idparam: 'hybrid' no", !looksLikeIdParam("hybrid"));
+    // Snake_case and the capital-I camelCase forms still match (no regression).
+    chk("idparam: 'USER_ID' yes (case-insensitive snake_case)", looksLikeIdParam("USER_ID"));
     chk("nonidseg: under /v1/ suppressed", looksLikeNonIdSegment("2", "v1"));
     chk("nonidseg: under /api/ suppressed", looksLikeNonIdSegment("3", "api"));
     chk("nonidseg: /orders/2024 still tested", !looksLikeNonIdSegment("2024", "orders"));
@@ -88,6 +96,17 @@ int main(int argc, char **argv) {
         injHdr.headers.append(qMakePair(QString("Cookie"), QString("a=1\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header",
             !buildRequest(injHdr, "/x").contains("X-Smuggled"));
+
+        // A carried Accept-Encoding must be dropped so ONLY our "identity" survives:
+        // two Accept-Encoding lines combine (RFC 7230) to let the server gzip, and
+        // the client doesn't inflate, so the length-based discriminator would run on
+        // compressed noise. Exactly one Accept-Encoding line, == identity.
+        Request aeReq = req;
+        aeReq.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray ae = buildRequest(aeReq, "/api/orders/1043");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity (length invariant)",
+            ae.count("Accept-Encoding:") == 1
+            && ae.contains("Accept-Encoding: identity\r\n") && !ae.contains("gzip"));
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "/x").isEmpty());
