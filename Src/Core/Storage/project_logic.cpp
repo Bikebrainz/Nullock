@@ -18,8 +18,12 @@ bool isValidProjectName(const QString &name) {
     };
     // Windows applies device semantics to the name STEM (before the first dot), so
     // "CON.txt" / "COM1.log" still resolve to the device -- check the stem, not the
-    // whole name.
-    if (kReserved.contains(name.section(QChar('.'), 0, 0).toUpper())) return false;
+    // whole name. Fold the legacy superscript digits (COM¹/COM²/COM³, LPT¹...) to
+    // ASCII first: Windows resolves those to the real device, but toUpper() alone
+    // does not fold them, so they would otherwise slip the reserved check.
+    QString stem = name.section(QChar('.'), 0, 0).toUpper();
+    stem.replace(QChar(0x00B9), QChar('1')).replace(QChar(0x00B2), QChar('2')).replace(QChar(0x00B3), QChar('3'));
+    if (kReserved.contains(stem)) return false;
     for (const QChar c : name) {
         const ushort u = c.unicode();
         if (u < 0x20) return false;            // control chars

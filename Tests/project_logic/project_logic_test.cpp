@@ -61,6 +61,11 @@ int main(int argc, char **argv) {
     chk("reserved: 'console' is allowed (stem CONSOLE != CON)", isValidProjectName("console"));
     chk("reserved: 'contacts' is allowed", isValidProjectName("contacts"));
     chk("reserved: 'com10' is allowed (only COM1..9 are devices)", isValidProjectName("com10"));
+    // audit-7: legacy superscript digits fold to the real device (Windows resolves
+    // COM²/LPT¹/COM³), but toUpper() alone doesn't fold them -> must still reject.
+    chk("reserved: COM superscript-2 rejected", !isValidProjectName(QStringLiteral("COM") + QChar(0x00B2)));
+    chk("reserved: LPT superscript-1 rejected", !isValidProjectName(QStringLiteral("LPT") + QChar(0x00B9)));
+    chk("reserved: COM superscript-3 rejected", !isValidProjectName(QStringLiteral("COM") + QChar(0x00B3)));
 
     // ===== leading/trailing dot & space (Win32 strips them) =============
     chk("dot: a leading dot rejected", !isValidProjectName(".hidden"));
