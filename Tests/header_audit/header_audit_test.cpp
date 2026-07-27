@@ -81,6 +81,18 @@ int main(int argc, char **argv) {
         !has(csp("script-src 'unsafe-inline' 'nonce-r4nd0m'"), "csp-unsafe-inline"));
     chk("unsafe-inline + a malformed 'shazam token -> unsafe-inline STILL fires (FP fix)",
         has(csp("script-src 'unsafe-inline' 'shazam'"), "csp-unsafe-inline"));
+    // A correct PREFIX but a malformed token -- an empty value, or no closing quote
+    // -- is dropped by the browser, so it must NOT suppress the high finding (a
+    // prefix-only startsWith check would fail OPEN and hide it on a policy where
+    // injected inline script still executes).
+    chk("unsafe-inline + empty 'nonce-' (no value) -> STILL fires",
+        has(csp("script-src 'unsafe-inline' 'nonce-'"), "csp-unsafe-inline"));
+    chk("unsafe-inline + empty 'sha256-' (no digest) -> STILL fires",
+        has(csp("script-src 'unsafe-inline' 'sha256-'"), "csp-unsafe-inline"));
+    chk("unsafe-inline + unterminated 'nonce-abc (no closing quote) -> STILL fires",
+        has(csp("script-src 'unsafe-inline' 'nonce-abc"), "csp-unsafe-inline"));
+    chk("unsafe-inline + a well-formed 'sha256-abc' STILL suppresses (no over-fire)",
+        !has(csp("script-src 'unsafe-inline' 'sha256-abc'"), "csp-unsafe-inline"));
 
     // ===== parseCsp first-occurrence + bypassable host ====================
     chk("duplicate script-src: first ('unsafe-inline') wins, not the later 'self'",

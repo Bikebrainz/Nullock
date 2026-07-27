@@ -57,6 +57,12 @@ QByteArray buildRequest(const Request &req,
         // any carried copies so the request can't carry duplicate framing.
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding too: we set our own "identity" above so a
+        // gzip response can't hide the canary. A surviving "gzip, deflate, br"
+        // combines (RFC 7230 3.2.2) to let the server compress, and the client does
+        // NOT inflate -> canaryReflected scans compressed bytes and misses a real
+        // reflection (a false clean). Same duplicate-framing class as CT/CL above.
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

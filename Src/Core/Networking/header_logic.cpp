@@ -117,8 +117,19 @@ void auditCsp(const QString &csp, bool reportOnly, Result &result) {
     bool hasNonceOrHash = false;
     for (const QString &tok : script) {
         const QString t = tok.toLower();
-        if (t.startsWith("'nonce-") || t.startsWith("'sha256-")
-            || t.startsWith("'sha384-") || t.startsWith("'sha512-")) hasNonceOrHash = true;
+        // A source only suppresses 'unsafe-inline' if it is a WELL-FORMED nonce/hash
+        // expression: the right prefix, a CLOSING quote, and a NON-EMPTY value
+        // between them (CSP3 nonce-source/hash-source require 1*base64char + "'").
+        // A prefix-only 'nonce-'/'sha256-' (empty) or an unterminated 'nonce-abc is
+        // dropped by the browser -> 'unsafe-inline' stays effective, so treating it
+        // as valid would FAIL OPEN and hide the finding on a still-vulnerable policy.
+        for (const char *pre : { "'nonce-", "'sha256-", "'sha384-", "'sha512-" }) {
+            const QString p = QLatin1String(pre);
+            if (t.startsWith(p) && t.endsWith(QLatin1Char('\'')) && t.size() > p.size() + 1) {
+                hasNonceOrHash = true;
+                break;
+            }
+        }
     }
     for (const QString &tok : script) {
         const QString t = tok.toLower();

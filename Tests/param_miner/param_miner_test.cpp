@@ -81,6 +81,15 @@ int main(int argc, char **argv) {
         chk("build: drops carried Content-Type (no dup)",
             d.count("Content-Type:") == 1 && !d.contains("application/json"));
         chk("build: drops carried Content-Length (no dup)", d.count("Content-Length:") == 1);
+        // A carried Accept-Encoding must be dropped too so ONLY our "identity"
+        // survives -- else the server may gzip and the raw-byte canary scan misses a
+        // real reflection (a false clean the identity header exists to prevent).
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, {{ "x", "qm0zaa" }});
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
 
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Tok"), QString("a\r\nX-Smuggled: 1")));
