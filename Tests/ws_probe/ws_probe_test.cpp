@@ -55,6 +55,15 @@ int main(int argc, char **argv) {
             headerValue(block, "X-Note") == "a:b:c");
         chk("headerValue on a missing header -> empty",
             headerValue(block, "Sec-WebSocket-Extensions").isEmpty());
+        // A reflected "Sec-WebSocket-Accept:" inside a PRIOR header's VALUE must be
+        // skipped: headerValue anchors to a line start ("\r\n<name>:"), so the real
+        // header wins over a forged reflection. (An un-anchored matcher returns FORGED.)
+        const QByteArray reflected =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "X-Reflect: Sec-WebSocket-Accept: FORGED\r\n"
+            "Sec-WebSocket-Accept: REAL\r\n";
+        chk("headerValue anchors to a line start (ignores a reflected value)",
+            headerValue(reflected, "Sec-WebSocket-Accept") == "REAL");
     }
 
     // ===== statusFromHeaderBlock =========================================
@@ -101,6 +110,16 @@ int main(int argc, char **argv) {
         r3.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nInjected: 1")});
         chk("build: a CR/LF carried header is dropped",
             !buildHandshake(r3, "https://evil.example", "k==").contains("Injected: 1"));
+        // Bare-LF (no CR) in a carried header value/name must ALSO be dropped -- the
+        // guard checks '\r' OR '\n' per char, but only the combined "\r\n" was tested.
+        Request r4 = mk();
+        r4.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\nInjected: 1")});
+        chk("build: a bare-LF carried header VALUE is dropped",
+            !buildHandshake(r4, "https://evil.example", "k==").contains("Injected: 1"));
+        Request r5 = mk();
+        r5.headers.append({QStringLiteral("X-T\nInjected"), QStringLiteral("1")});
+        chk("build: a bare-LF carried header NAME is dropped",
+            !buildHandshake(r5, "https://evil.example", "k==").contains("\nInjected"));
     }
 
     // ===== hasCredential (gates confirmed-CSWSH vs lead) ================
@@ -117,6 +136,12 @@ int main(int argc, char **argv) {
     {
         Request bp = mk(); bp.basePath = "/a\r\nInjected: 1";
         chk("build: CR/LF basePath -> aborts (empty)", buildHandshake(bp, "https://evil.example", "k==").isEmpty());
+        // Bare-LF (no CR) must abort too -- the guard is per-character, but only the
+        // combined "\r\n" form was tested for the request line.
+        Request bpLf = mk(); bpLf.basePath = "/a\nInjected: 1";
+        chk("build: bare-LF basePath -> aborts (empty)", buildHandshake(bpLf, "https://evil.example", "k==").isEmpty());
+        Request bhLf = mk(); bhLf.host = "victim.tld\nInjected: 1";
+        chk("build: bare-LF host -> aborts (empty)", buildHandshake(bhLf, "https://evil.example", "k==").isEmpty());
         Request bh = mk(); bh.host = "victim.tld\r\nInjected: 1";
         chk("build: CR/LF host -> aborts (empty)", buildHandshake(bh, "https://evil.example", "k==").isEmpty());
     }

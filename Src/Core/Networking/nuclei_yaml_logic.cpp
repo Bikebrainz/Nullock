@@ -54,7 +54,10 @@ QString unquote(const QString &s) {
     if (t.size() >= 2 &&
         ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith('\'') && t.endsWith('\'')))) {
         const QString inner = t.mid(1, t.size() - 2);
-        if (t.startsWith('\'')) return inner;          // single-quoted: no escapes (YAML)
+        // Single-quoted YAML: the ONLY escape is a doubled quote ('' -> a literal ');
+        // no backslash processing. Prior code returned inner verbatim, leaving "a''b"
+        // instead of "a'b".
+        if (t.startsWith('\'')) return QString(inner).replace(QLatin1String("''"), QLatin1String("'"));
         // Double-quoted: resolve escapes in a SINGLE left-to-right pass. A staged
         // .replace() chain (\\ -> \, THEN \n -> newline, ...) double-unescapes: an
         // escaped backslash "\\n" (a literal backslash + n) collapses to "\n" and

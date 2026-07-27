@@ -72,7 +72,11 @@ ParsedQuery parseDnsQuery(const QByteArray &d) {
 QString extractToken(const QString &qname) {
     const int dot = qname.indexOf('.');
     const QString head = (dot > 0 ? qname.left(dot) : qname).toLower();
-    static const QRegularExpression hex16(QStringLiteral("^[0-9a-f]{16}$"));
+    // \A..\z (absolute anchors), NOT ^..$: PCRE2 $ (no DollarEndOnly) also matches
+    // immediately before a trailing newline, so "0123456789abcdef\n" would match and
+    // this would return a 17-char token WITH an embedded LF -- a malformed OAST
+    // correlation token (and a CR/LF sink downstream).
+    static const QRegularExpression hex16(QStringLiteral("\\A[0-9a-f]{16}\\z"));
     return hex16.match(head).hasMatch() ? head : QString();
 }
 

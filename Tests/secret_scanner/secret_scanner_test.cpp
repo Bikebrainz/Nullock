@@ -113,6 +113,18 @@ int main(int argc, char **argv) {
         const QByteArray cg = buildGet(carried, "/app", QString());
         chk("build: carried Content-Length dropped (body-less GET won't strand)", !cg.contains("Content-Length"));
         chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
+        // A carried Accept-Encoding must be dropped so the forced identity stands alone
+        // (else the server gzips and the raw compressed body is scanned as UTF-8 -> a
+        // real leaked secret is missed); a carried Connection must be dropped too
+        // (hop-by-hop, and it duplicates/conflicts with the forced Connection: close).
+        Request enc; enc.host = "victim.tld";
+        enc.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, br")));
+        enc.headers.append(qMakePair(QString("Connection"), QString("keep-alive")));
+        const QByteArray eg = buildGet(enc, "/app", QString());
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            eg.count("Accept-Encoding:") == 1 && eg.contains("Accept-Encoding: identity\r\n") && !eg.contains("gzip"));
+        chk("build: carried Connection dropped -> exactly one, close",
+            eg.count("Connection:") == 1 && eg.contains("Connection: close\r\n") && !eg.contains("keep-alive"));
         // The per-carried-header CR/LF drop (name AND value) was untested -- the loop
         // only ever saw Content-Length/Transfer-Encoding, dropped earlier by name, so
         // control never reached the CR/LF guard. A regression removing it would splice

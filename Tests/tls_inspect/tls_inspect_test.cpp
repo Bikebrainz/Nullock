@@ -126,6 +126,13 @@ int main(int argc, char **argv) {
     chk("EXPORT-grade -> weak-cipher", cipherKind("EXP-RC2-CBC-MD5", 40) == "tls-weak-cipher");
     chk("RC4 -> weak-cipher", cipherKind("ECDHE-RSA-RC4-SHA", 128) == "tls-weak-cipher");
     chk("single DES -> weak-cipher", cipherKind("DES-CBC-SHA", 56) == "tls-weak-cipher");
+    // IANA underscore spellings (the existing EXPORT/DES tests use the EXP- prefix /
+    // hyphen forms, so the contains("EXPORT") and contains("DES_CBC") alternatives are
+    // otherwise unexercised; dropping either downgrades the suite from weak to legacy):
+    chk("IANA-form EXPORT suite (contains EXPORT) -> weak-cipher",
+        cipherKind("TLS_RSA_EXPORT_WITH_DES40_CBC_SHA", 40) == "tls-weak-cipher");
+    chk("IANA-form single-DES (DES_CBC underscore) -> weak-cipher",
+        cipherKind("TLS_RSA_WITH_DES_CBC_SHA", 56) == "tls-weak-cipher");
     chk("3DES -> legacy-cipher (Sweet32)", cipherKind("ECDHE-RSA-DES-CBC3-SHA", 112) == "tls-legacy-cipher");
     chk("3DES alt spelling -> legacy-cipher", cipherKind("DES-CBC3-SHA", 112) == "tls-legacy-cipher");
     chk("MD5-MAC -> legacy-cipher", cipherKind("AES128-MD5", 128) == "tls-legacy-cipher");
@@ -172,6 +179,12 @@ int main(int argc, char **argv) {
         signatureAlgorithmOid(mkCert(sha1Rsa, QByteArray())) == "1.2.840.113549.1.1.5");
     chk("sigOid: md5WithRSA parsed", signatureAlgorithmOid(mkCert(md5Rsa, QByteArray())) == "1.2.840.113549.1.1.4");
     chk("sigOid: sha256WithRSA parsed", signatureAlgorithmOid(mkCert(sha256Rsa, QByteArray())) == "1.2.840.113549.1.1.11");
+    // The OUTER signatureAlgorithm OID is authoritative, NOT an inner
+    // tbsCertificate.signature OID: a cert whose tbs BODY carries a SHA-256
+    // AlgorithmIdentifier but whose outer sigAlg is SHA-1 must report SHA-1 (which
+    // weakSignatureFinding then flags) -- else a forged-strong inner OID hides a weak sig.
+    chk("sigOid: reads the OUTER signatureAlgorithm, not an inner tbs.signature",
+        signatureAlgorithmOid(mkCert(sha1Rsa, tlv(0x30, tlv(0x06, sha256Rsa)))) == "1.2.840.113549.1.1.5");
     // LONG-FORM length: a 200-byte tbsCertificate (length encoded as 0x81 0xC8) --
     // exercises the multi-byte length path real certs always hit.
     chk("sigOid: long-form tbs length is handled (real-cert shape)",

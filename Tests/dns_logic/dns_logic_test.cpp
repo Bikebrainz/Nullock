@@ -206,6 +206,8 @@ int main(int argc, char **argv) {
     chk("token: 17 hex rejected", extractToken("0123456789abcdef0.x").isEmpty());
     chk("token: non-hex char rejected", extractToken("0123456789abcdeg.x").isEmpty());
     chk("token: bare 16-hex (no dot) accepted", extractToken("0123456789abcdef") == "0123456789abcdef");
+    chk("token: 16-hex + trailing newline rejected (\\A..\\z, not ^..$)",
+        extractToken(QStringLiteral("0123456789abcdef\n")).isEmpty());
     chk("token: empty -> empty", extractToken(QString()).isEmpty());
     chk("token: leading-dot (empty first label) rejected", extractToken(".0123456789abcdef").isEmpty());
 

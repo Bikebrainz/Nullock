@@ -167,6 +167,14 @@ QByteArray buildGet(const Request &req, const QString &path, const QString &quer
         // same-origin scripts are never scanned -> secrets missed). Drop both.
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 161 forces "identity" so the response
+        // body is scanned as PLAINTEXT; a surviving "gzip, br" combines (RFC 7230
+        // 3.2.2), the server compresses, the raw compressed bytes are scanned as UTF-8
+        // text -> a real leaked secret is never matched (false clean).
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Connection: it is hop-by-hop and would duplicate / conflict
+        // with the forced "Connection: close" (line 174).
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

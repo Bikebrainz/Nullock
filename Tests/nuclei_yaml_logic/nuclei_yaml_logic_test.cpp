@@ -72,6 +72,12 @@ int main(int argc, char **argv) {
         chk("single-quoted comma stays in one element",
             a.size() == 2 && a.at(0).toString() == QStringLiteral("a,b"));
     }
+    {
+        // Single-quoted YAML: the ONLY escape is a doubled quote ('' -> a literal ').
+        // Prior code returned the inner verbatim, leaving "a''b" instead of "a'b".
+        chk("single-quoted '' decodes to a literal apostrophe",
+            NucleiYaml::parseYaml("k: 'a''b'\n").toObject().value("k").toString() == QStringLiteral("a'b"));
+    }
 
     // ----- double-quote escape decoding: a SINGLE pass, no double-unescape.
     //       (regression: a staged .replace() chain collapsed "\\n" (a literal
