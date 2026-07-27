@@ -14,8 +14,11 @@ QList<QPair<QString, QString>> parseUrlencoded(const QString &s) {
         const int eq = kv.indexOf('=');
         const QString k = eq >= 0 ? kv.left(eq) : kv;
         const QString v = eq >= 0 ? kv.mid(eq + 1) : QString();
-        out.append({ QUrl::fromPercentEncoding(k.toUtf8()),
-                     QUrl::fromPercentEncoding(v.toUtf8()) });
+        // application/x-www-form-urlencoded: '+' encodes a space. fromPercentEncoding
+        // does NOT fold it, so decode it first -- else the reproduced form sends
+        // "a+b" where the capture meant "a b".
+        out.append({ QUrl::fromPercentEncoding(QString(k).replace('+', ' ').toUtf8()),
+                     QUrl::fromPercentEncoding(QString(v).replace('+', ' ').toUtf8()) });
     }
     return out;
 }
@@ -109,7 +112,7 @@ QString curlCommand(const QString &methodIn, const QString &url,
     QString method = methodIn.toUpper();
     if (method.isEmpty()) method = QStringLiteral("GET");
     QString c = "curl";
-    if (method != "GET" || !body.isEmpty()) c += " -X " + method;
+    if (method != "GET" || !body.isEmpty()) c += " -X " + shq(method);   // shell-escape like every other field
     c += " " + shq(url);
     for (const auto &hh : headers) {
         const QString &n = hh.first;

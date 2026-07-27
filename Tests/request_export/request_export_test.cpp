@@ -51,6 +51,16 @@ int main(int argc, char **argv) {
         chk("csrf form: note set", !note.isEmpty());
     }
 
+    // ---- CSRF PoC: form '+' decodes to space (x-www-form-urlencoded) ----
+    {
+        QString note;
+        const QString h = RequestExport::csrfPoc(
+            "POST", "http://victim.test/x",
+            "application/x-www-form-urlencoded", "q=hello+world", note);
+        chk("csrf form: '+' decoded to space (reproduces the captured value)",
+            h.contains("name=\"q\" value=\"hello world\"") && !h.contains("value=\"hello+world\""));
+    }
+
     // ---- CSRF PoC: GET (query -> hidden fields, action stripped) -------
     {
         QString note;
@@ -80,7 +90,7 @@ int main(int argc, char **argv) {
         };
         const QString c = RequestExport::curlCommand(
             "POST", "http://victim.test/x", hdrs, "{\"a\":1}");
-        chk("curl: -X POST", c.contains("curl -X POST "));
+        chk("curl: -X 'POST' (method single-quoted)", c.contains("curl -X 'POST' "));
         chk("curl: url single-quoted", c.contains("'http://victim.test/x'"));
         chk("curl: Cookie header", c.contains("-H 'Cookie: s=1'"));
         chk("curl: Content-Type header", c.contains("-H 'Content-Type: application/json'"));
@@ -99,6 +109,12 @@ int main(int argc, char **argv) {
         // POSIX escape of  a'b  inside single quotes is  a'\''b
         chk("curl: single-quote escaped to close-escape-reopen",
             q.contains("'X-Q: a'\\''b'"));
+        // audit-8: the METHOD must be shell-escaped too (it was the one field that
+        // wasn't) -- a metachar-bearing method stays an inert single-quoted token.
+        chk("curl: a metachar method is single-quote escaped",
+            RequestExport::curlCommand("GET;ID", "http://x/", {}, "").contains("-X 'GET;ID'"));
+        chk("curl: a metachar method does NOT break out unquoted",
+            !RequestExport::curlCommand("GET;ID", "http://x/", {}, "").contains("-X GET;ID "));
     }
 
     std::fprintf(stderr,
