@@ -149,6 +149,21 @@ int main(int argc, char **argv) {
         const Template t = parseTemplate(o);
         chk("wrong-typed template -> safe empty", t.matchers.isEmpty() && t.extractors.isEmpty());
     }
+    {
+        // audit-3: a numeric template value beyond INT64_MAX must not execute an
+        // out-of-range double->qint64 cast (UB) and must not stringify to the
+        // lossy 6-sig-fig scientific form (QString::number(double) default 'g'/6).
+        const QJsonObject o = QJsonDocument::fromJson(QByteArray(
+            "{\"matchers\":[{\"type\":\"word\",\"part\":\"body\",\"words\":[12345678901234567890]}]}"
+        )).object();
+        const Template t = parseTemplate(o);
+        chk("parse: huge numeric word value -> one matcher, one value (no crash/UB)",
+            t.matchers.size() == 1 && t.matchers[0].values.size() == 1);
+        chk("parse: huge numeric value is not the lossy 6-sig-fig form",
+            t.matchers.size() == 1 && t.matchers[0].values.size() == 1
+            && t.matchers[0].values[0] != "1.23457e+19"
+            && !t.matchers[0].values[0].isEmpty());
+    }
 
     std::fprintf(stderr, "template_engine_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

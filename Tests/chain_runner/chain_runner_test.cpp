@@ -138,6 +138,25 @@ int main(int argc, char **argv) {
         normalizeContentLength(QByteArray("POST /x HTTP/1.1\rHost: h\r\rbody")).contains("Content-Length: 4\r\n"));
     chk("clen: a bodyless request gets no Content-Length added",
         !normalizeContentLength("GET /x HTTP/1.1\r\nHost: h\r\n\r\n").contains("Content-Length"));
+    // audit-3: a bare-CR-separated header block must be parsed line-by-line
+    // (head.split('\n') folded the whole head into ONE line), or TE-chunked
+    // detection and duplicate-Content-Length collapse are bypassed -> desync.
+    {
+        const QByteArray r = normalizeContentLength(
+            "POST /x HTTP/1.1\rTransfer-Encoding: chunked\rContent-Length: 6\r\rbody");
+        chk("clen: bare-CR head, TE:chunked -> Content-Length dropped (CL.TE fix)",
+            !r.contains("Content-Length"));
+        chk("clen: bare-CR head, Transfer-Encoding preserved",
+            r.contains("Transfer-Encoding: chunked\r\n"));
+    }
+    {
+        const QByteArray r = normalizeContentLength(
+            "POST /x HTTP/1.1\rContent-Length: 5\rContent-Length: 99\r\rhello");
+        chk("clen: bare-CR head, duplicate Content-Length collapses to one (dup-CL fix)",
+            countOccur(r, "Content-Length:") == 1);
+        chk("clen: bare-CR head, surviving CL is the real body length",
+            r.contains("Content-Length: 5\r\n"));
+    }
 
     // ===== findHeader / findCookieValue =================================
     {

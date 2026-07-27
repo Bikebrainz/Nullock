@@ -22,10 +22,14 @@ QString jsonOne(const QJsonValue &e) {
     if (e.isString()) return e.toString();
     if (e.isBool())   return e.toBool() ? QStringLiteral("true") : QStringLiteral("false");
     if (e.isDouble()) {
+        // Use QJsonValue::toInteger() (saturating) rather than a raw
+        // static_cast<qint64>(double), which is undefined behavior when the value
+        // exceeds INT64_MAX. Exact integers keep their full digit text; genuine
+        // non-integers use full ('g',17) precision instead of lossy scientific.
         const double d = e.toDouble();
-        const qint64 asInt = static_cast<qint64>(d);
+        const qint64 asInt = e.toInteger();
         if (static_cast<double>(asInt) == d) return QString::number(asInt);  // integral
-        return QString::number(d);
+        return QString::number(d, 'g', 17);
     }
     return QString();
 }

@@ -100,6 +100,32 @@ int main(int argc, char **argv) {
         chk("req json param admin", findVal(r.value("bodyParams").toArray(), "admin") == "true");
     }
 
+    // ----- audit-3: large JSON integers render EXACTLY (no scientific notation) -
+    {
+        const QByteArray raw =
+            "PUT /api/user HTTP/1.1\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"user_id\":1234567890123,\"exp\":1719446400}";
+        const QJsonObject r = inspectRequest(raw);
+        chk("req json 64-bit id exact (not 1.23457e+12)",
+            findVal(r.value("bodyParams").toArray(), "user_id") == "1234567890123");
+        chk("req json epoch exact (not 1.71945e+09)",
+            findVal(r.value("bodyParams").toArray(), "exp") == "1719446400");
+    }
+
+    // ----- audit-3: RFC 6265 cookie '+' is literal, NOT form '+'->space --------
+    {
+        const QByteArray raw =
+            "GET / HTTP/1.1\r\n"
+            "Host: h\r\n"
+            "Cookie: t=YQ+Yg==\r\n"
+            "\r\n";
+        const QJsonObject r = inspectRequest(raw);
+        chk("req cookie '+' preserved (opaque octet, not form-decoded to space)",
+            findVal(r.value("cookies").toArray(), "t") == "YQ+Yg==");
+    }
+
     // ----- inspectResponse: status + Set-Cookie + JWT in cookie -----
     {
         const QByteArray raw = QString(

@@ -102,6 +102,12 @@ int main(int argc, char **argv) {
     chk("HSTS quoted max-age=\"31536000\" (RFC6797) -> NOT invalid (quote tolerated)",
         [](){ const QStringList k = keys(H({{"Strict-Transport-Security", "max-age=\"31536000\"; includeSubDomains"}}), true);
               return !has(k, "hsts-invalid") && !has(k, "hsts-weak") && !has(k, "hsts-disabled"); }());
+    // audit-3 int-overflow fix: a max-age beyond LLONG_MAX (bare toLongLong -> 0)
+    // must NOT be mis-graded as hsts-disabled, and the subdomain check must still
+    // run (a strong, effectively-permanent policy that lacks includeSubDomains).
+    chk("HSTS max-age beyond LLONG_MAX -> not disabled/weak, subdomain check still runs",
+        [](){ const QStringList k = keys(H({{"Strict-Transport-Security", "max-age=100000000000000000000"}}), true);
+              return !has(k, "hsts-disabled") && !has(k, "hsts-weak") && has(k, "hsts-no-subdomains"); }());
 
     // ===== #5 X-Frame-Options validation =================================
     chk("XFO: ALLOWALL -> clickjacking-missing (permissive, FN fix)",

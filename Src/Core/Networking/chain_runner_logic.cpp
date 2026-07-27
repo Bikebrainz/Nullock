@@ -160,9 +160,24 @@ QByteArray normalizeContentLength(const QByteArray &req) {
     // Transfer-Encoding: chunked is authoritative framing -- emitting Content-Length
     // alongside it is a CL.TE / TE.CL request-smuggling vector, so when chunked is
     // declared we DROP Content-Length entirely (and never add one).
+    // Split the head into header lines on ANY terminator (CRLF, bare LF, bare CR,
+    // mixed) -- head.split('\n') folds a bare-CR-terminated header block into a
+    // SINGLE line, bypassing TE-chunked detection and duplicate-Content-Length
+    // collapse below (a surviving CL.TE / dup-CL smuggling desync).
+    QList<QByteArray> lines;
+    {
+        QByteArray cur;
+        for (int i = 0; i < head.size();) {
+            const char c = head[i];
+            if (c == '\r') { lines << cur; cur.clear(); i += (i + 1 < head.size() && head[i + 1] == '\n') ? 2 : 1; }
+            else if (c == '\n') { lines << cur; cur.clear(); ++i; }
+            else { cur += c; ++i; }
+        }
+        if (!cur.isEmpty()) lines << cur;
+    }
+
     bool teChunked = false;
-    for (QByteArray line : head.split('\n')) {
-        if (line.endsWith('\r')) line.chop(1);
+    for (const QByteArray &line : lines) {
         const int colon = line.indexOf(':');
         if (colon > 0 && line.left(colon).trimmed().toLower() == "transfer-encoding"
             && line.mid(colon + 1).toLower().contains("chunked"))
@@ -171,8 +186,7 @@ QByteArray normalizeContentLength(const QByteArray &req) {
 
     QByteArray rebuilt;
     bool emittedCl = false;
-    for (QByteArray line : head.split('\n')) {
-        if (line.endsWith('\r')) line.chop(1);
+    for (const QByteArray &line : lines) {
         const int colon = line.indexOf(':');
         if (colon > 0 && line.left(colon).trimmed().toLower() == "content-length") {
             if (teChunked) continue;                   // chunked wins -> drop CL

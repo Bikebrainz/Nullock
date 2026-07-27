@@ -11,6 +11,8 @@
 #include <QMap>
 #include <QRegularExpression>
 
+#include <limits>
+
 namespace Nullock::Core::HeaderAudit {
 
 namespace {
@@ -217,7 +219,13 @@ void analyze(const Headers &headers, bool effTls, Result &result) {
                                         QRegularExpression::CaseInsensitiveOption);
             const auto m = ma.match(hsts);
             const bool hasMaxAge = m.hasMatch();
-            const long long age = hasMaxAge ? m.captured(1).toLongLong() : 0;
+            // A max-age that overflows qint64 (a 20+ digit value) is a valid,
+            // effectively-permanent policy -- a bare toLongLong() returns 0, so it
+            // would be mis-graded as hsts-disabled AND skip the subdomain check.
+            // Capture the ok flag and saturate an overflow to a large positive age.
+            bool maxAgeOk = false;
+            long long age = hasMaxAge ? m.captured(1).toLongLong(&maxAgeOk) : 0;
+            if (hasMaxAge && !maxAgeOk) age = std::numeric_limits<long long>::max();
             if (!hasMaxAge)
                 add("hsts-invalid", "medium", "HSTS header has no valid max-age",
                     "an HSTS header without a max-age directive is ignored -- equivalent to no HSTS");

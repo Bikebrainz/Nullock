@@ -14,9 +14,11 @@ namespace Nullock::Core::Inspector {
 namespace {
 
 // application/x-www-form-urlencoded / query decode: '+' -> space, then percent.
-QString urlDecode(const QString &s) {
+// formDecode=false skips the '+'->space step for RFC 6265 cookie values, whose
+// octets are opaque -- a '+' there is literal (base64 tokens must not corrupt).
+QString urlDecode(const QString &s, bool formDecode = true) {
     QString t = s;
-    t.replace('+', ' ');
+    if (formDecode) t.replace('+', ' ');
     return QUrl::fromPercentEncoding(t.toUtf8());
 }
 
@@ -25,7 +27,7 @@ QJsonObject nv(const QString &name, const QString &value) {
 }
 
 // Parse "k=v&k=v" (query string / form body) into name/value pairs.
-QJsonArray parsePairs(const QString &s, QChar sep = '&') {
+QJsonArray parsePairs(const QString &s, QChar sep = '&', bool formDecode = true) {
     QJsonArray arr;
     if (s.isEmpty()) return arr;
     for (const QString &rawPart : s.split(sep, Qt::SkipEmptyParts)) {
@@ -34,8 +36,8 @@ QJsonArray parsePairs(const QString &s, QChar sep = '&') {
         const QString part = rawPart.trimmed();
         if (part.isEmpty()) continue;
         const int eq = part.indexOf('=');
-        if (eq < 0) arr.append(nv(urlDecode(part), QString()));
-        else arr.append(nv(urlDecode(part.left(eq)), urlDecode(part.mid(eq + 1))));
+        if (eq < 0) arr.append(nv(urlDecode(part, formDecode), QString()));
+        else arr.append(nv(urlDecode(part.left(eq), formDecode), urlDecode(part.mid(eq + 1), formDecode)));
     }
     return arr;
 }
@@ -167,8 +169,9 @@ QJsonObject inspectRequest(const QByteArray &raw) {
 
     out["headers"] = headersJson(p.headers);
 
-    // Cookies from the Cookie header.
-    out["cookies"] = parsePairs(headerValue(p.headers, "Cookie"), ';');
+    // Cookies from the Cookie header. RFC 6265 cookie values are opaque octets --
+    // '+' is literal (do NOT form-decode it to a space, which corrupts base64).
+    out["cookies"] = parsePairs(headerValue(p.headers, "Cookie"), ';', /*formDecode=*/false);
 
     const QString ct = headerValue(p.headers, "Content-Type");
     out["contentType"] = ct;
@@ -190,7 +193,14 @@ QJsonObject inspectRequest(const QByteArray &raw) {
                 const QJsonValue v = it.value();
                 QString sval;
                 if      (v.isString()) sval = v.toString();
-                else if (v.isDouble()) sval = QString::number(v.toDouble());
+                else if (v.isDouble()) {
+                    // Preserve exact integer text -- a bare QString::number(double)
+                    // emits 6-sig-fig scientific notation for 64-bit IDs / epochs.
+                    const double d = v.toDouble();
+                    const qint64 i = v.toInteger();
+                    sval = (static_cast<double>(i) == d) ? QString::number(i)
+                                                         : QString::number(d, 'g', 17);
+                }
                 else if (v.isBool())   sval = v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
                 else if (v.isNull())   sval = QStringLiteral("null");
                 else if (v.isObject()) sval = QStringLiteral("{…}");
