@@ -652,12 +652,22 @@ Ver parseVersion(const QString &s) {
     while (it.hasNext()) {
         auto m = it.next();
         Ver v;
-        v.p[0] = m.captured(1).toInt();
+        // Clamp an over-INT_MAX component to INT_MAX rather than let toInt() overflow
+        // to 0: a 0 would make an astronomically-new version ("9999999999.20.0")
+        // compare as OLDER than a "<X" fixed bound and FALSELY confirm the CVE on a
+        // host far newer than the fix.
+        auto comp = [](const QString &c) -> int {
+            bool ok = false;
+            const qlonglong n = c.toLongLong(&ok);
+            if (!ok || n > 2147483647LL) return 2147483647;   // overflow -> newer than any bound
+            return n < 0 ? 0 : static_cast<int>(n);
+        };
+        v.p[0] = comp(m.captured(1));
         v.ncomp = 1;
         for (int i = 2; i <= 4; ++i) {
             const QString c = m.captured(i);
             if (c.isEmpty()) break;
-            v.p[i - 1] = c.toInt();
+            v.p[i - 1] = comp(c);
             v.ncomp = i;
         }
         v.suffix = suffixRank(m.captured(5));
@@ -799,8 +809,13 @@ QList<Match> lookupByFingerprint(const QString &kind, const HttpFingerprint &fp)
         const bool vendorMatch = !vendor.isEmpty() && v.toLower().contains(vendor);
         if (!(vendorScoped[i] || vendorMatch)) continue;   // generic header must name the vendor
         anyUsable = true;
-        if ((vendorMatch && !bestVendor) ||
-            (vendorMatch == bestVendor && pv.ncomp > bestComp)) {
+        // Rank version PRECISION first: a coarse major-only vendor-named source
+        // ("WordPress 6", ncomp=1) must NOT shadow a precise kind-scoped source
+        // ("6.4.3", ncomp=3) -- else a PATCHED 6.4.3 host matches a "<6.4.3" CVE.
+        // vendor-naming is only a TIE-BREAKER at equal precision; the vendorScoped /
+        // vendorMatch gate above already keeps foreign generic versions out entirely.
+        if (pv.ncomp > bestComp ||
+            (pv.ncomp == bestComp && vendorMatch && !bestVendor)) {
             best = v; bestComp = pv.ncomp; bestVendor = vendorMatch;
         }
     }

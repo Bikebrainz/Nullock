@@ -249,6 +249,18 @@ int main(int argc, char **argv) {
         chk("fingerprint: precise xGenerator 6.1.2 beats coarse '6' -> 39999",
             hasCve(m, "CVE-2023-39999", cv));
     }
+    // audit-7: version PRECISION must outrank vendor-naming. A bare, kind-scoped
+    // "6.4.3" (PATCHED, and NOT containing the vendor word) must beat a coarse
+    // vendor-named "WordPress 6": ranking vendor-naming first let {6,0,0} shadow the
+    // precise 6.4.3 and match a "<6.4.3" CVE, falsely flagging a patched host critical.
+    {
+        CveDatabase::HttpFingerprint fp;
+        fp.bodyVersion = "6.4.3";            // bare, precise, PATCHED (no vendor word)
+        fp.xGenerator  = "WordPress 6";      // vendor-named but coarse (major only)
+        const auto m = CveDatabase::lookupByFingerprint("cms-wordpress", fp);
+        chk("fingerprint: precise bare 6.4.3 beats coarse vendor-named 'WordPress 6' -> patched, empty",
+            m.isEmpty());
+    }
     // lookupByFingerprint: NO parseable version anywhere -> imprecise triage.
     {
         CveDatabase::HttpFingerprint fp;
@@ -296,6 +308,15 @@ int main(int argc, char **argv) {
         const auto m = CveDatabase::lookup("cms-magento", "Mag9 2.4.7");
         chk("digit in product name does not shadow the dotted version (Mag9 2.4.7 -> 34102)",
             hasCve(m, "CVE-2024-34102", cv));
+    }
+    // audit-7: an over-INT_MAX version component must clamp HIGH, not overflow to 0.
+    // nginx/9999999999.20.0 is far NEWER than the 1.20.1 fix; with toInt() overflow
+    // the major became 0 -> {0,20,0} < {1,20,1} -> falsely matched CVE-2021-23017.
+    {
+        double cv;
+        const auto m = CveDatabase::lookup("server-nginx", "nginx/9999999999.20.0");
+        chk("overflow version component clamps high -> newer host NOT matched to <1.20.1 CVE",
+            !hasCve(m, "CVE-2021-23017", cv));
     }
     // Table integrity: no entry has a crossed/unsatisfiable range (dead row).
     chk("table has no crossed/dead >=X,<Y ranges", CveDatabase::auditRanges() == 0);
