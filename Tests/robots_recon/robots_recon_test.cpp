@@ -83,6 +83,17 @@ int main(int argc, char **argv) {
         parseRobots("Disallow: /keep  # trailing comment\n", dis, pat, sm, trunc);
         chk("parseRobots: trailing comment stripped from value", has(dis, "/keep"));
     }
+    // A '$' END-ANCHOR with NO '*' is still a match PATTERN, not a fetchable path.
+    // Every other pattern case carries a '*' (which short-circuits isDisallowPattern
+    // via contains('*')), so the endsWith('$') arm is otherwise unexercised. A
+    // regression dropping that arm would mis-bucket "/private$" as a concrete path
+    // and a consumer would GET the literal "/private$" (a 404), missing the real lead.
+    {
+        QStringList dis, pat, sm; bool trunc = false;
+        parseRobots("Disallow: /private$\n", dis, pat, sm, trunc);
+        chk("parseRobots: a '$'-anchored value (no '*') is a PATTERN, not a path",
+            has(pat, "/private$") && !has(dis, "/private$"));
+    }
 
     // ===== parseSitemapLocs: namespaced / attributed <loc> ==============
     {
