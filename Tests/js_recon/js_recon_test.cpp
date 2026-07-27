@@ -55,6 +55,18 @@ int main(int argc, char **argv) {
     chk("js: /api/conf.js (api-shaped) IS kept", has("x=\"/api/conf.js\"", "/api/conf.js"));
     chk("map: /api/tiles/region.map (api-shaped) survives the asset filter", has("x=\"/api/tiles/region.map\"", "/api/tiles/region.map"));
     chk("map: /static/sprite.map (not api) is dropped", !has("x=\"/static/sprite.map\"", "/static/sprite.map"));
+    // A version embedded in a FILENAME (name.vN.ext) is NOT an API version segment:
+    // the '.'-left-boundary previously set apiShaped=true and slipped a static bundle
+    // past the .js / asset carve-outs. It must be dropped like restore.js / sprite.map.
+    chk("version-in-filename: /static/js/jquery.v2.min.js is NOT an endpoint",
+        !has("x=\"/static/js/jquery.v2.min.js\"", "/static/js/jquery.v2.min.js"));
+    chk("version-in-filename: /assets/app.v3.js is dropped (.js, not an api version)",
+        !has("x=\"/assets/app.v3.js\"", "/assets/app.v3.js"));
+    chk("version-in-filename: /img/sprite.v2.png is dropped as an asset",
+        !has("x=\"/img/sprite.v2.png\"", "/img/sprite.v2.png"));
+    // A path-SEGMENT version (bounded by '/') still counts, incl. a dotted one.
+    chk("version-segment: /v2.1/orders (slash-bounded version) IS an endpoint",
+        has("x=\"/v2.1/orders\"", "/v2.1/orders"));
 
     // ===== relative api paths (leading slash optional) ==================
     chk("relative: api/v1/orders matched", has("routes=[\"api/v1/orders\"]", "api/v1/orders"));

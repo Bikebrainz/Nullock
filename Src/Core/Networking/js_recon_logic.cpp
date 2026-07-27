@@ -37,12 +37,17 @@ QByteArray buildGet(const Request &req, const QString &path) {
 
 namespace {
 
-// An api/version token must be a whole PATH SEGMENT (bounded by /._- or a string
-// end), not a free substring -- "/therapist/" must NOT count as an "api" path,
-// nor "restore.js" as a "rest" route.
+// An api/version token must be a whole PATH SEGMENT, not a free substring --
+// "/therapist/" must NOT count as an "api" path, nor "restore.js" as a "rest"
+// route. For the version alternative the LEFT boundary must be '/' or a string
+// start (NOT '.'): a version bounded by '.' on the left is a version embedded in a
+// FILENAME (jquery.v2.min.js, sprite.v2.png), not an API version segment -- and
+// under the '.' left-boundary it set apiShaped=true and slipped past the .js/asset
+// carve-outs, polluting the endpoint list with static bundles. Path-segment
+// versions (/v2/, /v1/me, /v2.1/, /v2-beta/) keep their '/'-or-start left boundary.
 const QRegularExpression &apiBounded() {
     static const QRegularExpression rx(
-        R"((?:^|[/._-])(?:api|graphql|rest|internal|admin|auth)(?:$|[/._-])|(?:^|[/.])v\d+(?:$|[/.-]))",
+        R"((?:^|[/._-])(?:api|graphql|rest|internal|admin|auth)(?:$|[/._-])|(?:^|/)v\d+(?:$|[/.-]))",
         QRegularExpression::CaseInsensitiveOption);
     return rx;
 }
