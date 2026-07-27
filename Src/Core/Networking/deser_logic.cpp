@@ -77,7 +77,7 @@ QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QS
     QString method = req.method;
     if (method.isEmpty() || method.compare("GET", Qt::CaseInsensitive) == 0)
         method = QStringLiteral("POST");
-    if (crlf(method) || crlf(req.host) || crlf(req.basePath) || crlf(req.query)) return {};
+    if (crlf(method) || crlf(req.host) || crlf(req.basePath) || crlf(req.query) || crlf(ct)) return {};
     const QString target = req.query.isEmpty() ? req.basePath : req.basePath + "?" + req.query;
     QByteArray out;
     out  = method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";

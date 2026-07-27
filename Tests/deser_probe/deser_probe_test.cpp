@@ -93,6 +93,9 @@ int main(int argc, char **argv) {
         Request crlfQ = req; crlfQ.query = "a=1\r\nX-Smuggled: 1";
         chk("buildBody: CRLF req.query -> empty",
             buildBodyRequest(crlfQ, QByteArray("b"), "application/octet-stream").isEmpty());
+        // audit-3: buildBody splices the ct arg into the Content-Type header -> guard it.
+        chk("buildBody: CRLF ct -> empty",
+            buildBodyRequest(req, QByteArray("b"), "application/xml\r\nX-Smuggled: 1").isEmpty());
         chk("buildCookie: CRLF req.query -> empty", buildCookieRequest(crlfQ, "rememberMe", "v").isEmpty());
         chk("buildField: CRLF req.query -> empty", buildFieldRequest(crlfQ, "__VIEWSTATE", "v").isEmpty());
 

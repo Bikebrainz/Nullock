@@ -151,6 +151,7 @@ QStringList sameOriginScripts(const QString &body, const QUrl &base, int cap) {
 QByteArray buildGet(const Request &req, const QString &path, const QString &query) {
     if (req.host.contains('\r') || req.host.contains('\n')) return {};
     if (path.contains('\r') || path.contains('\n')) return {};
+    if (query.contains('\r') || query.contains('\n')) return {};   // query is spliced into the request line raw
     const QString target = query.isEmpty() ? path : path + "?" + query;
     QByteArray out;
     out  = "GET " + target.toUtf8() + " HTTP/1.1\r\n";
@@ -160,6 +161,12 @@ QByteArray buildGet(const Request &req, const QString &path, const QString &quer
     out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // This probe emits a body-less GET; a carried Content-Length / Transfer-
+        // Encoding from the source request would strand it (the server waits for a
+        // body that never arrives -> the fetch times out, the page and its
+        // same-origin scripts are never scanned -> secrets missed). Drop both.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

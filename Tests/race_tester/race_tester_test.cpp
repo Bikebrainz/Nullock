@@ -81,6 +81,9 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost).isEmpty());
         Request badPath = req; badPath.basePath = "/redeem\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath).isEmpty());
+        // audit-3: contentType is spliced into a Content-Type header -> guard it.
+        Request badCt = req; badCt.contentType = "application/x-www-form-urlencoded\r\nX-Injected: 1";
+        chk("build: CRLF contentType -> empty", buildRequest(badCt).isEmpty());
     }
 
     std::fprintf(stderr, "race_tester_test: %d passed, %d failed\n", pass, fail);

@@ -41,7 +41,7 @@ QByteArray buildRequest(const Request &req) {
     auto crlf = [](const QString &s) { return s.contains('\r') || s.contains('\n'); };
     // method/host/path flow raw from the deep-audit / fromHistory path; a CR/LF
     // in any would smuggle a second request line or header -- refuse to build.
-    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath)) return {};
+    if (crlf(req.method) || crlf(req.host) || crlf(req.basePath) || crlf(req.contentType)) return {};
 
     const bool hasBody = !req.body.isEmpty();
     QByteArray out;

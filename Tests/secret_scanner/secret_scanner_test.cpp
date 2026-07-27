@@ -101,6 +101,18 @@ int main(int argc, char **argv) {
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildGet(badHost, "/app.js", QString()).isEmpty());
         chk("build: CRLF path -> empty", buildGet(req, "/a\r\nX: y", QString()).isEmpty());
+        // audit-3: query is spliced into the request line raw -> guard it (parity).
+        chk("build: CRLF query -> empty", buildGet(req, "/search", "q=a\r\nX-Injected: 1").isEmpty());
+        chk("build: bare-LF query -> empty", buildGet(req, "/search", "q=a\nX: y").isEmpty());
+        // audit-3: a body-less GET must drop a carried Content-Length/Transfer-
+        // Encoding, else a strict origin blocks awaiting a body that never comes
+        // and the page (+ its same-origin scripts) is never scanned -> secrets missed.
+        Request carried; carried.host = "victim.tld";
+        carried.headers.append(qMakePair(QString("Content-Length"), QString("137")));
+        carried.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray cg = buildGet(carried, "/app", QString());
+        chk("build: carried Content-Length dropped (body-less GET won't strand)", !cg.contains("Content-Length"));
+        chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
     }
 
     // ---- sameOriginScripts: same host/scheme/port only ------------------

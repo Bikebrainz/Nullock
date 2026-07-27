@@ -137,6 +137,13 @@ int main(int argc, char **argv) {
         chk("build: CR/LF token -> abort {}", buildRequest(bt, "TOK\r\nEvil: 1").isEmpty());
         Request bl = mk(); bl.location = "header:X-Auth\r\nEvil: 1";
         chk("build: CR/LF carrier name -> abort {}", buildRequest(bl, "TOK").isEmpty());
+        // audit-3: contentType is spliced into the Content-Type header -> guard it.
+        Request bc = mk(); bc.method = "POST"; bc.body = "{\"x\":1}";
+        bc.contentType = "application/json\r\nX-Smuggled: 1";
+        chk("build: CR/LF contentType -> abort {}", buildRequest(bc, "TOK").isEmpty());
+        Request gc = mk(); gc.method = "POST"; gc.body = "{\"x\":1}"; gc.contentType = "application/xml";
+        chk("build: a clean custom contentType still builds",
+            buildRequest(gc, "TOK").contains("Content-Type: application/xml\r\n"));
     }
 
     // ===== isCredentialHeader / defaultSecrets ===========================

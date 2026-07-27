@@ -93,6 +93,7 @@ QByteArray buildRequest(const Request &req, const QString &token) {
     if (!req.body.isEmpty()) {
         const QString ct = req.contentType.isEmpty()
             ? QStringLiteral("application/json") : req.contentType;
+        if (ct.contains('\r') || ct.contains('\n')) return {};   // no header injection via contentType
         out += "Content-Type: " + ct.toUtf8() + "\r\n";
         out += "Content-Length: " + QByteArray::number(req.body.size()) + "\r\n";
         out += "Connection: close\r\n\r\n";
