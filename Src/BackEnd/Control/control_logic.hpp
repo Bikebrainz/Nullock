@@ -89,6 +89,15 @@ QString mdTextSafe(const QString &s);
 // stream apply .toUtf8().
 QString xmlAttrEscape(const QString &s);
 
+// --- Finding severity mapping (report export) ----------------------------
+// Rank a severity string (critical>high>medium>low>info>unknown=0) so the worst
+// of several probe severities can be selected deterministically.
+int severityRank(const QString &sev);
+// SARIF result level for a finding severity: "error" for critical/high (so a CI
+// gate failing on level=="error" catches the MOST severe issues -- a critical
+// must NOT map to "warning"), "note" for low/info, "warning" for medium/unknown.
+QString sarifLevelForSeverity(const QString &sev);
+
 // --- Outbound request-builder CR/LF guard --------------------------------
 // A request-line / header component (path, query, param name) built from a
 // parsed URL or operator JSON and concatenated RAW into outbound HTTP request

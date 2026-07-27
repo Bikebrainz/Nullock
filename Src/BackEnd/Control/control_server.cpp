@@ -525,16 +525,19 @@ int runDeepAudit(Nullock::Core::PassiveScanner *sc, const AuditTarget &t,
         cr.host = t.host; cr.port = t.port; cr.tls = t.tls;
         cr.method = "GET"; cr.basePath = t.basePath; cr.headers = t.headers;
         const auto res = Nullock::Core::CorsTester::test(cr);
-        int n = 0; QString worst = "low";
+        int n = 0; QString worst; QString worstKind; int worstRank = -1;
         for (const auto &p : res.probes) {
             if (p.severity.isEmpty()) continue;
             ++n;
-            if (p.severity == "critical") worst = "critical";
-            else if (p.severity == "high" && worst != "critical") worst = "high";
-            else if (p.severity == "medium" && worst == "low") worst = "medium";
+            const int r = ControlLogic::severityRank(p.severity);
+            if (r > worstRank) { worstRank = r; worst = p.severity; worstKind = p.kind; }
         }
+        if (worst.isEmpty()) worst = "low";
+        // Report the ACTUAL worst probe's kind, not a hardcoded credentialed label
+        // -- mislabeling a non-credentialed reflection as "cors-reflected-
+        // credentialed" inflates its CVSS (8.3) via the enricher's exact lookup.
         note("cors", n, QString("%1 reflected origin(s)").arg(n),
-             worst, "cors-reflected-credentialed",
+             worst, worstKind.isEmpty() ? QStringLiteral("cors-reflected-credentialed") : worstKind,
              "Deep audit: CORS reflects untrusted origin(s)");
     }
     if (wants("idor")) {
@@ -5665,11 +5668,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         for (const auto &f : m_wiring.scanner->findings(1000)) {
             QJsonObject result;
             result["ruleId"] = f.kind;
-            QString sarifLevel = "warning";
-            if (f.severity == "high")   sarifLevel = "error";
-            if (f.severity == "low")    sarifLevel = "note";
-            if (f.severity == "info")   sarifLevel = "note";
-            result["level"]  = sarifLevel;
+            // critical MUST map to "error" (not "warning") or a CI gate keyed on
+            // level=="error" would ignore the most severe findings.
+            result["level"]  = ControlLogic::sarifLevelForSeverity(f.severity);
             // Confidence in a properties bag so a CI gate can fail only on
             // confirmed true positives (e.g. jq 'select(.properties.confidence
             // == "confirmed")'). SARIF has no first-class confidence field.

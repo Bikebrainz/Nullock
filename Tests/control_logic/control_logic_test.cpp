@@ -38,6 +38,20 @@ int main(int argc, char **argv) {
     chk("method: POST allowed",    isMethodAllowed("POST"));
     chk("method: PUT allowed",     isMethodAllowed("PUT"));
     chk("method: PATCH allowed",   isMethodAllowed("PATCH"));
+
+    // ===== severity mapping (audit-8: SARIF level + rank) ================
+    chk("sarif: critical -> error (not warning)", sarifLevelForSeverity("critical") == "error");
+    chk("sarif: high -> error",      sarifLevelForSeverity("high") == "error");
+    chk("sarif: medium -> warning",  sarifLevelForSeverity("medium") == "warning");
+    chk("sarif: low -> note",        sarifLevelForSeverity("low") == "note");
+    chk("sarif: info -> note",       sarifLevelForSeverity("info") == "note");
+    chk("sarif: unknown -> warning", sarifLevelForSeverity("bogus") == "warning");
+    chk("rank: critical>high>medium>low>info>unknown",
+        severityRank("critical") > severityRank("high")
+        && severityRank("high") > severityRank("medium")
+        && severityRank("medium") > severityRank("low")
+        && severityRank("low") > severityRank("info")
+        && severityRank("info") > severityRank("bogus"));
     chk("method: DELETE allowed",  isMethodAllowed("DELETE"));
     chk("method: HEAD allowed",    isMethodAllowed("HEAD"));
     chk("method: OPTIONS allowed", isMethodAllowed("OPTIONS"));

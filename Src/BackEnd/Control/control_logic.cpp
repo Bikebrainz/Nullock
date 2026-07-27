@@ -161,4 +161,23 @@ bool looksLikeCatastrophicRegex(const QString &pattern) {
     return false;
 }
 
+int severityRank(const QString &sev) {
+    const QString s = sev.toLower();
+    if (s == QLatin1String("critical")) return 5;
+    if (s == QLatin1String("high"))     return 4;
+    if (s == QLatin1String("medium"))   return 3;
+    if (s == QLatin1String("low"))      return 2;
+    if (s == QLatin1String("info"))     return 1;
+    return 0;   // unknown / empty
+}
+
+QString sarifLevelForSeverity(const QString &sev) {
+    const QString s = sev.toLower();
+    if (s == QLatin1String("critical") || s == QLatin1String("high"))
+        return QStringLiteral("error");
+    if (s == QLatin1String("low") || s == QLatin1String("info"))
+        return QStringLiteral("note");
+    return QStringLiteral("warning");   // medium / unknown / empty
+}
+
 } // namespace Nullock::Control::ControlLogic
