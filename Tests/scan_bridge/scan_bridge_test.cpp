@@ -111,6 +111,39 @@ int main(int argc, char **argv) {
             countKind(out, "exposed-database") == 1 && countKind(out, "open-port") == 0);
     }
 
+    // ===== fromPortResults: banner -> CVE correlation (was untested) =====
+    // The banner -> parseBanner -> matchVersion -> grading path had NO coverage.
+    // Lock it, especially the security-critical FP guard: an IMPRECISE (truncated-
+    // version) match must be capped below high and flagged POSSIBLE -- never
+    // surfaced as a confirmed critical/high (a hidden patch level might be fixed).
+    auto findCve = [](const QList<BridgeFinding> &fs, const char *cve) -> const BridgeFinding * {
+        for (const auto &f : fs)
+            if (f.kind == QLatin1String("cve-correlated") && f.summary.contains(QLatin1String(cve)))
+                return &f;
+        return nullptr;
+    };
+    {
+        Options o; o.includeOpenPorts = false; o.correlateCves = true;
+        // Precise: a full version -> confirmed CVE, no "POSSIBLE" lead prefix.
+        const auto out = fromPortResults({ open(80, "http", "Apache/2.4.49 (Debian)") }, o);
+        const BridgeFinding *hit = findCve(out, "CVE-2021-41773");
+        chk("cve-correlate: a precise banner match surfaces the CVE", hit != nullptr);
+        chk("cve-correlate: a precise match is confirmed (NOT flagged POSSIBLE)",
+            hit && !hit->summary.contains(QLatin1String("POSSIBLE")));
+    }
+    {
+        Options o; o.includeOpenPorts = false; o.correlateCves = true;
+        // Imprecise: "Apache/2.4" matches the CVSS-critical CVE-2023-25690 but the
+        // hidden patch level might be fixed -> capped + flagged POSSIBLE.
+        const auto out = fromPortResults({ open(80, "http", "Apache/2.4") }, o);
+        const BridgeFinding *hit = findCve(out, "CVE-2023-25690");
+        chk("cve-correlate: an imprecise (truncated-version) match is present", hit != nullptr);
+        chk("cve-correlate: an imprecise match is capped below high (never a confirmed crit/high)",
+            hit && hit->severity != QLatin1String("critical") && hit->severity != QLatin1String("high"));
+        chk("cve-correlate: an imprecise match is flagged POSSIBLE (a lead, not confirmed)",
+            hit && hit->summary.contains(QLatin1String("POSSIBLE")));
+    }
+
     std::fprintf(stderr, "scan_bridge_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
