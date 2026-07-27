@@ -134,6 +134,17 @@ int main(int argc, char **argv) {
         cls(40001, mysqlGreetRaw()) == "mysql");
     chk("MySQL full wire greeting (len+seq header, proto at +4) -> mysql, any port",
         cls(40002, mysqlGreetWire()) == "mysql");
+    // The MySQL recognizer is FRAMING, not "first byte 0x0a": the version must
+    // START WITH A DIGIT and be NUL-TERMINATED in range. Both soundness guards were
+    // untested. A 0x0a-led banner whose version-like text starts with a LETTER is
+    // NOT a handshake (else "\n"+"MariaDB-x"+NUL would mislabel as mysql and feed the
+    // wrong protocol to service-vuln correlation).
+    chk("0x0a + NON-digit version + NUL is NOT mysql (digit-first framing guard)",
+        cls(40031, bytes({0x0a}) + "MariaDB-x" + bytes({0x00})) == "unknown");
+    // A 0x0a + digit version with NO NUL terminator in range is NOT a handshake
+    // (a real greeting terminates early); guards the no-terminator -> false branch.
+    chk("0x0a + digit version with NO NUL terminator is NOT mysql",
+        cls(40032, bytes({0x0a}) + QByteArray(70, '5')) == "unknown");
     chk("PostgreSQL ErrorResponse 'E' framing -> postgresql, any port",
         cls(40003, pgErrorResponse()) == "postgresql");
     chk("PostgreSQL Authentication 'R' framing -> postgresql, any port",
