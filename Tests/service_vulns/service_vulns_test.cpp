@@ -115,6 +115,18 @@ int main(int argc, char **argv) {
             matchPrec("apache", "2.4", "CVE-2021-41773") == 0);
         chk("apache 2.5 (differing prefix) -> NOT the 2.4.49-exact CVE-2021-41773 (certain)",
             !has(cves("apache", "2.5"), "CVE-2021-41773"));
+
+        // The all-zero-tail certainty branch (truncatedAgainst line 213): a truncated
+        // version sitting exactly at an EXCLUSIVE-max fix ending in .0 must be CERTAIN
+        // (NOT affected), never a false-positive lead. nginx CVE-2021-23017 has maxVer
+        // "1.21.0"; a 'nginx/1.21' banner is exactly the fix. Every other truncated
+        // case above hits a NON-zero tail, so this branch was behavior-untested -- a
+        // regression treating an all-zero tail as truncated would flip nginx 1.21 (the
+        // patched release) into a spurious CVE hit while the suite stayed green.
+        chk("nginx 1.21 (truncated, == exclusive-max fix 1.21.0) -> NOT CVE-2021-23017",
+            !has(cves("nginx", "1.21"), "CVE-2021-23017"));
+        chk("nginx 1.20.0 (precise, in range) -> IS CVE-2021-23017 (positive control)",
+            has(cves("nginx", "1.20.0"), "CVE-2021-23017"));
     }
 
     // ===== lettered patch/build ordering (#2) ============================

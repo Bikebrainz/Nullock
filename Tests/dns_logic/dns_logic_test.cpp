@@ -115,6 +115,19 @@ int main(int argc, char **argv) {
         chk("overrun: over-long first label -> invalid, no OOB", !p.valid);
         chk("overrun: first-label overrun yields empty qname", p.qname.isEmpty());
     }
+    {
+        // The case above uses length 0x40, whose top bits make it a COMPRESSION
+        // POINTER -- rejected one line EARLIER (dns_logic.cpp:50), so line 51's
+        // datagram-overrun guard (the sole memory-safety bound on the label-append
+        // loop) was never actually hit. A LEGAL-length label (1..63, top bits clear)
+        // whose body runs past the datagram must be rejected there, with no OOB read.
+        QByteArray q(12, '\0'); q[5] = 1;   // qdcount=1, flags byte[2]=0 (QR=0/opcode=0)
+        q.append(char(0x05));                // label length 5 (0x05 & 0xC0 == 0 -> NOT a pointer)
+        q.append("ab");                       // only 2 body bytes -> pos+1+len = 18 > size 15
+        const ParsedQuery p = parseDnsQuery(q);
+        chk("overrun: a LEGAL-length label whose body overruns is rejected at the datagram bound (no OOB)",
+            !p.valid && p.qname.isEmpty());
+    }
 
     // ===== compression pointers rejected ================================
     {
