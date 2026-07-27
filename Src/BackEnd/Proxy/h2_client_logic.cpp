@@ -14,6 +14,22 @@ bool isHopByHopHeader(const QString &lowerName) {
         || lowerName == QLatin1String("te");
 }
 
+QSet<QString> connectionNamedHeaders(const QList<QPair<QString, QString>> &headers) {
+    // Collect the tokens a Connection header lists. Directive tokens ("close",
+    // "keep-alive") are harmless -- they never match a real header name (and
+    // keep-alive is on the fixed hop-by-hop list anyway).
+    QSet<QString> named;
+    for (const auto &kv : headers) {
+        if (kv.first.compare(QLatin1String("connection"), Qt::CaseInsensitive) != 0) continue;
+        const auto toks = kv.second.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &tok : toks) {
+            const QString t = tok.trimmed().toLower();
+            if (!t.isEmpty()) named.insert(t);
+        }
+    }
+    return named;
+}
+
 QList<HeaderNV> buildRequestHeaders(const QString &method,
                                     const QString &authority,
                                     const QString &path,
@@ -30,10 +46,12 @@ QList<HeaderNV> buildRequestHeaders(const QString &method,
     out.push_back({ QByteArrayLiteral(":authority"), authority.toUtf8() });
     out.push_back({ QByteArrayLiteral(":path"),      p });
 
+    const QSet<QString> connNamed = connectionNamedHeaders(headers);
     for (const auto &kv : headers) {
         if (kv.first.isEmpty()) continue;
         const QString lower = kv.first.toLower();
         if (isHopByHopHeader(lower)) continue;
+        if (connNamed.contains(lower)) continue;   // named in a Connection header -> hop-by-hop
         out.push_back({ lower.toUtf8(), kv.second.toUtf8() });
     }
     return out;

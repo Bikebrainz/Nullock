@@ -87,6 +87,17 @@ int main(int argc, char **argv) {
         chk("resp: 404 status", nv.value(0).value == "404");
         chk("resp: only :status when no headers", nv.size() == 1);
     }
+    {
+        // A response header NAMED in the origin's Connection value is hop-by-hop
+        // (RFC 9113 s8.2.2) -- it must not leak across the h1->h2 hop to the browser.
+        const QList<HeaderNV> nv = responseHeaders(200, {
+            { "Connection", "close, X-Internal-Token" },
+            { "X-Internal-Token", "abc123" },
+        });
+        chk("resp: a Connection-named header is stripped (not leaked to the browser)",
+            nvIdx(nv, "x-internal-token") < 0);
+        chk("resp: only :status remains after stripping the named hop-by-hop header", nv.size() == 1);
+    }
 
     std::fprintf(stderr, "h2_server_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

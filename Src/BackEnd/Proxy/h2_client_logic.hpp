@@ -14,6 +14,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QPair>
+#include <QSet>
 #include <QString>
 
 namespace Nullock::Proxy::H2ClientLogic {
@@ -38,6 +39,12 @@ QList<HeaderNV> buildRequestHeaders(const QString &method,
 
 // True if `name` is a header the h2 layer must not forward (case-insensitive).
 bool isHopByHopHeader(const QString &lowerName);
+
+// The set of (lowercased) header names declared hop-by-hop by a Connection header
+// in `headers`. RFC 9113 s8.2.2 / RFC 7230 s6.1: an h1<->h2 intermediary must drop
+// every field NAMED in a Connection header, not only the fixed connection-control
+// set -- else an origin-declared hop-by-hop header leaks across the proxy hop.
+QSet<QString> connectionNamedHeaders(const QList<QPair<QString, QString>> &headers);
 
 // Reason phrase for a status code (mirrors the HTTP/1.1 side so the synthesized
 // HttpResponse reads naturally in the UI).

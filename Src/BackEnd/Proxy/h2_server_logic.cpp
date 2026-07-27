@@ -22,11 +22,15 @@ QList<HeaderNV> responseHeaders(int status,
     QList<HeaderNV> out;
     out.reserve(headers.size() + 1);
     out.push_back({ QByteArrayLiteral(":status"), QByteArray::number(status) });
+    const QSet<QString> connNamed = H2ClientLogic::connectionNamedHeaders(headers);
     for (const auto &kv : headers) {
         if (kv.first.isEmpty()) continue;
         const QString lower = kv.first.toLower();
         // h2 forbids connection-specific response headers (RFC 9113 s8.2.2).
         if (H2ClientLogic::isHopByHopHeader(lower)) continue;
+        // ...including every field NAMED in the origin's Connection header, else an
+        // origin-declared hop-by-hop header leaks across the h1->h2 hop to the browser.
+        if (connNamed.contains(lower)) continue;
         // Drop content-length: we RE-FRAME the body ourselves (our own DATA frames
         // + END_STREAM define the length authoritatively). Forwarding the upstream's
         // value risks a client-side length mismatch -> STREAM_ERROR if our

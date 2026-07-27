@@ -53,6 +53,17 @@ int main(int argc, char **argv) {
         chk("hop-by-hop: transfer-encoding dropped", !has(nv, "transfer-encoding"));
         chk("hop-by-hop: upgrade dropped",           !has(nv, "upgrade"));
         chk("hop-by-hop: keep-alive dropped",        !has(nv, "keep-alive"));
+        // A header the origin NAMED in its Connection value is hop-by-hop too
+        // (RFC 9113 s8.2.2 / RFC 7230 s6.1) -- it must not be forwarded into h2.
+        {
+            const auto nv2 = buildRequestHeaders("GET", "h", "/", {
+                { "Connection", "close, X-Hop-Secret" },
+                { "X-Hop-Secret", "internal" },
+                { "X-Keep", "ok" },
+            });
+            chk("hop-by-hop: a Connection-named header is dropped", !has(nv2, "x-hop-secret"));
+            chk("hop-by-hop: an unrelated header is still kept",     has(nv2, "x-keep"));
+        }
         chk("kept: user-agent lowercased",           has(nv, "user-agent"));
         chk("kept: content-type lowercased",         has(nv, "content-type"));
         chk("empty header name skipped",             nv.size() == 6);   // 4 pseudo + 2 kept
