@@ -87,8 +87,11 @@ Result test(const Request &req, const QStringList &fields, int batchSize) {
     {
         const QString junkMarker = markerFor(-2);
         const auto ctrl = send(makeBody({{ "nlk_ctl_" + markerFor(-1), junkMarker }}));
-        if (ctrl.ok && ctrl.parsed.body.contains(junkMarker.toLatin1()))
-            result.reflectionUsable = false;
+        // Fail-closed: a control that could not be evaluated (transport failure)
+        // is "can't tell", not "reflection unusable" -> mark it not-usable so the
+        // probe bails instead of fabricating finds on a raw-echo endpoint.
+        result.reflectionUsable = reflectionControlUsable(
+            ctrl.ok, ctrl.ok && ctrl.parsed.body.contains(junkMarker.toLatin1()));
     }
     if (!result.reflectionUsable) return result;
 

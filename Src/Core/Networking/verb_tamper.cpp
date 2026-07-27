@@ -44,8 +44,10 @@ Result test(const Request &req) {
     // SPA backend that 200s everything) -- so any "bypass" we'd report is
     // noise. Suppress the whole method/override signal in that case.
     const auto control = send("XYZZY");
-    const bool methodControlOpen = control.ok && isAllowed(control.parsed.statusCode);
-    if (methodControlOpen) return result;
+    // Fail-closed: a catch-all backend (control 2xx) OR a control that could not
+    // be evaluated (transport failure) both suppress -- neither is clearance to
+    // report a method-based bypass on a possibly-method-agnostic backend.
+    if (methodControlSuppresses(control.ok, control.parsed.statusCode)) return result;
 
     // A body-bearing variant is a real bypass only if it returns 2xx AND its
     // body differs from the denial page -- a 200 re-serving the same "forbidden"

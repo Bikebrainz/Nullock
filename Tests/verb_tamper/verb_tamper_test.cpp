@@ -33,6 +33,17 @@ int main(int argc, char **argv) {
     chk("denied: 200/500 not denied", !isDenied(200) && !isDenied(500));
     chk("allowed: 2xx", isAllowed(200) && isAllowed(204) && !isAllowed(301) && !isAllowed(403));
 
+    // ---- methodControlSuppresses: fail-closed catch-all control (audit-5) --
+    // A control that could not be evaluated (transport failure) OR a catch-all
+    // 2xx both SUPPRESS the run; only a control that completed with a non-2xx
+    // (the backend does discriminate) clears the probe to report.
+    chk("methodControl: transport failure -> suppress (fail-closed)",
+        methodControlSuppresses(/*controlOk=*/false, 0));
+    chk("methodControl: control 2xx (catch-all) -> suppress",
+        methodControlSuppresses(true, 200));
+    chk("methodControl: control ok + non-2xx -> do NOT suppress",
+        !methodControlSuppresses(true, 403));
+
     // ---- overrideAddedNothing: de-dup the ignored override (FP fix) ------
     chk("override: identical to carrier -> added nothing (suppress)",
         overrideAddedNothing(200, QByteArray("data"), 200, QByteArray("data")));

@@ -72,6 +72,11 @@ bool confirmsArithmetic(const QStringList &regions,
                         const QString &productA, const QString &sep,
                         const QString &productB,
                         const QString &exprA, const QString &exprB);
+// The secondary "engine likely" decision (a syntax-break 5xx corroborated by a
+// minimal-pair control). Fail-closed: a control that could not complete
+// (ctrlOk=false) yields false, not "likely".
+bool engineLikelyFrom(int baselineStatus, bool delimOk, int delimStatus,
+                      bool ctrlOk, int ctrlStatus);
 // Build the raw request, CR/LF-guarding method/host/path/Content-Type (returns
 // {} if any is tainted) and dropping any CR/LF-bearing header.
 QByteArray buildRequest(const Request &req, const QString &path,

@@ -165,8 +165,11 @@ Result test(const Request &req) {
         if (delimBroke) {
             const auto cp = withParam(req, pre + QStringLiteral("{%{%<[%$'\"}\\}") + suf);
             const auto cr = send(cp.first, cp.second);
-            const bool ctrlBroke = cr.ok && cr.parsed.statusCode >= 500;
-            if (!ctrlBroke) result.engineLikely = true;
+            // Fail-closed: only credit the syntax-break 5xx when the minimal-pair
+            // control actually completed and did NOT itself 5xx.
+            result.engineLikely = engineLikelyFrom(result.baselineStatus, br.ok,
+                                                   br.parsed.statusCode,
+                                                   cr.ok, cr.parsed.statusCode);
         }
     }
 

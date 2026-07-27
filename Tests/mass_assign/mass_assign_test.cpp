@@ -36,6 +36,16 @@ int main(int argc, char **argv) {
     chk("accepted: 3xx -> NO", !acceptedStatus(302));
     chk("accepted: 500 -> NO", !acceptedStatus(500));
 
+    // ---- reflectionControlUsable: fail-closed control (audit-5) ----------
+    // A control that failed at transport is inconclusive -> not usable, so the
+    // probe bails instead of fabricating finds on a raw-echo endpoint.
+    chk("reflectionControl: transport failure -> NOT usable (fail-closed)",
+        !reflectionControlUsable(/*controlOk=*/false, /*junkEchoed=*/false));
+    chk("reflectionControl: ok + junk NOT echoed -> usable",
+        reflectionControlUsable(true, false));
+    chk("reflectionControl: ok + junk echoed (raw-echo endpoint) -> NOT usable",
+        !reflectionControlUsable(true, true));
+
     // ---- looksJson ------------------------------------------------------
     chk("json: content-type json", looksJson(QByteArray("x=1"), "application/json"));
     chk("json: form content-type -> false",

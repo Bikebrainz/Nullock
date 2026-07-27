@@ -14,6 +14,14 @@ bool isDenied(int status) {
 }
 bool isAllowed(int status) { return status >= 200 && status < 300; }
 
+// The XYZZY bogus-method control detects a method-agnostic backend (a catch-all
+// that 2xx's every method), which makes the whole verb-tamper signal noise. A
+// control that FAILED to complete is inconclusive, so it must SUPPRESS the run
+// (fail-closed), not clear it to report a bypass.
+bool methodControlSuppresses(bool controlOk, int controlStatus) {
+    return !controlOk || isAllowed(controlStatus);
+}
+
 QByteArray buildRequest(const Request &req, const QString &method,
                         const QList<QPair<QString, QString>> &extraHeaders) {
     auto crlf = [](const QString &s) { return s.contains('\r') || s.contains('\n'); };

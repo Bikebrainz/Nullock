@@ -80,6 +80,11 @@ bool looksJson(const QByteArray &body, const QString &contentType);
 // echoed in any other status is reflection, not binding.
 bool acceptedStatus(int status);
 
+// The reflection control is usable only when it completed AND the junk field was
+// not echoed. A control that failed at transport is inconclusive -> not usable
+// (fail-closed), so the probe bails instead of reporting on a raw-echo endpoint.
+bool reflectionControlUsable(bool controlOk, bool junkEchoed);
+
 // Build the raw write request. Returns empty if method/host/path or a carried
 // header carries a CR/LF (request-line / header injection guard).
 QByteArray buildRequest(const Request &req, bool json, const QByteArray &body);

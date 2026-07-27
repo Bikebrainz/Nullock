@@ -62,6 +62,11 @@ Result test(const Request &req);
 bool isDenied(int status);     // 401/403/404/405
 bool isAllowed(int status);    // 2xx
 
+// The XYZZY control suppresses a method-agnostic (catch-all) backend. Fail-closed:
+// a control that could not complete (controlOk=false) also suppresses -- an
+// inconclusive control is not clearance to report a bypass.
+bool methodControlSuppresses(bool controlOk, int controlStatus);
+
 // Build the raw request. Returns empty if method/host/path or a carried/extra
 // header carries a CR/LF (request-line / header injection guard).
 QByteArray buildRequest(const Request &req, const QString &method,

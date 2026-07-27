@@ -18,6 +18,14 @@ bool acceptedStatus(int status) {
     return status >= 200 && status < 300;
 }
 
+// The reflection control (a junk field no model binds) is only USABLE when it
+// actually completed AND the junk was NOT echoed. A control that failed at
+// transport is inconclusive -> not usable (fail-closed), so a raw-echo endpoint
+// whose control request happened to drop can't fabricate mass-assignment finds.
+bool reflectionControlUsable(bool controlOk, bool junkEchoed) {
+    return controlOk && !junkEchoed;
+}
+
 QByteArray buildRequest(const Request &req, bool json, const QByteArray &body) {
     auto crlf = [](const QString &s) { return s.contains('\r') || s.contains('\n'); };
     // method/host/path flow raw from the deep-audit / fromHistory path; a CR/LF

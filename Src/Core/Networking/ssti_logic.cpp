@@ -58,6 +58,19 @@ bool confirmsArithmetic(const QStringList &regions,
     return false;
 }
 
+// Secondary "engine likely" signal: a template-syntax break that 5xx'd a
+// previously-OK endpoint, corroborated by a minimal-pair CONTROL (same length /
+// char multiset, only the delimiter bigrams broken up) that did NOT also 5xx. A
+// control that FAILED to complete is no evidence, so it stays fail-closed (no
+// engineLikely) -- mirrors the ldap/sql failed-control ethos.
+bool engineLikelyFrom(int baselineStatus, bool delimOk, int delimStatus,
+                      bool ctrlOk, int ctrlStatus) {
+    if (baselineStatus >= 500) return false;              // endpoint already 5xx-noisy
+    if (!(delimOk && delimStatus >= 500)) return false;   // the syntax break must 5xx
+    if (!ctrlOk) return false;                            // control must complete (fail-closed)
+    return ctrlStatus < 500;                              // ...and NOT also 5xx (else it cancels)
+}
+
 // Build the raw request, CR/LF-guarding the method/host/path and the
 // Content-Type (a tainted one aborts the request -> {}) and dropping any
 // CR/LF-bearing header, matching the jwt_probe hardening pattern. The query

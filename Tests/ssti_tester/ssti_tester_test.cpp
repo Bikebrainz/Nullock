@@ -73,6 +73,20 @@ int main(int argc, char **argv) {
     chk("confirm: double-reflection second region",
         confirms({ eA + sep + eB, pA + sep + pB }));
 
+    // ---- engineLikelyFrom: fail-closed secondary signal (audit-5) --------
+    // The syntax-break 5xx is only credited when the minimal-pair control
+    // actually completed and did NOT itself 5xx.
+    chk("engineLikely: control transport failure -> false (fail-closed)",
+        !engineLikelyFrom(200, /*delimOk=*/true, 500, /*ctrlOk=*/false, 0));
+    chk("engineLikely: control ok + 2xx -> true (template-specific 5xx)",
+        engineLikelyFrom(200, true, 500, true, 200));
+    chk("engineLikely: control also 5xx -> false (cancels)",
+        !engineLikelyFrom(200, true, 500, true, 503));
+    chk("engineLikely: delim did NOT 5xx -> false",
+        !engineLikelyFrom(200, true, 404, true, 200));
+    chk("engineLikely: baseline already 5xx -> false",
+        !engineLikelyFrom(500, true, 500, true, 200));
+
     // ---- buildRequest: CR/LF guards -------------------------------------
     {
         Request req;
