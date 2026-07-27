@@ -32,6 +32,12 @@ int main(int argc, char **argv) {
     // ---- matchError: engine-specific (trusted on any status) -------------
     chk("sig: Java",    eng("javax.xml.xpath.XPathExpressionException: bad") == "Java");
     chk("sig: .NET",    eng("System.Xml.XPath.XPathException") == ".NET");
+    // The bare ".NET" class name "XPathException" (Java's distinctive form is the
+    // longer XPathExpressionException) must attribute to .NET on its own -- the case
+    // above matches via the "System.Xml.XPath" prefix, so the bare-class alternative
+    // is otherwise unexercised. Removing it drops this to an empty (unattributed) hit.
+    chk("sig: bare .NET XPathException (no System.Xml prefix)",
+        eng("XPathException: unexpected token ']'") == ".NET");
     chk("sig: PHP",     eng("Warning: DOMXPath::query(): Invalid expression") == "PHP");
     chk("sig: Python",  eng("lxml.etree.XPathEvalError: Invalid predicate") == "Python");
     chk("sig: libxml2", eng("xmlXPathCompOpEval: parameter error") == "libxml2");

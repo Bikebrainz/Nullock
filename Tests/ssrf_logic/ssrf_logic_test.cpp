@@ -98,6 +98,14 @@ int main(int argc, char **argv) {
         chk("hdr: no smuggled header leaks", !out.contains("X-Smuggled"));
     }
     {
+        // CR/LF in the header NAME (not only the value) must be skipped too, else
+        // "X-Evil\r\nX-Smuggled: 1" smuggles a second header line. (Value case above.)
+        Request r = baseReq();
+        r.headers = { {"X-Evil\r\nX-Smuggled: 1", "v"} };
+        const QByteArray out = buildRequest(r, QString());
+        chk("hdr: a CR/LF header NAME is skipped (no smuggle)", !out.contains("X-Smuggled"));
+    }
+    {
         Request r = baseReq();
         r.headers = { {"Host", "evil.example"} };
         const QByteArray out = buildRequest(r, QString());
@@ -109,6 +117,17 @@ int main(int argc, char **argv) {
         r.headers = { {"Content-Length", "9999"} };
         const QByteArray out = buildRequest(r, QString());
         chk("hdr: a custom Content-Length is dropped", !out.contains("Content-Length"));
+    }
+    {
+        // The Host / Content-Length drop compares case-INSENSITIVELY, so a lowercase
+        // carried "host"/"content-length" must be dropped too. Assert on the VALUE:
+        // countSub("Host: ") stays 1 even if a lowercase "host:" line leaks, so it
+        // would NOT discriminate a broken (case-sensitive) compare.
+        Request r = baseReq();
+        r.headers = { {"host", "evil.example"}, {"content-length", "31337"} };
+        const QByteArray out = buildRequest(r, QString());
+        chk("hdr: lowercase carried host dropped (case-insensitive)", !out.contains("evil.example"));
+        chk("hdr: lowercase carried content-length dropped (case-insensitive)", !out.contains("31337"));
     }
 
     // ===== knownSsrfParams ==============================================

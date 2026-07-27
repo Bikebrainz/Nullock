@@ -139,6 +139,28 @@ int main(int argc, char **argv) {
             mr.matched && mr.extracted.value("tok") == QStringList{"tok_A1B2"});
     }
     {
+        // matcherValues: a regex matcher may source its patterns from the "patterns"
+        // or "regex" key (nuclei aliases), not only "values". The direct-Matcher
+        // regex tests above bypass parseTemplate/matcherValues, so these two key
+        // branches are otherwise unexercised; removing either drops values to empty
+        // -> matcherHits returns false (empty values) -> no match.
+        const QJsonObject op = QJsonDocument::fromJson(QByteArray(
+            "{\"matchers\":[{\"type\":\"regex\",\"part\":\"body\",\"patterns\":[\"tok_[A-Z0-9]+\"]}]}"
+        )).object();
+        const Template tp = parseTemplate(op);
+        chk("parse: regex matcher via 'patterns' key -> values populated",
+            tp.matchers.size() == 1 && tp.matchers[0].values == QStringList{"tok_[A-Z0-9]+"});
+        chk("parse: 'patterns'-sourced regex matches", evaluate(tp, r).matched);
+
+        const QJsonObject og = QJsonDocument::fromJson(QByteArray(
+            "{\"matchers\":[{\"type\":\"regex\",\"part\":\"body\",\"regex\":[\"tok_[A-Z0-9]+\"]}]}"
+        )).object();
+        const Template tg = parseTemplate(og);
+        chk("parse: regex matcher via 'regex' key -> values populated",
+            tg.matchers.size() == 1 && tg.matchers[0].values == QStringList{"tok_[A-Z0-9]+"});
+        chk("parse: 'regex'-sourced regex matches", evaluate(tg, r).matched);
+    }
+    {
         const Template t = parseTemplate(QJsonObject{});
         chk("empty object -> no matchers, no crash", t.matchers.isEmpty() && !evaluate(t, r).matched);
     }

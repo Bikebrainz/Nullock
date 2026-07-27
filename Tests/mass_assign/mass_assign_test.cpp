@@ -89,6 +89,22 @@ int main(int argc, char **argv) {
         chk("build: carried Accept-Encoding dropped -> exactly one, identity",
             aeb.count("Accept-Encoding:") == 1
             && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
+        // Carried Host / Content-Length are dropped (we emit our own once each) and a
+        // carried Content-Type wins over the default (deduped): each MUST appear
+        // exactly once, else a duplicate Host/Content-Length enables request smuggling
+        // and a duplicate Content-Type is ambiguous framing. (Above only locked A-E.)
+        Request dup = req;
+        dup.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        dup.headers.append(qMakePair(QString("Content-Length"), QString("999999")));
+        dup.headers.append(qMakePair(QString("Content-Type"), QString("application/xml")));
+        const QByteArray db = buildRequest(dup, true, body);
+        chk("build: carried Host dropped -> exactly one, victim only",
+            db.count("Host:") == 1 && !db.contains("attacker.tld"));
+        chk("build: carried Content-Length dropped -> exactly one, real length",
+            db.count("Content-Length:") == 1
+            && db.contains("Content-Length: " + QByteArray::number(body.size()) + "\r\n"));
+        chk("build: carried Content-Type wins + deduped -> exactly one",
+            db.count("Content-Type:") == 1 && db.contains("Content-Type: application/xml\r\n"));
     }
 
     std::fprintf(stderr, "mass_assign_test: %d passed, %d failed\n", pass, fail);
