@@ -104,10 +104,15 @@ ChunkResult decodeChunkedAvailable(QByteArray &buffer, QByteArray &decoded) {
         if (!ok || chunkSize < 0 || chunkSize > kMaxChunkBytes) return ChunkResult::Error;
 
         if (chunkSize == 0) {
-            // Terminating chunk: consume the size line and the trailer's final CRLF.
-            const int trailerCrlf = buffer.indexOf("\r\n", crlf + 2);
-            if (trailerCrlf < 0) return ChunkResult::NeedMore;
-            buffer.remove(0, trailerCrlf + 2);
+            // Terminating chunk: consume the ENTIRE trailer section through its
+            // blank-line terminator. A trailer field-value cannot carry a raw CRLF,
+            // so the first "\r\n\r\n" at/after the size-line CRLF is the true end.
+            // (Consuming only the first trailer line -- or a partial trailer -- left
+            // the real final CRLF in the buffer and desynced a reused keepalive
+            // socket, splicing it onto the next upstream response.)
+            const int end = buffer.indexOf("\r\n\r\n", crlf);
+            if (end < 0) return ChunkResult::NeedMore;
+            buffer.remove(0, end + 4);
             return ChunkResult::Complete;
         }
 
@@ -117,6 +122,10 @@ ChunkResult decodeChunkedAvailable(QByteArray &buffer, QByteArray &decoded) {
 
         buffer.remove(0, crlf + 2);
         decoded.append(buffer.left(chunkSize));
+        // The chunk-data MUST be terminated by CRLF (RFC 9112 s7.1); the line-116
+        // availability check guarantees these 2 bytes are present. Reject a
+        // malformed terminator instead of silently swallowing 2 arbitrary bytes.
+        if (buffer.mid(chunkSize, 2) != QByteArrayLiteral("\r\n")) return ChunkResult::Error;
         buffer.remove(0, chunkSize + 2);
     }
 }

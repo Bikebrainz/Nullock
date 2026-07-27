@@ -136,6 +136,29 @@ int main(int argc, char **argv) {
         QByteArray buf = "zzz\r\n", dec;         // non-hex
         chk("chunk: a non-hex chunk size -> Error", decodeChunkedAvailable(buf, dec) == ChunkResult::Error);
     }
+    // audit-7: the terminating chunk must consume the WHOLE trailer section through
+    // its blank-line CRLF -- leaving the final CRLF (or consuming a partial trailer)
+    // desyncs a reused keepalive socket into the next upstream response.
+    {
+        QByteArray buf = "5\r\nhello\r\n0\r\nX-Trailer: v\r\n\r\n", dec;
+        chk("chunk: a trailer section is fully consumed (no keepalive desync)",
+            decodeChunkedAvailable(buf, dec) == ChunkResult::Complete && dec == "hello" && buf.isEmpty());
+    }
+    {
+        QByteArray buf = "5\r\nhello\r\n0\r\nA: 1\r\nB: 2\r\n\r\n", dec;
+        chk("chunk: a multi-line trailer leaves no leftover bytes",
+            decodeChunkedAvailable(buf, dec) == ChunkResult::Complete && buf.isEmpty());
+    }
+    {
+        QByteArray buf = "0\r\nA: 1\r\n", dec;    // a trailer line, final blank CRLF not yet
+        chk("chunk: a trailer without its final CRLF -> NeedMore (not premature Complete)",
+            decodeChunkedAvailable(buf, dec) == ChunkResult::NeedMore);
+    }
+    {
+        QByteArray buf = "5\r\nhelloXX0\r\n\r\n", dec;   // 'XX' where the chunk-data CRLF must be
+        chk("chunk: a non-CRLF chunk-data terminator -> Error (framing validated)",
+            decodeChunkedAvailable(buf, dec) == ChunkResult::Error);
+    }
 
     // ===== memory-safety + anti-smuggling fuzz over the header/framing parser =====
     // parseHeaders / isFramingSafe run on attacker-controlled upstream RESPONSE
