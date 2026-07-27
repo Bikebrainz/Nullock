@@ -77,6 +77,8 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty",   buildRequest(badHost, "cmd=x").isEmpty());
         Request badPath = req; badPath.basePath = "/run\r\nX: y";
         chk("build: CRLF path -> empty",   buildRequest(badPath, "cmd=x").isEmpty());
+        // audit-5: the query is spliced into the request line -> guard it too.
+        chk("build: CRLF query -> empty",  buildRequest(req, "cmd=x\r\nEvil: 1").isEmpty());
     }
 
     std::fprintf(stderr, "cmd_injection_test: %d passed, %d failed\n", pass, fail);

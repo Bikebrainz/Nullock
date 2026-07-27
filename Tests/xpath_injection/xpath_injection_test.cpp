@@ -67,6 +67,8 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildRequest(badHost, "q=x").isEmpty());
         Request badPath = req; badPath.basePath = "/lookup\r\nX: y";
         chk("build: CRLF path -> empty", buildRequest(badPath, "q=x").isEmpty());
+        // audit-5: the query is spliced into the request line -> guard it too.
+        chk("build: CRLF query -> empty", buildRequest(req, "q=x\r\nEvil: 1").isEmpty());
     }
 
     std::fprintf(stderr, "xpath_injection_test: %d passed, %d failed\n", pass, fail);

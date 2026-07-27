@@ -47,6 +47,7 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     if (req.host.contains('\r')     || req.host.contains('\n'))     return {};
     if (req.basePath.contains('\r') || req.basePath.contains('\n')) return {};
     const QString target = query.isEmpty() ? req.basePath : req.basePath + "?" + query;
+    if (target.contains('\r') || target.contains('\n')) return {};   // guard the spliced query
     QByteArray out;
     out  = req.method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\n";
     out += "Host: " + req.host.toUtf8() + "\r\n";
