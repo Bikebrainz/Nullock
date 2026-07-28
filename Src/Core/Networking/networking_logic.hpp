@@ -57,6 +57,30 @@ constexpr int kMaxInterimResponses = 8;
 InterimAction classifyInterimResponse(const StatusLine &status, int seen,
                                       int maxInterim = kMaxInterimResponses);
 
+// --- whole-call read budget ----------------------------------------------
+// The socket read timeout is applied PER waitForReadyRead(), so a peer that
+// sends one byte just under the limit renews it forever: the read never expires,
+// the call makes "progress", and the calling thread is parked indefinitely. That
+// thread is a QtConcurrent pool worker, so a parked one is gone for the life of
+// the process -- a hostile target can drain the pool with a handful of sockets.
+// A whole-call deadline bounds it: each read waits the SMALLER of the per-read
+// timeout and what remains of the budget.
+//
+// Exhaustion deliberately needs no new outcome code. The budget only runs out
+// while the peer is still connected and dribbling, and classifySocketOutcome's
+// state fallback already maps a still-connected socket that produced no complete
+// response to Timeout -- the genuine held-open-and-silent desync shape. A peer
+// that RSTs instead leaves ConnectedState and still classifies as Reset, so the
+// smuggling probe's Timeout-vs-Reset distinction is untouched.
+constexpr qint64 kMaxTotalReadMs = 300'000;   // 5 minutes of reading per send()
+// Timeout for the next read: min(perReadMs, totalMs - elapsedMs).
+// NEVER negative and never larger than perReadMs. Zero means the budget is spent
+// and the caller must STOP -- it must not hand the value to waitForReadyRead(),
+// which treats a NEGATIVE timeout as "wait forever". Letting an over-run budget
+// underflow into a negative would turn this guard into the exact hang it exists
+// to prevent, so the clamp is the whole point of the function.
+qint64 nextReadTimeoutMs(qint64 elapsedMs, qint64 perReadMs, qint64 totalMs);
+
 // --- header block (the bytes AFTER the status line, up to CRLFCRLF) ------
 // lines[0] is the status line and is skipped (i starts at 1). A line with no
 // ':' (or ':' at column 0) is ignored. Header COUNT is bounded upstream by

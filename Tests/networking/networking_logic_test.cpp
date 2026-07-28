@@ -243,6 +243,59 @@ int main(int argc, char **argv) {
     chkb("CL SP/HTAB padding still ok (non-regression)",
          parseContentLength(" \t42 \t").ok, true);
 
+    // ===== nextReadTimeoutMs (audit-12: whole-call read budget) =============
+    // The socket timeout is applied PER waitForReadyRead(), so a peer sending one
+    // byte just under the limit renews it forever: the read never expires and the
+    // calling QtConcurrent pool thread is parked for the life of the process. This
+    // clamps each wait to what is left of a whole-call budget.
+    {
+        const qint64 per = 15'000, total = 300'000;
+        chkb("budget: fresh budget yields the full per-read timeout",
+             nextReadTimeoutMs(0, per, total) == per, true);
+        chkb("budget: mid-run still yields the per-read timeout",
+             nextReadTimeoutMs(100'000, per, total) == per, true);
+        // Once less than one per-read slice remains, the wait shrinks to the remainder
+        // so the budget is honoured exactly rather than overshot by up to a full slice.
+        chkb("budget: near the end, the wait shrinks to the remainder",
+             nextReadTimeoutMs(295'000, per, total) == 5'000, true);
+        chkb("budget: exactly spent => 0", nextReadTimeoutMs(total, per, total) == 0, true);
+        // THE CRITICAL CLAMP. Qt treats a NEGATIVE waitForReadyRead() timeout as
+        // "wait forever", so an over-run budget that underflowed would turn this
+        // guard into the exact unbounded hang it exists to prevent.
+        chkb("budget: OVER-run never returns negative",
+             nextReadTimeoutMs(total + 60'000, per, total) >= 0, true);
+        chkb("budget: OVER-run returns exactly 0",
+             nextReadTimeoutMs(total + 60'000, per, total) == 0, true);
+        chkb("budget: absurd over-run still 0, not negative",
+             nextReadTimeoutMs(999'999'999LL, per, total) == 0, true);
+        // Never hand back MORE than the per-read timeout, however large the budget:
+        // the per-read stall guard must keep its meaning.
+        chkb("budget: a huge total never exceeds the per-read timeout",
+             nextReadTimeoutMs(0, per, 999'999'999LL) == per, true);
+        // Degenerate configs fail CLOSED (0 = stop), never "wait forever".
+        chkb("budget: zero per-read => 0",  nextReadTimeoutMs(0, 0, total) == 0, true);
+        chkb("budget: zero total => 0",     nextReadTimeoutMs(0, per, 0) == 0, true);
+        chkb("budget: negative per-read => 0", nextReadTimeoutMs(0, -1, total) == 0, true);
+        chkb("budget: negative total => 0",    nextReadTimeoutMs(0, per, -1) == 0, true);
+        // The dribble attack, walked forward: a peer feeding one byte every 14s
+        // never trips the 15s per-read timeout, so ONLY the budget stops it. After
+        // 21 such reads (294s) one slice remains; by 300s the budget is spent and
+        // every subsequent call returns 0 -- bounded, where the old code looped
+        // forever.
+        qint64 elapsed = 0; int reads = 0;
+        while (nextReadTimeoutMs(elapsed, per, total) > 0 && reads < 10'000) {
+            ++reads;
+            elapsed += 14'000;            // one byte arrives just under the per-read cap
+        }
+        chkb("budget: a 14s-per-byte dribble terminates", reads < 10'000, true);
+        chki("budget: dribble is bounded to ceil(total/14s) reads", reads, 22);
+        chkb("budget: once spent it STAYS spent", nextReadTimeoutMs(elapsed, per, total) == 0, true);
+        // kMaxTotalReadMs must stay comfortably above the per-read timeout, or the
+        // budget would pre-empt the normal stall guard on the very first read.
+        chkb("budget: kMaxTotalReadMs exceeds one per-read slice",
+             kMaxTotalReadMs > 15'000, true);
+    }
+
     // ===== parseContentLengthHeaders (audit-12: RFC 9112 6.3 duplicates) ====
     // The response path framed the body from findHeader("Content-Length"), which is
     // FIRST-wins. A response carrying "Content-Length: 5" AND "Content-Length: 9"

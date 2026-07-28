@@ -3,6 +3,7 @@
 #include "networking_logic.hpp"
 
 #include <QAbstractSocket>
+#include <QElapsedTimer>
 #include <QList>
 #include <QPair>
 #include <QSslConfiguration>
@@ -26,11 +27,15 @@ constexpr int     kTimeoutMs    = 15'000;
 // socket TU can never drift apart.
 constexpr qint64  kMaxBodyBytes = NetworkingLogic::kMaxBodyBytes;
 
-bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
+bool readHeaderBlock(QTcpSocket *socket, QByteArray &out, const QElapsedTimer &clock) {
     while (!out.contains("\r\n\r\n")) {
         if (out.size() > 64 * 1024) return false;
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kTimeoutMs))
-            return false;
+        if (socket->bytesAvailable() == 0) {
+            const qint64 wait = NetworkingLogic::nextReadTimeoutMs(
+                clock.elapsed(), kTimeoutMs, NetworkingLogic::kMaxTotalReadMs);
+            if (wait <= 0) return false;                   // whole-call read budget spent
+            if (!socket->waitForReadyRead(int(wait))) return false;
+        }
         out.append(socket->readAll());
         if (socket->state() != QAbstractSocket::ConnectedState && !out.contains("\r\n\r\n"))
             return false;
@@ -38,11 +43,15 @@ bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
     return true;
 }
 
-bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
+bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out, const QElapsedTimer &clock) {
     if (n < 0 || n > kMaxBodyBytes) return false;
     while (out.size() < n) {
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kTimeoutMs))
-            return false;
+        if (socket->bytesAvailable() == 0) {
+            const qint64 wait = NetworkingLogic::nextReadTimeoutMs(
+                clock.elapsed(), kTimeoutMs, NetworkingLogic::kMaxTotalReadMs);
+            if (wait <= 0) return false;
+            if (!socket->waitForReadyRead(int(wait))) return false;
+        }
         out.append(socket->read(n - out.size()));
         if (socket->state() != QAbstractSocket::ConnectedState && out.size() < n)
             return false;
@@ -50,11 +59,15 @@ bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
     return true;
 }
 
-void readUntilClose(QTcpSocket *socket, QByteArray &out) {
+void readUntilClose(QTcpSocket *socket, QByteArray &out, const QElapsedTimer &clock) {
     while (socket->state() == QAbstractSocket::ConnectedState) {
         if (out.size() >= kMaxBodyBytes) break;   // hard cap
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kTimeoutMs))
-            break;
+        if (socket->bytesAvailable() == 0) {
+            const qint64 wait = NetworkingLogic::nextReadTimeoutMs(
+                clock.elapsed(), kTimeoutMs, NetworkingLogic::kMaxTotalReadMs);
+            if (wait <= 0) break;
+            if (!socket->waitForReadyRead(int(wait))) break;
+        }
         out.append(socket->readAll());
     }
     out.append(socket->readAll());
@@ -68,14 +81,17 @@ void readUntilClose(QTcpSocket *socket, QByteArray &out) {
 // under kMaxBodyBytes while streaming framing overhead forever (tiny 1-byte
 // chunks are ~6x raw:decoded), OOMing us via allBytes/rawResponse.
 bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded,
-                    QByteArray &allBytes) {
+                    QByteArray &allBytes, const QElapsedTimer &clock) {
     using NetworkingLogic::ChunkDecode;
     while (true) {
         const ChunkDecode st = NetworkingLogic::feedChunked(buffer, decoded);
         if (st == ChunkDecode::Done)  return true;
         if (st == ChunkDecode::Error) return false;
         // NeedMore: pull more bytes, then cap the raw accumulator.
-        if (!socket->waitForReadyRead(kTimeoutMs)) return false;
+        const qint64 wait = NetworkingLogic::nextReadTimeoutMs(
+            clock.elapsed(), kTimeoutMs, NetworkingLogic::kMaxTotalReadMs);
+        if (wait <= 0) return false;
+        if (!socket->waitForReadyRead(int(wait))) return false;
         const QByteArray chunk = socket->readAll();
         buffer.append(chunk);
         allBytes.append(chunk);
@@ -184,8 +200,16 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         return result;
     }
 
+    // Start the whole-call READ budget here: the request is on the wire, so
+    // everything after this point is us waiting on the peer. Every read below --
+    // headers, 1xx re-reads, chunked frames, Content-Length body, read-to-close --
+    // draws from this one clock, so a peer cannot renew the per-read timeout
+    // forever by dribbling a byte just under it. See kMaxTotalReadMs.
+    QElapsedTimer readClock;
+    readClock.start();
+
     QByteArray headerBuf;
-    if (!readHeaderBlock(socket, headerBuf)) {
+    if (!readHeaderBlock(socket, headerBuf, readClock)) {
         // The desync-vs-quarantine distinction the smuggling probe relies on:
         // a socket held OPEN and silent (Timeout) vs one the peer RST/closed
         // (Reset) -- both surface here as "no headers", told apart by the
@@ -213,7 +237,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         const auto action = NetworkingLogic::classifyInterimResponse(status, seen);
         if (action == NetworkingLogic::InterimAction::SkipToNext) {
             headerBuf = rest;                    // next response starts here
-            if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
+            if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf, readClock)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "no final response after 1xx";
                 return result;
@@ -274,7 +298,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         result.parsed.body = QByteArray();
     } else if (isChunked) {
         QByteArray decoded;
-        if (!readChunkedBody(socket, rest, decoded, result.rawResponse)) {
+        if (!readChunkedBody(socket, rest, decoded, result.rawResponse, readClock)) {
             result.outcome = classifySocketOutcome(socket->error(), socket->state());
             result.errorMessage = "chunked body read failed";
             return result;
@@ -298,7 +322,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         result.parsed.body = rest;
         if (result.parsed.body.size() < n) {
             QByteArray extra;
-            if (!readExact(socket, n - result.parsed.body.size(), extra)) {
+            if (!readExact(socket, n - result.parsed.body.size(), extra, readClock)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "content-length body read truncated";
                 return result;
@@ -310,7 +334,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         }
     } else {
         QByteArray tail;
-        readUntilClose(socket, tail);
+        readUntilClose(socket, tail, readClock);
         result.rawResponse.append(tail);
         result.parsed.body = rest + tail;
     }

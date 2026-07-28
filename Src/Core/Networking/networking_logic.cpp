@@ -109,6 +109,13 @@ ContentLength parseContentLength(const QString &cl) {
     return out;
 }
 
+qint64 nextReadTimeoutMs(qint64 elapsedMs, qint64 perReadMs, qint64 totalMs) {
+    if (perReadMs <= 0 || totalMs <= 0) return 0;
+    const qint64 remaining = totalMs - elapsedMs;
+    if (remaining <= 0) return 0;            // spent -- never underflow to negative
+    return remaining < perReadMs ? remaining : perReadMs;
+}
+
 ContentLengthAll parseContentLengthHeaders(const QList<QPair<QString, QString>> &headers) {
     ContentLengthAll out;
     bool haveValue = false;
