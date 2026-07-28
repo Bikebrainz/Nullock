@@ -77,6 +77,50 @@ int main(int argc, char **argv) {
         chk("parseRobots: Sitemap ref captured + deduped", sm.size() == 1 && has(sm, "https://h/sitemap.xml"));
         chk("parseRobots: not truncated on a small list", !trunc);
     }
+
+    // ===== audit-13: the Sitemap: list is CAPPED ========================
+    // Disallow values (200) and <loc> URLs (500) were both capped; Sitemap: refs
+    // were the one output with NO ceiling. The body is attacker-controlled and
+    // bounded only by the 128 MB response cap, so a robots.txt of nothing but
+    // distinct "Sitemap:" lines retained millions of QStrings -- and scan() then
+    // copies every one into its BFS worklist and, per resolved child <loc>, runs a
+    // LINEAR sitemapRefs.contains() over the whole list. Quadratic in a count the
+    // TARGET picks.
+    {
+        QStringList dis, pat, sm; bool trunc = false, smTrunc = false;
+        QString body;
+        for (int i = 0; i < 500; ++i)
+            body += QStringLiteral("Sitemap: https://h/s%1.xml\n").arg(i);
+        parseRobots(body, dis, pat, sm, trunc, &smTrunc);
+        chk("sitemap cap: 500 distinct refs are capped, not all retained", sm.size() == 100);
+        chk("sitemap cap: truncation is SIGNALLED, not silent", smTrunc);
+        // The cap must not bleed into the Disallow flag -- they are separate outputs
+        // with separate limits, and the UI reports them separately.
+        chk("sitemap cap: the Disallow truncation flag is NOT set by it", !trunc);
+        // Not over-broad: a normal robots.txt keeps every ref and reports no cap.
+        {
+            QStringList d2, p2, s2; bool t2 = false, st2 = false;
+            parseRobots(QStringLiteral("Sitemap: https://h/a.xml\nSitemap: https://h/b.xml\n"),
+                        d2, p2, s2, t2, &st2);
+            chk("sitemap cap: a normal 2-ref robots.txt is untouched", s2.size() == 2);
+            chk("sitemap cap: and reports no truncation", !st2);
+        }
+        // Dedupe still runs BEFORE the cap, so repeating one ref cannot exhaust it.
+        {
+            QStringList d3, p3, s3; bool t3 = false, st3 = false;
+            QString dup;
+            for (int i = 0; i < 500; ++i) dup += QStringLiteral("Sitemap: https://h/same.xml\n");
+            parseRobots(dup, d3, p3, s3, t3, &st3);
+            chk("sitemap cap: 500 IDENTICAL refs dedupe to 1", s3.size() == 1);
+            chk("sitemap cap: deduped input does not trip the cap", !st3);
+        }
+        // The out-param is optional: the 5-arg form still compiles and works.
+        {
+            QStringList d4, p4, s4; bool t4 = false;
+            parseRobots(QStringLiteral("Sitemap: https://h/x.xml\n"), d4, p4, s4, t4);
+            chk("sitemap cap: the legacy 5-arg call still works", s4.size() == 1);
+        }
+    }
     // Comment stripping (RFC 9309: '#' to EOL is a comment).
     {
         QStringList dis, pat, sm; bool trunc = false;

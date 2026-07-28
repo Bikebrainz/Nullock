@@ -83,7 +83,8 @@ Result scan(const Request &req) {
         if (!body.isEmpty() && looksLikeRobots(body)) {
             result.robotsFound = true;
             parseRobots(body, result.disallowed, result.disallowedPatterns,
-                        result.sitemapRefs, result.disallowTruncated);
+                        result.sitemapRefs, result.disallowTruncated,
+                        &result.sitemapRefsTruncated);
         }
     }
 

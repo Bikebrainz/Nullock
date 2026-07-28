@@ -14,6 +14,15 @@ namespace Nullock::Core::RobotsRecon {
 namespace {
 constexpr int kMaxLocs     = 500;
 constexpr int kMaxDisallow = 200;
+// Sitemap: refs were the ONE output of this parser with no ceiling, while Disallow
+// values and <loc> URLs were both capped. The body is attacker-controlled and
+// bounded only by the 128 MB response cap, so a robots.txt of nothing but distinct
+// "Sitemap:" lines (~14 bytes each) yielded millions of retained QStrings -- and
+// scan() then copies every one into its BFS worklist AND, for each child <loc> it
+// resolves, does a LINEAR sitemapRefs.contains() scan over the whole list. That is
+// quadratic in a number the target chooses. Real robots.txt files carry a handful
+// of Sitemap: lines; 100 is far above legitimate use.
+constexpr int kMaxSitemapRefs = 100;
 
 // A Disallow value is a MATCH PATTERN (not a fetchable path) when it carries the
 // RFC 9309 wildcard '*' or the end-anchor '$' -- e.g. "*", "/*.php$", "/search?*".
@@ -31,8 +40,9 @@ bool looksLikeRobots(const QString &body) {
 }
 
 void parseRobots(const QString &body, QStringList &disallowed, QStringList &disallowedPatterns,
-                 QStringList &sitemapRefs, bool &truncated) {
+                 QStringList &sitemapRefs, bool &truncated, bool *sitemapRefsTruncated) {
     truncated = false;
+    if (sitemapRefsTruncated) *sitemapRefsTruncated = false;
     QSet<QString> seenDis, seenPat, seenSm;
     const QStringList lines = body.split('\n');
     for (QString line : lines) {
@@ -60,7 +70,13 @@ void parseRobots(const QString &body, QStringList &disallowed, QStringList &disa
             seen.insert(val);
             bucket.append(val);
         } else if (key == QLatin1String("sitemap")) {
-            if (!seenSm.contains(val)) { seenSm.insert(val); sitemapRefs.append(val); }
+            if (seenSm.contains(val)) continue;
+            if (sitemapRefs.size() >= kMaxSitemapRefs) {
+                if (sitemapRefsTruncated) *sitemapRefsTruncated = true;
+                continue;                 // cap the list AND the dedupe set with it
+            }
+            seenSm.insert(val);
+            sitemapRefs.append(val);
         }
         // 'allow' and 'crawl-delay' are intentionally ignored (not recon leads);
         // User-agent grouping is intentionally flattened (a path any UA is told to

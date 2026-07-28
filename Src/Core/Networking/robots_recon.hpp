@@ -35,6 +35,7 @@ struct Result {
     bool        sitemapTruncated  = false;  // the <loc> cap was hit (more existed)
     bool        sitemapFetchTruncated = false; // the child-sitemap FETCH budget was hit
                                                // (more child sitemaps existed unfetched)
+    bool        sitemapRefsTruncated  = false; // the robots.txt "Sitemap:" cap was hit
     QString     error;
 };
 
@@ -58,7 +59,11 @@ struct FetchTarget {
 //   parseRobots      -- classify Disallow values into concrete PATHS vs match
 //                       PATTERNS (and drop absolute-URL values, which aren't a
 //                       same-host path lead); collect Sitemap: refs. Sets
-//                       `truncated` when the cap is reached.
+//                       `truncated` when the DISALLOW cap is reached, and
+//                       `sitemapRefsTruncated` (when supplied) when the Sitemap:
+//                       cap is reached. Both lists are capped: the body is
+//                       attacker-controlled, and sitemapRefs used to be the one
+//                       output with no ceiling at all.
 //   parseSitemapLocs -- extract <loc> URLs, tolerant of a namespace prefix /
 //                       attributes (<image:loc>, <loc xml:lang=...>). Sets
 //                       `truncated` when the cap is reached.
@@ -66,7 +71,8 @@ struct FetchTarget {
 //                       sitemaps, not pages) rather than a <urlset>.
 bool looksLikeRobots(const QString &body);
 void parseRobots(const QString &body, QStringList &disallowed, QStringList &disallowedPatterns,
-                 QStringList &sitemapRefs, bool &truncated);
+                 QStringList &sitemapRefs, bool &truncated,
+                 bool *sitemapRefsTruncated = nullptr);
 QStringList parseSitemapLocs(const QString &body, bool &truncated);
 bool isSitemapIndex(const QString &body);
 
