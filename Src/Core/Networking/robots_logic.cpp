@@ -44,7 +44,16 @@ void parseRobots(const QString &body, QStringList &disallowed, QStringList &disa
     truncated = false;
     if (sitemapRefsTruncated) *sitemapRefsTruncated = false;
     QSet<QString> seenDis, seenPat, seenSm;
-    const QStringList lines = body.split('\n');
+    // Split on ANY line terminator. RFC 9309 accepts CR, LF or CRLF, so a bare-CR
+    // robots.txt is legal -- and splitting on '\n' alone collapsed the whole file
+    // into ONE line, yielding zero Disallow leads and zero Sitemap refs. Worse, it
+    // failed SILENTLY in the shape that looks like success: looksLikeRobots() still
+    // matches (its ^ anchor hits at offset 0), so the scan reports robotsFound=true
+    // and then finds nothing -- indistinguishable from a site with an empty
+    // robots.txt. A target can serve bare-CR deliberately to hide paths from this
+    // scanner while every RFC-conformant crawler still reads them.
+    static const QRegularExpression lineBreak(QStringLiteral("\r\n|\r|\n"));
+    const QStringList lines = body.split(lineBreak);
     for (QString line : lines) {
         const int hash = line.indexOf('#');          // strip trailing comment (RFC 9309)
         if (hash >= 0) line = line.left(hash);

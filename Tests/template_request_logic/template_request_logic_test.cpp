@@ -174,6 +174,75 @@ int main(int argc, char **argv) {
         chk("no duplicate Connection", r[0].bytes.count("Connection:") == 1);
     }
 
+    // ----- audit-13: auto-headers defer to the EMITTED name, not the raw spec ---
+    // Header NAMES are substituted too, so a template writing "{{h}}: ..." emits a
+    // real header the raw-spec check could not see -- and the auto one was appended
+    // on top. For Content-Length that is not untidy, it is the request-smuggling
+    // ambiguity this scanner exists to DETECT, sent by the scanner itself.
+    {
+        RequestSpec s; s.path = "/"; s.body = "hello";
+        s.headers = { { "{{payload}}", "keep-alive" } };
+        s.payloads = { { "Connection" } };
+        const auto r = buildRequests(s, v);
+        chk("subst-name: a substituted Connection name suppresses the auto one",
+            r.size() == 1 && r[0].bytes.count("Connection:") == 1);
+        chk("subst-name: the author's value is the one sent",
+            r.size() == 1 && contains(r[0].bytes, "Connection: keep-alive\r\n"));
+    }
+    {
+        RequestSpec s; s.path = "/"; s.body = "hello";
+        s.headers = { { "{{payload}}", "999" } };
+        s.payloads = { { "Content-Length" } };
+        const auto r = buildRequests(s, v);
+        chk("subst-name: a substituted Content-Length name suppresses the auto one",
+            r.size() == 1 && r[0].bytes.count("Content-Length:") == 1);
+        chk("subst-name: no CONFLICTING duplicate CL is forged",
+            r.size() == 1 && contains(r[0].bytes, "Content-Length: 999\r\n")
+            && !contains(r[0].bytes, "Content-Length: 5\r\n"));
+    }
+    {
+        RequestSpec s; s.path = "/"; s.headers = { { "{{payload}}", "h.example" } };
+        s.payloads = { { "Host" } };
+        const auto r = buildRequests(s, v);
+        chk("subst-name: a substituted Host name suppresses the auto Host",
+            r.size() == 1 && r[0].bytes.count("Host:") == 1);
+    }
+    // RFC 9112 6.2: never emit Content-Length alongside Transfer-Encoding. The
+    // template author picked chunked framing; adding our own CL forged a TE+CL
+    // request -- exactly what the smuggling probe hunts for.
+    {
+        RequestSpec s; s.path = "/"; s.body = "hello";
+        s.headers = { { "Transfer-Encoding", "chunked" } };
+        const auto r = buildRequests(s, v);
+        chk("TE: a template-declared Transfer-Encoding suppresses the auto CL",
+            r.size() == 1 && !contains(r[0].bytes, "Content-Length:"));
+        chk("TE: the author's Transfer-Encoding still rides",
+            r.size() == 1 && contains(r[0].bytes, "Transfer-Encoding: chunked\r\n"));
+    }
+    {
+        // ...and via a substituted name too, since that is the same defect.
+        RequestSpec s; s.path = "/"; s.body = "hello";
+        s.headers = { { "{{payload}}", "chunked" } };
+        s.payloads = { { "Transfer-Encoding" } };
+        const auto r = buildRequests(s, v);
+        chk("TE: a SUBSTITUTED Transfer-Encoding name also suppresses the auto CL",
+            r.size() == 1 && !contains(r[0].bytes, "Content-Length:"));
+    }
+    // Not over-broad: with no framing header the auto CL still appears, and an
+    // unrelated substituted header name suppresses nothing.
+    {
+        RequestSpec s; s.path = "/"; s.body = "hello";
+        s.headers = { { "{{payload}}", "v" } };
+        s.payloads = { { "X-Custom" } };
+        const auto r = buildRequests(s, v);
+        chk("non-regression: an unrelated substituted name leaves auto CL alone",
+            r.size() == 1 && contains(r[0].bytes, "Content-Length: 5\r\n"));
+        chk("non-regression: auto Connection still added alongside it",
+            r.size() == 1 && contains(r[0].bytes, "Connection: close\r\n"));
+        chk("non-regression: the custom header is still emitted",
+            r.size() == 1 && contains(r[0].bytes, "X-Custom: v\r\n"));
+    }
+
     // ----- parseRequest default-safe -----
     {
         const RequestSpec s = parseRequest(QJsonObject{});

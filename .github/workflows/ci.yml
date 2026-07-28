@@ -88,10 +88,18 @@ jobs:
         # part of NullockApp, so without this a build regression in them would
         # go unnoticed (as a stale test target once did).
         run: cmake --build build --config Release --target nullock-oast nullock-workspace
-      - name: regression tests (scanner + CVE DB + enricher)
+      # ci_gate_logic and template_request_logic joined this list deliberately: both
+      # are PURE (Qt6::Core only, no sockets, no event loop), so they are as fast and
+      # deterministic as the rest, and both now guard properties that fail SILENTLY.
+      # ci_gate_logic pins "a scan that never ran is not a pass" -- the gate reported
+      # PASS/exit 0 at every threshold for an unreachable target. template_request
+      # pins that auto-headers defer to the EMITTED header name, so the tool cannot
+      # forge a duplicate/conflicting Content-Length. Live-socket suites (e.g.
+      # port_scan_live) stay OUT of this list on purpose -- they flake on runners.
+      - name: regression tests (scanner + CVE DB + enricher + gate + template)
         run: |
-          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test
-          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine" --output-on-failure
+          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test
+          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic" --output-on-failure
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |

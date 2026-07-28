@@ -1,5 +1,6 @@
 #include "template_request_logic.hpp"
 
+#include <QSet>
 #include <QJsonArray>
 
 namespace Nullock::Core::TemplateRequest {
@@ -66,11 +67,9 @@ QList<QStringList> expand(const QList<QStringList> &sets, bool pitchfork, int ca
     return out;
 }
 
-bool hasHeader(const QList<QPair<QString, QString>> &hs, const QString &name) {
-    for (const auto &h : hs)
-        if (h.first.compare(name, Qt::CaseInsensitive) == 0) return true;
-    return false;
-}
+// (hasHeader() lived here and tested the RAW spec names. It is gone: header names
+// are substituted, so the raw spec is not what the request carries -- see the
+// `emitted` set in buildRequests.)
 
 QStringList jsonStrings(const QJsonValue &v) {
     QStringList out;
@@ -143,7 +142,24 @@ QList<BuiltRequest> buildRequests(const RequestSpec &spec, const Vars &vars) {
         req += path.toUtf8();
         req += " HTTP/1.1\r\n";
 
-        if (!hasHeader(spec.headers, QStringLiteral("Host")) && !vars.hostname.isEmpty()) {
+        // The auto-headers below must defer to what this request will ACTUALLY
+        // carry, not to the raw spec. Header NAMES go through substitute() too, so
+        // a template writing "{{h}}: keep-alive" with h=Connection emits a real
+        // Connection header that a raw-name check cannot see -- and the auto one
+        // was then appended on top, producing a DUPLICATE. For Content-Length that
+        // is not merely untidy: two differing values are the request-smuggling
+        // ambiguity this very scanner exists to DETECT, and here we would be the
+        // one sending it. Names are lower-cased but NOT trimmed, mirroring the
+        // bytes emitted below exactly -- a name that substitutes to " Connection"
+        // serialises as an obs-fold continuation, not a Connection header, so it
+        // correctly does not suppress anything.
+        QSet<QString> emitted;
+        for (const auto &h : spec.headers) {
+            const QString n = substitute(h.first, vals, true);
+            if (!n.isEmpty()) emitted.insert(n.toLower());
+        }
+
+        if (!emitted.contains(QStringLiteral("host")) && !vars.hostname.isEmpty()) {
             req += "Host: ";
             req += stripCrlf(vars.hostname).toUtf8();
             req += "\r\n";
@@ -157,12 +173,18 @@ QList<BuiltRequest> buildRequests(const RequestSpec &spec, const Vars &vars) {
             req += value.toUtf8();
             req += "\r\n";
         }
-        if (!body.isEmpty() && !hasHeader(spec.headers, QStringLiteral("Content-Length"))) {
+        // RFC 9112 6.2: a sender MUST NOT emit Content-Length alongside
+        // Transfer-Encoding. The template author chose chunked framing, so adding
+        // our own CL on top forged a TE+CL request -- the scanner shipping the
+        // exact ambiguity its smuggling probe hunts for. Honour their framing.
+        if (!body.isEmpty()
+            && !emitted.contains(QStringLiteral("content-length"))
+            && !emitted.contains(QStringLiteral("transfer-encoding"))) {
             req += "Content-Length: ";
             req += QByteArray::number(body.size());
             req += "\r\n";
         }
-        if (!hasHeader(spec.headers, QStringLiteral("Connection"))) {
+        if (!emitted.contains(QStringLiteral("connection"))) {
             req += "Connection: close\r\n";
         }
         req += "\r\n";

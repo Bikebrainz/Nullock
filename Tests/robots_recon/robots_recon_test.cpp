@@ -127,6 +127,39 @@ int main(int argc, char **argv) {
         parseRobots("Disallow: /keep  # trailing comment\n", dis, pat, sm, trunc);
         chk("parseRobots: trailing comment stripped from value", has(dis, "/keep"));
     }
+    // ===== audit-13: ANY line terminator, not just LF =====================
+    // RFC 9309 accepts CR, LF or CRLF. Splitting on '\n' alone collapsed a bare-CR
+    // robots.txt into ONE line -- zero Disallow leads, zero Sitemap refs -- while
+    // looksLikeRobots() still matched, so the scan reported robotsFound with an
+    // empty result: indistinguishable from a site that simply has nothing to hide.
+    // A target can serve bare-CR on purpose to blind this scanner while every
+    // conformant crawler still reads the file.
+    {
+        QStringList dis, pat, sm; bool trunc = false;
+        parseRobots(QStringLiteral("User-agent: *\rDisallow: /cr-only/\rSitemap: https://h/cr.xml\r"),
+                    dis, pat, sm, trunc);
+        chk("bare-CR: Disallow lead recovered", has(dis, "/cr-only/"));
+        chk("bare-CR: Sitemap ref recovered", has(sm, "https://h/cr.xml"));
+        chk("bare-CR: the file did not collapse into one line", dis.size() == 1 && sm.size() == 1);
+    }
+    {
+        // CRLF must not produce empty phantom entries from the split, and LF must
+        // keep working exactly as before.
+        QStringList dis, pat, sm; bool trunc = false;
+        parseRobots(QStringLiteral("User-agent: *\r\nDisallow: /crlf/\r\nSitemap: https://h/a.xml\r\n"),
+                    dis, pat, sm, trunc);
+        chk("CRLF: still parsed (no regression)", has(dis, "/crlf/") && has(sm, "https://h/a.xml"));
+        chk("CRLF: no phantom entries from splitting on both chars",
+            dis.size() == 1 && sm.size() == 1);
+        QStringList d2, p2, s2; bool t2 = false;
+        parseRobots(QStringLiteral("User-agent: *\nDisallow: /lf/\n"), d2, p2, s2, t2);
+        chk("LF: still parsed (no regression)", has(d2, "/lf/") && d2.size() == 1);
+        // Mixed terminators in one file, which a hand-edited robots.txt really has.
+        QStringList d3, p3, s3; bool t3 = false;
+        parseRobots(QStringLiteral("Disallow: /a\r\nDisallow: /b\rDisallow: /c\n"), d3, p3, s3, t3);
+        chk("mixed CRLF/CR/LF in one file: all three leads recovered",
+            d3.size() == 3 && has(d3, "/a") && has(d3, "/b") && has(d3, "/c"));
+    }
     // A '$' END-ANCHOR with NO '*' is still a match PATTERN, not a fetchable path.
     // Every other pattern case carries a '*' (which short-circuits isDisallowPattern
     // via contains('*')), so the endsWith('$') arm is otherwise unexercised. A
