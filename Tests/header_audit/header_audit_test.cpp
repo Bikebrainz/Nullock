@@ -184,6 +184,29 @@ int main(int argc, char **argv) {
         !has(keys(H({{"X-Permitted-Cross-Domain-Policies", "none"}}), false),
              "missing-permitted-cross-domain-policies"));
 
+    // ===== audit-11: presence-only checks must not accept the WORST value =====
+    {
+        // SameSite=None explicitly opts INTO cross-site sending -- it is the one value
+        // that grants no CSRF protection, yet a presence-only check credited it.
+        chk("cookie: SameSite=None is NOT credited as protection",
+            has(keys(H({{"Set-Cookie", "sid=abc123; Path=/; Secure; HttpOnly; SameSite=None"}}), true),
+                "cookie-insecure"));
+        // ...while a real SameSite value on an otherwise-complete cookie stays clean.
+        chk("cookie: SameSite=Lax with Secure+HttpOnly -> no finding",
+            !has(keys(H({{"Set-Cookie", "sid=abc123; Path=/; Secure; HttpOnly; SameSite=Lax"}}), true),
+                 "cookie-insecure"));
+        // Referrer-Policy: unsafe-url sends the FULL URL everywhere -- the very leak
+        // the finding exists to raise, so presence alone must not silence it.
+        const QStringList rpUnsafe = keys(H({{"Referrer-Policy", "unsafe-url"}}), false);
+        chk("referrer: unsafe-url raises a finding (presence is not protection)",
+            has(rpUnsafe, "referrer-policy-unsafe"));
+        chk("referrer: a sane policy raises neither referrer finding",
+            !has(keys(H({{"Referrer-Policy", "no-referrer"}}), false), "referrer-policy-unsafe")
+            && !has(keys(H({{"Referrer-Policy", "no-referrer"}}), false), "referrer-policy-missing"));
+        chk("referrer: absent still raises the missing finding",
+            has(keys(H({{"X-Other", "1"}}), false), "referrer-policy-missing"));
+    }
+
     // ===== buildRequest: CR/LF guard parity ==============================
     {
         Request req; req.host = "victim.tld"; req.basePath = "/";
@@ -197,6 +220,36 @@ int main(int argc, char **argv) {
         chk("build: CRLF query -> no injected header", !buildRequest(bq).contains("\r\nEvil: 1"));
         Request bhe = req; bhe.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nEvil: 1")});
         chk("build: CRLF carried header dropped", !buildRequest(bhe).contains("Evil: 1"));
+
+        // audit-11: this body-less GET forces Accept-Encoding: identity + Connection:
+        // close, so a carried Content-Length / Transfer-Encoding (advertises a body
+        // that never arrives -> the probe stalls or the socket desyncs),
+        // Accept-Encoding (server compresses, defeating the forced identity) or
+        // Connection (contradicts the forced close) must all be dropped.
+        Request carried = req;
+        carried.headers.append({QStringLiteral("Content-Length"), QStringLiteral("100")});
+        carried.headers.append({QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked")});
+        carried.headers.append({QStringLiteral("Accept-Encoding"), QStringLiteral("gzip, deflate, br")});
+        carried.headers.append({QStringLiteral("Connection"), QStringLiteral("keep-alive")});
+        const QByteArray cg = buildRequest(carried);
+        chk("build: carried Content-Length dropped (body-less GET)", !cg.contains("Content-Length"));
+        chk("build: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            cg.count("Accept-Encoding:") == 1 && cg.contains("Accept-Encoding: identity\r\n")
+            && !cg.contains("gzip"));
+        chk("build: carried Connection dropped -> exactly one, close",
+            cg.count("Connection:") == 1 && cg.contains("Connection: close\r\n")
+            && !cg.contains("keep-alive"));
+        // A clean carried header is still emitted (the drop is not over-broad).
+        Request clean = req;
+        clean.headers.append({QStringLiteral("X-Trace"), QStringLiteral("ok")});
+        chk("build: a clean carried header IS emitted", buildRequest(clean).contains("X-Trace: ok\r\n"));
+
+        // audit-11: an empty basePath must normalize to "/" -- else the request line is
+        // the malformed "GET  HTTP/1.1" (double space, no target).
+        Request noPath; noPath.host = "victim.tld";
+        chk("build: empty basePath normalizes to '/'",
+            buildRequest(noPath).startsWith("GET / HTTP/1.1\r\n"));
     }
 
     std::fprintf(stderr, "header_audit_test: %d passed, %d failed\n", pass, fail);

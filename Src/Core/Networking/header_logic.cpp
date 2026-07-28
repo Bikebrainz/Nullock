@@ -270,9 +270,19 @@ void analyze(const Headers &headers, bool effTls, Result &result) {
             "no protecting X-Frame-Options (DENY/SAMEORIGIN) and no restrictive "
             "CSP frame-ancestors; the page can be framed for clickjacking");
 
-    if (headerValue(headers, "Referrer-Policy").isEmpty())
-        add("referrer-policy-missing", "low", "No Referrer-Policy",
-            "full URLs (with tokens in query) may leak to third parties via Referer");
+    // Presence alone is not protection: "unsafe-url" deliberately sends the FULL URL
+    // (query and all) to every destination, which is exactly the leak this finding
+    // exists to raise -- so the weakest possible value used to SUPPRESS it.
+    {
+        const QString rp = headerValue(headers, "Referrer-Policy").trimmed().toLower();
+        if (rp.isEmpty())
+            add("referrer-policy-missing", "low", "No Referrer-Policy",
+                "full URLs (with tokens in query) may leak to third parties via Referer");
+        else if (rp.split(',').last().trimmed() == QLatin1String("unsafe-url"))
+            add("referrer-policy-unsafe", "low", "Referrer-Policy: unsafe-url",
+                "unsafe-url sends the full URL (including query tokens) to every "
+                "destination -- weaker than having no policy on modern browsers");
+    }
 
     // ---- Modern defense-in-depth headers (low/info) ----
     // None of these enable a direct attack on their own, so they stay low: each
@@ -323,12 +333,22 @@ void analyze(const Headers &headers, bool effTls, Result &result) {
         if (segs.isEmpty()) continue;
         const QString name = segs.first().section('=', 0, 0).trimmed();
         QStringList attrs;
-        for (int i = 1; i < segs.size(); ++i)
-            attrs << segs[i].section('=', 0, 0).trimmed().toLower();
+        QString sameSiteValue;
+        for (int i = 1; i < segs.size(); ++i) {
+            const QString aName = segs[i].section('=', 0, 0).trimmed().toLower();
+            attrs << aName;
+            if (aName == QLatin1String("samesite"))
+                sameSiteValue = segs[i].section('=', 1).trimmed().toLower();
+        }
+        // SameSite=None is the ONE value that grants no cross-site protection at all
+        // (it explicitly opts INTO cross-site sending). A presence-only check credited
+        // it as protection, so the weakest possible setting silenced the finding.
+        const bool sameSiteNone = sameSiteValue == QLatin1String("none");
         QStringList missing;
         if (effTls && !attrs.contains("secure")) missing << "Secure";
         if (!attrs.contains("httponly"))          missing << "HttpOnly";
         if (!attrs.contains("samesite"))          missing << "SameSite";
+        else if (sameSiteNone)                    missing << "effective SameSite (set to None)";
         if (!missing.isEmpty() && cookieFindings++ < 10)
             add("cookie-insecure", missing.contains("HttpOnly") ? "medium" : "low",
                 "Cookie '" + name + "' missing " + missing.join(", "),
@@ -342,6 +362,7 @@ QByteArray buildRequest(const Request &req) {
     QString host = req.host;          host.remove('\r'); host.remove('\n');
     QString basePath = req.basePath;  basePath.remove('\r'); basePath.remove('\n');
     QString query = req.query;        query.remove('\r'); query.remove('\n');
+    if (basePath.isEmpty()) basePath = QStringLiteral("/");   // else "GET  HTTP/1.1" (malformed)
     const QString target = query.isEmpty() ? basePath : basePath + "?" + query;
     QByteArray out;
     out  = "GET " + target.toUtf8() + " HTTP/1.1\r\n";
@@ -351,6 +372,17 @@ QByteArray buildRequest(const Request &req) {
     out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that fight the ones this body-less GET
+        // forces (Accept-Encoding: identity above, Connection: close below):
+        //  - Content-Length / Transfer-Encoding: advertise a body that is never sent,
+        //    so the server waits for it (probe stalls) or the socket desyncs.
+        //  - Accept-Encoding: a carried "gzip,..." combines (RFC 9112 7.4) and lets the
+        //    server compress, defeating the forced identity the analysis depends on.
+        //  - Connection: a carried "keep-alive" contradicts the forced close.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
