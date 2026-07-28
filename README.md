@@ -125,7 +125,7 @@ Run Nullock headless in a pipeline and fail the build on findings:
 ```sh
 # one-shot: scan a URL, exit nonzero if anything is high or worse
 NullockApp --scan https://staging.example.com/ --fail-on high
-echo $?          # 0 clean · 1 finding >= threshold · 2 bad URL
+echo $?          # 0 clean · 1 finding >= threshold · 2 bad URL · 3 target unreachable
 
 # or drive scans over the API, then read the gate for a pass/fail + exit code
 curl -s localhost:17777/api/gate?fail-on=high    # {"pass":false,"exitCode":1,...}

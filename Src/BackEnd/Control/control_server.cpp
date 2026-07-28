@@ -9464,6 +9464,53 @@ int runGateScan(const QString &url, const QString &failOn, bool ndjson) {
     t.basePath = basePath;
     t.url      = url;
 
+    // REACHABILITY PREFLIGHT -- must run BEFORE the battery.
+    //
+    // Every tester derives its report's `items` from a hit/found container, so a
+    // target that answers nothing produces zero findings: byte-identical to a
+    // clean target. Without this probe the gate printed "findings: 0 ... RESULT:
+    // PASS (exit 0)" for a refused port, a typo'd hostname, a down staging env or
+    // an egress-blocked CI runner -- and at EVERY threshold, including the
+    // strictest, because an empty severity list offends none of them. A security
+    // gate that cannot fail closed on its own failure is worse than no gate.
+    {
+        Nullock::Core::HttpClient probe;
+        const QByteArray preflight =
+            "GET " + t.basePath.toUtf8() + " HTTP/1.1\r\n"
+            "Host: " + t.host.toUtf8() + "\r\n"
+            "User-Agent: Nullock/ci-gate\r\n"
+            "Accept: */*\r\nAccept-Encoding: identity\r\n"
+            "Connection: close\r\n\r\n";
+        const auto pr = probe.send(t.host, static_cast<quint16>(t.port), t.tls, preflight);
+        if (!pr.ok) {
+            // ANY complete response counts as reachable -- a 401/403/500 is a
+            // scannable target. Only a transport failure lands here.
+            const Nullock::Core::CiGate::GateResult ug =
+                Nullock::Core::CiGate::unreachable(failOn, pr.errorMessage);
+            if (ndjson) {
+                const QJsonObject line{
+                    { "event", "gate" }, { "url", url },
+                    { "pass", ug.pass }, { "exitCode", ug.exitCode },
+                    { "failOn", ug.threshold }, { "offendingCount", 0 },
+                    { "totalFindings", 0 },
+                    { "reachable", false }, { "error", ug.error },
+                };
+                QTextStream(stdout)
+                    << QString::fromUtf8(QJsonDocument(line).toJson(QJsonDocument::Compact))
+                    << "\n";
+            } else {
+                QTextStream(stdout) << "Nullock scan gate: " << url << "\n"
+                    << "  TARGET UNREACHABLE -- nothing was scanned: " << ug.error << "\n"
+                    << (ug.pass
+                          ? "  RESULT: PASS (exit 0) -- fail-on=none, not gating\n"
+                          : "  RESULT: ERROR (exit 3) -- scan did not run; NOT a clean result\n");
+            }
+            QTextStream(stderr) << "nullock --scan: target unreachable: "
+                                << ug.error << "\n";
+            return ug.exitCode;
+        }
+    }
+
     // Run the whole battery synchronously. Pass a null scanner -- we gate on the
     // per-tester report (which now carries severity), so we don't need the
     // queued finding emission (which would require a running event loop).

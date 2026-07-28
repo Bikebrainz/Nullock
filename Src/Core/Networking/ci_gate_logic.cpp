@@ -68,4 +68,23 @@ GateResult evaluate(const QList<QString> &severities, const QString &failOn) {
     return r;
 }
 
+GateResult unreachable(const QString &failOn, const QString &error) {
+    GateResult r;
+    r.threshold     = thresholdName(failOn);
+    r.thresholdRank = thresholdRank(failOn);
+    // Same seeded breakdown as evaluate(), so a caller formatting the summary
+    // sees 0s rather than missing keys.
+    for (const char *k : { "critical", "high", "medium", "low", "info" })
+        r.bySeverity.insert(QString::fromLatin1(k), 0);
+    r.reachable = false;
+    r.error     = error;
+    // An explicit "none"/"off" means the operator opted out of gating entirely;
+    // honour it rather than surprising a reporting-only pipeline with a new
+    // failure. Everyone else fails CLOSED: not scanning is not passing.
+    const bool neverFail = (r.thresholdRank >= kNeverFail);
+    r.pass     = neverFail;
+    r.exitCode = neverFail ? kExitPass : kExitUnreachable;
+    return r;
+}
+
 } // namespace Nullock::Core::CiGate

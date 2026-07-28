@@ -115,8 +115,12 @@ private:
 // severity threshold (see Nullock::Core::CiGate), prints a summary to stdout
 // (one NDJSON line when `ndjson` is true, else a human table), and RETURNS the
 // process exit code: 0 = pass (no finding at/above the threshold), 1 = fail.
-// A malformed URL prints an error and returns 2. Requires a live
-// QCoreApplication (for blocking sockets) but does NOT need app->exec().
+// A malformed URL prints an error and returns 2. A target that does not answer a
+// reachability PREFLIGHT returns 3 -- "the scan did not run", which is NOT a
+// clean result: every tester counts hits, so an unreachable host yields zero
+// findings and would otherwise report a pass at every threshold, including the
+// strictest. (fail-on=none still exits 0 there, having opted out of gating.)
+// Requires a live QCoreApplication (for blocking sockets) but no app->exec().
 int runGateScan(const QString &url, const QString &failOn, bool ndjson);
 
 } // namespace Nullock::Control

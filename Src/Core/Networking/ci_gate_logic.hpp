@@ -23,10 +23,14 @@ namespace Nullock::Core::CiGate {
 // A threshold rank no real finding can reach -- used for "none"/"off".
 constexpr int kNeverFail = 1000;
 
-// Exit codes (trivy/grype-style): 0 clean, 1 gate tripped. (Scan/usage errors
-// are the caller's concern; this module only decides pass/fail.)
-constexpr int kExitPass = 0;
-constexpr int kExitFail = 1;
+// Exit codes (trivy/grype-style): 0 clean, 1 gate tripped, 2 bad usage (the
+// caller's concern -- a malformed URL never reaches this module), 3 the scan
+// could not run at all.
+constexpr int kExitPass        = 0;
+constexpr int kExitFail        = 1;
+constexpr int kExitBadUrl      = 2;   // set by the caller; listed here so the
+                                      // whole contract lives in one place
+constexpr int kExitUnreachable = 3;
 
 // Rank a severity name. Higher = worse. Blank/unknown -> 0 (info).
 int severityRank(const QString &sev);
@@ -50,9 +54,27 @@ struct GateResult {
     int              offendingCount = 0; // findings at/above the threshold
     int              total = 0;
     QMap<QString,int> bySeverity;        // full breakdown (canonical keys)
+    bool             reachable = true;   // false => the scan never reached the target
+    QString          error;              // transport error, only when !reachable
 };
 
 // Evaluate the gate over a list of finding severities.
 GateResult evaluate(const QList<QString> &severities, const QString &failOn);
+
+// Verdict for a run whose scan NEVER REACHED THE TARGET.
+//
+// This exists because "clean" and "never scanned" are byte-identical to
+// evaluate(): every tester derives its finding count from a hit/found container,
+// so a refused connection, a typo'd hostname, a down staging env or an
+// egress-blocked runner all yield an EMPTY severity list -- and an empty list is
+// a pass at every threshold, including the strictest. The gate then reported
+// "findings: 0 ... RESULT: PASS (exit 0)" having probed nothing. A gate that
+// cannot fail closed on its OWN failure is worse than no gate, so the caller
+// must preflight the target and route that case here.
+//
+// "none"/"off" is still honoured: the operator explicitly asked NOT to gate, so
+// the exit code stays kExitPass for them. `reachable` is false either way, so
+// every caller can still report WHY nothing was scanned.
+GateResult unreachable(const QString &failOn, const QString &error);
 
 } // namespace Nullock::Core::CiGate

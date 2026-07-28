@@ -111,6 +111,53 @@ int main(int argc, char **argv) {
             !evaluate(f, "wat").pass && evaluate(f, "wat").threshold == QStringLiteral("high"));
     }
 
+    // ===== audit-13: "never scanned" must not read as "clean" ============
+    // The gate's finding list comes from per-tester hit counts, so a target that
+    // answers NOTHING -- refused port, typo'd hostname, down staging env,
+    // egress-blocked runner -- produces an EMPTY severity list. Empty passes at
+    // every threshold, so the gate printed "findings: 0 ... RESULT: PASS (exit 0)"
+    // having probed nothing. Reproduced against the real binary before the fix:
+    //   NullockApp --scan=http://127.0.0.1:1/ --fail-on=critical  ->  exit 0 PASS
+    // These pin the distinct verdict the caller now routes that case to.
+    {
+        const GateResult u = unreachable("critical", "connect failed: refused");
+        chk("unreachable: does NOT pass", !u.pass);
+        chk("unreachable: exit code is the distinct 3, not 0", u.exitCode == kExitUnreachable);
+        chk("unreachable: 3 is distinct from clean(0), finding(1) and bad-url(2)",
+            kExitUnreachable != kExitPass && kExitUnreachable != kExitFail
+            && kExitUnreachable != kExitBadUrl);
+        chk("unreachable: flagged not-reachable", !u.reachable);
+        chk("unreachable: carries the transport error for the operator",
+            u.error == QStringLiteral("connect failed: refused"));
+        chk("unreachable: threshold still echoed back", u.threshold == QStringLiteral("critical"));
+        chk("unreachable: reports no findings rather than inventing any", u.total == 0
+            && u.offendingCount == 0 && u.bySeverity.value("critical") == 0);
+        // THE REGRESSION THIS EXISTS FOR: an empty severity list passes at EVERY
+        // threshold, which is exactly why "no findings" could not be the signal.
+        for (const char *th : { "critical", "high", "medium", "low", "info" }) {
+            const GateResult clean = evaluate({}, QString::fromLatin1(th));
+            chk("unreachable: an EMPTY list still passes at every threshold (the trap)",
+                clean.pass && clean.exitCode == kExitPass);
+            const GateResult un = unreachable(QString::fromLatin1(th), "boom");
+            chk("unreachable: but an unreachable run fails at every threshold",
+                !un.pass && un.exitCode == kExitUnreachable);
+        }
+        // fail-on=none opted OUT of gating, so it keeps exit 0 -- but must still be
+        // marked unreachable so the caller reports why nothing was scanned.
+        for (const char *th : { "none", "off", "never" }) {
+            const GateResult n = unreachable(QString::fromLatin1(th), "boom");
+            chk("unreachable: fail-on=none still exits 0 (explicitly not gating)",
+                n.pass && n.exitCode == kExitPass);
+            chk("unreachable: fail-on=none is STILL flagged unreachable", !n.reachable);
+            chk("unreachable: fail-on=none still carries the error", n.error == QStringLiteral("boom"));
+        }
+        // Not over-broad: a real evaluate() verdict is still reachable.
+        chk("unreachable: evaluate() results stay reachable=true",
+            evaluate({}, "high").reachable && evaluate({ "high" }, "high").reachable);
+        chk("unreachable: evaluate() leaves the error field empty",
+            evaluate({ "high" }, "high").error.isEmpty());
+    }
+
     std::fprintf(stderr, "ci_gate_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
