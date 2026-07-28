@@ -115,6 +115,17 @@ int main(int argc, char **argv) {
             RequestExport::curlCommand("GET;ID", "http://x/", {}, "").contains("-X 'GET;ID'"));
         chk("curl: a metachar method does NOT break out unquoted",
             !RequestExport::curlCommand("GET;ID", "http://x/", {}, "").contains("-X GET;ID "));
+        // audit-9: a URL that starts with '-' must be emitted after --url, else curl
+        // parses "-K/tmp/evil" as --config /tmp/evil (argument injection) instead of a URL.
+        chk("curl: a dash-leading URL is guarded with --url (no curl argument injection)",
+            RequestExport::curlCommand("GET", "-K/tmp/evil", {}, "").contains("--url '-K/tmp/evil'"));
+        // audit-9: the fetch()-PoC URL is script-escaped (jsStr) so a url with </script>
+        // cannot close Nullock's own <script> and inject into the analyst's browser.
+        QString nt;
+        const QString xh = RequestExport::csrfPoc(
+            "POST", "http://x/a</script><script>alert(1)</script>", "application/json", "{}", nt);
+        chk("csrfPoc: fetch-branch URL is script-escaped (no </script> breakout)",
+            xh.contains("fetch(") && !xh.contains("</script><script>alert(1)"));
     }
 
     std::fprintf(stderr,

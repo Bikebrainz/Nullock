@@ -113,7 +113,12 @@ QString curlCommand(const QString &methodIn, const QString &url,
     if (method.isEmpty()) method = QStringLiteral("GET");
     QString c = "curl";
     if (method != "GET" || !body.isEmpty()) c += " -X " + shq(method);   // shell-escape like every other field
-    c += " " + shq(url);
+    // Emit the URL after --url, NOT as a bare positional: a URL that starts with '-'
+    // (e.g. "-K/tmp/evil" from a crafted request) is otherwise parsed by curl as an
+    // OPTION (--config, -o, -x), so the "reproduced request" silently becomes a curl
+    // argument-injection rather than a fetch of the URL. shq() escapes for the SHELL
+    // but does not stop curl's own option parsing.
+    c += " --url " + shq(url);
     for (const auto &hh : headers) {
         const QString &n = hh.first;
         if (n.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;  // curl sets it

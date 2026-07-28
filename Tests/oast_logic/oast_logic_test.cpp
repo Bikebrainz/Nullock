@@ -51,6 +51,14 @@ int main(int argc, char **argv) {
     chk("path 15-hex rejected",        extractToken("evil.com", "/oast/0123456789abcde/x").isEmpty());
     chk("path wrong prefix rejected",  extractToken("evil.com", "/xoast/" + TOK).isEmpty());
     chk("path empty segment rejected", extractToken("evil.com", "/oast//x").isEmpty());
+    chk("path token followed by a query string still correlates",
+        extractToken("evil.com", "/oast/" + TOK + "?x=1") == TOK);
+    chk("path token followed by a fragment still correlates",
+        extractToken("evil.com", "/oast/" + TOK + "#f") == TOK);
+    chk("token in a NON-first subdomain label is rejected (no forged correlation)",
+        extractToken("sub." + TOK + ".oast.x", "/").isEmpty());
+    chk("path-form hex is case-sensitive: uppercase segment rejected",
+        extractToken("evil.com", "/oast/0123456789ABCDEF/cb").isEmpty());
     chk("path trailing-newline rejected (no LF-bearing token)",
         extractToken("evil.com", "/oast/" + TOK + "\n").isEmpty());
     chk("empty host + path -> empty",  extractToken("", "").isEmpty());

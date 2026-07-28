@@ -19,9 +19,16 @@ QString extractToken(const QString &hostHeader, const QString &path) {
         const QString head = hostHeader.left(dot).toLower();
         if (hex16.match(head).hasMatch()) return head;
     }
-    // Path form: /oast/<token>/...
+    // Path form: /oast/<token>[/...][?query][#frag]. The token segment ends at the
+    // next '/', '?' OR '#' -- a real callback URL commonly carries a query/fragment
+    // (/oast/<token>?x=1), and terminating only on '/' left the '?x=1' glued to the
+    // token so the 16-hex match failed and the OOB callback was never correlated.
     if (path.startsWith(QLatin1String("/oast/"))) {
-        const int next = path.indexOf('/', 6);
+        int next = -1;
+        for (int i = 6; i < path.size(); ++i) {
+            const QChar c = path[i];
+            if (c == QLatin1Char('/') || c == QLatin1Char('?') || c == QLatin1Char('#')) { next = i; break; }
+        }
         const QString seg = next > 0 ? path.mid(6, next - 6) : path.mid(6);
         if (hex16.match(seg).hasMatch()) return seg;
     }

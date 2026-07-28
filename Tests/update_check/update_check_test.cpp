@@ -67,6 +67,11 @@ int main(int argc, char **argv) {
     // to a string compare of the numeric identifier would order beta.10 before beta.2.
     chk("semver: numeric pre-release identifiers compare numerically (beta.2 < beta.10)",
         sign(compareSemver("1.0.0-beta.2", "1.0.0-beta.10")) == -1);
+    // audit-9: a numeric identifier PAST INT_MAX must still compare numerically -- a
+    // toInt()-based compare overflows/fails on both and falls back to a lexical order
+    // that puts 9999999999 > 10000000000 ('9' > '1'). Correct is 9999999999 < 10000000000.
+    chk("semver: large numeric pre-release identifiers compare numerically past INT_MAX",
+        sign(compareSemver("1.0.0-beta.9999999999", "1.0.0-beta.10000000000")) == -1);
     chk("semver: identical pre-release -> equal", compareSemver("1.0.0-rc1", "1.0.0-rc1") == 0);
     chk("semver: a pre-release of a NEWER core still beats the older release (1.2.0 < 1.3.0-rc1)",
         sign(compareSemver("1.2.0", "1.3.0-rc1")) == -1);
@@ -81,6 +86,11 @@ int main(int argc, char **argv) {
     chk("url: a non-github host rejected", !isTrustedReleaseUrl("https://evil.com/x"));
     chk("url: a look-alike host rejected (github.com.evil.com)",
         !isTrustedReleaseUrl("https://github.com.evil.com/x"));
+    // audit-9: a PREFIX look-alike (evilgithub.com) must be rejected -- the allow-list
+    // is dot-anchored (host==github.com OR endsWith ".github.com"); a dropped-dot
+    // regression to endsWith("github.com") would ACCEPT this phishing host.
+    chk("url: a prefix look-alike host rejected (evilgithub.com)",
+        !isTrustedReleaseUrl("https://evilgithub.com/x"));
     // userinfo-@ bypass: the browser navigates to the host AFTER '@' (evil.com), so
     // this must be rejected. The UI opens this link; a naive substring match on
     // "github.com" would accept it and surface a phishing page. Distinct from the

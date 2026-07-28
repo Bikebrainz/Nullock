@@ -70,7 +70,7 @@ QString classify(int status, int bodyLen, const QString &location, const CalibPr
     // soft-404 that ALSO redirects (e.g. everything -> /login) must not mask it:
     // suppress only when the status is a soft status AND the target matches the
     // calibrated soft-404 redirect target.
-    if (st == 301 || st == 302 || st == 307 || st == 308) {
+    if (st == 301 || st == 302 || st == 303 || st == 307 || st == 308) {
         if (cal.softStatuses.contains(st) && locNorm(location) == locNorm(cal.softLocation))
             return QString();
         return QStringLiteral("redirect");

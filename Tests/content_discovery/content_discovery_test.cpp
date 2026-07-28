@@ -58,6 +58,7 @@ int main(int argc, char **argv) {
         chk("404-baseline: a 200 is a real resource -> ok", classify(200, 900, "", c) == "ok");
         chk("404-baseline: the 404 itself -> not interesting", classify(404, 120, "", c).isEmpty());
         chk("404-baseline: a 301 redirect -> redirect", classify(301, 0, "/elsewhere", c) == "redirect");
+        chk("404-baseline: a 303 See Other redirect -> redirect", classify(303, 0, "/elsewhere", c) == "redirect");
         chk("404-baseline: a 403 -> auth-gated", classify(403, 50, "", c) == "auth-gated");
         chk("404-baseline: a 204 -> ok", classify(204, 0, "", c) == "ok");
         chk("404-baseline: a 500 -> not interesting", classify(500, 0, "", c).isEmpty());

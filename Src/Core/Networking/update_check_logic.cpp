@@ -42,14 +42,31 @@ int comparePre(const QString &a, const QString &b) {
     if (a.isEmpty() && b.isEmpty()) return 0;
     if (a.isEmpty()) return 1;              // a is a release, b a pre-release -> a > b
     if (b.isEmpty()) return -1;
+    // A semver numeric identifier is "only digits" and compares NUMERICALLY. Detect
+    // it structurally (all-digits) and compare as an arbitrary-precision decimal --
+    // NOT via toInt(), which overflows to 0 / fails on a >INT_MAX identifier and then
+    // falls through to a lexical compare that inverts the order (9999999999 vs
+    // 10000000000 -> '9' > '1'). No overflow, spec-correct.
+    auto allDigits = [](const QString &s) {
+        if (s.isEmpty()) return false;
+        for (const QChar c : s) if (c < QLatin1Char('0') || c > QLatin1Char('9')) return false;
+        return true;
+    };
+    auto cmpNumeric = [](const QString &x, const QString &y) -> int {   // both all-digits
+        int xi = 0; while (xi + 1 < x.size() && x[xi] == QLatin1Char('0')) ++xi;   // strip leading zeros
+        int yi = 0; while (yi + 1 < y.size() && y[yi] == QLatin1Char('0')) ++yi;
+        const QStringView xs = QStringView(x).mid(xi), ys = QStringView(y).mid(yi);
+        if (xs.size() != ys.size()) return xs.size() < ys.size() ? -1 : 1;         // longer -> larger
+        const int c = xs.compare(ys);
+        return c < 0 ? -1 : (c > 0 ? 1 : 0);
+    };
     const QStringList ai = a.split('.', Qt::SkipEmptyParts);
     const QStringList bi = b.split('.', Qt::SkipEmptyParts);
     const int n = qMin(ai.size(), bi.size());
     for (int i = 0; i < n; ++i) {
-        bool xn = false, yn = false;
-        const int xi = ai[i].toInt(&xn);
-        const int yi = bi[i].toInt(&yn);
-        if (xn && yn) { if (xi != yi) return xi < yi ? -1 : 1; }      // both numeric: compare numerically
+        const bool xn = allDigits(ai[i]);
+        const bool yn = allDigits(bi[i]);
+        if (xn && yn) { const int c = cmpNumeric(ai[i], bi[i]); if (c != 0) return c; }  // both numeric
         else if (xn != yn) return xn ? -1 : 1;                        // numeric identifiers rank below alphanumeric
         else { const int c = ai[i].compare(bi[i]); if (c != 0) return c < 0 ? -1 : 1; }  // ASCII order
     }
