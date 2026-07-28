@@ -7,6 +7,8 @@
 
 #include "content_discovery.hpp"
 
+#include <QRegularExpression>
+
 #include <cstdlib>
 
 namespace Nullock::Core::ContentDiscovery {
@@ -37,10 +39,18 @@ QString normBase(const QString &p) {
 QString canonicalizeBody(const QString &body, const QString &probePath) {
     QString s = body;
     if (!probePath.isEmpty()) {
-        s.replace(probePath, QStringLiteral("\x01P\x01"));
+        s.replace(probePath, QStringLiteral("\x01P\x01"));   // full path: distinctive, plain substring
         const QString seg = probePath.section('/', -1);     // the leaf segment
-        if (!seg.isEmpty() && seg != probePath)
-            s.replace(seg, QStringLiteral("\x01P\x01"));
+        if (!seg.isEmpty() && seg != probePath) {
+            // Mask the leaf only at a WORD BOUNDARY, NOT as a bare substring: a short /
+            // common leaf ("dev" from "/dev") otherwise mangles a boilerplate word
+            // ("developer") on the probe side but not on the random-token calibration
+            // side, so the two canonical bodies diverge and a STABLE soft-404 is
+            // misclassified as a real resource (a false-positive flood on common paths).
+            const QRegularExpression re(QStringLiteral("\\b") + QRegularExpression::escape(seg)
+                                        + QStringLiteral("\\b"));
+            if (re.isValid()) s.replace(re, QStringLiteral("\x01P\x01"));
+        }
     }
     QString out;
     out.reserve(s.size());

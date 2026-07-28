@@ -46,6 +46,11 @@ int main(int argc, char **argv) {
     chk("sarif: low -> note",        sarifLevelForSeverity("low") == "note");
     chk("sarif: info -> note",       sarifLevelForSeverity("info") == "note");
     chk("sarif: unknown -> warning", sarifLevelForSeverity("bogus") == "warning");
+    // Severity reaches the SARIF sink as a free QString (not guaranteed lowercased);
+    // the toLower gate must map a capitalized Critical/High to "error", else a
+    // critical finding emits level "warning" and a CI gate on level=="error" passes.
+    chk("sarif: mixed-case 'Critical' -> error (toLower gate)", sarifLevelForSeverity("Critical") == "error");
+    chk("sarif: mixed-case 'High' -> error", sarifLevelForSeverity("High") == "error");
     chk("rank: critical>high>medium>low>info>unknown",
         severityRank("critical") > severityRank("high")
         && severityRank("high") > severityRank("medium")
@@ -259,6 +264,8 @@ int main(int argc, char **argv) {
     chk("bearer: empty on scheme only",   bearerToken("Bearer").isEmpty());
     chk("bearer: empty on scheme+space",  bearerToken("Bearer ").isEmpty());
     chk("bearer: empty input",            bearerToken("").isEmpty());
+    chk("bearer: no scheme/token separator ('Bearerabc') -> empty",
+        bearerToken("Bearerabc").isEmpty());
 
     // constantTimeEquals: correct result (the timing property isn't unit-testable).
     chk("cteq: equal strings",            constantTimeEquals("s3cret-token", "s3cret-token"));
@@ -269,6 +276,12 @@ int main(int argc, char **argv) {
     chk("cteq: empty vs non-empty",      !constantTimeEquals("", "x"));
     chk("cteq: unicode equal",            constantTimeEquals(QString::fromUtf8("t\xC3\xB6k\xC3\xA9n"),
                                                              QString::fromUtf8("t\xC3\xB6k\xC3\xA9n")));
+    // A whole-multiple repetition ("abab" vs "ab") makes the modulo byte-loop report
+    // all-equal; ONLY the size-difference fold rejects it. Existing length-diff cases
+    // ("s3cret"/"s3cret-token") diverge INSIDE the loop, so none pins the fold -- a
+    // regression zeroing it is an auth bypass by a repeated-token guess.
+    chk("cteq: whole-multiple repetition NOT equal (length fold, not just byte loop)",
+        !constantTimeEquals("abab", "ab") && !constantTimeEquals("ab", "abab"));
 
     // isTokenAuthorized: an empty config (auth disabled) is NEVER authorized here.
     chk("tokauth: empty config -> false",       !isTokenAuthorized("Bearer anything", ""));
@@ -278,6 +291,10 @@ int main(int argc, char **argv) {
     chk("tokauth: no auth header -> false",     !isTokenAuthorized("", "s3cret"));
     chk("tokauth: wrong scheme -> false",       !isTokenAuthorized("Basic s3cret", "s3cret"));
     chk("tokauth: case-insensitive scheme",      isTokenAuthorized("bearer s3cret", "s3cret"));
+    // A repeated-token guess ("s3crets3cret" vs config "s3cret") passes the modulo
+    // byte-loop; only the constantTimeEquals length fold rejects it -> real auth gate.
+    chk("tokauth: a repeated-token guess is rejected (length fold)",
+        !isTokenAuthorized("Bearer s3crets3cret", "s3cret"));
 
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

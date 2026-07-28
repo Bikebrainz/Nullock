@@ -119,6 +119,9 @@ int main(int argc, char **argv) {
         chk("canonicalize: the requested path is masked (two paths -> same form)",
             canonicalizeBody("not found: /admin/panel", "/admin/panel")
             == canonicalizeBody("not found: /api/v2/users", "/api/v2/users"));
+        chk("canonicalize: a short leaf masks only at a WORD BOUNDARY (not inside boilerplate)",
+            canonicalizeBody("Not Found. Visit our developer blog.", "/dev")
+            == canonicalizeBody("Not Found. Visit our developer blog.", "/nl404aaaaaaaaaa"));
         chk("fingerprint: deterministic for the same input",
             bodyFingerprint("abc") == bodyFingerprint("abc"));
         chk("fingerprint: differs for materially different content",
