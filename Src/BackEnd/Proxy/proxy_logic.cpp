@@ -23,6 +23,21 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &headerBlock) {
         QByteArray line = lines[i];
         if (line.endsWith('\r')) line.chop(1);
         if (line.isEmpty()) continue;
+        // obs-fold (RFC 9112 5.2): a line starting with SP/HTAB CONTINUES the previous
+        // field-value -- never a new header. Without this, .trimmed() strips the
+        // leading HTAB off "\tContent-Length: 5" and FABRICATES a standalone framing
+        // header the peer never sent (isFramingSafe below only rejects INTERIOR
+        // CR/LF/NUL, which an obs-fold line does not contain). Same defect fixed in
+        // NetworkingLogic::parseHeaders; this proxy twin shared the parse.
+        if (line.startsWith(' ') || line.startsWith('\t')) {
+            if (!headers.isEmpty()) {
+                const QString cont = QString::fromLatin1(line).trimmed();
+                if (!cont.isEmpty())
+                    headers.last().second = headers.last().second.isEmpty()
+                        ? cont : headers.last().second + QLatin1Char(' ') + cont;
+            }
+            continue;   // no previous field to fold into -> drop, never a new header
+        }
         const int colon = line.indexOf(':');
         if (colon <= 0) continue;
         headers.append({

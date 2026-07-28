@@ -294,6 +294,34 @@ int main(int argc, char **argv) {
         QByteArray buf = "0\r\n", dec;                        // trailer not terminated
         chkd("feed partial-trailer needmore", feedChunked(buf, dec), ChunkDecode::NeedMore);
     }
+    {
+        // audit-11: a trailer FIELD-LINE with no terminating empty line is still an
+        // INCOMPLETE body -- stopping at the first CRLF returned Done early.
+        QByteArray buf = "3\r\nabc\r\n0\r\nA: 1\r\n", dec;
+        chkd("feed unterminated trailer field -> needmore (not premature done)",
+             feedChunked(buf, dec), ChunkDecode::NeedMore);
+        buf += "\r\n";                                        // now terminate it
+        chkd("feed terminated trailer -> done", feedChunked(buf, dec), ChunkDecode::Done);
+        chks("feed trailer decoded intact", QString::fromLatin1(dec), "abc");
+        chki("feed trailer fully consumed", buf.size(), 0);
+    }
+    {
+        // audit-11: a MULTI-field trailer must be consumed whole -- leftover lines
+        // would be read as the start of the next response on a reused connection.
+        QByteArray buf = "3\r\nabc\r\n0\r\nA: 1\r\nB: 2\r\n\r\n", dec;
+        chkd("feed multi-field trailer done", feedChunked(buf, dec), ChunkDecode::Done);
+        chki("feed multi-field trailer fully consumed", buf.size(), 0);
+        chks("feed multi-field trailer decoded", QString::fromLatin1(dec), "abc");
+    }
+    {
+        // audit-11: the documented contract said "on NeedMore nothing is consumed",
+        // which was never true -- COMPLETE chunks are consumed incrementally and the
+        // caller must not re-supply them. Lock the real behavior.
+        QByteArray buf = "3\r\nabc\r\n5\r\nhe", dec;
+        chkd("feed complete-then-partial -> needmore", feedChunked(buf, dec), ChunkDecode::NeedMore);
+        chks("feed NeedMore still consumed the COMPLETE chunk", QString::fromLatin1(dec), "abc");
+        chks("feed NeedMore left only the partial chunk", QString::fromLatin1(buf), "5\r\nhe");
+    }
 
     // ===== feedChunked: malformed ========================================
     {

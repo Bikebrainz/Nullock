@@ -74,7 +74,12 @@ enum class ChunkDecode { NeedMore, Done, Error };
 // Returns:
 //   Done     -- the terminating 0-size chunk was consumed; `decoded` is final.
 //   NeedMore -- buffer holds a partial chunk; caller must read more and re-call.
-//               On NeedMore nothing is consumed (buffer is left intact).
+//               Any COMPLETE chunks already present are still consumed (and their
+//               data appended to `decoded`) before NeedMore is returned -- only the
+//               trailing partial chunk is left in the buffer. (This previously
+//               claimed "nothing is consumed", which was never true: incremental
+//               consumption is the design, and the caller must not re-supply bytes
+//               feedChunked has already taken.)
 //   Error    -- malformed framing, a bad/over-cap chunk size, decoded would
 //               exceed kMaxBodyBytes, OR an unterminated size line / trailer
 //               grew past kMaxChunkLineBytes (the unbounded-stream guard).

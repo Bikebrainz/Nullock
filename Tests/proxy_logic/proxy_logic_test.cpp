@@ -43,6 +43,31 @@ int main(int argc, char **argv) {
         chk("parse: value trimmed", findHeader(hs, "X-Token") == "abc");
         chk("parse: missing -> empty", findHeader(hs, "Nope").isEmpty());
     }
+    {
+        // audit-11: obs-fold (RFC 9112 5.2) -- a line starting with SP/HTAB CONTINUES
+        // the previous field-value and must NEVER become a standalone header. The
+        // leading-whitespace strip used to FABRICATE a framing header the peer never
+        // sent, and isFramingSafe only rejects INTERIOR CR/LF/NUL, which an obs-fold
+        // line does not contain. Same defect fixed in NetworkingLogic::parseHeaders.
+        const auto ht = parseHeaders("GET / HTTP/1.1\r\nX-Junk: a\r\n\tContent-Length: 5\r\n");
+        chk("obs-fold HTAB: no fabricated Content-Length", findHeader(ht, "Content-Length").isEmpty());
+        chk("obs-fold HTAB: continuation is not a new header", ht.size() == 1);
+        chk("obs-fold HTAB: folded into the previous value",
+            findHeader(ht, "X-Junk") == "a Content-Length: 5");
+
+        const auto hsp = parseHeaders("GET / HTTP/1.1\r\nX-Junk: a\r\n Content-Length: 5\r\n");
+        chk("obs-fold SP: no fabricated Content-Length", findHeader(hsp, "Content-Length").isEmpty());
+        chk("obs-fold SP: continuation is not a new header", hsp.size() == 1);
+
+        // A fold with NO previous field is dropped, never promoted.
+        chk("obs-fold with no previous header is dropped",
+            parseHeaders("GET / HTTP/1.1\r\n\tContent-Length: 5\r\n").isEmpty());
+
+        // Non-regression: a normal (unfolded) block is untouched.
+        const auto hOk = parseHeaders("GET / HTTP/1.1\r\nX-Junk: a\r\nContent-Length: 5\r\n");
+        chk("plain block still parses both headers", hOk.size() == 2);
+        chk("plain block keeps its real Content-Length", findHeader(hOk, "Content-Length") == "5");
+    }
 
     // ===== isChunkedTransfer: last coding must be 'chunked' =============
     chk("chunked: 'chunked' -> true", isChunkedTransfer("chunked"));

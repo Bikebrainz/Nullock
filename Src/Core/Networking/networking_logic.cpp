@@ -130,14 +130,25 @@ ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded) {
         if (!cs.ok) return ChunkDecode::Error;
         if (decoded.size() + cs.size > kMaxBodyBytes) return ChunkDecode::Error;
         if (cs.size == 0) {
-            // Terminating chunk. Consume the optional trailer up to its CRLF.
-            // Same kMaxChunkLineBytes guard against an unterminated trailer.
-            const int end = buffer.indexOf("\r\n", crlf + 2);
-            if (end < 0)
-                return buffer.size() > kMaxChunkLineBytes ? ChunkDecode::Error
-                                                          : ChunkDecode::NeedMore;
-            buffer.remove(0, end + 2);
-            return ChunkDecode::Done;
+            // Terminating chunk. RFC 9112 7.1: last-chunk is followed by an OPTIONAL
+            // trailer section of field-lines and then a FINAL empty line. Stopping at
+            // the FIRST CRLF ended the message early -- "0\r\nA: 1\r\n" (trailer not
+            // yet terminated) returned Done on an INCOMPLETE body, and a multi-field
+            // trailer left its remaining lines in the buffer, where they would be read
+            // as the start of the next response. Scan field-lines to the empty line.
+            int pos = crlf + 2;                       // first byte after "0\r\n"
+            while (true) {
+                const int e = buffer.indexOf("\r\n", pos);
+                if (e < 0)                            // trailer not terminated yet
+                    return buffer.size() > kMaxChunkLineBytes ? ChunkDecode::Error
+                                                              : ChunkDecode::NeedMore;
+                if (e == pos) {                       // empty line -> trailer complete
+                    buffer.remove(0, e + 2);
+                    return ChunkDecode::Done;
+                }
+                if (e - pos > kMaxChunkLineBytes) return ChunkDecode::Error;
+                pos = e + 2;                          // next trailer field-line
+            }
         }
         // Need the full chunk data + its trailing CRLF before consuming. cs.size
         // is already <= kMaxBodyBytes, so this sum cannot overflow qint64.
