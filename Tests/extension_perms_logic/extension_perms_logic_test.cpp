@@ -69,6 +69,17 @@ int main(int argc, char **argv) {
         // a mention that isn't the directive doesn't grant anything.
         chk("non-directive mention -> empty",
             parsePermissions("// this extension does modify-requests to headers\n").isEmpty());
+    // audit-10: TWO separate directive lines UNION (globalMatch, not first-match-only).
+    {
+        const QSet<QString> g = parsePermissions(
+            "// nullock:permissions modify-requests\nvar x=1;\n// nullock:permissions modify-responses\n");
+        chk("two separate directive lines both union",
+            g.contains(kModifyRequests) && g.contains(kModifyResponses));
+    }
+    // audit-10: the directive must be COMMENT-LEADING (^[ \t]*//); code before the
+    // comment on the same line must NOT grant (the line-leading anchor).
+    chk("code-then-directive on the same line does NOT grant",
+        parsePermissions("var k=1; // nullock:permissions modify-requests\n").isEmpty());
     }
 
     // ----- requiresGrant -----

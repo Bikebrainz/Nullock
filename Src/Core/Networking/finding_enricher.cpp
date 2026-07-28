@@ -462,8 +462,12 @@ void enrich(Finding &f) {
 
 QString confidenceForKind(const QString &kind) {
     const QString k = kind.toLower();
-    // Proven out-of-band / by an active control round -> confirmed.
-    if (k.contains(QLatin1String("oast"))
+    // Proven out-of-band / by an active control round -> confirmed. NOTE: match the
+    // CONFIRMED oast kinds ("...-oast-callback" / "...-oast-confirmed"; the latter also
+    // hits "confirmed" below) via "oast-callback", NOT a bare "oast": an unconfirmed
+    // "oast-token-fired" LEAD (the token was planted but no callback has arrived yet)
+    // merely contains "oast" and must NOT be stamped confirmed.
+    if (k.contains(QLatin1String("oast-callback"))
         || k.contains(QLatin1String("confirmed"))
         || k.contains(QLatin1String("interactsh"))
         || k.contains(QLatin1String("-oob"))
@@ -471,11 +475,13 @@ QString confidenceForKind(const QString &kind) {
         || k.contains(QLatin1String("blind-time"))    // sqli-blind-time-{mysql,...}: reproduced timing proof
         || k.contains(QLatin1String("blind-confirmed")))
         return QStringLiteral("confirmed");
-    // Explicitly heuristic -> tentative.
+    // Explicitly heuristic -> tentative. "-suspect" kinds are the deliberately-unproven
+    // (reduced-CVSS) counterparts of a confirmed finding and must read tentative, not firm.
     if (k.contains(QLatin1String("possible"))
         || k.contains(QLatin1String("-lead"))
         || k.contains(QLatin1String("maybe"))
         || k.contains(QLatin1String("heuristic"))
+        || k.contains(QLatin1String("suspect"))
         || k.contains(QLatin1String("reflected-uncorroborated")))
         return QStringLiteral("tentative");
     return QStringLiteral("firm");

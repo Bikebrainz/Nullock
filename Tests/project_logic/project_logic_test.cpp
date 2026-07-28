@@ -57,6 +57,11 @@ int main(int argc, char **argv) {
     chk("reserved: NUL.json rejected", !isValidProjectName("NUL.json"));
     chk("reserved: COM1.log rejected", !isValidProjectName("COM1.log"));
     chk("reserved: con.bak rejected (case + ext)", !isValidProjectName("con.bak"));
+    // audit-10: Windows also strips a trailing SPACE (and dot) from the stem before
+    // resolving the device, so "CON .txt" / "COM1 .log" still hit the device.
+    chk("reserved: 'CON .txt' rejected (Win32 trims the trailing space in the stem)",
+        !isValidProjectName("CON .txt"));
+    chk("reserved: 'COM1 .log' rejected", !isValidProjectName("COM1 .log"));
     // ...but NOT over-rejecting names that merely START with a reserved token.
     chk("reserved: 'console' is allowed (stem CONSOLE != CON)", isValidProjectName("console"));
     chk("reserved: 'contacts' is allowed", isValidProjectName("contacts"));

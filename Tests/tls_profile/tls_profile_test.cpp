@@ -58,6 +58,20 @@ int main(int argc, char **argv) {
         chk("cipherNames: Firefox131 non-empty", !ff.isEmpty());
         chk("cipherNames: None is empty", cipherNames(Profile::None).isEmpty());
         chk("cipherNames: no duplicates in Chrome list", !hasDuplicates(chrome));
+        // audit-10: the Firefox settable subset (TLS<=1.2; the 3 "TLS_" 1.3 names are
+        // dropped) is 10, led by ECDHE-ECDSA-AES128-GCM-SHA256 -- only Chrome's was pinned.
+        const QStringList ffSettable = settableCipherNames(ff);
+        chk("Firefox settable count == 10", ffSettable.size() == 10);
+        chk("Firefox settable leads ECDHE-ECDSA-AES128-GCM-SHA256",
+            ffSettable.value(0) == "ECDHE-ECDSA-AES128-GCM-SHA256");
+        chk("Firefox settable ends ECDHE-RSA-AES256-SHA",
+            ffSettable.value(ffSettable.size() - 1) == "ECDHE-RSA-AES256-SHA");
+        // audit-10: Firefox 131 has NO plain-RSA kx -- assert the INVARIANT (every
+        // cipher is ECDHE- or a TLS 1.3 suite), not two hard-coded names.
+        bool ffAllEcdheOr13 = true;
+        for (const QString &cn : ff)
+            if (!(cn.startsWith("ECDHE-") || isTls13SuiteName(cn))) ffAllEcdheOr13 = false;
+        chk("Firefox: every cipher is ECDHE- or a TLS1.3 suite (no plain-RSA kx)", ffAllEcdheOr13);
         chk("cipherNames: no duplicates in Firefox list", !hasDuplicates(ff));
         chk("cipherNames: Chrome lists a known TLS1.2 suite",
             chrome.contains("ECDHE-RSA-AES128-GCM-SHA256"));

@@ -232,6 +232,12 @@ int main(int argc, char **argv) {
         ck("possible kind -> tentative",    conf("xxe-possible")       == "tentative");
         ck("-lead kind -> tentative",       conf("cors-lead")          == "tentative");
         ck("plain kind -> firm",            conf("missing-csp")        == "firm");
+        // audit-10: an UNCONFIRMED oast lead ("oast-token-fired": token planted, no
+        // callback yet) must NOT be stamped confirmed by a bare contains("oast").
+        ck("oast-token-fired (unconfirmed lead) -> NOT confirmed",
+                                            conf("oast-token-fired")   != "confirmed");
+        // audit-10: a heuristic "-suspect" kind reads tentative, not firm.
+        ck("-suspect kind -> tentative",    conf("race-condition-suspect") == "tentative");
         // A scanner that already proved it keeps its explicit confidence.
         {
             Finding f; f.kind = "missing-csp"; f.severity = "medium";

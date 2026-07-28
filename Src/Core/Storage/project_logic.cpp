@@ -23,6 +23,11 @@ bool isValidProjectName(const QString &name) {
     // does not fold them, so they would otherwise slip the reserved check.
     QString stem = name.section(QChar('.'), 0, 0).toUpper();
     stem.replace(QChar(0x00B9), QChar('1')).replace(QChar(0x00B2), QChar('2')).replace(QChar(0x00B3), QChar('3'));
+    // Windows STRIPS trailing spaces AND dots from a name segment before resolving a
+    // device, so "CON .txt" / "COM1 .log" still hit the device. Right-trim them from
+    // the stem before matching -- the whole-name endsWith(' ')/('.') guard above does
+    // NOT catch a trailing space that sits just before the extension dot.
+    while (stem.endsWith(QChar(' ')) || stem.endsWith(QChar('.'))) stem.chop(1);
     if (kReserved.contains(stem)) return false;
     for (const QChar c : name) {
         const ushort u = c.unicode();
