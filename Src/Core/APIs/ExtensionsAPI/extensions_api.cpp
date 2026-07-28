@@ -397,7 +397,21 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
         }
         if (rpOk) resp.reasonPhrase = rp;
         resp.headers = headersFromJs(e.property("headers"));
-        resp.body    = e.property("bodyText").toString().toUtf8();
+        // Write the body back ONLY if the handler actually changed it.
+        // `bodyText` is a QString, so a binary body (PNG, woff2, gzip) becomes
+        // U+FFFD replacement characters on the way in and DIFFERENT bytes on the
+        // way out. An unconditional write-back therefore corrupted every binary
+        // response that passed a granted extension -- even one that only READ the
+        // body and never assigned to it. Comparing against exactly what
+        // buildEntry() handed in keeps the original bytes byte-for-byte untouched.
+        //
+        // This does NOT make binary bodies editable: an extension that genuinely
+        // wants to rewrite one still round-trips through a lossy QString. Doing
+        // that losslessly needs a separate bytes-oriented API, which is a bigger
+        // change than this fix and deliberately out of scope here.
+        const QString handedIn = QString::fromUtf8(resp.body);
+        const QString returned = e.property("bodyText").toString();
+        if (returned != handedIn) resp.body = returned.toUtf8();
     };
 
     for (ResponseHandler &h : m_onResponseHandlers) {

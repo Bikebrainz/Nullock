@@ -300,7 +300,18 @@ QJsonArray HistoryIndex::find(const QJsonObject &filters) const {
 
     // Build the parameterized SELECT in pure logic (unit-tested for
     // injection-safety + limit clamping). Every operator value is a bound ?.
-    const HistoryLogic::FindQuery fq = HistoryLogic::buildFindQuery(filters);
+    // Unreadable numeric filters are DROPPED rather than guessed at (a
+    // non-numeric "status" used to bind 0 and match only transport failures).
+    // Surface that, so a typo'd filter is not silently answered with the wrong
+    // rows. find() returns rows only, with no status channel, so the log is
+    // where it goes -- changing the return shape would ripple into the API and UI.
+    QStringList ignoredFilters;
+    const HistoryLogic::FindQuery fq =
+        HistoryLogic::buildFindQuery(filters, &ignoredFilters);
+    if (!ignoredFilters.isEmpty()) {
+        qWarning() << "history-index: ignoring unreadable filter(s):"
+                   << ignoredFilters.join(QStringLiteral(", "));
+    }
     QSqlQuery q(m_db);
     q.prepare(fq.sql);
     for (const auto &b : fq.binds) q.addBindValue(b);

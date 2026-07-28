@@ -146,6 +146,95 @@ int main(int argc, char **argv) {
             q.sql.lastIndexOf(" AND ") < q.sql.indexOf("ORDER BY"));
     }
 
+    // ===== audit-13: unreadable numeric filters are DROPPED, not guessed ====
+    // QJsonValue::toInt()/toDouble() return 0 for a non-numeric value, so the
+    // old code silently answered a DIFFERENT query than the operator asked for.
+    {
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(QJsonObject{{ "status", "200" }}, &ignored);
+        // "200" is a STRING. Binding 0 would have matched only transport-failure
+        // rows -- confidently wrong, and impossible to notice from the results.
+        chk("status string: no status clause emitted", !q.sql.contains("AND status = ?"));
+        chk("status string: only the limit is bound", q.binds.size() == 1);
+        chk("status string: reported as ignored", ignored == QStringList{ "status" });
+    }
+    {
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(QJsonObject{{ "sinceMs", "yesterday" }}, &ignored);
+        // Binding 0 made this `ts >= 0` -- the time window silently vanished.
+        chk("sinceMs string: no ts clause emitted", !q.sql.contains("AND ts >= ?"));
+        chk("sinceMs string: reported as ignored", ignored == QStringList{ "sinceMs" });
+    }
+    {
+        // static_cast<qint64> of an out-of-range double is UNDEFINED BEHAVIOUR;
+        // in practice it lands on INT64_MIN, which INVERTS a size bound into
+        // "match everything". Rejected before the cast now.
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(QJsonObject{{ "minSize", 1e300 }}, &ignored);
+        chk("minSize 1e300: no size clause emitted", !q.sql.contains("AND size >= ?"));
+        chk("minSize 1e300: reported as ignored", ignored == QStringList{ "minSize" });
+        QStringList ig2;
+        buildFindQuery(QJsonObject{{ "maxSize", -1e300 }}, &ig2);
+        chk("maxSize -1e300: reported as ignored", ig2 == QStringList{ "maxSize" });
+    }
+    {
+        // Several at once, and the out-param is optional (the 1-arg call still
+        // compiles and behaves identically).
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(
+            QJsonObject{{ "status", true }, { "minSize", QJsonValue() }, { "host", "h" }}, &ignored);
+        chk("mixed: both unreadable numerics reported",
+            ignored.size() == 2 && ignored.contains("status") && ignored.contains("minSize"));
+        chk("mixed: the READABLE host filter still applies", q.sql.contains("AND host LIKE ?"));
+        const FindQuery q1 = buildFindQuery(QJsonObject{{ "status", "x" }});
+        chk("mixed: the 1-arg call still works", !q1.sql.contains("AND status = ?"));
+    }
+    {
+        // Not over-broad: valid numerics are untouched, including 0 and negatives.
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(
+            QJsonObject{{ "status", 0 }, { "minSize", 0 }, { "sinceMs", 1700000000000.0 }}, &ignored);
+        chk("valid: nothing reported as ignored", ignored.isEmpty());
+        chk("valid: status 0 IS a legitimate filter", q.sql.contains("AND status = ?"));
+        chk("valid: ms-epoch survives as 64-bit",
+            q.binds.contains(QVariant(qint64(1700000000000LL))));
+    }
+    {
+        // `limit` is deliberately NOT reported: it is a safety ceiling, not a row
+        // filter, and falling back to the default can only return FEWER rows.
+        QStringList ignored;
+        const FindQuery q = buildFindQuery(QJsonObject{{ "limit", "lots" }}, &ignored);
+        chk("limit garbage: NOT reported as ignored (it is a ceiling)", ignored.isEmpty());
+        chk("limit garbage: falls back to the default",
+            q.binds.size() == 1 && q.binds[0].toInt() == kFindLimitDefault);
+    }
+    {
+        // audit-13: method folding must agree with SQLite's ASCII-only UPPER().
+        // QString::toUpper() is full-Unicode, so it folded bytes SQLite would
+        // leave alone and the comparison could never match.
+        const FindQuery q = buildFindQuery(QJsonObject{{ "method", "get" }});
+        chk("method: ASCII still uppercased", q.binds[0].toString() == QStringLiteral("GET"));
+        const FindQuery qu = buildFindQuery(QJsonObject{{ "method", QString::fromUtf8("gét") }});
+        chk("method: a non-ASCII char is LEFT ALONE, matching SQLite's UPPER()",
+            qu.binds[0].toString() == QString::fromUtf8("GéT"));
+    }
+    // SKIPPED, not fixed: host/path LIKE emits no ESCAPE clause, so '_' is a
+    // single-character wildcard in a value the operator may have meant literally.
+    // The header DOCUMENTS '%' as an intentional wildcard search, and the API has
+    // no way to say "this value is literal", so adding ESCAPE would fix a minor
+    // over-match by BREAKING the documented feature. These pin the deliberate
+    // behaviour so it is not "fixed" by a later audit without that trade-off.
+    {
+        const FindQuery q = buildFindQuery(QJsonObject{{ "host", "%example%" }});
+        chk("LIKE: '%' reaches the bind verbatim (documented wildcard search)",
+            q.binds[0].toString() == QStringLiteral("%example%"));
+        chk("LIKE: no ESCAPE clause is emitted (would disable the wildcard)",
+            !q.sql.contains("ESCAPE"));
+        const FindQuery u = buildFindQuery(QJsonObject{{ "host", "build_server" }});
+        chk("LIKE: '_' also reaches the bind verbatim (same deliberate semantics)",
+            u.binds[0].toString() == QStringLiteral("build_server"));
+    }
+
     std::fprintf(stderr, "history_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
