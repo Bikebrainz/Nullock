@@ -243,6 +243,81 @@ int main(int argc, char **argv) {
     chkb("CL SP/HTAB padding still ok (non-regression)",
          parseContentLength(" \t42 \t").ok, true);
 
+    // ===== parseContentLengthHeaders (audit-12: RFC 9112 6.3 duplicates) ====
+    // The response path framed the body from findHeader("Content-Length"), which is
+    // FIRST-wins. A response carrying "Content-Length: 5" AND "Content-Length: 9"
+    // therefore got framed as 5 bytes and the disagreement never surfaced -- the exact
+    // desync this scanner exists to FIND, silently resolved in the target's favour,
+    // leaving the trailing bytes to be graded as part of nothing. Identical duplicates
+    // are legal and must still parse; differing ones are unrecoverable.
+    {
+        using HL = QList<QPair<QString, QString>>;
+        // No Content-Length at all -> not present, and NOT ok (caller falls back to
+        // TE / close-delimited framing rather than treating it as length 0).
+        const auto none = parseContentLengthHeaders(HL{{"X", "y"}});
+        chkb("CLall: absent => !present", none.present, false);
+        chkb("CLall: absent => !ok",      none.ok,      false);
+
+        const auto one = parseContentLengthHeaders(HL{{"Content-Length", "5"}});
+        chkb("CLall: single => present", one.present, true);
+        chkb("CLall: single => ok",      one.ok,      true);
+        chki("CLall: single value",      int(one.value), 5);
+        chkb("CLall: zero is a legal length", parseContentLengthHeaders(HL{{"Content-Length", "0"}}).ok, true);
+
+        // Identical duplicates are legal (RFC 9112 6.3) -- including across DIFFERENT
+        // letter-casing of the field name, which is the same field.
+        const auto dupSame = parseContentLengthHeaders(
+            HL{{"Content-Length", "5"}, {"content-length", "5"}});
+        chkb("CLall: identical duplicates => ok", dupSame.ok, true);
+        chki("CLall: identical duplicates value", int(dupSame.value), 5);
+
+        // THE BUG: differing duplicates. First-wins used to frame 5 bytes here.
+        const auto dupDiff = parseContentLengthHeaders(
+            HL{{"Content-Length", "5"}, {"content-length", "9"}});
+        chkb("CLall: conflicting duplicates => present", dupDiff.present, true);
+        chkb("CLall: conflicting duplicates => !ok (no single correct length)", dupDiff.ok, false);
+        chkb("CLall: conflicting duplicates do NOT silently frame the first value",
+             dupDiff.ok && dupDiff.value == 5, false);
+        // Order must not matter -- the larger-first arrangement is equally fatal.
+        chkb("CLall: conflict detected regardless of order",
+             parseContentLengthHeaders(HL{{"Content-Length", "9"}, {"Content-Length", "5"}}).ok, false);
+
+        // A SINGLE field line carrying a comma list is the same rule (a recipient may
+        // legally collapse duplicates into one line).
+        chkb("CLall: one line '5, 5' => ok",
+             parseContentLengthHeaders(HL{{"Content-Length", "5, 5"}}).ok, true);
+        chki("CLall: one line '5, 5' value",
+             int(parseContentLengthHeaders(HL{{"Content-Length", "5, 5"}}).value), 5);
+        chkb("CLall: one line '5, 9' => !ok",
+             parseContentLengthHeaders(HL{{"Content-Length", "5, 9"}}).ok, false);
+        // Split does NOT skip empty parts: a trailing/leading/double comma leaves an
+        // empty element, which is not 1*DIGIT and must be rejected, not dropped.
+        chkb("CLall: trailing comma '5,' => !ok", parseContentLengthHeaders(HL{{"Content-Length", "5,"}}).ok, false);
+        chkb("CLall: leading comma ',5' => !ok",  parseContentLengthHeaders(HL{{"Content-Length", ",5"}}).ok, false);
+        chkb("CLall: double comma '5,,5' => !ok", parseContentLengthHeaders(HL{{"Content-Length", "5,,5"}}).ok, false);
+        chkb("CLall: empty field value => !ok",   parseContentLengthHeaders(HL{{"Content-Length", ""}}).ok, false);
+        chkb("CLall: empty field value is still PRESENT",
+             parseContentLengthHeaders(HL{{"Content-Length", ""}}).present, true);
+
+        // Element validation stays THIS module's strict parseContentLength, not the
+        // proxy's bare toLongLong -- so "+5" and "0x10" are rejected here even though
+        // toLongLong would happily take them.
+        chkb("CLall: malformed element => !ok",
+             parseContentLengthHeaders(HL{{"Content-Length", "5, garbage"}}).ok, false);
+        chkb("CLall: '+5' rejected (stricter than toLongLong)",
+             parseContentLengthHeaders(HL{{"Content-Length", "+5"}}).ok, false);
+        chkb("CLall: '0x10' rejected",
+             parseContentLengthHeaders(HL{{"Content-Length", "0x10"}}).ok, false);
+        chkb("CLall: NBSP-padded element rejected (OWS is SP/HTAB only)",
+             parseContentLengthHeaders(HL{{"Content-Length", QString(QChar(0x00A0)) + "5"}}).ok, false);
+        // OWS around list elements is legal and must NOT be mistaken for a conflict.
+        chkb("CLall: ' 5 , 5 ' with OWS => ok",
+             parseContentLengthHeaders(HL{{"Content-Length", " 5 , 5 "}}).ok, true);
+        // Other headers must not be swept in by a substring-ish name match.
+        chkb("CLall: 'X-Content-Length' is a DIFFERENT header, not counted",
+             parseContentLengthHeaders(HL{{"X-Content-Length", "9"}}).present, false);
+    }
+
     // ===== transferEncodingIsChunked (audit-11: FINAL coding, not contains) =====
     // A bare contains("chunked") also fired on "chunked, gzip" (NOT chunk-framed --
     // close-delimited) and on lookalikes, making the chunk reader fail and DISCARD the

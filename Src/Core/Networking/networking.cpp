@@ -241,7 +241,13 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     result.parsed.wasTls       = useTls;
 
     const QString te = NetworkingLogic::findHeader(result.parsed.headers, "Transfer-Encoding");
-    const QString cl = NetworkingLogic::findHeader(result.parsed.headers, "Content-Length");
+    // Every Content-Length field line, not just the first. findHeader() is
+    // FIRST-wins, so a response deliberately carrying "Content-Length: 5" and
+    // "Content-Length: 9" was framed from the 5 and the disagreement never
+    // surfaced -- the exact desync this scanner exists to FIND, silently
+    // resolved in the target's favour. (RFC 9112 6.3; the proxy path already
+    // enforces this via HttpLogic::isFramingSafe.)
+    const auto clAll = NetworkingLogic::parseContentLengthHeaders(result.parsed.headers);
 
     // A response to HEAD, and any 204/304, has NO body regardless of the
     // Content-Length / Transfer-Encoding it advertises (RFC 9110). Reading
@@ -266,20 +272,22 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             return result;
         }
         result.parsed.body = decoded;
-    } else if (!cl.isEmpty()) {
+    } else if (clAll.present) {
         // A present-but-malformed Content-Length (non-numeric, negative, or
         // over-cap) is a framing error -- reject it rather than silently
         // truncating to an empty / mis-sized body (cl.toLongLong() with no
         // &ok would yield 0 on "garbage" and a whole-rest/empty body on a
-        // negative value). The bytes DID arrive, so like the malformed
+        // negative value). CONFLICTING duplicates are the same class of error:
+        // there is no single correct body length, so framing one at all means
+        // picking a side. The bytes DID arrive, so like the malformed
         // status-line path we leave outcome == Ok and fail with ok == false.
-        const auto clv = NetworkingLogic::parseContentLength(cl);
-        if (!clv.ok) {
-            result.errorMessage = "invalid Content-Length: " + cl;
+        if (!clAll.ok) {
+            result.errorMessage = "invalid or conflicting Content-Length: "
+                                + clAll.values.join(QStringLiteral(", "));
             socket->deleteLater();
             return result;
         }
-        const qint64 n = clv.value;
+        const qint64 n = clAll.value;
         result.parsed.body = rest;
         if (result.parsed.body.size() < n) {
             QByteArray extra;

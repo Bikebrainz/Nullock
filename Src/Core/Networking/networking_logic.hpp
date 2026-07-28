@@ -4,6 +4,7 @@
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 
 // Pure parsing cores for HttpClient::send (networking.cpp). Every byte these
 // touch is attacker / MitM-controlled (status line, headers, chunk framing,
@@ -71,6 +72,27 @@ struct ContentLength {
 // Rejects non-numeric ("garbage", "0x10"), negative ("-5"), and over-cap
 // values. A present-but-malformed Content-Length is a framing error: callers
 // must reject it, NOT silently fall back to an empty / close-delimited body.
+
+// --- Content-Length across the WHOLE message (RFC 9112 6.3) --------------
+// A message may carry more than one Content-Length field line, and a single
+// field line may carry a comma-separated list. That is valid ONLY when every
+// value is identical; two DIFFERING values are an unrecoverable framing error --
+// the classic smuggling desync, where each party frames a different number of
+// bytes. Reading the length with findHeader() takes FIRST-wins, so a deliberate
+// disagreement ("Content-Length: 5" then "Content-Length: 9") was silently
+// resolved in the sender's favour and the body framed from one side of it.
+//
+// Mirrors the policy the proxy path already enforces (HttpLogic::isFramingSafe)
+// but keeps THIS module's stricter element validation: every element goes
+// through parseContentLength above, so "+5" / "0x10" / NBSP-prefixed values are
+// still rejected here even though a bare toLongLong would take them.
+struct ContentLengthAll {
+    bool       present = false;   // at least one Content-Length field line exists
+    bool       ok      = false;   // every element parsed AND all agreed
+    qint64     value   = 0;       // the agreed length (only when ok)
+    QStringList values;           // raw elements as seen, for the error message
+};
+ContentLengthAll parseContentLengthHeaders(const QList<QPair<QString, QString>> &headers);
 // True only when "chunked" is the FINAL transfer-coding (RFC 9112 6.1) -- "gzip,
 // chunked" is chunk-framed, "chunked, gzip" and "xchunked" are NOT.
 bool transferEncodingIsChunked(const QString &transferEncodingValue);

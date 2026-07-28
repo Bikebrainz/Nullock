@@ -109,6 +109,30 @@ ContentLength parseContentLength(const QString &cl) {
     return out;
 }
 
+ContentLengthAll parseContentLengthHeaders(const QList<QPair<QString, QString>> &headers) {
+    ContentLengthAll out;
+    bool haveValue = false;
+    for (const auto &h : headers) {
+        if (h.first.compare(QLatin1String("Content-Length"), Qt::CaseInsensitive) != 0)
+            continue;
+        out.present = true;
+        // Split WITHOUT SkipEmptyParts: "5," / ",5" / "5,,5" have an empty element,
+        // which is not 1*DIGIT and must be rejected rather than quietly dropped.
+        for (const QString &raw : h.second.split(QLatin1Char(','))) {
+            out.values << raw;
+            const ContentLength one = parseContentLength(raw);
+            if (!one.ok) { out.ok = false; return out; }   // malformed element
+            if (!haveValue) { out.value = one.value; haveValue = true; }
+            else if (one.value != out.value) {             // the smuggling desync
+                out.ok = false;
+                return out;
+            }
+        }
+    }
+    out.ok = haveValue;
+    return out;
+}
+
 ChunkSize parseChunkSizeLine(const QByteArray &sizeLine) {
     ChunkSize out;
     QByteArray s = sizeLine;
