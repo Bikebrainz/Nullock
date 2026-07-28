@@ -11,6 +11,8 @@
 #include <QStringList>
 #include <QTcpSocket>
 
+#include <memory>
+
 namespace Nullock::Core {
 
 namespace {
@@ -123,19 +125,27 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         TlsProfile::apply(cfg, m_profile);
         ssl->setSslConfiguration(cfg);
         ssl->setPeerVerifyName(host);
-        QStringList tlsErrors;
+        // The collector is heap-owned and captured BY VALUE (shared_ptr), NOT a
+        // stack local captured by reference. The connection's context object is
+        // `ssl`, which is parented to `this` and only ever deleteLater()'d -- and
+        // deleteLater needs an event-loop turn this synchronous call never makes,
+        // so on every early-return path below the socket OUTLIVES this stack frame
+        // with the connection still live. A by-reference capture would then have
+        // sslErrors write into destroyed stack memory. Sharing ownership makes the
+        // list live exactly as long as the connection that writes to it.
+        auto tlsErrors = std::make_shared<QStringList>();
         QObject::connect(ssl, &QSslSocket::sslErrors, ssl,
-                         [&tlsErrors, host](const QList<QSslError> &errs) {
+                         [tlsErrors, host](const QList<QSslError> &errs) {
             for (const auto &e : errs) {
-                tlsErrors << (host + ": " + e.errorString());
+                *tlsErrors << (host + ": " + e.errorString());
             }
         });
         socket = ssl;
         ssl->connectToHostEncrypted(host, port);
         if (!ssl->waitForEncrypted(kTimeoutMs)) {
             QString reason = ssl->errorString();
-            if (!tlsErrors.isEmpty()) {
-                reason = tlsErrors.join("; ") + " :: " + reason;
+            if (!tlsErrors->isEmpty()) {
+                reason = tlsErrors->join("; ") + " :: " + reason;
             }
             result.outcome = SocketOutcome::ConnectError;
             result.errorMessage = "TLS handshake failed: " + reason;
@@ -179,7 +189,8 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     // readHeaderBlock with them. A guard caps pathological loops.
     QByteArray headerBlock, rest;
     NetworkingLogic::StatusLine status;
-    for (int guard = 0; ; ++guard) {
+    bool tooManyInterim = false;
+    for (int seen = 0; ; ++seen) {
         const int sep = headerBuf.indexOf("\r\n\r\n");
         headerBlock = headerBuf.left(sep);
         rest = headerBuf.mid(sep + 4);
@@ -187,8 +198,8 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         const QByteArray statusLine =
             headerBlock.left(firstLineEnd < 0 ? headerBlock.size() : firstLineEnd);
         status = NetworkingLogic::parseStatusLine(statusLine);
-        if (status.ok && status.statusCode >= 100 && status.statusCode < 200
-                && guard < 8) {
+        const auto action = NetworkingLogic::classifyInterimResponse(status, seen);
+        if (action == NetworkingLogic::InterimAction::SkipToNext) {
             headerBuf = rest;                    // next response starts here
             if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
@@ -198,9 +209,22 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             }
             continue;
         }
+        tooManyInterim = (action == NetworkingLogic::InterimAction::TooManyInterim);
         break;
     }
     result.rawResponse = headerBuf;
+
+    // Budget spent with an interim STILL in hand. Falling through here reported
+    // ok == true carrying the 1xx's status code and headers, with the real final
+    // response's raw bytes (status line included) delivered as the BODY -- a false
+    // success any target can force by prefixing its reply with nine 103s. The
+    // bytes did arrive, so like the malformed-status-line path below we leave
+    // outcome == Ok and fail with ok == false.
+    if (tooManyInterim) {
+        result.errorMessage = "too many 1xx interim responses";
+        socket->deleteLater();
+        return result;
+    }
 
     if (!status.ok) {
         const QByteArray statusLine =

@@ -103,6 +103,53 @@ int main(int argc, char **argv) {
         chki("status plain 3-digit still parses", parseStatusLine("HTTP/1.1 503 Nope").statusCode, 503);
     }
 
+    // ===== classifyInterimResponse (audit-12: exhausted 1xx skip) ========
+    // The reader skips 1xx interim heads (100 Continue, 103 Early Hints) to reach the
+    // real response, bounded by kMaxInterimResponses. Running OUT of that budget is
+    // NOT a final response: the 1xx in hand does not answer the request. The old
+    // reader conflated the two -- it simply stopped looping -- and so returned
+    // ok == true carrying the interim's status code and headers while the REAL
+    // response's raw bytes (status line and all) were delivered as the BODY. Any
+    // target can force that by prefixing its reply with nine 103s, blinding every
+    // status- and header-keyed check in the scanner. These pin the three verdicts
+    // apart; a regression that drops TooManyInterim shows up here.
+    {
+        const auto interim = parseStatusLine("HTTP/1.1 103 Early Hints");
+        const auto final200 = parseStatusLine("HTTP/1.1 200 OK");
+        chkb("interim: a 1xx within budget is skipped",
+             classifyInterimResponse(interim, 0) == InterimAction::SkipToNext, true);
+        chkb("interim: the LAST in-budget 1xx is still skipped",
+             classifyInterimResponse(interim, kMaxInterimResponses - 1) == InterimAction::SkipToNext, true);
+        // The boundary: budget spent, still 1xx -> its OWN verdict, not Final.
+        chkb("interim: budget exhausted + still 1xx => TooManyInterim",
+             classifyInterimResponse(interim, kMaxInterimResponses) == InterimAction::TooManyInterim, true);
+        chkb("interim: exhausted 1xx is NOT reported as Final (the false success)",
+             classifyInterimResponse(interim, kMaxInterimResponses) == InterimAction::Final, false);
+        chkb("interim: past the budget stays TooManyInterim",
+             classifyInterimResponse(interim, kMaxInterimResponses + 5) == InterimAction::TooManyInterim, true);
+        // A real final response is Final at ANY count -- the budget must not turn a
+        // legitimately-late 200 into an error.
+        chkb("interim: a 200 is Final at seen=0",
+             classifyInterimResponse(final200, 0) == InterimAction::Final, true);
+        chkb("interim: a 200 is Final even with the budget spent",
+             classifyInterimResponse(final200, kMaxInterimResponses) == InterimAction::Final, true);
+        // 1xx is [100,200): the bounds themselves must not slip.
+        chkb("interim: 100 Continue is interim",
+             classifyInterimResponse(parseStatusLine("HTTP/1.1 100 Continue"), 0) == InterimAction::SkipToNext, true);
+        chkb("interim: 199 is interim (upper edge)",
+             classifyInterimResponse(parseStatusLine("HTTP/1.1 199 X"), 0) == InterimAction::SkipToNext, true);
+        chkb("interim: 99 is NOT interim (lower edge)",
+             classifyInterimResponse(parseStatusLine("HTTP/1.1 099 X"), 0) == InterimAction::Final, true);
+        // A malformed head is handed back as Final so the caller's existing
+        // malformed-status-line branch owns it, rather than being silently skipped
+        // as though it were an interim response.
+        chkb("interim: a malformed status line is Final, not skipped",
+             classifyInterimResponse(parseStatusLine("garbage"), 0) == InterimAction::Final, true);
+        // statusCode 0 (well-formed line, non-3DIGIT code) must not read as 1xx.
+        chkb("interim: statusCode 0 is Final, not interim",
+             classifyInterimResponse(parseStatusLine("HTTP/1.1 +200 OK"), 0) == InterimAction::Final, true);
+    }
+
     // ===== parseHeaders ==================================================
     {
         const QByteArray block =

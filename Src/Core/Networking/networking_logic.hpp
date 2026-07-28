@@ -38,6 +38,24 @@ struct StatusLine {
 // must be present (reason may be empty). Missing either space => ok=false.
 StatusLine parseStatusLine(const QByteArray &line);
 
+// --- 1xx interim-response policy -----------------------------------------
+// A server may emit any number of interim (1xx) header blocks -- 100 Continue,
+// 103 Early Hints -- before the real final response. The reader skips them, but
+// it must bound the skipping, and running OUT of that bound is an ERROR, not a
+// final response: the 1xx in hand is NOT the answer to the request, and treating
+// it as one reports the interim's status/headers while the real response lands in
+// the body. A hostile target can trigger that at will to blind every status- and
+// header-keyed check, so the exhausted case gets its own verdict.
+enum class InterimAction {
+    Final,            // this IS the final response (or malformed -- caller decides)
+    SkipToNext,       // a 1xx within budget: re-seed and read the next header block
+    TooManyInterim,   // budget exhausted and STILL 1xx: no final response exists
+};
+// `seen` is the number of interim responses already skipped.
+constexpr int kMaxInterimResponses = 8;
+InterimAction classifyInterimResponse(const StatusLine &status, int seen,
+                                      int maxInterim = kMaxInterimResponses);
+
 // --- header block (the bytes AFTER the status line, up to CRLFCRLF) ------
 // lines[0] is the status line and is skipped (i starts at 1). A line with no
 // ':' (or ':' at column 0) is ignored. Header COUNT is bounded upstream by

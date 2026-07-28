@@ -23,6 +23,19 @@ StatusLine parseStatusLine(const QByteArray &line) {
     return out;
 }
 
+InterimAction classifyInterimResponse(const StatusLine &status, int seen, int maxInterim) {
+    // A malformed head is not an interim response -- hand it back so the caller's
+    // existing malformed-status-line path owns the error message.
+    if (!status.ok) return InterimAction::Final;
+    if (status.statusCode < 100 || status.statusCode >= 200) return InterimAction::Final;
+    // Still 1xx with the budget spent: there is no final response to report. This
+    // MUST be distinguishable from Final -- conflating the two is what let an
+    // exhausted skip-loop return the interim's status/headers as if they answered
+    // the request, with the real response's raw bytes sitting in the body.
+    if (seen >= maxInterim) return InterimAction::TooManyInterim;
+    return InterimAction::SkipToNext;
+}
+
 QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
     QList<QPair<QString, QString>> out;
     const QList<QByteArray> lines = block.split('\n');
