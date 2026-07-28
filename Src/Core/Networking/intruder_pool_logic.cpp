@@ -14,6 +14,11 @@ int clampThrottleMs(int ms) {
     return ms;
 }
 
+int sleepSliceMs(int remainingMs, int sliceMs) {
+    if (remainingMs <= 0 || sliceMs <= 0) return 0;
+    return remainingMs < sliceMs ? remainingMs : sliceMs;
+}
+
 int rpsToDelayMs(int rps) {
     if (rps <= 0) return 0;
     return 1000 / rps;

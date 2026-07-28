@@ -29,6 +29,25 @@ constexpr int kMaxSitemapRefs = 100;
 bool isDisallowPattern(const QString &val) {
     return val.contains(QLatin1Char('*')) || val.endsWith(QLatin1Char('$'));
 }
+
+// Drop XML comments. isSitemapIndex() already did this; parseSitemapLocs() did
+// not, and that inconsistency was a bug in BOTH directions -- see the call site.
+QString stripXmlComments(const QString &xml) {
+    static const QRegularExpression rx(QStringLiteral("(?s)<!--.*?-->"));
+    QString out = xml;
+    out.remove(rx);
+    return out;
+}
+
+// <loc><![CDATA[https://x/p]]></loc> is legal sitemap XML. Captured verbatim the
+// markup rides along and no URL parser accepts the result, so every entry in such
+// a sitemap was silently dropped.
+QString unwrapCdata(const QString &s) {
+    static const QRegularExpression rx(QStringLiteral("\\A<!\\[CDATA\\[(.*)\\]\\]>\\z"),
+                                       QRegularExpression::DotMatchesEverythingOption);
+    const auto m = rx.match(s);
+    return m.hasMatch() ? m.captured(1).trimmed() : s;
+}
 } // namespace
 
 bool looksLikeRobots(const QString &body) {
@@ -103,9 +122,16 @@ QStringList parseSitemapLocs(const QString &body, bool &truncated) {
     // keeps it from matching <location>.
     static const QRegularExpression re(QStringLiteral(
         "(?is)<(?:[A-Za-z][\\w.\\-]*:)?loc\\b[^>]*>\\s*(.*?)\\s*</(?:[A-Za-z][\\w.\\-]*:)?loc\\s*>"));
-    auto it = re.globalMatch(body);
+    // Strip comments FIRST -- the same thing isSitemapIndex() has always done. The
+    // inconsistency cut both ways. A commented-out <loc> was harvested as a live
+    // lead, so the scanner fetched a URL the site had explicitly retired. Worse, an
+    // UNBALANCED <loc> inside a comment made the non-greedy (.*?) run past the
+    // comment to the NEXT REAL </loc>, so one garbage capture SWALLOWED the real
+    // entry that followed it -- a page lead lost, not merely a spurious one gained.
+    const QString cleaned = stripXmlComments(body);
+    auto it = re.globalMatch(cleaned);
     while (it.hasNext()) {
-        const QString loc = it.next().captured(1).trimmed();
+        const QString loc = unwrapCdata(it.next().captured(1).trimmed());
         if (loc.isEmpty() || seen.contains(loc)) continue;
         if (out.size() >= kMaxLocs) { truncated = true; break; }
         seen.insert(loc);
@@ -121,8 +147,7 @@ bool isSitemapIndex(const QString &body) {
     // that buries it in a comment -- dropping every real page URL. Strip comments,
     // then take whichever of <sitemapindex>/<urlset> START TAG appears first
     // (namespace-prefix tolerant, with a real tag boundary like parseSitemapLocs).
-    QString b = body;
-    b.remove(QRegularExpression(QStringLiteral("(?s)<!--.*?-->")));
+    const QString b = stripXmlComments(body);   // shared with parseSitemapLocs
     static const QRegularExpression idxRe(
         QStringLiteral("(?is)<\\s*(?:[A-Za-z][\\w.\\-]*:)?sitemapindex[\\s/>]"));
     static const QRegularExpression setRe(

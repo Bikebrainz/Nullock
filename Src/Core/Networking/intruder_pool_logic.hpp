@@ -36,4 +36,21 @@ int clampThrottleMs(int ms);
 // The result is already within [0, 1000] so it needs no separate clamp.
 int rpsToDelayMs(int rps);
 
+// --- interruptible waiting -----------------------------------------------
+// QThread::msleep CANNOT be cancelled. The dispatcher slept the full throttle
+// (up to kMaxThrottleMs = 60s) between dispatches, and each in-flight request
+// slept a 429 Retry-After back-off (up to 59s), with neither looking at the stop
+// flag. So stop() took up to a minute to land -- and because ~Intruder sets the
+// flag and then waits on the worker, APPLICATION SHUTDOWN hung for just as long.
+// The dispatch loop's own comment promises a stop "lands promptly"; slicing the
+// wait is what makes that true.
+//
+// Callers loop on this, re-checking their stop flag between slices, so no single
+// blocking call outlasts a stop by more than one slice.
+constexpr int kSleepSliceMs = 50;
+// Length of the next slice: min(remainingMs, sliceMs). Returns 0 when there is
+// nothing left to wait for, and NEVER a negative or a value exceeding what
+// remains -- a negative would be cast to a huge unsigned by msleep().
+int sleepSliceMs(int remainingMs, int sliceMs = kSleepSliceMs);
+
 } // namespace Nullock::Core::IntruderPool

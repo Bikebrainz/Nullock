@@ -194,6 +194,62 @@ int main(int argc, char **argv) {
         chk("sitemap: not truncated on a small list", !trunc);
     }
 
+    // ===== audit-13: XML comments + CDATA in <loc> ======================
+    // isSitemapIndex() has always stripped comments; parseSitemapLocs() did not.
+    // That sibling inconsistency was a bug in BOTH directions.
+    {
+        bool trunc = false;
+        // (a) FALSE POSITIVE: a commented-out <loc> was harvested as a live lead,
+        //     so the scanner fetched a URL the site had explicitly retired.
+        const QStringList a = parseSitemapLocs(
+            "<urlset><!-- <loc>https://h/retired</loc> -->"
+            "<url><loc>https://h/live</loc></url></urlset>", trunc);
+        chk("comments: a commented-out <loc> is NOT harvested", !has(a, "https://h/retired"));
+        chk("comments: the real <loc> still is", has(a, "https://h/live"));
+        chk("comments: exactly one lead", a.size() == 1);
+
+        // (b) FALSE NEGATIVE, the worse one: an UNBALANCED <loc> inside a comment
+        //     made the non-greedy (.*?) run to the NEXT REAL </loc>, so one garbage
+        //     capture SWALLOWED the following real entry -- a page lead LOST.
+        const QStringList b = parseSitemapLocs(
+            "<urlset><!-- <loc>https://h/broken -->"
+            "<url><loc>https://h/real</loc></url></urlset>", trunc);
+        chk("comments: an UNBALANCED commented <loc> no longer swallows the next entry",
+            has(b, "https://h/real"));
+        chk("comments: and yields no garbage capture", b.size() == 1);
+
+        // (c) CDATA is legal sitemap XML; capturing the markup verbatim produced a
+        //     string no URL parser accepts, silently dropping every entry.
+        const QStringList c = parseSitemapLocs(
+            "<urlset><url><loc><![CDATA[https://h/cdata?a=1&b=2]]></loc></url></urlset>", trunc);
+        chk("CDATA: the URL is unwrapped, not captured with its markup",
+            has(c, "https://h/cdata?a=1&b=2"));
+        chk("CDATA: no markup leaks into the lead",
+            c.size() == 1 && !c[0].contains("CDATA"));
+
+        // Not over-broad: a plain <loc> is untouched, and a URL that merely
+        // CONTAINS "--" or "]]>"-ish text is not mangled.
+        const QStringList d = parseSitemapLocs(
+            "<urlset><url><loc>https://h/a--b</loc></url></urlset>", trunc);
+        chk("non-regression: a '--' inside a plain URL survives", has(d, "https://h/a--b"));
+        const QStringList e = parseSitemapLocs("<loc>https://h/plain</loc>", trunc);
+        chk("non-regression: a bare <loc> still extracts", has(e, "https://h/plain"));
+    }
+    // isSitemapIndex:124 was reported as "documents ROOT but takes first occurrence
+    // anywhere". SKIPPED as already-handled, not fixed: it strips comments (now via
+    // the shared helper) AND requires a real start-tag boundary, which is precisely
+    // the "a <loc> merely carrying that text" case the finding describes. A raw
+    // "<sitemapindex" inside an XML text node is not well-formed to begin with.
+    // These pin that reasoning so the claim does not get re-litigated.
+    {
+        chk("index: a <loc> whose TEXT mentions sitemapindex does not flip the verdict",
+            !isSitemapIndex("<urlset><url><loc>https://h/x?ref=sitemapindex</loc></url></urlset>"));
+        chk("index: a COMMENTED sitemapindex does not flip the verdict",
+            !isSitemapIndex("<!-- <sitemapindex> --><urlset><url></url></urlset>"));
+        chk("index: a real sitemapindex root is still detected",
+            isSitemapIndex("<?xml version=\"1.0\"?><sitemapindex><sitemap></sitemap></sitemapindex>"));
+    }
+
     // ===== isSitemapIndex: index vs urlset ==============================
     chk("isSitemapIndex: <sitemapindex> detected",
         isSitemapIndex("<sitemapindex><sitemap><loc>https://h/s1.xml</loc></sitemap></sitemapindex>"));

@@ -62,6 +62,42 @@ int main(int argc, char **argv) {
     chk("default concurrency in range",
         kDefaultConcurrency >= 1 && kDefaultConcurrency <= kMaxConcurrency);
 
+    // ===== audit-13: sleepSliceMs -- the interruptible-wait primitive ======
+    // QThread::msleep cannot be cancelled, so the dispatcher's throttle (up to
+    // kMaxThrottleMs = 60s) and each request's 429 Retry-After back-off (up to
+    // 59s) ignored stop() outright. ~Intruder sets the stop flag and then WAITS on
+    // the worker, so application shutdown hung for the same duration. Callers now
+    // loop on this, re-checking their flag between slices.
+    chk("slice: a long wait is cut to one slice", sleepSliceMs(60000) == kSleepSliceMs);
+    chk("slice: the tail is the remainder, not a full slice", sleepSliceMs(20, 50) == 20);
+    chk("slice: exactly one slice left", sleepSliceMs(50, 50) == 50);
+    chk("slice: nothing left -> 0", sleepSliceMs(0) == 0);
+    // NEVER negative: msleep takes an unsigned long, so a negative would become an
+    // astronomically long wait -- the exact hang this primitive exists to prevent.
+    chk("slice: negative remaining -> 0, never negative", sleepSliceMs(-1) == 0);
+    chk("slice: deeply negative -> 0", sleepSliceMs(-60000) == 0);
+    chk("slice: never exceeds what remains", sleepSliceMs(7, 50) <= 7);
+    chk("slice: never exceeds the slice size", sleepSliceMs(60000, 50) <= 50);
+    // Degenerate slice sizes fail CLOSED (0 = stop looping), never "wait forever".
+    chk("slice: zero slice size -> 0",     sleepSliceMs(1000, 0) == 0);
+    chk("slice: negative slice size -> 0", sleepSliceMs(1000, -5) == 0);
+    // The whole point: a maximal throttle is bounded by slices, not one 60s block.
+    // Walk it forward -- the loop must terminate and the total must be exact.
+    {
+        int remaining = kMaxThrottleMs, total = 0, slices = 0;
+        while (remaining > 0 && slices < 100000) {
+            const int s = sleepSliceMs(remaining);
+            if (s <= 0) break;
+            total += s; remaining -= s; ++slices;
+        }
+        chk("slice: a 60s throttle terminates", remaining == 0 && slices < 100000);
+        chk("slice: the slices sum to EXACTLY the requested wait", total == kMaxThrottleMs);
+        chk("slice: and it takes many slices (so a stop lands in <= one slice)",
+            slices == kMaxThrottleMs / kSleepSliceMs);
+        chk("slice: the granularity is small enough to feel responsive",
+            kSleepSliceMs <= 100);
+    }
+
     std::fprintf(stderr, "intruder_pool_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

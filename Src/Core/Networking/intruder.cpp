@@ -84,6 +84,22 @@ void computeGrep(const Nullock::Proxy::HttpResponse &resp,
     if (wantExtract) extractedOut = IntruderGrep::grepExtract(scan, spec);
 }
 
+// Wait `totalMs`, abandoning the wait the moment `stop` is set. QThread::msleep
+// is uninterruptible, so both waits in an attack -- the inter-dispatch throttle
+// (up to kMaxThrottleMs = 60s) and the per-request 429 Retry-After back-off (up
+// to 59s) -- ignored a stop() request entirely. Since ~Intruder sets the flag and
+// then waits on the worker, that also meant application shutdown hung for the
+// same duration. See IntruderPool::sleepSliceMs.
+void interruptibleSleep(int totalMs, const std::atomic<bool> &stop) {
+    int remaining = totalMs;
+    while (remaining > 0 && !stop.load()) {
+        const int slice = IntruderPool::sleepSliceMs(remaining);
+        if (slice <= 0) break;
+        QThread::msleep(static_cast<unsigned long>(slice));
+        remaining -= slice;
+    }
+}
+
 } // namespace
 
 Intruder::Intruder(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent)
@@ -456,7 +472,11 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                 if (ok && secs > 0 && secs < 60) waitMs = secs * 1000;
                 break;
             }
-            QThread::msleep(waitMs);
+            // Interruptible: a 429 back-off is up to 59s and there is one per
+            // in-flight request, so an uninterruptible wait here held up
+            // m_pool.waitForDone() -- and therefore stop() and the dtor -- for
+            // that long, per request.
+            interruptibleSleep(waitMs, m_stopRequested);
         }
         const int size       = result.parsed.body.size();
         const QString errMsg = result.ok ? QString() : result.errorMessage;
@@ -495,7 +515,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         if (m_stopRequested) { inFlight.release(); break; }
         const QStringList combo = combos[i];
         QtConcurrent::run(&m_pool, [fireOne, i, combo]() { fireOne(i, combo); });
-        if (throttleMs > 0) QThread::msleep(throttleMs);
+        if (throttleMs > 0) interruptibleSleep(throttleMs, m_stopRequested);
     }
 
     // Join every submitted task before returning. The dtor's wait on m_worker
