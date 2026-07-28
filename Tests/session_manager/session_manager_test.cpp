@@ -58,6 +58,20 @@ int main(int argc, char **argv) {
         pathMatches("/admin", "/admin/p?q=1"));
     chk("path: an empty request path -> '/' (a non-'/' cookie path does not match)",
         !pathMatches("/admin", ""));
+    // audit-11: dot-segments are resolved BEFORE matching -- "/admin/../public" is
+    // really "/public", so a Path=/admin cookie must NOT ride it (over-injection).
+    chk("path: Path=/admin does NOT match /admin/../public (dot-segment traversal)",
+        !pathMatches("/admin", "/admin/../public"));
+    chk("path: Path=/admin does NOT match /admin/../../etc",
+        !pathMatches("/admin", "/admin/../../etc"));
+    chk("path: a dot-segment that STAYS in scope still matches (/admin/x/../y)",
+        pathMatches("/admin", "/admin/x/../y"));
+    chk("path: '.' segments are ignored (/admin/./panel still matches)",
+        pathMatches("/admin", "/admin/./panel"));
+    // audit-11: the prefix compare is case-SENSITIVE -- a case-insensitive regression
+    // would silently reopen the over-injection hole.
+    chk("path: Path=/Admin does NOT match /admin/panel (case-sensitive)",
+        !pathMatches("/Admin", "/admin/panel"));
 
     // ===== parseSetCookie: control-strip, name validation, attributes ===
     {
@@ -82,6 +96,34 @@ int main(int argc, char **argv) {
         parseSetCookie("=value").name.isEmpty());
     chk("parse: an attribute-only segment doesn't crash and Secure still parses",
         parseSetCookie("a=b; ; Secure").secure);
+    // audit-11: only ASCII OWS (SP/HTAB) may be trimmed. QString::trimmed() is
+    // Unicode-aware and also eats U+00A0/U+0085, which are legitimate BYTES of the
+    // token -- silently corrupting the session we replay.
+    chk("parse: a U+00A0 byte in the value is PRESERVED (not eaten as whitespace)",
+        parseSetCookie(QString("SID=tok") + QChar(0x00A0) + QString("; Path=/")).value
+            == QString("tok") + QChar(0x00A0));
+    chk("parse: a U+0085 byte in the value is PRESERVED",
+        parseSetCookie(QString("SID=tok") + QChar(0x0085)).value
+            == QString("tok") + QChar(0x0085));
+    chk("parse: ASCII SP/HTAB around the value are still trimmed",
+        parseSetCookie("SID= \tabc123 \t; Path=/").value == "abc123");
+    // audit-11: a CONTROL byte inside the name must DROP the cookie, not be stripped
+    // into a different synthetic name ("a\tb=v" was becoming a valid cookie "ab").
+    chk("parse: a control byte inside the name drops the cookie (no synthetic name)",
+        parseSetCookie(QString("a") + QChar('\t') + QString("b=v")).name.isEmpty());
+    chk("parse: a vertical-tab inside the name also drops it",
+        parseSetCookie(QString("a") + QChar(0x0B) + QString("b=v")).name.isEmpty());
+    chk("parse: a clean name is still accepted (guard is not over-broad)",
+        parseSetCookie("SID=v").name == "SID");
+    // audit-11: attribute matching is case-INSENSITIVE -- the toLower() the CRITICAL
+    // Secure/HttpOnly gate depends on was never exercised.
+    {
+        const CapturedCookie c = parseSetCookie("SID=x; SECURE; HTTPONLY; PATH=/app; SAMESITE=Strict");
+        chk("parse: uppercase SECURE flag honored", c.secure);
+        chk("parse: uppercase HTTPONLY flag honored", c.httpOnly);
+        chk("parse: uppercase PATH attribute honored", c.path == "/app");
+        chk("parse: uppercase SAMESITE attribute honored", c.sameSite == "Strict");
+    }
 
     // ===== stripCtrl ====================================================
     chk("stripCtrl: CR/LF/NUL removed",

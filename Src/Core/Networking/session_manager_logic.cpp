@@ -18,27 +18,52 @@ QString stripCtrl(const QString &s) {
     return out;
 }
 
+// Trim ONLY the ASCII OWS (SP / HTAB). QString::trimmed() is Unicode-aware and also
+// strips U+00A0 / U+0085 etc., which are legitimate BYTES of a cookie value -- doing
+// so silently corrupts the token we replay and breaks the captured session.
+static QString asciiTrimmed(const QString &s) {
+    qsizetype b = 0, e = s.size();
+    while (b < e && (s[b] == QLatin1Char(' ') || s[b] == QLatin1Char('\t'))) ++b;
+    while (e > b && (s[e - 1] == QLatin1Char(' ') || s[e - 1] == QLatin1Char('\t'))) --e;
+    return s.mid(b, e - b);
+}
+
 CapturedCookie parseSetCookie(const QString &raw) {
     CapturedCookie c;
     c.raw = stripCtrl(raw);
     // First "key=value" is the cookie itself; remaining "; attr[=val]" are attrs.
     const QStringList parts = c.raw.split(';');
     if (parts.isEmpty()) return c;
-    const QString first = parts.first().trimmed();
+    const QString first = asciiTrimmed(parts.first());
     const int eq = first.indexOf('=');
     if (eq <= 0) return c;
-    c.name  = stripCtrl(first.left(eq).trimmed());
-    c.value = stripCtrl(first.mid(eq + 1).trimmed());
-    // RFC 6265 token-ish: reject a name with '='/space/tab -- it would produce a
-    // broken Cookie header on inject. (Control bytes were already stripped.)
-    if (c.name.contains('=') || c.name.contains(' ') || c.name.contains('\t'))
+    c.name  = stripCtrl(asciiTrimmed(first.left(eq)));
+    c.value = stripCtrl(asciiTrimmed(first.mid(eq + 1)));
+    // RFC 6265 token-ish: reject a name with '='/space -- it would produce a broken
+    // Cookie header on inject.
+    if (c.name.contains('=') || c.name.contains(' '))
         c.name.clear();
+    // A CONTROL byte inside the name must DROP the cookie, not be silently spliced
+    // out into a different, synthetic name: stripCtrl() runs first, so "a\tb=v" was
+    // becoming a perfectly valid cookie named "ab" that the server never set (and the
+    // contains('\t') arm above could never fire -- it was dead code). Check the
+    // ORIGINAL text, ignoring the leading/trailing OWS that is legitimately allowed.
+    {
+        const QStringList rawParts = raw.split(';');
+        const QString rawFirst = rawParts.isEmpty() ? QString() : rawParts.first();
+        const int rawEq = rawFirst.indexOf('=');
+        if (rawEq > 0) {
+            const QString rawName = asciiTrimmed(rawFirst.left(rawEq));
+            for (const QChar ch : rawName)
+                if (ch.unicode() < 0x20) { c.name.clear(); break; }
+        }
+    }
     for (int i = 1; i < parts.size(); ++i) {
-        const QString seg = parts[i].trimmed();
+        const QString seg = asciiTrimmed(parts[i]);
         if (seg.isEmpty()) continue;
         const int eq2 = seg.indexOf('=');
-        const QString key = (eq2 < 0 ? seg : seg.left(eq2)).trimmed().toLower();
-        const QString val = eq2 < 0 ? QString() : seg.mid(eq2 + 1).trimmed();
+        const QString key = asciiTrimmed(eq2 < 0 ? seg : seg.left(eq2)).toLower();
+        const QString val = eq2 < 0 ? QString() : asciiTrimmed(seg.mid(eq2 + 1));
         if      (key == "path")     c.path     = val;
         else if (key == "expires")  c.expires  = val;
         else if (key == "httponly") c.httpOnly = true;
@@ -46,6 +71,24 @@ CapturedCookie parseSetCookie(const QString &raw) {
         else if (key == "samesite") c.sameSite = val;
     }
     return c;
+}
+
+// RFC 3986 5.2.4 remove_dot_segments, preserving a trailing '/' (the directory-prefix
+// rule below depends on it). Applied to the REQUEST path only: the server resolves
+// "/admin/../public" to "/public", so matching it raw let a Path=/admin cookie ride a
+// request that actually leaves that scope. (A cookie Path is used literally per RFC
+// 6265, and leaving it un-normalized only ever fails CLOSED.)
+static QString removeDotSegments(const QString &p) {
+    const bool trailingSlash = p.endsWith(QLatin1Char('/'));
+    QStringList out;
+    for (const QString &s : p.split(QLatin1Char('/'))) {
+        if (s.isEmpty() || s == QLatin1String(".")) continue;
+        if (s == QLatin1String("..")) { if (!out.isEmpty()) out.removeLast(); continue; }
+        out << s;
+    }
+    QString r = QLatin1Char('/') + out.join(QLatin1Char('/'));
+    if (trailingSlash && !r.endsWith(QLatin1Char('/'))) r += QLatin1Char('/');
+    return r;
 }
 
 bool pathMatches(const QString &cookiePath, const QString &reqPath) {
@@ -59,6 +102,10 @@ bool pathMatches(const QString &cookiePath, const QString &reqPath) {
     const int hash = rp.indexOf(QChar('#'));
     if (hash >= 0) rp = rp.left(hash);
     if (rp.isEmpty()) rp = QStringLiteral("/");
+    // Resolve dot-segments BEFORE matching: "/admin/../public" is really "/public",
+    // so matching it raw over-injected a Path=/admin session cookie onto a request
+    // that leaves that scope entirely.
+    rp = removeDotSegments(rp);
 
     if (cp == rp) return true;
     if (rp.startsWith(cp)) {
