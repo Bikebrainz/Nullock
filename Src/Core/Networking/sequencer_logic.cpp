@@ -6,7 +6,9 @@
 #include <QJsonObject>
 #include <QList>
 #include <QRegularExpression>
+#include <QSet>
 #include <QVector>
+#include <algorithm>
 #include <cmath>
 
 namespace Nullock::Core {
@@ -113,8 +115,17 @@ static QString lcsPair(const QString &a, const QString &b) {
 // false "high LCS" deduction on otherwise-random tokens.
 QString longestCommonSubstring(const QStringList &tokens) {
     if (tokens.size() < 2) return {};
-    const int pre = commonAffixLen(tokens, true);
-    const int suf = commonAffixLen(tokens, false);
+    int pre = commonAffixLen(tokens, true);
+    int suf = commonAffixLen(tokens, false);
+    // The prefix and suffix scans run independently, so on a (near-)CONSTANT corpus
+    // they both span the whole token and pre+suf zeroes every variable region --
+    // returning an EMPTY lcs exactly when the structure is total, which then let the
+    // structural deduction below never fire. Clamp the overlap: a fully-constant
+    // corpus IS its own longest common substring.
+    int minLen = tokens.first().size();
+    for (const QString &t : tokens) minLen = qMin(minLen, int(t.size()));
+    if (pre >= minLen) return tokens.first();
+    if (pre + suf > minLen) suf = minLen - pre;
     QStringList var;
     for (const QString &t : tokens) {
         const int keep = t.size() - pre - suf;
@@ -133,17 +144,28 @@ QString longestCommonSubstring(const QStringList &tokens) {
 bool looksSequential(const QStringList &tokens, qint64 &outDelta) {
     const QList<qint64> nums = decodeNumeric(tokens);
     if (nums.size() < 3) return false;
-    const qint64 delta = nums[1] - nums[0];
+    // Anchor the reference delta on the MEDIAN step, not the FIRST pair: a single
+    // outlier at the HEAD of the capture (a gap before the counter settles) made the
+    // first delta unrepresentative and defeated counter detection entirely -- e.g.
+    // deltas {4096,1,1,1,1} scored 0 matches and the run was graded non-sequential.
+    QList<qint64> deltas;
+    deltas.reserve(nums.size() - 1);
+    for (int i = 1; i < nums.size(); ++i) deltas << (nums[i] - nums[i-1]);
+    QList<qint64> sorted = deltas;
+    std::sort(sorted.begin(), sorted.end());
+    const qint64 delta = sorted[sorted.size() / 2];
     if (delta == 0) return false;
     int matches = 0;
-    for (int i = 2; i < nums.size(); ++i)
-        if (nums[i] - nums[i-1] == delta) ++matches;
+    for (const qint64 d : deltas) if (d == delta) ++matches;
     // Delta-consistency fraction WITHOUT integer-division truncation (the old
     // (n-2)*3/4 collapsed to 0 at n=3, flagging any two-distinct triple), and
     // require at least one confirming delta so a 3-token corpus needs its single
     // remaining delta to actually agree.
-    const int need = nums.size() - 2;          // deltas to verify beyond the first
-    if (matches >= 1 && matches * 4 >= need * 3) {
+    // `matches` now counts ALL deltas agreeing with the median (not just those after
+    // the first pair), so require at least TWO agreeing steps -- that keeps the n=3
+    // strictness the old "matches >= 1 beyond the first delta" rule provided.
+    const int need = deltas.size();
+    if (matches >= 2 && matches * 4 >= need * 3) {
         outDelta = delta;
         return true;
     }
@@ -432,10 +454,18 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     // recovery is its TOTAL entropy (bits/symbol * length), NOT its alphabet
     // flatness. This is what separates an 8-hex LCG token (~32 bits, recoverable)
     // from a 32-hex CSPRNG token (~128 bits) -- both look "flat" per byte.
-    const double effectiveBits = combinedBits * avgLen;
+    // ...measured over the VARIABLE region only. A corpus-wide constant prefix/suffix
+    // (a version tag, a fixed node id) contributes ZERO brute-force resistance, yet
+    // multiplying by the FULL length credited it: 32 constant chars + 8 random hex
+    // scored ~160 bits instead of the real ~32.
+    const int seqPre = commonAffixLen(tokens, true);
+    const int seqSuf = commonAffixLen(tokens, false);
+    const int varLen = qMax(0, avgLen - seqPre - seqSuf);
+    const double effectiveBits = combinedBits * varLen;
     QJsonObject shannon;
     shannon["bitsPerByte"] = combinedBits;
     shannon["totalBits"]   = combinedBits * combined.size();
+    shannon["variableLen"] = varLen;
     shannon["effectiveBitsPerToken"] = effectiveBits;
     // Thresholds account for common token alphabets:
     //   full byte range:  ~8 bits/byte
@@ -568,7 +598,23 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     if (combinedBits < 2.0) score -= 25;
     if (seq) score -= 50;
     else if (mono) score -= 25;                  // monotonic but not constant-delta
-    if (lcs.size() > avgLen / 2 && avgLen > 8) score -= 30;
+    // Compare the LCS against the VARIABLE length it was measured on, not the full
+    // avgLen: with a large constant affix the old comparison was unreachable (a
+    // 16-char variable region can never produce an LCS > half of a 40-char token).
+    if (lcs.size() > varLen / 2 && varLen > 8) score -= 30;
+    // Cross-sample VARIETY. There was no distinctness test at all, so a corpus of
+    // just two alternating values scored 100 / "looks-random" -- the worst possible
+    // fail-open for the analysis whose whole job is catching predictable tokens.
+    // Genuinely random tokens essentially never repeat (birthday bound), so any
+    // duplicate is a red flag and a near-constant corpus is fatal. Only meaningful
+    // with something to compare against, so n >= 2.
+    if (tokens.size() >= 2) {
+        const int distinct = QSet<QString>(tokens.begin(), tokens.end()).size();
+        result["distinctTokens"] = distinct;
+        if      (distinct <= 1)                      score -= 100;  // every sample identical
+        else if (distinct * 2 <= tokens.size())      score -= 60;   // <= 50% unique
+        else if (distinct < tokens.size())           score -= 25;   // any repeat at all
+    }
     // Deeper-test deductions. Conservative, and gated behind kDeepMinN + standard
     // significance thresholds inside each test, so they only fire on a real
     // (large) corpus that genuinely fails. They catch the case the keyspace score

@@ -149,6 +149,73 @@ int main(int argc, char **argv) {
             && r["verdict"].toString() == "predictable");
     }
 
+    // ===== audit-11: cross-sample VARIETY (the fail-open) =================
+    {
+        // Only TWO distinct values, alternating. Every per-byte/entropy test passes
+        // (both are long and hex-ish) and nothing else looks at DISTINCTNESS, so this
+        // scored 100/"looks-random" -- a catastrophic fail-open for session tokens.
+        const QString A = "a3f19c4b7e2d8061.f5a9c3e7b1d4082f6c9a1e35";
+        const QString B = "5e1d9a7c3f0b6248.e9d1a4c7f2b8053196e4d7a0";
+        QStringList two;
+        for (int i = 0; i < 10; ++i) { two << A << B; }
+        const QJsonObject r = analyze(two);
+        chk("2-distinct-value corpus -> NOT looks-random (variety fail-open fix)",
+            r["verdict"].toString() != "looks-random");
+        chk("2-distinct-value corpus reports distinctTokens == 2",
+            r["distinctTokens"].toInt() == 2);
+    }
+    {
+        // A single repeat in an otherwise-strong corpus is still a red flag.
+        const QJsonObject r = analyze(L({
+            "9f3a1c7e2d8b4056","1e7c4a9f2d6b8035","c4a91f7e2d3b8056",
+            "7e2d9c4a1f8b6035","a1f7c4e92d8b3056","3b8d1a4c7e2f9056",
+            "f2d8a1c4e97b3056","4c7e2d9a1f8b6035","8b1f4a7c2e9d3056",
+            "2e9d4a7c1f8b6035","d4a91f7c2e8b3056","9f3a1c7e2d8b4056"}));  // last == first
+        chk("a duplicate token in a strong corpus is penalized",
+            r["distinctTokens"].toInt() == 11 && r["score"].toInt() < 100);
+    }
+
+    // ===== audit-11: effective keyspace ignores a CONSTANT affix ==========
+    {
+        // 32 constant hex chars + 8 varying: the real keyspace is the 8 hex chars
+        // (~32 bits), but multiplying bits/symbol by the FULL 40-char length credited
+        // the dead prefix and scored it like a ~160-bit token.
+        const QString P = "0123456789abcdef0123456789abcdef";
+        QStringList affix;
+        for (const char *tail : { "1a2b3c4d", "9f8e7d6c", "00112233", "deadbeef",
+                                  "cafe1234", "5566aabb", "0f1e2d3c", "98765432",
+                                  "abcdef01", "13579bdf", "2468ace0", "f0e1d2c3" })
+            affix << P + QString::fromLatin1(tail);
+        const QJsonObject r = analyze(affix);
+        chk("constant-prefix corpus: variableLen is the varying region only",
+            r["shannon"].toObject()["variableLen"].toInt() == 8);
+        chk("constant-prefix corpus -> NOT looks-random (affix credits no keyspace)",
+            r["verdict"].toString() != "looks-random");
+    }
+
+    // ===== audit-11: LCS on a fully-constant corpus =======================
+    {
+        // pre and suf both spanned the whole token, zeroing every variable region and
+        // returning an EMPTY lcs exactly when the structure is TOTAL.
+        QStringList same;
+        for (int i = 0; i < 20; ++i) same << "a3f19c4b7e2d8061f5a9c3e7b1d4082f6c9a1e35";
+        const QJsonObject r = analyze(same);
+        chk("fully-constant corpus reports a non-empty LCS (was empty)",
+            r["lcs"].toObject()["length"].toInt() > 0);
+        chk("fully-constant corpus is predictable", r["verdict"].toString() == "predictable");
+    }
+
+    // ===== audit-11: looksSequential anchors on the MEDIAN delta ==========
+    {
+        // A counter with ONE gap at the head: the first delta (0x1000) was taken as
+        // the reference, matched nothing, and the whole counter went undetected.
+        const QJsonObject r = analyze(L({
+            "deadbe001000","deadbe002000","deadbe002001","deadbe002002",
+            "deadbe002003","deadbe002004"}));
+        chk("counter with a head outlier -> still sequential (median delta)",
+            r["sequential"].toObject()["looksSequential"].toBool());
+    }
+
     // ===== no crash on empty / tiny =======================================
     chk("empty corpus -> no-data", analyze(QStringList())["verdict"].toString() == "no-data");
     chk("single token -> does not crash, scores",
