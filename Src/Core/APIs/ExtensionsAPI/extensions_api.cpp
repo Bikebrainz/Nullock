@@ -36,6 +36,7 @@ void ExtensionsApiBridge::onResponse(const QJSValue &callback) {
     const bool mayMutate = Nullock::Core::ExtensionPerms::isAllowed(
         m_owner->m_currentGrants, Nullock::Core::ExtensionPerms::kModifyResponses);
     m_owner->m_onResponseHandlers.append({ callback, mayMutate });
+    m_owner->refreshHandlerFlags();
 }
 
 void ExtensionsApiBridge::onRequest(const QJSValue &callback) {
@@ -54,6 +55,7 @@ void ExtensionsApiBridge::onRequest(const QJSValue &callback) {
         return;
     }
     m_owner->m_onRequestHandlers.append(callback);
+    m_owner->refreshHandlerFlags();
 }
 
 void ExtensionsApiBridge::reportFinding(const QString &severity,
@@ -102,6 +104,7 @@ QStringList ExtensionsApi::recentLog(int max) const {
 bool ExtensionsApi::reload() {
     m_onResponseHandlers.clear();
     m_onRequestHandlers.clear();
+    refreshHandlerFlags();
     m_loadedScripts.clear();
     m_scriptGrants.clear();
     m_currentGrants.clear();
@@ -145,6 +148,13 @@ void ExtensionsApi::loadAll() {
     }
     m_currentGrants.clear();   // not evaluating any extension now
     emit loadedChanged();
+}
+
+void ExtensionsApi::refreshHandlerFlags() {
+    // Owner thread only. Release-store so a worker that observes true has also
+    // observed the appends that made it true.
+    m_hasRequestHandlers.store(!m_onRequestHandlers.isEmpty(), std::memory_order_release);
+    m_hasResponseHandlers.store(!m_onResponseHandlers.isEmpty(), std::memory_order_release);
 }
 
 void ExtensionsApi::appendLog(const QString &message) {
@@ -266,27 +276,46 @@ QJSValue headersToJs(QJSEngine *engine,
 
 Nullock::Proxy::HttpRequest ExtensionsApi::applyRequestMutation(
     const Nullock::Proxy::HttpRequest &req) {
-    if (m_onRequestHandlers.isEmpty()) return req;
+    // Read the ATOMIC, never the QList: this runs on the CALLER's thread and a
+    // concurrent reload() may be clearing/re-appending the list right now.
+    // A stale "false" only skips extensions for this one message; a stale
+    // "true" is harmless because doMutateRequest re-checks on the owner thread.
+    if (!m_hasRequestHandlers.load(std::memory_order_acquire)) return req;
     if (thread() == QThread::currentThread()) return doMutateRequest(req);
 
-    Nullock::Proxy::HttpRequest out;
-    QMetaObject::invokeMethod(this, "doMutateRequest", Qt::BlockingQueuedConnection,
-                              Q_RETURN_ARG(Nullock::Proxy::HttpRequest, out),
-                              Q_ARG(Nullock::Proxy::HttpRequest, req));
+    // Seeded with the ORIGINAL, not default-constructed: Q_RETURN_ARG only
+    // writes `out` when the invocation succeeds, and a blank HttpRequest is a
+    // request with an empty method, host and path. Forwarding that upstream is
+    // strictly worse than forwarding the untouched original, so the failure
+    // direction has to be "extensions did not run", never "send garbage".
+    Nullock::Proxy::HttpRequest out = req;
+    if (!QMetaObject::invokeMethod(this, "doMutateRequest", Qt::BlockingQueuedConnection,
+                                   Q_RETURN_ARG(Nullock::Proxy::HttpRequest, out),
+                                   Q_ARG(Nullock::Proxy::HttpRequest, req))) {
+        qWarning("ExtensionsApi: onRequest dispatch failed; forwarding the request unmodified");
+        return req;
+    }
     return out;
 }
 
 Nullock::Proxy::HttpResponse ExtensionsApi::applyResponseMutation(
     const Nullock::Proxy::HttpRequest &req,
     const Nullock::Proxy::HttpResponse &resp) {
-    if (m_onResponseHandlers.isEmpty()) return resp;
+    // See applyRequestMutation: atomic, not the QList -- the caller is a proxy
+    // worker thread and reload() mutates the list on the owner thread.
+    if (!m_hasResponseHandlers.load(std::memory_order_acquire)) return resp;
     if (thread() == QThread::currentThread()) return doMutateResponse(req, resp);
 
-    Nullock::Proxy::HttpResponse out;
-    QMetaObject::invokeMethod(this, "doMutateResponse", Qt::BlockingQueuedConnection,
-                              Q_RETURN_ARG(Nullock::Proxy::HttpResponse, out),
-                              Q_ARG(Nullock::Proxy::HttpRequest, req),
-                              Q_ARG(Nullock::Proxy::HttpResponse, resp));
+    // See applyRequestMutation: seed with the original so a failed dispatch
+    // cannot hand the client a 0-status, empty-body response.
+    Nullock::Proxy::HttpResponse out = resp;
+    if (!QMetaObject::invokeMethod(this, "doMutateResponse", Qt::BlockingQueuedConnection,
+                                   Q_RETURN_ARG(Nullock::Proxy::HttpResponse, out),
+                                   Q_ARG(Nullock::Proxy::HttpRequest, req),
+                                   Q_ARG(Nullock::Proxy::HttpResponse, resp))) {
+        qWarning("ExtensionsApi: onResponse dispatch failed; passing the response through unmodified");
+        return resp;
+    }
     return out;
 }
 

@@ -12,6 +12,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+
 namespace Nullock::Core {
 
 // Findings from nullock.reportFinding() go to an IFindingSink, which
@@ -93,6 +95,9 @@ private:
 
     void loadAll();
     void appendLog(const QString &message);
+    // Re-publish the worker-visible handler flags. MUST be called on this
+    // object's own thread after ANY change to the two handler lists.
+    void refreshHandlerFlags();
 
     // An onResponse handler carries whether its extension was granted the
     // "modify-responses" capability -- observation always runs, but a mutated
@@ -105,8 +110,24 @@ private:
     QJSEngine            m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
     IFindingSink        *m_scanner = nullptr;
+    // Touched ONLY on this object's own thread: registered during script
+    // evaluation, cleared by reload(), read by doMutateRequest/doMutateResponse
+    // (which the proxy worker threads reach through a BlockingQueuedConnection).
     QList<ResponseHandler> m_onResponseHandlers;
     QList<QJSValue>      m_onRequestHandlers;   // only permitted extensions get in
+
+    // Worker-readable mirrors of "is that list non-empty".
+    //
+    // applyRequestMutation/applyResponseMutation run on the CALLING thread -- a
+    // proxy per-client thread or a QtConcurrent worker -- and used to answer
+    // their early-out by reading the QLists directly, BEFORE the thread hop that
+    // exists to make those lists safe to touch. A concurrent reload() clears and
+    // re-appends them on the owner thread, so the fast path was an unsynchronised
+    // read of a container being reallocated: undefined behaviour, and in the
+    // benign direction a false "empty" that silently skips every extension for
+    // that message. Workers now read these atomics and never touch the lists.
+    std::atomic<bool>    m_hasRequestHandlers { false };
+    std::atomic<bool>    m_hasResponseHandlers { false };
     QStringList          m_loadedScripts;
     QStringList          m_logLines;
     // Capabilities granted to the extension currently being evaluated (set

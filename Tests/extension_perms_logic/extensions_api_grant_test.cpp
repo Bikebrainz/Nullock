@@ -27,12 +27,16 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QThread>
+#include <QTimer>
 
 #include <cstdio>
+#include <functional>
 
 using Nullock::Core::ExtensionsApi;
 
@@ -79,6 +83,24 @@ Nullock::Proxy::HttpResponse makeResp(const QByteArray &body = QByteArrayLiteral
 // corruption b10dec0 fixed.
 QByteArray binaryBody() {
     return QByteArrayLiteral("\x89PNG\r\n\x1a\n") + QByteArray("\xC3\x28\xFF\xFE\x00\x01", 6);
+}
+
+// Run fn on a throwaway worker thread while the MAIN thread spins an event
+// loop, which is what lets a BlockingQueuedConnection back into the main thread
+// actually complete. Returns false if the worker did not finish (watchdog), so
+// a deadlock surfaces as a failed assertion instead of a hung CI job.
+//
+// QThread::create() returns an UNPARENTED QThread -- we own and delete it.
+bool runOnWorkerThread(const std::function<void()> &fn) {
+    QThread *t = QThread::create(fn);
+    QEventLoop loop;
+    QObject::connect(t, &QThread::finished, &loop, &QEventLoop::quit);
+    QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+    t->start();
+    loop.exec();
+    const bool finished = t->wait(5000);
+    if (finished) delete t;   // leak it rather than destroy a running QThread
+    return finished;
 }
 } // namespace
 
@@ -224,6 +246,75 @@ int main(int argc, char **argv) {
         api.reload();
         chk("onRequest: a granted handler CAN rewrite the path",
             api.doMutateRequest(makeReq()).path == QStringLiteral("/rewritten"));
+    }
+
+    // ===== the CROSS-THREAD path: worker -> BlockingQueuedConnection ======
+    // Everything above calls doMutate* directly on the main thread. In the real
+    // proxy the caller is a per-client worker thread entering through
+    // applyRequestMutation/applyResponseMutation, and that entry point was
+    // never exercised by any test.
+    //
+    // Its early-out used to read the handler QLists on the WORKER thread --
+    // before the very thread hop that exists to make those lists safe to touch,
+    // and while reload() could be clearing and re-appending them on the owner
+    // thread. It now reads std::atomic<bool> mirrors that refreshHandlerFlags()
+    // republishes at every registration and clear site.
+    //
+    // WHAT THIS DOES NOT DO: it does not try to catch the interleaving. A data
+    // race is not deterministically observable, so swapping the atomic read
+    // back for the QList read does NOT fail these cases -- they are not a lock
+    // on the race itself, and are not labelled as one.
+    //
+    // WHAT IT DOES LOCK: the mirrors' correctness. If a registration site stops
+    // calling refreshHandlerFlags(), the flag stays false, every worker call
+    // early-outs, and EVERY extension is silently skipped for EVERY proxied
+    // message -- a total feature outage with no error anywhere. That is the
+    // failure mode this fix introduces, and it is deterministic. The reverse
+    // staleness (a flag left true after a clear) is harmless by design, because
+    // doMutate* re-checks the real list once it is on the owner thread.
+    {
+        clearDir(dir);
+        writeScript(dir, "granted_xthread.js", QStringLiteral(
+            "// nullock:permissions modify-responses\n"
+            "nullock.onResponse(function (e) { e.bodyText = 'XTHREAD'; });\n"));
+        api.reload();
+        Nullock::Proxy::HttpResponse out;
+        const bool done = runOnWorkerThread([&] {
+            out = api.applyResponseMutation(makeReq(), makeResp());
+        });
+        chk("xthread: the worker response call completed (no deadlock)", done);
+        chk("MIRROR: a registered response handler is visible to a worker's early-out",
+            out.body == QByteArrayLiteral("XTHREAD"));
+    }
+    {
+        clearDir(dir);
+        writeScript(dir, "granted_req_xthread.js", QStringLiteral(
+            "// nullock:permissions modify-requests\n"
+            "nullock.onRequest(function (e) { e.path = '/xthread'; return e; });\n"));
+        api.reload();
+        Nullock::Proxy::HttpRequest out;
+        const bool done = runOnWorkerThread([&] {
+            out = api.applyRequestMutation(makeReq());
+        });
+        chk("xthread: the worker request call completed (no deadlock)", done);
+        chk("MIRROR: a registered request handler is visible to a worker's early-out",
+            out.path == QStringLiteral("/xthread"));
+    }
+    {
+        // Zero handlers: the worker must hand the response straight back.
+        // NOT discriminating -- it passes with a stale-true flag too, because
+        // the owner-thread re-check catches it. Kept to pin the harmless
+        // direction of the asymmetry, and to prove the no-handler worker path
+        // does not deadlock.
+        clearDir(dir);
+        api.reload();
+        chk("fixture: no handlers loaded", api.loadedCount() == 0);
+        Nullock::Proxy::HttpResponse out;
+        const bool done = runOnWorkerThread([&] {
+            out = api.applyResponseMutation(makeReq(), makeResp());
+        });
+        chk("xthread: with zero handlers the worker returns the response untouched",
+            done && out.body == QByteArrayLiteral("original-body"));
     }
 
     clearDir(dir);
