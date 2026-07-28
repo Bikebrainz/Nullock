@@ -348,50 +348,72 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
     Nullock::Proxy::HttpRequest req, Nullock::Proxy::HttpResponse resp) {
     if (m_onResponseHandlers.isEmpty()) return resp;
 
-    QJSValue entry = m_engine.newObject();
-    entry.setProperty("method", req.method);
-    entry.setProperty("url",
-        (resp.wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
-        + req.host
-        + ((req.port == 80 || req.port == 443)
-           ? QString() : QString(":%1").arg(req.port))
-        + req.path);
-    entry.setProperty("status", resp.statusCode);
-    entry.setProperty("reasonPhrase", resp.reasonPhrase);
-    entry.setProperty("headers", headersToJs(&m_engine, resp.headers));
-    entry.setProperty("bodyText", QString::fromUtf8(resp.body));
-    entry.setProperty("responseSize", static_cast<int>(resp.body.size()));
+    // Each handler gets its OWN entry object, rebuilt from the authoritative
+    // `resp` -- they are NOT handed one shared object.
+    //
+    // A QJSValue object is a REFERENCE. Passing one shared `entry` to every
+    // handler meant an UNGRANTED extension could simply assign to its argument
+    //     nullock.onResponse(function (e) { e.bodyText = "injected"; });
+    // and never return anything. The gate below only guarded REPLACING entry
+    // with the RETURN value, so it never saw that write -- and the read-back
+    // after the loop then pushed the mutation onto the wire. Every extension
+    // that registered an onResponse handler could rewrite responses without the
+    // "modify-responses" grant, defeating the default-deny model outright.
+    //
+    // Registration cannot simply be refused the way onRequest does (see the
+    // binding, which drops an ungranted onRequest handler entirely): an
+    // ungranted onResponse handler is deliberately still allowed to OBSERVE.
+    // So the enforcement has to be here, and it has to discard whatever an
+    // ungranted handler did to its copy.
+    auto buildEntry = [&]() {
+        QJSValue e = m_engine.newObject();
+        e.setProperty("method", req.method);
+        e.setProperty("url",
+            (resp.wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
+            + req.host
+            + ((req.port == 80 || req.port == 443)
+               ? QString() : QString(":%1").arg(req.port))
+            + req.path);
+        e.setProperty("status", resp.statusCode);
+        e.setProperty("reasonPhrase", resp.reasonPhrase);
+        e.setProperty("headers", headersToJs(&m_engine, resp.headers));
+        e.setProperty("bodyText", QString::fromUtf8(resp.body));
+        e.setProperty("responseSize", static_cast<int>(resp.body.size()));
+        return e;
+    };
+
+    // Fold a GRANTED handler's result back into resp. Clamps the JS status to a
+    // valid HTTP code and rejects CR/LF in the reason phrase (which would split
+    // the status line going to the client). Runs per granted handler now, so
+    // each one's output is validated rather than only the last.
+    auto applyBack = [&](const QJSValue &e) {
+        const int sc = e.property("status").toInt();
+        if (sc >= 100 && sc < 600) resp.statusCode = sc;
+        const QString rp = e.property("reasonPhrase").toString();
+        bool rpOk = rp.size() <= 128;
+        for (QChar c : rp) {
+            const ushort u = c.unicode();
+            if (u == '\r' || u == '\n' || u == '\0' || u < 0x20) { rpOk = false; break; }
+        }
+        if (rpOk) resp.reasonPhrase = rp;
+        resp.headers = headersFromJs(e.property("headers"));
+        resp.body    = e.property("bodyText").toString().toUtf8();
+    };
 
     for (ResponseHandler &h : m_onResponseHandlers) {
-        const QJSValue r = h.fn.call({ entry });
+        QJSValue arg = buildEntry();
+        const QJSValue r = h.fn.call({ arg });
         if (r.isError()) {
             appendLog(QString("[ext] onResponse threw: %1 at line %2")
                           .arg(r.toString()).arg(r.property("lineNumber").toInt()));
             continue;
         }
-        // Apply a returned mutation only if this extension holds the
-        // "modify-responses" grant (default-deny); otherwise it's observe-only.
-        if (r.isObject() && h.mayMutate) entry = r;
+        // Observe-only: throw away the whole copy, whether the handler returned
+        // a new object OR edited the one it was given.
+        if (!h.mayMutate) continue;
+        // Granted: honour a returned object, else the in-place edits to `arg`.
+        applyBack(r.isObject() ? r : arg);
     }
-
-    // Clamp the JS-returned status to a valid HTTP code; reject CR/LF
-    // in the reason phrase (would split the status line going to the
-    // client).
-    const int sc = entry.property("status").toInt();
-    if (sc >= 100 && sc < 600) resp.statusCode = sc;
-    {
-        const QString rp = entry.property("reasonPhrase").toString();
-        bool rpOk = rp.size() <= 128;
-        for (QChar c : rp) {
-            const ushort u = c.unicode();
-            if (u == '\r' || u == '\n' || u == '\0' || u < 0x20) {
-                rpOk = false; break;
-            }
-        }
-        if (rpOk) resp.reasonPhrase = rp;
-    }
-    resp.headers      = headersFromJs(entry.property("headers"));
-    resp.body         = entry.property("bodyText").toString().toUtf8();
     return resp;
 }
 
