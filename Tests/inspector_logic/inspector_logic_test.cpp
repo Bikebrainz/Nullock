@@ -125,6 +125,41 @@ int main(int argc, char **argv) {
         chk("req json param admin", findVal(r.value("bodyParams").toArray(), "admin") == "true");
     }
 
+    // ----- audit-12: a '{'-sniffed body that is NOT json and NOT declared json ----
+    // The bodyKind sniff accepts any body starting with '{'. When such a body fails
+    // to parse AND the Content-Type never says json, the classifier used to fall out
+    // of the branch leaving bodyKind EMPTY -- the same value the Inspector uses for
+    // "no body at all" -- even though bodySize is non-zero. It must degrade to the
+    // ordinary opaque-body label instead.
+    {
+        const QByteArray raw =
+            "POST /tmpl HTTP/1.1\r\n"
+            "Content-Type: text/plain\r\n"
+            "\r\n"
+            "{{ user.name }} is not json";
+        const QJsonObject r = inspectRequest(raw);
+        chk("req sniffed-but-invalid json body -> bodyKind 'other', not empty",
+            r.value("bodyKind").toString() == "other");
+        chk("req sniffed-but-invalid json body still reports its size",
+            r.value("bodySize").toInt() == 27);
+        chk("req sniffed-but-invalid json body yields no bodyParams",
+            r.value("bodyParams").toArray().isEmpty());
+        // The neighbouring branches must not shift: a body that does NOT start with
+        // '{' is still "other", and a DECLARED-json body that fails to parse is
+        // still "json" (the operator needs to see the server was promised JSON).
+        const QByteArray plain =
+            "POST /t HTTP/1.1\r\nContent-Type: text/plain\r\n\r\nnot json at all";
+        chk("req non-'{' opaque body still 'other'",
+            inspectRequest(plain).value("bodyKind").toString() == "other");
+        const QByteArray badJson =
+            "POST /t HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"a\":";
+        chk("req DECLARED json that fails to parse is still 'json'",
+            inspectRequest(badJson).value("bodyKind").toString() == "json");
+        const QByteArray noBody = "GET /t HTTP/1.1\r\nHost: x\r\n\r\n";
+        chk("req with no body still has an EMPTY bodyKind (the distinction restored)",
+            inspectRequest(noBody).value("bodyKind").toString().isEmpty());
+    }
+
     // ----- audit-3: large JSON integers render EXACTLY (no scientific notation) -
     {
         const QByteArray raw =

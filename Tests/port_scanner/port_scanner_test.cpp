@@ -193,6 +193,51 @@ int main(int argc, char **argv) {
         cls(6379, "this is a Redis-compatible service") == "redis");
     chk("same ambiguous 'Redis' text on a non-6379 port -> NOT redis",
         cls(40018, "this is a Redis-compatible service") == "unknown");
+    // audit-12: the three POSITIVE cases above are NOT discriminating -- 3306/5432/6379
+    // are all in the port table returning those same labels, so they pass with the
+    // port-gated name checks deleted. What actually classifies a canonical DB port is
+    // the PORT TABLE; pin that directly (with no product name in the banner at all) so
+    // dropping a case is caught here instead of looking "covered" by the name check.
+    chk("3306 classifies mysql with NO name mention (port table, not the name signal)",
+        cls(3306, "Access denied for user") == "mysql");
+    chk("5432 classifies postgresql with NO name/FATAL mention",
+        cls(5432, "connection reset by peer") == "postgresql");
+    chk("6379 classifies redis with NO name mention",
+        cls(6379, "some opaque chatter") == "redis");
+
+    // ===== leading-whitespace preamble must not defeat the wire prefixes =
+    // audit-12: the scanner DISPLAYS the trimmed grab but classified the UNTRIMMED
+    // one, so a service that leads with a blank line lost every startsWith() signal
+    // and fell through to the port guess -- the analyst saw a banner that looks like
+    // it should obviously have matched next to a wrong/unknown service label.
+    chk("leading CRLF does not defeat 'SSH-' (off-table port -> was 'unknown')",
+        cls(2222, "\r\nSSH-2.0-OpenSSH_9.7p1 Debian\r\n") == "ssh");
+    chk("leading CRLF does not defeat the '220 ' FTP greeting",
+        cls(40040, "\r\n220 ProFTPD Server ready") == "ftp");
+    chk("leading CRLF does not defeat the '220-' SMTP continuation",
+        cls(40041, "\r\n220-mail.example ESMTP Exim 4.94\r\n") == "smtp");
+    chk("leading whitespace does not defeat '* OK' (imap)",
+        cls(40042, " \t* OK Dovecot ready.") == "imap");
+    chk("leading CRLF does not defeat '+OK' (pop3)",
+        cls(40043, "\r\n+OK POP3 ready") == "pop3");
+    chk("leading whitespace does not defeat 'RFB' (vnc)",
+        cls(40044, "  RFB 003.008\n") == "vnc");
+    // HTTP/2 deliberately: an "HTTP/1." status line is already caught by the
+    // position-independent contains() below the prefix check, so a /1.1 banner would
+    // pass here with or without the fix -- only a non-1.x version discriminates.
+    chk("leading CRLF does not defeat the 'HTTP/' status line",
+        cls(40045, "\r\nHTTP/2 200 OK\r\n") == "http");
+    // ...but the trim is TEXT-only. A binary handshake whose FIRST byte is itself a
+    // whitespace-valued framing byte (MySQL's 0x0a protocol version) must still be
+    // judged on the RAW bytes -- trimming it would eat the framing and shift every
+    // offset the length checks depend on. These two fail if the trim is applied
+    // before the framing/TLS checks instead of only before the text prefixes.
+    chk("binary MySQL greeting (0x0a lead) still judged RAW -> mysql",
+        cls(40046, mysqlGreetRaw()) == "mysql");
+    chk("0x0a lead + bare product name is still NOT mysql (raw framing, no name trust)",
+        cls(40047, bytes({0x0a}) + "MariaDB-x" + bytes({0x00})) == "unknown");
+    chk("TLS record (0x16 0x03) still judged RAW on an off-table port",
+        cls(40048, QByteArray::fromHex("160301004a0100")) == "tls");
 
     // ===== newly added port-table services ==============================
     chk("port 5672 -> amqp",       cls(5672,  QByteArray()) == "amqp");

@@ -107,27 +107,44 @@ bool looksLikeRedisReply(const QByteArray &b) {
 // grabbed bytes -- a UTF-8 round-trip would corrupt a binary banner (a TLS
 // record, a length byte >= 0x80, a NUL) before these checks run.
 QString classifyBanner(quint16 port, const QByteArray &banner) {
+    // The scanner DISPLAYS QString::fromUtf8(grab).trimmed() but classified the
+    // UNTRIMMED grab, so a service that leads with a blank line or padding
+    // ("\r\nSSH-2.0-OpenSSH_9.7p1") defeated every startsWith() signal below: the
+    // port guess won and the analyst was shown a banner that looks like it should
+    // obviously have matched. Test the TEXT prefixes against a leading-whitespace-
+    // trimmed view so the classification agrees with what is displayed.
+    //
+    // The BINARY signals (TLS record, DB handshake framing) deliberately stay on the
+    // RAW bytes: their first byte IS the framing, and 0x0a / 0x09 / 0x20 are
+    // legitimate framing values (MySQL's protocol-version byte is 0x0a) that a trim
+    // would eat, shifting every subsequent offset.
+    qsizetype lead = 0;
+    while (lead < banner.size()
+           && (banner[lead] == ' '  || banner[lead] == '\t'
+            || banner[lead] == '\r' || banner[lead] == '\n'))
+        ++lead;
+    const QByteArray b = lead ? banner.mid(lead) : banner;
+
     // Known wire prefixes first -- they're more reliable than port-only.
-    if (banner.startsWith("SSH-"))            return "ssh";
+    if (b.startsWith("SSH-"))            return "ssh";
     // A 220 greeting -- single-line ("220 ") OR multi-line continuation ("220-").
     // Both forms are used by SMTP *and* FTP, so key on the protocol word, not the
     // dash: "220-mail.example ESMTP Exim" is SMTP, not FTP. Neither word -> fall
     // through to the port-based classification below.
-    if (banner.startsWith("220 ") || banner.startsWith("220-")) {
-        if (banner.contains("SMTP")) return "smtp";
-        if (banner.contains("FTP"))  return "ftp";
+    if (b.startsWith("220 ") || b.startsWith("220-")) {
+        if (b.contains("SMTP")) return "smtp";
+        if (b.contains("FTP"))  return "ftp";
     }
-    if (banner.startsWith("HTTP/"))           return "http";
-    // An HTTP status line anywhere (a server that prepends a blank line, or a
-    // banner-grab GET answered after some preamble) is HTTP -- catch it BEFORE
-    // the database checks below so an HTML body that merely mentions
-    // "PostgreSQL"/"MySQL"/"Redis" isn't mislabeled as that database.
-    if (banner.contains("HTTP/1."))           return "http";
+    if (b.startsWith("HTTP/"))           return "http";
+    // An HTTP status line anywhere (a banner-grab GET answered after some preamble)
+    // is HTTP -- catch it BEFORE the database checks below so an HTML body that
+    // merely mentions "PostgreSQL"/"MySQL"/"Redis" isn't mislabeled as that database.
+    if (b.contains("HTTP/1."))           return "http";
     // The untagged "* OK" greeting is IMAP-specific (POP3 uses "+OK"); don't
     // require the word IMAP -- many servers omit it from the first line.
-    if (banner.startsWith("* OK"))            return "imap";
-    if (banner.startsWith("+OK"))             return "pop3";
-    if (banner.startsWith("RFB"))             return "vnc";
+    if (b.startsWith("* OK"))            return "imap";
+    if (b.startsWith("+OK"))             return "pop3";
+    if (b.startsWith("RFB"))             return "vnc";
     if (banner.length() >= 5 && (static_cast<unsigned char>(banner[0]) == 0x16)
         && (static_cast<unsigned char>(banner[1]) == 0x03))
         return "tls";
@@ -146,6 +163,14 @@ QString classifyBanner(quint16 port, const QByteArray &banner) {
     // framing was ambiguous AND we're on the canonical DB port. This keeps the
     // old "name it" convenience for real DB ports without letting a product
     // mention on an unrelated port masquerade as the database.
+    //
+    // NOTE (audit-12): these three are SUBSUMED by the port table below -- 3306,
+    // 5432 and 6379 all appear there returning the same labels, so a name mention
+    // can never change the verdict. They are kept only as documentation of intent;
+    // the real off-port coverage comes from the handshake-framing checks above,
+    // and the port table is what actually classifies a canonical DB port. Do not
+    // "restore" coverage by dropping the port gate: a product name on an unrelated
+    // port is exactly the masquerade this ordering exists to refuse.
     if (port == 3306 && banner.contains("MySQL"))      return "mysql";
     if (port == 5432 &&
         (banner.contains("PostgreSQL") || banner.contains("FATAL")))

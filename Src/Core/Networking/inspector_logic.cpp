@@ -209,6 +209,15 @@ QJsonObject inspectRequest(const QByteArray &raw) {
             }
         } else if (ct.contains("json", Qt::CaseInsensitive)) {
             bodyKind = "json";   // declared JSON but didn't parse as an object
+        } else {
+            // Reached only through the `body starts with '{'` SNIFF above (a
+            // Content-Type declaring json is caught by the branch just above), so the
+            // body is non-empty by construction but is neither parseable JSON nor
+            // declared as JSON -- it is just an opaque body. Falling through here left
+            // bodyKind EMPTY, which is the exact value the Inspector uses to mean "no
+            // body at all": a non-empty body was reported as having no kind purely
+            // because its first byte happened to be '{'.
+            bodyKind = "other";
         }
     } else if (!p.body.isEmpty()) {
         bodyKind = "other";

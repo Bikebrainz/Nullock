@@ -76,6 +76,23 @@ int main(int argc, char **argv) {
     // preservation path must render it exactly, not round to 9007199254740992.
     chk("json: a 64-bit id above 2^53 is exact, not rounded to double",
         jsonPathGet("{\"id\":9007199254740993}", "id") == "9007199254740993");
+    // audit-12: a SCALAR hit mid-path must fail CLOSED. The traversal loop's final
+    // `else return {}` (line 57-59) is the only thing stopping "$.a.b" against
+    // {"a":"str"} from walking off the scalar and falling through to the scalar
+    // return below the loop -- which would hand the chain "str" for a path that does
+    // not exist, substituting a plausible-but-wrong value into the NEXT request.
+    // That silent wrong-value substitution is the permissive fail-open shape; empty
+    // is what makes the extraction visibly fail instead.
+    chk("json: a scalar hit MID-path -> empty (not the scalar itself)",
+        jsonPathGet("{\"a\":\"str\"}", "a.b").isEmpty());
+    chk("json: a scalar mid-path does not leak the parent value",
+        jsonPathGet("{\"a\":\"str\"}", "a.b") != QString("str"));
+    chk("json: an int scalar mid-path -> empty", jsonPathGet("{\"a\":7}", "a.b").isEmpty());
+    chk("json: indexing INTO a scalar -> empty", jsonPathGet("{\"a\":7}", "a.0").isEmpty());
+    chk("json: null mid-path -> empty", jsonPathGet("{\"a\":null}", "a.b").isEmpty());
+    // ...and the terminal scalar (one segment shorter) still resolves, so the guard
+    // above is not merely "any two-segment path fails".
+    chk("json: the terminal scalar itself still resolves", jsonPathGet("{\"a\":\"str\"}", "a") == "str");
 
     // ===== substituteStr: {{var}} expansion, no re-scan =================
     chk("subst: a known var is expanded", substituteStr("Hi {{name}}", vars({{"name", "Bob"}})) == "Hi Bob");
@@ -177,6 +194,36 @@ int main(int argc, char **argv) {
             r.contains("Content-Length: 5\r\n"));
     }
 
+    // audit-12: NO header/body separator at all -> pass the request through VERBATIM.
+    // A head-only request (the terminating blank line missing or truncated) has no
+    // body boundary to reason about; the `sep < 0` early return (line 154) is what
+    // stops the normalizer from treating end-of-buffer as the boundary and stamping a
+    // Content-Length onto a request that never had a body. Inventing "Content-Length:
+    // 0" -- or worse, measuring the trailing header bytes as a body -- would rewrite
+    // framing the chain step never asked for.
+    {
+        const QByteArray headOnly = "GET /x HTTP/1.1\r\nHost: h\r\n";
+        const QByteArray r = normalizeContentLength(headOnly);
+        chk("normCL: no blank-line separator -> byte-identical pass-through", r == headOnly);
+        chk("normCL: no separator -> no Content-Length invented", !r.contains("Content-Length"));
+    }
+    {
+        // Same for a completely terminator-free buffer (a truncated first line).
+        const QByteArray frag = "GET /x HTTP/1.1";
+        chk("normCL: no terminator at all -> pass-through", normalizeContentLength(frag) == frag);
+    }
+    {
+        // Not over-broad: one MORE terminator makes a real boundary, and then a stale
+        // Content-Length IS reconciled down to the true (empty) body length -- so the
+        // pass-through above is the missing-separator case specifically, not "short
+        // requests are skipped". Note an empty body adds no CL of its own (line 200
+        // requires bodyLen > 0); only an EXISTING CL header is rewritten.
+        const QByteArray withSep = "GET /x HTTP/1.1\r\nHost: h\r\nContent-Length: 99\r\n\r\n";
+        const QByteArray n = normalizeContentLength(withSep);
+        chk("normCL: a real blank line IS processed (stale CL reconciled to 0)",
+            n.contains("Content-Length: 0\r\n") && !n.contains("Content-Length: 99"));
+    }
+
     // ===== findHeader / findCookieValue =================================
     {
         const QList<QPair<QString, QString>> h{ {"Content-Type", "json"}, {"X-Token", "abc"} };
@@ -187,6 +234,27 @@ int main(int argc, char **argv) {
     chk("findCookie: case-insensitive name", findCookieValue("SID=xyz", "sid") == "xyz");
     chk("findCookie: a value containing '=' is kept", findCookieValue("t=a=b=c", "t") == "a=b=c");
     chk("findCookie: missing -> empty", findCookieValue("a=1", "z").isEmpty());
+    // audit-12: the `eq <= 0` guard (line 34) has to SKIP a malformed segment and keep
+    // scanning, not stop. Real Cookie/Set-Cookie strings carry valueless attributes
+    // ("HttpOnly", "Secure") and stray empty segments; a `break` there -- or a parser
+    // that only reads the first segment -- silently loses every cookie that follows,
+    // so the chain step extracts nothing and the next request goes out unauthenticated.
+    chk("findCookie: a valueless flag BEFORE the target is skipped, not fatal",
+        findCookieValue("HttpOnly; sid=xyz", "sid") == "xyz");
+    chk("findCookie: a flag between two cookies does not end the scan",
+        findCookieValue("a=1; Secure; sid=xyz; b=2", "sid") == "xyz");
+    chk("findCookie: an empty segment does not end the scan",
+        findCookieValue("a=1;; sid=xyz", "sid") == "xyz");
+    // eq == 0 (a segment that STARTS with '=') is a nameless pair: it must be skipped
+    // rather than matched as a cookie whose name is the empty string.
+    chk("findCookie: a leading-'=' segment is skipped, later match still found",
+        findCookieValue("=junk; sid=xyz", "sid") == "xyz");
+    chk("findCookie: a nameless pair is not matched by an empty name",
+        findCookieValue("=junk", "").isEmpty());
+    // A bare name with no '=' is not a value-bearing cookie, so asking for it is a miss
+    // (NOT an empty-string "found"), which is what lets the caller notice the failure.
+    chk("findCookie: a bare valueless name is a MISS, not an empty value",
+        findCookieValue("sid; a=1", "sid").isEmpty());
 
     // ===== fuzz: sanitizeExtractedValue is the CRLF-injection sink -- a
     // TARGET-controlled value flows through it and is substituted into the NEXT
