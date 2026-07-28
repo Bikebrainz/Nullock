@@ -96,10 +96,16 @@ jobs:
       # pins that auto-headers defer to the EMITTED header name, so the tool cannot
       # forge a duplicate/conflicting Content-Length. Live-socket suites (e.g.
       # port_scan_live) stay OUT of this list on purpose -- they flake on runners.
-      - name: regression tests (scanner + CVE DB + enricher + gate + template)
+      # extension_perms_logic and extensions_api_grant join for the same reason as
+      # the rest: fast, deterministic, no sockets. extensions_api_grant drives a
+      # real QJSEngine but only touches a QStandardPaths TEST-MODE sandbox, never
+      # a real extensions dir. Both guard the permission model, where the DECISION
+      # was always right and the ENFORCEMENT leaked -- a class of bug the pure
+      # tests provably could not see. Live-socket suites (port_scan_live) stay OUT.
+      - name: regression tests (scanner + CVE DB + enricher + gate + template + extensions)
         run: |
-          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test
-          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic" --output-on-failure
+          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test
+          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant" --output-on-failure
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |

@@ -1,6 +1,5 @@
 #include "extensions_api.hpp"
 #include "extension_perms_logic.hpp"
-#include "passive_scanner.hpp"
 
 #include <QDateTime>
 #include <QUrl>
@@ -62,7 +61,7 @@ void ExtensionsApiBridge::reportFinding(const QString &severity,
                                         const QString &summary,
                                         const QString &evidence,
                                         const QString &url) {
-    PassiveScanner *scanner = m_owner->scanner();
+    IFindingSink *scanner = m_owner->scanner();
     if (!scanner) {
         // No scanner wired -- don't silently drop the signal; surface it
         // in the extension log so the author still sees their finding.

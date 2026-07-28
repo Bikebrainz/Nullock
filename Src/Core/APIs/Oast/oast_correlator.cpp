@@ -1,5 +1,5 @@
 #include "oast_correlator.hpp"
-#include "passive_scanner.hpp"
+#include "finding_sink.hpp"
 
 #include <QMutexLocker>
 

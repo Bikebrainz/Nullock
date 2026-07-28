@@ -1,5 +1,6 @@
 #pragma once
 
+#include "finding_sink.hpp"
 #include "proxy_server.hpp"
 
 #include <QJSEngine>
@@ -13,8 +14,10 @@
 
 namespace Nullock::Core {
 
-class PassiveScanner;       // forward — wired by app.cpp so JS extensions
-                            // can emit findings via nullock.reportFinding()
+// Findings from nullock.reportFinding() go to an IFindingSink, which
+// PassiveScanner implements and app.cpp wires in. Depending on the header-only
+// interface rather than the concrete class is what lets APIs stop LINKING
+// Networking -- see finding_sink.hpp for why that mattered.
 class ExtensionsApiBridge;  // forward — internal
 
 // Loads JavaScript extensions from <appdata>/Nullock/Nullock/extensions/
@@ -55,8 +58,8 @@ public:
     // Wire the passive scanner so extensions can call
     // nullock.reportFinding(severity, kind, summary, evidence, url).
     // Optional -- if unset, reportFinding() falls back to logging.
-    void setScanner(PassiveScanner *scanner) { m_scanner = scanner; }
-    PassiveScanner *scanner() const { return m_scanner; }
+    void setScanner(IFindingSink *scanner) { m_scanner = scanner; }
+    IFindingSink *scanner() const { return m_scanner; }
 
     // Apply onRequest mutation handlers and return the (possibly modified)
     // request. Thread-safe: if called from a non-main thread it routes via
@@ -101,7 +104,7 @@ private:
 
     QJSEngine            m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
-    PassiveScanner      *m_scanner = nullptr;
+    IFindingSink        *m_scanner = nullptr;
     QList<ResponseHandler> m_onResponseHandlers;
     QList<QJSValue>      m_onRequestHandlers;   // only permitted extensions get in
     QStringList          m_loadedScripts;

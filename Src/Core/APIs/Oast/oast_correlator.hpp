@@ -22,13 +22,15 @@
 
 #include <QHash>
 #include <QMutex>
+#include "finding_sink.hpp"
+
 #include <QObject>
 #include <QSet>
 #include <QString>
 
 namespace Nullock::Core {
 
-class PassiveScanner;   // forward; wired by app.cpp
+// See finding_sink.hpp: depending on the interface keeps APIs off Networking.
 
 struct OastOrigin {
     int     rowId = 0;     // history row that fired the payload (0 = manual)
@@ -46,7 +48,7 @@ public:
 
     // Optional -- without a scanner, a confirmed hit is recorded but no
     // finding is emitted (it still shows in /api/oast/poll).
-    void setScanner(PassiveScanner *s) { m_scanner = s; }
+    void setScanner(IFindingSink *s) { m_scanner = s; }
 
     // Register a token at (or just before) fire time. Thread-safe: probe
     // workers call this from QtConcurrent threads.
@@ -65,7 +67,7 @@ private:
     mutable QMutex              m_mutex;
     QHash<QString, OastOrigin>  m_tokens;      // token -> origin
     QSet<QString>               m_confirmed;   // tokens already reported
-    PassiveScanner             *m_scanner = nullptr;
+    IFindingSink               *m_scanner = nullptr;
 };
 
 } // namespace Nullock::Core

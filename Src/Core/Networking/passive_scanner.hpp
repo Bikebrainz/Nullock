@@ -1,5 +1,6 @@
 #pragma once
 
+#include "finding_sink.hpp"
 #include "proxy_server.hpp"
 
 #include <QDateTime>
@@ -50,7 +51,11 @@ struct Finding {
 // and emits Findings for common security issues. Nothing here makes new
 // requests -- it only looks at what we've already captured -- so it's
 // safe to leave on permanently.
-class PassiveScanner : public QObject {
+// Implements IFindingSink so callers that only need to EMIT a finding (the
+// extension API, the OAST correlator) can depend on the header-only interface
+// instead of link-depending on this whole library. QObject stays first, as Qt
+// requires.
+class PassiveScanner : public QObject, public IFindingSink {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY findingsChanged)
 public:
@@ -77,7 +82,7 @@ public slots:
                                    const QString &summary,
                                    const QString &evidence,
                                    const QString &host,
-                                   const QString &url);
+                                   const QString &url) override;
 
 signals:
     void findingsChanged();

@@ -30,11 +30,18 @@ target_link_libraries(APIs PUBLIC
     Proxy
 )
 
-# Networking gives us PassiveScanner so extensions can emit findings via
-# nullock.reportFinding(). Private: only the .cpp calls into it; the
-# public header just forward-declares PassiveScanner. Networking links
-# Proxy (not APIs), so there's no dependency cycle.
-target_link_libraries(APIs PRIVATE Networking)
+# APIs deliberately does NOT link Networking. It only ever needed one method --
+# PassiveScanner::reportFinding, from ExtensionsApi and OastCorrelator -- and
+# both now go through the header-only Core::IFindingSink (finding_sink.hpp),
+# which PassiveScanner implements and app.cpp wires in at runtime.
+#
+# The link dependency was not free: it pulled Networking's SHARED
+# mocs_compilation.o, which references every QObject in that lib including
+# Intruder and Repeater, whose ProxyModel symbols resolve only in FrontEndGUI.
+# Any test target linking APIs therefore died with
+#   Networking.lib(intruder.obj) : LNK2019 ProxyModel::requestRawAt(int) const
+# which is why the extension permission model had no tests at all. Keep it off.
+# The include dir below stays -- headers are free; libraries are not.
 
 # Include directories
 target_include_directories(APIs PUBLIC
