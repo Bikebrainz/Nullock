@@ -92,6 +92,16 @@ int main(int argc, char **argv) {
         chkb("status garbage-code structurally ok", s.ok, true);
         chki("status garbage-code => 0", s.statusCode, 0);
     }
+    {
+        // audit-11: status-code is exactly 3DIGIT (RFC 9112 4). A bare toInt()
+        // accepted "+200" / "\t200" / "0200" and reported 200, so a malformed status
+        // line drove every downstream classifier as a well-formed 200.
+        chki("status '+200' is not 200", parseStatusLine("HTTP/1.1 +200 OK").statusCode, 0);
+        chki("status '\\t200' is not 200", parseStatusLine("HTTP/1.1 \t200 OK").statusCode, 0);
+        chki("status '0200' (4 digits) is not 200", parseStatusLine("HTTP/1.1 0200 OK").statusCode, 0);
+        chki("status '20' (2 digits) => 0", parseStatusLine("HTTP/1.1 20 OK").statusCode, 0);
+        chki("status plain 3-digit still parses", parseStatusLine("HTTP/1.1 503 Nope").statusCode, 503);
+    }
 
     // ===== parseHeaders ==================================================
     {
@@ -126,6 +136,30 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 500; ++i) block += "H: v\r\n";
         chki("headers many", parseHeaders(block).size(), 500);
     }
+    {
+        // audit-11: obs-fold (RFC 9112 5.2) -- a line starting with SP/HTAB CONTINUES
+        // the previous field-value and must NEVER become a standalone header. The
+        // leading-whitespace strip used to FABRICATE a Content-Length here, so we
+        // framed the body differently than a conformant recipient (attacker-controlled
+        // framing divergence feeding every detection module).
+        const auto ht = parseHeaders("HTTP/1.1 200 OK\r\nX-Junk: a\r\n\tContent-Length: 5\r\n");
+        chks("obs-fold HTAB: no fabricated Content-Length", findHeader(ht, "Content-Length"), "");
+        chki("obs-fold HTAB: continuation is not a new header", ht.size(), 1);
+        chks("obs-fold HTAB: folded into the previous value", ht[0].second, "a Content-Length: 5");
+
+        const auto hs = parseHeaders("HTTP/1.1 200 OK\r\nX-Junk: a\r\n Content-Length: 5\r\n");
+        chks("obs-fold SP: no fabricated Content-Length", findHeader(hs, "Content-Length"), "");
+        chki("obs-fold SP: continuation is not a new header", hs.size(), 1);
+
+        // A fold with NO previous field is dropped, never promoted.
+        chki("obs-fold with no previous header is dropped",
+             parseHeaders("STATUS\r\n\tContent-Length: 5\r\n").size(), 0);
+
+        // Non-regression: a normal (unfolded) block is untouched.
+        const auto hOk = parseHeaders("HTTP/1.1 200 OK\r\nX-Junk: a\r\nContent-Length: 5\r\n");
+        chki("plain block still parses both headers", hOk.size(), 2);
+        chks("plain block keeps its real Content-Length", findHeader(hOk, "Content-Length"), "5");
+    }
 
     // ===== findHeader (case-insensitive, first wins) =====================
     {
@@ -152,6 +186,26 @@ int main(int argc, char **argv) {
     chkb("CL hex-ish 0x10 => !ok",   parseContentLength("0x10").ok,     false);
     chkb("CL trailing junk => !ok",  parseContentLength("5abc").ok,     false);
     chkb("CL empty => !ok",          parseContentLength("").ok,         false);
+    // audit-11: OWS is SP/HTAB ONLY. QString::trimmed() is Unicode-aware and also
+    // strips U+00A0/U+0085, so a NBSP-padded value was accepted as a plain number and
+    // framed the body where a conformant recipient sees a malformed Content-Length.
+    chkb("CL NBSP-padded => !ok (OWS is SP/HTAB only)",
+         parseContentLength(QString(QChar(0x00A0)) + "5").ok, false);
+    chkb("CL NEL-padded => !ok",
+         parseContentLength(QString(QChar(0x0085)) + "5").ok, false);
+    chkb("CL SP/HTAB padding still ok (non-regression)",
+         parseContentLength(" \t42 \t").ok, true);
+
+    // ===== transferEncodingIsChunked (audit-11: FINAL coding, not contains) =====
+    // A bare contains("chunked") also fired on "chunked, gzip" (NOT chunk-framed --
+    // close-delimited) and on lookalikes, making the chunk reader fail and DISCARD the
+    // whole attacker-influenced response: a silent false negative for every module.
+    chkb("TE 'gzip, chunked' => chunked (final)",  transferEncodingIsChunked("gzip, chunked"), true);
+    chkb("TE 'chunked, gzip' => NOT chunked",      transferEncodingIsChunked("chunked, gzip"), false);
+    chkb("TE 'xchunked' lookalike => NOT chunked", transferEncodingIsChunked("xchunked"), false);
+    chkb("TE 'chunkedx' lookalike => NOT chunked", transferEncodingIsChunked("chunkedx"), false);
+    chkb("TE ' CHUNKED ' => chunked (OWS + case)", transferEncodingIsChunked(" CHUNKED "), true);
+    chkb("TE empty => NOT chunked",                transferEncodingIsChunked(""), false);
     chkb("CL at cap ok",
          parseContentLength(QString::number(kMaxBodyBytes)).ok, true);
     chkb("CL over cap => !ok",

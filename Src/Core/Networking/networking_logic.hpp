@@ -53,6 +53,10 @@ struct ContentLength {
 // Rejects non-numeric ("garbage", "0x10"), negative ("-5"), and over-cap
 // values. A present-but-malformed Content-Length is a framing error: callers
 // must reject it, NOT silently fall back to an empty / close-delimited body.
+// True only when "chunked" is the FINAL transfer-coding (RFC 9112 6.1) -- "gzip,
+// chunked" is chunk-framed, "chunked, gzip" and "xchunked" are NOT.
+bool transferEncodingIsChunked(const QString &transferEncodingValue);
+
 ContentLength parseContentLength(const QString &cl);
 
 // --- chunked transfer-encoding ------------------------------------------

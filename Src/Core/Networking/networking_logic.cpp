@@ -7,8 +7,17 @@ StatusLine parseStatusLine(const QByteArray &line) {
     const int sp1 = line.indexOf(' ');
     const int sp2 = sp1 < 0 ? -1 : line.indexOf(' ', sp1 + 1);
     if (sp1 < 0 || sp2 < 0) return out;   // ok stays false
+    // RFC 9112 4: status-code is exactly 3DIGIT. A bare toInt() accepts "+200",
+    // "\t200" and "0200" (all -> 200), so a malformed status line would be graded as
+    // a well-formed 200 and drive every downstream classifier. Accept only three
+    // ASCII digits; anything else leaves statusCode 0 -- keeping this module's
+    // existing contract that a structurally-parseable line stays ok with code 0.
+    const QByteArray code = line.mid(sp1 + 1, sp2 - sp1 - 1);
+    bool codeOk = (code.size() == 3);
+    if (codeOk)
+        for (const char c : code) if (c < '0' || c > '9') { codeOk = false; break; }
     out.httpVersion  = QString::fromLatin1(line.left(sp1));
-    out.statusCode   = line.mid(sp1 + 1, sp2 - sp1 - 1).toInt();
+    out.statusCode   = codeOk ? code.toInt() : 0;
     out.reasonPhrase = QString::fromLatin1(line.mid(sp2 + 1));
     out.ok = true;
     return out;
@@ -21,6 +30,21 @@ QList<QPair<QString, QString>> parseHeaders(const QByteArray &block) {
         QByteArray line = lines[i];
         if (line.endsWith('\r')) line.chop(1);
         if (line.isEmpty()) continue;
+        // obs-fold (RFC 9112 5.2): a line starting with SP/HTAB CONTINUES the previous
+        // field-value -- it is NEVER a new header. Without this, ".trimmed()" below
+        // strips the leading HTAB/SP off "\tContent-Length: 5" and FABRICATES a
+        // standalone Content-Length, so we would frame the body differently than a
+        // conformant recipient (which folds it into the previous value) -- an
+        // attacker-controlled framing divergence feeding every detection module.
+        if (line.startsWith(' ') || line.startsWith('\t')) {
+            if (!out.isEmpty()) {
+                const QString cont = QString::fromLatin1(line).trimmed();
+                if (!cont.isEmpty())
+                    out.last().second = out.last().second.isEmpty()
+                        ? cont : out.last().second + QLatin1Char(' ') + cont;
+            }
+            continue;   // no previous field to fold into -> drop, never a new header
+        }
         const int colon = line.indexOf(':');
         if (colon <= 0) continue;
         out.append({
@@ -38,9 +62,27 @@ QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name)
     return {};
 }
 
+bool transferEncodingIsChunked(const QString &transferEncodingValue) {
+    // RFC 9112 6.1: the body is chunk-framed only when "chunked" is the FINAL coding.
+    // A bare contains("chunked") also fires on "chunked, gzip" (NOT chunk-framed --
+    // close-delimited) and on lookalike tokens ("xchunked"), making the chunk reader
+    // fail and DISCARD an entire attacker-influenced response (silent false negative
+    // for every detection module). Mirrors HttpLogic::isChunkedTransfer.
+    const QStringList codings = transferEncodingValue.toLower().split(QLatin1Char(','), Qt::SkipEmptyParts);
+    if (codings.isEmpty()) return false;
+    return codings.last().trimmed() == QLatin1String("chunked");
+}
+
 ContentLength parseContentLength(const QString &cl) {
     ContentLength out;
-    const QString t = cl.trimmed();
+    // Trim ONLY the RFC OWS (SP / HTAB). QString::trimmed() is Unicode-aware and also
+    // strips U+00A0 / U+0085 etc., so a value like "\xA05" (NBSP + '5', reachable via
+    // fromLatin1 of the raw header bytes) would be accepted as a plain "5" and frame
+    // the body -- where a conformant recipient sees a malformed Content-Length.
+    qsizetype b = 0, e = cl.size();
+    while (b < e && (cl[b] == QLatin1Char(' ') || cl[b] == QLatin1Char('\t'))) ++b;
+    while (e > b && (cl[e - 1] == QLatin1Char(' ') || cl[e - 1] == QLatin1Char('\t'))) --e;
+    const QString t = cl.mid(b, e - b);
     // RFC 9112: Content-Length is 1*DIGIT. Reject empty and any sign/hex/junk up
     // front -- toLongLong() alone accepts a leading '+' ("+5"), which would frame
     // the response as well-formed instead of a protocol error.

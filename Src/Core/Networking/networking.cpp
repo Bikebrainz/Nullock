@@ -230,7 +230,7 @@ HttpClient::SendResult HttpClient::send(const QString &host,
                        || sc == 204 || sc == 304;
     // Transfer-Encoding may be a stacked list ("gzip, chunked"); the body
     // is chunk-framed when the FINAL coding is chunked.
-    const bool isChunked = te.contains("chunked", Qt::CaseInsensitive);
+    const bool isChunked = NetworkingLogic::transferEncodingIsChunked(te);
     if (bodyless) {
         result.parsed.body = QByteArray();
     } else if (isChunked) {
