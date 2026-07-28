@@ -109,6 +109,65 @@ int main(int argc, char **argv) {
         chk("huge file: directive still found", parsePermissions(big).contains(kModifyRequests));
     }
 
+    // ===== audit-13: trailing PROSE must not grant a capability ===========
+    // The directive capture runs to end-of-line, so a sentence after the list
+    // was tokenised and granted too. This line is what a human reads before
+    // trusting an extension, so one that scans as observe-only while granting
+    // mutation is a review-time deception, not just untidy parsing.
+    {
+        // The concrete bypass: the sentence DISCLAIMS the capability it granted.
+        const QSet<QString> g = parsePermissions(
+            "// nullock:permissions observe -- do NOT grant modify-responses\n");
+        chk("prose: a disclaiming sentence does NOT grant modify-responses",
+            !g.contains(kModifyResponses));
+        chk("prose: the real token before the prose is still granted",
+            g.contains(QStringLiteral("observe")));
+    }
+    {
+        // The capability token here is CLEAN ("modify-requests", no attached
+        // paren), so this case genuinely discriminates. An earlier draft put the
+        // token last as "modify-requests)" -- which never matched an alias even
+        // before the fix, making the assertion true but worthless.
+        const QSet<QString> g = parsePermissions(
+            "// nullock:permissions observe (never modify-requests here)\n");
+        chk("prose: a parenthetical does not grant modify-requests",
+            !g.contains(kModifyRequests));
+        chk("prose: the leading real token survives the parenthetical",
+            g.contains(QStringLiteral("observe")));
+    }
+    {
+        const QSet<QString> g = parsePermissions(
+            "// nullock:permissions modify-requests # TODO also modify-responses later\n");
+        chk("prose: the genuine leading grant survives", g.contains(kModifyRequests));
+        chk("prose: a '#' comment tail does not add a second grant",
+            !g.contains(kModifyResponses));
+    }
+    // Not over-broad: real multi-token lists are unaffected, in every separator
+    // style the format documents.
+    {
+        chk("list: comma-separated still parses",
+            parsePermissions("// nullock:permissions modify-requests, modify-responses\n")
+                .contains(kModifyResponses));
+        chk("list: space-separated still parses",
+            parsePermissions("// nullock:permissions modify-requests modify-responses\n")
+                .contains(kModifyRequests));
+        chk("list: a dotted/underscored future token does not truncate the line",
+            parsePermissions("// nullock:permissions report.findings some_cap modify-responses\n")
+                .contains(kModifyResponses));
+    }
+    // RESIDUAL, documented rather than hidden: prose made ENTIRELY of bare words
+    // still grants. Closing it needs the parser to REJECT unrecognised tokens,
+    // which would break the deliberate forward-compat of keeping unknown tokens
+    // verbatim -- a format decision for the maintainer, not a silent patch. This
+    // lock states the current behaviour so the gap is visible and any future
+    // change to it is a conscious one.
+    {
+        const QSet<QString> g = parsePermissions(
+            "// nullock:permissions observe only please modify-responses is unused\n");
+        chk("RESIDUAL: all-bare-word prose STILL grants (known, documented gap)",
+            g.contains(kModifyResponses));
+    }
+
     std::fprintf(stderr, "extension_perms_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
