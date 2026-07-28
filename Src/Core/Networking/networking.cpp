@@ -109,10 +109,26 @@ HttpClient::SendResult HttpClient::send(const QString &host,
                                         const QByteArray &requestBytes) {
     SendResult result;
 
+    // The socket is owned by THIS CALL, not by the client. Every HttpClient in the
+    // repo is a stack local, but a single one drives a WHOLE scan loop --
+    // content_discovery.cpp holds one client and calls send() once per wordlist
+    // entry, with the request cap defaulting to INT_MAX-2. Parenting each socket to
+    // the client and retiring it with deleteLater() therefore kept EVERY socket of a
+    // run alive until the client left scope: deleteLater only runs on an event-loop
+    // turn, and probes execute inside QtConcurrent::run() pool threads, which never
+    // turn one. Nothing was lost forever (~QObject reaps them with the parent), but a
+    // 100k-word run held 100k live QSslSockets, and any request that failed BEFORE
+    // the disconnectFromHost() below also held its descriptor for the rest of the
+    // scan -- which a hostile target can force at will just by stalling reads.
+    // unique_ptr retires the socket at every return, including the error paths.
+    // The parent is kept as a backstop; ~QObject de-registers from it either way,
+    // so there is no double delete.
+    std::unique_ptr<QTcpSocket> socketOwner;
     QTcpSocket *socket = nullptr;
     QSslSocket *ssl = nullptr;
     if (useTls) {
         ssl = new QSslSocket(this);
+        socketOwner.reset(ssl);
         QSslConfiguration cfg = ssl->sslConfiguration();
         cfg.setAllowedNextProtocols({ QByteArrayLiteral("http/1.1") });
         // Explicit peer verification. Repeater/replay/scanner all flow
@@ -126,13 +142,12 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         ssl->setSslConfiguration(cfg);
         ssl->setPeerVerifyName(host);
         // The collector is heap-owned and captured BY VALUE (shared_ptr), NOT a
-        // stack local captured by reference. The connection's context object is
-        // `ssl`, which is parented to `this` and only ever deleteLater()'d -- and
-        // deleteLater needs an event-loop turn this synchronous call never makes,
-        // so on every early-return path below the socket OUTLIVES this stack frame
-        // with the connection still live. A by-reference capture would then have
-        // sslErrors write into destroyed stack memory. Sharing ownership makes the
-        // list live exactly as long as the connection that writes to it.
+        // stack local captured by reference: its lifetime is tied to the CONNECTION
+        // that writes to it, not to this stack frame. socketOwner above now retires
+        // the socket (and with it this connection) at every return, so the window is
+        // closed today -- but a by-reference capture would silently re-open a
+        // use-after-free the moment socket ownership is deferred again, which is
+        // exactly the state this code was in before. Keep the ownership explicit.
         auto tlsErrors = std::make_shared<QStringList>();
         QObject::connect(ssl, &QSslSocket::sslErrors, ssl,
                          [tlsErrors, host](const QList<QSslError> &errs) {
@@ -149,16 +164,15 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             }
             result.outcome = SocketOutcome::ConnectError;
             result.errorMessage = "TLS handshake failed: " + reason;
-            socket->deleteLater();
             return result;
         }
     } else {
         socket = new QTcpSocket(this);
+        socketOwner.reset(socket);
         socket->connectToHost(host, port);
         if (!socket->waitForConnected(kTimeoutMs)) {
             result.outcome = SocketOutcome::ConnectError;
             result.errorMessage = "connect failed: " + socket->errorString();
-            socket->deleteLater();
             return result;
         }
     }
@@ -167,7 +181,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     if (!socket->waitForBytesWritten(kTimeoutMs)) {
         result.outcome = classifySocketOutcome(socket->error(), socket->state());
         result.errorMessage = "write failed: " + socket->errorString();
-        socket->deleteLater();
         return result;
     }
 
@@ -179,7 +192,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         // socket's error()/state() at the moment of failure.
         result.outcome = classifySocketOutcome(socket->error(), socket->state());
         result.errorMessage = "no response headers received";
-        socket->deleteLater();
         return result;
     }
 
@@ -204,7 +216,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             if (!headerBuf.contains("\r\n\r\n") && !readHeaderBlock(socket, headerBuf)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "no final response after 1xx";
-                socket->deleteLater();
                 return result;
             }
             continue;
@@ -222,7 +233,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     // outcome == Ok and fail with ok == false.
     if (tooManyInterim) {
         result.errorMessage = "too many 1xx interim responses";
-        socket->deleteLater();
         return result;
     }
 
@@ -230,7 +240,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         const QByteArray statusLine =
             headerBlock.left(qMax(0, headerBlock.indexOf("\r\n")));
         result.errorMessage = "malformed status line: " + QString::fromLatin1(statusLine);
-        socket->deleteLater();
         return result;
     }
     result.parsed.httpVersion  = status.httpVersion;
@@ -268,7 +277,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         if (!readChunkedBody(socket, rest, decoded, result.rawResponse)) {
             result.outcome = classifySocketOutcome(socket->error(), socket->state());
             result.errorMessage = "chunked body read failed";
-            socket->deleteLater();
             return result;
         }
         result.parsed.body = decoded;
@@ -284,7 +292,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         if (!clAll.ok) {
             result.errorMessage = "invalid or conflicting Content-Length: "
                                 + clAll.values.join(QStringLiteral(", "));
-            socket->deleteLater();
             return result;
         }
         const qint64 n = clAll.value;
@@ -294,7 +301,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
             if (!readExact(socket, n - result.parsed.body.size(), extra)) {
                 result.outcome = classifySocketOutcome(socket->error(), socket->state());
                 result.errorMessage = "content-length body read truncated";
-                socket->deleteLater();
                 return result;
             }
             result.rawResponse.append(extra);
@@ -310,7 +316,6 @@ HttpClient::SendResult HttpClient::send(const QString &host,
     }
 
     socket->disconnectFromHost();
-    socket->deleteLater();
     result.ok = true;
     return result;
 }

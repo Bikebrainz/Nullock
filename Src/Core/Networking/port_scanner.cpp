@@ -254,14 +254,28 @@ void PortScanner::run(const ScanRequest req) {
                 emit resultsChanged();
             slotsSem.release();
         });
-        QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
         threads.append(t);
         t->start();
     }
 
+    // Join and destroy every probe thread HERE. QThread::create() returns an
+    // UNPARENTED object, so retiring it with connect(finished -> deleteLater) made
+    // deleteLater the only path to destruction -- and run() itself executes inside a
+    // QtConcurrent::run() pool thread (see start()), which never turns an event loop,
+    // so that DeferredDelete was never dispatched. The local `threads` list then went
+    // out of scope and the objects were lost: one leaked QThread per host x port, per
+    // scan, for the life of the process.
+    //
+    // wait() is now UNCONDITIONAL. The old `if (t->isRunning())` guard could skip the
+    // join in the window between start() returning and the OS thread being observed
+    // as running; that merely skipped a join before, but would be a use-after-free now
+    // that we delete. wait() on an already-finished thread returns immediately, so
+    // the unconditional form is both safe and strictly more correct.
     for (QThread *t : threads) {
-        if (t->isRunning()) t->wait();
+        t->wait();
     }
+    qDeleteAll(threads);
+    threads.clear();
 
     m_running.storeRelease(0);
     emit runningChanged();
