@@ -32,6 +32,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QHostAddress>
+#include <QSet>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
@@ -152,17 +153,22 @@ int main(int argc, char **argv) {
         const PortResult *b = findPort(rs, closedB);
         chk("scan: closed port A reported", a != nullptr);
         chk("scan: closed port B reported", b != nullptr);
-        chk("scan: closed port A is not open", a && a->status != "open");
-        chk("scan: closed port B is not open", b && b->status != "open");
         // The scanner's verdict must AGREE with a bare connect() on the same port.
-        // This host drops rather than refuses, so hard-coding "closed" was wrong;
-        // deriving it keeps the check strict (a mislabel still fails) and portable.
-        const QString expected = directProbeStatus(closedA, 1500);
+        // Derived, never hard-coded: whether a host REFUSES ("closed") or silently
+        // drops ("filtered") is a property of the machine and its firewall, and
+        // whether an ephemeral port got re-bound by something else mid-run is too.
+        // Asserting a literal here was wrong twice -- "closed" failed because this
+        // host drops, and a blind "not open" is flaky because the OS can hand the
+        // released port to another process. Agreement stays strict (a mislabel still
+        // fails) while surviving both.
+        const QString expA = directProbeStatus(closedA, 1500);
+        const QString expB = directProbeStatus(closedB, 1500);
         std::fprintf(stderr, "  info  non-listening loopback port probes as '%s'\n",
-                     qUtf8Printable(expected));
-        chk("scan: the closed-port verdict matches a direct connect",
-            a && a->status == expected);
-        chk("scan: a non-listening port is never graded open", expected != "open");
+                     qUtf8Printable(expA));
+        chk("scan: closed port A's verdict matches a direct connect", a && a->status == expA);
+        chk("scan: closed port B's verdict matches a direct connect", b && b->status == expB);
+        // The listening port is ours for the whole run, so THIS one is deterministic.
+        chk("scan: a port we hold open is graded open", open && open->status == "open");
         // Anti-FP: an unanswered port must not inherit the listener's label.
         chk("scan: a closed port carries no banner", a && a->banner.isEmpty());
         chk("scan: a closed port carries no service label", a && a->service.isEmpty());
@@ -222,8 +228,19 @@ int main(int argc, char **argv) {
         chk("breadth: a 40-probe scan finishes", waitForScan(scanner, 30'000));
         chk("breadth: every probe accounted for", scanner.done() == scanner.total());
         chk("breadth: all 40 results collected", scanner.results().size() == 40);
-        chk("breadth: none of the unbound ports graded open", [&] {
-            for (const auto &r : scanner.results()) if (r.status == "open") return false;
+        // Deliberately NO assertion about what those 40 ports resolve to. An earlier
+        // revision asserted "none graded open" and was FLAKY: this is a blind range
+        // of arbitrary ports, and during a full 88-test gauntlet other test binaries
+        // bind ephemeral ports inside it, so one genuinely IS open. It passed alone
+        // and failed roughly every other full run. The port a scan lands on is a
+        // property of the machine, not of the scanner -- the classification contract
+        // is covered above against ports this test actually controls. What THIS case
+        // is for is the thread lifecycle at scale, and that is what it asserts.
+        chk("breadth: every result carries the port it was asked about", [&] {
+            QSet<quint16> got;
+            for (const auto &r : scanner.results()) got.insert(r.port);
+            for (quint16 p = 1; p <= 40; ++p)
+                if (!got.contains(quint16(closedB + p))) return false;
             return true;
         }());
     }
