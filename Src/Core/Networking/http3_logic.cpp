@@ -43,11 +43,30 @@ bool looksHttp3(const QString &id) {
     return id == QLatin1String("h3") || id.startsWith(QLatin1String("h3-"));
 }
 
+// Split an Alt-Svc value on TOP-LEVEL commas only. RFC 7838 authorities are
+// quoted-strings, so a comma INSIDE the quotes ("alt.example:443, h3=:443") is data,
+// not a list separator -- splitting first made the tail parse as its own element and
+// FORGED a phantom h3 entry, i.e. a false "HTTP/3 supported" finding from a value
+// that advertises no h3 at all.
+static QStringList splitAltSvcEntries(const QString &value) {
+    QStringList out;
+    bool inQuotes = false;
+    int start = 0;
+    for (int i = 0; i < value.size(); ++i) {
+        const QChar c = value[i];
+        if (c == QLatin1Char('\\') && inQuotes && i + 1 < value.size()) { ++i; continue; }  // escaped char
+        if (c == QLatin1Char('"')) inQuotes = !inQuotes;
+        else if (c == QLatin1Char(',') && !inQuotes) { out << value.mid(start, i - start); start = i + 1; }
+    }
+    out << value.mid(start);
+    return out;
+}
+
 QList<AltProtocol> parseAltSvc(const QString &value) {
     QList<AltProtocol> out;
     if (value.trimmed().compare(QLatin1String("clear"), Qt::CaseInsensitive) == 0)
         return out;
-    for (const QString &entryRaw : value.split(',', Qt::SkipEmptyParts)) {
+    for (const QString &entryRaw : splitAltSvcEntries(value)) {
         const QStringList parts = entryRaw.split(';');
         if (parts.isEmpty()) continue;
         const QString head = parts.first().trimmed();

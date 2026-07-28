@@ -157,6 +157,29 @@ int main(int argc, char **argv) {
         const auto ps = parseAltSvc("h3=\":443\", h2=\":443\"");
         chk("alt: multi-entry parsed", ps.size() == 2 && ps[0].isHttp3 && !ps[1].isHttp3);
     }
+    {
+        // audit-12: RFC 7838 authorities are quoted-strings, so a comma INSIDE the
+        // quotes is DATA, not a list separator. Splitting on ',' first made the tail
+        // parse as its own element and FORGED a phantom h3 entry -- a false
+        // "HTTP/3 supported" verdict from a value that advertises no h3 at all.
+        const auto ps = parseAltSvc("h2=\"alt.example.com:443, h3=:443\"");
+        chk("alt: a comma inside a QUOTED authority does not split the entry", ps.size() == 1);
+        chk("alt: no phantom h3 forged from a quoted comma",
+            ps.size() == 1 && ps[0].id == "h2" && !ps[0].isHttp3);
+        bool anyH3 = false;
+        for (const auto &p : ps) if (p.isHttp3) anyH3 = true;
+        chk("alt: quoted-comma value advertises NO http3", !anyH3);
+        // A genuine two-entry value with a real h3 still parses as before.
+        const auto ok = parseAltSvc("h2=\"alt.example.com:443\", h3=\":443\"");
+        chk("alt: a real top-level comma still splits", ok.size() == 2 && ok[1].isHttp3);
+    }
+    {
+        // audit-12: the size()>=2 quote-strip guard -- a LONE quote must not collapse
+        // the authority to empty (mid(1, size-2) on a 1-char string).
+        const auto ps = parseAltSvc("h3=\"");
+        chk("alt: a lone-quote authority is not mangled to empty",
+            ps.size() == 1 && ps[0].authority == "\"");
+    }
     chk("alt: quoted authority with host preserved", [] {
         const auto p = parseAltSvc("h3=\"alt.example:443\"");
         return p.size() == 1 && p[0].authority == "alt.example:443";

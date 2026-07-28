@@ -24,8 +24,14 @@ Result detect(const Request &req) {
     // (65536 -> 0, -1 -> 65535) and probe the wrong port.
     if (req.port < 1 || req.port > 65535) { result.error = "invalid port"; return result; }
 
+    // buildGet() returns {} to REJECT a CR/LF-tainted host/path/query. Passing that
+    // straight to send() turned an input-validation rejection into a silent zero-byte
+    // probe (and a meaningless result) instead of surfacing the refusal.
+    const QByteArray raw = buildGet(req);
+    if (raw.isEmpty()) { result.error = "invalid request (CR/LF in host, path or query)"; return result; }
+
     HttpClient client;
-    const auto r = client.send(req.host, static_cast<quint16>(req.port), req.tls, buildGet(req));
+    const auto r = client.send(req.host, static_cast<quint16>(req.port), req.tls, raw);
     if (!r.ok) { result.error = "request failed: " + r.errorMessage; return result; }
     result.baselineStatus = r.parsed.statusCode;
 

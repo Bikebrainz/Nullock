@@ -66,6 +66,17 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that fight the ones this BODY-LESS GET
+        // forces (Accept-Encoding: identity above, Connection: close below):
+        //  - Content-Length / Transfer-Encoding advertise a body that is never sent, so
+        //    the server waits for it (the probe stalls) or the socket desyncs.
+        //  - a carried Accept-Encoding combines (RFC 9112 7.4) and lets the server
+        //    compress, so the raw-byte gadget scan runs on compressed bytes.
+        //  - a carried Connection: keep-alive contradicts the forced close.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }
@@ -90,6 +101,12 @@ QByteArray buildBodyRequest(const Request &req, const QByteArray &body, const QS
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // A carried Transfer-Encoding would survive ALONGSIDE the Content-Length this
+        // builder computes below -- a CL.TE ambiguous request the scanner sends itself.
+        // Accept-Encoding / Connection likewise fight the forced identity + close.
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }
@@ -121,6 +138,11 @@ QByteArray buildCookieRequest(const Request &req, const QString &cookieName,
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Cookie", Qt::CaseInsensitive) == 0) continue;  // we set it
+        // Body-less GET: same carried framing/encoding drops as the sibling builders.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }
@@ -151,6 +173,12 @@ QByteArray buildFieldRequest(const Request &req, const QString &field, const QSt
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // A carried Transfer-Encoding would survive ALONGSIDE the Content-Length this
+        // builder computes below -- a CL.TE ambiguous request the scanner sends itself.
+        // Accept-Encoding / Connection likewise fight the forced identity + close.
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (crlf(h.first) || crlf(h.second)) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
     }

@@ -77,6 +77,54 @@ int main(int argc, char **argv) {
         chk("buildRequest: ok", buildRequest(req, "data=x").startsWith("GET /svc?data=x HTTP/1.1\r\n"));
         chk("buildRequest: Host", buildRequest(req, "data=x").contains("Host: victim.tld\r\n"));
 
+        // audit-12: every deser builder forces "Accept-Encoding: identity" and
+        // "Connection: close", and the body builders emit their OWN Content-Length --
+        // so a carried Transfer-Encoding would ride ALONGSIDE it (a CL.TE ambiguous
+        // request the scanner sends itself), a carried Content-Length would advertise a
+        // phantom body on the GET builders, and a carried Accept-Encoding/Connection
+        // would defeat the forced identity/close.
+        {
+            Request c = req;
+            c.headers.append(qMakePair(QString("Content-Length"),    QString("100")));
+            c.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+            c.headers.append(qMakePair(QString("Accept-Encoding"),   QString("gzip, deflate, br")));
+            c.headers.append(qMakePair(QString("Connection"),        QString("keep-alive")));
+            const QByteArray g  = buildRequest(c, "data=x");
+            const QByteArray b  = buildBodyRequest(c, QByteArray("payload"), "application/octet-stream");
+            const QByteArray ck = buildCookieRequest(c, "rememberMe", "v");
+            const QByteArray fl = buildFieldRequest(c, "__VIEWSTATE", "v");
+            for (const auto &pair : { qMakePair(QByteArray("buildRequest"), g),
+                                      qMakePair(QByteArray("buildCookieRequest"), ck) }) {
+                chk((pair.first + ": carried Content-Length dropped (body-less)").constData(),
+                    !pair.second.contains("Content-Length"));
+                chk((pair.first + ": carried Transfer-Encoding dropped").constData(),
+                    !pair.second.contains("Transfer-Encoding"));
+            }
+            // The body builders keep their OWN Content-Length but must drop a carried TE.
+            chk("buildBodyRequest: carried Transfer-Encoding dropped (no CL.TE)",
+                !b.contains("Transfer-Encoding") && b.contains("Content-Length: 7\r\n"));
+            chk("buildFieldRequest: carried Transfer-Encoding dropped (no CL.TE)",
+                !fl.contains("Transfer-Encoding"));
+            for (const auto &pair : { qMakePair(QByteArray("buildRequest"), g),
+                                      qMakePair(QByteArray("buildBodyRequest"), b),
+                                      qMakePair(QByteArray("buildCookieRequest"), ck),
+                                      qMakePair(QByteArray("buildFieldRequest"), fl) }) {
+                chk((pair.first + ": carried Accept-Encoding dropped -> one, identity").constData(),
+                    pair.second.count("Accept-Encoding:") == 1
+                    && pair.second.contains("Accept-Encoding: identity\r\n")
+                    && !pair.second.contains("gzip"));
+                chk((pair.first + ": carried Connection dropped -> one, close").constData(),
+                    pair.second.count("Connection:") == 1
+                    && pair.second.contains("Connection: close\r\n")
+                    && !pair.second.contains("keep-alive"));
+            }
+            // The drops are not over-broad: a clean carried header still rides.
+            Request clean = req;
+            clean.headers.append(qMakePair(QString("X-Trace"), QString("ok")));
+            chk("buildRequest: a clean carried header IS emitted",
+                buildRequest(clean, "data=x").contains("X-Trace: ok\r\n"));
+        }
+
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("buildRequest: CRLF host -> empty", buildRequest(badHost, "data=x").isEmpty());
         chk("buildBody: CRLF host -> empty", buildBodyRequest(badHost, QByteArray("b"), "application/octet-stream").isEmpty());
