@@ -150,8 +150,20 @@ Ver parseVer(const QString &in) {
 
     for (int i = 0; i < toks.size(); ++i) {
         const QString &t = toks[i];
-        bool isNum = false; const int n = t.toInt(&isNum);
-        if (isNum) {
+        // A DIGIT-run token that QString::toInt() can't represent must never fall
+        // through to the maintenance-letter branch below: that left `nums` EMPTY, so
+        // the release parsed as 0.0.0 and matched every "< maxVer" CVE -- PHANTOM
+        // leads on a host far newer than any fix. Two ways in: a component over
+        // INT_MAX ("99999999999"), and non-ASCII digits (QChar::isDigit() accepts
+        // fullwidth, toInt() does not). Clamp the former; the latter is rejected at
+        // the matchVersion entry as an unparseable version.
+        bool allAsciiDigits = !t.isEmpty();
+        for (const QChar &c : t)
+            if (c < QLatin1Char('0') || c > QLatin1Char('9')) { allAsciiDigits = false; break; }
+        if (allAsciiDigits) {
+            bool okLong = false;
+            const qlonglong big = t.toLongLong(&okLong);
+            const int n = (!okLong || big > qlonglong(INT_MAX)) ? INT_MAX : int(big);
             if (out.stage == StageRelease) out.nums << n;   // release core
             continue;                                       // post-stage digits handled below
         }
@@ -169,8 +181,14 @@ Ver parseVer(const QString &in) {
             break;
         }
         // a maintenance letter run (e.g. "a", "k") -> patch build above release.
-        int key = 0; for (const QChar &c : t) key = key * 26 + (c.toLatin1() - 'a' + 1);
-        out.stage = StagePatch; out.stageKey = key;
+        // Accumulate in 64-bit and clamp: base-26 over 7+ letters overflows a signed
+        // int and INVERTS patch-build ordering.
+        qlonglong key = 0;
+        for (const QChar &c : t) {
+            key = key * 26 + (c.toLatin1() - 'a' + 1);
+            if (key > qlonglong(INT_MAX)) { key = INT_MAX; break; }
+        }
+        out.stage = StagePatch; out.stageKey = int(key);
         break;
     }
     return out;
@@ -213,6 +231,20 @@ bool truncatedAgainst(const QString &version, const QString &boundary) {
     return false;                               // boundary tail all-zero -> certain
 }
 
+// Truncation test for an EXACT-version CVE. The range rule above treats an
+// all-zero boundary tail as certain -- correct for a "< maxVer" bound, but WRONG
+// for equality: a banner that disclosed only "6" (Microsoft-IIS/6) could really be
+// 6.0.1, which is NOT the exact 6.0.0, so confirming it is a false CONFIRM on a
+// truncated scan. For equality, ANY hidden component makes it a lead.
+bool truncatedForExact(const QString &version, const QString &boundary) {
+    if (boundary.isEmpty()) return false;
+    const QList<int> pv = verNums(version), pb = verNums(boundary);
+    if (pv.size() >= pb.size()) return false;
+    for (int i = 0; i < pv.size(); ++i)
+        if (pv[i] != pb[i]) return false;       // prefix differs -> certainly not equal
+    return true;                                // any hidden component -> lead
+}
+
 // Decide affected + precision for one CVE (exact, or a [minVer, maxVer) range
 // with min inclusive / max exclusive) against a scanned version. Truncation at
 // EITHER boundary that leaves the missing component(s) deciding yields an
@@ -225,7 +257,7 @@ Verdict evalCve(const QString &version, const QString &minVer, const QString &ma
         // vs "2.4.49") can't be confirmed equal, but the hidden patch level could
         // BE the vulnerable one -- report an affected LEAD (imprecise), never a
         // silent drop that also lies about precision.
-        if (truncatedAgainst(version, minVer))
+        if (truncatedForExact(version, minVer))
             return { true, false };
         return { verCmp(version, minVer) == 0, true };
     }
@@ -265,7 +297,11 @@ namespace {
 struct VerPat { const char *product; QRegularExpression re; };
 const QList<VerPat> &verPats() {
     static const QList<VerPat> p = {
-        { "openssh",  QRegularExpression("OpenSSH[_/]([0-9][0-9.p]*)",   QRegularExpression::CaseInsensitiveOption) },
+        // "OpenSSH_for_Windows_8.1" DOES disclose its version, but requiring a digit
+        // straight after the separator missed it -- the banner fell back to the
+        // name-only path and a CVSS 9.8 CVE was downgraded to an INFO finding.
+        { "openssh",  QRegularExpression("OpenSSH[_/](?:for_Windows_)?([0-9][0-9.p]*)",
+                                         QRegularExpression::CaseInsensitiveOption) },
         { "vsftpd",   QRegularExpression("vsftpd\\s+([0-9][0-9.]*)",     QRegularExpression::CaseInsensitiveOption) },
         { "proftpd",  QRegularExpression("ProFTPD\\s+([0-9][0-9.]*)",    QRegularExpression::CaseInsensitiveOption) },
         { "exim",     QRegularExpression("Exim\\s+([0-9][0-9.]*)",       QRegularExpression::CaseInsensitiveOption) },
@@ -289,23 +325,33 @@ const QList<VerPat> &verPats() {
 // off / a bare "Postfix"/"Dovecot" greeting). Order matters: more specific
 // product tokens first (MariaDB before the generic MySQL handshake markers).
 struct NamePat { const char *product; QRegularExpression re; };
+
+// Wrap a product-name pattern so it can't match INSIDE a longer alphanumeric run:
+// bare "Exim" matched "eximius.example.com" and shadowed the real product (Postfix)
+// for the whole banner. Plain \b is wrong here -- '_' is a word char, so \b would
+// reject the legitimate "OpenSSH_9.7p1" -- so guard on ALNUM only.
+static QRegularExpression nameRe(const char *pat) {
+    return QRegularExpression(QStringLiteral("(?<![a-z0-9])(?:%1)(?![a-z0-9])")
+                                  .arg(QLatin1String(pat)),
+                              QRegularExpression::CaseInsensitiveOption);
+}
+
 const QList<NamePat> &namePats() {
     static const QList<NamePat> p = {
-        { "openssh",  QRegularExpression("OpenSSH",        QRegularExpression::CaseInsensitiveOption) },
-        { "apache",   QRegularExpression("Apache",         QRegularExpression::CaseInsensitiveOption) },
-        { "nginx",    QRegularExpression("nginx",          QRegularExpression::CaseInsensitiveOption) },
-        { "lighttpd", QRegularExpression("lighttpd",       QRegularExpression::CaseInsensitiveOption) },
-        { "iis",      QRegularExpression("Microsoft-IIS",  QRegularExpression::CaseInsensitiveOption) },
-        { "vsftpd",   QRegularExpression("vsftpd",         QRegularExpression::CaseInsensitiveOption) },
-        { "proftpd",  QRegularExpression("ProFTPD",        QRegularExpression::CaseInsensitiveOption) },
-        { "exim",     QRegularExpression("Exim",           QRegularExpression::CaseInsensitiveOption) },
-        { "postfix",  QRegularExpression("Postfix",        QRegularExpression::CaseInsensitiveOption) },
-        { "dovecot",  QRegularExpression("Dovecot",        QRegularExpression::CaseInsensitiveOption) },
-        { "samba",    QRegularExpression("Samba",          QRegularExpression::CaseInsensitiveOption) },
-        { "mariadb",  QRegularExpression("MariaDB",        QRegularExpression::CaseInsensitiveOption) },
-        { "redis",    QRegularExpression("Redis|redis_version", QRegularExpression::CaseInsensitiveOption) },
-        { "mysql",    QRegularExpression("MySQL|mysql_native_password|caching_sha2_password",
-                                         QRegularExpression::CaseInsensitiveOption) },
+        { "openssh",  nameRe("OpenSSH")        },
+        { "apache",   nameRe("Apache")         },
+        { "nginx",    nameRe("nginx")          },
+        { "lighttpd", nameRe("lighttpd")       },
+        { "iis",      nameRe("Microsoft-IIS")  },
+        { "vsftpd",   nameRe("vsftpd")         },
+        { "proftpd",  nameRe("ProFTPD")        },
+        { "exim",     nameRe("Exim")           },
+        { "postfix",  nameRe("Postfix")        },
+        { "dovecot",  nameRe("Dovecot")        },
+        { "samba",    nameRe("Samba")          },
+        { "mariadb",  nameRe("MariaDB")        },
+        { "redis",    nameRe("Redis|redis_version") },
+        { "mysql",    nameRe("MySQL|mysql_native_password|caching_sha2_password") },
     };
     return p;
 }
@@ -336,6 +382,14 @@ QString productOnly(const QString &banner, int port) {
 QList<CveHit> matchVersion(const QString &product, const QString &version) {
     QList<CveHit> out;
     if (product.isEmpty() || version.isEmpty()) return out;
+    // A version with no ASCII digit discloses no release at all. QChar::isDigit() is
+    // Unicode-aware while QString::toInt() is not, so a fullwidth "２.４" tokenized as
+    // digits but parsed as nothing -- leaving an empty release that compares as 0.0.0
+    // and matched every "< maxVer" CVE (phantom leads on an unparseable banner).
+    bool hasAsciiDigit = false;
+    for (const QChar &c : version)
+        if (c >= QLatin1Char('0') && c <= QLatin1Char('9')) { hasAsciiDigit = true; break; }
+    if (!hasAsciiDigit) return out;
     for (const ServiceCve &c : table()) {
         if (product.compare(QString::fromUtf8(c.product), Qt::CaseInsensitive) != 0) continue;
         const Verdict vd = evalCve(version, QString::fromUtf8(c.minVer),

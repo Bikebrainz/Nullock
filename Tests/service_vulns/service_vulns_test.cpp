@@ -211,6 +211,70 @@ int main(int argc, char **argv) {
         chk("overlay: a re-published static CVE id is deduped (static wins, counted once)", n == 1);
         clearOverlay();
         chk("clearOverlay: overlay CVE gone", !has(cves("nginx", "1.20.1"), "CVE-2099-0001"));
+        // audit-11: the overlay product match is case-INSENSITIVE; a case-sensitive
+        // regression would silently void an entire published feed.
+        OverlayCve up;
+        up.product = "NGINX"; up.cveId = "CVE-2099-0010"; up.cvss = 7.5;
+        up.minVer = "1.0"; up.maxVer = "2.0"; up.exact = false;
+        setOverlay({up});
+        chk("overlay: an UPPERCASE feed product still matches (case-insensitive)",
+            has(cves("nginx", "1.20.1"), "CVE-2099-0010"));
+        clearOverlay();
+        // audit-11: an overlay listing the SAME cveId twice must be deduped internally.
+        OverlayCve d1, d2;
+        d1.product = "nginx"; d1.cveId = "CVE-2099-0011"; d1.cvss = 5.0;
+        d1.minVer = "1.0"; d1.maxVer = "2.0"; d1.exact = false;
+        d2 = d1; d2.minVer = "1.5"; d2.maxVer = "3.0";
+        setOverlay({d1, d2});
+        int dupN = 0;
+        for (const auto &h : matchVersion("nginx", "1.20.1")) if (h.cveId == "CVE-2099-0011") ++dupN;
+        chk("overlay: a cveId listed twice by ONE feed is counted once", dupN == 1);
+        clearOverlay();
+    }
+
+    // ===== audit-11: version parsing / banner recognition ================
+    {
+        // An over-INT_MAX component used to abort the numeric parse and fall through
+        // to the maintenance-letter branch, leaving an EMPTY release that compares as
+        // 0.0.0 -- matching every "< maxVer" CVE on a host far newer than any fix.
+        chk("nginx 99999999999.1 (over-INT_MAX) -> no phantom CVE leads",
+            cves("nginx", "99999999999.1").isEmpty());
+        chk("apache 99999999999.1 -> no phantom CVE leads",
+            cves("apache", "99999999999.1").isEmpty());
+        // A version with no ASCII digit discloses no release at all (QChar::isDigit()
+        // accepts fullwidth digits, QString::toInt() does not).
+        chk("apache fullwidth-digit version -> no hits (unparseable, not 0.0.0)",
+            matchVersion("apache", QString::fromUtf8("\xEF\xBC\x92.\xEF\xBC\x94")).isEmpty());
+        // Sanity: normal versions still resolve.
+        chk("apache 2.4.49 still matches its exact CVE (no over-correction)",
+            has(cves("apache", "2.4.49"), "CVE-2021-41773"));
+
+        // EXACT-match CVEs: any hidden component defeats CONFIRMATION. The range-only
+        // "boundary tail all-zero -> certain" rule wrongly confirmed a truncated scan.
+        {
+            bool sawExact = false, precise = true;
+            for (const auto &h : matchVersion("iis", "6")) { sawExact = true; precise = h.precise; }
+            chk("iis 6 (truncated) -> exact-CVE hits are graded a LEAD, not confirmed",
+                !sawExact || !precise);
+        }
+
+        // OpenSSH-for-Windows DOES disclose its version; requiring a digit right after
+        // the separator missed it and downgraded a CVSS 9.8 CVE to INFO.
+        chk("OpenSSH_for_Windows_8.1 -> version captured",
+            ver("SSH-2.0-OpenSSH_for_Windows_8.1") == "8.1");
+        chk("OpenSSH_for_Windows_8.1 -> product still openssh",
+            prod("SSH-2.0-OpenSSH_for_Windows_8.1") == "openssh");
+        chk("plain OpenSSH_9.7p1 still parses (no regression)",
+            ver("SSH-2.0-OpenSSH_9.7p1") == "9.7p1");
+
+        // An unanchored product NAME matched inside a HOSTNAME and shadowed the real
+        // product for the whole banner.
+        chk("'eximius.example.com' does NOT resolve to exim (name anchored)",
+            pOnly("220 eximius.example.com ESMTP Postfix (Ubuntu)") != "exim");
+        chk("'eximius.example.com ... Postfix' resolves to postfix",
+            pOnly("220 eximius.example.com ESMTP Postfix (Ubuntu)") == "postfix");
+        chk("a real Exim banner still resolves to exim",
+            pOnly("220 mail.example.com ESMTP Exim 4.94") == "exim");
     }
 
     std::fprintf(stderr, "service_vulns_test: %d passed, %d failed\n", pass, fail);
