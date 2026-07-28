@@ -126,6 +126,10 @@ ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded) {
             return buffer.size() > kMaxChunkLineBytes ? ChunkDecode::Error
                                                       : ChunkDecode::NeedMore;
         }
+        // The guard above only fires while the size line is still UNTERMINATED, so a
+        // CRLF-terminated but absurdly long line (a megabyte of chunk-extension) slid
+        // past the cap entirely and was parsed in full. Bound the line itself too.
+        if (qint64(crlf) > kMaxChunkLineBytes) return ChunkDecode::Error;
         const ChunkSize cs = parseChunkSizeLine(buffer.left(crlf));
         if (!cs.ok) return ChunkDecode::Error;
         if (decoded.size() + cs.size > kMaxBodyBytes) return ChunkDecode::Error;
@@ -137,6 +141,7 @@ ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded) {
             // trailer left its remaining lines in the buffer, where they would be read
             // as the start of the next response. Scan field-lines to the empty line.
             int pos = crlf + 2;                       // first byte after "0\r\n"
+            qint64 trailerBytes = 0;                  // TOTAL across all field-lines
             while (true) {
                 const int e = buffer.indexOf("\r\n", pos);
                 if (e < 0)                            // trailer not terminated yet
@@ -147,6 +152,12 @@ ChunkDecode feedChunked(QByteArray &buffer, QByteArray &decoded) {
                     return ChunkDecode::Done;
                 }
                 if (e - pos > kMaxChunkLineBytes) return ChunkDecode::Error;
+                // Cap the ACCUMULATED trailer too, not just each line: the per-line
+                // check alone let a TERMINATED trailer of unbounded total size (N tiny
+                // field-lines) walk through and return Done, so a peer could make us
+                // buffer and scan megabytes carrying zero body bytes.
+                trailerBytes += qint64(e - pos) + 2;
+                if (trailerBytes > kMaxChunkLineBytes) return ChunkDecode::Error;
                 pos = e + 2;                          // next trailer field-line
             }
         }

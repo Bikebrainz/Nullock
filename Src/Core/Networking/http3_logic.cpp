@@ -18,6 +18,17 @@ QByteArray buildGet(const Request &req) {
     out += "Accept: */*\r\nAccept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop carried framing/encoding headers that fight the ones this body-less GET
+        // forces (Accept-Encoding: identity above, Connection: close below):
+        //  - Content-Length / Transfer-Encoding advertise a body that is never sent,
+        //    so the server waits for it (the detect probe stalls) or the socket desyncs.
+        //  - a carried Accept-Encoding combines (RFC 9112 7.4) and lets the server
+        //    compress, defeating the forced identity the Alt-Svc read depends on.
+        //  - a carried Connection: keep-alive contradicts the forced close.
+        if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
+        if (h.first.compare("Connection", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

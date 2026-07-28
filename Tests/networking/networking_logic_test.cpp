@@ -322,6 +322,33 @@ int main(int argc, char **argv) {
         chks("feed NeedMore still consumed the COMPLETE chunk", QString::fromLatin1(dec), "abc");
         chks("feed NeedMore left only the partial chunk", QString::fromLatin1(buf), "5\r\nhe");
     }
+    {
+        // audit-12: the size-line cap only fired while the line was UNTERMINATED, so a
+        // CRLF-TERMINATED but absurdly long chunk-extension slid past it and was parsed
+        // whole. (The existing flood test omits the CRLF, exercising only that branch.)
+        QByteArray buf = "1;" + QByteArray(2 * int(kMaxChunkLineBytes), 'x') + "\r\nA\r\n0\r\n\r\n", dec;
+        chkd("feed oversized TERMINATED size line -> error",
+             feedChunked(buf, dec), ChunkDecode::Error);
+    }
+    {
+        // audit-12: the trailer cap bounded ONE field-line but never the ACCUMULATION,
+        // so a terminated trailer of unbounded TOTAL size (N tiny lines) was walked and
+        // accepted as Done -- megabytes buffered carrying zero body bytes.
+        QByteArray buf = "3\r\nabc\r\n0\r\n", dec;
+        while (buf.size() < 4 * int(kMaxChunkLineBytes)) buf += "A: 1\r\n";
+        buf += "\r\n";                                    // terminate the trailer
+        chkd("feed oversized TERMINATED trailer -> error", feedChunked(buf, dec), ChunkDecode::Error);
+    }
+    {
+        // ...and the total cap must not be over-tight: a normal multi-field trailer
+        // well under it still completes and is fully consumed.
+        QByteArray buf = "3\r\nabc\r\n0\r\n", dec;
+        while (buf.size() < 8 * 1024) buf += "A: 1\r\n";
+        buf += "\r\n";
+        chkd("feed small terminated trailer still done", feedChunked(buf, dec), ChunkDecode::Done);
+        chki("feed small terminated trailer fully consumed", buf.size(), 0);
+        chks("feed small terminated trailer decoded", QString::fromLatin1(dec), "abc");
+    }
 
     // ===== feedChunked: malformed ========================================
     {

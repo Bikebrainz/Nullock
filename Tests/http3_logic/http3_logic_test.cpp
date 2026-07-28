@@ -46,6 +46,32 @@ int main(int argc, char **argv) {
         chk("get: terminated", out.endsWith("Connection: close\r\n\r\n"));
         chk("get: exactly one Host", countSub(out, "Host: ") == 1);
     }
+    {
+        // audit-12: this body-less GET forces Accept-Encoding: identity + Connection:
+        // close, so a carried Content-Length / Transfer-Encoding (advertises a body
+        // that never arrives -> the detect probe stalls or the socket desyncs),
+        // Accept-Encoding (server compresses, defeating the forced identity the
+        // Alt-Svc read depends on) or Connection must all be dropped. This was the one
+        // GET builder the repo-wide carried-header sweep missed.
+        Request r = baseReq();
+        r.headers.append({ QStringLiteral("Content-Length"),    QStringLiteral("100") });
+        r.headers.append({ QStringLiteral("Transfer-Encoding"), QStringLiteral("chunked") });
+        r.headers.append({ QStringLiteral("Accept-Encoding"),   QStringLiteral("gzip, deflate, br") });
+        r.headers.append({ QStringLiteral("Connection"),        QStringLiteral("keep-alive") });
+        const QByteArray cg = buildGet(r);
+        chk("get: carried Content-Length dropped (body-less GET)", !cg.contains("Content-Length"));
+        chk("get: carried Transfer-Encoding dropped", !cg.contains("Transfer-Encoding"));
+        chk("get: carried Accept-Encoding dropped -> exactly one, identity",
+            countSub(cg, "Accept-Encoding:") == 1 && cg.contains("Accept-Encoding: identity\r\n")
+            && !cg.contains("gzip"));
+        chk("get: carried Connection dropped -> exactly one, close",
+            countSub(cg, "Connection:") == 1 && cg.contains("Connection: close\r\n")
+            && !cg.contains("keep-alive"));
+        // The drop is not over-broad: a clean carried header is still emitted.
+        Request clean = baseReq();
+        clean.headers.append({ QStringLiteral("X-Trace"), QStringLiteral("ok") });
+        chk("get: a clean carried header IS emitted", buildGet(clean).contains("X-Trace: ok\r\n"));
+    }
     { Request r = baseReq(); r.path = "/foo"; chk("get: path used", buildGet(r).startsWith("GET /foo HTTP/1.1\r\n")); }
     {
         Request r = baseReq(); r.path = "/foo"; r.query = "a=b";
