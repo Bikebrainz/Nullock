@@ -184,6 +184,48 @@ int main(int argc, char **argv) {
         !has(keys(H({{"X-Permitted-Cross-Domain-Policies", "none"}}), false),
              "missing-permitted-cross-domain-policies"));
 
+    // ===== audit-11: CSP semantics (effectively-'none', base-uri, CSP3 overrides) ==
+    {
+        // CSP3 2.3.1: 'none' blocks only as the SOLE source. "'none' https://evil.tld"
+        // really allows evil.tld, so it must NOT satisfy the script gate (which then
+        // skipped the object-src/base-uri checks entirely).
+        const QStringList noneWithHost = csp("script-src 'none' https://evil.tld");
+        chk("csp: script-src \"'none' <host>\" does not count as blocking (base-uri gate runs)",
+            has(noneWithHost, "csp-no-base-uri"));
+        // ...while a genuine sole-'none' script-src still short-circuits the gate.
+        chk("csp: script-src 'none' alone still blocks (no base-uri finding)",
+            !has(csp("script-src 'none'"), "csp-no-base-uri"));
+        // Same rule for object-src.
+        chk("csp: object-src \"'none' <host>\" is not credited as blocking",
+            has(csp("script-src 'self'; object-src 'none' https://evil.tld"), "csp-no-object-src"));
+        chk("csp: object-src 'none' alone IS credited",
+            !has(csp("script-src 'self'; object-src 'none'; base-uri 'self'"), "csp-no-object-src"));
+
+        // base-uri was presence-only: a permissive "base-uri *" suppressed the finding.
+        chk("csp: permissive 'base-uri *' still raises csp-no-base-uri",
+            has(csp("script-src 'self'; object-src 'none'; base-uri *"), "csp-no-base-uri"));
+        chk("csp: restrictive base-uri 'self' stays clean",
+            !has(csp("script-src 'self'; object-src 'none'; base-uri 'self'"), "csp-no-base-uri"));
+
+        // CSP3 script-src-elem/-attr OVERRIDE script-src for their context, so a clean
+        // script-src must not mask an unsafe override.
+        chk("csp: script-src-elem 'unsafe-inline' is detected despite a clean script-src",
+            has(csp("script-src 'self'; script-src-elem 'unsafe-inline' https://*"),
+                "csp-unsafe-inline"));
+        chk("csp: a wildcard in script-src-elem is detected",
+            has(csp("script-src 'self'; script-src-elem https://*"), "csp-wildcard-source"));
+        chk("csp: script-src-attr 'unsafe-inline' is detected",
+            has(csp("script-src 'self'; script-src-attr 'unsafe-inline'"), "csp-unsafe-inline"));
+        // A nonce ON THE OVERRIDE list suppresses its own unsafe-inline (per-list rule).
+        chk("csp: a nonce on script-src-elem suppresses its unsafe-inline",
+            !has(csp("script-src 'self'; script-src-elem 'unsafe-inline' 'nonce-abc123'"),
+                 "csp-unsafe-inline"));
+        // A strict override list adds no noise.
+        chk("csp: a strict script-src-elem adds no finding",
+            !has(csp("script-src 'self'; object-src 'none'; base-uri 'self'; script-src-elem 'self'"),
+                 "csp-unsafe-inline"));
+    }
+
     // ===== audit-11: presence-only checks must not accept the WORST value =====
     {
         // SameSite=None explicitly opts INTO cross-site sending -- it is the one value

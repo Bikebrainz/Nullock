@@ -114,6 +114,38 @@ void auditCsp(const QString &csp, bool reportOnly, Result &result) {
     // blocked -- 'strict-dynamic' is not required for that suppression. Require a
     // well-formed hash algorithm so a malformed 'sha... token can't silently
     // suppress the unsafe-inline finding.
+    // CSP3 2.3.1: 'none' means "block everything" ONLY when it is the sole source
+    // expression. Alongside any other source, browsers IGNORE it -- so a list like
+    // "'none' https://evil.tld" actually ALLOWS evil.tld, and treating it as blocking
+    // silently opens the gates below.
+    auto effectivelyNone = [](const QStringList &srcs) {
+        return srcs.size() == 1 && srcs.first().toLower() == QLatin1String("'none'");
+    };
+    auto listIsPermissive = [](const QStringList &srcs) {
+        for (const QString &s : srcs) {
+            const QString t = s.toLower();
+            if (t == "*" || t == "http:" || t == "https:" || t == "data:" || hostOf(s) == "*")
+                return true;
+        }
+        return false;
+    };
+    auto alreadyReported = [&result](const QString &key) {
+        for (const auto &f : result.findings) if (f.key == key) return true;
+        return false;
+    };
+
+    auto hasValidNonceOrHash = [](const QStringList &srcs) {
+        for (const QString &tok : srcs) {
+            const QString t = tok.toLower();
+            for (const char *pre : { "'nonce-", "'sha256-", "'sha384-", "'sha512-" }) {
+                const QString p = QLatin1String(pre);
+                if (t.startsWith(p) && t.endsWith(QLatin1Char('\'')) && t.size() > p.size() + 1)
+                    return true;
+            }
+        }
+        return false;
+    };
+
     bool hasNonceOrHash = false;
     for (const QString &tok : script) {
         const QString t = tok.toLower();
@@ -161,18 +193,61 @@ void auditCsp(const QString &csp, bool reportOnly, Result &result) {
                 break;
             }
     }
+    // CSP3 script-src-elem / script-src-attr OVERRIDE script-src for their context
+    // (<script> elements and inline event handlers respectively) and do NOT inherit
+    // from it when present -- so "script-src 'self'; script-src-elem 'unsafe-inline'
+    // https://*" really does run inline+any-host script while the script-src-only
+    // audit above reports it clean. Audit each override list on its own terms: its
+    // OWN nonce/hash suppression (a nonce in script-src does not cover script-src-elem)
+    // and dedup by key so an already-reported issue isn't double-listed.
+    for (const char *dirName : { "script-src-elem", "script-src-attr" }) {
+        const QString d = QLatin1String(dirName);
+        if (!dirs.contains(d)) continue;
+        const QStringList list = dirs.value(d);
+        if (list.isEmpty() || effectivelyNone(list)) continue;
+        const bool listNonceOrHash = hasValidNonceOrHash(list);
+        for (const QString &tok : list) {
+            const QString t = tok.toLower();
+            if (t == "'unsafe-inline'" && !listNonceOrHash && !alreadyReported("csp-unsafe-inline"))
+                add("csp-unsafe-inline", "high",
+                    "CSP allows 'unsafe-inline' scripts via " + d,
+                    d + " overrides script-src for its context, so inline script "
+                        "executes freely; add a per-response nonce/hash there too");
+            if (t == "'unsafe-eval'" && !alreadyReported("csp-unsafe-eval"))
+                add("csp-unsafe-eval", "medium", "CSP allows 'unsafe-eval' via " + d,
+                    "string-to-code APIs (eval, new Function) remain available to an attacker");
+            if ((t == "*" || t == "http:" || t == "https:" || t == "data:" || hostOf(tok) == "*")
+                && !alreadyReported("csp-wildcard-source"))
+                add("csp-wildcard-source", "high",
+                    "CSP script source is wildcard/scheme-wide via " + d + " (" + tok + ")",
+                    "any host (or any data: URI) may supply script -- the allow-list is meaningless");
+        }
+    }
+
     // Flag a missing object-src/base-uri unless script-src is exactly 'none'
     // (which already blocks all script). An EMPTY effective script list means no
     // governance -- still flag these (the no-script-restriction high is added
     // above, and these are real additional gaps).
-    if (script.isEmpty() || script.first().toLower() != "'none'") {
-        const QString objectSrc = dirs.value("object-src").join(' ').toLower();
-        if (!dirs.contains("object-src") || (!objectSrc.contains("'none'")))
+    // "script-src 'none' https://evil.tld" does NOT block script (browsers drop the
+    // 'none'), so the gate must test the whole list, not just its first token.
+    if (!effectivelyNone(script)) {
+        // Same rule for object-src: a bare contains("'none'") credited
+        // "object-src 'none' https://evil.tld" as blocking.
+        if (!effectivelyNone(dirs.value("object-src")))
             add("csp-no-object-src", "low", "CSP has no object-src 'none'",
                 "plugins/<object> can be a script-execution / data-exfil vector");
+        // base-uri was PRESENCE-only, so a fully permissive "base-uri *" suppressed
+        // the very finding it exists to raise -- an injected <base> can still re-root
+        // relative script URLs. Require an actually-restrictive source list.
+        const QStringList baseUri = dirs.value("base-uri");
         if (!dirs.contains("base-uri"))
             add("csp-no-base-uri", "medium", "CSP has no base-uri",
                 "an injected <base> tag can re-root relative script URLs to an attacker host");
+        else if (listIsPermissive(baseUri))
+            add("csp-no-base-uri", "medium",
+                "CSP base-uri is permissive (" + baseUri.join(' ') + ")",
+                "a wildcard/scheme-wide base-uri does not constrain <base>, so an "
+                "injected tag can still re-root relative script URLs to an attacker host");
     }
     if (reportOnly) result.reportOnlyOnly = true;
 }
