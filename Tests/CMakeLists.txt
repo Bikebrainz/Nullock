@@ -554,3 +554,9 @@ add_subdirectory(service_vulns)
 # guards on every field (links the pure jwt_tool; testOneCarrier is I/O).
 # Run via: ctest -R jwt_probe -V
 add_subdirectory(jwt_probe)
+
+# Live-socket suite: drives a real ProxyServer on an ephemeral loopback port to
+# pin that teardown joins the per-connection worker threads promptly. Stays out
+# of the CI ctest filter for the same reason port_scan_live does -- it binds
+# sockets and spawns threads, which flakes on shared runners.
+add_subdirectory(proxy_shutdown)

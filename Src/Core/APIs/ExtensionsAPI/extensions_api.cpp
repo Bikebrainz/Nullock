@@ -288,6 +288,14 @@ Nullock::Proxy::HttpRequest ExtensionsApi::applyRequestMutation(
     // request with an empty method, host and path. Forwarding that upstream is
     // strictly worse than forwarding the untouched original, so the failure
     // direction has to be "extensions did not run", never "send garbage".
+    //
+    // The SEEDING is what covers teardown, NOT the bool below. For a blocking-
+    // queued call invokeMethod returns TRUE once the QMetaCallEvent is posted;
+    // it then waits on a semaphore that ~QObject releases when the receiver is
+    // destroyed, and still returns true with `out` never written. The bool only
+    // catches signature-resolution failure (bad method name / unregistered
+    // metatype) -- unreachable while both slots stay `public slots:` with their
+    // metatypes registered in the ctor, so treat it as belt-and-braces.
     Nullock::Proxy::HttpRequest out = req;
     if (!QMetaObject::invokeMethod(this, "doMutateRequest", Qt::BlockingQueuedConnection,
                                    Q_RETURN_ARG(Nullock::Proxy::HttpRequest, out),
@@ -306,8 +314,8 @@ Nullock::Proxy::HttpResponse ExtensionsApi::applyResponseMutation(
     if (!m_hasResponseHandlers.load(std::memory_order_acquire)) return resp;
     if (thread() == QThread::currentThread()) return doMutateResponse(req, resp);
 
-    // See applyRequestMutation: seed with the original so a failed dispatch
-    // cannot hand the client a 0-status, empty-body response.
+    // See applyRequestMutation: the seeding, not the bool, is what stops a
+    // cancelled teardown dispatch handing the client a 0-status empty body.
     Nullock::Proxy::HttpResponse out = resp;
     if (!QMetaObject::invokeMethod(this, "doMutateResponse", Qt::BlockingQueuedConnection,
                                    Q_RETURN_ARG(Nullock::Proxy::HttpResponse, out),

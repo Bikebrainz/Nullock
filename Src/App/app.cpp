@@ -1093,6 +1093,13 @@ int main(int argc, char *argv[]) {
         crawler.stop();
         intruder.stop();
         portScanner.stop();
+        // The proxy's per-connection QThreads are NOT QtConcurrent tasks, so
+        // the waitForDone() below never covered them. They reach `proxy`,
+        // `extensions`, `intercept`, `model` and `scanner` through raw
+        // pointers -- all stack locals declared AFTER `proxy`, hence destroyed
+        // BEFORE it. Joining in ~ProxyServer would therefore be too late.
+        // This is the point where every one of them is still alive.
+        proxy.shutdownAndJoin();
     };
 
     if (headless) {

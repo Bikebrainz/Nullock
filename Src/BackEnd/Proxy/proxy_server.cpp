@@ -14,9 +14,12 @@
 #include "websocket.hpp"
 #include "ws_repeater.hpp"
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 
+#include <algorithm>
 #include <memory>
 #include <QSslCertificate>
 #include <QSslConfiguration>
@@ -43,11 +46,104 @@ using HttpLogic::parseHeaders;
 constexpr int kReadTimeoutMs      = 15'000;
 constexpr int kHandshakeTimeoutMs = 3'000;  // short so h2-only hosts bypass fast
 constexpr int kMaxHeaderBytes     = 64 * 1024;
+// QTcpSocket::waitForReadyRead is UNINTERRUPTIBLE: a worker parked in a
+// 15 s read cannot notice that the app is shutting down. Waiting in slices
+// makes the teardown join cost one slice per parked connection instead of a
+// full kReadTimeoutMs, without changing the aggregate deadline any caller
+// sees. Same shape as HttpClient's nextReadTimeoutMs budget.
+constexpr int kWaitSliceMs        = 500;
+// joinWorkers() polls each thread this often so it can pump the event queue
+// in between (see the deadlock note there), and gives up after the budget
+// rather than hanging the app on exit. The budget is generous relative to the
+// 250 ms wake quantum: reaching it means a blocking site is not shutdown-aware.
+constexpr int kJoinPollMs         = 25;
+constexpr int kJoinBudgetMs       = 20'000;
+// Once the global budget is blown, every REMAINING thread still gets its own
+// grace window. Without this, one stuck worker makes the budget expire and
+// every healthy thread behind it is detached on its first 25 ms poll -- turning
+// a single un-interruptible site into N use-after-frees.
+constexpr int kJoinGraceMs        = 500;
 
-bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
+// Sliced, shutdown-aware waitForReadyRead.
+//
+// `srv` is REQUIRED on every caller, deliberately without a default: a
+// defaulted nullptr is a silent opt-out of the entire shutdown mechanism, and
+// the next helper call site added would revert to a 15 s uninterruptible wait
+// with no compile error and no test failure. The null branch stays only for
+// the (currently nonexistent) caller that genuinely has no server.
+bool waitReadable(QTcpSocket *socket, int totalMs, const ProxyServer *srv) {
+    if (!srv) return socket->waitForReadyRead(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (srv->isShuttingDown()) return false;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        const int slice = static_cast<int>(std::min<qint64>(left, kWaitSliceMs));
+        if (socket->waitForReadyRead(slice)) return true;
+        // A slice expiring is not a failure; a dead socket is. Without this
+        // the loop would spin out the whole budget on a closed connection.
+        if (socket->state() != QAbstractSocket::ConnectedState) return false;
+    }
+}
+
+// Same slicing for the two OTHER long uninterruptible waits on a connection's
+// critical path. connectToHost + TLS handshake against an unreachable or
+// blackholed origin park a worker for the full budget with no data ever
+// arriving, so leaving these un-sliced would let a single dead upstream push
+// the teardown join past its budget -- the join would then give up and LEAK
+// that worker, which is the outcome this whole change exists to avoid.
+// Both Qt calls are safe to re-enter: a slice expiring does not cancel the
+// connect or the handshake, it just stops waiting on it.
+bool waitConnected(QAbstractSocket *socket, int totalMs, const ProxyServer *srv) {
+    if (!srv) return socket->waitForConnected(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (srv->isShuttingDown()) return false;
+        if (socket->state() == QAbstractSocket::ConnectedState) return true;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        if (socket->waitForConnected(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+            return true;
+        if (socket->state() == QAbstractSocket::UnconnectedState) return false;
+    }
+}
+
+bool waitWritten(QAbstractSocket *socket, int totalMs, const ProxyServer *srv) {
+    if (!srv) return socket->waitForBytesWritten(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (socket->bytesToWrite() == 0) return true;
+        if (srv->isShuttingDown()) return false;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        if (socket->waitForBytesWritten(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+            return true;
+        if (socket->state() != QAbstractSocket::ConnectedState) return false;
+    }
+}
+
+bool waitEncrypted(QSslSocket *socket, int totalMs, const ProxyServer *srv) {
+    if (!srv) return socket->waitForEncrypted(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (srv->isShuttingDown()) return false;
+        if (socket->isEncrypted()) return true;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        if (socket->waitForEncrypted(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+            return true;
+        if (socket->state() != QAbstractSocket::ConnectedState) return false;
+    }
+}
+
+bool readHeaderBlock(QTcpSocket *socket, QByteArray &out, const ProxyServer *srv) {
     while (!out.contains("\r\n\r\n")) {
         if (out.size() > kMaxHeaderBytes) return false;
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kReadTimeoutMs))
+        if (socket->bytesAvailable() == 0 && !waitReadable(socket, kReadTimeoutMs, srv))
             return false;
         out.append(socket->readAll());
         if (socket->state() != QAbstractSocket::ConnectedState && !out.contains("\r\n\r\n"))
@@ -56,9 +152,9 @@ bool readHeaderBlock(QTcpSocket *socket, QByteArray &out) {
     return true;
 }
 
-bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
+bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out, const ProxyServer *srv) {
     while (out.size() < n) {
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kReadTimeoutMs))
+        if (socket->bytesAvailable() == 0 && !waitReadable(socket, kReadTimeoutMs, srv))
             return false;
         out.append(socket->read(n - out.size()));
         if (socket->state() != QAbstractSocket::ConnectedState && out.size() < n)
@@ -67,9 +163,9 @@ bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out) {
     return true;
 }
 
-void readUntilClose(QTcpSocket *socket, QByteArray &out) {
+void readUntilClose(QTcpSocket *socket, QByteArray &out, const ProxyServer *srv) {
     while (socket->state() == QAbstractSocket::ConnectedState) {
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(kReadTimeoutMs))
+        if (socket->bytesAvailable() == 0 && !waitReadable(socket, kReadTimeoutMs, srv))
             break;
         out.append(socket->readAll());
     }
@@ -79,14 +175,15 @@ void readUntilClose(QTcpSocket *socket, QByteArray &out) {
 // parseHeaders / findHeader / isFramingSafe / isChunkedTransfer and the bounded
 // chunked decoder live in proxy_logic.cpp (pure, Qt6::Core only) so they can be
 // unit-tested; this socket-side wrapper just feeds bytes to the pure decoder.
-bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded) {
+bool readChunkedBody(QTcpSocket *socket, QByteArray &buffer, QByteArray &decoded,
+                     const ProxyServer *srv) {
     using HttpLogic::ChunkResult;
     while (true) {
         const ChunkResult r = HttpLogic::decodeChunkedAvailable(buffer, decoded);
         if (r == ChunkResult::Complete) return true;
         if (r == ChunkResult::Error)    return false;   // bad / oversized / overflowing chunk
         // NeedMore: pull more wire bytes and try again.
-        if (!socket->waitForReadyRead(kReadTimeoutMs)) return false;
+        if (!waitReadable(socket, kReadTimeoutMs, srv)) return false;
         buffer.append(socket->readAll());
     }
 }
@@ -159,7 +256,7 @@ public:
 
         QTcpSocket upstream;
         upstream.connectToHost(req.host, req.port);
-        if (!upstream.waitForConnected(kReadTimeoutMs)) {
+        if (!waitConnected(&upstream, kReadTimeoutMs, m_server)) {
             fail("upstream connect failed: " + upstream.errorString());
             return;
         }
@@ -174,7 +271,7 @@ public:
             outBytes = ir.bytes;
         }
         upstream.write(outBytes);
-        if (!upstream.waitForBytesWritten(kReadTimeoutMs)) {
+        if (!waitWritten(&upstream, kReadTimeoutMs, m_server)) {
             fail("upstream write failed");
             return;
         }
@@ -195,7 +292,7 @@ public:
             resolveResponseForClient(resp, req.host, req.port, /*tls=*/false, inScope);
         if (ir.dropped) { m_client->disconnectFromHost(); return; }
         m_client->write(ir.bytes);
-        m_client->waitForBytesWritten(kReadTimeoutMs);
+        waitWritten(m_client, kReadTimeoutMs, m_server);
         m_client->disconnectFromHost();
     }
 
@@ -231,9 +328,9 @@ public:
         m_upstream = new QTcpSocket(this);
 
         m_upstream->connectToHost(host, port);
-        if (!m_upstream->waitForConnected(kReadTimeoutMs)) {
+        if (!waitConnected(m_upstream, kReadTimeoutMs, m_server)) {
             m_client->write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
-            m_client->waitForBytesWritten(kReadTimeoutMs);
+            waitWritten(m_client, kReadTimeoutMs, m_server);
             fail("tunnel connect failed: " + m_upstream->errorString());
             return;
         }
@@ -252,7 +349,7 @@ public:
         if (emitSignals) emit m_server->responseReceived(req, resp);
 
         m_client->write("HTTP/1.1 200 Connection Established\r\n\r\n");
-        if (!m_client->waitForBytesWritten(kReadTimeoutMs)) {
+        if (!waitWritten(m_client, kReadTimeoutMs, m_server)) {
             fail("tunnel ack write failed");
             return;
         }
@@ -272,7 +369,7 @@ public:
                        const QString &host, quint16 port, const LeafCert &leaf) {
         // 1. Ack the CONNECT before starting our server-side TLS.
         sslClient->write("HTTP/1.1 200 Connection Established\r\n\r\n");
-        if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+        if (!waitWritten(sslClient, kReadTimeoutMs, m_server)) {
             fail("mitm ack write failed");
             return;
         }
@@ -297,7 +394,7 @@ public:
                                           QByteArrayLiteral("http/1.1") });
         sslClient->setSslConfiguration(cfg);
         sslClient->startServerEncryption();
-        if (!sslClient->waitForEncrypted(kReadTimeoutMs)) {
+        if (!waitEncrypted(sslClient, kReadTimeoutMs, m_server)) {
             // Client refused our forged cert -- usually cert pinning.
             // Add host to the bypass list so the next CONNECT to it skips
             // MITM and falls through to a blind tunnel.
@@ -354,7 +451,7 @@ public:
         });
 
         upstream->connectToHostEncrypted(host, port);
-        if (!upstream->waitForEncrypted(kHandshakeTimeoutMs)) {
+        if (!waitEncrypted(upstream, kHandshakeTimeoutMs, m_server)) {
             // h2-only origins land here (handshake gets refused because we
             // only offered http/1.1 ALPN). Mark blocked so future CONNECTs
             // skip the MITM dance and pass through opaquely. Short timeout
@@ -428,7 +525,7 @@ public:
                         if (upstream->state() != QAbstractSocket::ConnectedState)
                             return UO::TunnelDead;
                         upstream->write(serializeRequestForOrigin(req));
-                        if (!upstream->waitForBytesWritten(kReadTimeoutMs)) return UO::TunnelDead;
+                        if (!waitWritten(upstream, kReadTimeoutMs, m_server)) return UO::TunnelDead;
                         resp.peerAddress = upstream->peerAddress().toString();
                         resp.wasTls = true;
                         if (!readResponse(upstream, resp)) return UO::TunnelDead;   // h1 upstream broke
@@ -464,7 +561,8 @@ public:
             H2Client h2;
             bool served = false;   // did at least one request complete on this session?
             while (sslClient->state() == QAbstractSocket::ConnectedState
-                   && upstream->state() == QAbstractSocket::ConnectedState) {
+                   && upstream->state() == QAbstractSocket::ConnectedState
+                   && !m_server->isShuttingDown()) {
                 HttpRequest req;
                 req.timestamp = QDateTime::currentDateTime();
                 if (!readRequestFrom(sslClient, req))
@@ -521,7 +619,7 @@ public:
                     if (ir.dropped) { sslClient->disconnectFromHost(); return; }
                     sslClient->write(ir.bytes);
                 }
-                if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+                if (!waitWritten(sslClient, kReadTimeoutMs, m_server)) {
                     fail("mitm/h2: response write to client failed");
                     return;
                 }
@@ -540,7 +638,8 @@ public:
         // 4. Loop: read a request, forward, read response, send back.
         //    Stop when either side closes or asks for Connection: close.
         while (sslClient->state() == QAbstractSocket::ConnectedState
-               && upstream->state() == QAbstractSocket::ConnectedState) {
+               && upstream->state() == QAbstractSocket::ConnectedState
+               && !m_server->isShuttingDown()) {
 
             HttpRequest req;
             req.timestamp = QDateTime::currentDateTime();
@@ -569,7 +668,7 @@ public:
                 outBytes = ir.bytes;
             }
             upstream->write(outBytes);
-            if (!upstream->waitForBytesWritten(kReadTimeoutMs)) {
+            if (!waitWritten(upstream, kReadTimeoutMs, m_server)) {
                 fail("mitm: upstream write failed");
                 return;
             }
@@ -593,7 +692,7 @@ public:
             // it as such.
             if (resp.statusCode == 101) {
                 sslClient->write(serializeUpgradeResponse(resp));
-                sslClient->waitForBytesWritten(kReadTimeoutMs);
+                waitWritten(sslClient, kReadTimeoutMs, m_server);
                 const QString upgrade = findHeader(req.headers, "Upgrade");
                 if (upgrade.compare("websocket", Qt::CaseInsensitive) == 0)
                     runWebSocketRelay(sslClient, upstream, host, port);
@@ -610,7 +709,7 @@ public:
                 if (ir.dropped) { sslClient->disconnectFromHost(); return; }
                 sslClient->write(ir.bytes);
             }
-            if (!sslClient->waitForBytesWritten(kReadTimeoutMs)) {
+            if (!waitWritten(sslClient, kReadTimeoutMs, m_server)) {
                 fail("mitm: response write to client failed");
                 return;
             }
@@ -642,7 +741,7 @@ private:
 
     bool readRequestFrom(QTcpSocket *socket, HttpRequest &req) {
         QByteArray buf;
-        if (!readHeaderBlock(socket, buf)) return false;
+        if (!readHeaderBlock(socket, buf, m_server)) return false;
         const int sep = buf.indexOf("\r\n\r\n");
         const QByteArray headerBlock = buf.left(sep);
         QByteArray rest = buf.mid(sep + 4);
@@ -674,7 +773,7 @@ private:
             req.body = rest;
             if (req.body.size() < n) {
                 QByteArray extra;
-                if (!readExact(socket, n - req.body.size(), extra)) return false;
+                if (!readExact(socket, n - req.body.size(), extra, m_server)) return false;
                 req.body.append(extra);
             } else {
                 req.body = req.body.left(n);
@@ -685,7 +784,7 @@ private:
 
     bool readResponse(QTcpSocket *upstream, HttpResponse &resp) {
         QByteArray buf;
-        if (!readHeaderBlock(upstream, buf)) return false;
+        if (!readHeaderBlock(upstream, buf, m_server)) return false;
         const int sep = buf.indexOf("\r\n\r\n");
         const QByteArray headerBlock = buf.left(sep);
         QByteArray rest = buf.mid(sep + 4);
@@ -725,7 +824,7 @@ private:
         // so the guard and the decoder can't disagree about the body boundary.
         if (isChunkedTransfer(te)) {
             QByteArray decoded;
-            if (!readChunkedBody(upstream, rest, decoded)) return false;
+            if (!readChunkedBody(upstream, rest, decoded, m_server)) return false;
             resp.body = decoded;
         } else if (!cl.isEmpty()) {
             const qint64 n = cl.toLongLong();
@@ -736,14 +835,14 @@ private:
             resp.body = rest;
             if (resp.body.size() < n) {
                 QByteArray extra;
-                if (!readExact(upstream, n - resp.body.size(), extra)) return false;
+                if (!readExact(upstream, n - resp.body.size(), extra, m_server)) return false;
                 resp.body.append(extra);
             } else {
                 resp.body = resp.body.left(n);
             }
         } else {
             QByteArray tail;
-            readUntilClose(upstream, tail);
+            readUntilClose(upstream, tail, m_server);
             resp.body = rest + tail;
         }
         // Decode Content-Encoding for inspection (history/search, passive scan,
@@ -820,6 +919,10 @@ private:
         auto quit = [&loop] { loop.quit(); };
         connect(client,   &QTcpSocket::disconnected, &loop, quit);
         connect(upstream, &QTcpSocket::disconnected, &loop, quit);
+        // A blind tunnel has no read timeout to expire -- it parks this worker
+        // for the whole browsing session. The queued shuttingDown() hop is
+        // dispatched by this very loop, so it is what bounds the teardown join.
+        connect(m_server, &ProxyServer::shuttingDown, &loop, quit);
         connect(client, &QTcpSocket::readyRead, this, [client, upstream] {
             upstream->write(client->readAll());
         });
@@ -834,8 +937,12 @@ private:
         // this initial drain the relay would sit idle and the connection hangs.
         if (client->bytesAvailable())   upstream->write(client->readAll());
         if (upstream->bytesAvailable()) client->write(upstream->readAll());
+        // isShuttingDown() closes the window where shuttingDown() was emitted
+        // BEFORE the connect above: the signal would be missed and exec()
+        // would never return.
         if (client->state() == QAbstractSocket::ConnectedState
-            && upstream->state() == QAbstractSocket::ConnectedState)
+            && upstream->state() == QAbstractSocket::ConnectedState
+            && !m_server->isShuttingDown())
             loop.exec();
     }
 
@@ -952,6 +1059,8 @@ private:
         auto quit = [&loop] { loop.quit(); };
         connect(client,   &QTcpSocket::disconnected, &loop, quit);
         connect(upstream, &QTcpSocket::disconnected, &loop, quit);
+        // See runRawRelay: an idle WebSocket parks this worker indefinitely.
+        connect(m_server, &ProxyServer::shuttingDown, &loop, quit);
 
         connect(client, &QTcpSocket::readyRead, this,
             [client, upstream, clientParser, clientMsg, clientInflater, processFrame, wsId] {
@@ -972,9 +1081,23 @@ private:
                 }
             });
 
+        // isShuttingDown() closes the window where shuttingDown() was emitted
+        // BEFORE the connect above: the signal would be missed and exec()
+        // would never return.
         if (client->state() == QAbstractSocket::ConnectedState
-            && upstream->state() == QAbstractSocket::ConnectedState)
+            && upstream->state() == QAbstractSocket::ConnectedState
+            && !m_server->isShuttingDown())
             loop.exec();
+
+        // Deregister on EVERY exit, not just on a socket `disconnected`. The
+        // registration at the top of this function is unconditional, but the
+        // deregistration was wired only to the two disconnected() signals --
+        // so an exit that skips exec() (either socket already closed before we
+        // connected, or now a shutdown) left a permanently stale entry in the
+        // process-wide WsRepeater singleton, visible in the UI's session list
+        // forever. remove() on an absent id is a no-op, so the normal
+        // disconnected() path is unaffected.
+        WsRepeater::instance()->deregisterSession(wsId);
     }
 
     void fail(const QString &msg) {
@@ -1335,9 +1458,141 @@ void ProxyServer::noteH2Upstream() {
     m_h2UpstreamCount.fetchAndAddOrdered(1);
 }
 
-ProxyServer::~ProxyServer() = default;
+ProxyServer::~ProxyServer() {
+    // Backstop only. By the time a stack-local ProxyServer is destroyed in
+    // main(), every object declared AFTER it -- extensions, intercept, model,
+    // scanner -- has ALREADY been destroyed, and a live worker has been
+    // dereferencing that freed storage the whole time. So this cannot touch
+    // m_intercept/m_extensions (they may dangle); it only stops accepting and
+    // joins, which at least keeps the threads from outliving `this` too.
+    //
+    // The real fix is app.cpp calling shutdownAndJoin() while everything is
+    // still alive. If that happened, this is a no-op.
+    if (!m_shuttingDown.exchange(true, std::memory_order_acq_rel)) {
+        qWarning("proxy: ~ProxyServer() reached without shutdownAndJoin(); "
+                 "workers may already have touched destroyed objects");
+        if (m_server->isListening()) m_server->close();
+        emit shuttingDown();
+    }
+    joinWorkers(/*pump=*/false);
+}
+
+// Swap the list out under the mutex and wait OUTSIDE it.
+//
+// The reason is NOT "a worker thread might take this mutex" -- none does; the
+// only two takers are onNewConnection() and this function, both on the
+// ProxyServer's own thread. It is that the loop below PUMPS the event queue,
+// and a dispatched newConnection would re-enter onNewConnection(), which takes
+// m_threadsMutex. Holding it across the wait would self-deadlock.
+void ProxyServer::joinWorkers(bool pump) {
+    QList<QThread *> mine;
+    {
+        QMutexLocker lock(&m_threadsMutex);
+        mine.swap(m_threads);
+    }
+    if (mine.isEmpty()) return;
+
+    // A PLAIN wait() HERE DEADLOCKS, and it is not a subtle case:
+    // ExtensionsApi::applyRequestMutation/applyResponseMutation marshal into
+    // THIS thread with Qt::BlockingQueuedConnection whenever an extension has
+    // registered a handler. A worker parked in that hop is blocked on a
+    // semaphore that only the dispatch of its QMetaCallEvent releases -- and
+    // that event is sitting in this thread's queue. Waiting without pumping
+    // means the worker waits on us while we wait on the worker, forever.
+    //
+    // So pump while joining. ExcludeUserInputEvents keeps a click from
+    // re-entering the UI during teardown; the metacalls we actually need are
+    // not user-input events.
+    QElapsedTimer budget;
+    budget.start();
+    QList<QThread *> stuck;
+    for (QThread *t : mine) {
+        QElapsedTimer grace;
+        grace.start();
+        // Unconditional wait, same reasoning as port_scanner.cpp: an
+        // `if (isRunning())` guard can miss the window between start()
+        // returning and the OS thread being observed as running.
+        while (!t->wait(kJoinPollMs)) {
+            // pump=false on the destructor backstop: by then the objects
+            // those queued slots would reach are already destroyed, so
+            // dispatching them would turn one use-after-free into several.
+            //
+            // ExcludeSocketNotifiers is load-bearing, not tidiness. Without
+            // it this pump re-enters ControlServer's still-listening HTTP API
+            // mid-teardown -- so a stray /api/ws/send would run
+            // WsRepeater::sendFrame against sockets whose worker threads we
+            // are in the middle of joining. Posted QMetaCallEvents (the
+            // BlockingQueuedConnection hops we actually need to service) are
+            // NOT socket notifiers, so they still get dispatched.
+            //
+            // The 5 ms cap keeps one slow queued slot (a ProjectStore disk
+            // append, a passive scan) from stalling the poll loop.
+            if (pump && QCoreApplication::instance())
+                QCoreApplication::processEvents(
+                    QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers,
+                    5);
+            // Give up only when BOTH the shared budget and this thread's own
+            // grace are exhausted. Budget alone would let the first stuck
+            // worker detach every healthy thread queued behind it.
+            if (budget.elapsed() > kJoinBudgetMs && grace.elapsed() > kJoinGraceMs) break;
+        }
+        if (t->isFinished()) delete t;
+        else                 stuck.append(t);
+    }
+
+    if (!stuck.isEmpty()) {
+        // LEAKED ON PURPOSE. Deleting a still-running QThread is UB, so the
+        // safe failure is to let these outlive us and say so. This is a
+        // degraded outcome -- those workers can still reach freed objects, the
+        // bug this whole change exists to prevent -- so it must never be
+        // silent. Reaching it means some blocking site is not shutdown-aware.
+        qWarning("proxy: %lld worker thread(s) still running after %d ms; "
+                 "leaving them detached rather than destroying a live QThread",
+                 static_cast<long long>(stuck.size()), kJoinBudgetMs);
+    }
+}
+
+void ProxyServer::shutdownAndJoin() {
+    if (m_shuttingDown.exchange(true, std::memory_order_acq_rel)) {
+        joinWorkers(/*pump=*/true);   // idempotent: a second call still reaps late finishers
+        return;
+    }
+    if (m_server->isListening()) m_server->close();
+
+    // Unpark anything waiting on the operator BEFORE joining. A worker sitting
+    // in InterceptController::pend() is blocked on a QSemaphore that only a UI
+    // click releases -- there is no timeout -- so without this the join waits
+    // forever on a window that is already gone. Safe here and only here:
+    // shutdownAndJoin() is called while m_intercept is still alive.
+    //
+    // Both steps are load-bearing, and in this order. The toggles first,
+    // because pend()/pendResponse() early-out on them from the WORKER thread
+    // (intercept.cpp:191/199) -- otherwise a worker entering pend() just after
+    // the drain would post addPendingOnMain to a main event loop that has
+    // already returned from exec() and then block on the semaphore forever.
+    // forwardAll() second, to release the ones already parked.
+    if (m_intercept) {
+        m_intercept->setEnabled(false);
+        m_intercept->setResponsesEnabled(false);
+        m_intercept->forwardAll();
+    }
+
+    // Wakes the nested relay event loops (blind tunnels / WebSockets), which
+    // have no read timeout of their own. Queued into each worker thread and
+    // dispatched by the relay's own exec().
+    emit shuttingDown();
+
+    joinWorkers(/*pump=*/true);
+}
 
 bool ProxyServer::start(const QHostAddress &address, quint16 port) {
+    // start() is Q_INVOKABLE and reachable from QML and /api/proxy/toggle.
+    // m_shuttingDown is never reset, so restarting after shutdownAndJoin()
+    // would hand back a server whose every read fails instantly and whose
+    // accepts are refused -- listening but functionally dead. Refuse instead.
+    // (stop() does NOT set the flag, so the ordinary stop/start toggle still
+    // works; only teardown is one-way.)
+    if (isShuttingDown()) return false;
     if (m_server->isListening()) return true;
 
     // Windows occasionally puts 8080 into its dynamic protected-port range
@@ -1381,6 +1636,25 @@ void ProxyServer::onNewConnection() {
         // serializes through a single thread and the proxy is unusable.
         client->setParent(nullptr);
 
+        // Refuse new work once teardown has begun -- a connection accepted
+        // after shutdownAndJoin() swapped the thread list would never be
+        // joined, which is the exact bug this is fixing.
+        if (isShuttingDown()) { client->deleteLater(); continue; }
+
+        // Reap threads that have already finished. This is the ONLY reaping
+        // point: a finished->deleteLater could never fire once the main event
+        // loop is gone, and reaping from the worker's own finished signal
+        // would take m_threadsMutex on a thread the joiner may be waiting on.
+        // Cost is O(live connections) per accept, on a path that is already
+        // doing a socket accept + thread spawn.
+        {
+            QMutexLocker lock(&m_threadsMutex);
+            for (auto it = m_threads.begin(); it != m_threads.end(); ) {
+                if ((*it)->isFinished()) { (*it)->wait(); delete *it; it = m_threads.erase(it); }
+                else                     { ++it; }
+            }
+        }
+
         ProxyServer *self = this;
         auto *thread = QThread::create([self, client]() {
             Connection conn(client, self);
@@ -1390,8 +1664,27 @@ void ProxyServer::onNewConnection() {
         });
 
         client->moveToThread(thread);
-        connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+        // NO connect(finished -> deleteLater): the thread is OWNED by
+        // m_threads now and retired by the reap above or by joinWorkers().
+        // deleteLater would race that ownership, and could not be dispatched
+        // at teardown anyway (no main event loop after exec() returns).
+        {
+            QMutexLocker lock(&m_threadsMutex);
+            m_threads.append(thread);
+        }
         thread->start();
+        if (!thread->isRunning() && !thread->isFinished()) {
+            // QThread::start() returns void and only warns on failure (thread
+            // exhaustion is reachable at one-thread-per-connection). The entry
+            // would then never satisfy isFinished(), so it would never be
+            // reaped and would burn the join grace at every shutdown. Retire it
+            // here, and take the socket with it -- it was already moved to this
+            // thread, so nothing else can ever service it.
+            QMutexLocker lock(&m_threadsMutex);
+            m_threads.removeOne(thread);
+            delete thread;   // never started: safe to destroy
+            delete client;
+        }
     }
 }
 

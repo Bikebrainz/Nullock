@@ -13,8 +13,11 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+
 class QTcpServer;
 class QTcpSocket;
+class QThread;
 
 namespace Nullock::Core {
 class ExtensionsApi;
@@ -98,7 +101,28 @@ public:
 
     Q_INVOKABLE bool start(const QHostAddress &address = QHostAddress::LocalHost,
                            quint16 port = 8080);
+    // Stops ACCEPTING. Deliberately does NOT join in-flight workers -- this is
+    // the UI's "stop proxy" button and must not block the GUI thread for the
+    // length of a parked read. Use shutdownAndJoin() for teardown.
     Q_INVOKABLE void stop();
+
+    // Stop accepting, wake every in-flight worker, and JOIN them.
+    //
+    // MUST be called while every object a Connection reaches through m_server
+    // is still alive -- the extensions/intercept/model/scanner objects are
+    // stack locals declared AFTER `proxy` in main(), so they are destroyed
+    // BEFORE ~ProxyServer() runs. Joining in the destructor is too late; by
+    // then a worker has already been dereferencing destroyed storage.
+    // Idempotent.
+    void shutdownAndJoin();
+
+    // Polled by the worker threads between blocking reads, so teardown is
+    // bounded by a wait SLICE rather than by a full kReadTimeoutMs per parked
+    // connection. Inline: this is read in the read loops' hot path.
+    bool isShuttingDown() const {
+        return m_shuttingDown.load(std::memory_order_acquire);
+    }
+
     bool isRunning() const;
     quint16 listeningPort() const;
 
@@ -175,11 +199,25 @@ signals:
                           const Nullock::Proxy::HttpResponse &response);
     void errorOccurred(const QString &message);
     void filteredCountChanged();
+    // Emitted by shutdownAndJoin(). The nested relay QEventLoops in
+    // runRawRelay/runWebSocketRelay connect it to quit(); the connection is
+    // queued into the worker thread and that loop IS the worker's event loop,
+    // so it dispatches promptly. This is what bounds the join for a blind
+    // tunnel or WebSocket, which otherwise parks a worker for the whole
+    // session with no read timeout to expire.
+    void shuttingDown();
 
 private slots:
     void onNewConnection();
 
 private:
+    // Swap the tracked threads out under m_threadsMutex, then wait OUTSIDE it.
+    // pump=true dispatches this thread's event queue between wait() polls,
+    // which is REQUIRED whenever a worker may be parked in a
+    // BlockingQueuedConnection into this thread. Only the destructor backstop
+    // passes false, because by then the queued slots' receivers are gone.
+    void joinWorkers(bool pump);
+
     QTcpServer *m_server;
     CertAuthority *m_ca = nullptr;
     InterceptController *m_intercept = nullptr;
@@ -208,6 +246,24 @@ private:
     };
     QList<CompiledRule> m_compiledRules;
     mutable QAtomicInt m_rulesHit {0};
+
+    // --- worker-thread ownership -----------------------------------------
+    // onNewConnection() spawns one QThread per accepted socket. These used to
+    // be detached (created, connect(finished -> deleteLater), forgotten), so
+    // nothing stopped them and nothing joined them: at teardown main()'s
+    // locals unwound while workers were still calling m_server->...,
+    // m_server->extensions()->... and m_server->interceptController()->...
+    // Worse, once app->exec() has returned there is no main event loop left,
+    // so that deleteLater could never be dispatched -- it was not actually a
+    // retirement mechanism at all. Same lesson as port_scanner.cpp.
+    //
+    // The list is now owned here. Finished threads are reaped on the next
+    // accept; shutdownAndJoin() swaps the list out under the mutex and waits
+    // OUTSIDE it, so a worker finishing mid-join can never block on a mutex
+    // the joiner is holding.
+    std::atomic<bool>  m_shuttingDown { false };
+    mutable QMutex     m_threadsMutex;
+    QList<QThread *>   m_threads;
 };
 
 } // namespace Nullock::Proxy
