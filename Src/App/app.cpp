@@ -909,9 +909,6 @@ int main(int argc, char *argv[]) {
     }
     wiring.dnsSink = &dnsSink;
 
-    // Link-following crawler. Builds the full attack surface from a
-    // seed URL; the rest of the toolchain (passive scanner, repeater,
-    // search) sees crawled responses just like normal captures.
     // Background update check. Hits GitHub Releases API once at startup,
     // surfaces the result via /api/snapshot. No telemetry, no
     // auto-download -- just a small "X.Y.Z available" pill in the UI.
@@ -925,6 +922,9 @@ int main(int argc, char *argv[]) {
                                     : QCoreApplication::applicationVersion());
     }
 
+    // Link-following crawler. Builds the full attack surface from a
+    // seed URL; the rest of the toolchain (passive scanner, repeater,
+    // search) sees crawled responses just like normal captures.
     Nullock::Core::Crawler crawler;
     crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) {
         // The project scope model is host-glob, so scheme/port are not consulted

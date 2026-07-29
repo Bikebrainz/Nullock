@@ -9,10 +9,14 @@ an extension. If you're touching the proxy or control server, read
 
 ```
 Src/
+  App/app.cpp                          # main(): builds and wires every object, owns shutdown order
   BackEnd/Control/control_server.cpp   # the :17777 HTTP control API (~110 /api/* routes)
   BackEnd/Proxy/                       # ProxyServer, CertAuthority, intercept, HttpRequest/Response
   Core/Networking/                     # the scanners/probes, CVE DB, fingerprint, enricher, recon, reporting
+  Core/APIs/                           # JS extensions API + sandbox, OAST server/correlator, manager API
   Core/Storage/                        # SQLite history index, project store
+  Core/Utils/                          # crash reporter
+  Tools/                               # standalone binaries: nullock-oast, nullock-workspace
   FrontEnd/GUI/                        # QML UI (QtQuick)
 bin/nullock                            # bash CLI -- drives every /api endpoint
 labs/                                  # 50 intentionally-vulnerable teaching apps
@@ -20,6 +24,12 @@ extensions/                            # JS plugin API + marketplace catalog
 Tests/                                 # ctest regression suites
 docs/                                  # GitHub Pages site
 ```
+
+`Src/Core/AppController/`, `Src/Core/Nullem/` and `Src/BackEnd/Cache/` are
+**empty**. They are placeholder modules inherited from the original project
+skeleton — the `.cpp`/`.hpp` files are zero bytes, but the targets still build
+and link, so the names show up in the link line. Nothing calls them. Don't go
+looking for an app controller; the wiring lives in `Src/App/app.cpp`.
 
 The control server is the seam: the GUI and the `bin/nullock` CLI are both
 thin clients over `/api/*`. New capability = a backing module in
@@ -54,12 +64,15 @@ Linux/macOS builds use the same CMake project with the platform Qt; see
 
 ## Test
 
-Five regression suites run in CI on every push and locally via ctest:
+`ctest` runs the full suite locally (90 targets). Nine of those are the
+gate CI enforces on every push — they're the fast, deterministic ones, with
+no sockets and no event loop, so keep this list and the one in
+`.github/workflows/ci.yml` in step:
 
 ```sh
 cmake --build build --config Release ^
-  --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test
-ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine" --output-on-failure
+  --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test
+ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant" --output-on-failure
 ```
 
 - `scanner_regression` — every passive detector, positive + negative cases.
@@ -70,6 +83,21 @@ ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_en
 - `request_export` — CSRF-PoC + copy-as-curl transforms (escaping/structure).
 - `intruder_engine` — the four attack-type combination generators + marker
   substitution.
+- `ci_gate_logic` — the gate's thresholds and exit codes, including that a
+  scan which never ran is not a pass (an unreachable target used to exit 0).
+- `template_request_logic` — template request building; auto-headers defer to
+  the emitted header name, so the tool can't forge a conflicting
+  Content-Length.
+- `extension_perms_logic` — the permission grammar: which capability
+  declarations in an extension's header comment are honoured, and which
+  prose-shaped lookalikes are not.
+- `extensions_api_grant` — that the `modify-responses` grant is *enforced*,
+  not just decided (drives a real `QJSEngine`), and that a granted observer
+  can't corrupt a binary body.
+
+Live-socket suites (`port_scan_live`, `proxy_shutdown`) stay **out** of the CI
+filter on purpose: they bind sockets and spawn threads, which flakes on shared
+runners. Run them locally with plain `ctest`.
 
 `scripts/integration_smoke.ps1` is the whole-system check (import → CVE
 feed → bridge → reports → ScopeGuard) against one headless instance — the

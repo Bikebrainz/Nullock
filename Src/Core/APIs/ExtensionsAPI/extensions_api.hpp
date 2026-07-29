@@ -33,9 +33,19 @@ class ExtensionsApiBridge;  // forward — internal
 //       if (entry.status >= 500) nullock.log("server error: " + entry.url);
 //   });
 //
-// Read-only for v1 -- the entry passed to onResponse is a snapshot, not a
-// live mutable object. Returning a modified copy doesn't change the proxy
-// behavior. (Mutation hooks are a future iteration.)
+// Handlers CAN change what goes on the wire, but only with an explicit grant.
+// An extension declares one in a header comment
+// (`// nullock:permissions modify-responses`); ExtensionPerms parses that, and
+// the two directions enforce it differently:
+//
+//   onRequest   gated at REGISTRATION -- an ungranted handler is never added
+//               to m_onRequestHandlers at all, so it cannot see requests.
+//   onResponse  always registered (observation is ungated), but the mutated
+//               entry is only applied when that script holds the grant. The
+//               handler's argument is a shared QJSValue REFERENCE, so it is
+//               not enough to check the return value -- see doMutateResponse.
+//
+// A handler that has no grant still runs; its edits are simply discarded.
 class ExtensionsApi : public QObject {
     Q_OBJECT
     Q_PROPERTY(int      loadedCount      READ loadedCount      NOTIFY loadedChanged)

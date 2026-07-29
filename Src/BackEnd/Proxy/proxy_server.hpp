@@ -258,9 +258,12 @@ private:
     // retirement mechanism at all. Same lesson as port_scanner.cpp.
     //
     // The list is now owned here. Finished threads are reaped on the next
-    // accept; shutdownAndJoin() swaps the list out under the mutex and waits
-    // OUTSIDE it, so a worker finishing mid-join can never block on a mutex
-    // the joiner is holding.
+    // accept; joinWorkers() swaps the list out under the mutex and waits
+    // OUTSIDE it. The reason for swapping is NOT that a worker might take this
+    // mutex -- no worker ever does; the only two takers are onNewConnection()
+    // and joinWorkers(), both on this object's own thread. It is that the join
+    // PUMPS the event queue while it waits, and a dispatched newConnection
+    // would re-enter onNewConnection() and take the mutex again.
     std::atomic<bool>  m_shuttingDown { false };
     mutable QMutex     m_threadsMutex;
     QList<QThread *>   m_threads;

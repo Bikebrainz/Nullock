@@ -54,8 +54,14 @@ constexpr int kMaxHeaderBytes     = 64 * 1024;
 constexpr int kWaitSliceMs        = 500;
 // joinWorkers() polls each thread this often so it can pump the event queue
 // in between (see the deadlock note there), and gives up after the budget
-// rather than hanging the app on exit. The budget is generous relative to the
-// 250 ms wake quantum: reaching it means a blocking site is not shutdown-aware.
+// rather than hanging the app on exit.
+//
+// kJoinBudgetMs must stay GREATER than kReadTimeoutMs. Not every blocking site
+// in a Connection is sliced -- the h2 paths in http2_client.cpp / h2_server.cpp
+// still are not -- so a worker can legitimately need one full read timeout to
+// come back. A budget below that would make the give-up branch reachable with
+// no bug at all, and giving up means detaching a live worker, which is the
+// exact use-after-free the join exists to prevent.
 constexpr int kJoinPollMs         = 25;
 constexpr int kJoinBudgetMs       = 20'000;
 // Once the global budget is blown, every REMAINING thread still gets its own
