@@ -34,18 +34,25 @@ class ExtensionsApiBridge;  // forward — internal
 //   });
 //
 // Handlers CAN change what goes on the wire, but only with an explicit grant.
-// An extension declares one in a header comment
-// (`// nullock:permissions modify-responses`); ExtensionPerms parses that, and
-// the two directions enforce it differently:
+// An extension declares one in a line comment,
+// `// nullock:permissions modify-responses`, which ExtensionPerms finds
+// ANYWHERE in the first 64 KiB of the raw source -- it is a text regex, not a
+// JS lexer, so a match inside a block comment or a string literal counts too.
+//
+// The two directions enforce the grant differently:
 //
 //   onRequest   gated at REGISTRATION -- an ungranted handler is never added
-//               to m_onRequestHandlers at all, so it cannot see requests.
-//   onResponse  always registered (observation is ungated), but the mutated
-//               entry is only applied when that script holds the grant. The
-//               handler's argument is a shared QJSValue REFERENCE, so it is
-//               not enough to check the return value -- see doMutateResponse.
+//               to m_onRequestHandlers, so it never runs and never sees
+//               request headers or bodies. (It can still observe the method
+//               and URL of completed exchanges through onResponse.)
+//   onResponse  always registered, and RUNS regardless of grant -- observation
+//               is ungated. Only the mutated result is gated.
 //
-// A handler that has no grant still runs; its edits are simply discarded.
+// Checking a handler's return value is NOT sufficient: the argument is a
+// QJSValue reference into the engine, so a handler can edit it in place and
+// return nothing. Note the two directions differ here too -- doMutateResponse
+// rebuilds a fresh entry per handler, while onResponseReceived and
+// doMutateRequest reuse one entry across all of them.
 class ExtensionsApi : public QObject {
     Q_OBJECT
     Q_PROPERTY(int      loadedCount      READ loadedCount      NOTIFY loadedChanged)

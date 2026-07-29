@@ -1633,8 +1633,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                        const QByteArray &body,
                                        const QString &query) const {
     // NAVIGATION NOTE -- this function is ~7,800 lines and dispatches through
-    // a flat, first-match if-chain of ~165 `path == "..."` branches. There is
-    // no router.
+    // a flat, first-match if-chain of ~170 `path == "..."` branches, plus a
+    // handful of `path.startsWith(...)` prefix branches. There is no router.
     //
     // To find a handler, SEARCH ITS EXACT ENDPOINT PATH STRING. Do not rely on
     // position: the branches are only loosely grouped by feature, and the

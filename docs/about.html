@@ -85,9 +85,9 @@
   <div class="wrap">
     <h2 class="h2-section">What's coming</h2>
     <div class="roadmap" style="margin-top:24px;">
-      <div class="rm-item"><span class="badge ok"><span class="dot"></span>shipped</span><div><strong>WebSocket interception</strong><p>Pause and rewrite frames, same as HTTP, plus a WS repeater to inject them. Landed in v3.3.</p></div></div>
-      <div class="rm-item"><span class="badge ok"><span class="dot"></span>shipped</span><div><strong>Headless CI mode</strong><p><code>--scan URL --fail-on high</code> gives a nonzero exit, with a GitHub Action. An unreachable target fails the gate rather than passing it.</p></div></div>
-      <div class="rm-item"><span class="badge warn"><span class="dot"></span>partial</span><div><strong>HTTP/3 + QUIC</strong><p>Alt-Svc <code>h3</code> readiness detection is in (<code>nullock http3</code>). Decoding QUIC streams needs a QUIC transport dependency and is not started.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>next release</span><div><strong>Response &amp; WebSocket interception</strong><p>Hold and rewrite responses and WS frames, not just requests, plus a repeater to inject frames. Merged and on <code>main</code>; not in v3.7.0 yet.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>next release</span><div><strong>Headless CI gate</strong><p><code>/api/gate?fail-on=&lt;sev&gt;</code> plus a <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/.github/actions/nullock-scan">GitHub Action</a>; an unreachable target fails the gate rather than passing it. Merged and on <code>main</code>; not in v3.7.0 yet.</p></div></div>
+      <div class="rm-item"><span class="badge warn"><span class="dot"></span>partial</span><div><strong>HTTP/3 + QUIC</strong><p>Alt-Svc <code>h3</code> readiness detection shipped in v3.7.0 (<code>nullock http3</code>). Decoding QUIC streams needs a QUIC transport dependency and is not started.</p></div></div>
       <div class="rm-item"><span class="badge"><span class="dot"></span>planned</span><div><strong>Collaborative scopes</strong><p>Share a read-only session over the LAN. Self-hosted relay.</p></div></div>
     </div>
     <div class="cta-band glow-bg" style="margin-top:40px;">

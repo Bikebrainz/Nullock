@@ -56,12 +56,22 @@ constexpr int kWaitSliceMs        = 500;
 // in between (see the deadlock note there), and gives up after the budget
 // rather than hanging the app on exit.
 //
-// kJoinBudgetMs must stay GREATER than kReadTimeoutMs. Not every blocking site
-// in a Connection is sliced -- the h2 paths in http2_client.cpp / h2_server.cpp
-// still are not -- so a worker can legitimately need one full read timeout to
-// come back. A budget below that would make the give-up branch reachable with
-// no bug at all, and giving up means detaching a live worker, which is the
-// exact use-after-free the join exists to prevent.
+// KNOWN GAP -- read before trusting this budget.
+//
+// Every kReadTimeoutMs wait in THIS file is sliced and shutdown-aware, so it
+// cannot strand a worker. The un-interruptible waits are in the h2 paths, and
+// they are bounded by their own, much larger constants: http2_client.cpp's
+// kTotalDeadlineMs (120 s) and h2_server.cpp's (300 s). A slow or streaming
+// upstream refreshes their per-wait timeouts indefinitely, so an h2 worker can
+// legitimately block for minutes with nothing wrong.
+//
+// kJoinBudgetMs is deliberately far BELOW those, because a five-minute hang on
+// exit is a worse outcome than a bounded one. The consequence is real and is
+// not hypothetical: an h2 worker CAN exhaust the budget, get detached, and go
+// on to touch objects main() is destroying -- the very use-after-free this
+// join exists to prevent. The qWarning in joinWorkers is how that surfaces.
+// Making the h2 loops shutdown-aware is what actually closes it; until then
+// this is a bound on the damage, not a fix.
 constexpr int kJoinPollMs         = 25;
 constexpr int kJoinBudgetMs       = 20'000;
 // Once the global budget is blown, every REMAINING thread still gets its own
