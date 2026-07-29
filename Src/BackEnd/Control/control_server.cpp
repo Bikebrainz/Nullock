@@ -1632,6 +1632,22 @@ QByteArray ControlServer::buildHistoryRow(int id, bool wantRequest) const {
 QByteArray ControlServer::apiResponse(const QString &method, const QString &path,
                                        const QByteArray &body,
                                        const QString &query) const {
+    // NAVIGATION NOTE -- this function is ~7,800 lines and dispatches through
+    // a flat, first-match if-chain of ~165 `path == "..."` branches. There is
+    // no router.
+    //
+    // To find a handler, SEARCH ITS EXACT ENDPOINT PATH STRING. Do not rely on
+    // position: the branches are only loosely grouped by feature, and the
+    // later groups (reports, export, project, theme, cookies and assorted
+    // tools) are interleaved rather than contiguous.
+    //
+    // Two cross-cutting rules that a branch's position does NOT reveal:
+    //   * GET is accepted only for the paths listed in isReadPath() directly
+    //     below. Every other path requires POST, enforced once by the 405
+    //     guard rather than per handler.
+    //   * The active-scan endpoints are scope-gated by kActivePaths before
+    //     their handler runs -- see that set further down.
+    //
     // Method dispatch -- read-only endpoints accept GET; everything else
     // is treated as a state-mutating action and requires POST. This closes
     // the GET-via-<img> CSRF avenue on /api/history/<id>/probe + replay
@@ -2900,7 +2916,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
     }
 
-    // --- write actions; POST only (we accept any method for laziness) -------
+    // --- mostly write actions from here ------------------------------------
+    // A mutating path that arrives non-POST was already rejected with 405 by
+    // the isReadPath guard near the top of apiResponse, so handlers below do
+    // not re-check the method. This is NOT "everything below is a POST":
+    // isReadPath whitelists plenty of GET-able endpoints whose handlers also
+    // live below this line.
     // `extra` may override "ok" (e.g. an endpoint reporting a failed
     // operation). Default is { "ok": true }.
     auto okJson = [](const QJsonObject &extra = {}) {

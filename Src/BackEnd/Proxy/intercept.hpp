@@ -11,9 +11,19 @@
 namespace Nullock::Proxy {
 
 // One in-flight message -- an outbound REQUEST or an upstream RESPONSE --
-// that the user can edit / forward / drop. Owned by the InterceptController
-// on the main thread; worker threads only touch the semaphore and the
-// atomically-set decision after acquire(). (Class name kept as
+// that the user can edit / forward / drop.
+//
+// Ownership moves, so read this before touching it from either side:
+//   * The capturing WORKER thread constructs it and fills every field, then
+//     moveToThread()s it and hands it over with a queued invokeMethod. That
+//     queued call is the happens-before edge publishing those fields.
+//   * While the message is parked the MAIN thread owns it, and is the only
+//     thread that reads or writes m_text (the QML/control-API `text`).
+//   * The worker blocks on `done`. After acquire() it reads `decision` AND
+//     m_text (see resolveForwardBytes), and the release/acquire pair on
+//     `done` is the ONLY happens-before edge covering that read-back.
+// None of these fields is mutex-guarded, so nothing may touch a pending
+// after done.release(). (Class name kept as
 // PendingRequest for source-compat with the QML/control-API bindings that
 // already reference it; a `kind` field distinguishes the two directions.)
 class PendingRequest : public QObject {

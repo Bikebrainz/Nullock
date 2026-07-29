@@ -155,9 +155,14 @@ public:
     Q_INVOKABLE int filteredCount() const { return m_filteredCount.loadAcquire(); }
     void noteFiltered();
 
-    // How many round-trips have actually gone through the HTTP/2 upstream
-    // path (i.e. upstream ALPN came back as "h2" and H2Client handled the
-    // request). Useful for verifying the h2 bridge is exercised in tests.
+    // How many MITM tunnels bridged an h1 browser to an "h2" upstream.
+    // Incremented ONCE per tunnel, as soon as the upstream ALPN comes back
+    // "h2" and before any request is sent -- NOT per round-trip, since the
+    // keep-alive loop below it multiplexes N requests per increment. The
+    // --h2-termination path never increments it at all, even though it also
+    // drives H2Client upstream, because it returns earlier.
+    // Read it as "did the h1->h2 bridge fire at all", which is how the smoke
+    // test uses it -- not as a traffic counter.
     Q_INVOKABLE int h2UpstreamCount() const { return m_h2UpstreamCount.loadAcquire(); }
     void noteH2Upstream();
 
