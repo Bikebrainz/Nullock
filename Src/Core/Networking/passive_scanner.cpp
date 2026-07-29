@@ -458,23 +458,30 @@ void PassiveScanner::checkResponse(int rowId,
                        "__Secure- prefixed cookie set without Secure flag",
                        cookie.left(240));
         }
+        // Path must be EXACTLY "/" (RFC 6265bis). A substring contains("path=/")
+        // wrongly accepts a non-root Path=/app, because "path=/app" contains
+        // "path=/". Computed ONCE here and shared by both checks below: they
+        // used to disagree, with __Host- tokenizing correctly while the
+        // broad-path check a few lines down used the substring test this very
+        // comment warns against.
+        bool pathRoot = false;
+        for (const QString &attr : lc.split(';'))
+            if (attr.trimmed() == "path=/") { pathRoot = true; break; }
+
         // __Host- prefix requires Secure, Path=/, no Domain.
         if (name.startsWith("__Host-", Qt::CaseInsensitive)) {
             const bool hasDomain = lc.contains("domain=");
             const bool hasSecure = lc.contains("secure");
-            // Path must be EXACTLY "/" (RFC 6265bis). A substring contains("path=/")
-            // wrongly accepts a non-root Path=/app; check the tokenized value.
-            bool pathRoot = false;
-            for (const QString &attr : lc.split(';'))
-                if (attr.trimmed() == "path=/") { pathRoot = true; break; }
             if (hasDomain || !hasSecure || !pathRoot) {
                 addFinding(rowId, req, resp, "medium", "cookie-host-prefix-violation",
                            "__Host- prefixed cookie missing Secure / Path=/ or has Domain",
                            cookie.left(240));
             }
         }
-        // Path=/ + no SameSite gives the cookie max blast radius.
-        if (lc.contains("path=/") && !lc.contains("samesite")) {
+        // Path=/ + no SameSite gives the cookie max blast radius. Uses the
+        // tokenized pathRoot above -- the finding text asserts the cookie is
+        // "scoped to whole origin", which is only true for an exact Path=/.
+        if (pathRoot && !lc.contains("samesite")) {
             addFinding(rowId, req, resp, "info", "cookie-broad-path-no-samesite",
                        "Cookie with Path=/ and no SameSite: scoped to whole origin",
                        cookie.left(240));
@@ -879,9 +886,16 @@ void PassiveScanner::checkResponse(int rowId,
     if (resp.statusCode == 200) {
         struct DevTool { const char *needle; const char *kind; const char *label; const char *severity; };
         static const DevTool kDevTools[] = {
-            { "/actuator/",        "spring-actuator",  "Spring Boot Actuator",       "high" },
+            // ORDER MATTERS: the loop below takes the FIRST substring match and
+            // breaks, so a generic needle placed above a specific one makes the
+            // specific row unreachable. "/actuator/env" contains "/actuator/",
+            // so these two must stay ABOVE the generic row -- otherwise
+            // spring-actuator-env and spring-actuator-heap never fire at all,
+            // and a heapdump (critical) silently reports as plain actuator
+            // (high). Do not alphabetise this table.
             { "/actuator/env",     "spring-actuator-env", "Spring Boot /env",        "high" },
             { "/actuator/heapdump","spring-actuator-heap","Spring Boot /heapdump",   "critical" },
+            { "/actuator/",        "spring-actuator",  "Spring Boot Actuator",       "high" },
             { "/swagger-ui",       "swagger-ui",       "Swagger UI",                  "medium" },
             { "/swagger.json",     "swagger-spec",     "Swagger spec",                "medium" },
             { "/openapi.json",     "openapi-spec",     "OpenAPI spec",                "medium" },
@@ -1162,8 +1176,15 @@ void PassiveScanner::checkResponse(int rowId,
     static const DesPat kDesPats[] = {
         // Java serialized: rO0 base64 prefix decodes to ac ed 00 05 magic
         { "deser-java",   "Java serialized object (rO0...)",   "rO0AB" },
-        // Python pickle: gAB / gAR base64 prefix decodes to 0x80 0x04 (proto 4)
-        { "deser-pickle", "Python pickle (gAS... / gAR...)",   "gASV" },
+        // Python pickle: "gASV" decodes to 0x80 0x04 0x95 -- PROTO 4 followed by
+        // FRAME, which is what pickle.dumps emits by default on modern CPython.
+        // The label must name the prefix actually matched: it used to advertise
+        // "gAS... / gAR...", but gAR is not a needle, so a finding claimed a
+        // match the code cannot make. (The old comment also had the arithmetic
+        // wrong -- "gAB" decodes to 0x80 0x00, protocol 0, not 0x80 0x04.)
+        // Broadening to the 3-char "gAS" would catch other protocol-4 framings
+        // but raises false positives on arbitrary base64; left deliberately narrow.
+        { "deser-pickle", "Python pickle (gASV...)",           "gASV" },
         // PHP serialized: O:N: / a:N: / s:N: pattern -- strict enough
         // we won't trip on user names
         { "deser-php",    "PHP serialized object (O:N:...)",   "O:" },
@@ -1329,8 +1350,17 @@ void PassiveScanner::checkResponse(int rowId,
     const QString cdsp = headerOf(resp.headers, "Content-Disposition");
     if (cdsp.contains("attachment", Qt::CaseInsensitive)) {
         const QString q = req.path.contains('?') ? req.path.section('?', 1) : QString();
-        if (!q.isEmpty() && cdsp.contains(q.section('&', 0, 0).section('=', 1, 1),
-                                          Qt::CaseInsensitive)) {
+        // The needle is the first param's VALUE, and it must be checked for
+        // emptiness before use: QString::contains(QString()) returns TRUE
+        // (indexOf of an empty needle is 0), and section('=',1,1) yields ""
+        // for a valueless param. Without this guard "/export?csv" or
+        // "/dl?a=&b=x" fire against a filename that mirrors nothing at all --
+        // and a valueless flag param is exactly how download endpoints are
+        // commonly written, so it was a live false-positive source rather
+        // than a contrived one.
+        const QString firstParamValue = q.section('&', 0, 0).section('=', 1, 1);
+        if (!firstParamValue.isEmpty()
+            && cdsp.contains(firstParamValue, Qt::CaseInsensitive)) {
             addFinding(rowId, req, resp, "low", "reflected-file-download",
                        "Content-Disposition filename appears to mirror a request param",
                        cdsp.left(160));

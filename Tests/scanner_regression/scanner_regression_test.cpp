@@ -251,9 +251,67 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "api.example.test", "/actuator/health"),
         makeResp(200, "application/json", "{\"status\":\"UP\"}") });
 
+    // The dev-tool table is scanned first-match-wins with a break, so a generic
+    // needle above a specific one silently kills the specific row. "/actuator/"
+    // used to sit above these two, which made BOTH unreachable for every input:
+    // a leaked heapdump reported as a plain actuator hit and lost its critical
+    // severity. These two cases fail if the table is ever reordered back.
+    tc.append({ "spring-actuator-env is not shadowed by the generic /actuator/ row",
+                "spring-actuator-env", false,
+        makeReq("GET", "api.example.test", "/actuator/env"),
+        makeResp(200, "application/json", "{\"propertySources\":[]}") });
+
+    tc.append({ "spring-actuator-heap is not shadowed by the generic /actuator/ row",
+                "spring-actuator-heap", false,
+        makeReq("GET", "api.example.test", "/actuator/heapdump"),
+        makeResp(200, "application/octet-stream", "JAVA PROFILE 1.0.2") });
+
     tc.append({ "tomcat-manager", "tomcat-manager", false,
         makeReq("GET", "example.test", "/manager/html"),
         makeResp(200, "text/html", "<title>Tomcat Manager</title>") });
+
+    // ---- Cookie broad-path ---------------------------------------------
+    // The finding text asserts the cookie is "scoped to whole origin", so the
+    // Path test must be the tokenized one. contains("path=/") also matches
+    // Path=/app, which is NOT origin-wide -- and the __Host- branch a few
+    // lines above already tokenizes correctly, so the file disagreed with
+    // itself about the same idiom.
+    tc.append({ "cookie Path=/app + no SameSite is not origin-wide",
+                "cookie-broad-path-no-samesite", true,
+        makeReq("GET", "shop.example.test", "/app/cart"),
+        makeResp(200, "text/html", "<html></html>",
+                 { { "Set-Cookie", "sid=abc123; Path=/app; Secure" } }) });
+
+    tc.append({ "cookie Path=/ + no SameSite still fires",
+                "cookie-broad-path-no-samesite", false,
+        makeReq("GET", "shop.example.test", "/"),
+        makeResp(200, "text/html", "<html></html>",
+                 { { "Set-Cookie", "sid=abc123; Path=/; Secure" } }) });
+
+    // ---- Reflected file download --------------------------------------
+    // The needle is the first query param's VALUE. A valueless param yields an
+    // empty needle, and QString::contains(QString()) is TRUE -- so without an
+    // emptiness guard these two fire against a filename that mirrors nothing.
+    // A valueless flag param is ordinary in download endpoints, so this was a
+    // live FP source.
+    tc.append({ "RFD: valueless param does not mirror anything",
+                "reflected-file-download", true,
+        makeReq("GET", "files.example.test", "/export?csv"),
+        makeResp(200, "text/csv", "a,b\n1,2\n",
+                 { { "Content-Disposition", "attachment; filename=\"quarterly.csv\"" } }) });
+
+    tc.append({ "RFD: empty first param value does not mirror anything",
+                "reflected-file-download", true,
+        makeReq("GET", "files.example.test", "/dl?a=&b=x"),
+        makeResp(200, "application/pdf", "%PDF-1.4",
+                 { { "Content-Disposition", "attachment; filename=\"statement.pdf\"" } }) });
+
+    // Not over-broad: a filename that genuinely mirrors the param value fires.
+    tc.append({ "RFD: filename mirroring the param value still fires",
+                "reflected-file-download", false,
+        makeReq("GET", "files.example.test", "/dl?name=payroll"),
+        makeResp(200, "application/octet-stream", "x",
+                 { { "Content-Disposition", "attachment; filename=\"payroll.exe\"" } }) });
 
     tc.append({ "swagger-ui", "swagger-ui", false,
         makeReq("GET", "api.example.test", "/swagger-ui/index.html"),
