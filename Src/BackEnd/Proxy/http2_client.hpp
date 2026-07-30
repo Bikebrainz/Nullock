@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QString>
 
+#include <atomic>
 #include <memory>
 
 class QSslSocket;
@@ -72,9 +73,31 @@ public:
     // False until send() has opened a session, and false again once it died.
     bool alive() const;
 
+    /*
+     *  note: hand this the proxy's shutdown flag so the pump loop can give up.
+     *
+     *  note: WITHOUT it, an h2 tunnel is un-interruptible for as long as the peer
+     *        keeps dribbling bytes -- each blocking wait's timeout RESETS on every
+     *        byte received, so only kTotalDeadlineMs (120 s) bounds the loop. That
+     *        is far longer than ProxyServer's teardown budget, so a worker on a
+     *        streaming or slow upstream would blow the budget, get detached, and go
+     *        on touching objects main() was destroying. This is the flag that lets
+     *        the loop notice and unwind instead.
+     *
+     *  note: a bare atomic rather than a ProxyServer* on purpose -- the pump has no
+     *        business knowing what a ProxyServer is, and a flag is trivially faked
+     *        in a test. May be null; null simply means "never abort early".
+    */
+    void setAbortFlag(const std::atomic<bool> *abort_flag);
+
 private:
     struct Session;                       // persistent per-tunnel session (pImpl)
     std::unique_ptr<Session> m_sess;
+
+    // note: NOT owned. Points at ProxyServer::m_shuttingDown, which outlives every
+    // H2Client (they are stack locals inside a Connection, the server outlives all
+    // connections by construction of the shutdown join).
+    const std::atomic<bool> *m_abort_flag = nullptr;
 };
 
 } // namespace Nullock::Proxy

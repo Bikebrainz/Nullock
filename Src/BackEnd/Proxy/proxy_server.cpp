@@ -56,22 +56,25 @@ constexpr int kWaitSliceMs        = 500;
 // in between (see the deadlock note there), and gives up after the budget
 // rather than hanging the app on exit.
 //
-// KNOWN GAP -- read before trusting this budget.
+// What this budget has to outlast, and the one thing it still does not.
 //
-// Every kReadTimeoutMs wait in THIS file is sliced and shutdown-aware, so it
-// cannot strand a worker. The un-interruptible waits are in the h2 paths, and
-// they are bounded by their own, much larger constants: http2_client.cpp's
-// kTotalDeadlineMs (120 s) and h2_server.cpp's (300 s). A slow or streaming
-// upstream refreshes their per-wait timeouts indefinitely, so an h2 worker can
-// legitimately block for minutes with nothing wrong.
+// Every blocking wait a Connection can sit in is now sliced at kWaitSliceMs and
+// polls a shutdown flag: the four waitFor* families in this file, and -- since
+// they were the real hole -- H2Client::pump (http2_client.cpp) and
+// H2Terminator::run (h2_server.cpp), which take the flag via setAbortFlag().
+// That matters because their per-wait timeouts RESET on every byte, so before
+// they were sliced a streaming upstream or a browser sending PING could park a
+// worker for their whole-batch deadlines (120 s and 300 s) with nothing wrong.
+// A worker now unwinds within about one slice.
 //
-// kJoinBudgetMs is deliberately far BELOW those, because a five-minute hang on
-// exit is a worse outcome than a bounded one. The consequence is real and is
-// not hypothetical: an h2 worker CAN exhaust the budget, get detached, and go
-// on to touch objects main() is destroying -- the very use-after-free this
-// join exists to prevent. The qWarning in joinWorkers is how that surfaces.
-// Making the h2 loops shutdown-aware is what actually closes it; until then
-// this is a bound on the damage, not a fix.
+// STILL UNSLICED: leaf-certificate minting. CertAuthority shells out to openssl
+// with waitForStarted(5 s) + waitForFinished(30 s), so a worker minting a cert
+// for a host it has not seen before can block ~35 s -- longer than this budget.
+// Those are hard QProcess timeouts rather than resettable ones, so it is
+// bounded and rare (first contact with a new host only), but it means the
+// give-up branch in joinWorkers is still reachable there. Raising the budget
+// past 35 s would trade a rare detach for a routinely slower exit, which is the
+// worse deal. The qWarning is how it surfaces if it ever happens.
 constexpr int kJoinPollMs         = 25;
 constexpr int kJoinBudgetMs       = 20'000;
 // Once the global budget is blown, every REMAINING thread still gets its own
@@ -497,8 +500,14 @@ public:
         // + history/rules/extensions/intercept live in the callback.
         if (browserIsH2) {
             H2Client upstreamH2;   // reused across all of this tunnel's streams
+            // note: hand it the shutdown flag, or its pump loop is un-interruptible
+            // for up to its own 120 s deadline -- far past the teardown budget
+            upstreamH2.setAbortFlag(m_server->shutdownFlag());
             bool served = false;   // did any request complete upstream on this session?
             H2Terminator term;
+            // note: same reason as the H2Client above -- a browser can hold this
+            // tunnel open with PING/WINDOW_UPDATE past the teardown budget
+            term.setAbortFlag(m_server->shutdownFlag());
             term.run(sslClient, host + ":" + QString::number(port),
                 [this, upstream, upstreamIsH2, host, port, &upstreamH2, &served](
                     const QList<QPair<QString, QString>> &h2h, const QByteArray &body,
@@ -575,6 +584,7 @@ public:
         if (upstreamIsH2) {
             m_server->noteH2Upstream();
             H2Client h2;
+            h2.setAbortFlag(m_server->shutdownFlag());   // see the note above
             bool served = false;   // did at least one request complete on this session?
             while (sslClient->state() == QAbstractSocket::ConnectedState
                    && upstream->state() == QAbstractSocket::ConnectedState

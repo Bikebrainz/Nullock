@@ -7,6 +7,7 @@
 #include <QPair>
 #include <QString>
 
+#include <atomic>
 #include <functional>
 
 class QSslSocket;
@@ -44,6 +45,18 @@ public:
     // Drive the termination loop until the browser closes or a fatal occurs.
     // connName is host:port for the event log.
     void run(QSslSocket *browser, const QString &connName, const UpstreamFn &upstream);
+
+    // note: the proxy's shutdown flag. Same reasoning as H2Client::setAbortFlag --
+    // this loop's blocking read has a timeout that resets on every byte, so a
+    // browser holding the tunnel open with PING/WINDOW_UPDATE keeps a worker here
+    // for up to kTotalDeadlineMs (300 s), far past the teardown budget. May be
+    // null, which means "never abort early".
+    void setAbortFlag(const std::atomic<bool> *abort_flag) { m_abort_flag = abort_flag; }
+
+private:
+    // note: NOT owned -- points at ProxyServer::m_shuttingDown, which outlives
+    // every H2Terminator.
+    const std::atomic<bool> *m_abort_flag = nullptr;
 };
 
 } // namespace Nullock::Proxy

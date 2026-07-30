@@ -123,6 +123,13 @@ public:
         return m_shuttingDown.load(std::memory_order_acquire);
     }
 
+    // Same flag, handed to the h2 clients so their pump loops can poll it too.
+    // Their blocking waits live in http2_client.cpp / h2_server.cpp, which have
+    // no business knowing what a ProxyServer is -- they take a bare atomic.
+    // Safe to hold: the server outlives every Connection by construction of
+    // shutdownAndJoin().
+    const std::atomic<bool> *shutdownFlag() const { return &m_shuttingDown; }
+
     bool isRunning() const;
     quint16 listeningPort() const;
 

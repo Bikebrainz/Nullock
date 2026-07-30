@@ -4,6 +4,8 @@
 
 #include <QByteArray>
 #include <QElapsedTimer>
+
+#include <algorithm>
 #include <QSslSocket>
 
 #ifdef _MSC_VER
@@ -23,6 +25,9 @@ namespace Nullock::Proxy {
 namespace {
 
 constexpr int    kReadTimeoutMs         = 15'000;
+// See http2_client.cpp: a blocking wait cannot notice a shutdown, and this one's
+// timeout resets on every byte, so slice it and check the abort flag between.
+constexpr int    kWaitSliceMs           = 500;
 constexpr int    kTotalDeadlineMs       = 300'000;             // whole-tunnel backstop
 constexpr int    kMaxServerStreams      = 128;                 // concurrent browser streams
 constexpr qint64 kMaxServerReqBody      = 8LL * 1024 * 1024;   // per-request body cap
@@ -194,11 +199,30 @@ void H2Terminator::run(QSslSocket *browser, const QString &connName,
 
     QElapsedTimer clock;
     clock.start();
+    // note: sliced + abort-aware read. A browser can hold an h2 tunnel open
+    // indefinitely with PING/WINDOW_UPDATE, so without this the only bound is the
+    // 300 s whole-tunnel deadline -- far past the proxy's teardown budget.
+    const auto readableOrAborted = [this](QSslSocket *sock) {
+        const std::atomic<bool> *flag = m_abort_flag;
+        if (!flag) return sock->waitForReadyRead(kReadTimeoutMs);
+        QElapsedTimer slice_clock;
+        slice_clock.start();
+        for (;;) {
+            if (flag->load(std::memory_order_acquire)) return false;
+            const qint64 left = static_cast<qint64>(kReadTimeoutMs) - slice_clock.elapsed();
+            if (left <= 0) return false;
+            if (sock->waitForReadyRead(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+                return true;
+            if (sock->state() != QAbstractSocket::ConnectedState) return false;
+        }
+    };
+
     while (!sess.fatal && browser->state() == QAbstractSocket::ConnectedState) {
         if (clock.hasExpired(kTotalDeadlineMs)) break;
+        if (m_abort_flag && m_abort_flag->load(std::memory_order_acquire)) break;
 
-        if (browser->bytesAvailable() == 0 && !browser->waitForReadyRead(kReadTimeoutMs))
-            break;   // idle close / timeout
+        if (browser->bytesAvailable() == 0 && !readableOrAborted(browser))
+            break;   // idle close / timeout / shutting down
         const QByteArray buf = browser->readAll();
         if (buf.isEmpty()) {
             if (browser->state() != QAbstractSocket::ConnectedState) break;

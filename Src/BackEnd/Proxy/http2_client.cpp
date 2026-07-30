@@ -4,6 +4,8 @@
 
 #include <QByteArray>
 #include <QElapsedTimer>
+
+#include <algorithm>
 #include <QList>
 #include <QPair>
 #include <QSslSocket>
@@ -32,6 +34,47 @@ constexpr int    kReadTimeoutMs             = 15'000;            // per blocking
 constexpr int    kTotalDeadlineMs           = 120'000;          // whole-batch backstop
 constexpr int    kMaxConcurrentStreamsLocal = 64;                  // >= advertised 16
 constexpr qint64 kMaxBodyBytesPerStream     = 64LL * 1024 * 1024;  // per-stream DoS guard
+// A blocking waitFor* cannot notice a shutdown, and kReadTimeoutMs RESETS on every
+// byte, so a dribbling peer keeps a worker here indefinitely. Waiting in slices and
+// checking the abort flag between them bounds teardown at one slice per worker
+// without changing the deadline any caller sees. Mirrors proxy_server.cpp.
+constexpr int    kWaitSliceMs               = 500;
+
+// note: true if the proxy has begun shutting down. Null flag == never aborts.
+bool aborting(const std::atomic<bool> *abort_flag) {
+    return abort_flag && abort_flag->load(std::memory_order_acquire);
+}
+
+// note: sliced, abort-aware replacements for the two blocking waits in pump().
+// A slice expiring is not a failure; a dead socket is.
+bool waitReadableAbortable(QSslSocket *sock, int totalMs, const std::atomic<bool> *abort_flag) {
+    if (!abort_flag) return sock->waitForReadyRead(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (aborting(abort_flag)) return false;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        if (sock->waitForReadyRead(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+            return true;
+        if (sock->state() != QAbstractSocket::ConnectedState) return false;
+    }
+}
+
+bool waitWrittenAbortable(QSslSocket *sock, int totalMs, const std::atomic<bool> *abort_flag) {
+    if (!abort_flag) return sock->waitForBytesWritten(totalMs);
+    QElapsedTimer clock;
+    clock.start();
+    for (;;) {
+        if (sock->bytesToWrite() == 0) return true;
+        if (aborting(abort_flag)) return false;
+        const qint64 left = static_cast<qint64>(totalMs) - clock.elapsed();
+        if (left <= 0) return false;
+        if (sock->waitForBytesWritten(static_cast<int>(std::min<qint64>(left, kWaitSliceMs))))
+            return true;
+        if (sock->state() != QAbstractSocket::ConnectedState) return false;
+    }
+}
 
 using H2ClientLogic::PumpAction;
 
@@ -248,10 +291,17 @@ int32_t submitOne(nghttp2_session *session, SessionState &sess,
 // sit unsent behind a wait). An absolute deadline backstops a peer that dribbles
 // bytes forever (a per-wait timeout resets on every byte). On return sess.fatal
 // reflects any connection-level failure.
-void pump(nghttp2_session *session, QSslSocket *sock, SessionState &sess) {
+void pump(nghttp2_session *session, QSslSocket *sock, SessionState &sess,
+          const std::atomic<bool> *abort_flag) {
     QElapsedTimer clock;
     clock.start();
     while (sock->state() == QAbstractSocket::ConnectedState) {
+        // note: checked at the top of every iteration as well as inside the waits,
+        // so a session that is busy receiving still unwinds promptly at teardown
+        if (aborting(abort_flag)) {
+            sess.fatal = true; sess.fatalMessage = QStringLiteral("h2: proxy shutting down");
+            break;
+        }
         if (clock.hasExpired(kTotalDeadlineMs)) {
             sess.fatal = true; sess.fatalMessage = QStringLiteral("h2: total deadline exceeded");
             break;
@@ -261,11 +311,12 @@ void pump(nghttp2_session *session, QSslSocket *sock, SessionState &sess) {
         const PumpAction action = H2ClientLogic::nextPumpAction(sess.openStreams, wrote, sess.fatal);
         if (action == PumpAction::Fatal || action == PumpAction::Done) break;
         if (action == PumpAction::WriteThenRead
-            && !sock->waitForBytesWritten(kReadTimeoutMs)) {
+            && !waitWrittenAbortable(sock, kReadTimeoutMs, abort_flag)) {
             sess.fatal = true; sess.fatalMessage = QStringLiteral("h2: waitForBytesWritten timed out");
             break;
         }
-        if (sock->bytesAvailable() == 0 && !sock->waitForReadyRead(kReadTimeoutMs)) {
+        if (sock->bytesAvailable() == 0
+            && !waitReadableAbortable(sock, kReadTimeoutMs, abort_flag)) {
             sess.fatal = true; sess.fatalMessage = QStringLiteral("h2: waitForReadyRead timed out");
             break;
         }
@@ -280,7 +331,9 @@ void pump(nghttp2_session *session, QSslSocket *sock, SessionState &sess) {
     }
     bool flushed = false;
     drainSend(session, sock, sess, &flushed);   // flush our own final acks
-    if (flushed) sock->waitForBytesWritten(1000);
+    // note: skipped entirely when shutting down -- a courtesy flush is not worth
+    // holding the teardown join open for
+    if (flushed && !aborting(abort_flag)) sock->waitForBytesWritten(1000);
 }
 
 // Turn one finished StreamState into a Result, via the pure decision in
@@ -366,7 +419,7 @@ QList<H2Client::Result> H2Client::sendConcurrent(QSslSocket *sock,
             results[i].errorMessage = QStringLiteral("h2: submit_request failed (%1)").arg(sid);
     }
 
-    pump(session, sock, sess);
+    pump(session, sock, sess, m_abort_flag);
 
     for (const auto &kv : sess.streams) {
         StreamState *st = kv.second.get();
@@ -417,7 +470,7 @@ H2Client::Result H2Client::send(QSslSocket *sock, const HttpRequest &req) {
     const int32_t sid = submitOne(s.session, s.state, req, 0);
     if (sid < 0) { r.errorMessage = QStringLiteral("h2: submit_request failed (%1)").arg(sid); return r; }
 
-    pump(s.session, sock, s.state);
+    pump(s.session, sock, s.state, m_abort_flag);
 
     const StreamState *st = s.state.streams.empty() ? nullptr : s.state.streams.begin()->second.get();
     r = assembleResult(st, sock, s.state.fatal, s.state.fatalMessage);
@@ -430,6 +483,10 @@ H2Client::Result H2Client::send(QSslSocket *sock, const HttpRequest &req) {
 }
 
 bool H2Client::alive() const { return m_sess && !m_sess->dead; }
+
+void H2Client::setAbortFlag(const std::atomic<bool> *abort_flag) {
+    m_abort_flag = abort_flag;
+}
 
 H2Client::H2Client() = default;
 H2Client::~H2Client() = default;   // ~unique_ptr<Session> tears the session down
