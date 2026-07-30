@@ -201,6 +201,189 @@ const ACCENT_PRESETS = {
 
 // Settings tab: diagnostics + housekeeping panel that pulls everything
 // out of NL.bootInfo and surfaces the housekeeping actions in one place.
+// Extension marketplace.
+//
+// This is the one surface in the app that can cause the proxy to execute code it
+// did not ship with, so the interaction is built around ONE idea: the user
+// should know what they are agreeing to before it lands, not after.
+//
+// Two things are deliberate here and should not be "simplified" later:
+//
+//   1. Install is TWO STEPS for anything that can rewrite traffic. The first
+//      call is sent with confirmMutating:false. The server refuses and replies
+//      needsConfirmation:true along with the permissions it read out of the
+//      DOWNLOADED script -- not out of the catalog, which is untrusted text from
+//      the network. Only then do we show the confirm panel and re-send. Passing
+//      confirmMutating:true up front would delete the entire consent gate while
+//      leaving all the code that looks like one.
+//
+//   2. Nothing here auto-installs, auto-updates, or fetches on mount. The
+//      catalog is only pulled when the user asks. An "update available" badge is
+//      information, never an action taken on their behalf.
+function Marketplace({ Card, Btn }) {
+  const [state, setState] = React.useState({ status: "idle", items: [], error: "" });
+  const [busy, setBusy]   = React.useState("");     // id currently installing
+  const [confirm, setConfirm] = React.useState(null); // { id, name, permissions, warnings }
+  const [note, setNote]   = React.useState("");
+
+  const load = React.useCallback(async () => {
+    setState(s => ({ ...s, status: "loading", error: "" }));
+    try {
+      const r = await NL.actions.marketplaceCatalog();
+      if (!r.ok) {
+        setState({ status: "error", items: [], error: r.error || "catalog fetch failed" });
+        return;
+      }
+      setState({ status: "ready", items: r.extensions || [], error: "",
+                 updated: r.updated, trustedHosts: r.trustedHosts || [] });
+    } catch (e) {
+      setState({ status: "error", items: [], error: String(e) });
+    }
+  }, []);
+
+  const doInstall = React.useCallback(async (id, confirmed) => {
+    setBusy(id); setNote("");
+    try {
+      const r = await NL.actions.marketplaceInstall(id, confirmed);
+      if (!r.ok && r.needsConfirmation) {
+        // Not an error -- the server is asking. Show what it actually found in
+        // the bytes it downloaded and verified.
+        const item = state.items.find(x => x.id === id) || {};
+        setConfirm({ id, name: item.name || id,
+                     permissions: r.permissions || [], warnings: r.warnings || [] });
+        return;
+      }
+      setConfirm(null);
+      setNote(r.ok ? ("installed " + id + " (sha256 " + String(r.sha256).slice(0, 12) + "…)")
+                   : ("install failed: " + (r.error || "unknown error")));
+      if (r.ok) load();
+    } catch (e) {
+      setNote("install failed: " + String(e));
+    } finally { setBusy(""); }
+  }, [state.items, load]);
+
+  const doUninstall = React.useCallback(async (id) => {
+    setBusy(id); setNote("");
+    try {
+      const r = await NL.actions.marketplaceUninstall(id);
+      setNote(r.ok ? ("removed " + id) : ("remove failed: " + (r.error || "")));
+      if (r.ok) load();
+    } finally { setBusy(""); }
+  }, [load]);
+
+  const badge = (text, color) => (
+    <span style={{
+      fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
+      border: "1px solid " + color, color, padding: "1px 5px", borderRadius: 2,
+      fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
+    }}>{text}</span>
+  );
+
+  const stateBadge = (s) => {
+    if (s === "installed")        return badge("installed", "var(--ok, #4ea36b)");
+    if (s === "update-available") return badge("update", "var(--warn, #d0a03a)");
+    if (s === "local")            return badge("local", "var(--dim)");
+    return null;
+  };
+
+  return (
+    <Card
+      title={"Marketplace" + (state.items.length ? " (" + state.items.length + ")" : "")}
+      action={<Btn label={state.status === "loading" ? "Loading…" : "Fetch catalog"}
+                   onClick={load} />}
+    >
+      {state.status === "idle" && (
+        <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>
+          Browse and install Nullock extensions. Nothing is fetched until you ask.
+        </div>
+      )}
+
+      {state.status === "error" && (
+        <div style={{ fontSize: "11.5px", color: "var(--err)", fontFamily: "var(--ff-mono)" }}>
+          {state.error}
+        </div>
+      )}
+
+      {note && (
+        <div style={{ fontSize: "11px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+          {note}
+        </div>
+      )}
+
+      {/* The consent panel. Everything shown here was read out of the verified
+          bytes on disk-to-be, so it is what will actually take effect. */}
+      {confirm && (
+        <div style={{
+          border: "1px solid var(--warn, #d0a03a)", padding: "10px 12px",
+          borderRadius: 3, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ fontSize: "11px", color: "var(--warn, #d0a03a)",
+                        textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+            {confirm.name} wants to modify your traffic
+          </div>
+          <div style={{ fontSize: "11.5px", color: "var(--text-2)" }}>
+            This extension runs inside the proxy and can rewrite requests and
+            responses as they pass through — including headers that carry your
+            session cookies and tokens.
+          </div>
+          <div style={{ fontSize: "11px", fontFamily: "var(--ff-mono)", color: "var(--text)" }}>
+            Requests: {confirm.permissions.join(", ") || "(none)"}
+          </div>
+          {confirm.warnings.map((w, i) => (
+            <div key={i} style={{ fontSize: "11px", color: "var(--warn, #d0a03a)" }}>• {w}</div>
+          ))}
+          <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+            <Btn label="Install anyway" onClick={() => doInstall(confirm.id, true)} />
+            <Btn label="Cancel" onClick={() => setConfirm(null)} danger />
+          </div>
+        </div>
+      )}
+
+      {state.items.map(x => (
+        <div key={x.id} style={{
+          borderTop: "1px solid var(--line-soft)", paddingTop: 8, marginTop: 2,
+          display: "flex", flexDirection: "column", gap: 4,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "12px", color: "var(--text)", fontWeight: 600 }}>
+              {x.name}
+            </span>
+            <span style={{ fontSize: "10.5px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+              {x.version}
+              {x.state === "update-available" && x.installedVersion
+                ? " (have " + x.installedVersion + ")" : ""}
+            </span>
+            {stateBadge(x.state)}
+            {(x.permissions || []).length > 0 && badge("modifies traffic", "var(--warn, #d0a03a)")}
+            <span style={{ flex: 1 }} />
+            {x.state === "not-installed" && (
+              <Btn label={busy === x.id ? "…" : "Install"} onClick={() => doInstall(x.id, false)} />
+            )}
+            {x.state === "update-available" && (
+              <Btn label={busy === x.id ? "…" : "Update"} onClick={() => doInstall(x.id, false)} />
+            )}
+            {(x.state === "installed" || x.state === "update-available" || x.state === "local") && (
+              <Btn label="Remove" onClick={() => doUninstall(x.id)} danger />
+            )}
+          </div>
+          <div style={{ fontSize: "11.5px", color: "var(--text-2)" }}>{x.summary}</div>
+          <div style={{ fontSize: "10.5px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+            {(x.categories || []).join(" · ")}
+            {x.sha256 ? "  sha256 " + String(x.sha256).slice(0, 16) + "…" : ""}
+          </div>
+        </div>
+      ))}
+
+      {state.status === "ready" && (
+        <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 4 }}>
+          Downloads are restricted to https on {(state.trustedHosts || []).join(", ")} and
+          every file is checked against the sha256 the catalog pins before it is written.
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SettingsTab() {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -452,6 +635,8 @@ function SettingsTab() {
           <Btn label="Clear history" onClick={() => NL.actions.clearHistory()} danger />
         </div>
       </Card>
+
+      <Marketplace Card={Card} Btn={Btn} />
 
       <Card
         title={"Extensions (" + scripts.length + ")"}

@@ -74,6 +74,10 @@ add_library(Networking STATIC
     update_check.cpp
     update_check_logic.cpp
     update_check.hpp
+    marketplace.cpp
+    marketplace_logic.cpp
+    marketplace.hpp
+    marketplace_logic.hpp
     sequencer.cpp
     sequencer_logic.cpp
     sequencer.hpp

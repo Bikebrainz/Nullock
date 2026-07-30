@@ -9,9 +9,18 @@
       "summary": "Static DOM-XSS taint analysis on served HTML/JS with one-hop dataflow: connects sources (location.*, referrer, window.name, postMessage, storage) to sinks (innerHTML, eval, document.write, setTimeout, location-nav) and emits findings. The proxy-side answer to Burp DOM Invader.",
       "version": "0.2.0",
       "author": "nullock-builtin",
-      "categories": ["scanner", "xss", "dom", "passive"],
+      "categories": [
+        "scanner",
+        "xss",
+        "dom",
+        "passive"
+      ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/dom_taint.js",
-      "hooks": ["nullock.onResponse", "nullock.reportFinding"],
+      "sha256": "8c02c0578289944a6dc858726e7a1357804bff3872a80480fa606b496b554d1a",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
       "config": {}
     },
     {
@@ -20,15 +29,44 @@
       "summary": "Auto-signs outgoing requests to *.amazonaws.com with AWS Signature v4.",
       "version": "0.1.0",
       "author": "nullock-builtin",
-      "categories": ["auth", "cloud", "aws"],
+      "categories": [
+        "auth",
+        "cloud",
+        "aws"
+      ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/aws_sigv4.js",
-      "hooks": ["nullock.onRequest"],
+      "sha256": "1a3963e705d1b7fac0eb18feef343dce04388055a720ae93fd44b5c4dc5b7165",
+      "permissions": [
+        "modify-requests"
+      ],
+      "hooks": [
+        "nullock.onRequest"
+      ],
       "config": {
-        "accessKey":    { "type": "string", "secret": true,  "desc": "AWS Access Key ID" },
-        "secretKey":    { "type": "string", "secret": true,  "desc": "AWS Secret Access Key" },
-        "sessionToken": { "type": "string", "secret": true,  "desc": "STS / SSO session token (optional)" },
-        "region":       { "type": "string", "default": "us-east-1" },
-        "service":      { "type": "string", "default": "",   "desc": "Override; auto-detected from host if blank" }
+        "accessKey": {
+          "type": "string",
+          "secret": true,
+          "desc": "AWS Access Key ID"
+        },
+        "secretKey": {
+          "type": "string",
+          "secret": true,
+          "desc": "AWS Secret Access Key"
+        },
+        "sessionToken": {
+          "type": "string",
+          "secret": true,
+          "desc": "STS / SSO session token (optional)"
+        },
+        "region": {
+          "type": "string",
+          "default": "us-east-1"
+        },
+        "service": {
+          "type": "string",
+          "default": "",
+          "desc": "Override; auto-detected from host if blank"
+        }
       }
     },
     {
@@ -37,9 +75,19 @@
       "summary": "Per-host sticky rotation of User-Agent / Accept-Language / Sec-CH-UA across realistic browser profiles.",
       "version": "0.1.0",
       "author": "nullock-builtin",
-      "categories": ["evasion", "fingerprint", "fuzzing"],
+      "categories": [
+        "evasion",
+        "fingerprint",
+        "fuzzing"
+      ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/identity_rotate.js",
-      "hooks": ["nullock.onRequest"],
+      "sha256": "57f532cef2afedc3364fdda7be96adc446d28f6169e20af98fbcbd491b51625b",
+      "permissions": [
+        "modify-requests"
+      ],
+      "hooks": [
+        "nullock.onRequest"
+      ],
       "config": {}
     }
   ]

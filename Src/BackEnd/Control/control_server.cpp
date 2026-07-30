@@ -12,6 +12,7 @@
 #include "session_rules.hpp"
 #include "crawler.hpp"
 #include "update_check.hpp"
+#include "marketplace.hpp"
 #include "sequencer.hpp"
 #include "intruder.hpp"
 #include "intruder_generators.hpp"
@@ -5294,6 +5295,146 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.extensions) m_wiring.extensions->reload();
         return okJson({{ "ok", true }, { "installed", installed },
                        { "destDir", destDir }});
+    }
+
+    // ---- Extension marketplace ---------------------------------------
+    //
+    // This is the one part of the control API that can cause this process to
+    // execute code it did not ship with, so the handlers below are thin: every
+    // trust decision lives in MarketplaceLogic (pure, tested) and Marketplace
+    // (which refuses rather than repairs). Nothing here auto-installs, and
+    // nothing here follows a redirect.
+    //
+    // GET/POST /api/marketplace/catalog
+    //   Fetch the published catalog and merge it against what is on disk, so a
+    //   single call answers "what exists, what do I have, what has an update".
+    //   Never writes anything.
+    if (path == "/api/marketplace/catalog") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+
+        const QString overrideUrl = bodyJson.value("catalogUrl").toString();
+        const auto fetched = Nullock::Core::Marketplace::fetchCatalog(overrideUrl);
+        if (!fetched.ok) {
+            return okJson({{ "ok", false },
+                           { "error",  fetched.error },
+                           { "status", fetched.httpStatus },
+                           { "catalogUrl", overrideUrl.isEmpty()
+                                 ? Nullock::Core::Marketplace::defaultCatalogUrl()
+                                 : overrideUrl }});
+        }
+
+        const QString dir = m_wiring.extensions->extensionsDir();
+        const auto merged = Nullock::Core::MarketplaceLogic::merge(
+            fetched.catalog,
+            Nullock::Core::Marketplace::installedFiles(dir),
+            Nullock::Core::Marketplace::installedVersions(dir));
+
+        QJsonArray items;
+        for (const auto &m : merged) {
+            const char *state = "not-installed";
+            switch (m.state) {
+                case Nullock::Core::MarketplaceLogic::InstallState::Installed:
+                    state = "installed"; break;
+                case Nullock::Core::MarketplaceLogic::InstallState::UpdateAvailable:
+                    state = "update-available"; break;
+                case Nullock::Core::MarketplaceLogic::InstallState::Local:
+                    state = "local"; break;
+                case Nullock::Core::MarketplaceLogic::InstallState::NotInstalled:
+                    break;
+            }
+            items.append(QJsonObject{
+                { "id",          m.entry.id },
+                { "name",        m.entry.name },
+                { "summary",     m.entry.summary },
+                { "version",     m.entry.version },
+                { "author",      m.entry.author },
+                { "categories",  QJsonArray::fromStringList(m.entry.categories) },
+                { "hooks",       QJsonArray::fromStringList(m.entry.hooks) },
+                { "permissions", QJsonArray::fromStringList(m.entry.declaredPermissions) },
+                { "sha256",      m.entry.sha256 },
+                { "state",       QString::fromLatin1(state) },
+                { "installedVersion", m.installedVersion },
+            });
+        }
+        return okJson({{ "ok", true },
+                       { "catalogVersion", fetched.catalog.version },
+                       { "updated",        fetched.catalog.updated },
+                       { "extensionsDir",  dir },
+                       { "trustedHosts",   QJsonArray::fromStringList(
+                             Nullock::Core::MarketplaceLogic::trustedHosts()) },
+                       { "extensions",     items }});
+    }
+
+    // POST /api/marketplace/install { id, confirmMutating?: bool }
+    //   Re-fetches the catalog so the digest we verify against is the current
+    //   published one rather than whatever the UI happened to be showing. If the
+    //   extension turns out to request traffic-MUTATING capabilities and the
+    //   caller did not pass confirmMutating, this REFUSES and returns the audit
+    //   so the UI can prompt. That two-step is the consent gate; a UI that sends
+    //   confirmMutating:true unconditionally has removed it.
+    if (path == "/api/marketplace/install") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+
+        const QString id = bodyJson.value("id").toString();
+        if (id.isEmpty())
+            return okJson({{ "ok", false }, { "error", "missing id" }});
+        const bool confirmed = bodyJson.value("confirmMutating").toBool(false);
+
+        const auto fetched = Nullock::Core::Marketplace::fetchCatalog(
+            bodyJson.value("catalogUrl").toString());
+        if (!fetched.ok)
+            return okJson({{ "ok", false }, { "error", fetched.error }});
+
+        const Nullock::Core::MarketplaceLogic::CatalogEntry *found = nullptr;
+        for (const auto &e : fetched.catalog.entries)
+            if (e.id == id) { found = &e; break; }
+        if (!found)
+            return okJson({{ "ok", false },
+                           { "error", QStringLiteral("no catalog entry with id %1").arg(id) }});
+
+        const auto res = Nullock::Core::Marketplace::install(
+            *found, m_wiring.extensions->extensionsDir(), confirmed);
+
+        QJsonObject out{
+            { "ok",           res.ok },
+            { "id",           id },
+            { "sha256",       res.sha256 },
+            { "bytes",        res.bytes },
+            { "permissions",  QJsonArray::fromStringList(res.effectivePermissions) },
+            { "mutatesTraffic", res.mutatesTraffic },
+            { "warnings",     QJsonArray::fromStringList(res.warnings) },
+        };
+        if (!res.ok) {
+            out.insert("error", res.error);
+            // Distinguish "we refused, ask the user" from "it went wrong", so the
+            // UI can show a confirm dialog instead of an error toast.
+            out.insert("needsConfirmation", res.mutatesTraffic && !confirmed);
+            return okJson(out);
+        }
+
+        out.insert("path", res.installedPath);
+        // Load it now so the user does not have to know that a reload exists.
+        m_wiring.extensions->reload();
+        out.insert("loaded", m_wiring.extensions->loadedCount());
+        return okJson(out);
+    }
+
+    // POST /api/marketplace/uninstall { id }
+    if (path == "/api/marketplace/uninstall") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+
+        const QString id = bodyJson.value("id").toString();
+        QString err;
+        const bool ok = Nullock::Core::Marketplace::uninstall(
+            id, m_wiring.extensions->extensionsDir(), &err);
+        if (ok) m_wiring.extensions->reload();
+        QJsonObject out{{ "ok", ok }, { "id", id }};
+        if (!ok) out.insert("error", err);
+        else     out.insert("loaded", m_wiring.extensions->loadedCount());
+        return okJson(out);
     }
 
     // ---- OpenAPI / Swagger spec import -------------------------------

@@ -163,6 +163,23 @@
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
+
+    // --- extension marketplace ---
+    // Fetches the published catalog already merged against what is on disk, so
+    // one call answers "what exists / what do I have / what has an update".
+    marketplaceCatalog()    { return post("/api/marketplace/catalog").then(r => r.json()); },
+    // confirmMutating is the user's answer to "this extension can rewrite your
+    // traffic". It is passed through explicitly and defaults to FALSE: the
+    // server refuses a mutating install without it and returns needsConfirmation
+    // so the caller can prompt. Never hardcode this true -- it is the only
+    // consent gate between the catalog and code running inside the proxy.
+    marketplaceInstall(id, confirmMutating) {
+      return post("/api/marketplace/install",
+                  { id, confirmMutating: !!confirmMutating }).then(r => r.json());
+    },
+    marketplaceUninstall(id) {
+      return post("/api/marketplace/uninstall", { id }).then(r => r.json());
+    },
     clearFindings()         { return post("/api/findings/clear"); },
     projectList()           { return fetch("/api/project/list").then(r => r.json()); },
     projectOpen(name)       { return post("/api/project/open",   { name }).then(r => r.json()); },

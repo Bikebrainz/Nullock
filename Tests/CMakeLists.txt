@@ -567,3 +567,12 @@ add_subdirectory(proxy_shutdown)
 # sockets bound, no event loop, so it is CI-safe unlike proxy_shutdown.
 # Run via: ctest -R ws_repeater -V
 add_subdirectory(ws_repeater)
+
+# Extension marketplace trust boundary -- catalog parsing (drop, never repair),
+# the https + host allow-list including the userinfo-@ and look-alike bypasses,
+# sha256 integrity (a MISSING hash must fail closed), filename confinement
+# against traversal / drive letters / UNC / ADS / Windows device names, the
+# install audit that re-derives permissions from the downloaded bytes rather
+# than the catalog's claims, and the installed-vs-available merge.
+# Run via: ctest -R marketplace_logic -V
+add_subdirectory(marketplace_logic)

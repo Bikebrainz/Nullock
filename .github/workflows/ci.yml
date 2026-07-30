@@ -33,6 +33,24 @@ jobs:
                 (has("url")     and (.url     | startswith("https://")))
               )
           ' extensions/marketplace.json
+      # The sha256 is the only thing between a compromised CDN and arbitrary
+      # code running inside a user's proxy, so an entry without a well-formed
+      # one must fail the build rather than ship as an unverifiable install.
+      - name: every extension pins a well-formed sha256
+        run: |
+          jq -e '
+            .extensions
+            | all(
+                has("sha256") and
+                (.sha256 | type) == "string" and
+                (.sha256 | test("^[0-9a-f]{64}$"))
+              )
+          ' extensions/marketplace.json
+      # ...and that hash must match the .js actually committed next to it. A
+      # drifted hash breaks every install, and the tempting "fix" for that is to
+      # stop verifying -- so catch the drift here instead.
+      - name: manifest hashes match the committed extensions
+        run: bash scripts/marketplace_sync.sh --check
       - name: docs site mirror is up to date
         run: diff -q extensions/marketplace.json docs/marketplace/marketplace.json
 
