@@ -96,4 +96,17 @@ bool isTrustedReleaseUrl(const QString &url) {
     return host == QLatin1String("github.com") || host.endsWith(QLatin1String(".github.com"));
 }
 
+bool noUpdateRequested(const QString &envValue) {
+    const QString v = envValue.trimmed().toLower();
+    if (v.isEmpty()) return false;
+    // Explicitly-false spellings. Treating "set at all" as true (what this used
+    // to do) meant NULLOCK_NO_UPDATE=0 disabled the check -- a documented
+    // contract the code contradicted, and the failure was silent: the user got
+    // no update notice and no reason why.
+    return !(v == QLatin1String("0")
+          || v == QLatin1String("false")
+          || v == QLatin1String("no")
+          || v == QLatin1String("off"));
+}
+
 } // namespace Nullock::Core::UpdateLogic

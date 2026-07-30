@@ -38,6 +38,12 @@ int  compareSemver(const QString &a, const QString &b);
 // True iff `url` is an HTTPS github.com page -- the only kind of release link the
 // UI should open (defense-in-depth against a tampered/unexpected html_url field).
 bool isTrustedReleaseUrl(const QString &url);
+// Read NULLOCK_NO_UPDATE. The documented spelling is =1, and the old test was
+// merely "is the variable non-empty" -- so NULLOCK_NO_UPDATE=0 turned the update
+// check OFF, which is the opposite of what anyone writing it means. Falsey values
+// (empty, 0, false, no, off, in any case, surrounded by whitespace) do NOT
+// disable; anything else does, so a stray NULLOCK_NO_UPDATE=yes still works.
+bool noUpdateRequested(const QString &envValue);
 } // namespace UpdateLogic
 
 struct UpdateInfo {

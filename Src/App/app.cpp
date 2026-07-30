@@ -610,6 +610,8 @@ int main(int argc, char *argv[]) {
             << "                        Implies headless; no server. Combine with --ndjson.\n"
             << "  --fail-on=SEV         Gate threshold for --scan: critical|high|medium|low|info\n"
             << "                        or none (never fail). Default high.\n"
+            << "  --no-update-check     Skip the startup check for a newer release (also\n"
+            << "                        NULLOCK_NO_UPDATE=1; 0/false/no/off leave it on).\n"
             << "  --smoke-test          Run the self-test and exit\n"
             << "  --help / -h           This message\n"
             << "\n"
@@ -912,10 +914,14 @@ int main(int argc, char *argv[]) {
     // Background update check. Hits GitHub Releases API once at startup,
     // surfaces the result via /api/snapshot. No telemetry, no
     // auto-download -- just a small "X.Y.Z available" pill in the UI.
-    // --no-update-check / NULLOCK_NO_UPDATE=1 disables.
+    // --no-update-check / NULLOCK_NO_UPDATE=1 disables. noUpdateRequested()
+    // parses the env var as a boolean rather than "is it set", so the =0 the
+    // docs imply is legal actually leaves the check ON.
     Nullock::Core::UpdateChecker updateChecker;
-    const bool skipUpdateCheck = hasFlag(argc, argv, "--no-update-check")
-                              || !qEnvironmentVariable("NULLOCK_NO_UPDATE").isEmpty();
+    const bool skipUpdateCheck =
+        hasFlag(argc, argv, "--no-update-check")
+        || Nullock::Core::UpdateLogic::noUpdateRequested(
+               qEnvironmentVariable("NULLOCK_NO_UPDATE"));
     if (!skipUpdateCheck && !smokeTest) {
         updateChecker.checkAsync(QCoreApplication::applicationVersion().isEmpty()
                                     ? QStringLiteral("1.0.0")
@@ -1029,8 +1035,19 @@ int main(int argc, char *argv[]) {
         // want the raw query.
         const bool includeQuery = hasFlag(argc, argv, "--ndjson-include-query");
 
-        // response events
+        // response events.
+        //
+        // `&model` is the context object, and it is doing two jobs. responseReceived
+        // is emitted on the proxy's per-connection WORKER threads; without a context
+        // object this lambda would be a DirectConnection and run there -- reading
+        // ProxyModel (which the GUI thread is concurrently mutating) off-thread, and
+        // letting several workers interleave writes into the same stdout stream, so
+        // the one-object-per-line NDJSON contract tears apart under load. Naming a
+        // main-thread receiver makes the call queued, which serializes it and puts it
+        // behind ProxyModel::addResponse -- connected earlier, so posted earlier --
+        // which is what lets the row id below be read at all.
         QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
+                         &model,
                          [&model, includeQuery](const Nullock::Proxy::HttpRequest &req,
                                                 const Nullock::Proxy::HttpResponse &resp) {
             QString path = req.path;
@@ -1040,7 +1057,14 @@ int main(int argc, char *argv[]) {
             }
             QJsonObject e;
             e["event"]  = "response";
-            e["rowId"]  = model.rowCount();   // 1-based once addResponse ran
+            // lastId(), NOT rowCount(). ProxyModel keeps a bounded window
+            // (10k rows by default) and evicts from the front, so rowCount()
+            // stops climbing once the window fills and every event past the
+            // cap would report the same rowId forever -- while findings below
+            // keep emitting real ids. The two streams could then never be
+            // joined. lastId() is the id of the newest row and stays monotonic
+            // across evictions.
+            e["rowId"]  = model.lastId();
             e["method"] = req.method;
             e["host"]   = req.host;
             e["port"]   = req.port;
@@ -1051,8 +1075,12 @@ int main(int argc, char *argv[]) {
             QTextStream(stdout) << QJsonDocument(e).toJson(QJsonDocument::Compact) << '\n';
             QTextStream(stdout).flush();
         });
-        // finding events
+        // finding events. Same context-object reasoning as above: findingsChanged
+        // reaches here on whichever thread produced the finding, and these writes
+        // share stdout with the response events, so both have to land on one thread
+        // for the lines to stay whole.
         QObject::connect(&scanner, &Nullock::Core::PassiveScanner::findingsChanged,
+                         &scanner,
                          [&scanner, includeQuery]() {
             const auto findings = scanner.findings(1);  // newest only
             if (findings.isEmpty()) return;

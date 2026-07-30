@@ -230,6 +230,11 @@ private:
     // passes false, because by then the queued slots' receivers are gone.
     void joinWorkers(bool pump);
 
+    // Rewrite the blocklist file from the live set, serialized against every
+    // other writer. Call WITHOUT m_blockMutex held -- see the definition for
+    // the lock order and the race it closes.
+    void persistBlocklist();
+
     QTcpServer *m_server;
     CertAuthority *m_ca = nullptr;
     InterceptController *m_intercept = nullptr;
@@ -240,6 +245,11 @@ private:
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;
+    // Serializes the blocklist FILE, separately from the set above. Two locks
+    // rather than one because the set is read on the CONNECT hot path
+    // (isMitmBlocked) and must never wait behind a disk write. Lock order is
+    // always m_blocklistFileMutex -> m_blockMutex; never the reverse.
+    mutable QMutex m_blocklistFileMutex;
     mutable QMutex m_scopeMutex;
     QList<QRegularExpression> m_inScope;
     QList<QRegularExpression> m_outOfScope;

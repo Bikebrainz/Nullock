@@ -1005,6 +1005,32 @@ private:
         connect(upstream, &QTcpSocket::disconnected, this,
                 [wsId]{ WsRepeater::instance()->deregisterSession(wsId); });
 
+        /*
+         *  Injected frames are WRITTEN HERE, not by the repeater. Both sockets
+         *  are children of this Connection and live on this worker thread; the
+         *  repeater is called from the control server's thread and must not go
+         *  near them.
+         *
+         *  `this` as the context object is the whole point of the fix. ~QObject
+         *  severs a context-object connection and drops that receiver's posted
+         *  events BEFORE it deletes its children, so once this Connection is
+         *  gone no queued frame can reach a destroyed socket -- it is discarded
+         *  instead. Capturing the sockets is therefore safe: the lambda cannot
+         *  outlive their parent.
+         *
+         *  Delivery is queued (the emitter is on another thread) and it is the
+         *  relay's own loop.exec() below that dispatches it, so a frame only
+         *  lands while the tunnel is actually being pumped.
+        */
+        connect(WsRepeater::instance(), &WsRepeater::frameQueued, this,
+                [wsId, client, upstream](qint64 id, const QByteArray &frame,
+                                         bool toUpstream) {
+                    if (id != wsId) return;          // a different tunnel's frame
+                    QTcpSocket *sock = toUpstream ? upstream : client;
+                    if (sock && sock->state() == QAbstractSocket::ConnectedState)
+                        sock->write(frame);
+                });
+
         // Surface one WebSocket message (already reassembled + inflated) as a
         // synthetic History entry. `wasDeflated` records that we successfully
         // decompressed a permessage-deflate message so the UI can flag it.
@@ -1194,23 +1220,50 @@ bool ProxyServer::isMitmBlocked(const QString &host) const {
     return m_mitmBlocked.contains(host);
 }
 void ProxyServer::markMitmBlocked(const QString &host) {
-    QString pathToWrite;
-    QStringList snapshot;
     {
         QMutexLocker lock(&m_blockMutex);
         if (m_mitmBlocked.contains(host)) return;
         m_mitmBlocked.insert(host);
-        pathToWrite = m_blocklistPath;
+    }
+    // Every caller is a per-connection worker thread (a pinned cert refused our
+    // forged one), so two hosts can be marked at the same instant. Taking the
+    // snapshot inside the mutex and writing outside it -- which is what this
+    // used to do -- lets the two writers race: each opens the file Truncate and
+    // rewrites it from ITS OWN snapshot, so whichever finishes last wins and the
+    // other worker's host is silently dropped from the persisted list. Worse,
+    // the two truncate-then-write sequences interleave at the byte level, so a
+    // shorter list landing on top of a longer one leaves a torn file that
+    // setBlocklistPath will happily parse back as real hosts.
+    //
+    // Re-reading the set from INSIDE the file lock fixes both: the writes are
+    // serialized, and whoever gets the lock persists the current state rather
+    // than a stale copy, so the last write is always the complete one. The
+    // state mutex is still never held across disk I/O -- isMitmBlocked() runs on
+    // the CONNECT hot path and must not block behind a write.
+    persistBlocklist();
+}
+
+// Rewrite the blocklist file from the live set. MUST be called without
+// m_blockMutex held; takes m_blocklistFileMutex, then m_blockMutex. That order
+// is the same everywhere the two are held together, which is what keeps it
+// deadlock-free.
+void ProxyServer::persistBlocklist() {
+    QMutexLocker fileLock(&m_blocklistFileMutex);
+
+    QString path;
+    QStringList snapshot;
+    {
+        QMutexLocker lock(&m_blockMutex);
+        path = m_blocklistPath;
+        if (path.isEmpty()) return;
         snapshot = QStringList(m_mitmBlocked.constBegin(), m_mitmBlocked.constEnd());
     }
-    if (!pathToWrite.isEmpty()) {
-        QFile f(pathToWrite);
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            snapshot.sort();
-            f.write(snapshot.join('\n').toUtf8());
-            f.write("\n");
-        }
-    }
+
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
+    snapshot.sort();
+    f.write(snapshot.join('\n').toUtf8());
+    f.write("\n");
 }
 
 QStringList ProxyServer::blockedHosts() const {
@@ -1221,17 +1274,30 @@ QStringList ProxyServer::blockedHosts() const {
 }
 
 void ProxyServer::clearMitmBlocked() {
-    QString pathToWrite;
+    // markMitmBlocked's twin, and it needs the same file lock for the same
+    // reason. Without it a worker that marked a host just before this call can
+    // still be inside its rewrite, and would recreate the file -- with the host
+    // the user just cleared in it -- moments after we deleted it. Holding the
+    // file lock across both the clear and the delete makes the two orderings
+    // the only possible ones: the mark lands first and is then deleted, or it
+    // lands after and writes the (now empty) set.
+    QMutexLocker fileLock(&m_blocklistFileMutex);
+
+    QString pathToRemove;
     {
         QMutexLocker lock(&m_blockMutex);
         m_mitmBlocked.clear();
-        pathToWrite = m_blocklistPath;
+        pathToRemove = m_blocklistPath;
     }
-    if (!pathToWrite.isEmpty())
-        QFile::remove(pathToWrite);
+    if (!pathToRemove.isEmpty())
+        QFile::remove(pathToRemove);
 }
 
 void ProxyServer::setBlocklistPath(const QString &path) {
+    // Called once at startup, before the listener is up -- but it both reads the
+    // file and replaces the set, so it takes the file lock in the same order as
+    // everything else rather than relying on that timing staying true.
+    QMutexLocker fileLock(&m_blocklistFileMutex);
     QMutexLocker lock(&m_blockMutex);
     m_blocklistPath = path;
     m_mitmBlocked.clear();
@@ -1545,11 +1611,12 @@ void ProxyServer::joinWorkers(bool pump) {
             //
             // ExcludeSocketNotifiers is load-bearing, not tidiness. Without
             // it this pump re-enters ControlServer's still-listening HTTP API
-            // mid-teardown -- so a stray /api/ws/send would run
-            // WsRepeater::sendFrame against sockets whose worker threads we
-            // are in the middle of joining. Posted QMetaCallEvents (the
-            // BlockingQueuedConnection hops we actually need to service) are
-            // NOT socket notifiers, so they still get dispatched.
+            // mid-teardown, and its handlers reach straight back into the
+            // objects main() is unwinding -- a stray /api/proxy/toggle would
+            // call start() on us and re-open the listener while we are draining
+            // it. Posted QMetaCallEvents (the BlockingQueuedConnection hops we
+            // actually need to service) are NOT socket notifiers, so they still
+            // get dispatched.
             //
             // The 5 ms cap keeps one slow queued slot (a ProjectStore disk
             // append, a passive scan) from stalling the poll loop.

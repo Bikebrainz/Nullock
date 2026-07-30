@@ -1,11 +1,9 @@
 #include "ws_repeater.hpp"
 
 #include <QDateTime>
-#include <QMetaObject>
 #include <QMutexLocker>
 #include <QRandomGenerator>
-#include <QTcpSocket>
-#include <QThread>
+#include <QTcpSocket>   // QPointer<QTcpSocket> needs the complete type
 
 namespace Nullock::Proxy {
 
@@ -99,41 +97,38 @@ QByteArray WsRepeater::buildFrame(quint8 opcode, const QByteArray &payload, bool
 
 bool WsRepeater::sendFrame(qint64 id, const QString &direction,
                            int opcode, const QByteArray &payload) {
-    // Resolve session + which socket to write to.
-    QPointer<QTcpSocket> target;
-    bool clientToServer = direction.compare("up", Qt::CaseInsensitive) == 0
-                       || direction.compare("client", Qt::CaseInsensitive) == 0
-                       || direction.compare("upstream", Qt::CaseInsensitive) == 0;
+    const bool clientToServer = direction.compare("up", Qt::CaseInsensitive) == 0
+                             || direction.compare("client", Qt::CaseInsensitive) == 0
+                             || direction.compare("upstream", Qt::CaseInsensitive) == 0;
+
+    // note: the mutex is held ONLY to answer "does this session exist". It is
+    // deliberately released before the emit: the relay takes this same mutex in
+    // noteFrame(), so holding it across a hop to that thread would deadlock.
     {
         QMutexLocker lk(&m_mutex);
-        auto it = m_sessions.find(id);
-        if (it == m_sessions.end()) return false;
-        target = clientToServer ? it->upstream : it->client;
+        if (!m_sessions.contains(id)) return false;
     }
-    if (!target) return false;
 
-    // Build the frame bytes. Client->server frames are masked; the
-    // opposite direction is unmasked per RFC.
+    // Client->server frames are masked; the opposite direction is unmasked
+    // per RFC 6455. Built here so the relay only has to write bytes.
     const QByteArray bytes = buildFrame(
         static_cast<quint8>(opcode & 0x0F), payload, clientToServer);
 
-    // Sockets live in their connection's thread (see runWebSocketRelay).
-    // Marshal the write so the thread that owns the socket performs it.
-    // If we're already on that thread, do a direct call -- otherwise
-    // BlockingQueuedConnection would deadlock (queue at self).
-    QTcpSocket *raw = target.data();
-    auto write = [raw, bytes]() -> bool {
-        if (!raw || raw->state() != QAbstractSocket::ConnectedState) return false;
-        const qint64 written = raw->write(bytes);
-        return (written == bytes.size());
-    };
-    if (raw->thread() == QThread::currentThread()) {
-        return write();
-    }
-    bool ok = false;
-    QMetaObject::invokeMethod(raw, [&ok, write]() { ok = write(); },
-                              Qt::BlockingQueuedConnection);
-    return ok;
+    /*
+     *  note: we do NOT touch the socket here. It belongs to its connection's
+     *        worker thread and can be destroyed at any moment by that thread;
+     *        the old code took a raw pointer out of a QPointer and dereferenced
+     *        it (raw->thread()) after dropping the lock, which is a plain
+     *        use-after-free, and passed that same possibly-dangling pointer to
+     *        invokeMethod as the receiver.
+     *  note: the lambda's `if (!raw)` guard there could never fire either -- raw
+     *        was a copied raw pointer, so it stayed non-null after the object
+     *        died. It read as protection and provided none.
+     *  note: emitting instead hands the write to the relay, which lives on the
+     *        owning thread and whose connection is severed when it dies.
+    */
+    emit frameQueued(id, bytes, clientToServer);
+    return true;
 }
 
 } // namespace Nullock::Proxy

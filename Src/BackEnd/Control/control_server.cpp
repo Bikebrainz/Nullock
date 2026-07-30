@@ -5515,9 +5515,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 else           payload = v.toString().toUtf8();
             }
         }
-        const bool ok = Nullock::Proxy::WsRepeater::instance()->sendFrame(
+        // "queued", not "written". sendFrame hands the frame to the relay that
+        // owns the tunnel and returns; the sockets live on that relay's thread,
+        // so nothing here can know whether the bytes reached the wire. A false
+        // means only that no session with this id is open.
+        const bool queued = Nullock::Proxy::WsRepeater::instance()->sendFrame(
             sid, dir, op, payload);
-        return okJson({{ "ok", ok }});
+        return okJson({{ "ok", queued }, { "queued", queued }});
     }
 
     if (path == "/api/theme") {

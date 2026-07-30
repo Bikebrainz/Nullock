@@ -560,3 +560,10 @@ add_subdirectory(jwt_probe)
 # of the CI ctest filter for the same reason port_scan_live does -- it binds
 # sockets and spawns threads, which flakes on shared runners.
 add_subdirectory(proxy_shutdown)
+
+# WebSocket Repeater -- the RFC 6455 encoder (length forms, per-frame mask,
+# opcode truncation) and the send contract: sendFrame QUEUES a frame for the
+# relay that owns the tunnel and never touches the socket itself. Pure Qt, no
+# sockets bound, no event loop, so it is CI-safe unlike proxy_shutdown.
+# Run via: ctest -R ws_repeater -V
+add_subdirectory(ws_repeater)

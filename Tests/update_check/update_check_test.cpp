@@ -101,6 +101,39 @@ int main(int argc, char **argv) {
     chk("url: a file: scheme rejected", !isTrustedReleaseUrl("file:///etc/passwd"));
     chk("url: empty rejected", !isTrustedReleaseUrl(""));
 
+    // ---- NULLOCK_NO_UPDATE ------------------------------------------------
+    // The env var is documented as "=1 disables". The old check was
+    // !value.isEmpty(), so NULLOCK_NO_UPDATE=0 ALSO disabled the update check
+    // -- the exact opposite of what writing 0 means, and silent when it
+    // happened. These cases pin the boolean reading.
+    using Nullock::Core::UpdateLogic::noUpdateRequested;
+
+    chk("env: unset leaves the check on", !noUpdateRequested(""));
+    chk("env: 0 leaves the check on", !noUpdateRequested("0"));
+    chk("env: false leaves the check on", !noUpdateRequested("false"));
+    chk("env: no leaves the check on", !noUpdateRequested("no"));
+    chk("env: off leaves the check on", !noUpdateRequested("off"));
+    chk("env: falsey values are case-insensitive",
+        !noUpdateRequested("FALSE") && !noUpdateRequested("Off") && !noUpdateRequested("No"));
+    chk("env: falsey values tolerate surrounding whitespace",
+        !noUpdateRequested("  0  ") && !noUpdateRequested("\tfalse\n"));
+    chk("env: whitespace alone is still unset", !noUpdateRequested("   "));
+
+    chk("env: 1 disables", noUpdateRequested("1"));
+    chk("env: true disables", noUpdateRequested("true"));
+    chk("env: yes disables", noUpdateRequested("yes"));
+    chk("env: on disables", noUpdateRequested("on"));
+    chk("env: truthy values are case-insensitive",
+        noUpdateRequested("TRUE") && noUpdateRequested("Yes") && noUpdateRequested("ON"));
+    // Anything unrecognised still disables: someone who set the variable at all
+    // meant to opt out, and only the explicit falsey spellings should undo it.
+    chk("env: an unrecognised value still disables", noUpdateRequested("please"));
+    chk("env: 2 disables (only 0 is falsey, not 'not 1')", noUpdateRequested("2"));
+    // Near-misses of the falsey words must NOT be read as falsey.
+    chk("env: 'offline' is not 'off'", noUpdateRequested("offline"));
+    chk("env: 'nope' is not 'no'", noUpdateRequested("nope"));
+    chk("env: '00' is not '0'", noUpdateRequested("00"));
+
     std::fprintf(stderr, "update_check_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

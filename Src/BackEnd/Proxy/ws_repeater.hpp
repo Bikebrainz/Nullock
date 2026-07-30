@@ -39,8 +39,8 @@ class WsRepeater : public QObject {
 public:
     static WsRepeater *instance();
 
-    // Returns a new session id. ownerThread is the thread the sockets
-    // live on; sends marshal back to it via QMetaObject::invokeMethod.
+    // Returns a new session id. The sockets are recorded only so sessions()
+    // can report the tunnel -- nothing here ever writes to them. See sendFrame.
     qint64 registerSession(QTcpSocket *client, QTcpSocket *upstream,
                            const QString &host, quint16 port);
     void   deregisterSession(qint64 id);
@@ -51,11 +51,29 @@ public:
 
     QList<WsSessionInfo> sessions() const;
 
-    // Build an RFC 6455 frame and write it to either the client-facing or
-    // upstream-facing socket of the given session. Direction "up" means
-    // client->server (frame is masked, like a real client would send).
-    // Direction "down" means server->client (unmasked). Returns false if
-    // the session doesn't exist or the socket is no longer connected.
+    /*
+     *  Build an RFC 6455 frame and hand it to the relay that owns this session.
+     *  Direction "up" means client->server (masked, like a real client would
+     *  send); "down" means server->client (unmasked).
+     *
+     *  ASYNCHRONOUS, and it has to be. The sockets belong to their connection's
+     *  worker thread, and this is called from the control server's thread, so
+     *  there are only two ways to reach them and both are broken:
+     *    * dispatch to the socket with a BlockingQueuedConnection WITHOUT holding
+     *      m_mutex -- the socket can be destroyed between the lookup and the
+     *      dispatch, so the receiver dangles. That is what this used to do.
+     *    * hold m_mutex across that blocking dispatch -- now the socket cannot
+     *      die, but the worker takes the SAME mutex in noteFrame(), so it blocks
+     *      on us while we block on it. Deadlock.
+     *  So the frame is emitted on frameQueued() instead and the relay, which
+     *  lives on the owning thread and whose connection dies with it, does the
+     *  write. No dangling receiver, no mutex held across threads, and the
+     *  control server's own event loop no longer blocks on a worker.
+     *
+     *  Returns TRUE when the frame was queued for a live session, FALSE when no
+     *  such session exists. It deliberately does NOT report whether the bytes
+     *  reached the wire -- nothing at this end can know that synchronously.
+    */
     Q_INVOKABLE bool sendFrame(qint64 id,
                                const QString &direction,
                                int opcode,
@@ -63,6 +81,11 @@ public:
 
 signals:
     void sessionsChanged();
+
+    // note: the relay for `id` connects to this with ITSELF as the context
+    // object, so the connection is severed automatically when that connection
+    // (and its sockets) are destroyed. That is what makes the write safe.
+    void frameQueued(qint64 id, const QByteArray &bytes, bool toUpstream);
 
 private:
     explicit WsRepeater(QObject *parent = nullptr) : QObject(parent) {}
