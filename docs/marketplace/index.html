@@ -51,15 +51,25 @@
   <div id="list">Loading...</div>
 
   <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Install an extension</h2>
-  <p>The Nullock extensions dir is at:</p>
+  <p>Install from inside Nullock: <strong>Settings &rarr; Marketplace &rarr; Fetch catalog</strong>,
+     then <strong>Install</strong> on the extension you want. Nullock verifies the download against
+     the <code>sha256</code> pinned above before it writes anything, and asks you to confirm
+     separately if the extension can rewrite your traffic.</p>
+  <p>The download links above are for reading the source first, which is worth doing &mdash;
+     an extension runs inside the proxy and sees every request and response your browser makes.
+     To install one by hand instead, save the <code>.js</code> into the extensions dir:</p>
   <pre>%APPDATA%/Nullock/Nullock/extensions/           (Windows)
 ~/.local/share/Nullock/Nullock/extensions/      (Linux)
 ~/Library/Application Support/Nullock/Nullock/extensions/  (macOS)</pre>
-  <p>Save the .js file there, then in the Nullock UI: <strong>Settings &rarr; Extensions &rarr; Reload</strong>, or via CLI:</p>
-  <pre>nullock extensions reload</pre>
+  <p>&hellip;then <strong>Settings &rarr; Extensions &rarr; Reload</strong>. Note that a hand-placed
+     file gets no integrity check &mdash; you are vouching for those bytes yourself.</p>
 
   <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Publish your own</h2>
-  <p>Submit a PR to <a href="https://github.com/Bikebrainz/Nullock">Bikebrainz/Nullock</a> adding your extension to <code>extensions/marketplace.json</code>. Keep your extension under 500 lines of pure JS; no external dependencies (QJSEngine has no npm).</p>
+  <p>Submit a PR to <a href="https://github.com/Bikebrainz/Nullock">Bikebrainz/Nullock</a> adding your extension to <code>extensions/marketplace.json</code>, then run
+     <code>bash scripts/marketplace_sync.sh</code> to generate the <code>sha256</code> and
+     <code>permissions</code> fields &mdash; do not type them by hand, CI checks them. Pin your
+     <code>url</code> to a tag or commit, never a branch, or the hash breaks the next time you push.
+     Keep your extension under 500 lines of pure JS; no external dependencies (QJSEngine has no npm).</p>
 </main>
 <footer>
   Catalog: <code>marketplace.json</code> -- curated by the Nullock authors.
@@ -68,33 +78,75 @@
 <script>
 const list = document.getElementById("list");
 
+// Every field below comes out of marketplace.json, which is a file on the
+// network. Interpolating any of it into innerHTML is a stored-XSS sink on this
+// origin -- and this page sits on the same origin as the catalog it renders, so
+// a single bad entry could rewrite what every visitor sees the marketplace to
+// be. Build nodes and set textContent instead; nothing here needs markup.
+const el = (tag, text, cls) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = String(text);
+  return n;
+};
+
+// Only ever produce a link we are willing to navigate to. A catalog entry could
+// carry javascript: or data:, and assigning that to href is an execution sink
+// even though the text around it is escaped.
+const safeHttpsUrl = (raw) => {
+  try {
+    const u = new URL(String(raw), location.href);
+    return u.protocol === "https:" ? u.href : null;
+  } catch { return null; }
+};
+
 fetch("./marketplace.json")
   .then(r => r.json())
   .then(data => {
-    list.innerHTML = "";
+    list.textContent = "";
     if (!data.extensions || !data.extensions.length) {
       list.textContent = "No extensions yet.";
       return;
     }
     for (const ext of data.extensions) {
-      const div = document.createElement("div");
-      div.className = "ext";
-      const cats = (ext.categories || []).map(c => `<span>${c}</span>`).join("");
-      div.innerHTML = `
-        <h2>${ext.name} <span style="color: #666; font-weight: 400; font-size: 12px;">v${ext.version}</span></h2>
-        <p class="summary">${ext.summary || ""}</p>
-        <div class="meta">
-          <span>by ${ext.author || "unknown"}</span>
-          ${cats}
-          <span>hooks: ${(ext.hooks || []).join(", ") || "none"}</span>
-        </div>
-        <a class="install" href="${ext.url}" download>Download ${ext.id}.js</a>
-      `;
+      const div = el("div", null, "ext");
+
+      const h2 = el("h2", ext.name);
+      const ver = el("span", "v" + (ext.version || "?"));
+      ver.style.cssText = "color:#666;font-weight:400;font-size:12px";
+      h2.append(" ", ver);
+      div.appendChild(h2);
+
+      div.appendChild(el("p", ext.summary || "", "summary"));
+
+      const meta = el("div", null, "meta");
+      meta.appendChild(el("span", "by " + (ext.author || "unknown")));
+      for (const c of (ext.categories || [])) meta.appendChild(el("span", c));
+      meta.appendChild(el("span", "hooks: " + ((ext.hooks || []).join(", ") || "none")));
+      // The integrity pin is the whole trust story, so show it rather than
+      // leaving the reader to take the download on faith.
+      if (ext.sha256) meta.appendChild(el("span", "sha256 " + String(ext.sha256).slice(0, 16) + "…"));
+      if ((ext.permissions || []).length)
+        meta.appendChild(el("span", "modifies traffic: " + ext.permissions.join(", ")));
+      div.appendChild(meta);
+
+      const href = safeHttpsUrl(ext.url);
+      if (href) {
+        const a = el("a", "Download " + (ext.id || "extension") + ".js", "install");
+        a.href = href;
+        a.setAttribute("download", "");
+        a.rel = "noopener noreferrer";
+        div.appendChild(a);
+      } else {
+        div.appendChild(el("p", "(no usable https download url)", "err"));
+      }
+
       list.appendChild(div);
     }
   })
   .catch(e => {
-    list.innerHTML = `<p class="err">Failed to load marketplace.json: ${e}</p>`;
+    list.textContent = "";
+    list.appendChild(el("p", "Failed to load marketplace.json: " + e, "err"));
   });
 </script>
 </body>
