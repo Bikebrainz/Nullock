@@ -8,6 +8,7 @@
 #include <QMutexLocker>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QtGlobal>      // qWarning
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -22,33 +23,42 @@ namespace {
 constexpr int kStartTimeoutMs = 5'000;
 constexpr int kRunTimeoutMs   = 30'000;
 
-// Tighten the CA private key file's ACL so only the current OS user can
-// read it. The CA cert is installed in the user's browser as a trusted
-// root, so anyone who reads ca.key can forge certs for ANY host the user
-// trusts -- bank.com, gmail.com, internal corp SSO -- and serve them
-// with a valid TLS lock to the user's browser. Without lockdown, the
-// default DACL on %APPDATA% allows the user (and any process running
-// as the user, including unrelated installers / extensions / malware
-// that lives in the same profile) to slurp the key.
+// Tighten a private key file's ACL so only the current OS user can read it.
+// Used for the CA key AND every leaf key (see leafCertFor): the CA cert is
+// installed in the user's browser as a trusted root, so anyone who reads ca.key
+// can forge certs for ANY host the user trusts -- bank.com, gmail.com, internal
+// corp SSO -- and serve them with a valid TLS lock. A leaf key forges exactly
+// one host, but that is still the site it was minted for, and the leaves persist
+// across restarts, so they get the same treatment. Without lockdown, the default
+// DACL on %APPDATA% lets the user (and any process running as them -- unrelated
+// installers, extensions, malware sharing the profile) slurp the key.
 //
 // POSIX: chmod 0600.
 // Windows: rewrite the DACL to a single ACE granting the current user
 //   GENERIC_ALL, with inheritance disabled. The owner field is left at
-//   whatever opensssl wrote, which on Windows is the user that ran us.
-void lockdownPrivateKeyFile(const QString &path) {
-    if (path.isEmpty() || !QFileInfo::exists(path)) return;
+//   whatever openssl wrote, which on Windows is the user that ran us.
+//
+// Returns false if the hardening could not be applied, so the caller can WARN.
+// This is a security control; it used to return void with a bare `return` on
+// every failure path AND ignore the result of the call that actually applies
+// the ACL, so a total failure left the key world-readable while everything
+// downstream believed it was protected. Callers must not treat false as fatal,
+// though: on FAT32, some network shares and WSL mounts the ACL/chmod cannot
+// succeed and refusing to start would be worse than running with a warning.
+[[nodiscard]] bool lockdownPrivateKeyFile(const QString &path) {
+    if (path.isEmpty() || !QFileInfo::exists(path)) return false;
 #ifdef Q_OS_WIN
     // Resolve the current user's SID. NULL DACL is famously dangerous;
     // we build an explicit DACL with one ACE.
     HANDLE hToken = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) return;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) return false;
     DWORD tokenInfoLen = 0;
     GetTokenInformation(hToken, TokenUser, nullptr, 0, &tokenInfoLen);
-    if (tokenInfoLen == 0) { CloseHandle(hToken); return; }
+    if (tokenInfoLen == 0) { CloseHandle(hToken); return false; }
     QByteArray tokenBuf(static_cast<int>(tokenInfoLen), Qt::Uninitialized);
     if (!GetTokenInformation(hToken, TokenUser,
             tokenBuf.data(), tokenInfoLen, &tokenInfoLen)) {
-        CloseHandle(hToken); return;
+        CloseHandle(hToken); return false;
     }
     CloseHandle(hToken);
     TOKEN_USER *tu = reinterpret_cast<TOKEN_USER *>(tokenBuf.data());
@@ -62,20 +72,20 @@ void lockdownPrivateKeyFile(const QString &path) {
     ea.Trustee.ptstrName    = reinterpret_cast<LPWSTR>(tu->User.Sid);
 
     PACL pNewDacl = nullptr;
-    if (SetEntriesInAclW(1, &ea, nullptr, &pNewDacl) != ERROR_SUCCESS) return;
+    if (SetEntriesInAclW(1, &ea, nullptr, &pNewDacl) != ERROR_SUCCESS) return false;
 
     // Disable DACL inheritance so the parent dir's ACEs don't continue
-    // to grant access alongside our explicit ACE.
+    // to grant access alongside our explicit ACE. Checking this result is the
+    // whole point -- it is the call that actually writes the tightened ACL.
     const std::wstring wpath = path.toStdWString();
-    SetNamedSecurityInfoW(const_cast<LPWSTR>(wpath.c_str()),
-                          SE_FILE_OBJECT,
-                          DACL_SECURITY_INFORMATION
-                            | PROTECTED_DACL_SECURITY_INFORMATION,
-                          nullptr, nullptr, pNewDacl, nullptr);
+    const DWORD rc = SetNamedSecurityInfoW(
+        const_cast<LPWSTR>(wpath.c_str()), SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+        nullptr, nullptr, pNewDacl, nullptr);
     LocalFree(pNewDacl);
+    return rc == ERROR_SUCCESS;
 #else
-    QFile::setPermissions(path,
-        QFile::ReadOwner | QFile::WriteOwner);
+    return QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
 #endif
 }
 
@@ -137,7 +147,13 @@ bool CertAuthority::ensureCa() {
         // (inherited) permissions, in which case any process running as
         // the same user could read ca.key and forge certs for any host
         // the user trusts. Pre-existing keys get tightened in place.
-        lockdownPrivateKeyFile(m_caKeyPath);
+        if (!lockdownPrivateKeyFile(m_caKeyPath))
+            qWarning("CertAuthority: could not restrict permissions on the CA "
+                     "private key %s -- it may be readable by other processes "
+                     "running as this user. Forging a cert for any trusted host "
+                     "would then be possible. Move the CA directory to a normal "
+                     "local filesystem if it is on a share or removable volume.",
+                     qUtf8Printable(m_caKeyPath));
         return true;
     }
 
@@ -147,7 +163,10 @@ bool CertAuthority::ensureCa() {
     // Windows we drop the inherited DACL and re-add a single ACE for
     // the current user; on POSIX this becomes chmod 0600 via
     // QFile::setPermissions.
-    lockdownPrivateKeyFile(m_caKeyPath);
+    if (!lockdownPrivateKeyFile(m_caKeyPath))
+        qWarning("CertAuthority: could not restrict permissions on the freshly "
+                 "generated CA private key %s -- see the startup path for what "
+                 "this exposes.", qUtf8Printable(m_caKeyPath));
 
     return runOpenssl({
         "req", "-x509", "-new", "-nodes",
@@ -184,6 +203,15 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         QFile keyFile(persistKey);
         if (keyFile.open(QFile::ReadOnly)) cached.keyPem = keyFile.readAll();
         if (cached.valid()) {
+            // Re-assert owner-only ACL on reuse, the same way ensureCa does for
+            // ca.key on startup. Leaves minted before the key-lockdown fix are
+            // reused verbatim on this path and would otherwise stay at the
+            // inherited (profile-readable) DACL forever, since a reused leaf is
+            // never re-minted. Cheap: at most one ACL write per host per run,
+            // gated by the in-memory cache above.
+            if (!lockdownPrivateKeyFile(persistKey))
+                qWarning("CertAuthority: could not restrict permissions on reused "
+                         "leaf key %s.", qUtf8Printable(persistKey));
             m_cache.insert(host, cached);
             return cached;
         }
@@ -263,6 +291,16 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         out.setFileName(persistKey);
         if (out.open(QFile::WriteOnly | QFile::Truncate)) out.write(result.keyPem);
         out.close();
+        // The leaf key is a private key too, and it persists across restarts,
+        // so it gets the same owner-only ACL as the CA key. Skipped for years:
+        // ensureCa hardened ca.key but this write left leaves/*.key at the
+        // inherited (world-readable-within-profile) DACL. A leaf key forges only
+        // its one host, but that is still a MITM cert for a site the user
+        // browses, one accumulated per host over an engagement.
+        if (!lockdownPrivateKeyFile(persistKey))
+            qWarning("CertAuthority: could not restrict permissions on leaf key "
+                     "%s -- readable by other processes in this profile.",
+                     qUtf8Printable(persistKey));
 
         m_cache.insert(host, result);
     }
