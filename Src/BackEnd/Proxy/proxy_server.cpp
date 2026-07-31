@@ -44,7 +44,13 @@ using HttpLogic::isFramingSafe;
 using HttpLogic::parseHeaders;
 
 constexpr int kReadTimeoutMs      = 15'000;
-constexpr int kHandshakeTimeoutMs = 3'000;  // short so h2-only hosts bypass fast
+// Short so an origin we cannot MITM bypasses fast rather than costing the user
+// a full kReadTimeoutMs on first contact. NOT, as this said until now, "so
+// h2-only hosts bypass fast" -- we advertise h2 upstream (see the ALPN list in
+// runMitmTunnel), so an h2-only origin handshakes normally and never reaches
+// the branch this bounds. What lands there is an unreachable or blackholed
+// origin, or one whose own certificate fails VerifyPeer.
+constexpr int kHandshakeTimeoutMs = 3'000;
 constexpr int kMaxHeaderBytes     = 64 * 1024;
 // QTcpSocket::waitForReadyRead is UNINTERRUPTIBLE: a worker parked in a
 // 15 s read cannot notice that the app is shutting down. Waiting in slices
@@ -68,13 +74,28 @@ constexpr int kWaitSliceMs        = 500;
 // A worker now unwinds within about one slice.
 //
 // STILL UNSLICED: leaf-certificate minting. CertAuthority shells out to openssl
-// with waitForStarted(5 s) + waitForFinished(30 s), so a worker minting a cert
-// for a host it has not seen before can block ~35 s -- longer than this budget.
+// with waitForStarted(5 s) + waitForFinished(30 s) -- that is 35 s PER
+// INVOCATION, and a mint is not one invocation:
+//
+//   leafCertFor()  req -new -newkey   +  x509 -req        =  up to  70 s
+//   ...and on the very first mint it calls ensureCa() INSIDE the same lock,
+//      which adds genrsa + req -x509                      =  up to 140 s
+//
+// all of it under CertAuthority::m_mutex, which is process-wide rather than
+// per-host -- so every other worker that needs ANY leaf queues behind it, not
+// just the one doing the minting.
+//
+// (An earlier version of this comment said "~35 s" and framed it as affecting
+// only the minting worker. Both were wrong, and this number is the stated
+// reason kJoinBudgetMs is what it is, so the error propagates to whoever tunes
+// it next.)
+//
 // Those are hard QProcess timeouts rather than resettable ones, so it is
 // bounded and rare (first contact with a new host only), but it means the
 // give-up branch in joinWorkers is still reachable there. Raising the budget
-// past 35 s would trade a rare detach for a routinely slower exit, which is the
-// worse deal. The qWarning is how it surfaces if it ever happens.
+// past even the 70 s case would trade a rare detach for a routinely slower
+// exit, which is the worse deal. The qWarning is how it surfaces if it ever
+// happens.
 constexpr int kJoinPollMs         = 25;
 constexpr int kJoinBudgetMs       = 20'000;
 // Once the global budget is blown, every REMAINING thread still gets its own
@@ -471,10 +492,20 @@ public:
 
         upstream->connectToHostEncrypted(host, port);
         if (!waitEncrypted(upstream, kHandshakeTimeoutMs, m_server)) {
-            // h2-only origins land here (handshake gets refused because we
-            // only offered http/1.1 ALPN). Mark blocked so future CONNECTs
-            // skip the MITM dance and pass through opaquely. Short timeout
-            // means the user sees ~3s on first hit, not 15s.
+            // We could not complete a TLS handshake with the ORIGIN: it is
+            // unreachable or blackholed, its own certificate failed VerifyPeer,
+            // or the 3 s budget expired. (This is also reached when the proxy
+            // is shutting down, since waitEncrypted is shutdown-aware.)
+            //
+            // NOT "h2-only origins", which is what this said until the ALPN list
+            // above gained h2 in 9a60b84 -- those negotiate fine now and take the
+            // upstreamIsH2 branch below. A reader trusting the old comment would
+            // conclude MITM cannot work against an h2 origin, the opposite of
+            // how this is built.
+            //
+            // Mark blocked so future CONNECTs skip the MITM dance and pass
+            // through opaquely. Short timeout means the user sees ~3s on first
+            // hit, not 15s.
             m_server->markMitmBlocked(host);
             QString reason = upstream->errorString();
             if (!tlsErrors.isEmpty()) {
@@ -855,8 +886,14 @@ private:
         } else if (!cl.isEmpty()) {
             const qint64 n = cl.toLongLong();
             // A peer-declared Content-Length is attacker-controlled in a MITM;
-            // cap it (like the chunked path's kMaxBodyBytes) so a huge value can't
-            // buffer an unbounded body into one QByteArray -> memory DoS.
+            // cap it so a huge value can't buffer an unbounded body into one
+            // QByteArray -> memory DoS.
+            //
+            // The chunked path has its own, SEPARATE limits and they are not the
+            // same number: HttpLogic::kMaxChunkBytes (16 MiB per chunk) and
+            // kMaxDecodedBytes (256 MiB total decoded) in proxy_logic.hpp. There
+            // is no shared kMaxBodyBytes -- this comment named one for a while,
+            // and grepping for it finds nothing.
             if (n < 0 || n > 128LL * 1024 * 1024) return false;
             resp.body = rest;
             if (resp.body.size() < n) {
@@ -1435,6 +1472,15 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
         cs = m_compiledRules;
     }
 
+    // NOTE: the early return below leaves this function entirely, so it also
+    // skips the SessionManager cookie injection and the SessionRules {{var}}
+    // substitution at the bottom -- not just Match & Replace, which is all this
+    // comment used to describe. That is defensible (you probably do not want
+    // captured session cookies injected into out-of-scope traffic either), but
+    // it is a policy decision no one wrote down, and it only bites once a scope
+    // is actually configured: isInScope() returns true for everything while the
+    // in-scope list is empty.
+    //
     // Scope-gate Match & Replace. A wildcard rule (host pattern ".*", which
     // is the default) would otherwise rewrite EVERY outgoing request --
     // including the user's normal browser traffic to out-of-scope hosts.

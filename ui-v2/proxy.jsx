@@ -235,8 +235,8 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
     );
   }
 
-  const req = NL.requestRawAt(row.id - 1);
-  const resp = NL.responseRawAt(row.id - 1);
+  const req = NL.requestRawById(row.id);
+  const resp = NL.responseRawById(row.id);
 
   // Pull either the user's text selection or the entire textarea contents.
   // Clicking a codec button with no selection runs it against the whole
@@ -619,10 +619,10 @@ function DiffOverlay({ idA, idB, onClose, onClearMark }) {
 
   const rowA = (window.NL.rows || []).find(r => r.id === idA);
   const rowB = (window.NL.rows || []).find(r => r.id === idB);
-  const reqA  = idA != null ? (NL.requestRawAt(idA - 1)  || "") : "";
-  const reqB  = idB != null ? (NL.requestRawAt(idB - 1)  || "") : "";
-  const respA = idA != null ? (NL.responseRawAt(idA - 1) || "") : "";
-  const respB = idB != null ? (NL.responseRawAt(idB - 1) || "") : "";
+  const reqA  = idA != null ? (NL.requestRawById(idA)  || "") : "";
+  const reqB  = idB != null ? (NL.requestRawById(idB)  || "") : "";
+  const respA = idA != null ? (NL.responseRawById(idA) || "") : "";
+  const respB = idB != null ? (NL.responseRawById(idB) || "") : "";
   const rows  = React.useMemo(
     () => side === "request" ? diffLines(reqA, reqB) : diffLines(respA, respB),
     [side, reqA, reqB, respA, respB]

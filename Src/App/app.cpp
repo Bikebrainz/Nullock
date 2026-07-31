@@ -528,12 +528,26 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
 
 } // namespace
 
-// Parse a CLI flag with optional =VALUE. Returns the value (or empty
-// when the flag is present without one, or QString() when absent).
+// Parse a CLI flag, accepting both "--flag=VALUE" and "--flag VALUE".
+// Returns the value; an empty QString when the flag is present but carries no
+// value, and a null QString when the flag is absent. (Both are .isEmpty(), so
+// callers that care about the difference must use .isNull().)
+//
+// The separated form does NOT consume a following argument that starts with
+// '-'. Without that guard `--ui-dir --headless` silently set ui-dir to the
+// string "--headless" and swallowed the flag the user meant to pass -- the
+// error surfaced much later as a missing UI directory, pointing at the wrong
+// thing entirely. A value that legitimately begins with '-' has to use the
+// --flag=VALUE form, which is unambiguous.
 static QString flagValue(int argc, char *argv[], const QString &flag) {
     for (int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
-        if (a == flag) return i + 1 < argc ? QString::fromLocal8Bit(argv[i + 1]) : QStringLiteral("");
+        if (a == flag) {
+            if (i + 1 >= argc) return QStringLiteral("");
+            const QString next = QString::fromLocal8Bit(argv[i + 1]);
+            if (next.startsWith(QLatin1Char('-'))) return QStringLiteral("");
+            return next;
+        }
         if (a.startsWith(flag + "=")) return a.mid(flag.size() + 1);
     }
     return {};
@@ -606,7 +620,9 @@ int main(int argc, char *argv[]) {
             << "                        Auto-detected next to the binary or in share/nullock/ui\n"
             << "                        if unset; templates/ + extensions/ are resolved beside it.\n"
             << "  --scan=URL            CI gate: run the deep audit against URL and exit\n"
-            << "                        (0 pass / 1 findings at-or-above --fail-on / 2 bad URL).\n"
+            << "                        Exit: 0 pass, 1 findings at-or-above --fail-on,\n"
+            << "                        2 bad URL, 3 target unreachable (scan did NOT run --\n"
+            << "                        treat as an error, not a pass).\n"
             << "                        Implies headless; no server. Combine with --ndjson.\n"
             << "  --fail-on=SEV         Gate threshold for --scan: critical|high|medium|low|info\n"
             << "                        or none (never fail). Default high.\n"
@@ -707,9 +723,19 @@ int main(int argc, char *argv[]) {
                      &proxy, &Nullock::Proxy::ProxyServer::setRules);
 
     // New traffic feeds both the live model and the on-disk history.
-    // Order matters: the model has to add the row BEFORE the scanner so
-    // the scanner's per-response rowId counter stays aligned with the
-    // history table's row indices.
+    //
+    // Connection order matters, though not for the reason this comment used to
+    // give. The scanner does NOT read the model: it keeps its own m_nextRowId
+    // and bumps it once per response (passive_scanner.cpp:133), so the two
+    // counters stay in step by both counting the same events, whatever order
+    // their slots run in. Seeding is what aligns them -- see setNextRowId below.
+    //
+    // What actually depends on order is the --ndjson response emitter further
+    // down: it reports model.lastId(), so ProxyModel::addResponse has to have
+    // run first. These are queued connections to the same (main) thread, and
+    // Qt posts them in connection order, so registering addResponse first is
+    // what puts it in front. Moving it after the emitter would make every
+    // NDJSON event report the id of the PREVIOUS row.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
@@ -721,8 +747,16 @@ int main(int argc, char *argv[]) {
     // the scanner's row counter with the model so finding rowIds match
     // real ProxyModel row ids even after replayed history populated the
     // table (otherwise findings would point at the wrong row).
+    //
+    // lastId(), NOT rowCount(). ProxyModel keeps a bounded 10k window and
+    // evicts from the front, so rowCount() stops climbing once it fills. On a
+    // project whose replayed history is larger than the window this seeded the
+    // scanner ~10k too low and every finding then pointed at a row that was not
+    // the one scanned -- which is precisely the failure the comment above says
+    // this line exists to prevent. Same bug as the --ndjson rowId; this was its
+    // twin, and the grep for the pattern is what found it.
     Nullock::Core::PassiveScanner scanner;
-    scanner.setNextRowId(model.rowCount() + 1);
+    scanner.setNextRowId(model.lastId() + 1);
     // Let JS extensions emit findings into the same panel via
     // nullock.reportFinding(). Without this they fall back to the ext log.
     extensions.setScanner(&scanner);
@@ -815,8 +849,22 @@ int main(int argc, char *argv[]) {
         // marked one of the test hosts as MITM-blocked we'd blind-pipe and
         // never count an h2 round-trip. Reset for a clean run.
         proxy.clearMitmBlocked();
-        return runSmokeTest(proxy, intercept, repeater, intruder, projectStore, extensions,
-                            scanner, model);
+        const int rc = runSmokeTest(proxy, intercept, repeater, intruder, projectStore,
+                                    extensions, scanner, model);
+        // This path used to `return` straight from here, skipping the join that
+        // the teardown block below performs on the normal paths. The smoke test
+        // DRIVES TRAFFIC THROUGH THE PROXY, so it leaves per-connection worker
+        // threads in flight -- and returning here unwinds main()'s locals
+        // (extensions, intercept, scanner, model) that those workers reach
+        // through raw pointers, while ~ProxyServer runs last. That is exactly
+        // the use-after-free shutdownAndJoin() exists to prevent, on the one
+        // path that never called it.
+        //
+        // Only the proxy and intruder need stopping here: crawler and
+        // portScanner are declared further down and do not exist yet.
+        intruder.stop();
+        proxy.shutdownAndJoin();
+        return rc;
     }
 
     // Stand up the HTTP control server that hosts the React UI and exposes
@@ -1112,7 +1160,8 @@ int main(int argc, char *argv[]) {
         QTextStream(stdout).flush();
     }
 
-    // On every exit path, ask the long-running recon workers to stop BEFORE
+    // On every exit path BELOW THIS POINT, ask the long-running recon workers to
+    // stop BEFORE
     // draining the pool, so their loops break at the next checkpoint instead of
     // running to completion -- otherwise a quit taken mid crawl/scan/attack
     // stalls shutdown for the full run. Each object's destructor still

@@ -195,8 +195,13 @@ void PassiveScanner::checkResponse(int rowId,
     } else if (req.path == "/graphql" || req.path.endsWith("/graphql")
                || contentType.contains("application/graphql", Qt::CaseInsensitive)) {
         QString detail = "path looks GraphQL-shaped";
-        // Cheap introspection sniff -- if the response body contains
-        // "__schema" or "__typename" the endpoint allowed introspection.
+        // Cheap introspection sniff: "__schema" in the body means the endpoint
+        // answered an introspection query.
+        //
+        // Deliberately NOT "__typename". Clients request __typename in ordinary
+        // operations all the time (Apollo and Relay add it automatically), so it
+        // appears in perfectly normal responses from a server with introspection
+        // disabled. Matching on it would report every GraphQL app as vulnerable.
         if (QString::fromUtf8(scanBody.left(8 * 1024))
                 .contains("__schema", Qt::CaseInsensitive)) {
             detail = "introspection ENABLED -- production servers usually disable";
@@ -608,8 +613,14 @@ void PassiveScanner::checkResponse(int rowId,
             const auto m = p.rx.match(body);
             if (!m.hasMatch()) continue;
             // AWS Secret pattern (40 b64 chars) has too many false positives
-            // standing alone -- require an "aws" / "secret" / "key" context
+            // standing alone -- require an "aws" / "secret" / "access" context
             // word within 80 chars.
+            //
+            // "access" and not the looser "key" on purpose: the real credential
+            // sits next to aws_secret_access_key, which "access" already
+            // catches, whereas a bare "key" is one of the most common words in
+            // any JSON document. Accepting it would flag every 40-character
+            // base64 blob that happens to follow a "key" field.
             if (QString::fromLatin1(p.kind) == "leaked-aws-secret") {
                 const int start = qMax(0, m.capturedStart() - 80);
                 const QString ctx = body.mid(start, 160).toLower();
@@ -1185,8 +1196,14 @@ void PassiveScanner::checkResponse(int rowId,
         // Broadening to the 3-char "gAS" would catch other protocol-4 framings
         // but raises false positives on arbitrary base64; left deliberately narrow.
         { "deser-pickle", "Python pickle (gASV...)",           "gASV" },
-        // PHP serialized: O:N: / a:N: / s:N: pattern -- strict enough
-        // we won't trip on user names
+        // PHP serialized OBJECT only: the needle is "O:", refined below by
+        // O:\d+:" so a stray "O:" in prose does not match.
+        //
+        // a:N: (array) and s:N: (string) are deliberately NOT needles, despite
+        // also being serialized forms. A gadget chain needs an OBJECT to reach
+        // __wakeup/__destruct, and an array carrying one still contains an O:
+        // and is caught here anyway -- while a bare a:2: or s:5: matches
+        // ordinary serialized data and would be almost pure false positive.
         { "deser-php",    "PHP serialized object (O:N:...)",   "O:" },
         // Ruby Marshal: BAh prefix
         { "deser-ruby",   "Ruby Marshal (BAh...)",             "BAh" },

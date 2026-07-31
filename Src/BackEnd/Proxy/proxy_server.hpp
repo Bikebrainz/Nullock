@@ -148,9 +148,26 @@ public:
     void setSessionRules(Nullock::Core::SessionRules *sr);
     Nullock::Core::SessionRules *sessionRules() const;
 
-    // Hosts where we tried to MITM but the client (or upstream) refused our
-    // forged certificate — typically apps that do cert pinning. Future
-    // CONNECTs to these hosts skip the MITM and use a blind tunnel instead.
+    // Hosts we will no longer try to MITM: future CONNECTs skip the forged-cert
+    // dance and blind-tunnel instead.
+    //
+    // Cert pinning is only ONE of the four things that put a host in here, and
+    // the upstream never sees our forged leaf at all (we validate the real
+    // origin chain with VerifyPeer), so the old "the client (or upstream)
+    // refused our forged certificate" was wrong about most of them. The actual
+    // triggers, all five call sites of markMitmBlocked():
+    //   * the CLIENT rejected our leaf -- genuine pinning
+    //   * the upstream TLS handshake failed, timed out, or failed VerifyPeer
+    //   * the upstream negotiated an ALPN protocol we do not speak
+    //   * an h2 upstream session died at connection level before serving
+    //     anything (!served)
+    //
+    // PERSISTENT, and that matters: markMitmBlocked() writes the list to
+    // m_blocklistPath and setBlocklistPath() reads it back at startup, so an
+    // entry survives restarts until clearMitmBlocked(). A single slow origin
+    // that blows the 3 s handshake budget therefore turns interception off for
+    // that host permanently and silently -- which for a security tool is a
+    // worse failure than the timeout was. See the task filed against this.
     bool isMitmBlocked(const QString &host) const;
     void markMitmBlocked(const QString &host);
     Q_INVOKABLE QStringList blockedHosts() const;

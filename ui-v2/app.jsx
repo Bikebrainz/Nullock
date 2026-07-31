@@ -49,7 +49,7 @@ function reducer(state, action) {
     case "send-to-repeater": {
       if (!action.row) return state;
       const row = action.row;
-      const req = NL.requestRawAt(row.id - 1);
+      const req = NL.requestRawById(row.id);
       // Spawn a *new* tab on the backend so we don't trample whatever the
       // user has open. The snapshot poll will fill in the populated tab
       // shortly; show the row's content optimistically in the meantime.
@@ -71,7 +71,7 @@ function reducer(state, action) {
     case "send-to-intruder": {
       if (!action.row) return state;
       const row = action.row;
-      const req = NL.requestRawAt(row.id - 1);
+      const req = NL.requestRawById(row.id);
       let tmpl = req;
       if (req.includes("=")) {
         tmpl = req.replace(/(=)([^&\s\n]*)$/m, "$1§payload§");

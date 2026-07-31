@@ -57,11 +57,13 @@ public slots:
     // to keep memory under control on 200k+ row engagements. They stay
     // accessible via /api/history/find + /api/history/full from the
     // SQLite-backed HistoryIndex, which sees the full history.
-    // requestAt(row) / responseAt(row) interpret row as a 0-based offset
-    // FROM THE START OF HISTORY (i.e. id - 1), not as an index into the
-    // current in-memory window -- so callers can still pass `id - 1`
-    // and either get a valid pointer (still in window), or nullptr
-    // (evicted; control server has to hit HistoryIndex instead).
+    //
+    // Once eviction starts, a WINDOW INDEX is no longer an id: window index i
+    // is id firstId()+i. requestAt/responseAt take the index, requestById/
+    // responseById take the id -- see the contract above them, which is the
+    // authoritative one. (A second, contradictory description used to live
+    // here claiming requestAt took `id - 1`. It was wrong, and acting on it
+    // silently returns a DIFFERENT row's bytes the moment the window fills.)
     void setMaxRowsInMemory(int n);
     int  maxRowsInMemory() const { return m_maxRows; }
     int  firstId() const { return m_firstId; }

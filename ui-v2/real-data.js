@@ -6,7 +6,7 @@
 // refreshes NL.* every 500 ms and dispatches a 'nl-update' event the app
 // listens to.
 //
-// requestRawAt / responseRawAt also need to be synchronous from the React
+// requestRawById / responseRawById also need to be synchronous from the React
 // side. We cache them on demand (sync XHR on first call per row id, then
 // memoize).
 
@@ -82,20 +82,29 @@
   applySnapshot(snap);
 
   // Memoized per-row accessors used inside the React reducer.
-  NL.requestRawAt = function (rowIndex) {
-    const r = NL.rows[rowIndex];
-    if (!r) return "";
-    if (NL._cache.req[r.id] !== undefined) return NL._cache.req[r.id];
-    const t = syncFetch("/api/history/" + r.id + "/request") || "";
-    NL._cache.req[r.id] = t;
+  //
+  // These take a ROW ID, not a position. They used to take an index into
+  // NL.rows and every caller passed `id - 1`, which is only the same number
+  // while nothing has been evicted: NL.rows carries the bounded in-memory
+  // window, so once the server starts dropping the oldest rows, rows[0].id is
+  // no longer 1 and `id - 1` addresses a DIFFERENT row. The detail pane then
+  // fetched and cached some other request's bytes, and the comparer diffed the
+  // wrong pair -- silently, since every id in the window resolves to something.
+  //
+  // Taking the id directly removes the conversion entirely rather than fixing
+  // it, so the mistake cannot come back.
+  NL.requestRawById = function (rowId) {
+    if (rowId == null) return "";
+    if (NL._cache.req[rowId] !== undefined) return NL._cache.req[rowId];
+    const t = syncFetch("/api/history/" + rowId + "/request") || "";
+    NL._cache.req[rowId] = t;
     return t;
   };
-  NL.responseRawAt = function (rowIndex) {
-    const r = NL.rows[rowIndex];
-    if (!r) return "";
-    if (NL._cache.resp[r.id] !== undefined) return NL._cache.resp[r.id];
-    const t = syncFetch("/api/history/" + r.id + "/response") || "";
-    NL._cache.resp[r.id] = t;
+  NL.responseRawById = function (rowId) {
+    if (rowId == null) return "";
+    if (NL._cache.resp[rowId] !== undefined) return NL._cache.resp[rowId];
+    const t = syncFetch("/api/history/" + rowId + "/response") || "";
+    NL._cache.resp[rowId] = t;
     return t;
   };
   // POST helpers wired to the control server's action endpoints. Fire and
