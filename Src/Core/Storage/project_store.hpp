@@ -52,11 +52,17 @@ public:
     // Returns the absolute output path on success, empty string on failure.
     Q_INVOKABLE QString exportHar(const QString &outPath = {});
 
-    // Redaction policy for HAR / Postman / Copy-as exports. When on
-    // (default), known sensitive headers (Authorization, Cookie, Set-Cookie,
-    // X-API-Key, etc.) are replaced with "<redacted: N chars>" before
-    // leaving the process. Lets a tester share a HAR with a triager or
-    // colleague without also sharing their session.
+    // Redaction policy for THE HAR EXPORT (exportHar). When on (default), known
+    // sensitive headers (Authorization, Cookie, Set-Cookie, X-API-Key, etc.)
+    // are replaced with "<redacted: N chars>" before leaving the process, so a
+    // tester can share a HAR with a triager without also sharing their session.
+    //
+    // This flag governs the HAR path ONLY. The other exporters redact on their
+    // own terms: /api/export/postman applies the SAME header set but toggles it
+    // per-request with ?raw=1 (defaulting to redacted), and /api/request/curl
+    // does NOT redact at all -- a copied curl command is meant to be re-run and
+    // needs the real Authorization/Cookie to work. Callers sharing a curl line
+    // are handing over live credentials, by design.
     void setExportRedact(bool on) { m_exportRedact = on; }
     bool exportRedact() const { return m_exportRedact; }
 

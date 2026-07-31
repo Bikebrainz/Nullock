@@ -176,6 +176,17 @@ bool ProjectStore::open(const QString &projectDir) {
     // here are non-fatal -- the rest of the project keeps working, just
     // without /api/history/find acceleration.
     m_historyIndex.open(m_dir);
+    // Resume row numbering after the rows this project already has. This rests
+    // on two invariants that are true today but silent, so state them:
+    //   1. HistoryIndex ids ARE ProxyModel ids -- the same 1-based counter feeds
+    //      both, so continuing from the index's count keeps them aligned.
+    //   2. rowCount() is a COUNT, and it stands in for MAX(id) only because ids
+    //      are dense from 1 and rows are never deleted from the index. If row
+    //      deletion is ever added, this must become MAX(id)+1, or a reused id
+    //      will collide with an evicted-but-referenced row.
+    // Corollary: a history.ndjson that outlives its history-index.sqlite (index
+    // rebuilt, file deleted) starts the two sides out of step -- the ndjson has
+    // N rows, the fresh index reports 0, and numbering restarts at 1.
     m_nextRowId = m_historyIndex.rowCount() + 1;
 
     // Tell downstream consumers (ProxyServer) to refresh their copy of
@@ -498,8 +509,10 @@ QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers, bool redact
         QJsonObject h;
         h["name"] = kv.first;
         if (redact && isSensitiveHeader(kv.first)) {
-            // Preserve length + a hash-ish prefix so downstream consumers
-            // can tell the header was present without seeing the value.
+            // Preserve ONLY the length, so a consumer can tell the header was
+            // present without seeing the value or anything derived from it. No
+            // prefix or hash of the secret is emitted -- a prefix would leak the
+            // start of a bearer token, which is exactly what redaction is for.
             const QString v = kv.second;
             h["value"] = QString("<redacted: %1 chars>").arg(v.size());
         } else {

@@ -1231,9 +1231,12 @@ QByteArray ControlServer::buildSnapshot() const {
             scripts.append(s);
         bootInfo["extensionScripts"]  = scripts;
         bootInfo["extensionsDir"]     = m_wiring.extensions->extensionsDir();
-        // Per-script granted dangerous capabilities (modify-requests/responses),
-        // so the UI can flag which extensions may rewrite traffic. A script
-        // absent here (or with an empty array) is observe-only.
+        // Per-script DECLARED capability set (the whole thing -- observe-level
+        // and future tokens are kept too, not just the dangerous ones). The UI
+        // flags an extension as traffic-mutating only when this list contains
+        // modify-requests or modify-responses; presence alone, or a non-empty
+        // array, does NOT mean mutation -- a script declaring only "observe" is
+        // here with a non-empty array and is still observe-only.
         QJsonObject grants;
         const auto &sg = m_wiring.extensions->scriptGrants();
         for (auto it = sg.constBegin(); it != sg.constEnd(); ++it)
@@ -1296,8 +1299,10 @@ QByteArray ControlServer::buildSnapshot() const {
     if (m_wiring.proxy) root["rulesHit"] = m_wiring.proxy->rulesHit();
 
     // passive scanner findings (newest first, capped at 200 in snapshot
-    // so a noisy run doesn't bloat every poll). full list is available
-    // via /api/findings.
+    // so a noisy run doesn't bloat every poll). The full list is available
+    // via /api/report/json, or deduplicated into groups via
+    // /api/findings/grouped. (There is no /api/findings -- this pointed at it
+    // for a while and a GET simply 404s.)
     QJsonArray findingsArr;
     if (m_wiring.scanner) {
         for (const auto &f : m_wiring.scanner->findings(200)) {
@@ -2011,13 +2016,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             const int id = parts[0].toInt(&ok);
             if (ok) {
                 if (parts[1] == "probe") {
-                    // Light active scan: walk the query params, substitute
-                    // each value with a unique canary that contains HTML
-                    // metacharacters, replay, scan the response body for
-                    // the canary verbatim. If it reflects unencoded -> a
-                    // candidate XSS sink. Emits Findings via the scanner's
-                    // public reportFinding hook. Fire-and-forget; new
+                    // Active injection battery, NOT just the XSS canary this
+                    // used to describe. For each query param it substitutes the
+                    // value and replays across many vuln classes: reflected XSS
+                    // (unencoded-canary reflection), SQLi (error-based, plus
+                    // opt-in blind time-based), SSRF (cloud-metadata + OAST
+                    // callback), path traversal / LFI, OS command injection,
+                    // CRLF, and open redirect. Each hit emits a Finding via the
+                    // scanner's public reportFinding hook. Fire-and-forget; new
                     // findings show up in the next snapshot poll.
+                    //
+                    // These send real attack payloads, so the scope guard below
+                    // is load-bearing, not tidy -- it is what stops a page that
+                    // pivots through the proxy from aiming this at arbitrary
+                    // hosts.
                     if (!m_wiring.history) return httpJson(404, QJsonObject{{ "error", "no history" }});
                     // Prefer the in-memory window; fall back to SQLite
                     // for evicted rows.

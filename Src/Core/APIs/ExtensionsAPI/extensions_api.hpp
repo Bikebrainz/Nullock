@@ -36,9 +36,13 @@ class ExtensionsApiBridge;  // forward — internal
 //
 // Handlers CAN change what goes on the wire, but only with an explicit grant.
 // An extension declares one in a line comment,
-// `// nullock:permissions modify-responses`, which ExtensionPerms finds
-// ANYWHERE in the first 64 KiB of the raw source -- it is a text regex, not a
-// JS lexer, so a match inside a block comment or a string literal counts too.
+// `// nullock:permissions modify-responses`, on ANY LINE of the first 64 KiB.
+// The directive must START its line (only whitespace before the `//`): the
+// parser regex is line-anchored (^[ \t]*//), so a directive tacked onto the END
+// of a code line does NOT grant. It is a text regex, not a JS lexer, so a `//`
+// line inside a block comment or a multi-line string literal still counts --
+// which is the conservative direction (it can grant a capability the author put
+// in a comment, never silently miss one they declared).
 //
 // The two directions enforce the grant differently:
 //
@@ -66,8 +70,13 @@ public:
 
     int loadedCount() const { return m_loadedScripts.size(); }
     QStringList loadedScripts() const { return m_loadedScripts; }
-    // Per-script granted dangerous capabilities (modify-requests/responses).
-    // A script absent here (or mapped to empty) holds no mutation grant.
+    // Per-script DECLARED capability set, canonicalised -- the whole thing, not
+    // just the dangerous ones. It also carries observe-level tokens (observe,
+    // log, report-findings) and any unknown/future token, which ExtensionPerms
+    // keeps verbatim for forward-compatibility. So presence here, or a
+    // non-empty list, does NOT imply a mutation grant: only kModifyRequests /
+    // kModifyResponses appearing IN the list does. (A script that declares only
+    // "observe" is present with a non-empty list and holds no mutation grant.)
     const QMap<QString, QStringList> &scriptGrants() const { return m_scriptGrants; }
     QString extensionsDir() const;
     int logLineCount() const { return m_logLines.size(); }
