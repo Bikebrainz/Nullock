@@ -317,6 +317,90 @@ int main(int argc, char **argv) {
             done && out.body == QByteArrayLiteral("original-body"));
     }
 
+    // ---- reload really RESETS the engine --------------------------------
+    //
+    // Every extension shares one QJSEngine. reload() used to call
+    // collectGarbage(), which frees only what is already unreachable and leaves
+    // the global scope entirely intact -- so a script the user had just DELETED
+    // kept its globals alive, and an observe-only script could poison state a
+    // mutation-granted one relied on. "Uninstall" was a lie: the file went, the
+    // side effects stayed until the process restarted.
+    //
+    // These cases pin the isolation. They are the whole reason the engine is
+    // now rebuilt rather than swept.
+    {
+        clearDir(dir);
+        // Bare assignment, not globalThis: QJSEngine does not expose that name,
+        // and a ReferenceError here would abort the script and make this fixture
+        // pass for the wrong reason -- the marker would be absent because the
+        // extension never ran, not because the reload cleaned it up.
+        writeScript(dir, "leaky.js", QStringLiteral(
+            "LEAKED_MARKER = 'still-here';\n"
+            "nullock.onResponse(function (e) { });\n"));
+        api.reload();
+        chk("fixture: the leaking extension loaded", api.loadedCount() == 1);
+
+        // Uninstall it the way the marketplace does -- delete the file, reload.
+        clearDir(dir);
+        writeScript(dir, "probe.js", QStringLiteral(
+            "// nullock:permissions modify-responses\n"
+            "nullock.onResponse(function (e) {\n"
+            "  e.bodyText = (typeof LEAKED_MARKER === 'undefined')\n"
+            "      ? 'CLEAN' : 'LEAKED:' + LEAKED_MARKER;\n"
+            "  return e;\n"
+            "});\n"));
+        api.reload();
+        chk("fixture: only the probe is loaded now", api.loadedCount() == 1);
+
+        const auto out = api.applyResponseMutation(makeReq(), makeResp());
+        chk("reload: an UNINSTALLED extension's globals do not survive the reload",
+            out.body == QByteArrayLiteral("CLEAN"));
+    }
+    {
+        // The same isolation, but for prototype pollution -- the cheaper and
+        // nastier version, because it needs no global name to collide on.
+        clearDir(dir);
+        writeScript(dir, "polluter.js", QStringLiteral(
+            "Object.prototype.__nullock_pwn = 'owned';\n"));
+        api.reload();
+
+        clearDir(dir);
+        writeScript(dir, "probe2.js", QStringLiteral(
+            "// nullock:permissions modify-responses\n"
+            "nullock.onResponse(function (e) {\n"
+            "  e.bodyText = ({}).__nullock_pwn ? 'POLLUTED' : 'CLEAN';\n"
+            "  return e;\n"
+            "});\n"));
+        api.reload();
+
+        const auto out = api.applyResponseMutation(makeReq(), makeResp());
+        chk("reload: a removed extension's prototype pollution does not survive",
+            out.body == QByteArrayLiteral("CLEAN"));
+    }
+    {
+        // A reloaded engine must still be usable: the bridge has to be
+        // re-published on the NEW global object, or every extension breaks with
+        // "nullock is not defined" after the first reload. This is the failure
+        // mode a careless rebuild introduces, so it is pinned alongside.
+        clearDir(dir);
+        writeScript(dir, "uses_bridge.js", QStringLiteral(
+            "// nullock:permissions modify-responses\n"
+            "nullock.log('bridge reachable');\n"
+            "nullock.onResponse(function (e) { e.bodyText = 'BRIDGE-OK'; return e; });\n"));
+        api.reload();
+        chk("reload: the script using the bridge loaded without error",
+            api.loadedCount() == 1);
+        const auto out = api.applyResponseMutation(makeReq(), makeResp());
+        chk("reload: the nullock bridge is re-published on the rebuilt engine",
+            out.body == QByteArrayLiteral("BRIDGE-OK"));
+
+        // And it survives repeated rebuilds, not just the first.
+        api.reload(); api.reload(); api.reload();
+        const auto again = api.applyResponseMutation(makeReq(), makeResp());
+        chk("reload: still works after four consecutive rebuilds",
+            again.body == QByteArrayLiteral("BRIDGE-OK"));
+    }
+
     clearDir(dir);
     std::fprintf(stderr, "extensions_api_grant_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

@@ -13,6 +13,7 @@
 #include <QStringList>
 
 #include <atomic>
+#include <memory>
 
 namespace Nullock::Core {
 
@@ -111,6 +112,11 @@ private:
     friend class ExtensionsApiBridge;
 
     void loadAll();
+    // Drop every QJSValue we hold, then replace the engine with a fresh one and
+    // re-publish the `nullock` bridge on its global object. Owner thread only,
+    // and NEVER while JS is executing -- destroying an engine from inside a
+    // handler it is running would pull the stack out from under itself.
+    void rebuildEngine();
     void appendLog(const QString &message);
     // Re-publish the worker-visible handler flags. MUST be called on this
     // object's own thread after ANY change to the two handler lists.
@@ -124,7 +130,19 @@ private:
         bool     mayMutate = false;
     };
 
-    QJSEngine            m_engine;
+    // Held by pointer so reload() can DESTROY and rebuild it. A QJSEngine has
+    // no "clear the global scope" operation, and collectGarbage() only frees
+    // what is already unreachable -- everything an extension assigned to a
+    // global, and every prototype it patched, survives it. Since the engine is
+    // shared by all extensions, that meant an UNINSTALLED script's side effects
+    // stayed live and reachable until the process restarted. Rebuilding is the
+    // only way to make "remove" mean removed.
+    //
+    // Safe to swap because m_bridge is parented to this ExtensionsApi, so
+    // newQObject() gives it CppOwnership and the old engine's destructor does
+    // not take it. Every QJSValue this class stores must be cleared BEFORE the
+    // reset -- a QJSValue outliving its engine is undefined behaviour.
+    std::unique_ptr<QJSEngine> m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
     IFindingSink        *m_scanner = nullptr;
     // Touched ONLY on this object's own thread: registered during script

@@ -83,10 +83,27 @@ ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     qRegisterMetaType<Nullock::Proxy::HttpRequest>("Nullock::Proxy::HttpRequest");
     qRegisterMetaType<Nullock::Proxy::HttpResponse>("Nullock::Proxy::HttpResponse");
 
+    // Parented to this, which is what gives it CppOwnership when handed to
+    // newQObject() -- so the bridge outlives any engine that reload() destroys.
     m_bridge = new ExtensionsApiBridge(this);
-    QJSValue nullockObj = m_engine.newQObject(m_bridge);
-    m_engine.globalObject().setProperty("nullock", nullockObj);
+    rebuildEngine();
     loadAll();
+}
+
+void ExtensionsApi::rebuildEngine() {
+    // Order is load-bearing. Every QJSValue this object holds belongs to the
+    // OLD engine, and a QJSValue that outlives its engine is undefined
+    // behaviour -- so they must all be gone before the reset below runs.
+    // Callers clear the handler lists first; this assert-by-construction keeps
+    // that true even if a new QJSValue member is added later and the caller
+    // forgets, because dropping them here is idempotent.
+    m_onResponseHandlers.clear();
+    m_onRequestHandlers.clear();
+    refreshHandlerFlags();
+
+    m_engine = std::make_unique<QJSEngine>();
+    QJSValue nullockObj = m_engine->newQObject(m_bridge);
+    m_engine->globalObject().setProperty("nullock", nullockObj);
 }
 
 ExtensionsApi::~ExtensionsApi() = default;
@@ -102,18 +119,27 @@ QStringList ExtensionsApi::recentLog(int max) const {
 }
 
 bool ExtensionsApi::reload() {
-    m_onResponseHandlers.clear();
-    m_onRequestHandlers.clear();
-    refreshHandlerFlags();
     m_loadedScripts.clear();
     m_scriptGrants.clear();
     m_currentGrants.clear();
-    // Reset the engine by clearing the global except our nullock object.
-    // Easier: recreate the engine altogether.
-    m_engine.collectGarbage();
-    // Re-init globals.
-    QJSValue nullockObj = m_engine.newQObject(m_bridge);
-    m_engine.globalObject().setProperty("nullock", nullockObj);
+
+    // Destroy the engine and build a fresh one, rather than collecting garbage
+    // in the old one. QJSEngine has no way to clear its global scope, and
+    // collectGarbage() only frees what is ALREADY unreachable -- so every
+    // global an extension assigned, and every prototype it patched, used to
+    // survive a reload.
+    //
+    // That is what made "uninstall" a lie. Extensions share one engine, so a
+    // script the user had just deleted from disk left its globals in place and
+    // still reachable by the extensions that remained -- and an observe-only
+    // script could poison state a mutation-granted one depended on, or clobber
+    // the `nullock` object itself. Nothing short of restarting the process
+    // cleared it.
+    //
+    // Safe because m_bridge is parented to this (CppOwnership), so the dying
+    // engine does not take it with it.
+    rebuildEngine();
+
     loadAll();
     emit loadedChanged();
     return true;
@@ -132,7 +158,7 @@ void ExtensionsApi::loadAll() {
         // the script registers onRequest / onResponse handlers.
         m_currentGrants = Nullock::Core::ExtensionPerms::parsePermissions(source);
         m_scriptGrants.insert(fi.fileName(), QStringList(m_currentGrants.begin(), m_currentGrants.end()));
-        const QJSValue result = m_engine.evaluate(source, fi.fileName());
+        const QJSValue result = m_engine->evaluate(source, fi.fileName());
         if (result.isError()) {
             appendLog(QString("[ext] %1: %2 at line %3")
                           .arg(fi.fileName())
@@ -171,7 +197,7 @@ void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &reques
                                        const Nullock::Proxy::HttpResponse &response) {
     if (m_onResponseHandlers.isEmpty()) return;
 
-    QJSValue entry = m_engine.newObject();
+    QJSValue entry = m_engine->newObject();
     entry.setProperty("method", request.method);
     entry.setProperty("host",   request.host);
     entry.setProperty("port",   request.port);
@@ -193,9 +219,9 @@ void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &reques
     entry.setProperty("bodyPreview",
         QString::fromUtf8(response.body.left(64 * 1024)));
 
-    QJSValue headers = m_engine.newArray(response.headers.size());
+    QJSValue headers = m_engine->newArray(response.headers.size());
     for (qsizetype i = 0; i < response.headers.size(); ++i) {
-        QJSValue pair = m_engine.newArray(2);
+        QJSValue pair = m_engine->newArray(2);
         pair.setProperty(0, response.headers[i].first);
         pair.setProperty(1, response.headers[i].second);
         headers.setProperty(static_cast<quint32>(i), pair);
@@ -330,12 +356,12 @@ Nullock::Proxy::HttpResponse ExtensionsApi::applyResponseMutation(
 Nullock::Proxy::HttpRequest ExtensionsApi::doMutateRequest(Nullock::Proxy::HttpRequest req) {
     if (m_onRequestHandlers.isEmpty()) return req;
 
-    QJSValue entry = m_engine.newObject();
+    QJSValue entry = m_engine->newObject();
     entry.setProperty("method", req.method);
     entry.setProperty("host", req.host);
     entry.setProperty("port", req.port);
     entry.setProperty("path", req.path);
-    entry.setProperty("headers", headersToJs(&m_engine, req.headers));
+    entry.setProperty("headers", headersToJs(m_engine.get(), req.headers));
     entry.setProperty("bodyText", QString::fromUtf8(req.body));
 
     for (QJSValue &handler : m_onRequestHandlers) {
@@ -402,7 +428,7 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
     // So the enforcement has to be here, and it has to discard whatever an
     // ungranted handler did to its copy.
     auto buildEntry = [&]() {
-        QJSValue e = m_engine.newObject();
+        QJSValue e = m_engine->newObject();
         e.setProperty("method", req.method);
         e.setProperty("url",
             (resp.wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
@@ -412,7 +438,7 @@ Nullock::Proxy::HttpResponse ExtensionsApi::doMutateResponse(
             + req.path);
         e.setProperty("status", resp.statusCode);
         e.setProperty("reasonPhrase", resp.reasonPhrase);
-        e.setProperty("headers", headersToJs(&m_engine, resp.headers));
+        e.setProperty("headers", headersToJs(m_engine.get(), resp.headers));
         e.setProperty("bodyText", QString::fromUtf8(resp.body));
         e.setProperty("responseSize", static_cast<int>(resp.body.size()));
         return e;
