@@ -102,6 +102,14 @@ h3 { font-size: 18px; font-weight: 600; line-height: 1.3; }
   background: var(--hero-grad);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
+  /* With background-clip:text the gradient is painted only inside the element's
+     box. A tight hero line-height makes that box shorter than the glyphs, so
+     descenders (y, g, p) fall outside it and render as transparent text-fill --
+     they look "cut off". Padding-bottom extends the box below the baseline so
+     descenders keep their fill. display:inline-block keeps the padding from
+     adding a stray gap under a centered block heading. */
+  display: inline-block;
+  padding-bottom: 0.28em;
 }
 
 /* ---------- layout helpers ---------- */
