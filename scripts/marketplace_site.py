@@ -646,9 +646,24 @@ def main():
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with io.open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
+    # Remove orphan detail pages: an extension renamed or dropped from the
+    # catalog leaves a stale e/<oldid>.html that --check would flag and that
+    # would still be served with wrong content. The generated set is the whole
+    # truth, so anything under e/ not in it is deleted. (--check reports these
+    # rather than deleting, so a reviewer sees the drift; generate fixes it.)
+    edir = os.path.join(OUT_DIR, "e")
+    expected = {os.path.basename(p) for p in files if os.sep + "e" + os.sep in p}
+    removed = []
+    if os.path.isdir(edir):
+        for name in sorted(os.listdir(edir)):
+            if name.endswith(".html") and name not in expected:
+                os.remove(os.path.join(edir, name))
+                removed.append(name)
     print("wrote %d pages under docs/marketplace/" % len(files))
     for p in sorted(files):
         print("  " + os.path.relpath(p, ROOT))
+    for name in removed:
+        print("  removed orphan e/" + name)
 
 
 if __name__ == "__main__":

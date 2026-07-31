@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Source Map Exposure — Nullock Marketplace</title>
-<meta name="description" content="Flags exposed JavaScript/CSS source maps: a served asset referencing an external .map, an inline data: source map, or a .map served directly with sourcesContent (confirmed original">
+<title>Mappy — Nullock Marketplace</title>
+<meta name="description" content="Flags exposed JS/CSS source maps -- external .map references, inline data: maps, or a .map served with sourcesContent (original-source leak). Where every &#x27;unpack the bundle&#x27; recon ">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -31,24 +31,24 @@
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
-      <h1 class="h1-page" style="color:var(--purple-light);">Source Map Exposure</h1>
-      <p class="lead" style="margin-top:12px;">Flags exposed JavaScript/CSS source maps: a served asset referencing an external .map, an inline data: source map, or a .map served directly with sourcesContent (confirmed original-source leak). The starting point of every &#x27;unpack the webpack bundle&#x27; recon workflow. Observe-only, no permission.</p>
+      <h1 class="h1-page" style="color:var(--purple-light);">Mappy</h1>
+      <p class="lead" style="margin-top:12px;">Flags exposed JS/CSS source maps -- external .map references, inline data: maps, or a .map served with sourcesContent (original-source leak). Where every &#x27;unpack the bundle&#x27; recon starts. Observe-only.</p>
     </div>
     <div class="mkt-detail-side">
       <span class="badge neutral"><span class="dot"></span>observe-only</span>
-      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sourcemap_exposure.js" download>Download sourcemap_exposure.js</a>
-      <div class="mkt-sha-full mono" title="sha256:2de173cfd005c591e369dde19c7d18745dd4273f63053ee44b2a3cca4dd2d701"><span style="color:var(--purple);">&#11042;</span> 2de173cfd005c591e369dde19c7d18745dd4273f63053ee44b2a3cca4dd2d701</div>
+      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/mappy.js" download>Download mappy.js</a>
+      <div class="mkt-sha-full mono" title="sha256:26a5324341a35480c0594abb40ecbd6704935dae3f69ae7c91706ada06889516"><span style="color:var(--purple);">&#11042;</span> 26a5324341a35480c0594abb40ecbd6704935dae3f69ae7c91706ada06889516</div>
     </div>
   </div>
   <div class="mkt-cats" style="margin:18px 0 26px;"><span class="mkt-cat">scanner</span><span class="mkt-cat">recon</span><span class="mkt-cat">info-leak</span><span class="mkt-cat">passive</span></div>
   <div class="mkt-perm"><div class="mono mkt-perm-h">observe-only</div><p>This extension declares no traffic-modifying capability. It watches requests and responses and reports findings, but does not rewrite what goes on the wire.</p></div>
   <div class="mkt-source">
     <div class="mkt-source-head">
-      <span class="mono">sourcemap_exposure.js</span>
+      <span class="mono">mappy.js</span>
       <span class="mono dim">89 lines</span>
-      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sourcemap_exposure.js" download>Download raw</a>
+      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/mappy.js" download>Download raw</a>
     </div>
-    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// sourcemap_exposure.js -- flag exposed JavaScript/CSS source maps.</span></span>
+    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// mappy.js -- flag exposed JavaScript/CSS source maps.</span></span>
 <span class="src-ln" aria-hidden="true">2</span><span class="src-code"><span class="src-com">//</span></span>
 <span class="src-ln" aria-hidden="true">3</span><span class="src-code"><span class="src-com">// Source maps are a build-time convenience that routinely ship to prod by</span></span>
 <span class="src-ln" aria-hidden="true">4</span><span class="src-code"><span class="src-com">// accident. A reachable .map file hands an attacker your ORIGINAL source --</span></span>
@@ -88,7 +88,7 @@
 <span class="src-ln" aria-hidden="true">38</span><span class="src-code"><span class="src-kw">function</span> <span class="src-func">report</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">,</span> <span class="src-id">key</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
 <span class="src-ln" aria-hidden="true">39</span><span class="src-code">    <span class="src-kw">if</span> <span class="src-punc">(</span><span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span><span class="src-punc">)</span> <span class="src-kw">return</span><span class="src-punc">;</span> <span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span> <span class="src-punc">=</span> <span class="src-num">1</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">40</span><span class="src-code">    <span class="src-kw">try</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">reportFinding</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
-<span class="src-ln" aria-hidden="true">41</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sourcemap report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
+<span class="src-ln" aria-hidden="true">41</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;mappy report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">42</span><span class="src-code"><span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">43</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">44</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">onResponse</span><span class="src-punc">(</span><span class="src-kw">function</span><span class="src-punc">(</span><span class="src-id">entry</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
@@ -128,12 +128,12 @@
 <span class="src-ln" aria-hidden="true">78</span><span class="src-code">            <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">79</span><span class="src-code">        <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">80</span><span class="src-code">    <span class="src-punc">}</span> <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
-<span class="src-ln" aria-hidden="true">81</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sourcemap_exposure: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">81</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;mappy: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">82</span><span class="src-code">    <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">83</span><span class="src-code">    <span class="src-kw">return</span> <span class="src-id">entry</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">84</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">85</span><span class="src-code">&#8203;</span>
-<span class="src-ln" aria-hidden="true">86</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sourcemap_exposure: loaded (flags exposed JS/CSS source maps)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">86</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;mappy: loaded (flags exposed JS/CSS source maps)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">87</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">88</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">(</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">89</span><span class="src-code">&#8203;</span></code></pre>

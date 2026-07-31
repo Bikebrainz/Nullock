@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CSRF Auditor — Nullock Marketplace</title>
-<meta name="description" content="Scans served HTML for state-changing POST forms that appear to lack an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET forms ignored. A pr">
+<title>Hallpass — Nullock Marketplace</title>
+<meta name="description" content="Scans served HTML for state-changing POST forms that look like they&#x27;re missing an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET ignored.">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -31,24 +31,24 @@
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
-      <h1 class="h1-page" style="color:var(--purple-light);">CSRF Auditor</h1>
-      <p class="lead" style="margin-top:12px;">Scans served HTML for state-changing POST forms that appear to lack an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET forms ignored. A proxy-side CSRF Scanner that complements Nullock&#x27;s native SameSite-cookie checks. Heuristic -- findings are review leads. Observe-only.</p>
+      <h1 class="h1-page" style="color:var(--purple-light);">Hallpass</h1>
+      <p class="lead" style="margin-top:12px;">Scans served HTML for state-changing POST forms that look like they&#x27;re missing an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET ignored. Heuristic -- findings are review leads. Observe-only.</p>
     </div>
     <div class="mkt-detail-side">
       <span class="badge neutral"><span class="dot"></span>observe-only</span>
-      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/csrf_auditor.js" download>Download csrf_auditor.js</a>
-      <div class="mkt-sha-full mono" title="sha256:6623baf2a5912cf0947aa1797522c348797038c00bedb35078434bc694996c2c"><span style="color:var(--purple);">&#11042;</span> 6623baf2a5912cf0947aa1797522c348797038c00bedb35078434bc694996c2c</div>
+      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hallpass.js" download>Download hallpass.js</a>
+      <div class="mkt-sha-full mono" title="sha256:5c145f2da8efcb45704888a1c2c514e9d07276cc43f62f753501c93d739cd1a5"><span style="color:var(--purple);">&#11042;</span> 5c145f2da8efcb45704888a1c2c514e9d07276cc43f62f753501c93d739cd1a5</div>
     </div>
   </div>
   <div class="mkt-cats" style="margin:18px 0 26px;"><span class="mkt-cat">scanner</span><span class="mkt-cat">csrf</span><span class="mkt-cat">passive</span></div>
   <div class="mkt-perm"><div class="mono mkt-perm-h">observe-only</div><p>This extension declares no traffic-modifying capability. It watches requests and responses and reports findings, but does not rewrite what goes on the wire.</p></div>
   <div class="mkt-source">
     <div class="mkt-source-head">
-      <span class="mono">csrf_auditor.js</span>
+      <span class="mono">hallpass.js</span>
       <span class="mono dim">109 lines</span>
-      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/csrf_auditor.js" download>Download raw</a>
+      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hallpass.js" download>Download raw</a>
     </div>
-    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// csrf_auditor.js -- passive anti-CSRF token auditor for HTML forms.</span></span>
+    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// hallpass.js -- passive anti-CSRF token auditor for HTML forms.</span></span>
 <span class="src-ln" aria-hidden="true">2</span><span class="src-code"><span class="src-com">//</span></span>
 <span class="src-ln" aria-hidden="true">3</span><span class="src-code"><span class="src-com">// A proxy-side CSRF Scanner: for every state-changing form the app serves,</span></span>
 <span class="src-ln" aria-hidden="true">4</span><span class="src-code"><span class="src-com">// check whether it carries an anti-CSRF token. Nullock&#x27;s native scanner</span></span>
@@ -90,7 +90,7 @@
 <span class="src-ln" aria-hidden="true">40</span><span class="src-code"><span class="src-kw">function</span> <span class="src-func">report</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">,</span> <span class="src-id">key</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
 <span class="src-ln" aria-hidden="true">41</span><span class="src-code">    <span class="src-kw">if</span> <span class="src-punc">(</span><span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span><span class="src-punc">)</span> <span class="src-kw">return</span><span class="src-punc">;</span> <span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span> <span class="src-punc">=</span> <span class="src-num">1</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">42</span><span class="src-code">    <span class="src-kw">try</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">reportFinding</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
-<span class="src-ln" aria-hidden="true">43</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;csrf_auditor report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
+<span class="src-ln" aria-hidden="true">43</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;hallpass report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">44</span><span class="src-code"><span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">45</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">46</span><span class="src-code"><span class="src-com">// A hidden input whose value looks like a random token (not a flag/id).</span></span>
@@ -148,12 +148,12 @@
 <span class="src-ln" aria-hidden="true">98</span><span class="src-code">                <span class="src-id">url</span><span class="src-punc">,</span> <span class="src-str">&quot;csrf|&quot;</span> <span class="src-punc">+</span> <span class="src-id">url</span> <span class="src-punc">+</span> <span class="src-str">&quot;|&quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">action</span> <span class="src-punc">|</span><span class="src-punc">|</span> <span class="src-id">idx</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">99</span><span class="src-code">        <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">100</span><span class="src-code">    <span class="src-punc">}</span> <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
-<span class="src-ln" aria-hidden="true">101</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;csrf_auditor: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">101</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;hallpass: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">102</span><span class="src-code">    <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">103</span><span class="src-code">    <span class="src-kw">return</span> <span class="src-id">entry</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">104</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">105</span><span class="src-code">&#8203;</span>
-<span class="src-ln" aria-hidden="true">106</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;csrf_auditor: loaded (passive anti-CSRF token auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">106</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;hallpass: loaded (passive anti-CSRF token auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">107</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">108</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">(</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">109</span><span class="src-code">&#8203;</span></code></pre>

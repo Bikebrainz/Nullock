@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SAML Auditor — Nullock Marketplace</title>
-<meta name="description" content="Grabs the base64 SAMLResponse/SAMLRequest out of an IdP auto-POST form, decodes it (POST binding), and flags unsigned assertions, XML comment-injection surface (CVE-2017-11427 clas">
+<title>Sammy — Nullock Marketplace</title>
+<meta name="description" content="Pulls the base64 SAMLResponse out of an IdP auto-POST form and audits it -- unsigned assertions, XML comment-injection surface (CVE-2017-11427 class), over-long validity, missing I">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -31,24 +31,24 @@
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
-      <h1 class="h1-page" style="color:var(--purple-light);">SAML Auditor</h1>
-      <p class="lead" style="margin-top:12px;">Grabs the base64 SAMLResponse/SAMLRequest out of an IdP auto-POST form, decodes it (POST binding), and flags unsigned assertions, XML comment-injection surface (CVE-2017-11427 class), over-long validity windows, missing InResponseTo/Destination, and cleartext ACS endpoints. The passive-detection half of SAML Raider. Observe-only.</p>
+      <h1 class="h1-page" style="color:var(--purple-light);">Sammy</h1>
+      <p class="lead" style="margin-top:12px;">Pulls the base64 SAMLResponse out of an IdP auto-POST form and audits it -- unsigned assertions, XML comment-injection surface (CVE-2017-11427 class), over-long validity, missing InResponseTo/Destination, cleartext ACS. (Passive half of SAML Raider.) Observe-only.</p>
     </div>
     <div class="mkt-detail-side">
       <span class="badge neutral"><span class="dot"></span>observe-only</span>
-      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/saml_auditor.js" download>Download saml_auditor.js</a>
-      <div class="mkt-sha-full mono" title="sha256:c193b035506bf8d2523ba58a6ddc43bd0a769e23da635e422fc593485e9be993"><span style="color:var(--purple);">&#11042;</span> c193b035506bf8d2523ba58a6ddc43bd0a769e23da635e422fc593485e9be993</div>
+      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sammy.js" download>Download sammy.js</a>
+      <div class="mkt-sha-full mono" title="sha256:8eb5f0f5a9ce132002c9bfc44b09fd7d045f283f61f793e1c0a40ad8088eeb29"><span style="color:var(--purple);">&#11042;</span> 8eb5f0f5a9ce132002c9bfc44b09fd7d045f283f61f793e1c0a40ad8088eeb29</div>
     </div>
   </div>
   <div class="mkt-cats" style="margin:18px 0 26px;"><span class="mkt-cat">scanner</span><span class="mkt-cat">auth</span><span class="mkt-cat">saml</span><span class="mkt-cat">passive</span></div>
   <div class="mkt-perm"><div class="mono mkt-perm-h">observe-only</div><p>This extension declares no traffic-modifying capability. It watches requests and responses and reports findings, but does not rewrite what goes on the wire.</p></div>
   <div class="mkt-source">
     <div class="mkt-source-head">
-      <span class="mono">saml_auditor.js</span>
+      <span class="mono">sammy.js</span>
       <span class="mono dim">163 lines</span>
-      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/saml_auditor.js" download>Download raw</a>
+      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sammy.js" download>Download raw</a>
     </div>
-    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// saml_auditor.js -- passive SAML response/assertion auditor.</span></span>
+    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// sammy.js -- passive SAML response/assertion auditor.</span></span>
 <span class="src-ln" aria-hidden="true">2</span><span class="src-code"><span class="src-com">//</span></span>
 <span class="src-ln" aria-hidden="true">3</span><span class="src-code"><span class="src-com">// A proxy-side take on SAML Raider (the SAML BApp everyone reaches for).</span></span>
 <span class="src-ln" aria-hidden="true">4</span><span class="src-code"><span class="src-com">// SAML Raider is an active editor for forging/replaying assertions; Nullock</span></span>
@@ -111,7 +111,7 @@
 <span class="src-ln" aria-hidden="true">61</span><span class="src-code"><span class="src-kw">function</span> <span class="src-func">report</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">,</span> <span class="src-id">key</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
 <span class="src-ln" aria-hidden="true">62</span><span class="src-code">    <span class="src-kw">if</span> <span class="src-punc">(</span><span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span><span class="src-punc">)</span> <span class="src-kw">return</span><span class="src-punc">;</span> <span class="src-id">seen</span><span class="src-punc">[</span><span class="src-id">key</span><span class="src-punc">]</span> <span class="src-punc">=</span> <span class="src-num">1</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">63</span><span class="src-code">    <span class="src-kw">try</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">reportFinding</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
-<span class="src-ln" aria-hidden="true">64</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;saml_auditor report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
+<span class="src-ln" aria-hidden="true">64</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sammy report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">65</span><span class="src-code"><span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">66</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">67</span><span class="src-code"><span class="src-com">// Pull the base64 SAML blob out of an HTML auto-post form or a urlencoded body.</span></span>
@@ -202,12 +202,12 @@
 <span class="src-ln" aria-hidden="true">152</span><span class="src-code">            <span class="src-func">auditXml</span><span class="src-punc">(</span><span class="src-id">xml</span><span class="src-punc">,</span> <span class="src-id">blobs</span><span class="src-punc">[</span><span class="src-id">i</span><span class="src-punc">]</span><span class="src-punc">.</span><span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">entry</span><span class="src-punc">.</span><span class="src-id">url</span> <span class="src-punc">|</span><span class="src-punc">|</span> <span class="src-str">&quot;&quot;</span><span class="src-punc">,</span> <span class="src-id">tag</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">153</span><span class="src-code">        <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">154</span><span class="src-code">    <span class="src-punc">}</span> <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
-<span class="src-ln" aria-hidden="true">155</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;saml_auditor: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">155</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sammy: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">156</span><span class="src-code">    <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">157</span><span class="src-code">    <span class="src-kw">return</span> <span class="src-id">entry</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">158</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">159</span><span class="src-code">&#8203;</span>
-<span class="src-ln" aria-hidden="true">160</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;saml_auditor: loaded (passive SAML POST-binding auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">160</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;sammy: loaded (passive SAML POST-binding auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">161</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">162</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">(</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">163</span><span class="src-code">&#8203;</span></code></pre>

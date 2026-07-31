@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OAuth / OIDC Auditor — Nullock Marketplace</title>
-<meta name="description" content="Passively audits the OAuth 2.0 / OpenID Connect dance: implicit flow (response_type=token), missing state (CSRF), missing PKCE, tokens leaking into request URLs or 3xx Location hea">
+<title>Waltz — Nullock Marketplace</title>
+<meta name="description" content="Watches the OAuth 2.0 / OIDC dance and flags the classic missteps -- implicit flow, missing state, missing PKCE, tokens leaking into request URLs or 3xx Location headers, cleartext">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -31,24 +31,24 @@
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
-      <h1 class="h1-page" style="color:var(--purple-light);">OAuth / OIDC Auditor</h1>
-      <p class="lead" style="margin-top:12px;">Passively audits the OAuth 2.0 / OpenID Connect dance: implicit flow (response_type=token), missing state (CSRF), missing PKCE, tokens leaking into request URLs or 3xx Location headers, and cleartext redirect_uri. Covers the flow around the token that Nullock&#x27;s native JWT checks don&#x27;t. Observe-only, no permission.</p>
+      <h1 class="h1-page" style="color:var(--purple-light);">Waltz</h1>
+      <p class="lead" style="margin-top:12px;">Watches the OAuth 2.0 / OIDC dance and flags the classic missteps -- implicit flow, missing state, missing PKCE, tokens leaking into request URLs or 3xx Location headers, cleartext redirect_uri. The flow around the token that native JWT checks don&#x27;t see. Observe-only.</p>
     </div>
     <div class="mkt-detail-side">
       <span class="badge neutral"><span class="dot"></span>observe-only</span>
-      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/oauth_auditor.js" download>Download oauth_auditor.js</a>
-      <div class="mkt-sha-full mono" title="sha256:2a64873db885babf7180dd7128317e68c635543dd38ce4a27f3e5e45a5f8186a"><span style="color:var(--purple);">&#11042;</span> 2a64873db885babf7180dd7128317e68c635543dd38ce4a27f3e5e45a5f8186a</div>
+      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/waltz.js" download>Download waltz.js</a>
+      <div class="mkt-sha-full mono" title="sha256:69f8d8a8da580ec660c17f5dbdff1137ecc5f46cd0824dd63ca3be6eb610a1c7"><span style="color:var(--purple);">&#11042;</span> 69f8d8a8da580ec660c17f5dbdff1137ecc5f46cd0824dd63ca3be6eb610a1c7</div>
     </div>
   </div>
   <div class="mkt-cats" style="margin:18px 0 26px;"><span class="mkt-cat">scanner</span><span class="mkt-cat">auth</span><span class="mkt-cat">oauth</span><span class="mkt-cat">oidc</span><span class="mkt-cat">passive</span></div>
   <div class="mkt-perm"><div class="mono mkt-perm-h">observe-only</div><p>This extension declares no traffic-modifying capability. It watches requests and responses and reports findings, but does not rewrite what goes on the wire.</p></div>
   <div class="mkt-source">
     <div class="mkt-source-head">
-      <span class="mono">oauth_auditor.js</span>
+      <span class="mono">waltz.js</span>
       <span class="mono dim">157 lines</span>
-      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/oauth_auditor.js" download>Download raw</a>
+      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/waltz.js" download>Download raw</a>
     </div>
-    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// oauth_auditor.js -- passive OAuth 2.0 / OpenID Connect misconfig auditor.</span></span>
+    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// waltz.js -- passive OAuth 2.0 / OpenID Connect misconfig auditor.</span></span>
 <span class="src-ln" aria-hidden="true">2</span><span class="src-code"><span class="src-com">//</span></span>
 <span class="src-ln" aria-hidden="true">3</span><span class="src-code"><span class="src-com">// The proxy-side answer to EsPReSSO / OAuthScan: watch the OAuth dance go</span></span>
 <span class="src-ln" aria-hidden="true">4</span><span class="src-code"><span class="src-com">// by and flag the classic mistakes without sending a single extra request.</span></span>
@@ -118,7 +118,7 @@
 <span class="src-ln" aria-hidden="true">68</span><span class="src-code"><span class="src-kw">function</span> <span class="src-func">report</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">,</span> <span class="src-id">dedupeKey</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
 <span class="src-ln" aria-hidden="true">69</span><span class="src-code">    <span class="src-kw">if</span> <span class="src-punc">(</span><span class="src-punc">!</span><span class="src-func">once</span><span class="src-punc">(</span><span class="src-id">dedupeKey</span><span class="src-punc">)</span><span class="src-punc">)</span> <span class="src-kw">return</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">70</span><span class="src-code">    <span class="src-kw">try</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">reportFinding</span><span class="src-punc">(</span><span class="src-id">sev</span><span class="src-punc">,</span> <span class="src-id">kind</span><span class="src-punc">,</span> <span class="src-id">summary</span><span class="src-punc">,</span> <span class="src-id">evidence</span><span class="src-punc">,</span> <span class="src-id">url</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
-<span class="src-ln" aria-hidden="true">71</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;oauth_auditor report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
+<span class="src-ln" aria-hidden="true">71</span><span class="src-code">    <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span> <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;waltz report failed: &quot;</span> <span class="src-punc">+</span> <span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">;</span> <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">72</span><span class="src-code"><span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">73</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">74</span><span class="src-code"><span class="src-com">// Does this URL/fragment carry a token or auth code?</span></span>
@@ -196,12 +196,12 @@
 <span class="src-ln" aria-hidden="true">146</span><span class="src-code">            <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">147</span><span class="src-code">        <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">148</span><span class="src-code">    <span class="src-punc">}</span> <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
-<span class="src-ln" aria-hidden="true">149</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;oauth_auditor: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">149</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;waltz: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">150</span><span class="src-code">    <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">151</span><span class="src-code">    <span class="src-kw">return</span> <span class="src-id">entry</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">152</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">153</span><span class="src-code">&#8203;</span>
-<span class="src-ln" aria-hidden="true">154</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;oauth_auditor: loaded (passive OAuth 2.0 / OIDC flow auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">154</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;waltz: loaded (passive OAuth 2.0 / OIDC flow auditor)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">155</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">156</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">(</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">157</span><span class="src-code">&#8203;</span></code></pre>

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hackvertor — Nullock Marketplace</title>
-<meta name="description" content="Inline &lt;@tag&gt;..&lt;@/tag&gt; transforms resolved on outgoing requests: base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. A proxy-side ">
+<title>Taffy — Nullock Marketplace</title>
+<meta name="description" content="Inline &lt;@tag&gt;..&lt;@/tag&gt; transforms resolved on outgoing requests -- base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. Keep payloa">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -31,24 +31,24 @@
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
-      <h1 class="h1-page" style="color:var(--purple-light);">Hackvertor</h1>
-      <p class="lead" style="margin-top:12px;">Inline &lt;@tag&gt;..&lt;@/tag&gt; transforms resolved on outgoing requests: base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. A proxy-side port of Gareth Heyes&#x27; Hackvertor -- keep payloads readable, let the tag do the encoding on the wire. Tags nest, innermost-first.</p>
+      <h1 class="h1-page" style="color:var(--purple-light);">Taffy</h1>
+      <p class="lead" style="margin-top:12px;">Inline &lt;@tag&gt;..&lt;@/tag&gt; transforms resolved on outgoing requests -- base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. Keep payloads readable and let the tag encode on the wire; tags nest innermost-first. (Nullock&#x27;s take on Hackvertor.)</p>
     </div>
     <div class="mkt-detail-side">
       <span class="badge"><span class="dot"></span>modifies traffic</span>
-      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hackvertor.js" download>Download hackvertor.js</a>
-      <div class="mkt-sha-full mono" title="sha256:0110370ea4f274d1fc52e0ab1ac7f8c1bb940c91b3d144ff87ac8b41f09c78fe"><span style="color:var(--purple);">&#11042;</span> 0110370ea4f274d1fc52e0ab1ac7f8c1bb940c91b3d144ff87ac8b41f09c78fe</div>
+      <a class="btn btn-primary" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/taffy.js" download>Download taffy.js</a>
+      <div class="mkt-sha-full mono" title="sha256:6cca84bf59b65510c2c01bca8c4bb5d5d9c1cf52804f8daca311b47992d610ee"><span style="color:var(--purple);">&#11042;</span> 6cca84bf59b65510c2c01bca8c4bb5d5d9c1cf52804f8daca311b47992d610ee</div>
     </div>
   </div>
   <div class="mkt-cats" style="margin:18px 0 26px;"><span class="mkt-cat">utility</span><span class="mkt-cat">encoding</span><span class="mkt-cat">tampering</span><span class="mkt-cat">fuzzing</span></div>
   <div class="mkt-perm"><div class="mono mkt-perm-h">capabilities</div><p><strong>modify-requests</strong> &mdash; rewrites your requests before they reach the server. This is how a request signer, header injector or payload transformer does its job.</p></div>
   <div class="mkt-source">
     <div class="mkt-source-head">
-      <span class="mono">hackvertor.js</span>
+      <span class="mono">taffy.js</span>
       <span class="mono dim">279 lines</span>
-      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hackvertor.js" download>Download raw</a>
+      <a class="btn btn-ghost btn-sm" href="https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/taffy.js" download>Download raw</a>
     </div>
-    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// hackvertor.js -- inline tag-based transforms on outgoing requests.</span></span>
+    <pre class="mkt-source-body"><code><span class="src-ln" aria-hidden="true">1</span><span class="src-code"><span class="src-com">// taffy.js -- inline tag-based transforms on outgoing requests.</span></span>
 <span class="src-ln" aria-hidden="true">2</span><span class="src-code"><span class="src-com">//</span></span>
 <span class="src-ln" aria-hidden="true">3</span><span class="src-code"><span class="src-com">// nullock:permissions modify-requests</span></span>
 <span class="src-ln" aria-hidden="true">4</span><span class="src-code"><span class="src-com">//</span></span>
@@ -318,12 +318,12 @@
 <span class="src-ln" aria-hidden="true">268</span><span class="src-code">            <span class="src-id">req</span><span class="src-punc">.</span><span class="src-id">bodyText</span> <span class="src-punc">=</span> <span class="src-func">applyTags</span><span class="src-punc">(</span><span class="src-id">req</span><span class="src-punc">.</span><span class="src-id">bodyText</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">269</span><span class="src-code">        <span class="src-kw">return</span> <span class="src-id">req</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">270</span><span class="src-code">    <span class="src-punc">}</span> <span class="src-kw">catch</span> <span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span> <span class="src-punc">{</span></span>
-<span class="src-ln" aria-hidden="true">271</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;hackvertor: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">271</span><span class="src-code">        <span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;taffy: &quot;</span> <span class="src-punc">+</span> <span class="src-punc">(</span><span class="src-id">e</span> <span class="src-punc">&amp;</span><span class="src-punc">&amp;</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">?</span> <span class="src-id">e</span><span class="src-punc">.</span><span class="src-id">message</span> <span class="src-punc">:</span> <span class="src-func">String</span><span class="src-punc">(</span><span class="src-id">e</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">272</span><span class="src-code">        <span class="src-kw">return</span> <span class="src-id">req</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">273</span><span class="src-code">    <span class="src-punc">}</span></span>
 <span class="src-ln" aria-hidden="true">274</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">275</span><span class="src-code">&#8203;</span>
-<span class="src-ln" aria-hidden="true">276</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;hackvertor: loaded (&quot;</span> <span class="src-punc">+</span> <span class="src-id">Object</span><span class="src-punc">.</span><span class="src-func">keys</span><span class="src-punc">(</span><span class="src-id">TAGS</span><span class="src-punc">)</span><span class="src-punc">.</span><span class="src-id">length</span> <span class="src-punc">+</span> <span class="src-str">&quot; tags; &lt;@tag&gt;..&lt;@/tag&gt; resolves outbound)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
+<span class="src-ln" aria-hidden="true">276</span><span class="src-code"><span class="src-id">nullock</span><span class="src-punc">.</span><span class="src-func">log</span><span class="src-punc">(</span><span class="src-str">&quot;taffy: loaded (&quot;</span> <span class="src-punc">+</span> <span class="src-id">Object</span><span class="src-punc">.</span><span class="src-func">keys</span><span class="src-punc">(</span><span class="src-id">TAGS</span><span class="src-punc">)</span><span class="src-punc">.</span><span class="src-id">length</span> <span class="src-punc">+</span> <span class="src-str">&quot; tags; &lt;@tag&gt;..&lt;@/tag&gt; resolves outbound)&quot;</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">277</span><span class="src-code">&#8203;</span>
 <span class="src-ln" aria-hidden="true">278</span><span class="src-code"><span class="src-punc">}</span><span class="src-punc">)</span><span class="src-punc">(</span><span class="src-punc">)</span><span class="src-punc">;</span></span>
 <span class="src-ln" aria-hidden="true">279</span><span class="src-code">&#8203;</span></code></pre>
