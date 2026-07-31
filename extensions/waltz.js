@@ -1,4 +1,4 @@
-// oauth_auditor.js -- passive OAuth 2.0 / OpenID Connect misconfig auditor.
+// waltz.js -- passive OAuth 2.0 / OpenID Connect misconfig auditor.
 //
 // The proxy-side answer to EsPReSSO / OAuthScan: watch the OAuth dance go
 // by and flag the classic mistakes without sending a single extra request.
@@ -68,7 +68,7 @@ function once(key) { if (seen[key]) return false; seen[key] = 1; return true; }
 function report(sev, kind, summary, evidence, url, dedupeKey) {
     if (!once(dedupeKey)) return;
     try { nullock.reportFinding(sev, kind, summary, evidence, url); }
-    catch (e) { nullock.log("oauth_auditor report failed: " + e); }
+    catch (e) { nullock.log("waltz report failed: " + e); }
 }
 
 // Does this URL/fragment carry a token or auth code?
@@ -146,11 +146,11 @@ nullock.onResponse(function(entry) {
             }
         }
     } catch (e) {
-        nullock.log("oauth_auditor: " + (e && e.message ? e.message : String(e)));
+        nullock.log("waltz: " + (e && e.message ? e.message : String(e)));
     }
     return entry;
 });
 
-nullock.log("oauth_auditor: loaded (passive OAuth 2.0 / OIDC flow auditor)");
+nullock.log("waltz: loaded (passive OAuth 2.0 / OIDC flow auditor)");
 
 })();

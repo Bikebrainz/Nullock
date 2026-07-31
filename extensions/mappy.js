@@ -1,4 +1,4 @@
-// sourcemap_exposure.js -- flag exposed JavaScript/CSS source maps.
+// mappy.js -- flag exposed JavaScript/CSS source maps.
 //
 // Source maps are a build-time convenience that routinely ship to prod by
 // accident. A reachable .map file hands an attacker your ORIGINAL source --
@@ -38,7 +38,7 @@ var seen = {};
 function report(sev, kind, summary, evidence, url, key) {
     if (seen[key]) return; seen[key] = 1;
     try { nullock.reportFinding(sev, kind, summary, evidence, url); }
-    catch (e) { nullock.log("sourcemap report failed: " + e); }
+    catch (e) { nullock.log("mappy report failed: " + e); }
 }
 
 nullock.onResponse(function(entry) {
@@ -78,11 +78,11 @@ nullock.onResponse(function(entry) {
             }
         }
     } catch (e) {
-        nullock.log("sourcemap_exposure: " + (e && e.message ? e.message : String(e)));
+        nullock.log("mappy: " + (e && e.message ? e.message : String(e)));
     }
     return entry;
 });
 
-nullock.log("sourcemap_exposure: loaded (flags exposed JS/CSS source maps)");
+nullock.log("mappy: loaded (flags exposed JS/CSS source maps)");
 
 })();

@@ -1,4 +1,4 @@
-// saml_auditor.js -- passive SAML response/assertion auditor.
+// sammy.js -- passive SAML response/assertion auditor.
 //
 // A proxy-side take on SAML Raider (the SAML BApp everyone reaches for).
 // SAML Raider is an active editor for forging/replaying assertions; Nullock
@@ -61,7 +61,7 @@ var seen = {};
 function report(sev, kind, summary, evidence, url, key) {
     if (seen[key]) return; seen[key] = 1;
     try { nullock.reportFinding(sev, kind, summary, evidence, url); }
-    catch (e) { nullock.log("saml_auditor report failed: " + e); }
+    catch (e) { nullock.log("sammy report failed: " + e); }
 }
 
 // Pull the base64 SAML blob out of an HTML auto-post form or a urlencoded body.
@@ -152,11 +152,11 @@ nullock.onResponse(function(entry) {
             auditXml(xml, blobs[i].kind, entry.url || "", tag);
         }
     } catch (e) {
-        nullock.log("saml_auditor: " + (e && e.message ? e.message : String(e)));
+        nullock.log("sammy: " + (e && e.message ? e.message : String(e)));
     }
     return entry;
 });
 
-nullock.log("saml_auditor: loaded (passive SAML POST-binding auditor)");
+nullock.log("sammy: loaded (passive SAML POST-binding auditor)");
 
 })();

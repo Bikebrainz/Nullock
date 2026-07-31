@@ -1,4 +1,4 @@
-// hackvertor.js -- inline tag-based transforms on outgoing requests.
+// taffy.js -- inline tag-based transforms on outgoing requests.
 //
 // nullock:permissions modify-requests
 //
@@ -268,11 +268,11 @@ nullock.onRequest(function(req) {
             req.bodyText = applyTags(req.bodyText);
         return req;
     } catch (e) {
-        nullock.log("hackvertor: " + (e && e.message ? e.message : String(e)));
+        nullock.log("taffy: " + (e && e.message ? e.message : String(e)));
         return req;
     }
 });
 
-nullock.log("hackvertor: loaded (" + Object.keys(TAGS).length + " tags; <@tag>..<@/tag> resolves outbound)");
+nullock.log("taffy: loaded (" + Object.keys(TAGS).length + " tags; <@tag>..<@/tag> resolves outbound)");
 
 })();

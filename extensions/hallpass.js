@@ -1,4 +1,4 @@
-// csrf_auditor.js -- passive anti-CSRF token auditor for HTML forms.
+// hallpass.js -- passive anti-CSRF token auditor for HTML forms.
 //
 // A proxy-side CSRF Scanner: for every state-changing form the app serves,
 // check whether it carries an anti-CSRF token. Nullock's native scanner
@@ -40,7 +40,7 @@ var seen = {};
 function report(sev, kind, summary, evidence, url, key) {
     if (seen[key]) return; seen[key] = 1;
     try { nullock.reportFinding(sev, kind, summary, evidence, url); }
-    catch (e) { nullock.log("csrf_auditor report failed: " + e); }
+    catch (e) { nullock.log("hallpass report failed: " + e); }
 }
 
 // A hidden input whose value looks like a random token (not a flag/id).
@@ -98,11 +98,11 @@ nullock.onResponse(function(entry) {
                 url, "csrf|" + url + "|" + (action || idx));
         }
     } catch (e) {
-        nullock.log("csrf_auditor: " + (e && e.message ? e.message : String(e)));
+        nullock.log("hallpass: " + (e && e.message ? e.message : String(e)));
     }
     return entry;
 });
 
-nullock.log("csrf_auditor: loaded (passive anti-CSRF token auditor)");
+nullock.log("hallpass: loaded (passive anti-CSRF token auditor)");
 
 })();

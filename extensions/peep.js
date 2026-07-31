@@ -1,4 +1,4 @@
-// collaborator_everywhere.js -- decorate outbound traffic with OAST canaries.
+// peep.js -- decorate outbound traffic with OAST canaries.
 //
 // nullock:permissions modify-requests
 //
@@ -112,23 +112,23 @@ nullock.onRequest(function(req) {
             setHeader(req.headers, CONFIG.hostHeaders[i], fqdn);
 
         perHostCount[host] = (perHostCount[host] || 0) + 1;
-        nullock.log("collaborator: " + host + " <= " + fqdn
+        nullock.log("peep: " + host + " <= " + fqdn
                     + " (" + (req.method || "?") + " " + (req.path || "/") + ")");
         return req;
     } catch (e) {
-        nullock.log("collaborator: " + (e && e.message ? e.message : String(e)));
+        nullock.log("peep: " + (e && e.message ? e.message : String(e)));
         return req;
     }
 });
 
 // Console helper: forget the per-host budget and re-arm injection.
-nullock.resetCollaborator = function() {
+nullock.resetPeep = function() {
     perHostCount = {};
-    nullock.log("collaborator: per-host injection budget reset");
+    nullock.log("peep: per-host injection budget reset");
 };
 
 nullock.log(CONFIG.oastDomain
-    ? "collaborator_everywhere: loaded (planting canaries under ." + CONFIG.oastDomain + ")"
-    : "collaborator_everywhere: loaded but DISABLED (set CONFIG.oastDomain to arm)");
+    ? "peep: loaded (planting canaries under ." + CONFIG.oastDomain + ")"
+    : "peep: loaded but DISABLED (set CONFIG.oastDomain to arm)");
 
 })();

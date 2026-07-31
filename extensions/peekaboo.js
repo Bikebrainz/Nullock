@@ -1,4 +1,4 @@
-// viewstate_auditor.js -- passive ASP.NET __VIEWSTATE auditor.
+// peekaboo.js -- passive ASP.NET __VIEWSTATE auditor.
 //
 // ASP.NET Web Forms round-trips page state through a base64 __VIEWSTATE
 // field. When it isn't encrypted (ViewStateEncryptionMode) it's readable --
@@ -54,7 +54,7 @@ var seen = {};
 function report(sev, kind, summary, evidence, url, key) {
     if (seen[key]) return; seen[key] = 1;
     try { nullock.reportFinding(sev, kind, summary, evidence, url); }
-    catch (e) { nullock.log("viewstate report failed: " + e); }
+    catch (e) { nullock.log("peekaboo report failed: " + e); }
 }
 
 function extractField(body, field) {
@@ -110,11 +110,11 @@ nullock.onResponse(function(entry) {
         }
         // No marker + high entropy => encrypted ViewState; nothing to report.
     } catch (e) {
-        nullock.log("viewstate_auditor: " + (e && e.message ? e.message : String(e)));
+        nullock.log("peekaboo: " + (e && e.message ? e.message : String(e)));
     }
     return entry;
 });
 
-nullock.log("viewstate_auditor: loaded (passive ASP.NET ViewState auditor)");
+nullock.log("peekaboo: loaded (passive ASP.NET ViewState auditor)");
 
 })();
