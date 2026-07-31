@@ -53,6 +53,14 @@ jobs:
         run: bash scripts/marketplace_sync.sh --check
       - name: docs site mirror is up to date
         run: diff -q extensions/marketplace.json docs/marketplace/marketplace.json
+      # The marketplace site pages are GENERATED from the catalog + extension
+      # source. Every field is escaped once at generation, so there is no runtime
+      # string-to-HTML path a hostile catalog entry could reach. If a catalog or
+      # extension edit is not regenerated, the committed pages drift -- and a
+      # stale page could show wrong metadata or an outdated source listing. Fail
+      # the build on drift, same contract as the manifest hashes above.
+      - name: marketplace site pages are regenerated
+        run: python3 scripts/marketplace_site.py --check
 
   python-labs:
     name: labs syntax check

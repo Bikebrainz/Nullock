@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/marketplace.schema.json",
   "version": 1,
-  "updated": "2026-06-09",
+  "updated": "2026-07-31",
   "extensions": [
     {
       "id": "dom_taint",
@@ -21,6 +21,7 @@
         "nullock.onResponse",
         "nullock.reportFinding"
       ],
+      "updated": "2026-06-09",
       "config": {}
     },
     {
@@ -42,6 +43,7 @@
       "hooks": [
         "nullock.onRequest"
       ],
+      "updated": "2026-02-18",
       "config": {
         "accessKey": {
           "type": "string",
@@ -88,6 +90,174 @@
       "hooks": [
         "nullock.onRequest"
       ],
+      "updated": "2026-01-30",
+      "config": {}
+    },
+    {
+      "id": "hackvertor",
+      "name": "Hackvertor",
+      "summary": "Inline <@tag>..<@/tag> transforms resolved on outgoing requests: base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. A proxy-side port of Gareth Heyes' Hackvertor -- keep payloads readable, let the tag do the encoding on the wire. Tags nest, innermost-first.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "utility",
+        "encoding",
+        "tampering",
+        "fuzzing"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hackvertor.js",
+      "sha256": "0110370ea4f274d1fc52e0ab1ac7f8c1bb940c91b3d144ff87ac8b41f09c78fe",
+      "permissions": [
+        "modify-requests"
+      ],
+      "hooks": [
+        "nullock.onRequest"
+      ],
+      "updated": "",
+      "config": {}
+    },
+    {
+      "id": "collaborator_everywhere",
+      "name": "Collaborator Everywhere",
+      "summary": "Decorates outbound traffic with OAST canaries in the headers servers tend to trust (X-Forwarded-For/Host, Referer, True-Client-IP, ...) to surface blind SSRF and out-of-band interactions. A port of James Kettle's Collaborator Everywhere, wired to Nullock's own OAST sink. Default-OFF: a no-op until you set oastDomain.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "ssrf",
+        "oast",
+        "injection"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/collaborator_everywhere.js",
+      "sha256": "d803c5679a633c3200cac912b3d51ec685bca571905cddbe07181c1480534e24",
+      "permissions": [
+        "modify-requests"
+      ],
+      "hooks": [
+        "nullock.onRequest"
+      ],
+      "updated": "",
+      "config": {
+        "oastDomain": {
+          "type": "string",
+          "default": "",
+          "desc": "Your OAST sink domain (see DEPLOY_OAST.md); BLANK disables all injection"
+        },
+        "onlyHosts": {
+          "type": "array",
+          "default": [],
+          "desc": "Restrict injection to these hosts (exact or *.suffix); empty = every host but the OAST domain"
+        },
+        "maxPerHost": {
+          "type": "number",
+          "default": 40,
+          "desc": "Cap canary injections per host so a crawl doesn't spray thousands of tokens"
+        }
+      }
+    },
+    {
+      "id": "oauth_auditor",
+      "name": "OAuth / OIDC Auditor",
+      "summary": "Passively audits the OAuth 2.0 / OpenID Connect dance: implicit flow (response_type=token), missing state (CSRF), missing PKCE, tokens leaking into request URLs or 3xx Location headers, and cleartext redirect_uri. Covers the flow around the token that Nullock's native JWT checks don't. Observe-only, no permission.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "auth",
+        "oauth",
+        "oidc",
+        "passive"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/oauth_auditor.js",
+      "sha256": "2a64873db885babf7180dd7128317e68c635543dd38ce4a27f3e5e45a5f8186a",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
+      "updated": "",
+      "config": {}
+    },
+    {
+      "id": "saml_auditor",
+      "name": "SAML Auditor",
+      "summary": "Grabs the base64 SAMLResponse/SAMLRequest out of an IdP auto-POST form, decodes it (POST binding), and flags unsigned assertions, XML comment-injection surface (CVE-2017-11427 class), over-long validity windows, missing InResponseTo/Destination, and cleartext ACS endpoints. The passive-detection half of SAML Raider. Observe-only.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "auth",
+        "saml",
+        "passive"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/saml_auditor.js",
+      "sha256": "c193b035506bf8d2523ba58a6ddc43bd0a769e23da635e422fc593485e9be993",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
+      "updated": "",
+      "config": {}
+    },
+    {
+      "id": "sourcemap_exposure",
+      "name": "Source Map Exposure",
+      "summary": "Flags exposed JavaScript/CSS source maps: a served asset referencing an external .map, an inline data: source map, or a .map served directly with sourcesContent (confirmed original-source leak). The starting point of every 'unpack the webpack bundle' recon workflow. Observe-only, no permission.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "recon",
+        "info-leak",
+        "passive"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sourcemap_exposure.js",
+      "sha256": "2de173cfd005c591e369dde19c7d18745dd4273f63053ee44b2a3cca4dd2d701",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
+      "updated": "",
+      "config": {}
+    },
+    {
+      "id": "viewstate_auditor",
+      "name": "ViewState Auditor",
+      "summary": "Decodes ASP.NET __VIEWSTATE from served forms and flags the unencrypted case (ObjectStateFormatter marker + readable content): state is exposed, and a deserialization/RCE surface if EnableViewStateMac is off (ysoserial.net). Notes __VIEWSTATEGENERATOR presence. Encrypted ViewState is left alone. Observe-only.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "dotnet",
+        "deserialization",
+        "passive"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/viewstate_auditor.js",
+      "sha256": "247b309ac98d430255040ea00020fe71c4504d9655546df2ba15e8bfdc5f902b",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
+      "updated": "",
+      "config": {}
+    },
+    {
+      "id": "csrf_auditor",
+      "name": "CSRF Auditor",
+      "summary": "Scans served HTML for state-changing POST forms that appear to lack an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET forms ignored. A proxy-side CSRF Scanner that complements Nullock's native SameSite-cookie checks. Heuristic -- findings are review leads. Observe-only.",
+      "version": "0.1.0",
+      "author": "nullock-builtin",
+      "categories": [
+        "scanner",
+        "csrf",
+        "passive"
+      ],
+      "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/csrf_auditor.js",
+      "sha256": "6623baf2a5912cf0947aa1797522c348797038c00bedb35078434bc694996c2c",
+      "hooks": [
+        "nullock.onResponse",
+        "nullock.reportFinding"
+      ],
+      "updated": "",
       "config": {}
     }
   ]

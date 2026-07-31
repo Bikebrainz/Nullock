@@ -65,6 +65,20 @@ the same script with `--check` and fails the build if the committed manifest has
 drifted from the committed extensions -- a stale hash breaks every install, and
 the tempting "fix" for that is to stop verifying.
 
+Then regenerate the browsable site pages from the catalog:
+
+```sh
+python3 scripts/marketplace_site.py
+```
+
+This writes `docs/marketplace/index.html` (the browse page), one
+`docs/marketplace/e/<id>.html` per extension (with the rendered, syntax-
+highlighted source), and `docs/marketplace/publish.html`. **The pages are
+generated, never hand-edited** -- every catalog field is HTML-escaped once at
+generation, so there is no runtime path by which a hostile catalog entry could
+inject markup. CI runs it with `--check` and fails on drift, so a catalog or
+extension change that is not regenerated is caught in review.
+
 Notes:
 
 - `id` must be `[A-Za-z0-9._-]`, at most 64 characters, and becomes `<id>.js`

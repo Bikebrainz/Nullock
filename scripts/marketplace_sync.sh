@@ -86,7 +86,7 @@ for ext in doc.get("extensions", []):
     # Keep key order stable and predictable so the diff of this file stays
     # readable and a real change is never buried in a reordering.
     order = ["id", "name", "summary", "version", "author", "categories",
-             "url", "sha256", "permissions", "hooks", "config"]
+             "url", "sha256", "permissions", "hooks", "updated", "config"]
     for k in order:
         if k in ext:
             ext[k] = ext.pop(k)

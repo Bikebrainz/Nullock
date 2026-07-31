@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Publish — Nullock Marketplace</title>
+<meta name="description" content="How to publish a Nullock extension: catalog entry, generated integrity fields, and the rules that keep installs verifiable.">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ marketplace</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="index.html">Extensions</a>
+      <a href="publish.html" class="active">Publish</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:48px var(--pad-x) 72px;">
+  <p class="eyebrow">// publishing</p>
+  <h1 class="h1-page">Publish an extension</h1>
+  <p class="lead" style="margin-top:16px;">An extension is a single JavaScript file that runs inside the Nullock proxy. Getting it into the catalog is a pull request plus one script &mdash; you never hand-edit the integrity fields.</p>
+
+  <h2 class="h2-section" style="margin-top:44px;">1. Add a catalog entry</h2>
+  <p class="muted">Open a PR against <code class="inline">extensions/marketplace.json</code> with your entry. Leave <code class="inline">sha256</code> and <code class="inline">permissions</code> empty &mdash; the sync script fills them.</p>
+  <div class="code" style="margin-top:16px;">
+    <div class="code-head"><span class="mono">extensions/marketplace.json</span></div>
+    <pre><code>{
+  "id":         "my-extension",
+  "name":       "My Extension",
+  "summary":    "One sentence describing what it does.",
+  "version":    "0.1.0",
+  "author":     "your-github-handle",
+  "categories": ["scanner", "passive"],
+  "url":        "https://raw.githubusercontent.com/&lt;you&gt;/&lt;repo&gt;/&lt;tag&gt;/&lt;path&gt;.js",
+  "hooks":      ["nullock.onResponse"]
+}</code></pre>
+  </div>
+
+  <h2 class="h2-section" style="margin-top:44px;">2. Generate the integrity fields</h2>
+  <p class="muted">Run the sync script. It hashes the committed <code class="inline">.js</code>, reads the <code class="inline">// nullock:permissions</code> directive out of your source, and rewrites both fields. CI runs it with <code class="inline">--check</code> and fails the build if what you committed does not match.</p>
+  <div class="code" style="margin-top:16px;">
+    <div class="code-head"><span class="mono">terminal</span></div>
+    <pre><code>bash scripts/marketplace_sync.sh</code></pre>
+  </div>
+
+  <h2 class="h2-section" style="margin-top:44px;">Rules that matter</h2>
+  <ul class="mkt-rules">
+    <li><strong>Pin the url to a tag or commit, never a branch.</strong> Branch content can change after the hash is computed, and the next person to install then gets an integrity failure.</li>
+    <li><strong>Declare permissions honestly.</strong> You gain nothing by omitting them &mdash; Nullock reads the <code class="inline">// nullock:permissions</code> directive out of your script regardless, and an undeclared capability is surfaced to the user as a warning at install time.</li>
+    <li><strong>Keep it to pure JS.</strong> The engine is a QJSEngine sandbox with no filesystem, no network of its own, and no npm. Anything that can rewrite traffic (<code class="inline">nullock.onRequest</code>) needs the <code class="inline">modify-requests</code> grant.</li>
+    <li><strong>Add a version directive</strong> &mdash; <code class="inline">// nullock:version 0.1.0</code> &mdash; so Nullock can tell an installed copy from an update.</li>
+  </ul>
+
+  <div class="mkt-callout" style="margin-top:40px;">
+    <div class="mono" style="font-size:20px;color:var(--purple);">&#9873;</div>
+    <div style="flex:1;min-width:260px;">
+      <h4 style="font-size:15px;">Why the sha256 is generated, not typed</h4>
+      <p class="muted" style="font-size:13.5px;line-height:1.6;margin:6px 0 0;">That hash is the only thing between a compromised CDN and arbitrary code running inside someone's proxy. A hand-typed hash drifts the moment anyone touches the file, and a drifted hash breaks every install &mdash; at which point the tempting fix is to stop verifying. So it is generated and CI-checked, never authored by hand.</p>
+    </div>
+    <a class="btn btn-ghost" href="README.md">Full publishing docs &rarr;</a>
+  </div>
+</main>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../license.html">MIT License</a><span class="f-sep">&middot;</span>
+    <a href="../security.html">Security disclosure</a><span class="f-sep">&middot;</span>
+    <a href="README.md">Publishing</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul&middot;lock &#9656; curated catalog &middot; rendered at build time &middot; MIT</div>
+</footer>
+</body>
+</html>

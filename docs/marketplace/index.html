@@ -1,153 +1,204 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nullock -- Extensions Marketplace</title>
-<style>
-  :root { color-scheme: dark; }
-  body {
-    margin: 0;
-    font: 14px -apple-system, system-ui, sans-serif;
-    background: #0d0d12;
-    color: #d0d0d6;
-  }
-  header {
-    background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
-    color: white; padding: 24px 32px;
-  }
-  header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-  header p  { margin: 4px 0 0; opacity: 0.92; font-size: 13px; }
-  main { max-width: 920px; margin: 0 auto; padding: 24px 32px; }
-  .ext {
-    border: 1px solid #2a2a35;
-    border-radius: 6px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
-    background: #14141a;
-  }
-  .ext h2 { margin: 0 0 6px; font-size: 15px; color: #b7a3d6; }
-  .ext .summary { margin: 0 0 10px; color: #a0a0a8; }
-  .meta { display: flex; gap: 12px; font-size: 12px; color: #666; flex-wrap: wrap; }
-  .meta span { background: #1c1c24; padding: 2px 8px; border-radius: 999px; }
-  .install { display: inline-block; padding: 6px 12px; margin-top: 8px;
-             background: linear-gradient(135deg, #9d4edd 0%, #5a189a 100%);
-             color: white; text-decoration: none; border-radius: 4px;
-             font-weight: 500; font-size: 12px; }
-  code { background: #1c1c24; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-  pre  { background: #1c1c24; padding: 12px; border-radius: 4px; overflow-x: auto;
-         font-size: 12px; line-height: 1.5; }
-  .err  { color: #f87171; }
-  footer { padding: 24px 32px; color: #666; font-size: 12px; border-top: 1px solid #1c1c24; }
-  footer a { color: #b7a3d6; }
-</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extensions — Nullock Marketplace</title>
+<meta name="description" content="Curated, sha256-pinned JavaScript extensions for the Nullock proxy. Read the source before it runs.">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
 </head>
 <body>
-<header>
-  <h1>Nullock -- Extensions Marketplace</h1>
-  <p>Curated JS extensions for the Nullock proxy. Drop them into your <code>extensions/</code> dir, hit Reload.</p>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ marketplace</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="index.html" class="active">Extensions</a>
+      <a href="publish.html">Publish</a>
+      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+<header class="glow-bg" style="border-bottom:1px solid var(--divider);">
+  <div class="wrap-wide" style="padding:64px var(--pad-x) 40px;">
+    <p class="eyebrow" style="margin:0 0 16px;">// extensions marketplace</p>
+    <h1 class="h1-hero grad-text" style="max-width:19ch;">Read the source before it runs in your proxy.</h1>
+    <p class="lead" style="margin-top:20px;max-width:64ch;">A curated catalog of JavaScript extensions for the Nullock proxy. Every entry pins the exact bytes to a <span class="mono" style="color:var(--purple-light);">sha256</span> and is served over https &mdash; but this site never installs anything. It exists so you can read the code first.</p>
+    <div class="mkt-assure">
+      <div class="mkt-assure-cell"><div class="mono" style="color:var(--purple-light);font-size:12.5px;">&#11042; sha256-pinned</div><p>Nullock hashes the download and refuses any mismatch. A missing hash fails closed.</p></div>
+      <div class="mkt-assure-cell"><div class="mono" style="color:var(--purple-light);font-size:12.5px;">&#8627; https-only source</div><p>Every url resolves through <span class="mono" style="color:var(--secondary);">new URL()</span> and must be https before it is shown.</p></div>
+      <div class="mkt-assure-cell"><div class="mono" style="color:var(--purple-light);font-size:12.5px;">&#10003; verified in-app</div><p>Installing happens inside Nullock, where the hash is checked. This site is for reading.</p></div>
+    </div>
+  </div>
 </header>
-<main>
-  <div id="list">Loading...</div>
-
-  <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Install an extension</h2>
-  <p>Install from inside Nullock: <strong>Settings &rarr; Marketplace &rarr; Fetch catalog</strong>,
-     then <strong>Install</strong> on the extension you want. Nullock verifies the download against
-     the <code>sha256</code> pinned above before it writes anything, and asks you to confirm
-     separately if the extension can rewrite your traffic.</p>
-  <p>The download links above are for reading the source first, which is worth doing &mdash;
-     an extension runs inside the proxy and sees every request and response your browser makes.
-     To install one by hand instead, save the <code>.js</code> into the extensions dir:</p>
-  <pre>%APPDATA%/Nullock/Nullock/extensions/           (Windows)
-~/.local/share/Nullock/Nullock/extensions/      (Linux)
-~/Library/Application Support/Nullock/Nullock/extensions/  (macOS)</pre>
-  <p>&hellip;then <strong>Settings &rarr; Extensions &rarr; Reload</strong>. Note that a hand-placed
-     file gets no integrity check &mdash; you are vouching for those bytes yourself.</p>
-
-  <h2 style="margin-top: 32px; font-size: 16px; color: #b7a3d6;">Publish your own</h2>
-  <p>Submit a PR to <a href="https://github.com/Bikebrainz/Nullock">Bikebrainz/Nullock</a> adding your extension to <code>extensions/marketplace.json</code>, then run
-     <code>bash scripts/marketplace_sync.sh</code> to generate the <code>sha256</code> and
-     <code>permissions</code> fields &mdash; do not type them by hand, CI checks them. Pin your
-     <code>url</code> to a tag or commit, never a branch, or the hash breaks the next time you push.
-     Keep your extension under 500 lines of pure JS; no external dependencies (QJSEngine has no npm).</p>
+<main class="wrap-wide" style="padding:34px var(--pad-x) 72px;">
+<div class="mkt-controls">
+    <div class="mkt-search">
+      <span class="mkt-search-ico mono" aria-hidden="true">&#8981;</span>
+      <input id="mkt-q" type="search" placeholder="filter by name, summary, author, category&hellip;" aria-label="Filter extensions" autocomplete="off">
+    </div>
+    <div class="mkt-sort">
+      <span class="mono dim" style="font-size:11.5px;">sort</span>
+      <div class="mkt-seg" role="group" aria-label="Sort">
+        <button id="sort-name" class="mkt-seg-btn is-active" type="button">name</button>
+        <button id="sort-updated" class="mkt-seg-btn" type="button">updated</button>
+      </div>
+    </div>
+  </div>
+  <div class="mkt-chips" id="mkt-chips"></div>
+  <div id="mkt-grid" class="mkt-grid"></div>
+  <div id="mkt-empty" class="mkt-empty" hidden>
+    <p class="mono muted" id="mkt-empty-label"></p>
+    <button class="btn btn-ghost btn-sm" id="mkt-clear" type="button">Clear filters</button>
+  </div>
+<div class="mkt-callout">
+    <div class="mono" style="font-size:20px;color:var(--purple);line-height:1;margin-top:2px;">&#9873;</div>
+    <div style="flex:1;min-width:260px;">
+      <h4 style="font-size:15px;">The site is not the install path.</h4>
+      <p class="muted" style="font-size:13.5px;line-height:1.6;margin:6px 0 0;max-width:80ch;">An extension runs inside the proxy and sees &mdash; and, where it declares the capability, rewrites &mdash; every request and response your browser makes. That is what they are for. Install from <span class="mono" style="color:var(--purple-light);">Settings &rarr; Marketplace</span> inside Nullock, where the download is verified against the sha256 pin above. The links here download raw source so you can read it first.</p>
+    </div>
+    <a class="btn btn-ghost" href="publish.html">Publish an extension &rarr;</a>
+  </div>
 </main>
-<footer>
-  Catalog: <code>marketplace.json</code> -- curated by the Nullock authors.
-  Source: <a href="https://github.com/Bikebrainz/Nullock">github.com/Bikebrainz/Nullock</a>.
-</footer>
+<script type="application/json" id="mkt-catalog">[{"id": "aws_sigv4", "name": "AWS SigV4 Signer", "version": "0.1.0", "author": "nullock-builtin", "summary": "Auto-signs outgoing requests to *.amazonaws.com with AWS Signature v4.", "categories": ["auth", "cloud", "aws"], "sha256": "1a3963e705d1b7fac0eb18feef343dce04388055a720ae93fd44b5c4dc5b7165", "permissions": ["modify-requests"], "updated": "2026-02-18"}, {"id": "collaborator_everywhere", "name": "Collaborator Everywhere", "version": "0.1.0", "author": "nullock-builtin", "summary": "Decorates outbound traffic with OAST canaries in the headers servers tend to trust (X-Forwarded-For/Host, Referer, True-Client-IP, ...) to surface blind SSRF and out-of-band interactions. A port of James Kettle's Collaborator Everywhere, wired to Nullock's own OAST sink. Default-OFF: a no-op until you set oastDomain.", "categories": ["scanner", "ssrf", "oast", "injection"], "sha256": "d803c5679a633c3200cac912b3d51ec685bca571905cddbe07181c1480534e24", "permissions": ["modify-requests"], "updated": ""}, {"id": "csrf_auditor", "name": "CSRF Auditor", "version": "0.1.0", "author": "nullock-builtin", "summary": "Scans served HTML for state-changing POST forms that appear to lack an anti-CSRF token (by field name or token-shaped hidden value). Same-origin forms only; GET forms ignored. A proxy-side CSRF Scanner that complements Nullock's native SameSite-cookie checks. Heuristic -- findings are review leads. Observe-only.", "categories": ["scanner", "csrf", "passive"], "sha256": "6623baf2a5912cf0947aa1797522c348797038c00bedb35078434bc694996c2c", "permissions": [], "updated": ""}, {"id": "dom_taint", "name": "DOM Taint Tracker", "version": "0.2.0", "author": "nullock-builtin", "summary": "Static DOM-XSS taint analysis on served HTML/JS with one-hop dataflow: connects sources (location.*, referrer, window.name, postMessage, storage) to sinks (innerHTML, eval, document.write, setTimeout, location-nav) and emits findings. The proxy-side answer to Burp DOM Invader.", "categories": ["scanner", "xss", "dom", "passive"], "sha256": "8c02c0578289944a6dc858726e7a1357804bff3872a80480fa606b496b554d1a", "permissions": [], "updated": "2026-06-09"}, {"id": "hackvertor", "name": "Hackvertor", "version": "0.1.0", "author": "nullock-builtin", "summary": "Inline <@tag>..<@/tag> transforms resolved on outgoing requests: base64/url/hex/html encode+decode, sha256/sha1, upper/lower/reverse, timestamp, random, uuid, repeat. A proxy-side port of Gareth Heyes' Hackvertor -- keep payloads readable, let the tag do the encoding on the wire. Tags nest, innermost-first.", "categories": ["utility", "encoding", "tampering", "fuzzing"], "sha256": "0110370ea4f274d1fc52e0ab1ac7f8c1bb940c91b3d144ff87ac8b41f09c78fe", "permissions": ["modify-requests"], "updated": ""}, {"id": "identity_rotate", "name": "Identity Rotator", "version": "0.1.0", "author": "nullock-builtin", "summary": "Per-host sticky rotation of User-Agent / Accept-Language / Sec-CH-UA across realistic browser profiles.", "categories": ["evasion", "fingerprint", "fuzzing"], "sha256": "57f532cef2afedc3364fdda7be96adc446d28f6169e20af98fbcbd491b51625b", "permissions": ["modify-requests"], "updated": "2026-01-30"}, {"id": "oauth_auditor", "name": "OAuth / OIDC Auditor", "version": "0.1.0", "author": "nullock-builtin", "summary": "Passively audits the OAuth 2.0 / OpenID Connect dance: implicit flow (response_type=token), missing state (CSRF), missing PKCE, tokens leaking into request URLs or 3xx Location headers, and cleartext redirect_uri. Covers the flow around the token that Nullock's native JWT checks don't. Observe-only, no permission.", "categories": ["scanner", "auth", "oauth", "oidc", "passive"], "sha256": "2a64873db885babf7180dd7128317e68c635543dd38ce4a27f3e5e45a5f8186a", "permissions": [], "updated": ""}, {"id": "saml_auditor", "name": "SAML Auditor", "version": "0.1.0", "author": "nullock-builtin", "summary": "Grabs the base64 SAMLResponse/SAMLRequest out of an IdP auto-POST form, decodes it (POST binding), and flags unsigned assertions, XML comment-injection surface (CVE-2017-11427 class), over-long validity windows, missing InResponseTo/Destination, and cleartext ACS endpoints. The passive-detection half of SAML Raider. Observe-only.", "categories": ["scanner", "auth", "saml", "passive"], "sha256": "c193b035506bf8d2523ba58a6ddc43bd0a769e23da635e422fc593485e9be993", "permissions": [], "updated": ""}, {"id": "sourcemap_exposure", "name": "Source Map Exposure", "version": "0.1.0", "author": "nullock-builtin", "summary": "Flags exposed JavaScript/CSS source maps: a served asset referencing an external .map, an inline data: source map, or a .map served directly with sourcesContent (confirmed original-source leak). The starting point of every 'unpack the webpack bundle' recon workflow. Observe-only, no permission.", "categories": ["scanner", "recon", "info-leak", "passive"], "sha256": "2de173cfd005c591e369dde19c7d18745dd4273f63053ee44b2a3cca4dd2d701", "permissions": [], "updated": ""}, {"id": "viewstate_auditor", "name": "ViewState Auditor", "version": "0.1.0", "author": "nullock-builtin", "summary": "Decodes ASP.NET __VIEWSTATE from served forms and flags the unencrypted case (ObjectStateFormatter marker + readable content): state is exposed, and a deserialization/RCE surface if EnableViewStateMac is off (ysoserial.net). Notes __VIEWSTATEGENERATOR presence. Encrypted ViewState is left alone. Observe-only.", "categories": ["scanner", "dotnet", "deserialization", "passive"], "sha256": "247b309ac98d430255040ea00020fe71c4504d9655546df2ba15e8bfdc5f902b", "permissions": [], "updated": ""}]</script>
 <script>
-const list = document.getElementById("list");
+(function () {
+  "use strict";
+  var CATALOG = JSON.parse(document.getElementById("mkt-catalog").textContent);
+  var state = { q: "", cat: "all", sort: "name" };
 
-// Every field below comes out of marketplace.json, which is a file on the
-// network. Interpolating any of it into innerHTML is a stored-XSS sink on this
-// origin -- and this page sits on the same origin as the catalog it renders, so
-// a single bad entry could rewrite what every visitor sees the marketplace to
-// be. Build nodes and set textContent instead; nothing here needs markup.
-const el = (tag, text, cls) => {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = String(text);
-  return n;
-};
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  }
+  function fmtDate(iso) {
+    if (!iso) return "";
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    if (!m) return iso;
+    var mo = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return mo[(+m[2]) - 1] + " " + m[1];
+  }
+  function categories() {
+    var s = [];
+    CATALOG.forEach(function (e) {
+      (e.categories || []).forEach(function (c) { if (s.indexOf(c) < 0) s.push(c); });
+    });
+    s.sort();
+    return ["all"].concat(s);
+  }
+  function filtered() {
+    var q = state.q.trim().toLowerCase();
+    var out = CATALOG.filter(function (e) {
+      if (state.cat !== "all" && (e.categories || []).indexOf(state.cat) < 0) return false;
+      if (!q) return true;
+      var hay = (e.name + " " + e.summary + " " + e.author + " " + (e.categories || []).join(" ")).toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+    out.sort(function (a, b) {
+      return state.sort === "updated"
+        ? String(b.updated || "").localeCompare(String(a.updated || ""))
+        : String(a.name).localeCompare(String(b.name));
+    });
+    return out;
+  }
+  function card(e) {
+    var a = el("a", "mkt-card");
+    a.href = "e/" + encodeURIComponent(e.id) + ".html";  // e.id is [A-Za-z0-9._-] per the catalog gate
 
-// Only ever produce a link we are willing to navigate to. A catalog entry could
-// carry javascript: or data:, and assigning that to href is an execution sink
-// even though the text around it is escaped.
-const safeHttpsUrl = (raw) => {
-  try {
-    const u = new URL(String(raw), location.href);
-    return u.protocol === "https:" ? u.href : null;
-  } catch { return null; }
-};
+    var head = el("div", "mkt-card-head");
+    var title = el("div", "mkt-card-title");
+    title.appendChild(el("h3", null, e.name));
+    title.appendChild(el("span", "mono mkt-card-ver", "v" + e.version));
+    head.appendChild(title);
 
-fetch("./marketplace.json")
-  .then(r => r.json())
-  .then(data => {
-    list.textContent = "";
-    if (!data.extensions || !data.extensions.length) {
-      list.textContent = "No extensions yet.";
-      return;
+    var modifies = (e.permissions || []).length > 0;
+    var badge = el("span", "badge" + (modifies ? "" : " neutral"));
+    badge.appendChild(el("span", "dot"));
+    badge.appendChild(document.createTextNode(modifies ? "modifies traffic" : "observe-only"));
+    head.appendChild(badge);
+    a.appendChild(head);
+
+    a.appendChild(el("p", "mkt-card-summary", e.summary));
+
+    var chips = el("div", "mkt-card-cats");
+    (e.categories || []).forEach(function (c) { chips.appendChild(el("span", "mkt-cat", c)); });
+    a.appendChild(chips);
+
+    var foot = el("div", "mkt-card-foot");
+    var sha = el("span", "mkt-sha mono");
+    sha.title = "sha256:" + e.sha256;
+    sha.appendChild(el("span", "mkt-sha-hex", "sha256 " + String(e.sha256).slice(0, 12) + "\u2026"));
+    foot.appendChild(sha);
+    var view = el("span", "mkt-view", "View source ");
+    view.appendChild(el("span", "mono", "\u2192"));
+    foot.appendChild(view);
+    a.appendChild(foot);
+    return a;
+  }
+  function renderChips() {
+    var host = document.getElementById("mkt-chips");
+    host.textContent = "";
+    categories().forEach(function (c) {
+      var b = el("button", "mkt-chip" + (state.cat === c ? " is-active" : ""), c);
+      b.type = "button";
+      b.addEventListener("click", function () { state.cat = c; render(); });
+      host.appendChild(b);
+    });
+    var count = el("span", "mono dim mkt-count");
+    host.appendChild(count);
+    return count;
+  }
+  function render() {
+    var count = renderChips();
+    var items = filtered();
+    var grid = document.getElementById("mkt-grid");
+    var empty = document.getElementById("mkt-empty");
+    grid.textContent = "";
+    if (items.length) {
+      empty.hidden = true;
+      items.forEach(function (e) { grid.appendChild(card(e)); });
+    } else {
+      empty.hidden = false;
+      document.getElementById("mkt-empty-label").textContent =
+        state.q ? ('No extensions match "' + state.q + '".') : "No extensions in this category.";
     }
-    for (const ext of data.extensions) {
-      const div = el("div", null, "ext");
-
-      const h2 = el("h2", ext.name);
-      const ver = el("span", "v" + (ext.version || "?"));
-      ver.style.cssText = "color:#666;font-weight:400;font-size:12px";
-      h2.append(" ", ver);
-      div.appendChild(h2);
-
-      div.appendChild(el("p", ext.summary || "", "summary"));
-
-      const meta = el("div", null, "meta");
-      meta.appendChild(el("span", "by " + (ext.author || "unknown")));
-      for (const c of (ext.categories || [])) meta.appendChild(el("span", c));
-      meta.appendChild(el("span", "hooks: " + ((ext.hooks || []).join(", ") || "none")));
-      // The integrity pin is the whole trust story, so show it rather than
-      // leaving the reader to take the download on faith.
-      if (ext.sha256) meta.appendChild(el("span", "sha256 " + String(ext.sha256).slice(0, 16) + "…"));
-      if ((ext.permissions || []).length)
-        meta.appendChild(el("span", "modifies traffic: " + ext.permissions.join(", ")));
-      div.appendChild(meta);
-
-      const href = safeHttpsUrl(ext.url);
-      if (href) {
-        const a = el("a", "Download " + (ext.id || "extension") + ".js", "install");
-        a.href = href;
-        a.setAttribute("download", "");
-        a.rel = "noopener noreferrer";
-        div.appendChild(a);
-      } else {
-        div.appendChild(el("p", "(no usable https download url)", "err"));
-      }
-
-      list.appendChild(div);
-    }
-  })
-  .catch(e => {
-    list.textContent = "";
-    list.appendChild(el("p", "Failed to load marketplace.json: " + e, "err"));
+    count.textContent = items.length === CATALOG.length
+      ? CATALOG.length + " extensions"
+      : items.length + " of " + CATALOG.length + " extensions";
+  }
+  document.getElementById("mkt-q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
+  document.getElementById("mkt-clear").addEventListener("click", function () {
+    state.q = ""; state.cat = "all"; document.getElementById("mkt-q").value = ""; render();
   });
+  function setSort(s) {
+    state.sort = s;
+    document.getElementById("sort-name").classList.toggle("is-active", s === "name");
+    document.getElementById("sort-updated").classList.toggle("is-active", s === "updated");
+    render();
+  }
+  document.getElementById("sort-name").addEventListener("click", function () { setSort("name"); });
+  document.getElementById("sort-updated").addEventListener("click", function () { setSort("updated"); });
+  render();
+})();
 </script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../license.html">MIT License</a><span class="f-sep">&middot;</span>
+    <a href="../security.html">Security disclosure</a><span class="f-sep">&middot;</span>
+    <a href="README.md">Publishing</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+  </div>
+  <div>nul&middot;lock &#9656; curated catalog &middot; rendered at build time &middot; MIT</div>
+</footer>
 </body>
 </html>
