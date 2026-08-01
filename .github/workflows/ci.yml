@@ -139,10 +139,18 @@ jobs:
       # a real extensions dir. Both guard the permission model, where the DECISION
       # was always right and the ENFORCEMENT leaked -- a class of bug the pure
       # tests provably could not see. Live-socket suites (port_scan_live) stay OUT.
-      - name: regression tests (scanner + CVE DB + enricher + gate + template + extensions)
+      # control_logic joins last: it compiles control_logic.cpp directly and links
+      # Qt6::Core ALONE (control_server.cpp itself drags in Network/Sql/Qml + the
+      # whole scanner), so it is as fast and deterministic as the rest. It guards
+      # the control-server security gate -- the /api/search ReDoS pre-screen, the
+      # safeJoin path-confinement, bearer-token auth, XML-attribute escaping, and
+      # the /api/search newest-first scan ordering + truncated-iff-incomplete
+      # invariant -- all of which were previously built and run ONLY locally, so a
+      # regression to any of them could reach a release unseen.
+      - name: regression tests (scanner + CVE DB + enricher + gate + template + extensions + control)
         run: |
-          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test
-          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant" --output-on-failure
+          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test control_logic_test
+          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant|control_logic" --output-on-failure
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |
