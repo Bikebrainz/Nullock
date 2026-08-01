@@ -61,6 +61,12 @@ jobs:
       # the build on drift, same contract as the manifest hashes above.
       - name: marketplace site pages are regenerated
         run: python3 scripts/marketplace_site.py --check
+      # The parity roadmap page is generated from docs/roadmap/parity.json. When a
+      # commit closes a Burp-parity gap it updates that item's state in the JSON;
+      # if the page is not regenerated, "what's left" on the public roadmap is
+      # wrong. Fail on drift, same contract as the marketplace generators.
+      - name: parity roadmap page is regenerated
+        run: python3 scripts/parity_report.py --check
 
   python-labs:
     name: labs syntax check
