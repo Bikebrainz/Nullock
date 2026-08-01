@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-07-31",
+  "reconciled_through": "2026-08-01",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -3925,9 +3925,15 @@
       "state": "partial",
       "impact": "high",
       "effort": "hours",
-      "gap": "Cannot scope to a map branch (branches don't exist), no case-sensitivity toggle, no negative match -- and, critically, it silently searches only the oldest 500 rows while reporting a complete result.",
-      "why": "Downgraded on a defect the first pass did not look for. The search loop is hard-capped at the FIRST 500 rows of the in-memory window and does NOT set truncated in that case, so on any engagement past 500 captures the DEEP search silently returns nothing for recent traffic and the UI reports a confident '0'. A search tool that lies about absence is worse than a missing one.",
-      "evidence": "control_server.cpp:1723 `if (path == \"/api/search\") {`, caps at cpp:1755 `constexpr int kSearchRowCap = 500;` and cpp:1803-1806 `const int rowLoopMax = std::min(n, kSearchRowCap); ... for (int row = 0; row < rowLoopMax && hits.size() < limit; ++row) {`. `truncated = true` is set ONLY on the wall-clock path (cpp:1810-1812 `if (searchTimer.elapsed() > kSearchBudgetMs) { truncated = true; break; }`),"
+      "gap": "The critical silent-truncation defect is FIXED (see reconciled). Remaining vs Burp: cannot scope to a site-map branch (branches don't exist yet), no case-sensitivity toggle, no negative-match operator.",
+      "why": "Upgraded within partial. The fail-silent bug -- the scan examined only the OLDEST 500 rows and reported a complete result, and the DEEP filter then hid the matching recent rows -- is resolved. The scan is now newest-first, uncapped (bounded by the 1s wall-clock budget), and reports scanned/total/truncated honestly. Still partial on the UI-scope features Burp has: branch-scoped search, case toggle, negative match.",
+      "evidence": "control_server.cpp /api/search now iterates ControlLogic::searchRowForIteration(n,i) newest-first with NO fixed row cap; truncated = ControlLogic::searchTruncated(scanned,n); the response carries scanned/total/scannedMinId. proxy.jsx HistoryTable keeps rows with id < deepMinId (unscanned) visible. Locks in Tests/control_logic: newest-first mapping + truncated-iff-incomplete, mutation-proven.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-01",
+        "commit": "07e43be",
+        "note": "Fixed the fail-silent oldest-500 row cap: the body search now scans newest-first, is bounded only by the 1s wall-clock budget, and reports scanned/total/truncated so it never answers a confident 0 for traffic it did not examine. Still partial: no site-map-branch scoping, case toggle, or negative match."
+      }
     },
     {
       "area": "target",
