@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insecure deserialization (pickle) — Nullock Labs</title>
+<meta name="description" content="Pickle untrusted -&gt; RCE">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">10</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-port mono">localhost:5010</span>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Insecure deserialization (pickle)</h1>
+  <p class="lead" style="margin-top:12px;">POST /load with a base64-encoded pickle blob in the body. The app calls pickle.loads on it -- arbitrary Python code execution because pickle is Turing-complete by design. WARNING: do not run in any environment you care about. This intentionally executes whatever Python code is in the payload.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/10-deserialization/app.py
+# then open http://localhost:5010/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5010/*</code><code class="inline">http://127.0.0.1:5010/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>Send /load with body: pickle.dumps([1,2,3]) base64-encoded. Response: list info.</li><li>Build a malicious payload: python -c &quot;import pickle,base64,os; \ class E: \ def __reduce__(self): return (os.system, (&#x27;id &gt; /tmp/owned&#x27;,)); \ print(base64.b64encode(pickle.dumps(E())).decode())&quot;</li><li>Send that as the body of /load. The server runs `id &gt; /tmp/owned`.</li><li>Real fix: never deserialize untrusted pickle. Use JSON. If you MUST use pickle, sign it and verify HMAC before loads.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>fix: never deserialize untrusted pickle. Use JSON. If you MUST use pickle, sign it and verify HMAC before loads.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 50 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

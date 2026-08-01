@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weak JWT signing — Nullock Labs</title>
+<meta name="description" content="JWT signed with a short / leaked / `none` alg">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">03</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-port mono">localhost:5003</span>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Weak JWT signing</h1>
+  <p class="lead" style="margin-top:12px;">Accepts JWTs in the Authorization header. Verifies with HS256 + a trivially-guessable secret (&quot;secret&quot;). Also accepts alg=none. The /admin endpoint reads `role` from the payload without re-checking trust beyond the signature -- so flipping `role: &quot;admin&quot;` after re-signing with the leaked secret gives admin access.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/03-jwt-weak/app.py
+# then open http://localhost:5003/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5003/*</code><code class="inline">http://127.0.0.1:5003/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>Hit http://localhost:5003/login -- response includes a JWT.</li><li>Open the encoder panel (decoder dropdown -&gt; JWT) and paste the token. Notice the JWT decoder annotations: [i] HMAC algorithm -- brute-forceable [i] role=&quot;user&quot; -- try tampering [i] expires &lt;X&gt;</li><li>Send /admin to Repeater with the token -- get 403.</li><li>Decode token, change role to &quot;admin&quot;, re-sign with secret &quot;secret&quot; (run `python -c &#x27;import jwt; print(jwt.encode({...}, &quot;secret&quot;))&#x27;`), paste back into Authorization header, fire -- 200.</li><li>Alternatively, swap alg to &quot;none&quot; and strip the signature: header = base64({&quot;alg&quot;:&quot;none&quot;,&quot;typ&quot;:&quot;JWT&quot;}) payload = base64({&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;alice&quot;,&quot;exp&quot;:...}) token = header + &quot;.&quot; + payload + &quot;.&quot;</li></ol>
+
+  
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 50 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

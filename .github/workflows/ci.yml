@@ -67,6 +67,11 @@ jobs:
       # wrong. Fail on drift, same contract as the marketplace generators.
       - name: parity roadmap page is regenerated
         run: python3 scripts/parity_report.py --check
+      # The labs site is generated from labs/README.md + each lab's app.py
+      # docstring + .nullock-project.json. A lab added, renamed, or re-described
+      # without regenerating leaves the public catalog wrong. Same drift gate.
+      - name: labs site pages are regenerated
+        run: python3 scripts/labs_site.py --check
 
   python-labs:
     name: labs syntax check
