@@ -19,7 +19,7 @@ function MethodCell({ m }) {
   return <span className={cls}>{m}</span>;
 }
 
-function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits }) {
+function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId }) {
   const filtered = React.useMemo(() => rows.filter(r => {
     if (hostFilter && !r.host.includes(hostFilter)) return false;
     if (search) {
@@ -35,7 +35,14 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
       ].join(" ").toLowerCase();
       const localHit = blob.includes(s);
       const deepHit  = deepHits ? deepHits.has(r.id) : false;
-      if (!localHit && !deepHit) return false;
+      if (!localHit && !deepHit) {
+        // Never hide a row the server did not actually scan. On a truncated
+        // body scan, rows with id < deepMinId were not examined, so their
+        // absence from the hit set means "unknown", not "no match" -- keep
+        // them visible rather than silently hiding matching traffic.
+        const unscanned = deepHits && deepMinId != null && r.id < deepMinId;
+        if (!unscanned) return false;
+      }
     }
     if (statusClass !== "all") {
       const sc = Math.floor(r.status / 100) + "xx";
@@ -43,7 +50,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     }
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     return true;
-  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits]);
+  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId]);
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
@@ -103,7 +110,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -144,7 +151,9 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
       </div>
       <button
         onClick={() => setDeepSearch && setDeepSearch(!deepSearch)}
-        title="Also search through request and response bodies (regex)"
+        title={deepTruncated
+          ? "Body search hit its time budget before scanning the whole history — showing the most recent matches. Narrow the query for full coverage."
+          : "Also search through request and response bodies (regex)"}
         style={{
           background: deepSearch ? "var(--accent)" : "transparent",
           color: deepSearch ? "var(--bg)" : "var(--accent)",
@@ -153,7 +162,7 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
           textTransform: "uppercase", letterSpacing: "0.06em",
           height: 22,
         }}>
-        DEEP{deepSearch && deepCount !== null ? " · " + deepCount : ""}
+        DEEP{deepSearch && deepCount !== null ? " · " + deepCount + (deepTruncated ? "+" : "") : ""}
       </button>
       {selectedHost && (
         <div className="chip accent" style={{ height: 22 }}>
@@ -1137,8 +1146,13 @@ function ProxyTab({ state, dispatch, showSitemap }) {
   const [deepSearch, setDeepSearch] = React.useState(false);
   const [deepHits, setDeepHits]     = React.useState(null);  // null = no body filter
   const [deepCount, setDeepCount]   = React.useState(null);  // last hit count
+  const [deepTruncated, setDeepTruncated] = React.useState(false); // scan incomplete
+  const [deepMinId, setDeepMinId]   = React.useState(null);  // oldest id server scanned
   React.useEffect(() => {
-    if (!deepSearch || !search) { setDeepHits(null); setDeepCount(null); return; }
+    if (!deepSearch || !search) {
+      setDeepHits(null); setDeepCount(null); setDeepTruncated(false); setDeepMinId(null);
+      return;
+    }
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
@@ -1147,8 +1161,16 @@ function ProxyTab({ state, dispatch, showSitemap }) {
         const ids = new Set((res.hits || []).map(h => h.id));
         setDeepHits(ids);
         setDeepCount(res.count || 0);
+        setDeepTruncated(!!res.truncated);
+        // scannedMinId < 0 (or absent) means "nothing scanned" -> treat as no
+        // lower bound so the filter falls back to the local-column match only.
+        setDeepMinId(typeof res.scannedMinId === "number" && res.scannedMinId >= 0
+                       ? res.scannedMinId : null);
       } catch (e) {
-        if (!cancelled) { setDeepHits(new Set()); setDeepCount(0); }
+        if (!cancelled) {
+          setDeepHits(new Set()); setDeepCount(0);
+          setDeepTruncated(false); setDeepMinId(null);
+        }
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
@@ -1199,7 +1221,7 @@ function ProxyTab({ state, dispatch, showSitemap }) {
           search={search}
           setSearch={v => dispatch({ type: "set", payload: { search: v }})}
           hidden={hidden}
-          onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); dispatch({ type: "set", payload: {
+          onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); setDeepTruncated(false); setDeepMinId(null); dispatch({ type: "set", payload: {
             hostFilter: "", statusClass: "all", methodFilter: "ALL", search: "", selectedHost: null
           }}); }}
           selectedHost={selectedHost}
@@ -1207,6 +1229,7 @@ function ProxyTab({ state, dispatch, showSitemap }) {
           deepSearch={deepSearch}
           setDeepSearch={setDeepSearch}
           deepCount={deepCount}
+          deepTruncated={deepTruncated}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -1218,6 +1241,7 @@ function ProxyTab({ state, dispatch, showSitemap }) {
             methodFilter={methodFilter}
             search={search}
             deepHits={deepSearch ? deepHits : null}
+            deepMinId={deepSearch ? deepMinId : null}
           />
         </div>
         <DetailPane

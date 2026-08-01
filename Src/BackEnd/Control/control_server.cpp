@@ -1729,6 +1729,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/search") {
         QJsonArray hits;
         bool truncated = false;
+        int  scannedRows  = 0;    // rows fully examined
+        int  totalRows    = 0;    // rows available in the in-memory window
+        int  scannedMinId = -1;   // smallest history id examined (-1 = none)
         if (m_wiring.history) {
             const QUrlQuery q(query);
             const QString pattern = q.queryItemValue("q");
@@ -1740,7 +1743,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             // history. PCRE2 (Qt's backend) caps each single match via its
             // internal match_limit (~tens of ms, then it aborts), so no one
             // match hangs forever -- but a hostile pattern can still burn that
-            // budget on EVERY one of up to ~1000 bodies, and /api/search is
+            // budget on EVERY one of up to ~10'000 bodies, and /api/search is
             // cross-origin reachable via a simple GET (reads skip CSRF), so the
             // aggregate would otherwise freeze this (main-thread) scan for
             // seconds. Four guards:
@@ -1751,13 +1754,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             //     ((a|a)+ etc.) that a shape-only check misses. Heuristic, so a
             //     false positive just means "user rewrites a weird regex" -- a
             //     fast-path, not the whole fix.
-            //  3. Truncate each body to kSearchBodyCap and cap rows scanned.
+            //  3. Truncate each body to kSearchBodyCap.
             //  4. Bound the WHOLE scan by a wall-clock budget so a pattern that
             //     slips past (2) still can't freeze the thread past
             //     kSearchBudgetMs -- partial results come back "truncated": true.
+            // There is deliberately NO fixed row cap. The window holds up to
+            // 10'000 rows; a fixed cap (it was 500) silently scanned only the
+            // OLDEST rows -- ProxyModel appends, so row 0 is the oldest -- and
+            // returned a confident 0 for all recent traffic, which the DEEP
+            // history filter then HID. The wall-clock budget is the real bound,
+            // and because we now scan newest-first the budget covers the traffic
+            // a tester actually cares about first; anything the budget cuts off
+            // is reported honestly via scanned/total/truncated.
             constexpr int kPatternMax       = 4 * 1024;
             constexpr int kSearchBodyCap    = 1 * 1024 * 1024;
-            constexpr int kSearchRowCap     = 500;
             constexpr qint64 kSearchBudgetMs = 1000;
             if (pattern.size() > kPatternMax) {
                 return httpJson(400, QJsonObject{{ "error",
@@ -1805,38 +1815,58 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         hit["excerpts"] = QJsonArray::fromStringList(excerpts);
                         hits.append(hit);
                     };
-                    const int rowLoopMax = std::min(n, kSearchRowCap);
                     QElapsedTimer searchTimer;
                     searchTimer.start();
-                    for (int row = 0; row < rowLoopMax && hits.size() < limit; ++row) {
+                    // Scan newest-first (iteration 0 -> row n-1) so a
+                    // budget-limited scan covers the most recent traffic, and
+                    // count only FULLY-examined rows so `truncated` is honest.
+                    int scanned = 0;
+                    int lastScannedRow = -1;
+                    for (int i = 0; i < n && hits.size() < limit; ++i) {
+                        const int row = ControlLogic::searchRowForIteration(n, i);
                         // Wall-clock budget: a pattern that slipped past the
                         // shape pre-screen still can't freeze this (main-thread)
-                        // scan past kSearchBudgetMs -- return what we have so far.
-                        if (searchTimer.elapsed() > kSearchBudgetMs) {
-                            truncated = true;
-                            break;
-                        }
+                        // scan past kSearchBudgetMs -- stop with what we have.
+                        if (searchTimer.elapsed() > kSearchBudgetMs) break;
                         if (where == "req" || where == "both") {
                             QString t = m_wiring.history->requestRawAt(row);
                             if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
                             if (!t.isEmpty()) scan(row, t, "req");
                         }
+                        // Hit limit reached mid-row: this row is only partially
+                        // examined, so it does NOT count toward `scanned`.
                         if (hits.size() >= limit) break;
                         if (where == "resp" || where == "both") {
                             QString t = m_wiring.history->responseRawAt(row);
                             if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
                             if (!t.isEmpty()) scan(row, t, "resp");
                         }
+                        ++scanned;
+                        lastScannedRow = row;   // oldest fully-scanned row so far
                     }
+                    truncated = ControlLogic::searchTruncated(scanned, n);
+                    // Because the scan is contiguous newest-first, every row with
+                    // id >= scannedMinId was fully examined; the frontend uses
+                    // this so it never HIDES a row it did not actually check.
+                    if (lastScannedRow >= 0) {
+                        const QModelIndex mi = m_wiring.history->index(lastScannedRow, 0);
+                        scannedMinId = m_wiring.history->data(mi,
+                            Nullock::FrontEnd::ProxyModel::IdRole).toInt();
+                    }
+                    scannedRows = scanned;
+                    totalRows   = n;
                 } else {
                     return httpJson(400, QJsonObject{{ "error", "invalid regex" }});
                 }
             }
         }
         QJsonObject root;
-        root["hits"]      = hits;
-        root["count"]     = hits.size();
-        root["truncated"] = truncated;
+        root["hits"]        = hits;
+        root["count"]       = hits.size();
+        root["truncated"]   = truncated;
+        root["scanned"]     = scannedRows;
+        root["total"]       = totalRows;
+        root["scannedMinId"] = scannedMinId;
         return httpJson(200, root);
     }
 

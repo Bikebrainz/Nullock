@@ -161,6 +161,19 @@ bool looksLikeCatastrophicRegex(const QString &pattern) {
     return false;
 }
 
+int searchRowForIteration(int n, int i) {
+    // Newest-first: iteration 0 is the last (newest) row. Clamp defensively so a
+    // caller can never turn an out-of-range i into a negative model row.
+    if (n <= 0) return 0;
+    if (i < 0) i = 0;
+    if (i >= n) i = n - 1;
+    return n - 1 - i;
+}
+
+bool searchTruncated(int scanned, int total) {
+    return scanned < total;
+}
+
 int severityRank(const QString &sev) {
     const QString s = sev.toLower();
     if (s == QLatin1String("critical")) return 5;

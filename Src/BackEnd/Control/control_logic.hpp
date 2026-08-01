@@ -126,6 +126,26 @@ bool hasRequestSmugglingChars(const QString &s);
 // precisely without over-rejecting), so it is a fast-path, NOT the whole defence.
 bool looksLikeCatastrophicRegex(const QString &pattern);
 
+// --- /api/search scan ordering + completeness ----------------------------
+// ProxyModel appends, so row 0 is the OLDEST capture and row (n-1) is the
+// NEWEST. A time-bounded body scan must therefore start at the newest row so
+// that on a busy engagement (the in-memory window holds up to 10'000 rows) the
+// results a tester actually cares about -- the request they just sent -- are
+// the ones covered before the wall-clock budget runs out. This maps the i-th
+// scan iteration (0-based) to a model row, newest-first: i=0 -> n-1, i=1 -> n-2.
+// Precondition 0 <= i < n; out-of-range i clamps into [0, n-1] rather than
+// returning a negative index a caller might feed straight to model->index().
+int searchRowForIteration(int n, int i);
+
+// A body scan is COMPLETE only if it examined every row. `scanned` is the count
+// of rows actually inspected before the loop stopped (wall-clock budget or hit
+// limit); when it is short of `total` the endpoint MUST report truncated:true,
+// because a search tool that silently omits recent traffic and answers a
+// confident "0" is worse than one that admits it did not finish. This is the
+// single source of that truth -- the old fixed 500-row cap set truncated only
+// on the wall-clock path, so a >500-capture history returned a silent lie.
+bool searchTruncated(int scanned, int total);
+
 // --- Filesystem path confinement -----------------------------------------
 // Join an attacker-influenced relative path `rel` onto a trusted base `dir`,
 // confining the result to `dir`. Strips leading '/' and '\\' (so an "absolute"

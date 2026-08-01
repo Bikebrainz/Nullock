@@ -204,6 +204,29 @@ int main(int argc, char **argv) {
     chk("redos: anchored line accepted",       !looksLikeCatastrophicRegex("^Set-Cookie: .*$"));
     chk("redos: empty accepted",               !looksLikeCatastrophicRegex(""));
 
+    // ===== /api/search scan ordering + completeness =====================
+    // Locks searchRowForIteration + searchTruncated. ProxyModel APPENDS, so
+    // row 0 is the OLDEST capture; the body scan MUST run newest-first
+    // (iteration 0 -> row n-1) so a time-bounded scan covers recent traffic,
+    // and MUST report truncated whenever it did not examine every row. The old
+    // handler scanned the OLDEST 500 rows and set truncated only on the
+    // wall-clock path, so a >500-capture history silently omitted all recent
+    // traffic and answered a confident 0 -- and the DEEP filter then hid it.
+    // --- newest-first mapping ---
+    chk("search: iter 0 -> newest row (n-1)",   searchRowForIteration(1000, 0) == 999);
+    chk("search: iter 1 -> second-newest",      searchRowForIteration(1000, 1) == 998);
+    chk("search: last iter -> oldest row 0",    searchRowForIteration(1000, 999) == 0);
+    chk("search: single-row window -> row 0",   searchRowForIteration(1, 0) == 0);
+    // --- defensive clamps: an out-of-range i can never become a negative row ---
+    chk("search: i>=n clamps to oldest row 0",  searchRowForIteration(10, 10) == 0);
+    chk("search: negative i clamps to newest",  searchRowForIteration(10, -1) == 9);
+    chk("search: empty window -> row 0 (no UB)", searchRowForIteration(0, 0) == 0);
+    // --- completeness signal (the honesty invariant) ---
+    chk("search: scanned all -> not truncated",     !searchTruncated(1000, 1000));
+    chk("search: scanned a suffix -> truncated",     searchTruncated(500, 1000));
+    chk("search: scanned none of many -> truncated", searchTruncated(0, 1000));
+    chk("search: empty history -> not truncated",   !searchTruncated(0, 0));
+
     // ===== path-confinement safeJoin ====================================
     // Locks the static-file + project-template traversal guard (a compiled
     // probe proved it holds on Windows; this pins it). Empty return == rejected;
