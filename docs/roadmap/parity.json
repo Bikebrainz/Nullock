@@ -3105,12 +3105,18 @@
     {
       "area": "repeater",
       "feature": "Repeater: \"Copy as curl command\" / copy request to other tooling",
-      "state": "partial",
+      "state": "exceeds",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Nine export targets vs Burp's one is a real advantage, but unreachable from the tool where you have actually finished crafting the request. renderRequestAs also takes (row, raw) — it needs a history row for the URL, so wiring it into Repeater means a small refactor, not just moving a button.",
-      "why": "Verified. Nine exporters with sensitive-header redaction exist and are genuinely better than Burp's single 'Copy as curl' — but the menu is mounted only in DetailPane, which renders for a proxy history row, and Repeater's header row has no such control.",
-      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx COPY AS menu lists `[\"curl\",...],[\"wget\",...],[\"httpie\",...],[\"powershell\",...],[\"fetch\",...],[\"sqlmap\",...],[\"postman\",...],[\"nuclei\",...],[\"burp-raw\",...]` -> `renderRequestAs(k, row, req)` (proxy.jsx:454+). Redaction verified at proxy.jsx:443-452 `const REDACTED_HEADERS = new Set([\"authorization\", \"proxy-authorization\", \"cookie\", \"set-cookie\", \"x-api-key\", ...]); "
+      "gap": "None. Nine exporters (curl/wget/httpie/powershell/fetch/sqlmap/postman/nuclei/burp-raw), each with sensitive-header redaction, now reachable from BOTH proxy history and the Repeater toolbar -- vs Burp's single 'Copy as curl'.",
+      "why": "Closed 2026-08-02: the exporters existed but were reachable only from a proxy-history row. Wired the same shared renderRequestAs into the Repeater toolbar (clipboard, token-redacted). Exceeds Burp on format count and on redaction, which Burp does not do.",
+      "evidence": "ui-v2/tabs.jsx RepeaterTab COPY AS dropdown -> global renderRequestAs(row, rep.request); verified under bundled @babel/standalone 7.29.0 + a functional test confirming URL assembly, POST derivation, and Authorization/Cookie redaction.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-02",
+        "commit": "ff6583d",
+        "note": "COPY AS wired into Repeater with all 9 redacting exporters; functional + real-babel verified."
+      }
     },
     {
       "area": "repeater",
