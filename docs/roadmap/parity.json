@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-08-01",
+  "reconciled_through": "2026-08-02",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -183,12 +183,13 @@
     {
       "area": "intruder",
       "feature": "Grep - Extract",
-      "state": "present",
+      "state": "partial",
       "impact": "low",
       "effort": "days",
-      "gap": "One extract slot; Burp allows multiple named extract columns and a 'define from response' picker. The GUI exposes regex only — the delimiter (start/end) mode is API-only.",
-      "why": "Re-read grepExtract; regex (1st capture/whole) AND start/end delimiter modes confirmed. GUI exposes only the regex mode.",
-      "evidence": "intruder_grep.cpp:38-71 regex mode (m.captured(1)/(0)) and delimiter mode. tabs.jsx:578-587 GREP·EXTRACT input sends `{regex}`; tabs.jsx:752-753 Extract column."
+      "gap": "Backend supports both regex and start/end-delimiter extract, but an attempt stores only ONE extracted value and the UI exposes a single regex Extract column -- Burp allows multiple grep-extract items per attack.",
+      "why": "Corrected from 'present' on independent re-derivation (2026-08-02): intruder.cpp:143 returns a single m_extracted QString (one ExtractedRole), so multi-extract parity with Burp is not met.",
+      "evidence": "intruder.cpp:143 `case ExtractedRole: return a->m_extracted;` (single QString); intruder_grep.cpp implements regex+delimiter modes; tabs.jsx sends only {regex} with one Extract column.",
+      "audited_state": "present"
     },
     {
       "area": "intruder",
@@ -993,12 +994,13 @@
     {
       "area": "extender",
       "feature": "[A4] Extension auto-reload during development (Auto-reload checkbox; Ctrl/Cmd-click to reload a single extension)",
-      "state": "stub",
+      "state": "absent",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No filesystem watcher, no auto-reload toggle, no single-extension reload. Reload is global and not a clean slate (the QJSEngine is never recreated — see B21). Docs advertise a CLI subcommand the binary does not implement.",
-      "why": "DOWNGRADED. The auditor graded the adjacent capability, not this one. The Burp feature is AUTO-reload plus per-extension reload; neither exists. I re-ran `grep -rn QFileSystemWatcher Src/` myself = 0 hits, and reload() is unconditionally global. What exists is the plain manual global reload the feature is meant to replace, so 'the mechanism is there but the feature is not' = stub. I also independe",
-      "evidence": "extensions_api.cpp:104-108 `bool ExtensionsApi::reload() { m_onResponseHandlers.clear(); m_onRequestHandlers.clear(); refreshHandlerFlags(); m_loadedScripts.clear();` (no argument, no per-script path); control_server.cpp:5736 `if (path == \"/api/extensions/reload\")`; ui-v2/real-data.js:165 `reloadExtensions() { return post(\"/api/extensions/reload\"); }`; docs/marketplace/index.html:59 `<pre>nullock "
+      "gap": "No filesystem-watcher / auto-reload exists (grep QFileSystemWatcher|autoReload in Src is empty); only a single manual global Reload button driving /api/extensions/reload, a different capability.",
+      "why": "Corrected from 'stub' on independent re-derivation (2026-08-02): there is no auto-reload scaffold at all, so this is absent rather than a partial stub.",
+      "evidence": "grep QFileSystemWatcher|autoReload in Src/ = empty; extensions_api.cpp reload() is a global engine rebuild; ui-v2/app.jsx has one manual Reload button.",
+      "audited_state": "stub"
     },
     {
       "area": "extender",
@@ -2152,12 +2154,13 @@
     {
       "area": "platform",
       "feature": "Scan-to-scan issue delta (new vs fixed findings between runs)",
-      "state": "present",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "API-only (no UI anywhere). Diff is only meaningful within a single process lifetime because the current-findings side does not persist — reopen a project and /api/baseline/diff falsely reports every baselined issue as FIXED.",
-      "why": "DOWNGRADED from exceeds. The mechanism is real — I read save/status/clear/diff in full, the QSaveFile atomicity, and the save-time dedup that keeps counts consistent. But two things the first pass missed cap it at 'present'. (1) There is NO UI: I grepped ui-v2 for 'baseline' and every hit is the CSS value `alignItems: \"baseline\"`. (2) The diff's CURRENT side is `scanner->findings(0)`, which is RAM",
-      "evidence": "Identity key + atomic write real: control_server.cpp:4056-4059 `auto keyOf = [&](...) { return kind + sep + host + sep + url + sep + summary; };`; :4092-4096 QSaveFile with `if (fh.write(out) != out.size() || !fh.commit()) return okJson({{ \"ok\", false }, ...})`. The restart trap: control_server.cpp:4163 `for (const auto &f : m_wiring.scanner->findings(0)) { ... curKeys.insert(k); }` then :4174-417"
+      "gap": "The baseline persists to a file and /api/baseline/diff computes new-vs-fixed correctly, but the CURRENT set is in-memory only and there is NO GUI to run or view the delta -- Burp surfaces it in the UI.",
+      "why": "Corrected from 'present' on independent re-derivation (2026-08-02): the delta engine and baseline file persistence are real, but with no ui-v2 caller it is not at Burp parity.",
+      "evidence": "control_server.cpp:4189-4218 /api/baseline/diff (loadBaseline file + scanner->findings(0) in-memory current); no 'baseline' reference anywhere in ui-v2.",
+      "audited_state": "present"
     },
     {
       "area": "platform",
