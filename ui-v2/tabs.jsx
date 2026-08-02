@@ -119,6 +119,40 @@ function RepeaterTab({ rep, dispatch }) {
     if (next !== null && next !== cur) NL.actions.repeaterTabRename(i, next);
   };
 
+  // COPY AS: the request the tester just finished crafting, exported as a
+  // command for another tool. Reuses renderRequestAs()/parseRawRequest() from
+  // proxy.jsx (both are top-level function declarations, so they live in the
+  // shared global scope; proxy.jsx loads before tabs.jsx). Those helpers
+  // re-derive method/headers/body from the raw request text and need only the
+  // scheme/host/port + path to build the URL, which we assemble from the
+  // Repeater target here. Matches Burp's clipboard-based "Copy as curl".
+  const [copyOpen, setCopyOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState("");
+  const copyAs = (k) => {
+    setCopyOpen(false);
+    if (typeof renderRequestAs !== "function") return;
+    const firstLine = (rep.request || "").split(/\r?\n/, 1)[0] || "";
+    const parts = firstLine.split(" ");
+    const row = {
+      // id is used only as a label in the postman/nuclei exports; there is no
+      // history row behind a Repeater tab, so give it a stable readable tag
+      // instead of letting it render as "undefined".
+      id: "repeater",
+      tls: rep.tls,
+      host: rep.host,
+      port: parseInt(rep.port, 10) || (rep.tls ? 443 : 80),
+      url: parts[1] || "/",
+      method: parts[0] || "GET",
+    };
+    try {
+      const out = renderRequestAs(k, row, rep.request);
+      const done = () => { setCopied(k); setTimeout(() => setCopied(""), 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(out).then(done, done);
+      else done();
+    } catch (e) { /* renderRequestAs is defensive; swallow */ }
+  };
+
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
       <div className="pane-head">
@@ -212,6 +246,45 @@ function RepeaterTab({ rep, dispatch }) {
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           STATUS: <span style={{ color: "var(--accent)" }}>{rep.statusLine}</span>
         </span>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button className="btn" onClick={() => setCopyOpen(o => !o)}
+                  title="Copy this request as a command for another tool">
+            {copied ? "✓ " + copied.toUpperCase() : "↦ COPY AS ▾"}
+          </button>
+          {copyOpen && (
+            <div onClick={(e) => e.stopPropagation()}
+                 style={{
+                   position: "absolute", top: "100%", right: 0, zIndex: 30,
+                   background: "var(--pane)", border: "1px solid var(--accent)",
+                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                   fontFamily: "var(--ff-mono)", fontSize: "11px",
+                   minWidth: 180, marginTop: 4,
+                 }}>
+              {[
+                ["curl",       "Unix-y, --insecure for self-signed"],
+                ["wget",       "Same syntax shape as curl"],
+                ["httpie",     "Cleaner one-liner"],
+                ["powershell", "Invoke-WebRequest"],
+                ["fetch",      "JavaScript fetch() in browser/node"],
+                ["sqlmap",     "Pre-armed sqlmap command line"],
+                ["postman",    "Single-item Postman collection JSON"],
+                ["nuclei",     "Nuclei template skeleton"],
+                ["burp-raw",   "Raw request bytes (Burp Repeater paste)"],
+              ].map(([k, hint]) => (
+                <div key={k}
+                     onClick={() => copyAs(k)}
+                     style={{
+                       padding: "5px 10px", cursor: "pointer",
+                       borderBottom: "1px solid var(--line-soft)",
+                       color: "var(--text)",
+                     }}>
+                  <div style={{ color: "var(--accent)" }}>{k}</div>
+                  <div style={{ color: "var(--dim)", fontSize: "10px" }}>{hint}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <button className="btn" onClick={() => dispatch({ type: "repeater-clear" })}>CLEAR</button>
         <button className="btn primary" onClick={send} disabled={busy}>
           {busy ? "SENDING…" : "▶ SEND"}
