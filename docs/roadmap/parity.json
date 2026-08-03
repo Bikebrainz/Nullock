@@ -414,12 +414,13 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Decode",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "No decode processing step (deliberate, but a Burp rule Nullock lacks).",
-      "why": "Confirmed and deliberate: the comment states decode ops are excluded on purpose; operations() lists no *-decode.",
-      "evidence": "intruder_rules.cpp:56-58 `// Decode ops are excluded on purpose -- an Intruder payload is authored, not received.`"
+      "gap": "MISCLASSIFICATION. The decode capability already EXECUTES: applyRule delegates any non-local op to Transcode::apply (intruder_rules.cpp:45-46), and Transcode::apply supports base64-decode/base64url-decode/url-decode/html-decode/hex-decode/jwt-decode (transcode.cpp:243-248). So passing op=\"base64-decode\" as a rule already decodes today. Only the discovery list operations() deliberately omits them (",
+      "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "evidence": "intruder_rules.cpp:45-46 fallthrough to Transcode::apply(op,value); transcode.cpp:229-235 ops() and :243-248 apply() implement base64/url/html/hex/jwt decode; intruder_rules.cpp:56-58 comment excludes them from the advertised list only.",
+      "audited_state": "absent"
     },
     {
       "area": "intruder",
@@ -1216,12 +1217,13 @@
     {
       "area": "extender",
       "feature": "[B17] Extension access to sitemap and proxy history (api.siteMap(), api.proxy().history()); adding issues to the sitemap",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No retrospective analysis — 'analyse my history' extensions are impossible.",
-      "why": "CONFIRMED. I re-read both entry builders: an extension is handed exactly one message, constructed per event, with no handle back to storage. No query method on the bridge, and reportFinding writes with rowId 0 so it cannot even link to the row that triggered it.",
-      "evidence": "extensions_api.cpp:174-203 builds one `entry` per response (method/host/port/path/scheme/url/status/reasonPhrase/responseSize/bodyPreview/headers) and extensions_api.cpp:333-339 one per request; extensions_api.cpp:77 `scanner->reportFinding(0, severity, kind, ...)`"
+      "gap": "Reclassify absent->partial: the 'add issues' half IS present — reportFinding(severity,kind,summary,evidence,url) routes into the same findings/scanner sink with CWE/OWASP/CVSS enrichment (extensions_api.cpp:61-78), which is the addToSiteMap-issue equivalent. The READ half (api.siteMap()/api.proxy().history()) is still absent — extensions only see the single live entry built per request/response, n",
+      "why": "Reclassified absent -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
+      "evidence": "extensions_api.cpp:61-78 reportFinding->scanner sink (issue-add works); onResponseReceived (196-240) builds one live entry only; no history/siteMap read method on the bridge",
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1256,12 +1258,13 @@
     {
       "area": "extender",
       "feature": "[B21] Extension unloading handler (registerUnloadingHandler) — clean teardown",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
-      "gap": "No teardown notification, and reload is not a clean slate: the QJSEngine is never recreated, so state from a previous load — or from a script the user has just UNINSTALLED — persists in the shared global scope.",
-      "why": "CONFIRMED, and I am RAISING the impact from medium to high because the uncommitted marketplace work makes it materially worse. I re-read reload() in full: the comment says 'Easier: recreate the engine altogether' and then the code only calls collectGarbage(), so globals and prototype patches from a previous load survive. /api/marketplace/uninstall now calls that same reload() — meaning 'uninstall'",
-      "evidence": "extensions_api.cpp:111-117 `// Reset the engine by clearing the global except our nullock object. // Easier: recreate the engine altogether. m_engine.collectGarbage(); // Re-init globals. QJSValue nullockObj = m_engine.newQObject(m_bridge); m_engine.globalObject().setProperty(\"nullock\", nullockObj); loadAll();`; control_server.cpp:5433 `if (ok) m_wiring.extensions->reload();` (the uninstall path)"
+      "gap": "STALE PRIOR EVIDENCE — reclassify absent->partial. The gap's core claim ('the QJSEngine is never recreated, so an uninstalled script's globals persist in shared scope until restart') is NO LONGER TRUE: reload() now calls rebuildEngine(), which destroys the engine and constructs a fresh one, re-publishing `nullock` (extensions_api.cpp:93-107, 121-146). So the clean-slate half is DONE. What remains ",
+      "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "evidence": "extensions_api.cpp:93-107 rebuildEngine() destroys+recreates the engine; reload() 121-146 calls it — the 'globals persist' concern is resolved; no onUnload/registerUnloadingHandler invokable exists (hpp:191-212)",
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1348,22 +1351,24 @@
     {
       "area": "extender",
       "feature": "[B29] BApp Store: search box and category filtering",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "No search, no category filter, no sort. Structural absence rather than a scale problem.",
-      "why": "CONFIRMED. docs/marketplace/index.html is untouched by the working-tree changes (not in git diff) and I re-read it: an unfiltered loop with no input element. The new catalog API returns categories per entry but performs no filtering and has no UI to filter from.",
-      "evidence": "docs/marketplace/index.html:79 `for (const ext of data.extensions) {` with no predicate and no <input> anywhere in the file; control_server.cpp catalog handler emits `{ \"categories\", QJsonArray::fromStringList(m.entry.categories) }` but accepts no query parameter"
+      "gap": "STALE evidence. The PUBLISHED catalog website (docs/marketplace/index.html:44-192) now has a full search input (name/summary/author/category), clickable category chips (state.cat filter, filtered() at :99-113), and a name/updated sort segmented control — a complete reference implementation. But the IN-APP store (ui-v2/app.jsx Marketplace) still renders state.items unfiltered with no search/categor",
+      "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "evidence": "ui-v2/app.jsx:342 state.items.map with no predicate + no <input> in the component; docs/marketplace/index.html:46 search input, :91-113 categories()/filtered(), :183-190 sort handlers",
+      "audited_state": "absent"
     },
     {
       "area": "extender",
       "feature": "[B30] BApp Store: ratings/popularity, 'Last updated' column and sorting",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "weeks",
-      "gap": "No social-proof signal and no backend that could collect one.",
-      "why": "CONFIRMED, including against the new schema — I grepped the rewritten marketplace.json and the new CatalogEntry struct for rating/popularity/installs: zero. The catalog does now carry a top-level `updated` string, but it is per-catalog, not per-extension, and nothing sorts on it.",
-      "evidence": "marketplace_logic.hpp:64-77 CatalogEntry has no rating/popularity/installs member; marketplace_logic.cpp:75 `c.updated = str(root, \"updated\", 32);` — document-level only"
+      "gap": "Two halves. LAST-UPDATED + SORTING now exist on the website store: catalog entries carry a per-entry 'updated' field (extensions/marketplace.json, e.g. dom_taint '2026-06-09') and docs/marketplace/index.html sorts by it (:107-111, sort-updated button). RATINGS/POPULARITY/installs remain absent everywhere with no backend to collect them — CatalogEntry (marketplace_logic.hpp:64-77) has no rating/ins",
+      "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "evidence": "marketplace_logic.hpp:64-77 CatalogEntry has no rating/installs/updated member; docs/marketplace/index.html:107-111 sort by b.updated; extensions/marketplace.json per-entry 'updated' present but dropped by the C++ catalog parser",
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1484,12 +1489,13 @@
     {
       "area": "sequencer",
       "feature": "Live capture option: \"Ignore token length differences\" (tolerate variable-length tokens)",
-      "state": "stub",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "Not an option at all — a private early-return in one test. Off-modal-width tokens are dropped silently with no count, no list, no reason string, and no override. When the modal width is not a strict majority the whole positional test disappears from the report as a bare `applicable:false`, indistinguishable from \"corpus too small\" or \"tokens under 8 chars\".",
-      "why": "Re-read sequencer_logic.cpp:252-298 in full. The quoted code exists verbatim, but the first pass over-credited it. The modal-width pick is INTERNAL to positionalEntropy() only — no other test consults it, there is no option, and there is no UI or API field to set one. It is a private guard inside one of eight tests, not a capture option. Downgraded partial -> stub.",
-      "evidence": "sequencer_logic.cpp:257-265: `QHash<int, int> widthCount; for (const QString &t : tokens) widthCount[t.size()]++; int modeW = 0, modeC = 0; ... if (modeW < 8 || modeC < kDeepMinN || modeC * 2 < tokens.size()) return r; QStringList fw; for (const QString &t : tokens) if (t.size() == modeW) fw << t;` — `r` is returned with `applicable=false`, and the caller at :546 emits only `posObj[\"applicable\"] ="
+      "gap": "The core analysis (Shannon, char-class, hamming, LCS, sequential) already runs over the full variable-length list -- only the positional and bit-level cross-sample tests require a fixed modal width and silently drop off-width tokens (sequencer_logic.cpp:262 gate `if (modeW<8 || modeC<kDeepMinN || modeC*2<tokens.size()) return r;`), surfacing a bare `applicable:false` at :546 that is indistinguisha",
+      "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
+      "evidence": "sequencer_logic.cpp:257-268 (modal-width selection + drop gate), :262 (silent early return -> applicable=false), :544-556 (caller emits only applicable + fields, no dropped count / reason); core tests at :433-539 already consume the raw variable-length list.",
+      "audited_state": "stub"
     },
     {
       "area": "sequencer",
@@ -1694,12 +1700,13 @@
     {
       "area": "sequencer",
       "feature": "Cookie jar transport safety (do not replay a Secure cookie over cleartext)",
-      "state": "present",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Port-number proxy for TLS, not a TLS check. False negative: any HTTPS target on a non-443 port (8443, 4443, a container mapping) silently loses every Secure cookie — the single most common way a captured session stops working with no error. False positive direction: a cleartext request to port 443 passes the gate. The fix is to add a tls flag to HttpRequest and test that instead.",
-      "why": "DOWNGRADED exceeds -> present. The code is verbatim as quoted, but I checked what it actually has to work with: `HttpRequest` (proxy_server.hpp:34-44) carries NO TLS flag — only `quint16 port = 80`. So this is not a transport check at all, it is a port-number heuristic, and it is wrong in BOTH directions. It over-blocks 8443/8080-TLS and it would happily inject a Secure cookie into a cleartext req",
-      "evidence": "session_manager_logic.cpp:118-121 verbatim: `bool injectableOverTransport(const CapturedCookie &c, int port) { if (!c.secure) return true;     // a non-Secure cookie may ride any transport / return port == 443;             // Secure: fail closed to the standard TLS port }`, enforced at session_manager.cpp:131 `if (!SessionLogic::injectableOverTransport(c, req.port)) continue;`. The missing input: "
+      "gap": "The gate is still a port heuristic, not a TLS check: injectableOverTransport returns `port == 443` for Secure cookies. Confirmed HttpRequest (proxy_server.hpp:34-44) has NO tls/secure/scheme field, and session_manager.cpp:131 passes only req.port. Fix: (1) add `bool tls = false;` to Nullock::Proxy::HttpRequest; (2) set it true at the two places requests are constructed on a TLS connection (proxy M",
+      "why": "Reclassified present -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "evidence": "session_manager_logic.cpp:118-121 (`if (!c.secure) return true; return port == 443;`); session_manager.cpp:131 (`injectableOverTransport(c, req.port)`); proxy_server.hpp:34-44 (HttpRequest struct — method/target/host/port/path/headers/body/timestamp, no tls flag).",
+      "audited_state": "present"
     },
     {
       "area": "sequencer",
@@ -2355,12 +2362,13 @@
     {
       "area": "platform",
       "feature": "Logger (records HTTP traffic from ALL Burp tools and extensions, not just the proxy)",
-      "state": "stub",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
-      "gap": "No tool attribution on any row, and Repeater / Intruder / scanner-battery traffic never lands in history at all — so you still cannot see what those tools put on the wire, and cannot tell crawler rows from browser rows.",
-      "why": "UPGRADED — the first pass overstated this. I traced every addResponse/appendEntry call site rather than grepping for the word 'Logger', and non-proxy traffic DOES reach the shared history from three places: the crawler, the history-replay path (which also feeds the scanner), and OpenAPI import. Their specific claim that 'the crawler-driven probes' are invisible is false. What remains true, and is ",
-      "evidence": "Crawler logs: Src/App/app.cpp:941-944 `QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded, &model, &Nullock::FrontEnd::ProxyModel::addResponse); QObject::connect(&crawler, ..., &projectStore, &Nullock::Core::ProjectStore::appendEntry);`. Replay logs: control_server.cpp:2902-2904 `if (w.history) w.history->addResponse(r, resp); if (w.scanner) w.scanner->onResponseReceived(r, resp); if "
+      "gap": "Reclassify stub->partial: the prior 'Repeater traffic never lands in history' is now STALE — the /api/.../replay handler appends replayed responses to both history model and ProjectStore (control_server.cpp:2944-2946), and the crawler already logs (app.cpp entryLoaded->addResponse/appendEntry). What is genuinely still missing is (a) any tool-attribution/source column — ProxyModel::Roles has no Sou",
+      "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
+      "evidence": "control_server.cpp:2885 `if (parts[1]==\"replay\")` -> :2944-2946 `if (w.history) w.history->addResponse(r,resp); ... if(w.projectStore) w.projectStore->appendEntry(r,resp);`. proxy_model.hpp:14-24 Roles {Id,Host,Method,Url,StatusCode,Mime,Params,Tls,Ip,Timestamp} — no source/tool. intruder.cpp:105-106 own model. No source column in history_logic.",
+      "audited_state": "stub"
     },
     {
       "area": "platform",
@@ -2775,12 +2783,13 @@
     {
       "area": "proxy",
       "feature": "'Don't send items to Proxy history or live tasks, if out of scope'",
-      "state": "present",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "Not optional -- out-of-scope items are ALWAYS excluded from history and ALWAYS denied MITM. Burp lets you log everything and filter the view later, which is how most people work before scope is settled.",
-      "why": "Verified both gates, the glob compiler, the out-of-scope-wins precedence and the operator-facing filtered counter. Behaviour is exactly as claimed. Present stands; the 'not optional' gap is real and I confirmed there is no toggle for it anywhere.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:264-266 `const bool inScope = m_server->isInScope(req.host);\\n        if (inScope) emit m_server->requestReceived(req);\\n        else         m_server->noteFiltered();` ; CONNECT side :327-334; precedence at :1329-1338 `// Out-of-scope wins.\\n    for (const auto &rx : m_outOfScope)\\n        if (rx.match(host).hasMatch()) return false;` ; counter surfaced via prox"
+      "gap": "The BEHAVIOR is present but hardwired ON with no toggle, so it does not match Burp's optional checkbox — reclassify to partial. Out-of-scope items are always excluded from history (proxy_server.cpp:285-287) and always denied MITM (runTunnel, proxy_server.cpp:348-357). Add a ProxyServer bool (default keep current behavior) + a /api/proxy/opt endpoint + UI checkbox that, when enabled, still emits re",
+      "why": "Reclassified present -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
+      "evidence": "proxy_server.cpp:285-287 (inScope gate on requestReceived emit); proxy_server.cpp:348-357 (out-of-scope never MITM'd); scope precedence proxy_server.cpp:1368-1374; no toggle for logging out-of-scope exists.",
+      "audited_state": "present"
     },
     {
       "area": "proxy",
@@ -3641,12 +3650,13 @@
     {
       "area": "repeater",
       "feature": "Inspector: docked structured side panel in the Repeater / Intruder / Proxy message editors",
-      "state": "stub",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Engine written, tested and HTTP-reachable; zero delivered surface. A pentester has no Inspector unless they curl it by hand. The work left is a docked panel in the message editors plus the write direction (B28).",
-      "why": "UPGRADED from absent to stub. The auditor's evidence is correct that no panel exists and nothing calls the endpoint — but a working, tested parsing engine IS reachable over HTTP today, which is more than 'absent'. Calling it absent would hide the fact that the remaining work is a UI, not an engine.",
-      "evidence": "Live endpoint: D:/dev/Nullock/Src/BackEnd/Control/control_server.cpp:9400-9412 `if (path == \"/api/inspect\") { ... const QJsonObject view = (kind == QLatin1String(\"response\")) ? IN::inspectResponse(raw) : IN::inspectRequest(raw); return httpJson(200, QJsonObject{{ \"ok\", true }, { \"kind\", kind }, { \"view\", view }}); }` over a full implementation (Src/Core/Networking/inspector_logic.cpp:153-271). No "
+      "gap": "Reclassify stub->partial: the engine is a COMPLETE implementation, not scaffold — /api/inspect is live (control_server.cpp:9442-9454) over inspectRequest/inspectResponse (inspector_logic.cpp:153-271) returning method/target/path/query/queryParams/headers/cookies/contentType/bodyParams/bodyKind/jwts (request) and version/status/reason/headers/setCookies/contentType/bodySize/bodyPreview/jwts (respon",
+      "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
+      "evidence": "control_server.cpp:9442-9454 /api/inspect returns full view; inspector_logic.cpp:153-271 complete impl; ui-v2 grep for inspect/inspector returns zero non-vendor hits (no delivered UI).",
+      "audited_state": "stub"
     },
     {
       "area": "repeater",
