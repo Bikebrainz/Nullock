@@ -139,6 +139,7 @@ def build(doc):
       <a href="../index.html">Product</a>
       <a href="../docs/index.html">Docs</a>
       <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html">Labs</a>
       <a href="index.html" class="active">Roadmap</a>
       <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
       <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>

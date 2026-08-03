@@ -190,14 +190,34 @@ def highlight(src):
 
 # --------------------------------------------------------------------------- markup
 
-def nav(active):
-    def link(href, label, key):
+# Every cross-section link is expressed relative to the docs/ site ROOT, then
+# joined with `prefix` -- the path from THIS page's directory up to docs/.
+# Depth-1 pages (docs/marketplace/index.html, publish.html) use "../"; depth-2
+# extension detail pages (docs/marketplace/e/<id>.html) use "../../". Getting
+# this wrong is exactly the bug that stranded users on the detail pages: they
+# were emitted at depth 2 but carried depth-1 paths, so the stylesheet AND
+# every nav link 404'd. The whole nav set (Product/Docs/Extensions/Labs/
+# Roadmap) is present on every page so no section is a dead end.
+NAV_SECTIONS = [
+    ("index.html",             "Product",    "product"),
+    ("docs/index.html",        "Docs",       "docs"),
+    ("marketplace/index.html", "Extensions", "extensions"),
+    ("labs/index.html",        "Labs",       "labs"),
+    ("roadmap/index.html",     "Roadmap",    "roadmap"),
+]
+
+
+def nav(active, prefix="../"):
+    def link(rel, label, key):
         cls = ' class="active"' if key == active else ""
-        return '<a href="%s"%s>%s</a>' % (href, cls, label)
+        return '<a href="%s%s"%s>%s</a>' % (prefix, rel, cls, label)
+    links = "\n      ".join(link(rel, label, key) for rel, label, key in NAV_SECTIONS)
+    publish_cls = ' class="active"' if active == "publish" else ""
+    publish = '<a href="%smarketplace/publish.html"%s>Publish</a>' % (prefix, publish_cls)
     return """<nav class="nav">
   <div class="nav-inner">
-    <a class="brand" href="../index.html" aria-label="nullock home">
-      <img class="mark" src="../assets/favicon.svg" alt="">
+    <a class="brand" href="%sindex.html" aria-label="nullock home">
+      <img class="mark" src="%sassets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
     <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ marketplace</span>
@@ -205,31 +225,25 @@ def nav(active):
     <div class="nav-links" id="nav-links">
       %s
       %s
-      %s
-      %s
       <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
     </div>
   </div>
-</nav>""" % (
-        link("../index.html", "Product", "product"),
-        link("index.html", "Extensions", "extensions"),
-        link("publish.html", "Publish", "publish"),
-        link("https://github.com/Bikebrainz/Nullock", "GitHub", "github"),
-    )
+</nav>""" % (prefix, prefix, links, publish)
 
 
-FOOTER = """<footer class="footer">
+def footer(prefix="../"):
+    return """<footer class="footer">
   <div class="f-links">
-    <a href="../license.html">MIT License</a><span class="f-sep">&middot;</span>
-    <a href="../security.html">Security disclosure</a><span class="f-sep">&middot;</span>
-    <a href="README.md">Publishing</a><span class="f-sep">&middot;</span>
+    <a href="%slicense.html">MIT License</a><span class="f-sep">&middot;</span>
+    <a href="%ssecurity.html">Security disclosure</a><span class="f-sep">&middot;</span>
+    <a href="%smarketplace/README.md">Publishing</a><span class="f-sep">&middot;</span>
     <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
   </div>
   <div>nul&middot;lock &#9656; curated catalog &middot; rendered at build time &middot; MIT</div>
-</footer>"""
+</footer>""" % (prefix, prefix, prefix)
 
 
-def page(title, desc, active, body, depth_assets="../assets"):
+def page(title, desc, active, body, prefix="../"):
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -238,8 +252,8 @@ def page(title, desc, active, body, depth_assets="../assets"):
 <title>%s</title>
 <meta name="description" content="%s">
 <meta name="theme-color" content="#0a0a0f">
-<link rel="icon" type="image/svg+xml" href="%s/favicon.svg">
-<link rel="stylesheet" href="%s/nullock.css">
+<link rel="icon" type="image/svg+xml" href="%sassets/favicon.svg">
+<link rel="stylesheet" href="%sassets/nullock.css">
 </head>
 <body>
 %s
@@ -247,7 +261,7 @@ def page(title, desc, active, body, depth_assets="../assets"):
 %s
 </body>
 </html>
-""" % (E(title), E(desc), depth_assets, depth_assets, nav(active), body, FOOTER)
+""" % (E(title), E(desc), prefix, prefix, nav(active, prefix), body, footer(prefix))
 
 
 def perm_badge(perms):
@@ -517,7 +531,7 @@ def build_detail(doc, e):
         if safe_url else '<span class="dim">No usable https download URL.</span>'
 
     body = """<main class="wrap-wide" style="padding:40px var(--pad-x) 72px;">
-  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
+  <a href="../index.html" class="mono dim" style="font-size:13px;">&larr; all extensions</a>
   <div class="mkt-detail-head">
     <div style="min-width:0;flex:1;">
       <h1 class="h1-page" style="color:var(--purple-light);">%s</h1>
@@ -549,7 +563,7 @@ def build_detail(doc, e):
     return page(
         "%s — Nullock Marketplace" % e.get("name", ext_id),
         e.get("summary", "")[:180],
-        "extensions", body)
+        "extensions", body, prefix="../../")   # detail pages live at docs/marketplace/e/
 
 
 def build_publish(exts):
