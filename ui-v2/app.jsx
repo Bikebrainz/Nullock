@@ -10,6 +10,7 @@ const TABS = [
   { id: "payloads",  label: "PAYLOADS" },
   { id: "decoder",   label: "DECODER" },
   { id: "comparer",  label: "COMPARER" },
+  { id: "inspector", label: "INSPECTOR" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
@@ -1533,6 +1534,131 @@ function ComparerTab() {
   );
 }
 
+function InspectorTab() {
+  // Structured view of a raw request or response via /api/inspect. The whole
+  // backend (inspector_logic: request/response line, headers, cookies, query
+  // and body params, and JWT decode) already existed with no UI -- this is the
+  // tab that makes it reachable.
+  const [raw, setRaw]   = React.useState("");
+  const [kind, setKind] = React.useState("");   // "" auto | request | response
+  const [view, setView] = React.useState(null);
+  const [detected, setDetected] = React.useState("");
+  const [err, setErr]   = React.useState("");
+
+  const run = async () => {
+    setErr("");
+    try {
+      const r = await NL.actions.inspect(raw, kind);
+      if (r && r.ok) { setView(r.view || {}); setDetected(r.kind || ""); }
+      else { setView(null); setErr((r && r.error) || "inspect failed"); }
+    } catch (e) { setView(null); setErr(String(e && e.message ? e.message : e)); }
+  };
+
+  const area = {
+    width: "100%", boxSizing: "border-box", background: "var(--bg-deep)",
+    color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4,
+    padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)", resize: "none",
+    flex: 1, minHeight: 0, whiteSpace: "pre", overflow: "auto",
+  };
+  const Btn = ({ label, onClick, primary }) => (
+    <button onClick={onClick} style={{
+      background: primary ? "var(--accent)" : "transparent",
+      color: primary ? "var(--bg)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: "pointer", letterSpacing: "0.04em",
+      textTransform: "uppercase",
+    }}>{label}</button>
+  );
+  const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "2px 10px 2px 0", whiteSpace: "nowrap", verticalAlign: "top" };
+  const td = { padding: "2px 10px 2px 0", wordBreak: "break-all", color: "var(--text)" };
+  const Section = ({ title, children }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase",
+                    letterSpacing: "0.08em", marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  );
+  const KV = ({ rows }) => (
+    <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+      <tbody>{(rows || []).map((r, i) => (
+        <tr key={i}><td style={th}>{r.name}</td><td style={td}>{String(r.value == null ? "" : r.value)}</td></tr>
+      ))}</tbody>
+    </table>
+  );
+
+  const isResp = view && (view.status !== undefined || view.reason !== undefined) && view.method === undefined;
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Inspector</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>structured view of a raw request or response — headers, cookies, params, JWTs</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0, height: "40%" }}>
+        <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>RAW HTTP</div>
+        <textarea style={area} value={raw} placeholder={"paste a raw request or response…\nGET /path?q=1 HTTP/1.1\nHost: example.com\nCookie: token=eyJ..."}
+                  onChange={e => setRaw(e.target.value)} spellCheck={false} />
+      </div>
+
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Btn label="inspect" primary onClick={run} />
+        {["", "request", "response"].map(k => (
+          <Btn key={k || "auto"} label={k || "auto"} primary={kind === k} onClick={() => setKind(k)} />
+        ))}
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
+          {err ? err : view ? ("parsed as " + (detected || (isResp ? "response" : "request"))) : "paste HTTP and inspect"}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+        {!view ? <span style={{ color: "var(--dim)", fontSize: "12px" }}>structured breakdown appears here</span> : isResp ? (
+          <div>
+            <Section title="Status line">
+              <KV rows={[{ name: "version", value: view.version }, { name: "status", value: view.status }, { name: "reason", value: view.reason }, { name: "content-type", value: view.contentType }, { name: "body size", value: view.bodySize }]} />
+            </Section>
+            {view.headers && view.headers.length ? <Section title={"Headers (" + view.headers.length + ")"}><KV rows={view.headers} /></Section> : null}
+            {view.setCookies && view.setCookies.length ? <Section title={"Set-Cookie (" + view.setCookies.length + ")"}>
+              <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}><tbody>
+                {view.setCookies.map((c, i) => (<tr key={i}><td style={th}>{c.name}</td><td style={td}>{c.value}</td><td style={{ ...td, color: "var(--dim)" }}>{c.attributes}</td></tr>))}
+              </tbody></table></Section> : null}
+            {view.jwts && view.jwts.length ? <Section title={"JWTs decoded (" + view.jwts.length + ")"}><JwtList jwts={view.jwts} /></Section> : null}
+            {view.bodyPreview ? <Section title="Body preview"><pre style={{ margin: 0, fontSize: "12px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text-2)" }}>{view.bodyPreview}</pre></Section> : null}
+          </div>
+        ) : (
+          <div>
+            <Section title="Request line">
+              <KV rows={[{ name: "method", value: view.method }, { name: "path", value: view.path }, { name: "version", value: view.version }, { name: "content-type", value: view.contentType }, { name: "body size", value: view.bodySize }, { name: "body kind", value: view.bodyKind }]} />
+            </Section>
+            {view.queryParams && view.queryParams.length ? <Section title={"Query params (" + view.queryParams.length + ")"}><KV rows={view.queryParams} /></Section> : null}
+            {view.headers && view.headers.length ? <Section title={"Headers (" + view.headers.length + ")"}><KV rows={view.headers} /></Section> : null}
+            {view.cookies && view.cookies.length ? <Section title={"Cookies (" + view.cookies.length + ")"}><KV rows={view.cookies} /></Section> : null}
+            {view.bodyParams && view.bodyParams.length ? <Section title={"Body params (" + view.bodyParams.length + ")"}><KV rows={view.bodyParams} /></Section> : null}
+            {view.jwts && view.jwts.length ? <Section title={"JWTs decoded (" + view.jwts.length + ")"}><JwtList jwts={view.jwts} /></Section> : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JwtList({ jwts }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {jwts.map((j, i) => (
+        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 4, padding: 8 }}>
+          <div style={{ fontSize: "11px", color: "var(--accent)", marginBottom: 4 }}>
+            {j.where} <span style={{ color: "var(--dim)" }}>· alg={j.alg || "?"} {j.typ ? "· typ=" + j.typ : ""}</span>
+          </div>
+          <pre style={{ margin: 0, fontSize: "11.5px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text-2)" }}>
+            {JSON.stringify(j.payload == null ? { header: j.header } : { header: j.header, payload: j.payload }, null, 2)}
+          </pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DecoderTab() {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
@@ -2648,6 +2774,9 @@ function App() {
         )}
         {tab === "comparer" && (
           <ComparerTab />
+        )}
+        {tab === "inspector" && (
+          <InspectorTab />
         )}
         {tab === "processor" && (
           <ProcessorTab />

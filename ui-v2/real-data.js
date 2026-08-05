@@ -224,6 +224,7 @@
     transcode(op, input)        { return post("/api/transcode", { op, input }).then(r => r.json()); },
     compareBlobs(mode, a, b)    { return post("/api/compare", { mode, a, b }).then(r => r.json()); },
     processPayload(payload)     { return post("/api/process", { payload }).then(r => r.json()); },
+    inspect(raw, kind)          { return post("/api/inspect", { raw, kind: kind || "" }).then(r => r.json()); },
     sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },
