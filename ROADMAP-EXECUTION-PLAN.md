@@ -25,3 +25,4 @@ From PARITY-BACKLOG.md, ranked by impact: match-and-replace rule engine, WebSock
 
 ## Loop contract
 Re-entrant: on each wake, `git fetch origin Nullock`; if a wave is mid-flight continue it, else start the next; always leave the tree clean and HEAD==origin; append a one-line progress note here per wave completed.
+- Wave 1 (2026-08-02, 86f094c): INSPECTOR tab added, surfacing /api/inspect. Closed #327 request-attributes, #330 cookies, #332 JWT-decode -> present.
