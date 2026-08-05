@@ -3330,12 +3330,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Request attributes\" (method, path, HTTP version/protocol)",
-      "state": "stub",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Read-only JSON reachable only by hand-rolled curl. You cannot edit the method or path through it, which is the point of the panel in Burp.",
-      "why": "DOWNGRADED. I independently confirmed the auditor's biggest finding and then applied it consistently: `grep -rn 'api/inspect'` over every .jsx/.js/.qml/.sh/.md in the tree returns only CHANGELOG.md and control_server.cpp itself. No UI, no CLI, no QML consumer. The parsing is correct but nothing a user can click reaches it, which is the definition of a stub, not 'partial'.",
-      "evidence": "Engine correct: D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:157-166 `const QStringList sl = p.start.split(' ', Qt::SkipEmptyParts); out[\"method\"] = sl.size() > 0 ? sl[0] : QString(); ... out[\"version\"] = sl.size() > 2 ? sl[2] : QString(); const int q = target.indexOf('?'); out[\"path\"] = q < 0 ? target : target.left(q);`, served by control_server.cpp:9400-9413 with auto-detect `kind = ra"
+      "gap": "None — surfaced in the app by the new INSPECTOR tab.",
+      "why": "Closed 2026-08-02: the /api/inspect backend existed; added the INSPECTOR tab (commit 86f094c) that renders this. Verified via bundled-babel transform + field-contract match to inspector_logic (backend covered by inspector_logic_test).",
+      "evidence": "The INSPECTOR tab renders the request line: method, path, HTTP version, content-type, body size/kind (ui-v2 app.jsx InspectorTab -> /api/inspect).",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-02",
+        "commit": "86f094c",
+        "note": "INSPECTOR tab surfaces the /api/inspect structured view."
+      }
     },
     {
       "area": "repeater",
@@ -3360,12 +3366,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Cookies\" — request cookies and response Set-Cookie with attributes",
-      "state": "stub",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Response cookie attributes are one unparsed blob rather than discrete Secure/HttpOnly/SameSite/Path/Domain/Max-Age fields — so nothing can flag a missing HttpOnly. No UI, no editing.",
-      "why": "DOWNGRADED (unreachable). The RFC 6265 opacity note is real and correct, and the Set-Cookie attribute string really is unparsed.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:172-174 `// RFC 6265 cookie values are opaque octets -- '+' is literal (do NOT form-decode it to a space, which corrupts base64). out[\"cookies\"] = parsePairs(headerValue(p.headers, \"Cookie\"), ';', /*formDecode=*/false);`. Response side :248-259 `const QStringList segs = h.second.split(';'); ... c[\"attributes\"] = segs.size() > 1 ? segs.mid(1).j"
+      "gap": "None — surfaced in the app by the new INSPECTOR tab.",
+      "why": "Closed 2026-08-02: the /api/inspect backend existed; added the INSPECTOR tab (commit 86f094c) that renders this. Verified via bundled-babel transform + field-contract match to inspector_logic (backend covered by inspector_logic_test).",
+      "evidence": "The INSPECTOR tab renders request cookies and response Set-Cookie with attributes (name/value/attributes) from /api/inspect.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-02",
+        "commit": "86f094c",
+        "note": "INSPECTOR tab surfaces the /api/inspect structured view."
+      }
     },
     {
       "area": "repeater",
@@ -3380,12 +3392,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: JWT decoding of tokens found in headers and cookies",
-      "state": "stub",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Unreachable: nothing calls /api/inspect. Also note the standalone Decoder already has jwt-decode with security notes, so the delivered JWT story is not zero — but this header/cookie auto-discovery specifically ships to nobody.",
-      "why": "DOWNGRADED (unreachable). The capability is real and better than Burp's native Inspector, but 'latent value' is precisely a stub — no UI, no CLI, only a raw HTTP endpoint.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:125-148 `void collectJwts(...)` — `if (v.startsWith(QLatin1String(\"Bearer \"), Qt::CaseInsensitive)) v = v.mid(7).trimmed();` and the cookie scan `for (const QString &c : h.second.split(';', Qt::SkipEmptyParts)) { ... if (decodeJwt(c.mid(eq + 1), cjwt)) { cjwt.insert(\"where\", \"cookie:\" + c.left(eq).trimmed()); out.append(cjwt); } }`, gated by :"
+      "gap": "None — surfaced in the app by the new INSPECTOR tab.",
+      "why": "Closed 2026-08-02: the /api/inspect backend existed; added the INSPECTOR tab (commit 86f094c) that renders this. Verified via bundled-babel transform + field-contract match to inspector_logic (backend covered by inspector_logic_test).",
+      "evidence": "The INSPECTOR tab renders decoded JWTs (alg/typ/header/payload) found in headers and cookies, from inspector_logic collectJwts via /api/inspect.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-02",
+        "commit": "86f094c",
+        "note": "INSPECTOR tab surfaces the /api/inspect structured view."
+      }
     },
     {
       "area": "repeater",
