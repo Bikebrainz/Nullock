@@ -2141,12 +2141,18 @@
     {
       "area": "platform",
       "feature": "Reporting: HTML issue report",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
       "gap": "Report content is complete; delivery is not. No button, no menu, no pasteable URL — requires `curl -X POST -H 'X-Nullock-UI: 1'`. The Qt report pane is an 8-line placeholder.",
       "why": "DOWNGRADED. The generator itself is real and better than the first pass implied — I read all ~170 lines and confirmed the grade badge, severity cards, stacked bar, scope block, per-finding CVSS/CWE/OWASP/compliance/fix table, and universal toHtmlEscaped(). But no user can produce it. I grepped ui-v2 recursively, Src/App/app.qml, and the docs for `/api/report/html|/api/report/build|/api/report/json",
-      "evidence": "Generator real: control_server.cpp:5047 `if (path == \"/api/report/html\") {` with `auto esc = [](const QString &s) -> QString { return s.toHtmlEscaped(); };` (5048) and the finding table at 5176-5200. Unreachable: `grep -an \"report/html\\|report/json\\|report/build\\|/api/report\" ui-v2/ -r` → no output; same grep over Src/App/app.qml → no output. Not allowlisted — control_server.cpp:1656-1685 isReadPa"
+      "evidence": "Generator real: control_server.cpp:5047 `if (path == \"/api/report/html\") {` with `auto esc = [](const QString &s) -> QString { return s.toHtmlEscaped(); };` (5048) and the finding table at 5176-5200. Unreachable: `grep -an \"report/html\\|report/json\\|report/build\\|/api/report\" ui-v2/ -r` → no output; same grep over Src/App/app.qml → no output. Not allowlisted — control_server.cpp:1656-1685 isReadPa",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "557e5f8",
+        "note": "REPORTING tab adds Download Markdown / Download HTML buttons (fetch POST -> blob download) so the HTML/Markdown report is one click, no curl needed."
+      }
     },
     {
       "area": "platform",
@@ -2463,12 +2469,18 @@
     {
       "area": "platform",
       "feature": "Reporting: reachable from the UI (Report menu / right-click > report selected issues)",
-      "state": "stub",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
       "gap": "You cannot produce the HTML report by clicking anything or by pasting a URL — it needs `curl -X POST -H 'X-Nullock-UI: 1'`. The most client-facing deliverable is effectively hidden.",
       "why": "State CONFIRMED but the evidence needed correcting in two places. I grepped ui-v2 recursively plus Src/App/app.qml plus the docs for /api/report/* and got zero hits, so nothing invokes the report — that part holds, as does the allowlist/CSRF analysis (I verified /api/report/json IS listed but html and build are not). The corrections: there are THREE export buttons in ui-v2, not one, and app.jsx:80",
-      "evidence": "No report caller: `grep -an \"report/html\\|report/json\\|report/build\\|/api/report\" ui-v2/ -r` → no output; same over Src/App/app.qml → no output. Allowlist gap real: control_server.cpp:1678 `|| p == \"/api/report/json\"` with no html/build entry, then :1687 `if (!isReadPath(path) && method != \"POST\") return httpResponse(405, \"text/plain\", \"Use POST for mutating endpoints (see README)\");` and CSRF at "
+      "evidence": "No report caller: `grep -an \"report/html\\|report/json\\|report/build\\|/api/report\" ui-v2/ -r` → no output; same over Src/App/app.qml → no output. Allowlist gap real: control_server.cpp:1678 `|| p == \"/api/report/json\"` with no html/build entry, then :1687 `if (!isReadPath(path) && method != \"POST\") return httpResponse(405, \"text/plain\", \"Use POST for mutating endpoints (see README)\");` and CSRF at ",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "557e5f8",
+        "note": "REPORTING tab is the Report menu equivalent: Markdown/HTML/JSON report download, OpenAPI export/import, SBOM download, workspace push/pull all reachable from one panel."
+      }
     },
     {
       "area": "platform",
