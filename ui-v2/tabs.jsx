@@ -100,11 +100,16 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
 }
 
 // ===================== REPEATER =====================
-function RepeaterTab({ rep, dispatch }) {
+function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // Real backend handles the send. We only show a spinner-y label while
   // the snapshot reports busy=true, then flip back to the response.
   const send = () => dispatch({ type: "repeater-send" });
   const busy = rep && rep.busy;
+
+  const sendToComparer = (label, text) => {
+    dispatch({ type: "comparer-add", label, text });
+    if (onSwitchTab) onSwitchTab("comparer");
+  };
 
   // Live tab strip pulled from the snapshot. Fall back to a single fake
   // entry if the backend hasn't reported tabs yet (older builds).
@@ -297,12 +302,16 @@ function RepeaterTab({ rep, dispatch }) {
             <span style={{ color:"var(--accent-2)" }}>▸</span>
             <span>REQUEST · editable</span>
             <span className="ph-count">{rep.request.split("\n").length} LINES</span>
+            <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
+                    onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
           </div>
           <textarea
             className="txt"
             value={rep.request}
             onChange={e => dispatch({ type: "repeater-set", payload: { request: e.target.value }})}
+            onKeyDown={e => { if (e.ctrlKey && e.code === "Space") { e.preventDefault(); send(); } }}
             spellCheck={false}
+            title="Ctrl+Space to send"
           />
         </div>
         <div className="divider-v" />
@@ -311,6 +320,8 @@ function RepeaterTab({ rep, dispatch }) {
             <span style={{ color:"var(--accent)" }}>▸</span>
             <span>RESPONSE · read-only</span>
             <span className="ph-count">{rep.response.split("\n").length} LINES</span>
+            <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
+                    onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
           </div>
           <textarea className="txt readonly" value={rep.response} readOnly />
         </div>
