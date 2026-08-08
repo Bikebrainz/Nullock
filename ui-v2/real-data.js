@@ -229,6 +229,12 @@
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
     detectWaf(url)              { return post("/api/waf/detect", { url }).then(r => r.json()); },
     scanSecrets(url)            { return post("/api/secrets/scan", { url }).then(r => r.json()); },
+    discoverContent(url, max)   { return post("/api/content/discover", { url, max: max || undefined }).then(r => r.json()); },
+    scanRobots(url)             { return post("/api/robots/scan", { url }).then(r => r.json()); },
+    crawlerStart(seed, maxPages, maxDepth) {
+      return post("/api/crawler/start", { seed, maxPages: maxPages || undefined, maxDepth: maxDepth || undefined }).then(r => r.json());
+    },
+    crawlerStop()                { return post("/api/crawler/stop").then(r => r.json()); },
     // Active vulnerability tests: one uniform {url, param?, method?} contract
     // across /api/<type>/test. `type` is picked from a fixed known-safe list in
     // the TESTS tab (lowercase [a-z], no interpolation risk).

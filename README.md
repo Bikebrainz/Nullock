@@ -33,6 +33,8 @@ Version -> CVE    Active fingerprint + service-banner version detection correlat
 Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
                   WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness,
                   scope-gated BFS crawler
+Discovery         In-app content/directory brute-force (soft-404 calibrated), robots.txt + sitemap
+                  recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto)
 OAST              In-process HTTP + DNS callback sinks for out-of-band confirmation -- one blast
                   confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
@@ -162,7 +164,7 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  19 tabs:     │
+   │  ActiveProbe    20+ vuln classes               │         │  20 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
