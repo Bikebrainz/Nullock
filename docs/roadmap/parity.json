@@ -3759,12 +3759,18 @@
     {
       "area": "target",
       "feature": "Site map populates from the crawler / automated crawl",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Crawl output lands at host granularity like everything else, and there is no way to launch a crawl from either front end. The capability exists and is correctly connected; the affordance does not.",
-      "why": "Downgraded. The wiring is real and I confirmed all three connects, but I then checked whether a user can actually start a crawl and found no trigger anywhere outside a hand-written HTTP POST: no ui-v2 caller, no --help flag. A pipeline that only fires when someone curls the control API is not 'present' for a person trying to work.",
-      "evidence": "Src/App/app.cpp:941-946 wires it three ways: `QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded, &model, &Nullock::FrontEnd::ProxyModel::addResponse);` plus appendEntry and PassiveScanner. Engine is real BFS: Src/Core/Networking/crawler.hpp:59-63 `Q_INVOKABLE bool start(const QString &seed, int maxPages = 200, int maxDepth = 4, int throttleMs = 200); Q_INVOKABLE void stop();`. Endpoi"
+      "gap": "None — a DISCOVER tab now exposes seed input + START/STOP CRAWL, hitting /api/crawler/start and /api/crawler/stop. Crawled pages stream into Proxy history via the existing entryLoaded wiring, same as before. (Host-granularity of the site-map display is tracked separately as item 366.)",
+      "why": "Closed 2026-08-08: the crawler engine + control endpoints were already wired end to end; only the UI trigger was missing. Added NL.actions.crawlerStart/crawlerStop in real-data.js and a start/stop control in the new DISCOVER tab. Verified via bundled-babel transform; field contract (ok/error) matched against control_server.cpp:4002-4015.",
+      "evidence": "DiscoverTab (ui-v2/app.jsx) calls NL.actions.crawlerStart(seed) -> POST /api/crawler/start, and crawlerStop() -> POST /api/crawler/stop; crawled pages land in Proxy history via the pre-existing Crawler::entryLoaded -> ProxyModel wiring (Src/App/app.cpp:941-946).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "c81109e",
+        "note": "DISCOVER tab adds a start/stop crawl control."
+      }
     },
     {
       "area": "target",
@@ -4095,12 +4101,18 @@
     {
       "area": "target",
       "feature": "Content discovery: no UI at all vs Burp's dedicated discovery window",
-      "state": "absent",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Content discovery, the crawler and robots recon are invisible in a GUI product. Three finished engines with no way in.",
-      "why": "Confirmed, and extended: I also checked the CLI, which the first pass did not. There is no --discover / --crawl flag either, so the ONLY route is a hand-written HTTP POST to the control API.",
-      "evidence": "Complete client action surface is ui-v2/real-data.js:119-227 (`toggleProxy ... reconDns, reconReverse, reconWhois, reconCrt, reconWordlist, reconStop, reconClear, forgePayloads, transcode, compareBlobs, processPayload, ..., ruleMove`) -- no contentDiscover, no crawlerStart, no robots. `grep -ain \"crawl|content/discover|contentDiscover|robots\" ui-v2/*.jsx ui-v2/*.js` -> only tabs.jsx:391,413, which"
+      "gap": "None — a DISCOVER tab now wraps all three engines (wordlist content/directory discovery, robots.txt + sitemap recon, BFS crawler start/stop) with results rendered generically and content-discovery/robots hits also flowing to Issues.",
+      "why": "Closed 2026-08-08: all three engines and their control endpoints were already complete server-side; only the client had no wrapper. Added discoverContent/scanRobots/crawlerStart/crawlerStop to ui-v2/real-data.js and a DISCOVER tab that runs each and renders its result. Verified via bundled-babel transform; response fields matched against control_server.cpp's /api/content/discover, /api/robots/scan, /api/crawler/start|stop handlers.",
+      "evidence": "ui-v2/real-data.js: discoverContent (POST /api/content/discover), scanRobots (POST /api/robots/scan), crawlerStart/crawlerStop (POST /api/crawler/start|stop); ui-v2/app.jsx DiscoverTab renders hits/disallowed/sitemapUrls per the control_server.cpp JSON shape.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "c81109e",
+        "note": "DISCOVER tab surfaces content-discovery, robots/sitemap recon, and crawler start/stop."
+      }
     },
     {
       "area": "target",
