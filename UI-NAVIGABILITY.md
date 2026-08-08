@@ -2,20 +2,20 @@
 
 > Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-08, waves closing the
-> INSPECTOR, PROBE, TESTS, and DISCOVER tabs have wired 34 of those endpoints (TESTS
-> covers 25 of the 26 originally-listed active checks — `/api/cache/poison` has a distinct
-> request shape outside its uniform `/<type>/test` contract and remains orphaned), leaving
-> **63 of 173 (36%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and
-> `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic `/api/${...}` URL
+> INSPECTOR, PROBE, TESTS, DISCOVER, and REPORTING tabs have wired 42 of those endpoints
+> (TESTS covers 25 of the 26 originally-listed active checks — `/api/cache/poison` has a
+> distinct request shape outside its uniform `/<type>/test` contract and remains orphaned),
+> leaving **55 of 173 (32%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx`
+> and `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic `/api/${...}` URL
 > construction, so a literal-string grep is exhaustive). This is the work-list for
 > surfacing every remaining feature. Closing an item = add a tab/menu/button that invokes
 > the endpoint and renders its result, then flip the matching parity.json item and
 > regenerate.
 
-App exposes 20 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
-decoder, comparer, inspector, probe, tests, discover, processor, stats, sessions,
-repeater, intercept, intruder, settings. The SCANS tab still only drives port-scan +
-recon; the unified audit/assess/gate runners below have no control.
+App exposes 21 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
+decoder, comparer, inspector, probe, tests, discover, reporting, processor, stats,
+sessions, repeater, intercept, intruder, settings. The SCANS tab still only drives
+port-scan + recon; the unified audit/assess/gate runners below have no control.
 
 ## Active vulnerability tests (1 remaining — the 26 uniform `/<type>/test` checks are wired via TESTS)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
@@ -40,15 +40,9 @@ recon; the unified audit/assess/gate runners below have no control.
 
 (`/api/inspect` wired via INSPECTOR tab.)
 
-## Reporting & export (8)
-- `/api/export/sbom`
-- `/api/openapi/export`
-- `/api/openapi/import`
-- `/api/report/build`
-- `/api/report/html`
-- `/api/report/json`
-- `/api/workspace/pull`
-- `/api/workspace/push`
+(`/api/export/sbom`, `/api/openapi/export`, `/api/openapi/import`, `/api/report/build`,
+`/api/report/html`, `/api/report/json`, `/api/workspace/pull`, `/api/workspace/push`
+wired via REPORTING tab.)
 
 ## Recon / discovery (6)
 - `/api/exposure/scan`
