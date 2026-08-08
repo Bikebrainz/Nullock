@@ -73,6 +73,29 @@ function reducer(state, action) {
         },
       };
     }
+    // Comparer: a client-only item list (no backend persistence, same as
+    // Decoder). Items are added here from other tools' "Send to Comparer"
+    // buttons or pasted/loaded directly in the Comparer tab; selA/selB pick
+    // which two items the diff runs against.
+    case "comparer-add": {
+      const items = state.comparer.items;
+      const nextId = items.length ? Math.max(...items.map(i => i.id)) + 1 : 1;
+      const item = { id: nextId, label: action.label || ("item " + nextId), text: action.text || "" };
+      return { ...state, comparer: { ...state.comparer, items: [...items, item] } };
+    }
+    case "comparer-remove": {
+      const items = state.comparer.items.filter(i => i.id !== action.id);
+      const selA = state.comparer.selA === action.id ? null : state.comparer.selA;
+      const selB = state.comparer.selB === action.id ? null : state.comparer.selB;
+      return { ...state, comparer: { items, selA, selB } };
+    }
+    case "comparer-clear":
+      return { ...state, comparer: { items: [], selA: null, selB: null } };
+    case "comparer-select": {
+      const key = action.slot === "B" ? "selB" : "selA";
+      return { ...state, comparer: { ...state.comparer, [key]: action.id } };
+    }
+
     case "send-to-intruder": {
       if (!action.row) return state;
       const row = action.row;
@@ -1442,20 +1465,76 @@ function ProcessorTab() {
   );
 }
 
-function ComparerTab() {
-  const [a, setA]         = React.useState("");
-  const [b, setB]         = React.useState("");
-  const [mode, setMode]   = React.useState("words");
-  const [result, setRes]  = React.useState(null);
-  const [err, setErr]     = React.useState("");
+// Hex-dump rendering shared by Comparer's Text/Hex toggle. Byte-for-byte
+// (UTF-8), space-separated pairs -- not an offset/ascii triple-column dump,
+// just enough to inspect binary-looking diff segments without decoding them
+// as text.
+function textToHexPairs(text) {
+  const bytes = new TextEncoder().encode(text || "");
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0");
+    if (i < bytes.length - 1) out += " ";
+  }
+  return out;
+}
 
-  const run = async (m) => {
-    const mm = m || mode;
-    setMode(mm); setErr("");
-    try {
-      const r = await NL.actions.compareBlobs(mm, a, b);
-      setRes(r);
-    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+function ComparerTab({ comparer, dispatch }) {
+  const items = comparer.items;
+  const selA = comparer.selA;
+  const selB = comparer.selB;
+  const itemA = items.find(i => i.id === selA) || null;
+  const itemB = items.find(i => i.id === selB) || null;
+
+  const [mode, setMode]       = React.useState("words");
+  const [result, setRes]      = React.useState(null);
+  const [err, setErr]         = React.useState("");
+  const [view, setView]       = React.useState("text");   // "text" | "hex"
+  const [syncScroll, setSync] = React.useState(true);
+  const [pasteOpen, setPasteOpen]   = React.useState(false);
+  const [pasteLabel, setPasteLabel] = React.useState("");
+  const [pasteText, setPasteText]   = React.useState("");
+  const fileRef = React.useRef(null);
+  const paneARef = React.useRef(null);
+  const paneBRef = React.useRef(null);
+
+  // Re-diff whenever the selected pair or the comparison mode changes.
+  // Items are append-only (never mutated after creation), so keying off the
+  // ids is enough -- unrelated list edits (adding/removing other items)
+  // don't need to re-trigger the backend call.
+  React.useEffect(() => {
+    if (!itemA || !itemB) { setRes(null); setErr(""); return; }
+    let cancelled = false;
+    setErr("");
+    NL.actions.compareBlobs(mode, itemA.text, itemB.text)
+      .then(r => { if (!cancelled) setRes(r); })
+      .catch(e => { if (!cancelled) setErr(String(e && e.message ? e.message : e)); });
+    return () => { cancelled = true; };
+  }, [selA, selB, mode]);
+
+  const addFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => dispatch({ type: "comparer-add", label: f.name, text: String(reader.result || "") });
+    reader.readAsText(f);
+    e.target.value = "";
+  };
+  const addPaste = () => {
+    if (!pasteText) return;
+    dispatch({ type: "comparer-add", label: pasteLabel || undefined, text: pasteText });
+    setPasteText(""); setPasteLabel(""); setPasteOpen(false);
+  };
+
+  const onScrollA = () => {
+    if (!syncScroll || !paneARef.current || !paneBRef.current) return;
+    paneBRef.current.scrollTop = paneARef.current.scrollTop;
+    paneBRef.current.scrollLeft = paneARef.current.scrollLeft;
+  };
+  const onScrollB = () => {
+    if (!syncScroll || !paneARef.current || !paneBRef.current) return;
+    paneARef.current.scrollTop = paneBRef.current.scrollTop;
+    paneARef.current.scrollLeft = paneBRef.current.scrollLeft;
   };
 
   const Btn = ({ label, onClick, primary, disabled, title }) => (
@@ -1471,18 +1550,37 @@ function ComparerTab() {
   );
 
   const area = {
-    width: "100%", boxSizing: "border-box", background: "var(--bg-deep)",
+    width: "100%", boxSizing: "border-box", background: "var(--pane)",
     color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4,
-    padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)", resize: "none",
-    flex: 1, minHeight: 0, whiteSpace: "pre-wrap", wordBreak: "break-all",
+    padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)",
+    flex: 1, minHeight: 0, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
   };
   const segStyle = (op) => ({
     background: op === "ins" ? "rgba(70,200,120,0.22)"
               : op === "del" ? "rgba(220,80,80,0.22)" : "transparent",
     color: op === "ins" ? "var(--ok, #6c8)" : op === "del" ? "var(--err)" : "var(--text)",
     textDecoration: op === "del" ? "line-through" : "none",
-    whiteSpace: "pre-wrap", wordBreak: "break-all",
   });
+
+  // Split the backend's single merged diff into two synced streams: the
+  // left pane reconstructs A (common + deleted), the right reconstructs B
+  // (common + inserted) -- same shape as Burp's two-pane Comparer result.
+  const segs = (result && result.segments) || [];
+  const streamA = segs.filter(s => s.op !== "ins");
+  const streamB = segs.filter(s => s.op !== "del");
+  const renderSeg = (s, i) => (
+    <span key={i} style={segStyle(s.op)}>
+      {view === "hex" ? textToHexPairs(s.text) + "  " : s.text}
+    </span>
+  );
+
+  const status = err ? err
+    : !itemA || !itemB ? "pick an A and a B item to compare"
+    : result
+      ? (result.identical ? "identical"
+         : ("+" + result.added + " / -" + result.removed + " · " + result.common + " common")
+           + (result.truncated ? " · (truncated)" : ""))
+      : "comparing…";
 
   return (
     <div style={{ padding: 14, display: "flex", flexDirection: "column",
@@ -1491,48 +1589,104 @@ function ComparerTab() {
         <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
                        letterSpacing: "0.06em", fontWeight: 600 }}>Comparer</span>
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>
-          diff two blobs — word / line / char level
+          item list — paste, load, or send from another tool, then pick A/B — word / line / char level
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
-                    minHeight: 0, height: "38%" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
-          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
-                        letterSpacing: "0.06em" }}>A</div>
-          <textarea style={area} value={a} placeholder="first blob…"
-                    onChange={e => setA(e.target.value)} spellCheck={false} />
+      <div style={{ background: "var(--panel, var(--pane))", border: "1px solid var(--line)",
+                    padding: 10, borderRadius: 4, display: "flex", gap: 6, flexWrap: "wrap",
+                    alignItems: "center" }}>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <Btn label="+ paste item" onClick={() => setPasteOpen(o => !o)} />
+          {pasteOpen && (
+            <div onClick={e => e.stopPropagation()}
+                 style={{
+                   position: "absolute", top: "100%", left: 0, zIndex: 30,
+                   background: "var(--pane)", border: "1px solid var(--accent)",
+                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)", padding: 8,
+                   display: "flex", flexDirection: "column", gap: 6,
+                   width: 320, marginTop: 4,
+                 }}>
+              <input value={pasteLabel} onChange={e => setPasteLabel(e.target.value)}
+                     placeholder="label (optional)"
+                     style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+                              borderRadius: 4, padding: "4px 6px", fontSize: "11px", fontFamily: "var(--ff-mono)" }} />
+              <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
+                        placeholder="paste text…" spellCheck={false}
+                        style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+                                 borderRadius: 4, padding: 6, fontSize: "11px", fontFamily: "var(--ff-mono)",
+                                 minHeight: 90, resize: "vertical" }} />
+              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                <Btn label="cancel" onClick={() => setPasteOpen(false)} />
+                <Btn label="add" primary disabled={!pasteText} onClick={addPaste} />
+              </div>
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
-          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
-                        letterSpacing: "0.06em" }}>B</div>
-          <textarea style={area} value={b} placeholder="second blob…"
-                    onChange={e => setB(e.target.value)} spellCheck={false} />
-        </div>
+        <Btn label="load file" onClick={() => fileRef.current && fileRef.current.click()} />
+        <input ref={fileRef} type="file" style={{ display: "none" }} onChange={addFile} />
+        <Btn label="clear all" disabled={items.length === 0}
+             onClick={() => dispatch({ type: "comparer-clear" })} />
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 4 }}>
+          {items.length} item{items.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div style={{ maxHeight: 130, overflow: "auto", border: "1px solid var(--line)", borderRadius: 4 }}>
+        {items.length === 0 ? (
+          <div style={{ padding: 10, color: "var(--dim)", fontSize: "11px" }}>
+            no items yet — paste one, load a file, or use "Send to Comparer" in Proxy / Repeater
+          </div>
+        ) : items.map(it => (
+          <div key={it.id} style={{
+                 display: "flex", alignItems: "center", gap: 8, padding: "4px 8px",
+                 borderBottom: "1px solid var(--line-soft)",
+                 background: (it.id === selA || it.id === selB) ? "var(--pane)" : "transparent",
+               }}>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                           fontSize: "11px", color: "var(--text)" }}>{it.label}</span>
+            <span style={{ color: "var(--dim)", fontSize: "10px" }}>{it.text.length}b</span>
+            <Btn label="A" primary={it.id === selA} onClick={() => dispatch({ type: "comparer-select", slot: "A", id: it.id })} />
+            <Btn label="B" primary={it.id === selB} onClick={() => dispatch({ type: "comparer-select", slot: "B", id: it.id })} />
+            <span onClick={() => dispatch({ type: "comparer-remove", id: it.id })}
+                  title="remove" style={{ cursor: "pointer", color: "var(--dim)", padding: "0 4px" }}>×</span>
+          </div>
+        ))}
       </div>
 
       <div style={{ background: "var(--pane)", border: "1px solid var(--line)",
                     padding: 10, borderRadius: 4, display: "flex", gap: 6, flexWrap: "wrap",
                     alignItems: "center" }}>
-        <Btn label="compare words" primary={mode === "words"} onClick={() => run("words")} />
-        <Btn label="lines" primary={mode === "lines"} onClick={() => run("lines")} />
-        <Btn label="chars" primary={mode === "chars"} onClick={() => run("chars")} />
-        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>
-          {err ? err
-            : result
-              ? (result.identical ? "identical"
-                 : ("+" + result.added + " / -" + result.removed + " · " + result.common + " common")
-                   + (result.truncated ? " · (truncated)" : ""))
-              : "enter two blobs and compare"}
-        </span>
+        <Btn label="words" primary={mode === "words"} onClick={() => setMode("words")} />
+        <Btn label="lines" primary={mode === "lines"} onClick={() => setMode("lines")} />
+        <Btn label="chars" primary={mode === "chars"} onClick={() => setMode("chars")} />
+        <span style={{ width: 1, height: 18, background: "var(--line)", margin: "0 2px" }} />
+        <Btn label="text" primary={view === "text"} onClick={() => setView("text")} />
+        <Btn label="hex" primary={view === "hex"} onClick={() => setView("hex")} />
+        <Btn label={syncScroll ? "sync: on" : "sync: off"} primary={syncScroll} onClick={() => setSync(s => !s)}
+             title="Scroll both result panes together" />
+        <span style={{ color: "var(--dim)", fontSize: "11px", marginLeft: 8 }}>{status}</span>
       </div>
 
-      <div style={{ ...area, flex: 1, overflow: "auto", background: "var(--pane)" }}>
-        {result && result.segments
-          ? result.segments.map((s, i) => (
-              <span key={i} style={segStyle(s.op)}>{s.text}</span>
-            ))
-          : <span style={{ color: "var(--dim)" }}>diff appears here — green = added in B, red = removed from A</span>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0 }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase" }}>
+            A {itemA ? "· " + itemA.label : ""}
+          </div>
+          <div ref={paneARef} onScroll={onScrollA} style={area}>
+            {segs.length ? streamA.map(renderSeg)
+              : <span style={{ color: "var(--dim)" }}>result appears here — red = removed from A</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 0 }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase" }}>
+            B {itemB ? "· " + itemB.label : ""}
+          </div>
+          <div ref={paneBRef} onScroll={onScrollB} style={area}>
+            {segs.length ? streamB.map(renderSeg)
+              : <span style={{ color: "var(--dim)" }}>result appears here — green = added in B</span>}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3122,6 +3276,7 @@ function App() {
     intercepted: NL.intercepted,
     scope: NL.scope,
     repeater: NL.repeater,
+    comparer: { items: [], selA: null, selB: null },
     intruder: {
       // UI-only grep fields: the snapshot never echoes these back, so the
       // nl-snapshot merge ({...state.intruder, ...NL.intruder}) preserves
@@ -3231,6 +3386,7 @@ function App() {
             state={state}
             dispatch={dispatch}
             showSitemap={tweaks.showSitemap}
+            onSwitchTab={setTab}
           />
         )}
         {tab === "scope" && (
@@ -3242,7 +3398,7 @@ function App() {
           />
         )}
         {tab === "repeater" && (
-          <RepeaterTab rep={state.repeater} dispatch={dispatch} />
+          <RepeaterTab rep={state.repeater} dispatch={dispatch} onSwitchTab={setTab} />
         )}
         {tab === "intercept" && (
           <InterceptTab
@@ -3274,7 +3430,7 @@ function App() {
           <DecoderTab />
         )}
         {tab === "comparer" && (
-          <ComparerTab />
+          <ComparerTab comparer={state.comparer} dispatch={dispatch} />
         )}
         {tab === "inspector" && (
           <InspectorTab />

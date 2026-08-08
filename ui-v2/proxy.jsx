@@ -211,7 +211,7 @@ function SiteMap({ entries, selectedHost, onSelect, totalRows }) {
   );
 }
 
-function DetailPane({ row, onSendRepeater, onSendIntruder }) {
+function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
   const [view, setView] = React.useState("split"); // split | req | resp
   const [reqTab, setReqTab] = React.useState("raw"); // raw|headers|body
   const [respTab, setRespTab] = React.useState("raw");
@@ -229,6 +229,7 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
   const respRef = React.useRef(null);
   const [overlay, setOverlay] = React.useState(null); // { title, body } | null
   const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
+  const [cmpMenuOpen, setCmpMenuOpen] = React.useState(false);
 
   if (!row) {
     return (
@@ -272,6 +273,28 @@ function DetailPane({ row, onSendRepeater, onSendIntruder }) {
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button onClick={() => setCmpMenuOpen(o => !o)} title="Send to Comparer">↦ COMPARER ▾</button>
+          {cmpMenuOpen && (
+            <div onClick={(e) => e.stopPropagation()}
+                 style={{
+                   position: "absolute", top: "100%", right: 0, zIndex: 30,
+                   background: "var(--pane)", border: "1px solid var(--accent)",
+                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                   fontFamily: "var(--ff-mono)", fontSize: "11px",
+                   minWidth: 140, marginTop: 4,
+                 }}>
+              <div onClick={() => { onSendComparer("request", "#" + row.id + " request", req); setCmpMenuOpen(false); }}
+                   style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid var(--line-soft)", color: "var(--text)" }}>
+                request
+              </div>
+              <div onClick={() => { onSendComparer("response", "#" + row.id + " response", resp); setCmpMenuOpen(false); }}
+                   style={{ padding: "6px 10px", cursor: "pointer", color: "var(--text)" }}>
+                response
+              </div>
+            </div>
+          )}
+        </div>
         <div style={{ position: "relative", display: "inline-block" }}>
           <button onClick={() => setCopyMenuOpen(o => !o)}
                   title="Copy this request as a command for another tool">
@@ -1135,7 +1158,7 @@ function toHexDump(s) {
   return lines.join("\n");
 }
 
-function ProxyTab({ state, dispatch, showSitemap }) {
+function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost } = state;
   const sitemapEntries = NL.sitemap;
 
@@ -1248,6 +1271,10 @@ function ProxyTab({ state, dispatch, showSitemap }) {
           row={selectedRow}
           onSendRepeater={() => dispatch({ type: "send-to-repeater", row: selectedRow })}
           onSendIntruder={() => dispatch({ type: "send-to-intruder", row: selectedRow })}
+          onSendComparer={(kind, label, text) => {
+            dispatch({ type: "comparer-add", label, text });
+            if (onSwitchTab) onSwitchTab("comparer");
+          }}
         />
       </div>
     </div>
