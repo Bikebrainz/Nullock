@@ -12,6 +12,7 @@ const TABS = [
   { id: "comparer",  label: "COMPARER" },
   { id: "inspector", label: "INSPECTOR" },
   { id: "probe",     label: "PROBE" },
+  { id: "tests",     label: "TESTS" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
@@ -1762,6 +1763,106 @@ function ProbeTab() {
   );
 }
 
+const TEST_TYPES = [
+  "sqli", "xss", "ssrf", "ssti", "idor", "cmdi", "openredirect", "xxe",
+  "nosqli", "crlf", "ldapi", "xpathi", "massassign", "protopollution",
+  "race", "deser", "hostheader", "cors", "cswsh", "verbtamper", "methods",
+  "smuggle", "takeover", "cachedeception", "pathtraversal", "jwt",
+];
+
+function TestsTab() {
+  // Unified launcher for the active-vulnerability arsenal: 26 /api/<type>/test
+  // backends that existed with no UI. Uniform {url, param?, method?} request;
+  // results (hits/findings) render generically and also flow to Issues.
+  const [url, setUrl]     = React.useState("");
+  const [param, setParam] = React.useState("");
+  const [method, setMethod] = React.useState("");
+  const [type, setType]   = React.useState("sqli");
+  const [res, setRes]     = React.useState(null);
+  const [busy, setBusy]   = React.useState(false);
+  const [err, setErr]     = React.useState("");
+  const [ranType, setRanType] = React.useState("");
+
+  const run = async () => {
+    if (!url) { setErr("enter a target URL"); return; }
+    setErr(""); setBusy(true); setRes(null); setRanType(type);
+    try {
+      const r = await NL.actions.runTest(type, url, param, method);
+      if (r && r.ok === false && r.error) { setErr(r.error); setRes(null); }
+      else setRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
+  const sevColor = (s) => ({
+    critical: "var(--err)", high: "#ea580c", medium: "#d97706",
+    low: "#3f8f29", info: "var(--dim)",
+  }[String(s || "").toLowerCase()] || "var(--text-2)");
+
+  // The result array is hits | findings | detections | results depending on the
+  // test; render each item's scalar fields generically so one view fits all 26.
+  const items = res ? (res.hits || res.findings || res.detections || res.results || []) : [];
+  const isVuln = res && (res.vulnerable === true || items.length > 0);
+
+  const inp = {
+    background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+    borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Active tests</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>run a single active check against an authorized target — findings also go to Issues</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://target/path?id=1"
+               onKeyDown={e => { if (e.key === "Enter") run(); }}
+               style={{ ...inp, flex: "1 1 300px", minWidth: 200 }} spellCheck={false} />
+        <input value={param} onChange={e => setParam(e.target.value)} placeholder="param (optional)"
+               style={{ ...inp, flex: "0 1 150px" }} spellCheck={false} />
+        <select value={method} onChange={e => setMethod(e.target.value)} style={{ ...inp, flex: "0 0 90px" }}>
+          <option value="">auto</option><option value="GET">GET</option><option value="POST">POST</option>
+        </select>
+        <select value={type} onChange={e => setType(e.target.value)} style={{ ...inp, flex: "0 0 150px" }}>
+          {TEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <button onClick={run} disabled={busy} style={{
+          background: "var(--accent)", color: busy ? "var(--dim)" : "var(--bg)",
+          border: "1px solid var(--accent)", padding: "5px 14px", fontSize: "11px",
+          fontFamily: "var(--ff-mono)", cursor: busy ? "wait" : "pointer",
+          letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600,
+        }}>{busy ? "running…" : "▶ run"}</button>
+        <span style={{ color: "var(--err)", fontSize: "11px" }}>{err}</span>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+        {!res ? <span style={{ color: "var(--dim)", fontSize: "12px" }}>pick a test type and run — results appear here and in Issues</span> : (
+          <div>
+            <div style={{ marginBottom: 10, fontSize: "12px", fontFamily: "var(--ff-mono)" }}>
+              <span style={{ color: "var(--accent)", textTransform: "uppercase" }}>{ranType}</span>
+              {"  "}
+              <span style={{ color: isVuln ? "var(--err)" : "var(--ok, #6c8)", fontWeight: 600 }}>
+                {isVuln ? "VULNERABLE" : "no findings"}
+              </span>
+              <span style={{ color: "var(--dim)" }}>{"  · " + items.length + " result" + (items.length === 1 ? "" : "s")}</span>
+            </div>
+            {items.map((it, i) => (
+              <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginBottom: 8 }}>
+                {Object.keys(it).filter(k => it[k] !== "" && it[k] != null && typeof it[k] !== "object").map(k => (
+                  <div key={k} style={{ display: "flex", gap: 10, fontSize: "12px", fontFamily: "var(--ff-mono)", padding: "1px 0" }}>
+                    <span style={{ color: "var(--dim)", minWidth: 90 }}>{k}</span>
+                    <span style={{ color: k === "severity" ? sevColor(it[k]) : "var(--text)", wordBreak: "break-all" }}>{String(it[k])}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DecoderTab() {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
@@ -2883,6 +2984,9 @@ function App() {
         )}
         {tab === "probe" && (
           <ProbeTab />
+        )}
+        {tab === "tests" && (
+          <TestsTab />
         )}
         {tab === "processor" && (
           <ProcessorTab />

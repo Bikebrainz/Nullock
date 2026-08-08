@@ -229,6 +229,15 @@
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
     detectWaf(url)              { return post("/api/waf/detect", { url }).then(r => r.json()); },
     scanSecrets(url)            { return post("/api/secrets/scan", { url }).then(r => r.json()); },
+    // Active vulnerability tests: one uniform {url, param?, method?} contract
+    // across /api/<type>/test. `type` is picked from a fixed known-safe list in
+    // the TESTS tab (lowercase [a-z], no interpolation risk).
+    runTest(type, url, param, method) {
+      const b = { url };
+      if (param)  b.param  = param;
+      if (method) b.method = method;
+      return post("/api/" + type + "/test", b).then(r => r.json());
+    },
     sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },
