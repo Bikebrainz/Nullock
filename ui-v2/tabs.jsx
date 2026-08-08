@@ -100,6 +100,104 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
 }
 
 // ===================== REPEATER =====================
+// ---- Repeater editor helpers: selection readout + in-editor search ----
+// Pure logic kept outside the component so it is unit-testable without a DOM.
+
+function repeaterDisplayChar(ch) {
+  if (ch === "\n") return "\\n";
+  if (ch === "\t") return "\\t";
+  if (ch === "\r") return "\\r";
+  if (ch === " ") return "space";
+  return ch;
+}
+
+// Burp's Inspector "Selection" widget: length + first byte's decimal/hex value.
+function repeaterSelectionStats(text, start, end) {
+  if (text == null || start == null || end == null || start === end) return null;
+  const sel = text.slice(start, end);
+  if (!sel.length) return null;
+  const code = sel.charCodeAt(0);
+  return {
+    length: sel.length,
+    firstChar: sel[0],
+    firstCharDec: code,
+    firstCharHex: "0x" + code.toString(16).toUpperCase().padStart(2, "0"),
+  };
+}
+
+// Case-insensitive substring search returning [start,end) match ranges.
+// Capped so a common single-character query against a huge response can't
+// hang the tab.
+function repeaterFindMatches(text, query, limit) {
+  if (!text || !query) return [];
+  const cap = limit || 5000;
+  const hay = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const out = [];
+  let idx = 0;
+  while (idx <= hay.length && out.length < cap) {
+    const found = hay.indexOf(needle, idx);
+    if (found === -1) break;
+    out.push([found, found + needle.length]);
+    idx = found + Math.max(needle.length, 1);
+  }
+  return out;
+}
+
+// Wrap-around navigation over a match list; curIdx may be any integer
+// (including the initial -1 sentinel) -- normalized modulo matches.length.
+function repeaterGotoMatch(matches, curIdx, dir) {
+  if (!matches || !matches.length) return null;
+  const idx = (((curIdx + dir) % matches.length) + matches.length) % matches.length;
+  return { idx, range: matches[idx] };
+}
+
+function RepeaterEditorToolbar({ views, active, onView, search, onSearch, matchCount, onNext, onPrev }) {
+  return (
+    <div className="detail-tabs">
+      {views.map(v => (
+        <button key={v} className={active === v ? "on" : ""} onClick={() => onView(v)}>{v}</button>
+      ))}
+      <span className="spacer" />
+      <input
+        value={search}
+        onChange={e => onSearch(e.target.value)}
+        onKeyDown={e => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          (e.shiftKey ? onPrev : onNext)();
+        }}
+        placeholder="find…"
+        title="Enter: next match · Shift+Enter: previous match"
+        style={{
+          width: 110, background: "var(--bg-deep)", color: "var(--text)",
+          border: "1px solid var(--line)", fontFamily: "var(--ff-mono)",
+          fontSize: "11px", padding: "2px 6px",
+        }}
+      />
+      {search && (
+        <span className="ph-count" style={{ cursor: matchCount ? "pointer" : "default" }} onClick={onNext}>
+          {matchCount} match{matchCount === 1 ? "" : "es"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RepeaterSelectionReadout({ sel }) {
+  return (
+    <div style={{
+      padding: "3px 10px", borderTop: "1px solid var(--line-soft)",
+      color: "var(--dim)", fontSize: "10px", fontFamily: "var(--ff-mono)",
+      letterSpacing: "0.05em",
+    }}>
+      {sel
+        ? `SELECTION: ${sel.length} char${sel.length === 1 ? "" : "s"} · first '${repeaterDisplayChar(sel.firstChar)}' dec=${sel.firstCharDec} hex=${sel.firstCharHex}`
+        : "SELECTION: none"}
+    </div>
+  );
+}
+
 function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // Real backend handles the send. We only show a spinner-y label while
   // the snapshot reports busy=true, then flip back to the response.
@@ -133,6 +231,50 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // Repeater target here. Matches Burp's clipboard-based "Copy as curl".
   const [copyOpen, setCopyOpen] = React.useState(false);
   const [copied, setCopied] = React.useState("");
+
+  // Message editor views (#342), sandboxed HTML render (#341), in-editor
+  // search (#348) and a Burp-style selection readout (#362).
+  const [reqView, setReqView] = React.useState("raw");
+  const [respView, setRespView] = React.useState("raw");
+  const [reqSearch, setReqSearch] = React.useState("");
+  const [respSearch, setRespSearch] = React.useState("");
+  const [reqMatchIdx, setReqMatchIdx] = React.useState(-1);
+  const [respMatchIdx, setRespMatchIdx] = React.useState(-1);
+  const [reqSel, setReqSel] = React.useState(null);
+  const [respSel, setRespSel] = React.useState(null);
+  const reqRef = React.useRef(null);
+  const respRef = React.useRef(null);
+
+  const reqText = reqView === "raw" ? rep.request : renderView(rep.request, reqView);
+  const respBody = renderView(rep.response, "body");
+  const respText = respView === "raw" ? rep.response : renderView(rep.response, respView);
+
+  const reqMatches = React.useMemo(() => repeaterFindMatches(reqText, reqSearch), [reqText, reqSearch]);
+  const respMatches = React.useMemo(() => repeaterFindMatches(respText, respSearch), [respText, respSearch]);
+
+  const jumpReq = (dir) => {
+    const hit = repeaterGotoMatch(reqMatches, reqMatchIdx, dir);
+    if (!hit || !reqRef.current) return;
+    setReqMatchIdx(hit.idx);
+    reqRef.current.focus();
+    reqRef.current.setSelectionRange(hit.range[0], hit.range[1]);
+  };
+  const jumpResp = (dir) => {
+    const hit = repeaterGotoMatch(respMatches, respMatchIdx, dir);
+    if (!hit || !respRef.current) return;
+    setRespMatchIdx(hit.idx);
+    respRef.current.focus();
+    respRef.current.setSelectionRange(hit.range[0], hit.range[1]);
+  };
+  const onReqSelect = () => {
+    const el = reqRef.current;
+    if (el) setReqSel(repeaterSelectionStats(el.value, el.selectionStart, el.selectionEnd));
+  };
+  const onRespSelect = () => {
+    const el = respRef.current;
+    if (el) setRespSel(repeaterSelectionStats(el.value, el.selectionStart, el.selectionEnd));
+  };
+
   const copyAs = (k) => {
     setCopyOpen(false);
     if (typeof renderRequestAs !== "function") return;
@@ -305,14 +447,41 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
           </div>
-          <textarea
-            className="txt"
-            value={rep.request}
-            onChange={e => dispatch({ type: "repeater-set", payload: { request: e.target.value }})}
-            onKeyDown={e => { if (e.ctrlKey && e.code === "Space") { e.preventDefault(); send(); } }}
-            spellCheck={false}
-            title="Ctrl+Space to send"
+          <RepeaterEditorToolbar
+            views={["raw", "headers", "body", "preview", "hex"]}
+            active={reqView}
+            onView={v => { setReqView(v); setReqSearch(""); setReqMatchIdx(-1); }}
+            search={reqSearch}
+            onSearch={s => { setReqSearch(s); setReqMatchIdx(-1); }}
+            matchCount={reqMatches.length}
+            onNext={() => jumpReq(1)}
+            onPrev={() => jumpReq(-1)}
           />
+          {reqView === "raw" ? (
+            <textarea
+              ref={reqRef}
+              className="txt"
+              value={rep.request}
+              onChange={e => dispatch({ type: "repeater-set", payload: { request: e.target.value }})}
+              onKeyDown={e => { if (e.ctrlKey && e.code === "Space") { e.preventDefault(); send(); } }}
+              onSelect={onReqSelect}
+              onMouseUp={onReqSelect}
+              onKeyUp={onReqSelect}
+              spellCheck={false}
+              title="Ctrl+Space to send"
+            />
+          ) : (
+            <textarea
+              ref={reqRef}
+              className="txt readonly"
+              value={reqText}
+              readOnly
+              onSelect={onReqSelect}
+              onMouseUp={onReqSelect}
+              onKeyUp={onReqSelect}
+            />
+          )}
+          <RepeaterSelectionReadout sel={reqSel} />
         </div>
         <div className="divider-v" />
         <div className="pane" style={{ minWidth: 0 }}>
@@ -323,7 +492,48 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
           </div>
-          <textarea className="txt readonly" value={rep.response} readOnly />
+          <RepeaterEditorToolbar
+            views={["raw", "headers", "body", "preview", "hex", "render"]}
+            active={respView}
+            onView={v => { setRespView(v); setRespSearch(""); setRespMatchIdx(-1); }}
+            search={respSearch}
+            onSearch={s => { setRespSearch(s); setRespMatchIdx(-1); }}
+            matchCount={respMatches.length}
+            onNext={() => jumpResp(1)}
+            onPrev={() => jumpResp(-1)}
+          />
+          {respView === "render" ? (
+            <React.Fragment>
+              <iframe
+                title="repeater-render"
+                // Empty sandbox: no scripts, no forms, no same-origin, no
+                // popups. A reflected-XSS payload in the response body is
+                // rendered inert -- this is a viewer, not a browser.
+                sandbox=""
+                srcDoc={respBody}
+                style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+              />
+              <div style={{
+                padding: "3px 10px", borderTop: "1px solid var(--line-soft)",
+                color: "var(--dim)", fontSize: "10px", fontFamily: "var(--ff-mono)",
+              }}>
+                sandboxed static render · scripts and same-origin access blocked
+              </div>
+            </React.Fragment>
+          ) : (
+            <React.Fragment>
+              <textarea
+                ref={respRef}
+                className="txt readonly"
+                value={respText}
+                readOnly
+                onSelect={onRespSelect}
+                onMouseUp={onRespSelect}
+                onKeyUp={onRespSelect}
+              />
+              <RepeaterSelectionReadout sel={respSel} />
+            </React.Fragment>
+          )}
         </div>
       </div>
     </div>
