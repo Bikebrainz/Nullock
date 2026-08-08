@@ -48,6 +48,8 @@ Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equiva
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
 Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64, hex, JSON transcode
+Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs
+Active tests      26 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app, findings feed Issues
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy
@@ -160,7 +162,7 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  9 tabs:      │
+   │  ActiveProbe    20+ vuln classes               │         │  19 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
