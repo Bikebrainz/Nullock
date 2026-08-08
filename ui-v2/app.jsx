@@ -13,6 +13,7 @@ const TABS = [
   { id: "inspector", label: "INSPECTOR" },
   { id: "probe",     label: "PROBE" },
   { id: "tests",     label: "TESTS" },
+  { id: "discover",  label: "DISCOVER" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
@@ -1763,6 +1764,127 @@ function ProbeTab() {
   );
 }
 
+function DiscoverTab() {
+  // Recon/discovery backends that existed with no UI: wordlist-based content
+  // (directory/file) discovery, robots.txt + sitemap recon, and the BFS link
+  // crawler. Content-discover and robots-scan are single-shot (result renders
+  // below); the crawler is long-running -- it feeds pages straight into
+  // Proxy history via entryLoaded, so its "result" here is just start/stop
+  // status plus a pointer at where the captured pages show up.
+  const [url, setUrl]         = React.useState("");
+  const [kind, setKind]       = React.useState("");
+  const [res, setRes]         = React.useState(null);
+  const [busy, setBusy]       = React.useState(false);
+  const [err, setErr]         = React.useState("");
+  const [crawling, setCrawling] = React.useState(false);
+
+  const run = async (k, fn) => {
+    if (!url) { setErr("enter a URL"); return; }
+    setKind(k); setErr(""); setBusy(true); setRes(null);
+    try {
+      const r = await fn(url);
+      if (r && r.ok === false && r.error) { setErr(r.error); setRes(null); }
+      else setRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
+  const startCrawl = async () => {
+    if (!url) { setErr("enter a seed URL"); return; }
+    setKind("crawl"); setErr(""); setBusy(true); setRes(null);
+    try {
+      const r = await NL.actions.crawlerStart(url);
+      if (r && r.ok === false) setErr(r.error || "crawler failed to start");
+      else { setCrawling(true); setRes(r); }
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+  const stopCrawl = async () => {
+    setBusy(true);
+    try { await NL.actions.crawlerStop(); } catch (e) { /* best-effort */ }
+    finally { setCrawling(false); setBusy(false); }
+  };
+
+  const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "3px 12px 3px 0", whiteSpace: "nowrap", verticalAlign: "top" };
+  const td = { padding: "3px 12px 3px 0", wordBreak: "break-word", color: "var(--text)", verticalAlign: "top" };
+  const Btn = ({ label, onClick, active }) => (
+    <button onClick={onClick} disabled={busy} style={{
+      background: active ? "var(--accent)" : "transparent",
+      color: busy ? "var(--dim)" : active ? "var(--bg)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: busy ? "wait" : "pointer",
+      letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>{label}</button>
+  );
+  const Table = ({ cols, rows, cell }) => (
+    <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+      <thead><tr>{cols.map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+      <tbody>{(rows || []).map((r, i) => <tr key={i}>{cell(r).map((v, j) => <td key={j} style={td}>{v}</td>)}</tr>)}</tbody>
+    </table>
+  );
+  const Section = ({ title, children }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  );
+
+  const render = () => {
+    if (!res) return <span style={{ color: "var(--dim)", fontSize: "12px" }}>results appear here — content-discovery + robots hits are also added to Issues</span>;
+    if (kind === "content") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>
+          {res.requestsSent || 0} requests · {res.hitCount || 0} hits
+          {res.wordlistTruncated ? " · wordlist truncated" : ""}
+          {!res.calibrationReliable ? " · soft-404 calibration unreliable" : ""}
+        </div>
+        {res.hits && res.hits.length ? <Table cols={["path", "status", "size", "note"]} rows={res.hits} cell={h => [<span style={{ color: "var(--accent)" }}>{h.path}</span>, h.status, h.size, <span style={{ color: "var(--text-2)" }}>{h.note}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no paths discovered</div>}
+      </div>
+    );
+    if (kind === "robots") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>
+          robots.txt: {res.robotsFound ? "found" : "absent"} · sitemap: {res.sitemapFound ? "found" : "absent"} · {res.disallowedCount || 0} disallowed · {res.sitemapUrlCount || 0} sitemap URLs
+        </div>
+        {res.disallowed && res.disallowed.length ? <Section title="Disallowed paths"><Table cols={["path"]} rows={res.disallowed} cell={p => [p]} /></Section> : null}
+        {res.disallowedPatterns && res.disallowedPatterns.length ? <Section title="Disallowed patterns"><Table cols={["pattern"]} rows={res.disallowedPatterns} cell={p => [p]} /></Section> : null}
+        {res.sitemapUrls && res.sitemapUrls.length ? <Section title={"Sitemap URLs (" + res.sitemapUrls.length + ")"}><Table cols={["url"]} rows={res.sitemapUrls.slice(0, 100)} cell={u => [<span style={{ wordBreak: "break-all" }}>{u}</span>]} /></Section> : null}
+        {!res.robotsFound && !res.sitemapFound ? <div style={{ color: "var(--dim)", fontSize: "12px" }}>no robots.txt or sitemap.xml found</div> : null}
+      </div>
+    );
+    if (kind === "crawl") return (
+      <div style={{ color: "var(--text-2)", fontSize: "12px" }}>
+        {crawling ? "crawl running — " : "crawl stopped — "}
+        pages fetched are streamed into <span style={{ color: "var(--accent)" }}>Proxy</span> history as they're captured; new findings land in <span style={{ color: "var(--accent)" }}>Issues</span> as usual.
+      </div>
+    );
+    return null;
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Discover</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>content/directory discovery, robots.txt + sitemap recon, and the BFS link crawler</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://target.example.com/"
+               onKeyDown={e => { if (e.key === "Enter") run("content", NL.actions.discoverContent); }}
+               style={{ flex: "1 1 320px", minWidth: 220, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
+        <Btn label="content discover" active={kind === "content"} onClick={() => run("content", NL.actions.discoverContent)} />
+        <Btn label="robots + sitemap" active={kind === "robots"} onClick={() => run("robots", NL.actions.scanRobots)} />
+        {!crawling
+          ? <Btn label="start crawl" active={kind === "crawl"} onClick={startCrawl} />
+          : <Btn label="stop crawl" active={true} onClick={stopCrawl} />}
+        <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{busy ? "working…" : err || ""}</span>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+        {render()}
+      </div>
+    </div>
+  );
+}
+
 const TEST_TYPES = [
   "sqli", "xss", "ssrf", "ssti", "idor", "cmdi", "openredirect", "xxe",
   "nosqli", "crlf", "ldapi", "xpathi", "massassign", "protopollution",
@@ -2987,6 +3109,9 @@ function App() {
         )}
         {tab === "tests" && (
           <TestsTab />
+        )}
+        {tab === "discover" && (
+          <DiscoverTab />
         )}
         {tab === "processor" && (
           <ProcessorTab />
