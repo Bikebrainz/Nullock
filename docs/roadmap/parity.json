@@ -3500,22 +3500,34 @@
     {
       "area": "repeater",
       "feature": "Repeater: response \"Render\" tab (renders the HTML response)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
       "gap": "No way to see what a reflected payload actually does in a renderer. (A sandboxed srcdoc iframe would be the safe implementation; rendering attacker-controlled HTML in the tool's own origin would be a self-XSS on the control server.)",
       "why": "Confirmed, and I verified the proxy 'preview' tab the auditor flagged: it really is only a JSON pretty-printer, not a renderer.",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx response pane: `<textarea className=\"txt readonly\" value={rep.response} readOnly />` — no view tabs, no iframe. Proxy preview at ui-v2/proxy.jsx:1102-1108 `if (view === \"preview\") { const t = (body || \"\").trim(); if (t.startsWith(\"{\") || t.startsWith(\"[\")) { try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) {} } return body || \"(no body)\"; }`. No srcdoc"
+      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx response pane: `<textarea className=\"txt readonly\" value={rep.response} readOnly />` — no view tabs, no iframe. Proxy preview at ui-v2/proxy.jsx:1102-1108 `if (view === \"preview\") { const t = (body || \"\").trim(); if (t.startsWith(\"{\") || t.startsWith(\"[\")) { try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) {} } return body || \"(no body)\"; }`. No srcdoc",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "cd03a95",
+        "note": "Response pane gets a Render view: sandboxed srcdoc iframe (sandbox=\"\", no scripts/forms/same-origin) rendering the response body. tabs.jsx RepeaterTab, respView===\"render\"."
+      }
     },
     {
       "area": "repeater",
       "feature": "Repeater: message editor views — Pretty / Raw / Hex for both request and response",
-      "state": "absent",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
       "gap": "Reading a binary or gzipped response in Repeater is impossible. renderView/toHexDump take no component state, so wiring them into the Repeater panes is genuinely an hours-scale job.",
       "why": "Confirmed, and the 'machinery is one file over' claim checks out exactly — renderView + toHexDump are pure functions taking (raw, view).",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two bare textareas ('REQUEST · editable' / 'RESPONSE · read-only'). Proxy has the tabs: ui-v2/proxy.jsx:349-352 `{[\"raw\", \"headers\", \"body\", \"hex\"].map(t => (` and :363-366 `{[\"raw\", \"headers\", \"body\", \"preview\", \"hex\"].map(t => (`, backed by `function renderView(raw, view)` (proxy.jsx:1093) and `function toHexDump(s)` (proxy.jsx:1113, 64 KiB cap)."
+      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two bare textareas ('REQUEST · editable' / 'RESPONSE · read-only'). Proxy has the tabs: ui-v2/proxy.jsx:349-352 `{[\"raw\", \"headers\", \"body\", \"hex\"].map(t => (` and :363-366 `{[\"raw\", \"headers\", \"body\", \"preview\", \"hex\"].map(t => (`, backed by `function renderView(raw, view)` (proxy.jsx:1093) and `function toHexDump(s)` (proxy.jsx:1113, 64 KiB cap).",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "cd03a95",
+        "note": "Both request and response panes now have Raw/Headers/Body/Preview/Hex view tabs, reusing proxy.jsx's renderView()/toHexDump(). Editing stays in Raw (matches Burp); other views are derived read-only transforms."
+      }
     },
     {
       "area": "repeater",
@@ -3560,22 +3572,34 @@
     {
       "area": "repeater",
       "feature": "Repeater: keyboard shortcut to send (Ctrl+Space / configurable hotkeys)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "Edit-send-read is the core Repeater loop; forcing a mouse trip on every iteration is a real throughput tax. No configurable hotkey layer exists at all.",
       "why": "Confirmed for Repeater send, but the auditor's supporting claim was overstated and I am correcting it: there ARE other key handlers in the UI (Enter-to-submit in scope, decoder and recon inputs). What does not exist is any hotkey for Repeater send, and no ctrlKey/metaKey handling anywhere.",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater send is mouse-only: `<button className=\"btn primary\" onClick={send} disabled={busy}>{busy ? \"SENDING…\" : \"▶ SEND\"}</button>`. Other handlers that do exist: ui-v2/app.jsx:1406 `onKeyDown={e => { if (e.key === \"Enter\") run(); }}`, :1844 similar, ui-v2/tabs.jsx:63 and :91 (scope add), ui-v2/proxy.jsx:613 and :772 (Escape-to-close overlays). `grep -an 'ctrlKey|me"
+      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater send is mouse-only: `<button className=\"btn primary\" onClick={send} disabled={busy}>{busy ? \"SENDING…\" : \"▶ SEND\"}</button>`. Other handlers that do exist: ui-v2/app.jsx:1406 `onKeyDown={e => { if (e.key === \"Enter\") run(); }}`, :1844 similar, ui-v2/tabs.jsx:63 and :91 (scope add), ui-v2/proxy.jsx:613 and :772 (Escape-to-close overlays). `grep -an 'ctrlKey|me",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "cd03a95",
+        "note": "Register-accuracy fix: Ctrl+Space-to-send was actually shipped in commit 1074f35 (Comparer wave, 2026-08-08) but parity.json was never flipped for it. tabs.jsx:312 `onKeyDown={e => { if (e.ctrlKey && e.code === \"Space\") { e.preventDefault(); send(); } }}` confirmed live in the current tree."
+      }
     },
     {
       "area": "repeater",
       "feature": "Repeater: search / highlight within the request and response editors (case-sensitivity, regex, match count)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Finding a reflected canary in a large response means relying on the browser's own Ctrl+F, which does not reliably search a textarea's scrolled content.",
       "why": "Confirmed. The Repeater panes are plain textareas with no search affordance; the deep-search facility is bound to proxy history rows only.",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two `<textarea>` elements with header rows showing only a LINES count. Existing search is row-scoped: ui-v2/proxy.jsx:1137-1155 uses `NL.actions.search(search, \"both\", 500)` -> real-data.js:141-147 `search(q, where = \"both\", limit = 200) { const url = \"/api/search?q=\" ... }`, which returns matching history rows, not in-pane matches."
+      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two `<textarea>` elements with header rows showing only a LINES count. Existing search is row-scoped: ui-v2/proxy.jsx:1137-1155 uses `NL.actions.search(search, \"both\", 500)` -> real-data.js:141-147 `search(q, where = \"both\", limit = 200) { const url = \"/api/search?q=\" ... }`, which returns matching history rows, not in-pane matches.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "cd03a95",
+        "note": "In-editor find now works: case-insensitive substring search with a match counter and wrap-around next/prev that select+focus the match (native textarea selection highlight). Still missing vs the full ask: no case-sensitive toggle, no regex mode."
+      }
     },
     {
       "area": "repeater",
@@ -3733,12 +3757,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Selection\" widget — character count and ASCII decimal/hex values for highlighted text, including non-printing characters",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "days",
       "gap": "No way to identify an invisible or non-printing byte in a value — a routine step when chasing header-injection and parser-differential bugs. toHexDump exists but is view-scoped, not selection-scoped.",
       "why": "Confirmed. The only selection-aware code in the UI feeds the proxy codec bar and reports no counts or byte values.",
-      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx:244-248 `const grabFrom = (ref) => { const el = ref.current; if (!el) return \"\"; const sel = el.value.substring(el.selectionStart, el.selectionEnd); return sel || el.value; };` — the sole selectionStart use in ui-v2 — piped into `setOverlay({ title: \"REQ · \" + name, body: runCodec(name, input) })`. It runs a transform and pops an overlay; no character count, no ASCII"
+      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx:244-248 `const grabFrom = (ref) => { const el = ref.current; if (!el) return \"\"; const sel = el.value.substring(el.selectionStart, el.selectionEnd); return sel || el.value; };` — the sole selectionStart use in ui-v2 — piped into `setOverlay({ title: \"REQ · \" + name, body: runCodec(name, input) })`. It runs a transform and pops an overlay; no character count, no ASCII",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "cd03a95",
+        "note": "A selection readout (char count + first byte's decimal/hex, non-printing chars shown as \\n/\\t/\\r/space) now surfaces live under both Repeater editors on every selection change. Still partial: it lives in Repeater's own panes, not inside a unified docked Inspector side panel -- that panel itself remains absent (tracked separately as #359)."
+      }
     },
     {
       "area": "repeater",
