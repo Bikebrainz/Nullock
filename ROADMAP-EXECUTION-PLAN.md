@@ -30,3 +30,5 @@ Re-entrant: on each wake, `git fetch origin Nullock`; if a wave is mid-flight co
 - Wave 1 (2026-08-02, 3db8c7f): PROBE tab added (fingerprint / header-audit / waf-detect / secret-scan on-demand per-URL). Surfaces 4 orphaned endpoints (also flow to Issues); underlying passive capabilities were already present so no parity delta. Orphaned endpoints: 97 -> 92.
 
 - Wave 1 (2026-08-02, 3f89564): TESTS tab added — unified launcher for all 26 active /api/<type>/test checks. Orphaned endpoints: 92 -> 66.
+
+- Wave 1 (2026-08-08, c81109e/3607a42): DISCOVER tab added — content/directory discovery (soft-404 calibrated), robots.txt + sitemap recon, crawler start/stop. Closed #368, #401 -> present. Orphaned endpoints re-audited and corrected: 66 -> 63 (previous 66 baseline undercounted by 1 -- `/api/cache/poison` was never actually closed by TESTS, it has a distinct shape outside the uniform `/<type>/test` contract; UI-NAVIGABILITY.md rewritten in full to match live ui-v2 grep, not just this wave's delta).

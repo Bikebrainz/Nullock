@@ -1,54 +1,44 @@
-# In-app UI navigability audit (2026-08-02)
+# In-app UI navigability audit (2026-08-02, updated 2026-08-08)
 
-> **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — they are reachable only via the API/CLI, hidden from the desktop GUI. Verified: ui-v2 uses no dynamic `/api/${...}` URL construction, so these are genuinely un-wired, not a false negative. This is the work-list for surfacing every feature. Closing an item = add a tab/menu/button that invokes the endpoint and renders its result, then flip the matching parity.json item and regenerate.
+> Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
+> only via the API/CLI, hidden from the desktop GUI. As of 2026-08-08, waves closing the
+> INSPECTOR, PROBE, TESTS, and DISCOVER tabs have wired 34 of those endpoints (TESTS
+> covers 25 of the 26 originally-listed active checks — `/api/cache/poison` has a distinct
+> request shape outside its uniform `/<type>/test` contract and remains orphaned), leaving
+> **63 of 173 (36%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and
+> `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic `/api/${...}` URL
+> construction, so a literal-string grep is exhaustive). This is the work-list for
+> surfacing every remaining feature. Closing an item = add a tab/menu/button that invokes
+> the endpoint and renders its result, then flip the matching parity.json item and
+> regenerate.
 
-App exposes 16 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads, decoder, comparer, processor, stats, sessions, repeater, intercept, intruder, settings. **No Inspector tab despite a complete `/api/inspect` + inspector_logic backend.** The SCANS tab only drives port-scan + recon; the active-test arsenal has no control.
+App exposes 20 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
+decoder, comparer, inspector, probe, tests, discover, processor, stats, sessions,
+repeater, intercept, intruder, settings. The SCANS tab still only drives port-scan +
+recon; the unified audit/assess/gate runners below have no control.
 
-## Active vulnerability tests (whole arsenal hidden) (26)
-- `/api/cache/poison`
-- `/api/cachedeception/test`
-- `/api/cmdi/test`
-- `/api/cors/test`
-- `/api/crlf/test`
-- `/api/cswsh/test`
-- `/api/deser/test`
-- `/api/hostheader/test`
-- `/api/idor/test`
-- `/api/ldapi/test`
-- `/api/massassign/test`
-- `/api/methods/test`
-- `/api/nosqli/test`
-- `/api/openredirect/test`
-- `/api/pathtraversal/test`
-- `/api/protopollution/test`
-- `/api/race/test`
-- `/api/smuggle/test`
-- `/api/sqli/test`
-- `/api/ssrf/test`
-- `/api/ssti/test`
-- `/api/takeover/test`
-- `/api/verbtamper/test`
-- `/api/xpathi/test`
-- `/api/xss/test`
-- `/api/xxe/test`
+## Active vulnerability tests (1 remaining — the 26 uniform `/<type>/test` checks are wired via TESTS)
+- `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
 
-## Unified scan / audit runners (11)
+## Unified scan / audit runners (10)
 - `/api/assess`
 - `/api/audit/all`
 - `/api/audit/run`
 - `/api/chain/run`
 - `/api/compliance`
 - `/api/gate`
-- `/api/headers/audit`
 - `/api/inventory`
 - `/api/paramminer`
 - `/api/pipeline/run`
 - `/api/posture`
 
-## Inspector / decoder / request tools (3)
-- `/api/inspect`
+(`/api/headers/audit` wired via PROBE tab.)
+
+## Inspector / decoder / request tools (2)
 - `/api/request/curl`
 - `/api/tls/inspect`
+
+(`/api/inspect` wired via INSPECTOR tab.)
 
 ## Reporting & export (8)
 - `/api/export/sbom`
@@ -60,20 +50,17 @@ App exposes 16 top-level tabs: proxy, scope, rules, issues, scans, recon, payloa
 - `/api/workspace/pull`
 - `/api/workspace/push`
 
-## Recon / discovery (13)
-- `/api/content/discover`
-- `/api/crawler/start`
-- `/api/crawler/stop`
+## Recon / discovery (6)
 - `/api/exposure/scan`
-- `/api/fingerprint`
 - `/api/h2/events`
 - `/api/h2/streams`
 - `/api/http3/detect`
 - `/api/jsrecon/scan`
-- `/api/robots/scan`
-- `/api/secrets/scan`
 - `/api/servicevulns/scan`
-- `/api/waf/detect`
+
+(`/api/fingerprint`, `/api/waf/detect`, `/api/secrets/scan` wired via PROBE tab;
+`/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
+wired via DISCOVER tab.)
 
 ## JWT / OAST / crypto (7)
 - `/api/jwt/analyze`
