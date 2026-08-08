@@ -11,6 +11,7 @@ const TABS = [
   { id: "decoder",   label: "DECODER" },
   { id: "comparer",  label: "COMPARER" },
   { id: "inspector", label: "INSPECTOR" },
+  { id: "probe",     label: "PROBE" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
@@ -1659,6 +1660,108 @@ function JwtList({ jwts }) {
   );
 }
 
+function ProbeTab() {
+  // Active per-URL probes whose backends existed with no UI (all four sink
+  // their findings into Issues AND return them here): tech/CVE fingerprint,
+  // security-header/CSP audit, WAF detection, and client-side secret scan.
+  const [url, setUrl]     = React.useState("");
+  const [kind, setKind]   = React.useState("");
+  const [res, setRes]     = React.useState(null);
+  const [busy, setBusy]   = React.useState(false);
+  const [err, setErr]     = React.useState("");
+
+  const run = async (k, fn) => {
+    if (!url) { setErr("enter a URL"); return; }
+    setKind(k); setErr(""); setBusy(true); setRes(null);
+    try {
+      const r = await fn(url);
+      if (r && r.ok === false && r.error) { setErr(r.error); setRes(null); }
+      else setRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
+  const sevColor = (s) => ({
+    critical: "var(--err)", high: "#ea580c", medium: "#d97706",
+    low: "#3f8f29", info: "var(--dim)",
+  }[String(s || "").toLowerCase()] || "var(--text-2)");
+  const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "3px 12px 3px 0", whiteSpace: "nowrap", verticalAlign: "top" };
+  const td = { padding: "3px 12px 3px 0", wordBreak: "break-word", color: "var(--text)", verticalAlign: "top" };
+  const Btn = ({ label, k, fn }) => (
+    <button onClick={() => run(k, fn)} disabled={busy} style={{
+      background: kind === k ? "var(--accent)" : "transparent",
+      color: busy ? "var(--dim)" : kind === k ? "var(--bg)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: busy ? "wait" : "pointer",
+      letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>{label}</button>
+  );
+  const Table = ({ cols, rows, cell }) => (
+    <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+      <thead><tr>{cols.map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+      <tbody>{(rows || []).map((r, i) => <tr key={i}>{cell(r).map((v, j) => <td key={j} style={td}>{v}</td>)}</tr>)}</tbody>
+    </table>
+  );
+  const Section = ({ title, children }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  );
+
+  const render = () => {
+    if (!res) return <span style={{ color: "var(--dim)", fontSize: "12px" }}>results appear here — and are also added to Issues</span>;
+    if (kind === "fingerprint") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>HTTP {res.status} · {res.techCount || 0} technologies</div>
+        {res.tech && res.tech.length ? <Section title="Technologies"><Table cols={["name", "version", "source"]} rows={res.tech} cell={t => [t.name, t.version || "—", <span style={{ color: "var(--dim)" }}>{t.source}</span>]} /></Section> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no technologies fingerprinted</div>}
+        {res.cves && res.cves.length ? <Section title={"Correlated CVEs (" + res.cves.length + ")"}><Table cols={["cve", "cvss", "tech", "summary"]} rows={res.cves} cell={c => [<span style={{ color: "var(--err)" }}>{c.cveId}</span>, c.cvss, c.tech, c.summary]} /></Section> : null}
+      </div>
+    );
+    if (kind === "headers") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>HTTP {res.status} · CSP: {res.hasCsp ? "present" : "absent"}{res.reportOnlyOnly ? " (report-only)" : ""} · {res.findingCount || 0} findings</div>
+        {res.findings && res.findings.length ? <Table cols={["severity", "issue", "detail"]} rows={res.findings} cell={f => [<span style={{ color: sevColor(f.severity) }}>{f.severity}</span>, f.title, <span style={{ color: "var(--text-2)" }}>{f.detail}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no header issues found</div>}
+      </div>
+    );
+    if (kind === "waf") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>{res.host} · HTTP {res.status} · {res.detectionCount || 0} detections</div>
+        {res.detections && res.detections.length ? <Table cols={["name", "kind", "evidence"]} rows={res.detections} cell={d => [<span style={{ color: "var(--accent)" }}>{d.name}</span>, d.kind, <span style={{ color: "var(--text-2)" }}>{d.evidence}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no WAF detected</div>}
+      </div>
+    );
+    if (kind === "secrets") return (
+      <div>
+        <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>{res.resourcesScanned || 0} resources · {res.requestsSent || 0} requests · {res.hitCount || 0} hits</div>
+        {res.hits && res.hits.length ? <Table cols={["severity", "type", "location", "masked"]} rows={res.hits} cell={h => [<span style={{ color: sevColor(h.severity) }}>{h.severity}</span>, h.type, <span style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{h.location}</span>, <span style={{ color: "var(--dim)" }}>{h.masked}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no secrets found in client code</div>}
+      </div>
+    );
+    return null;
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Probe</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>active per-URL checks — tech/CVE, security headers, WAF, client-side secrets (also sent to Issues)</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://target.example.com/path"
+               onKeyDown={e => { if (e.key === "Enter" && kind) run(kind, { fingerprint: NL.actions.fingerprintUrl, headers: NL.actions.auditHeaders, waf: NL.actions.detectWaf, secrets: NL.actions.scanSecrets }[kind]); }}
+               style={{ flex: "1 1 320px", minWidth: 220, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
+        <Btn label="fingerprint" k="fingerprint" fn={NL.actions.fingerprintUrl} />
+        <Btn label="header audit" k="headers" fn={NL.actions.auditHeaders} />
+        <Btn label="waf detect" k="waf" fn={NL.actions.detectWaf} />
+        <Btn label="secret scan" k="secrets" fn={NL.actions.scanSecrets} />
+        <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{busy ? "probing…" : err || ""}</span>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+        {render()}
+      </div>
+    </div>
+  );
+}
+
 function DecoderTab() {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
@@ -2777,6 +2880,9 @@ function App() {
         )}
         {tab === "inspector" && (
           <InspectorTab />
+        )}
+        {tab === "probe" && (
+          <ProbeTab />
         )}
         {tab === "processor" && (
           <ProcessorTab />
