@@ -3600,42 +3600,64 @@
     {
       "area": "repeater",
       "feature": "Comparer: item list — Paste / Load from file / Remove / Clear, sortable, pick any two",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Every comparison starts from an empty box, and even navigating away loses the pasted blobs. You cannot accumulate a set of responses over a session and compare pairs. Burp's item list is the whole point of Comparer as a workspace.",
-      "why": "Confirmed by reading the whole ComparerTab component (it starts at app.jsx:1440, not 1256 — the auditor's line numbers were off, the content was right).",
-      "evidence": "D:/dev/Nullock/ui-v2/app.jsx:1440-1445 `function ComparerTab() { const [a, setA] = React.useState(\"\"); const [b, setB] = React.useState(\"\"); const [mode, setMode] = React.useState(\"words\"); const [result, setRes] = React.useState(null); const [err, setErr] = React.useState(\"\"); }` rendered as two textareas with `placeholder=\"first blob…\"` / `\"second blob…\"`. No file input, no item table, no persis"
+      "gap": "Item list exists with paste/load-file/remove/clear; only two items are picked (A/B) for a pairwise diff at a time -- matches Burp's own Comparer, which also compares exactly two items per run.",
+      "why": "Re-read app.jsx ComparerTab after rewriting it. state.comparer.items is a real list (lifted into the app reducer, not local-only state) with comparer-add/remove/clear reducer cases; the toolbar has a paste popup (label + textarea + Add) and a hidden <input type=file> wired to FileReader.readAsText. Each row shows label, byte length, and A/B picker buttons.",
+      "evidence": "ui-v2/app.jsx ComparerTab: reducer cases comparer-add/comparer-remove/comparer-clear; item-list toolbar (+ paste item / load file / clear all) and per-item A/B/remove row.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "1074f35",
+        "note": "Comparer rebuilt around a real item list + send-to-comparer + synced dual-pane diff + text/hex toggle."
+      }
     },
     {
       "area": "repeater",
       "feature": "Comparer: \"Send to Comparer\" from any Burp message",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Content must be manually selected, copied and pasted into the Comparer textareas. Partly offset by the proxy's own MARK/DIFF overlay (A15), which covers the history-vs-history case but nothing else.",
-      "why": "Confirmed by my own grep for send-to-comparer / sendToComparer / toComparer across Src/ and ui-v2 (zero hits) plus enumerating the reducer's action list.",
-      "evidence": "D:/dev/Nullock/ui-v2/app.jsx reducer cases are: set, switch-tab, nl-snapshot, send-to-repeater (:49), send-to-intruder (:63), repeater-set/send/clear (:93-101), intruder-* — no comparer case. Proxy DetailPane buttons are REPEATER / INTRUDER / COPY AS / REPLAY / PROBE / MARK-DIFF only."
+      "gap": "Wired from Proxy history (request or response) and Repeater (request/response panes); not yet from Decoder output or Intruder results.",
+      "why": "Re-read proxy.jsx DetailPane and tabs.jsx RepeaterTab after adding the wiring. DetailPane has a \"COMPARER ▾\" dropdown (request/response) that dispatches comparer-add and switches to the Comparer tab; RepeaterTab has a \"CMP\" button on both the request and response pane heads doing the same.",
+      "evidence": "ui-v2/proxy.jsx DetailPane onSendComparer dropdown (request/response) -> dispatch comparer-add + onSwitchTab(\"comparer\"); ui-v2/tabs.jsx RepeaterTab sendToComparer() wired to both pane-head buttons.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "1074f35",
+        "note": "Comparer rebuilt around a real item list + send-to-comparer + synced dual-pane diff + text/hex toggle."
+      }
     },
     {
       "area": "repeater",
       "feature": "Comparer: two synchronized side-by-side result panels with \"Sync views\" scrolling",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "The Comparer tab itself has no two-pane view; a unified inline diff is much harder to read for large HTTP responses. The aligned two-pane rendering already exists in proxy.jsx and could be reused — but it is a different code path over a different diff engine.",
-      "why": "State confirmed for the Comparer, but I am correcting the auditor's parenthetical: the proxy DiffOverlay's two panes ARE effectively sync-scrolled — both columns render the same row array line-for-line inside one shared scroll container.",
-      "evidence": "Comparer result is a single inline stream: D:/dev/Nullock/ui-v2/app.jsx `{result && result.segments ? result.segments.map((s, i) => (<span key={i} style={segStyle(s.op)}>{s.text}</span>)) : ...}`. Correction: ui-v2/proxy.jsx:708-731 the DiffOverlay body is one `<div style={{ display: \"grid\", gridTemplateColumns: \"1fr 1fr\", flex: 1, minHeight: 0, overflow: \"auto\" }}>` containing `{rows.map((r, i) ="
+      "why": "Re-read the new ComparerTab result rendering. The backend's single merged segments[] array (POST /api/compare) is split client-side into streamA (op !== \"ins\") and streamB (op !== \"del\"), rendered into two <div> panes with independent refs; onScroll on either pane mirrors scrollTop/scrollLeft onto the other while a \"sync: on/off\" toggle button is active (default on).",
+      "evidence": "ui-v2/app.jsx ComparerTab: streamA/streamB filters, paneARef/paneBRef, onScrollA/onScrollB, syncScroll state + toggle button.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "1074f35",
+        "note": "Comparer rebuilt around a real item list + send-to-comparer + synced dual-pane diff + text/hex toggle."
+      }
     },
     {
       "area": "repeater",
       "feature": "Comparer: Text / Hex toggle on the results view",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Cannot inspect the diff of binary content — which also cannot be produced in the first place, since the differ is QString-based (A11).",
-      "why": "Confirmed. The Comparer control bar holds three mode buttons and a status string, nothing else, and toHexDump is never imported there.",
-      "evidence": "D:/dev/Nullock/ui-v2/app.jsx ComparerTab control bar contains exactly `<Btn label=\"compare words\" .../> <Btn label=\"lines\" .../> <Btn label=\"chars\" .../>` plus the status span. The hex dumper lives at ui-v2/proxy.jsx:1113 `function toHexDump(s)` and is referenced only by renderView in that file."
+      "why": "Re-read the new result rendering. A \"text\"/\"hex\" button pair sets view state; renderSeg() emits either the literal segment text or textToHexPairs(s.text) (UTF-8 byte pairs via TextEncoder) per diff segment, preserving the same insert/delete color coding in both modes.",
+      "evidence": "ui-v2/app.jsx: textToHexPairs() helper + ComparerTab view state (\"text\"|\"hex\") + renderSeg().",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-08",
+        "commit": "1074f35",
+        "note": "Comparer rebuilt around a real item list + send-to-comparer + synced dual-pane diff + text/hex toggle."
+      }
     },
     {
       "area": "repeater",
