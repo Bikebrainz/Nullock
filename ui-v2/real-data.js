@@ -253,6 +253,23 @@
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },
     ruleToggle(index)       { return post("/api/rules/toggle", { index }); },
     ruleMove(from, to)      { return post("/api/rules/move",   { from, to }); },
+
+    // --- reporting / export ---
+    // report/build and report/html are POST-only (engagement documents, not
+    // idempotent GETs) so they return the raw fetch Response for the caller
+    // to turn into a blob download, rather than parsing JSON.
+    reportBuild()  { return post("/api/report/build"); },
+    reportHtml()   { return post("/api/report/html"); },
+    reportJson()   { return fetch("/api/report/json").then(r => r.json()); },
+    openapiImport(spec, baseUrl) {
+      return post("/api/openapi/import", { spec, baseUrl: baseUrl || undefined }).then(r => r.json());
+    },
+    workspacePush(url, key, engagement, author) {
+      return post("/api/workspace/push", { url, key, engagement, author: author || undefined }).then(r => r.json());
+    },
+    workspacePull(url, key, engagement, since) {
+      return post("/api/workspace/pull", { url, key, engagement, since: since || undefined }).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {

@@ -14,6 +14,7 @@ const TABS = [
   { id: "probe",     label: "PROBE" },
   { id: "tests",     label: "TESTS" },
   { id: "discover",  label: "DISCOVER" },
+  { id: "reporting", label: "REPORTING" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
@@ -1885,6 +1886,180 @@ function DiscoverTab() {
   );
 }
 
+function ReportingTab() {
+  // Reporting & export backends that existed with no UI: engagement report
+  // generation (Markdown/HTML/JSON), OpenAPI spec export/import, CycloneDX
+  // SBOM export, and workspace push/pull sync with a shared nullock-workspace
+  // server. report/build and report/html are POST-only (engagement documents,
+  // not idempotent reads) so their downloads go through fetch->blob rather
+  // than a plain <a href> like the GET-allowlisted exports below them.
+  const [busy, setBusy] = React.useState("");
+  const [err, setErr]   = React.useState("");
+  const [summary, setSummary] = React.useState(null);
+
+  const [spec, setSpec]           = React.useState("");
+  const [baseUrl, setBaseUrl]     = React.useState("");
+  const [importRes, setImportRes] = React.useState(null);
+
+  const [wsUrl, setWsUrl] = React.useState("");
+  const [wsKey, setWsKey] = React.useState("");
+  const [wsEng, setWsEng] = React.useState("");
+  const [wsRes, setWsRes] = React.useState(null);
+
+  const downloadBlob = async (kind, fetcher, filename) => {
+    setErr(""); setBusy(kind);
+    try {
+      const r = await fetcher();
+      if (!r || !r.ok) { setErr(kind + " failed (" + (r ? r.status : "network error") + ")"); return; }
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(""); }
+  };
+
+  const downloadHref = (href, filename) => {
+    const a = document.createElement("a");
+    a.href = href; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  const loadSummary = async () => {
+    setErr(""); setBusy("json"); setSummary(null);
+    try {
+      const r = await NL.actions.reportJson();
+      if (r && r.ok === false) setErr(r.error || "report/json failed");
+      else setSummary(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(""); }
+  };
+
+  const doImport = async () => {
+    if (!spec.trim()) { setErr("paste an OpenAPI spec (JSON)"); return; }
+    setErr(""); setBusy("import"); setImportRes(null);
+    try {
+      const r = await NL.actions.openapiImport(spec, baseUrl);
+      if (r && r.ok === false) setErr(r.error || "import failed");
+      setImportRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(""); }
+  };
+
+  const doWorkspace = async (dir) => {
+    if (!wsUrl || !wsKey || !wsEng) { setErr("workspace url, key, and engagement are required"); return; }
+    setErr(""); setBusy("ws-" + dir); setWsRes(null);
+    try {
+      const r = dir === "push" ? await NL.actions.workspacePush(wsUrl, wsKey, wsEng)
+                                : await NL.actions.workspacePull(wsUrl, wsKey, wsEng);
+      if (r && r.ok === false) setErr(r.error || (dir + " failed"));
+      setWsRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(""); }
+  };
+
+  const Btn = ({ label, onClick, k }) => (
+    <button onClick={onClick} disabled={!!busy} style={{
+      background: "transparent",
+      color: busy ? "var(--dim)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: busy ? "wait" : "pointer",
+      letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>{busy === k ? "…" : label}</button>
+  );
+  const input = {
+    background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+    borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+  const Section = ({ title, hint, children }) => (
+    <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{title}</span>
+        {hint && <span style={{ color: "var(--dim)", fontSize: "11px" }}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, height: "100%", minHeight: 0, overflow: "auto" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Reporting</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>engagement report export, OpenAPI import/export, SBOM, and workspace sync</span>
+        {err && <span style={{ color: "var(--err)", fontSize: "11px" }}>{err}</span>}
+      </div>
+
+      <Section title="Engagement report" hint="findings + scope + notes, generated from the current session">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn k="md" label="Download Markdown" onClick={() => downloadBlob("md", NL.actions.reportBuild, "nullock-report.md")} />
+          <Btn k="html" label="Download HTML" onClick={() => downloadBlob("html", NL.actions.reportHtml, "nullock-report.html")} />
+          <Btn k="jsondl" label="Download JSON" onClick={() => downloadHref("/api/report/json", "nullock-report.json")} />
+          <Btn k="json" label="View summary" onClick={loadSummary} />
+        </div>
+        {summary && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>
+            posture: <span style={{ color: "var(--accent)" }}>{summary.posture ? summary.posture.grade : "?"}</span>
+            {" "}({summary.posture ? summary.posture.score : "?"}) ·{" "}
+            findings: {summary.findingsTotal != null ? summary.findingsTotal : 0} ·{" "}
+            hosts: {summary.inventory ? summary.inventory.hostCount : 0} ·{" "}
+            generated {summary.generatedAt || ""}
+          </div>
+        )}
+      </Section>
+
+      <Section title="OpenAPI" hint="reverse-engineer a spec from captured history, or seed history from an existing spec">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn k="oa-export" label="Export captured surface" onClick={() => downloadHref("/api/openapi/export", "nullock-openapi.json")} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <textarea value={spec} onChange={e => setSpec(e.target.value)} placeholder="paste an OpenAPI 2.x/3.x spec (JSON)…"
+                    rows={4} style={{ ...input, resize: "vertical", fontSize: "11px" }} spellCheck={false} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="base URL override (optional)"
+                   style={{ ...input, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+            <Btn k="import" label="Import into history" onClick={doImport} />
+          </div>
+          {importRes && (
+            <div style={{ fontSize: "11px", color: "var(--text-2)" }}>
+              {importRes.ok
+                ? "imported " + importRes.imported + " operations from " + importRes.host + (importRes.truncated ? " (truncated)" : "")
+                : "import failed" + (importRes.error ? ": " + importRes.error : "")}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section title="SBOM" hint="CycloneDX 1.5, from detected tech + CVE-correlated findings">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn k="sbom" label="Download SBOM" onClick={() => downloadHref("/api/export/sbom", "nullock-sbom.json")} />
+        </div>
+      </Section>
+
+      <Section title="Workspace sync" hint="push/pull findings against a shared nullock-workspace server (your own infra, not scan-gated)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={wsUrl} onChange={e => setWsUrl(e.target.value)} placeholder="https://workspace.example.com/"
+                 style={{ ...input, flex: "1 1 220px", minWidth: 180 }} spellCheck={false} />
+          <input value={wsKey} onChange={e => setWsKey(e.target.value)} placeholder="key" type="password"
+                 style={{ ...input, width: 140 }} spellCheck={false} />
+          <input value={wsEng} onChange={e => setWsEng(e.target.value)} placeholder="engagement"
+                 style={{ ...input, width: 160 }} spellCheck={false} />
+          <Btn k="ws-push" label="Push" onClick={() => doWorkspace("push")} />
+          <Btn k="ws-pull" label="Pull" onClick={() => doWorkspace("pull")} />
+        </div>
+        {wsRes && (
+          <div style={{ fontSize: "11px", color: "var(--text-2)" }}>
+            {wsRes.ok
+              ? ("pushed" in wsRes ? "pushed " + wsRes.pushed + " (" + wsRes.accepted + " accepted)" : "pulled/imported " + wsRes.imported)
+              : "sync failed" + (wsRes.error ? ": " + wsRes.error : "")}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
 const TEST_TYPES = [
   "sqli", "xss", "ssrf", "ssti", "idor", "cmdi", "openredirect", "xxe",
   "nosqli", "crlf", "ldapi", "xpathi", "massassign", "protopollution",
@@ -3112,6 +3287,9 @@ function App() {
         )}
         {tab === "discover" && (
           <DiscoverTab />
+        )}
+        {tab === "reporting" && (
+          <ReportingTab />
         )}
         {tab === "processor" && (
           <ProcessorTab />
