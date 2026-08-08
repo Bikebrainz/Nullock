@@ -28,3 +28,5 @@ Re-entrant: on each wake, `git fetch origin Nullock`; if a wave is mid-flight co
 - Wave 1 (2026-08-02, 86f094c): INSPECTOR tab added, surfacing /api/inspect. Closed #327 request-attributes, #330 cookies, #332 JWT-decode -> present.
 
 - Wave 1 (2026-08-02, 3db8c7f): PROBE tab added (fingerprint / header-audit / waf-detect / secret-scan on-demand per-URL). Surfaces 4 orphaned endpoints (also flow to Issues); underlying passive capabilities were already present so no parity delta. Orphaned endpoints: 97 -> 92.
+
+- Wave 1 (2026-08-02, 3f89564): TESTS tab added — unified launcher for all 26 active /api/<type>/test checks. Orphaned endpoints: 92 -> 66.
