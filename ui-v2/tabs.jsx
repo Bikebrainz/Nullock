@@ -1,9 +1,100 @@
 // Scope, Repeater, Intercept, Intruder tabs.
 
 // ===================== SCOPE =====================
+// Turn a pasted URL (or bare host) into a host glob. Returns null if the
+// text doesn't parse as a URL/host at all.
+function urlToScopeGlob(text) {
+  const t = text.trim();
+  if (!t) return null;
+  try {
+    const u = new URL(t.includes("://") ? t : "https://" + t);
+    return u.hostname || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function ScopeColumn({ label, colorVar, list, kind, dispatch, includeSubdomains }) {
+  const [value, setValue] = React.useState("");
+  const [editIndex, setEditIndex] = React.useState(null); // index of glob being edited, or null
+  const fileRef = React.useRef(null);
+  const addType = kind === "in" ? "scope-add-in" : "scope-add-out";
+  const removeType = kind === "in" ? "scope-remove-in" : "scope-remove-out";
+
+  function commit() {
+    const v = value.trim();
+    if (!v) return;
+    if (editIndex !== null) {
+      dispatch({ type: removeType, index: editIndex });
+    }
+    dispatch({ type: addType, value: v });
+    if (includeSubdomains && editIndex === null && !v.startsWith("*.")) {
+      dispatch({ type: addType, value: "*." + v });
+    }
+    setValue("");
+    setEditIndex(null);
+  }
+
+  function fromUrl() {
+    const glob = urlToScopeGlob(value);
+    if (glob) setValue(glob);
+  }
+
+  function loadFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const lines = String(reader.result).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      lines.forEach(g => dispatch({ type: addType, value: g }));
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  }
+
+  return (
+    <div className="scope-col">
+      <div className="pane-head" style={{ background: "var(--pane)" }}>
+        <span style={{ color: `var(${colorVar})` }}>▸</span>
+        <span>{label}</span>
+        <span className="ph-count">{list.length}</span>
+      </div>
+      <div className="scope-list">
+        {list.map((g, i) => (
+          <div key={g} className={"scope-item " + kind}>
+            <span
+              className="glob"
+              style={{ cursor: "pointer" }}
+              title="click to edit"
+              onClick={() => { setValue(g); setEditIndex(i); }}
+            >{g}</span>
+            <span className="rm" onClick={() => dispatch({ type: removeType, index: i })}>×</span>
+          </div>
+        ))}
+        {list.length === 0 && <div style={{ padding: 16, color: "var(--dim)", fontSize: "var(--fz-sm)" }}>{kind === "in" ? "nothing in scope — all hosts captured" : "no exclusions"}</div>}
+      </div>
+      <div className="scope-add" style={{ flexWrap: "wrap", rowGap: 6 }}>
+        <div className="fld" style={{ flex: 1, minWidth: 160 }}>
+          <span className="pre">{editIndex !== null ? "EDIT" : (kind === "in" ? "+IN" : "+OUT")}</span>
+          <input
+            placeholder="e.g. acme.corp, *.acme.corp, or paste a URL"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setValue(""); setEditIndex(null); } }}
+          />
+        </div>
+        <button className="btn" title="Convert a pasted URL into a host glob" onClick={fromUrl}>URL→HOST</button>
+        <button className="btn" onClick={() => fileRef.current && fileRef.current.click()}>LOAD FILE</button>
+        <input ref={fileRef} type="file" accept=".txt,.csv" style={{ display: "none" }} onChange={loadFile} />
+        <button className="btn" onClick={commit}>{editIndex !== null ? "SAVE" : "ADD"}</button>
+        {editIndex !== null && <button className="btn ghost" onClick={() => { setValue(""); setEditIndex(null); }}>CANCEL</button>}
+      </div>
+    </div>
+  );
+}
+
 function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
-  const [newIn, setNewIn] = React.useState("");
-  const [newOut, setNewOut] = React.useState("");
+  const [includeSubdomains, setIncludeSubdomains] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
 
   return (
@@ -34,66 +125,16 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
       <div className="pane-head" style={{ borderTop: "1px solid var(--line)" }}>
         <span className="ph-corner">▸</span>
         <span>SCOPE · {scope.in.length} IN / {scope.out.length} OUT</span>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "var(--dim)", fontSize: "var(--fz-xs)" }}>
+          <input type="checkbox" checked={includeSubdomains} onChange={e => setIncludeSubdomains(e.target.checked)} />
+          include subdomains when adding
+        </label>
         <span className="ph-count">project: {bootInfo.project}</span>
       </div>
 
       <div className="scope-grid">
-        <div className="scope-col">
-          <div className="pane-head" style={{ background:"var(--pane)" }}>
-            <span style={{ color: "var(--ok)" }}>▸</span>
-            <span>IN-SCOPE GLOBS</span>
-            <span className="ph-count">{scope.in.length}</span>
-          </div>
-          <div className="scope-list">
-            {scope.in.map((g, i) => (
-              <div key={g} className="scope-item in">
-                <span className="glob">{g}</span>
-                <span className="rm" onClick={() => dispatch({ type: "scope-remove-in", index: i })}>×</span>
-              </div>
-            ))}
-            {scope.in.length === 0 && <div style={{ padding: 16, color: "var(--dim)", fontSize: "var(--fz-sm)" }}>nothing in scope — all hosts captured</div>}
-          </div>
-          <div className="scope-add">
-            <div className="fld" style={{ flex: 1 }}>
-              <span className="pre">+IN</span>
-              <input
-                placeholder="e.g. *.acme.corp"
-                value={newIn}
-                onChange={e => setNewIn(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && newIn.trim()) { dispatch({ type: "scope-add-in", value: newIn.trim() }); setNewIn(""); } }}
-              />
-            </div>
-            <button className="btn" onClick={() => { if (newIn.trim()) { dispatch({ type: "scope-add-in", value: newIn.trim() }); setNewIn(""); } }}>ADD</button>
-          </div>
-        </div>
-        <div className="scope-col">
-          <div className="pane-head" style={{ background:"var(--pane)" }}>
-            <span style={{ color: "var(--err)" }}>▸</span>
-            <span>OUT-OF-SCOPE GLOBS</span>
-            <span className="ph-count">{scope.out.length}</span>
-          </div>
-          <div className="scope-list">
-            {scope.out.map((g, i) => (
-              <div key={g} className="scope-item out">
-                <span className="glob">{g}</span>
-                <span className="rm" onClick={() => dispatch({ type: "scope-remove-out", index: i })}>×</span>
-              </div>
-            ))}
-            {scope.out.length === 0 && <div style={{ padding: 16, color: "var(--dim)", fontSize: "var(--fz-sm)" }}>no exclusions</div>}
-          </div>
-          <div className="scope-add">
-            <div className="fld" style={{ flex: 1 }}>
-              <span className="pre">+OUT</span>
-              <input
-                placeholder="e.g. *.analytics.com"
-                value={newOut}
-                onChange={e => setNewOut(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && newOut.trim()) { dispatch({ type: "scope-add-out", value: newOut.trim() }); setNewOut(""); } }}
-              />
-            </div>
-            <button className="btn" onClick={() => { if (newOut.trim()) { dispatch({ type: "scope-add-out", value: newOut.trim() }); setNewOut(""); } }}>ADD</button>
-          </div>
-        </div>
+        <ScopeColumn label="IN-SCOPE GLOBS" colorVar="--ok" list={scope.in} kind="in" dispatch={dispatch} includeSubdomains={includeSubdomains} />
+        <ScopeColumn label="OUT-OF-SCOPE GLOBS" colorVar="--err" list={scope.out} kind="out" dispatch={dispatch} includeSubdomains={includeSubdomains} />
       </div>
     </div>
   );
