@@ -54,6 +54,9 @@ Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
                   docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab
 Active tests      26 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app, findings feed Issues
+Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xxe/ldap/xpath/
+                  smuggle/hostheader/cache-poison/deser/nosql/mass-assign/cors) against every
+                  captured history row with params or a body, throttled, off the UI thread
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy
