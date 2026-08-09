@@ -393,6 +393,20 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
             alert("Probe error: " + e);
           }
         }} title="Light reflected-XSS probe against this row's query params">⚡ PROBE</button>
+        <button onClick={async () => {
+          try {
+            const r = await NL.actions.csrfPoc(row.id);
+            if (!r.ok) { alert("CSRF PoC failed: " + (r.error || "unknown")); return; }
+            setOverlay({
+              title: "CSRF POC · " + r.method + " " + r.url,
+              body: r.html,
+              note: r.note,
+              downloadName: "csrf-poc-row-" + row.id + ".html",
+            });
+          } catch (e) {
+            alert("CSRF PoC error: " + e);
+          }
+        }} title="Generate an auto-submitting CSRF proof-of-concept HTML page for this request (CWE-352)">⚔ CSRF POC</button>
         {diffMark === null && (
           <button onClick={() => setDiffMark(row.id)}
                   title="Mark this row as the left-hand side of a diff">
@@ -849,13 +863,26 @@ function CodecBar({ onRun }) {
 }
 
 // Read-only result overlay for codec output. ESC or click outside closes.
-function CodecOverlay({ title, body, onClose }) {
+function CodecOverlay({ title, body, note, downloadName, onClose }) {
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const copy = () => { try { navigator.clipboard?.writeText(body); } catch {} };
+  const download = () => {
+    try {
+      const blob = new Blob([body], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
   return (
     <div onClick={onClose}
          style={{
@@ -876,6 +903,13 @@ function CodecOverlay({ title, body, onClose }) {
           textTransform: "uppercase", letterSpacing: "0.06em",
         }}>
           <span style={{ flex: 1 }}>{title}</span>
+          {downloadName && (
+            <button onClick={download} style={{
+              background: "transparent", color: "var(--accent)",
+              border: "1px solid var(--accent)", padding: "2px 8px",
+              fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            }}>DOWNLOAD</button>
+          )}
           <button onClick={copy} style={{
             background: "transparent", color: "var(--accent)",
             border: "1px solid var(--accent)", padding: "2px 8px",
@@ -887,6 +921,12 @@ function CodecOverlay({ title, body, onClose }) {
             fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
           }}>CLOSE</button>
         </div>
+        {note && (
+          <div style={{
+            padding: "6px 12px", borderBottom: "1px solid var(--line-soft)",
+            color: "var(--dim)", fontSize: "11px",
+          }}>{note}</div>
+        )}
         <textarea readOnly value={body}
                   style={{
                     flex: 1, minHeight: 240, padding: 10,

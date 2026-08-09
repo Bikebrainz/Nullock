@@ -210,6 +210,11 @@
       return fetch("/api/history/" + rowId + "/probe", { method: "POST" })
         .then(r => r.json());
     },
+    csrfPoc(rowId) {
+      // Auto-submitting CSRF PoC HTML for a captured request (CWE-352).
+      // Returns { ok, method, url, note, html }.
+      return post("/api/csrf/poc", { id: rowId }).then(r => r.json());
+    },
     portscanStart(payload) { return post("/api/portscan/start", payload).then(r => r.json()); },
     portscanStop()         { return post("/api/portscan/stop"); },
     portscanClear()        { return post("/api/portscan/clear"); },

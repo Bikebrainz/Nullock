@@ -60,6 +60,8 @@ Active tests      26 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchab
 Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xxe/ldap/xpath/
                   smuggle/hostheader/cache-poison/deser/nosql/mass-assign/cors) against every
                   captured history row with params or a body, throttled, off the UI thread
+CSRF PoC          One-click auto-submitting CSRF PoC generator for any captured request --
+                  download or copy from Proxy history / Site map to host on an attacker page
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy

@@ -2424,12 +2424,18 @@
     {
       "area": "platform",
       "feature": "Engagement tool: Generate CSRF PoC",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No UI entry point \u2014 no right-click, no button, no action in the NL.actions table. Reachable only by POSTing JSON with a CSRF header.",
-      "why": "DOWNGRADED. The generator is genuinely good \u2014 I read request_export.cpp and it handles GET query-to-form, urlencoded (including content-type-less sniffing via looksUrlencoded), a multipart scaffold with an honest caveat, and a credentialed fetch fallback whose note correctly warns about CORS preflight on non-simple content types. Values are HTML-escaped. But it is curl-only: grepping ui-v2 for 'cs",
-      "evidence": "Generator real: Src/Core/Networking/request_export.cpp:71-75 GET branch `h += fields(parseUrlencoded(u.query(QUrl::FullyEncoded)));`; :76-82 urlencoded branch; :83-87 `note = \"multipart/form-data -- form scaffold only; re-add the individual parts/files manually (the raw multipart body cannot be split reliably).\"`; :91-95 `h += \"<script>\\nfetch(\" + jsStr(url) + \", {\\n  method: \" + jsStr(method) + \""
+      "gap": "None -- a CSRF POC button in the Proxy history / Site map DetailPane calls /api/csrf/poc and shows the generated HTML in an overlay with COPY and DOWNLOAD, ready to host on an attacker page. No technique selector (server auto-picks form vs fetch() PoC by content-type) -- a minor UI nicety, not a functional gap.",
+      "why": "Closed 2026-08-09: added NL.actions.csrfPoc(rowId) (POST /api/csrf/poc {id}) and a \u2694 CSRF POC button in DetailPane's row-action bar (ui-v2/proxy.jsx), reusing the existing CodecOverlay (extended with optional note + downloadName/DOWNLOAD-button props) to preview and save the generated PoC HTML.",
+      "evidence": "ui-v2/proxy.jsx DetailPane CSRF POC button + CodecOverlay note/downloadName props; ui-v2/real-data.js NL.actions.csrfPoc; control_server.cpp:3908 /api/csrf/poc handler (unchanged, already complete); request_export.cpp:50 csrfPoc() generator.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "PENDING",
+        "note": "CSRF PoC wave: wired /api/csrf/poc into the GUI (Proxy history / Site map DetailPane), closing the last GUI-reachability gap."
+      }
     },
     {
       "area": "platform",
@@ -4162,12 +4168,18 @@
     {
       "area": "target",
       "feature": "Engagement tools > Generate CSRF PoC",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Backend is complete and careful (HTML-escaped fields, JS-string-escaped body). Nothing in the GUI invokes it -- in Burp this is a right-click away. No technique selector, no preview-in-browser.",
-      "why": "Downgraded, and the first pass's stated gap is factually wrong in the other direction. (1) It claimed 'no cross-domain XHR / fetch PoC variant' -- there IS one, a credentialed fetch() for JSON and every other content type. (2) The real gap it missed: /api/csrf/poc has no UI caller in either front end, so a user cannot generate a PoC without hand-crafting a POST.",
-      "evidence": "Src/Core/Networking/request_export.cpp csrfPoc: GET branch `h += \"<form id=\\\"nlk\\\" action=\\\"\" + action.toHtmlEscaped() + \"\\\" method=\\\"GET\\\">\\n\"; h += fields(parseUrlencoded(u.query(QUrl::FullyEncoded)));`; urlencoded branch note 'Form-urlencoded body -- classic auto-submitting form CSRF.'; multipart branch honestly warns 'form scaffold only; re-add the individual parts/files manually'; and THE FET"
+      "gap": "None -- same DetailPane button as #224 (Proxy/Target share one component). Preview is text-only (no in-app render of the auto-submitting form, by design -- rendering it would fire the request).",
+      "why": "Closed 2026-08-09: same fix as #224 -- DetailPane is shared between the Proxy history table and the Site map (both areas of ui-v2/proxy.jsx's ProxyTab), so the new CSRF POC button reaches both.",
+      "evidence": "ui-v2/proxy.jsx DetailPane (used by both SiteMap row selection and HTTP history row selection in ProxyTab); control_server.cpp:3908 /api/csrf/poc.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "PENDING",
+        "note": "CSRF PoC wave: wired /api/csrf/poc into the GUI (Proxy history / Site map DetailPane), closing the last GUI-reachability gap."
+      }
     },
     {
       "area": "target",
