@@ -41,7 +41,9 @@ Discovery         In-app content/directory brute-force (soft-404 calibrated), ro
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto)
 OAST              In-process HTTP + DNS callback sinks for out-of-band confirmation -- one blast
                   confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
-                  plus a deployable standalone server (nullock-oast) for a public / hosted tier
+                  plus a deployable standalone server (nullock-oast) for a public / hosted tier.
+                  Self-hosted Collaborator client tab: mint callback URLs, poll for HTTP
+                  interactions, inspect hit detail (source IP, headers, body preview)
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
                   + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
@@ -174,7 +176,7 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  21 tabs:     │
+   │  ActiveProbe    20+ vuln classes               │         │  22 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│

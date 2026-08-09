@@ -2480,12 +2480,18 @@
     {
       "area": "platform",
       "feature": "Collaborator client (dedicated panel: generate N payloads, copy to clipboard, poll now, view interaction detail)",
-      "state": "stub",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "No hit list, no interaction detail, no mint button, no poll control. Only a counter in /api/snapshot; reading callbacks needs curl \u2014 and DNS callbacks are unreadable even then.",
-      "why": "Confirmed, and worse than stated. I verified both endpoints exist and that /api/oast/poll is even GET-allowlisted (so it is browser-reachable), yet nothing in the UI calls it \u2014 the NL.actions table has no oastMint/oastPoll and the only 'oast' string in ui-v2 is a text badge. New finding on top: because DnsSink retains no hits, /api/oast/poll can NEVER return a DNS interaction even via curl. So the",
-      "evidence": "Endpoints real and allowlisted: control_server.cpp:1892 `if (path == \"/api/oast/poll\") {` with :1664 `|| p == \"/api/oast/poll\"` in isReadPath; :3551 `if (path == \"/api/oast/mint\") {`. UI-less: `grep -an \"oast\" ui-v2/app.jsx ui-v2/real-data.js ui-v2/tabs.jsx ui-v2/chrome.jsx` returns only the badge; NL.actions (ui-v2/real-data.js:119-215) has no oast entry. DNS unpollable: control_server.cpp:1900 `"
+      "gap": "None for the core mint/poll/detail workflow. DNS-only interactions still never surface (DnsSink retains no hit list \u2014 see \"Collaborator: DNS interaction capture\"), so a pure-DNS Log4Shell confirmation stays invisible in this panel. /api/oast/blast (the multi-vector SSRF/XXE/RCE spray) also has no button here \u2014 this wave wired the mint-and-watch workflow, not the attack-fire one.",
+      "why": "Closed 2026-08-09: added a COLLABORATOR tab (ui-v2/app.jsx CollaboratorTab) that mints callback URLs via POST /api/oast/mint (copy-to-clipboard per payload), polls GET /api/oast/poll on a running since-cursor (manual + 3s auto-poll toggle), and renders the returned hit list with a click-through detail pane (token, time, source IP, method, host header, path, user agent, body bytes, body preview) straight from the fields the endpoint already returns. No backend change \u2014 both endpoints were already complete and allowlisted, just unreachable from the GUI.",
+      "audited_state": "present",
+      "evidence": "ui-v2/app.jsx CollaboratorTab (mint/poll/hit-table/detail-pane); ui-v2/real-data.js NL.actions.oastMint/oastPoll/oastBlast; control_server.cpp:3593 POST /api/oast/mint returns {token,pathUrl,hostUrl,port,baseHost}; control_server.cpp:1927 GET /api/oast/poll returns {running,port,baseHost,hits:[{id,atMs,token,sourceIp,method,hostHeader,path,bodyBytes,userAgent,bodyPreview}]} \u2014 every field is read by the new panel.",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "PENDING",
+        "note": "Collaborator wave: dedicated COLLABORATOR tab wires /api/oast/mint and /api/oast/poll (mint payload, copy URL, poll now / auto-poll, click-through interaction detail). /api/oast/blast and DNS-hit listing remain open, tracked separately."
+      }
     },
     {
       "area": "platform",
