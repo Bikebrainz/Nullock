@@ -51,7 +51,8 @@ Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equiva
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
 Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64, hex, JSON transcode
-Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs
+Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
+                  docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab
 Active tests      26 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app, findings feed Issues
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
