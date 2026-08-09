@@ -170,6 +170,33 @@ function reducer(state, action) {
       act("interceptForwardAll");
       return { ...state, intercepted: [] };
 
+    // Intercept action menu: send the currently-held raw text straight into
+    // another tool without waiting for it to land in proxy history first
+    // (it may still be held, so there's no history row id to key off yet).
+    case "send-to-repeater-raw": {
+      const { host, port, tls, text } = action;
+      act("repeaterTabAdd", "");
+      act("repeaterSet", { host, port, tls, request: text });
+      return {
+        ...state,
+        tab: "repeater",
+        repeater: { ...state.repeater, host, port, tls, request: text, response: "", statusLine: "ready · sent from intercept" },
+      };
+    }
+    case "send-to-intruder-raw": {
+      const { host, port, tls, text } = action;
+      let tmpl = text;
+      if (text.includes("=")) {
+        tmpl = text.replace(/(=)([^&\s\n]*)$/m, "$1§payload§");
+      }
+      act("intruderSet", { host, port, tls, template: tmpl });
+      return {
+        ...state,
+        tab: "intruder",
+        intruder: { ...state.intruder, host, port, tls, template: tmpl },
+      };
+    }
+
     case "scope-add-in":
       if (state.scope.in.includes(action.value)) return state;
       act("scopeAddIn", action.value);
@@ -3460,6 +3487,7 @@ function App() {
             interceptResponses={state.interceptResponses}
             intercepted={state.intercepted}
             dispatch={dispatch}
+            onSwitchTab={setTab}
           />
         )}
         {tab === "intruder" && (

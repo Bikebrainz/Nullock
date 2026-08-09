@@ -749,12 +749,57 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
 }
 
 // ===================== INTERCEPT =====================
-function InterceptTab({ intercept, interceptResponses, intercepted, dispatch }) {
+// Response modification helpers -- Burp's eight one-click client-side-control
+// removals (Proxy > Options > Response Modification), reproduced here as
+// manual per-message transforms applied to a held response's raw text
+// (status line + headers + body) before it's forwarded. Unlike Burp's
+// checkboxes these aren't a standing auto-apply setting -- each is a
+// one-shot edit on the currently-held item -- so the gap is closed as
+// "partial", not "present".
+function respUnhideHiddenFields(text) {
+  return text.replace(/type\s*=\s*(["'])hidden\1/gi, "type=$1text$1");
+}
+function respEnableDisabledFields(text) {
+  return text.replace(/\s+disabled(=["'][^"']*["'])?/gi, "");
+}
+function respRemoveLengthLimits(text) {
+  return text.replace(/\s+maxlength\s*=\s*(["']?)\d+\1/gi, "");
+}
+function respRemoveJsValidation(text) {
+  return text
+    .replace(/\s+required(=["'][^"']*["'])?/gi, "")
+    .replace(/\s+pattern=(["'])[^"']*\1/gi, "")
+    .replace(/\s+onsubmit=(["'])[^"']*\1/gi, "");
+}
+function respRemoveAllJs(text) {
+  return text
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/\s+on[a-z]+=(["'])[^"']*\1/gi, "");
+}
+function respRemoveObjectTags(text) {
+  return text.replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, "");
+}
+function respHttpsToHttp(text) {
+  return text.replace(/https:\/\//gi, "http://");
+}
+function respStripSecureCookie(text) {
+  return text.replace(/^(Set-Cookie:.*?);\s*Secure(?=\s*(;|$))/gim, "$1");
+}
+
+function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, onSwitchTab }) {
   const current = intercepted[0] || null;
   const more = Math.max(0, intercepted.length - 1);
 
   const [editedText, setEditedText] = React.useState(current ? current.text : "");
   React.useEffect(() => { setEditedText(current ? current.text : ""); }, [current?.id]);
+
+  const sendToRepeater = () => current && dispatch({ type: "send-to-repeater-raw", host: current.host, port: current.port, tls: current.tls, text: editedText });
+  const sendToIntruder = () => current && dispatch({ type: "send-to-intruder-raw", host: current.host, port: current.port, tls: current.tls, text: editedText });
+  const sendToComparer = () => {
+    if (!current) return;
+    dispatch({ type: "comparer-add", label: (current.kind === 1 ? "intercept response" : "intercept request") + " #" + current.id, text: editedText });
+    if (onSwitchTab) onSwitchTab("comparer");
+  };
 
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto 1fr" }}>
@@ -800,12 +845,34 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch }) 
               {current.host}<span className="proto">:{current.port}</span>
             </span>
             <span style={{ flex: 1 }} />
+            {current.kind !== 1 && (
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held request to Repeater" onClick={sendToRepeater}>↦ REP</button>
+            )}
+            {current.kind !== 1 && (
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held request to Intruder" onClick={sendToIntruder}>↦ INT</button>
+            )}
+            <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held message to Comparer" onClick={sendToComparer}>↦ CMP</button>
             {more > 0 && (
               <span style={{ color: "var(--warn)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }} className="blink">
                 ▮ {more} more waiting
               </span>
             )}
           </div>
+          {current.kind === 1 && (
+            <div style={{ display: "flex", gap: 8, padding: "6px 12px", borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap" }}>
+              <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", alignSelf: "center" }}>
+                response mods:
+              </span>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respUnhideHiddenFields(t))}>UNHIDE FIELDS</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respEnableDisabledFields(t))}>ENABLE DISABLED</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respRemoveLengthLimits(t))}>REMOVE LENGTH LIMITS</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respRemoveJsValidation(t))}>REMOVE JS VALIDATION</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respRemoveAllJs(t))}>REMOVE ALL JS</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respRemoveObjectTags(t))}>REMOVE OBJECT TAGS</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respHttpsToHttp(t))}>HTTPS -&gt; HTTP LINKS</button>
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respStripSecureCookie(t))}>STRIP SECURE FLAG</button>
+            </div>
+          )}
           <textarea
             className="txt"
             value={editedText}

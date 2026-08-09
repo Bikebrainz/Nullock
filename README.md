@@ -15,7 +15,8 @@
 ## What's in the box
 
 ```
-Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue
+Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue with
+                  pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb, custom payloads, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
