@@ -2489,7 +2489,7 @@
       "evidence": "ui-v2/app.jsx CollaboratorTab (mint/poll/hit-table/detail-pane); ui-v2/real-data.js NL.actions.oastMint/oastPoll/oastBlast; control_server.cpp:3593 POST /api/oast/mint returns {token,pathUrl,hostUrl,port,baseHost}; control_server.cpp:1927 GET /api/oast/poll returns {running,port,baseHost,hits:[{id,atMs,token,sourceIp,method,hostHeader,path,bodyBytes,userAgent,bodyPreview}]} \u2014 every field is read by the new panel.",
       "reconciled": {
         "date": "2026-08-09",
-        "commit": "PENDING",
+        "commit": "5d9c3c6",
         "note": "Collaborator wave: dedicated COLLABORATOR tab wires /api/oast/mint and /api/oast/poll (mint payload, copy URL, poll now / auto-poll, click-through interaction detail). /api/oast/blast and DNS-hit listing remain open, tracked separately."
       }
     },
