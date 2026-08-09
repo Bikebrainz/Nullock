@@ -16,9 +16,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "GUI header is hardcoded 'sniper mode' (tabs.jsx:529) with no attack-type picker; sniper is simply the default so it still works from the GUI.",
-      "why": "Re-read intruder_engine.cpp and intruder.hpp; claim holds. Sniper is the engine default and runs from the GUI without any selector.",
-      "evidence": "intruder_engine.cpp:75-83 `case AttackType::Sniper:` builds `QStringList combo(positions, def); combo[pos]=p;`. intruder.hpp:93-98 `enum AttackType{ Sniper=0, BatteringRam, Pitchfork, ClusterBomb }`. control_server.cpp:3166-3172 parses attackType."
+      "gap": "None -- a MODE select in the Intruder target row (tabs.jsx) lets the user pick sniper explicitly, and the pane-head label reflects the live selection.",
+      "why": "Closed 2026-08-09: added an attack-type <select> (tabs.jsx target-row) bound to intruder.attackType, dispatching intruder-set{attackType} -> POST /api/intruder/set. Sniper is option 0.",
+      "evidence": "ui-v2/tabs.jsx ATTACK_TYPES select in IntruderTab's target-row; control_server.cpp:3209-3215 already parsed attackType (int or name).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: MODE selector (sniper/battering-ram/pitchfork/cluster-bomb) closes the GUI-reachability gap for all four attack types."
+      }
     },
     {
       "area": "intruder",
@@ -26,9 +32,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No GUI attack-type selector; selectable only via the control API (/api/intruder/set attackType or /api/intruder/multi). A GUI-only user cannot pick it.",
-      "why": "Re-read engine; replicate logic confirmed. Reachable via API only (needs attackType + it reuses set 0).",
-      "evidence": "intruder_engine.cpp:67-73 `case AttackType::BatteringRam:{ ... out.append(QStringList(positions, p)); }`. Wired via control_server.cpp:3166-3172 (parseAttackType) + /api/intruder/set."
+      "gap": "None -- selectable via the same MODE select as Sniper (option 1).",
+      "why": "Closed 2026-08-09: same MODE <select> as item 0; battering-ram is option 1, no backend change needed.",
+      "evidence": "ui-v2/tabs.jsx ATTACK_TYPES select; control_server.cpp:3209-3215 attackType parsing.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: MODE selector closes the GUI-reachability gap for all four attack types."
+      }
     },
     {
       "area": "intruder",
@@ -36,9 +48,15 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "ui-v2 has a single payloads textarea (tabs.jsx:699-704) that only fills set 0; there is no attack-type selector and no multi-column set editor. Usable only through /api/intruder/set payloadSets or /api/intruder/multi.",
-      "why": "Re-read engine; index-zip with min-length confirmed. Reachable only via API because the GUI cannot enter per-position sets.",
-      "evidence": "intruder_engine.cpp:86-104 zips sets by index, `minLen` = shortest non-empty set; `combo[p]=s[k]`. control_server.cpp:3178-3189 accepts `payloadSets` (one per position)."
+      "gap": "None -- the MODE select plus a per-position PAYLOAD SETS column editor (shown when pitchfork/cluster-bomb is picked and the template has >1 \u00a7marker\u00a7) let the user fill payloadSets[i] per position from the GUI.",
+      "why": "Closed 2026-08-09: added a per-position multi-column payload-set editor (tabs.jsx IntruderTab, isMultiSet branch) that renders one textarea per \u00a7marker\u00a7 pair, dispatching intruder-set{payloadSets} -> POST /api/intruder/set. No backend change; setPayloadSets/syncSetsToPositions already existed.",
+      "evidence": "ui-v2/tabs.jsx PAYLOAD SETS pane (isMultiSet && posCount>1); control_server.cpp:3221-3232 payloadSets accepts one array per position; intruder_engine.cpp:86-104 zip-by-index engine.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: per-position payload-set editor closes Pitchfork's GUI-reachability gap."
+      }
     },
     {
       "area": "intruder",
@@ -46,9 +64,15 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Same as Pitchfork \u2014 engine/API only; no GUI to enter one set per position or choose the type.",
-      "why": "Re-read engine; Cartesian odometer confirmed, empty positions contribute their default. API-only like Pitchfork.",
-      "evidence": "intruder_engine.cpp:105-129 odometer over per-position sets, `if(!s.isEmpty()) combo[p]=s[idx[p]];` then carry-increment skipping empty positions."
+      "gap": "None -- same per-position PAYLOAD SETS editor as Pitchfork (item 2); Cluster bomb is MODE option 3.",
+      "why": "Closed 2026-08-09: same multi-set editor as item 2; the engine's odometer/cartesian product was already complete, only the GUI to enter one set per position was missing.",
+      "evidence": "ui-v2/tabs.jsx PAYLOAD SETS pane; control_server.cpp:3221-3232 payloadSets; intruder_engine.cpp:105-129 odometer cartesian product.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: per-position payload-set editor closes Cluster bomb's GUI-reachability gap."
+      }
     },
     {
       "area": "intruder",
@@ -63,12 +87,18 @@
     {
       "area": "intruder",
       "feature": "Auto-mark payload positions (Add/Clear/Auto \u00a7)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No Add/Clear/Auto position buttons and no 'mark every parameter/header/cookie value' auto-marker; the user hand-types \u00a7 into the template textarea.",
-      "why": "Re-read app.jsx send-to-intruder and tabs.jsx discovery; only a single-regex last-param marker + a fixed \u00a7\u00a7 path exist. No add/clear/auto buttons.",
-      "evidence": "app.jsx:77 `tmpl = req.replace(/(=)([^&\\s\\n]*)$/m, \"$1\u00a7payload\u00a7\")` marks only the LAST param. tabs.jsx:471 discovery template hardcodes `GET /\u00a7\u00a7 HTTP/1.1`."
+      "gap": "None -- + \u00a7 wraps the current template-textarea selection in markers, CLEAR \u00a7 strips every marker, and AUTO \u00a7 auto-marks every query-string, form-body and Cookie value via a new pure autoMarkTemplate() helper (idempotent: already-marked values are left alone).",
+      "why": "Closed 2026-08-09: added +\u00a7/CLEAR \u00a7/AUTO \u00a7 buttons to the TEMPLATE pane header. AUTO \u00a7 parses the raw request (request-line query string, Cookie header, x-www-form-urlencoded body) and wraps each value; verified with a Node functional test (request-line, Cookie, form-body, idempotency, CRLF and LF templates).",
+      "evidence": "ui-v2/tabs.jsx autoMarkTemplate() (pure, exported for testing) + IntruderTab TEMPLATE pane-head buttons.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: +\u00a7/CLEAR \u00a7/AUTO \u00a7 close the auto-mark gap (partial -> present)."
+      }
     },
     {
       "area": "intruder",
@@ -116,9 +146,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No GUI payload-processing editor \u2014 all processing rules are reachable only via /api/intruder/set rules. A GUI-only user cannot add any processing rule.",
-      "why": "Re-read applyRule; op confirmed. Engine + API path is real, but ui-v2 has no rules editor at all (grep for payloadRules/rule-ops in JSX empty).",
-      "evidence": "intruder_rules.cpp:13 `if(op==\"prefix\") return rule.arg + value;`. control_server.cpp:3204-3217 builds the rule chain from JSON."
+      "gap": "None -- the RULES bar (tabs.jsx IntruderTab) is an ordered rule-chain editor (op select populated from GET /api/intruder/rule-ops, +/-/reorder) covering prefix as one op.",
+      "why": "Closed 2026-08-09: added a RULES bar with add/remove/reorder rows, an op <select> per row (arg inputs for prefix/suffix/match-replace), dispatching intruder-set{rules} -> POST /api/intruder/set. rules is UI-only client state (not echoed by the snapshot), matching the existing grepMatch/grepExtract pattern.",
+      "evidence": "ui-v2/tabs.jsx RULES bar in IntruderTab; control_server.cpp:3247-3260 rules parsing (op+arg); intruder_rules.cpp:13 prefix op.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: RULES bar closes the processing-rule-chain GUI gap for prefix/suffix/encode/hash/case/reverse/match-replace at once."
+      }
     },
     {
       "area": "intruder",
@@ -126,9 +162,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "API-only (no GUI rules editor in ui-v2).",
-      "why": "Re-read applyRule; op confirmed. Same API-only reachability as prefix.",
-      "evidence": "intruder_rules.cpp:14 `if(op==\"suffix\") return value + rule.arg;`."
+      "gap": "None -- same RULES bar as item 10 (suffix is one op in the dropdown).",
+      "why": "Closed 2026-08-09: same RULES bar as item 10; suffix is a listed op with a text arg input.",
+      "evidence": "ui-v2/tabs.jsx RULES bar; intruder_rules.cpp:14 suffix op.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: RULES bar closes the processing-rule-chain GUI gap for prefix/suffix/encode/hash/case/reverse/match-replace at once."
+      }
     },
     {
       "area": "intruder",
@@ -156,9 +198,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No constructed-string / ASCII-hex-with-separator variants, and no global 'URL-encode these characters' option; only explicit chain rules. API-only.",
-      "why": "Re-read rules delegation and operations() list; delegates to Transcode. Common encoders present. API-only.",
-      "evidence": "intruder_rules.cpp:42-46 delegates unknown ops to Transcode::apply; operations() 63-65 lists base64-encode, base64url-encode, url-encode, hex-encode, html-encode, unicode-escape, rot13."
+      "gap": "None -- same RULES bar; the encode ops (base64/base64url/url/hex/html/unicode-escape/rot13) are listed in the op <select>, sourced live from GET /api/intruder/rule-ops.",
+      "why": "Closed 2026-08-09: same RULES bar as item 10; encode ops need no arg input, just the op selection.",
+      "evidence": "ui-v2/tabs.jsx RULES bar + RULE_OPS_FALLBACK; intruder_rules.cpp:42-46 delegates encode ops to Transcode::apply.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: RULES bar closes the processing-rule-chain GUI gap for prefix/suffix/encode/hash/case/reverse/match-replace at once."
+      }
     },
     {
       "area": "intruder",
@@ -166,9 +214,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "API-only (no GUI rules editor).",
-      "why": "Re-read rules + transcode.cpp; md5/sha1/sha256/sha512 are really implemented via QCryptographicHash. API-only.",
-      "evidence": "intruder_rules.cpp:67-68 operations() lists md5/sha1/sha256/sha512; transcode.cpp:256-259 `if(o==\"md5\") return hashOp(input,QCryptographicHash::Md5);` (+sha1/256/512)."
+      "gap": "None -- same RULES bar; md5/sha1/sha256/sha512 are listed hash ops in the <select>.",
+      "why": "Closed 2026-08-09: same RULES bar as item 10.",
+      "evidence": "ui-v2/tabs.jsx RULES bar; intruder_rules.cpp:67-68 hash ops via Transcode::apply.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: RULES bar closes the processing-rule-chain GUI gap for prefix/suffix/encode/hash/case/reverse/match-replace at once."
+      }
     },
     {
       "area": "intruder",
@@ -214,12 +268,18 @@
     {
       "area": "intruder",
       "feature": "Results table: filtering",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Burp's Intruder filter bar (status classes, length filter, regex highlight, negative search) is missing; just one hardcoded 404 hide.",
-      "why": "Re-read the results table; only a single hide-404 checkbox exists. Confirmed partial.",
-      "evidence": "tabs.jsx:714-718 `<input type=checkbox checked={hide404}...>hide 404s`; tabs.jsx:741 `if(hide404 && r.status===404) return null;`. No status-range/length/regex filter controls anywhere in IntruderTab."
+      "gap": "None -- the RESULTS pane gained 2xx/3xx/4xx/5xx toggle chips, min/max response-length filters, and a regex (with leading '-' negation) search box over payload+extracted text, composed with the existing hide-404 checkbox via a new pure intruderRowVisible() predicate.",
+      "why": "Closed 2026-08-09: replaced the single hardcoded hide-404 checkbox with a full filter bar; all fields were already client-side (intruder.results), so this is a pure ui-v2 predicate change verified with a Node functional test covering every filter dimension plus fail-open on an invalid regex.",
+      "evidence": "ui-v2/tabs.jsx intruderRowVisible() (pure, exported for testing) + IntruderTab RESULTS filter bar.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: results filter bar closes the filtering gap (partial -> present)."
+      }
     },
     {
       "area": "intruder",
@@ -247,9 +307,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Auto-marks only the last query param (app.jsx:77); no interactive position marking after send.",
-      "why": "Re-read app.jsx send-to-intruder; populates host/port/tls/template and switches tab. Confirmed.",
-      "evidence": "app.jsx:71-90 case 'send-to-intruder' sets host/port/tls/template and `tab:'intruder'`; line 77 auto-marks the last param."
+      "gap": "None -- a + \u00a7 button in the TEMPLATE pane wraps the current textarea selection in \u00a7markers\u00a7, matching Burp's Add-\u00a7 control; manual placement by editing the textarea was already possible.",
+      "why": "Closed 2026-08-09: added the +\u00a7 button (reads templateRef.current.selectionStart/End) alongside the pre-existing send-to-intruder auto-mark and editable template textarea.",
+      "evidence": "ui-v2/tabs.jsx IntruderTab TEMPLATE pane-head +\u00a7 button; app.jsx:77 send-to-intruder auto-mark (pre-existing).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: +\u00a7 selection-wrap button closes the interactive marking gap."
+      }
     },
     {
       "area": "intruder",
@@ -495,12 +561,18 @@
     {
       "area": "intruder",
       "feature": "Results table: sortable columns",
-      "state": "absent",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Cannot sort results by status/length/time/grep to spot the anomalous response \u2014 a core Intruder triage move.",
-      "why": "Re-read IntruderTab; rows render in fixed payload order and the <th> cells carry no onClick sort handler, unlike other tables in the app.",
-      "evidence": "tabs.jsx:733-734 `<tr><th>#</th><th>Payload</th>...<th>Error</th></tr>` have no onClick; tabs.jsx:737 `intruder.payloads.map((p,i)=>...)` renders in fixed index order."
+      "gap": "None -- every results-table header is click-to-sort (numeric-aware for status/size/ms/matched, string-aware for payload/extracted/err), tracked via a new pure intruderSortValue() accessor; the resend button still targets the original row index after sorting/filtering.",
+      "why": "Closed 2026-08-09: added sortKey/sortDir state and onClick handlers to every <th>, sorting a derived {p,i,r} row list (i = original index, preserved through filter+sort) rather than intruder.payloads directly. Verified with a Node functional test including a numeric-vs-lexicographic ordering check.",
+      "evidence": "ui-v2/tabs.jsx intruderSortValue() (pure, exported for testing) + IntruderTab RESULTS <thead> onClick handlers.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "7dd20d5",
+        "note": "Intruder wave: sortable results columns close the sortable-columns gap (absent -> present)."
+      }
     },
     {
       "area": "scanner",
