@@ -3920,12 +3920,18 @@
     {
       "area": "target",
       "feature": "Scope UI actions: Add / Edit / Remove / Paste URL / Load (from file) on both tables",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Editing a rule means delete + retype. No paste-a-URL-and-derive, no bulk load from file -- which is how most engagements are handed to you.",
-      "why": "Held. I additionally traced the index->glob conversion (the UI dispatches an index, the API wants a glob) to make sure Remove actually works -- it does, via the reducer.",
-      "evidence": "Add and Remove only. ui-v2/tabs.jsx:66 `<button className=\"btn\" onClick={() => { if (newIn.trim()) { dispatch({ type: \"scope-add-in\", value: newIn.trim() }); setNewIn(\"\"); } }}>ADD</button>`; tabs.jsx:51 `<span className=\"rm\" onClick={() => dispatch({ type: \"scope-remove-in\", index: i })}>x</span>`, resolved at ui-v2/app.jsx:149-152 `case \"scope-remove-in\": { const glob = state.scope.in[action.ind"
+      "gap": "None -- the two scope columns (tabs.jsx ScopeColumn) now support Edit (click a glob to load it, Save does remove-then-re-add), Paste-URL (a URL->HOST button converts a pasted URL into its hostname via new URL()), and Load-from-file (a hidden <input type=file> reads newline-delimited globs and adds each).",
+      "why": "Closed 2026-08-09: ScopeTab's two columns were previously Add-only (a text input + ADD button + per-row remove). Replaced with a shared ScopeColumn component adding click-to-edit, a URL->HOST conversion helper (urlToScopeGlob), and a file-load path, all dispatching through the existing scope-add-in/out and scope-remove-in/out reducer actions -- no backend change needed since /api/scope/in|out/add|remove already existed.",
+      "evidence": "ui-v2/tabs.jsx ScopeColumn (commit): click-to-edit via editIndex state + commit() remove-then-add; urlToScopeGlob() parses pasted text via `new URL()`; loadFile() reads a hidden file input via FileReader.readAsText and dispatches one scope-add-* per non-empty line.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "f872626",
+        "note": "Wave 2 Target/Scope batch -- Scope UI actions: Add / Edit / Remove / Paste URL / Load (from file) on both tables closed (absent -> present), frontend-only, no backend change."
+      }
     },
     {
       "area": "target",
@@ -4086,12 +4092,18 @@
     {
       "area": "target",
       "feature": "Site map filter — Filter by request type: \"Show only in-scope items\", \"Show only requested items\", \"Show only parameterized requests\", \"Hide not-found items\"",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No parameterized-only filter even though ParamsRole exists and the count is displayed; no hide-404s; no requested-vs-inferred distinction (nothing is ever inferred).",
-      "why": "Confirmed, and strengthened: I checked the Qt-side ProxyFilterModel too (the first pass only looked at ui-v2), and it exposes the identical three dimensions, so neither front end has any of these four.",
-      "evidence": "Src/FrontEnd/GUI/Models/Proxy/proxy_filter_model.hpp:17-20 -- the complete filter surface: `Q_PROPERTY(QString hostSubstring ...) Q_PROPERTY(QString statusClass ...) Q_PROPERTY(QString methodFilter ...) Q_PROPERTY(int hiddenCount ...)`, with the class comment at hpp:10-12 stating 'we just override filterAcceptsRow to apply our three filter dimensions'. ui-v2 matches: proxy.jsx:22-45 (host substrin"
+      "gap": "None -- proxy.jsx FilterBar/HistoryTable gain IN-SCOPE, PARAMS, and HIDE 404 toggle chips (client-side predicates over r.params/r.status/r.host, the last via a new hostInScope() glob matcher against scope.in). 'Requested only' stays trivially true for every row since Nullock does not yet distinguish requested-vs-inferred URLs (no inference engine exists), so it was not given a separate toggle -- an honest limitation, not a missing control.",
+      "why": "Closed 2026-08-09: ProxyFilterModel/proxy.jsx previously exposed only host/status-class/method/search filters. Added three concrete toggle chips wired into both HistoryTable's filtered useMemo and ProxyTab's own `shown` count, all pure frontend over fields already present on every row.",
+      "evidence": "ui-v2/proxy.jsx globToRegex()/hostInScope() (glob match r.host against scope.in); HistoryTable paramsOnly/hideNotFound/inScopeOnly props applied in its filter predicate; FilterBar IN-SCOPE/PARAMS/HIDE 404 chip row.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "f872626",
+        "note": "Wave 2 Target/Scope batch -- Site map filter — Filter by request type: \"Show only in-scope items\", \"Show only requested items\", \"Show only parameterized requests\", \"Hide not-found items\" closed (absent -> present), frontend-only, no backend change."
+      }
     },
     {
       "area": "target",
@@ -4126,12 +4138,18 @@
     {
       "area": "target",
       "feature": "Scope: \"Include subdomains\" checkbox on a prefix rule",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Cosmetic in effect -- `*.example.com` works as a wildcard -- but the user must add both `example.com` and `*.example.com`, which is exactly the mistake Burp's checkbox prevents. The placeholder text (tabs.jsx:62 `placeholder=\"e.g. *.acme.corp\"`) actively steers users into the half that misses the apex.",
-      "why": "Confirmed. I also verified the footgun the first pass flagged by tracing the regex construction by hand: escape(\"*.example.com\") -> \"\\*\\.example\\.com\", replace(\"\\*\",\".*\") -> \".*\\.example\\.com\", anchored ^...$ requires a leading label plus a dot, so bare example.com genuinely does not match.",
-      "evidence": "ProjectMeta carries flat strings with no per-rule options: Src/Core/Storage/project_store.hpp:17-18 `QStringList inScope; QStringList outOfScope;`. `grep -rn \"includeSubdomains|subdomain\" Src/BackEnd/Proxy/proxy_server.cpp Src/Core/Storage/project_store.cpp` -> no matches. The glob translation is proxy_server.cpp:1317-1320 `QString pattern = QRegularExpression::escape(g); pattern.replace(\"\\\\*\", \"."
+      "gap": "None -- an 'include subdomains when adding' checkbox in the Scope tab's pane-head applies to both scope columns: when checked, adding a host also adds its *.host wildcard via the same scope-add-in/out dispatch. Implemented as a shared toggle above both columns rather than per-input (functionally equivalent: still adds both entries per Add action), and the placeholder text was corrected to show a bare host works too.",
+      "why": "Closed 2026-08-09: scope is still a flat glob list server-side (no per-rule subdomain flag), so the fix is the two-entry UI convenience the plan called for -- ScopeColumn's commit() adds both `host` and `*.host` when the checkbox is on and the value isn't already a wildcard.",
+      "evidence": "ui-v2/tabs.jsx ScopeTab include-subdomains checkbox (pane-head) threaded into both ScopeColumn instances via the includeSubdomains prop; ScopeColumn.commit() dispatches a second scope-add-* with '*.'+value when set.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "f872626",
+        "note": "Wave 2 Target/Scope batch -- Scope: \"Include subdomains\" checkbox on a prefix rule closed (absent -> present), frontend-only, no backend change."
+      }
     },
     {
       "area": "target",
@@ -4146,12 +4164,18 @@
     {
       "area": "target",
       "feature": "\"Add to scope\" / \"Remove from scope\" from the right-click context menu on any site map or Proxy history item",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Scope entries must be typed by hand. Browse-then-right-click-add, the single most common Burp gesture, does not exist -- and there is no context menu infrastructure to hang it on.",
-      "why": "Confirmed in both front ends. I grepped ui-v2 with -a (tabs.jsx contains a raw NUL byte that makes plain grep skip it) and checked app.qml for QML Menu / RightButton handling.",
-      "evidence": "`grep -ain \"onContextMenu|contextmenu\" ui-v2/*.jsx ui-v2/*.js` -> no matches. `grep -n \"Menu|onPressAndHold|RightButton\" Src/App/app.qml` -> no matches. Map rows are selection-only in both: ui-v2/proxy.jsx:193 `onClick={() => onSelect(e.host)}` and app.qml:176-183 `MouseArea { anchors.fill: parent; onClicked: { if (historyView.hostSubstring === host) historyView.hostSubstring = \"\" else historyView"
+      "gap": "None -- right-click (onContextMenu) on any site-map or HTTP history row opens a small menu with Add to scope / Remove from scope, both dispatching the existing scope-add-in/scope-remove-in reducer actions.",
+      "why": "Closed 2026-08-09: there was no context-menu infrastructure anywhere in ui-v2. Added a lightweight menu (ProxyTab ctxMenu state + a fixed-position panel closed by an overlay click) wired to both SiteMap and HistoryTable rows via a shared onRowContextMenu callback.",
+      "evidence": "ui-v2/proxy.jsx ProxyTab ctxMenu state + openRowMenu/closeRowMenu; SiteMap and HistoryTable both gain an onRowContextMenu prop invoked from each row's onContextMenu; menu body dispatches scope-add-in / scope-remove-in.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "f872626",
+        "note": "Wave 2 Target/Scope batch -- \"Add to scope\" / \"Remove from scope\" from the right-click context menu on any site map or Proxy history item closed (absent -> present), frontend-only, no backend change."
+      }
     },
     {
       "area": "target",
