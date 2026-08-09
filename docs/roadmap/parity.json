@@ -3588,7 +3588,7 @@
     {
       "area": "repeater",
       "feature": "Repeater: search / highlight within the request and response editors (case-sensitivity, regex, match count)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
       "gap": "Finding a reflected canary in a large response means relying on the browser's own Ctrl+F, which does not reliably search a textarea's scrolled content.",
@@ -3596,9 +3596,9 @@
       "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater panes are two `<textarea>` elements with header rows showing only a LINES count. Existing search is row-scoped: ui-v2/proxy.jsx:1137-1155 uses `NL.actions.search(search, \"both\", 500)` -> real-data.js:141-147 `search(q, where = \"both\", limit = 200) { const url = \"/api/search?q=\" ... }`, which returns matching history rows, not in-pane matches.",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-08",
-        "commit": "cd03a95",
-        "note": "In-editor find now works: case-insensitive substring search with a match counter and wrap-around next/prev that select+focus the match (native textarea selection highlight). Still missing vs the full ask: no case-sensitive toggle, no regex mode."
+        "date": "2026-08-09",
+        "commit": "db0c788",
+        "note": "In-editor find gains a case-sensitivity toggle (\"Aa\") and a regex mode toggle (\".*\", JS regex syntax, zero-length-match safe, invalid patterns fail closed to 0 matches instead of throwing). Combined with the existing wrap-around next/prev and match counter (cd03a95), this closes the full ask: case-sensitivity, regex, and match count."
       }
     },
     {
@@ -3716,12 +3716,18 @@
     {
       "area": "repeater",
       "feature": "Decoder: Text / Hex view toggle per block",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
       "gap": "Binary decode results are shown as lossy text — compounded by the backend returning QString::fromUtf8 for hex/base64 decode (A19), so the bytes are already gone before the view could help.",
       "why": "Confirmed by reading the whole DecoderTab component.",
-      "evidence": "D:/dev/Nullock/ui-v2/app.jsx:1536+ DecoderTab renders `<textarea style={area} value={input} placeholder=\"paste text to transform…\" onChange={e => setInput(e.target.value)} spellCheck={false} />` and a read-only output textarea; the button bar holds `✦ smart decode`, `identify hash` and the 18 OPS buttons — no view control. toHexDump (ui-v2/proxy.jsx:1113) is not imported."
+      "evidence": "D:/dev/Nullock/ui-v2/app.jsx:1536+ DecoderTab renders `<textarea style={area} value={input} placeholder=\"paste text to transform…\" onChange={e => setInput(e.target.value)} spellCheck={false} />` and a read-only output textarea; the button bar holds `✦ smart decode`, `identify hash` and the 18 OPS buttons — no view control. toHexDump (ui-v2/proxy.jsx:1113) is not imported.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "db0c788",
+        "note": "Decoder's Input and Output blocks each get a Text/Hex view toggle (reusing proxy.jsx's toHexDump); Hex view is read-only in both blocks. Still partial: the backend decode ops (hex-decode, base64-decode) return QString::fromUtf8(decodedBytes) (transcode.cpp:27,106), which already replaces invalid UTF-8 sequences before the JSON response reaches the UI -- so a genuinely non-UTF8 decoded byte is lost server-side before this view can show it. Full closure needs the backend to carry raw bytes (e.g. base64-encoded) to the frontend for hex rendering; that is a backend+wire-format change outside what a cloud session without the C++ build can safely verify in one wave."
+      }
     },
     {
       "area": "repeater",
