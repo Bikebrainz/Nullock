@@ -1015,6 +1015,24 @@ const PAYLOAD_PRESETS = {
   ].join("\n"),
 };
 
+const ATTACK_TYPES = [
+  { v: 0, label: "sniper" },
+  { v: 1, label: "battering ram" },
+  { v: 2, label: "pitchfork" },
+  { v: 3, label: "cluster bomb" },
+];
+
+const RULE_OPS_FALLBACK = [
+  "prefix", "suffix", "uppercase", "lowercase", "reverse", "match-replace",
+  "base64-encode", "base64url-encode", "url-encode", "hex-encode",
+  "html-encode", "unicode-escape", "rot13", "md5", "sha1", "sha256", "sha512",
+];
+
+const RESULT_COLS = [
+  ["#", "#"], ["payload", "Payload"], ["status", "Status"], ["size", "Size"],
+  ["ms", "Time"], ["matched", "Grep"], ["extracted", "Extract"], ["err", "Error"],
+];
+
 function IntruderTab({ intruder, dispatch }) {
   const total = intruder.payloads.length;
   const completed = intruder.results.filter(r => r.status !== null).length;
@@ -1023,6 +1041,65 @@ function IntruderTab({ intruder, dispatch }) {
   const [presetMenuOpen, setPresetMenuOpen] = React.useState(false);
   const [hide404, setHide404] = React.useState(false);
   const [templateView, setTemplateView] = React.useState("edit"); // edit|inspector
+  const templateRef = React.useRef(null);
+  const [ruleOps, setRuleOps] = React.useState(RULE_OPS_FALLBACK);
+
+  // Discover the live rule-op list from the backend once (falls back to the
+  // static list above if the fetch fails -- the ops rarely change).
+  React.useEffect(() => {
+    NL.actions.intruderRuleOps().then(res => {
+      if (res && Array.isArray(res.operations) && res.operations.length)
+        setRuleOps(res.operations);
+    }).catch(() => {});
+  }, []);
+
+  const attackType = intruder.attackType ?? 0;
+  const posCount = Math.floor((intruder.template.match(/§/g) || []).length / 2);
+  const isMultiSet = (attackType === 2 || attackType === 3) && posCount > 1;
+
+  const setPayloadColumn = (idx, text) => {
+    const lines = text.split("\n");
+    const cur = intruder.payloadSets || [];
+    const next = Array.from({ length: posCount }, (_, k) => (k < cur.length ? cur[k] : []));
+    next[idx] = lines;
+    dispatch({ type: "intruder-set", payload: { payloadSets: next } });
+  };
+
+  const rules = intruder.rules || [];
+  const addRule = () => dispatch({ type: "intruder-set", payload: { rules: [...rules, { op: ruleOps[0] || "prefix", arg: "" }] } });
+  const updateRule = (i, patch) => dispatch({ type: "intruder-set", payload: { rules: rules.map((r, idx) => idx === i ? { ...r, ...patch } : r) } });
+  const removeRule = (i) => dispatch({ type: "intruder-set", payload: { rules: rules.filter((_, idx) => idx !== i) } });
+  const moveRule = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= rules.length) return;
+    const next = [...rules];
+    [next[i], next[j]] = [next[j], next[i]];
+    dispatch({ type: "intruder-set", payload: { rules: next } });
+  };
+
+  const [statusOn, setStatusOn] = React.useState({ 2: true, 3: true, 4: true, 5: true });
+  const [minLen, setMinLen] = React.useState("");
+  const [maxLen, setMaxLen] = React.useState("");
+  const [resultFilter, setResultFilter] = React.useState("");
+  const [sortKey, setSortKey] = React.useState(null);
+  const [sortDir, setSortDir] = React.useState(1);
+  const toggleSort = (key) => {
+    if (sortKey === key) { if (sortDir === 1) setSortDir(-1); else { setSortKey(null); setSortDir(1); } }
+    else { setSortKey(key); setSortDir(1); }
+  };
+
+  let viewRows = intruder.payloads.map((p, i) => ({
+    p, i, r: intruder.results[i] || { status: null, size: 0, ms: 0, err: "", matched: false, extracted: "" },
+  })).filter(({ p, r }) => intruderRowVisible(p, r, { hide404, statusOn, minLen, maxLen, search: resultFilter }));
+  if (sortKey) {
+    viewRows = [...viewRows].sort((a, b) => {
+      const va = intruderSortValue(a.p, a.r, a.i, sortKey);
+      const vb = intruderSortValue(b.p, b.r, b.i, sortKey);
+      if (va < vb) return -sortDir;
+      if (va > vb) return sortDir;
+      return 0;
+    });
+  }
 
   // Quick "set up content discovery" -- prompts for a URL and pre-fills
   // host/port/tls/template/payloads in one shot. Cuts the "type the
@@ -1096,7 +1173,7 @@ function IntruderTab({ intruder, dispatch }) {
     <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
       <div className="pane-head">
         <span className="ph-corner">▸</span>
-        <span>INTRUDER · sniper mode</span>
+        <span>INTRUDER · {ATTACK_TYPES.find(a => a.v === attackType)?.label || "sniper"} mode</span>
         <span className="ph-count">
           template uses §marker§ as insertion point
         </span>
@@ -1119,6 +1196,15 @@ function IntruderTab({ intruder, dispatch }) {
           <input type="checkbox" checked={intruder.tls} onChange={e => dispatch({ type:"intruder-set", payload:{ tls: e.target.checked }})} style={{ accentColor: "var(--accent)" }} />
           TLS
         </label>
+        <div className="fld" style={{ flex: "0 0 150px" }}>
+          <span className="pre">MODE</span>
+          <select style={{ border: "none", background: "transparent", color: "var(--text)", flex: 1, height: "100%" }}
+                  value={attackType}
+                  onChange={e => dispatch({ type: "intruder-set", payload: { attackType: parseInt(e.target.value, 10) } })}
+                  title="Attack type: how payload sets combine across insertion points">
+            {ATTACK_TYPES.map(a => <option key={a.v} value={a.v}>{a.label}</option>)}
+          </select>
+        </div>
         <span style={{ flex: 1 }} />
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           PROGRESS <span style={{ color: "var(--accent)" }}>{completed}/{total}</span>
@@ -1180,15 +1266,31 @@ function IntruderTab({ intruder, dispatch }) {
                onChange={e => { const f = e.target.files && e.target.files[0]; if (f) doLoad(f); e.target.value = ""; }} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
+      <div style={{ display: "grid", gridTemplateRows: "1fr auto 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1px 1fr", minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <div className="pane" style={{ minWidth: 0 }}>
             <div className="pane-head">
               <span style={{ color:"var(--accent-2)" }}>▸</span>
               <span>TEMPLATE</span>
               <span className="ph-count">
-                {(intruder.template.match(/§/g)?.length || 0) / 2} INSERTION POINT
+                {posCount} INSERTION POINT{posCount === 1 ? "" : "S"}
               </span>
+              <button className="btn" style={{ marginLeft: 6 }} disabled={templateView !== "edit"}
+                      title="Wrap the current selection in §markers§"
+                      onClick={() => {
+                        const ta = templateRef.current;
+                        if (!ta) return;
+                        const s = ta.selectionStart, e = ta.selectionEnd;
+                        const val = intruder.template;
+                        const next = val.slice(0, s) + "§" + val.slice(s, e) + "§" + val.slice(e);
+                        dispatch({ type: "intruder-set", payload: { template: next } });
+                      }}>+ §</button>
+              <button className="btn"
+                      title="Strip every § marker from the template"
+                      onClick={() => dispatch({ type: "intruder-set", payload: { template: intruder.template.replace(/§/g, "") } })}>CLEAR §</button>
+              <button className="btn"
+                      title="Auto-mark every query-string, form-body and Cookie value"
+                      onClick={() => dispatch({ type: "intruder-set", payload: { template: autoMarkTemplate(intruder.template) } })}>AUTO §</button>
               <button className="btn" style={{ marginLeft: 6 }}
                       title="Structured breakdown of the template (Inspector)"
                       onClick={() => setTemplateView(v => v === "edit" ? "inspector" : "edit")}>
@@ -1199,6 +1301,7 @@ function IntruderTab({ intruder, dispatch }) {
               <RepeaterInspectorPanel raw={intruder.template} kind="request" />
             ) : (
               <textarea
+                ref={templateRef}
                 className="txt"
                 value={intruder.template}
                 onChange={e => dispatch({ type: "intruder-set", payload: { template: e.target.value }})}
@@ -1207,6 +1310,34 @@ function IntruderTab({ intruder, dispatch }) {
             )}
           </div>
           <div className="divider-v" />
+          {isMultiSet ? (
+          <div className="pane" style={{ minWidth: 0 }}>
+            <div className="pane-head">
+              <span style={{ color:"var(--accent)" }}>▸</span>
+              <span>PAYLOAD SETS</span>
+              <span className="ph-count">
+                {posCount} positions · {attackType === 2 ? "pitchfork (zipped)" : "cluster bomb (product)"}
+              </span>
+            </div>
+            <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+              {Array.from({ length: posCount }).map((_, idx) => (
+                <div key={idx} style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", borderRight: idx < posCount - 1 ? "1px solid var(--line)" : "none" }}>
+                  <div style={{ padding: "2px 6px", fontSize: 10, color: "var(--dim)", borderBottom: "1px solid var(--line-soft)", display: "flex", justifyContent: "space-between" }}>
+                    <span>SET {idx + 1}</span>
+                    <span>{((intruder.payloadSets || [])[idx] || []).length}</span>
+                  </div>
+                  <textarea
+                    className="txt"
+                    style={{ flex: 1 }}
+                    value={((intruder.payloadSets || [])[idx] || []).join("\n")}
+                    onChange={e => setPayloadColumn(idx, e.target.value)}
+                    spellCheck={false}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          ) : (
           <div className="pane" style={{ minWidth: 0, position: "relative" }}>
             <div className="pane-head">
               <span style={{ color:"var(--accent)" }}>▸</span>
@@ -1282,19 +1413,71 @@ function IntruderTab({ intruder, dispatch }) {
               spellCheck={false}
             />
           </div>
+          )}
+        </div>
+
+        <div className="pane" style={{ minHeight: 0 }}>
+          <div className="pane-head">
+            <span className="ph-corner">▸</span>
+            <span>RULES</span>
+            <span className="ph-count">{rules.length}</span>
+            <span style={{ flex: 1 }} />
+            <button className="btn" onClick={addRule}>+ ADD RULE</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "4px 8px", minHeight: 30, alignItems: "center" }}>
+            {rules.length === 0 && (
+              <span style={{ color: "var(--dim)", fontSize: 11 }}>no rules — payloads go on the wire as typed</span>
+            )}
+            {rules.map((r, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, border: "1px solid var(--line)", padding: "2px 4px", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+                <select className="fld" style={{ border: "none", background: "transparent" }}
+                        value={r.op} onChange={e => updateRule(i, { op: e.target.value, arg: "" })}>
+                  {ruleOps.map(op => <option key={op} value={op}>{op}</option>)}
+                </select>
+                {(r.op === "prefix" || r.op === "suffix") && (
+                  <input style={{ width: 90 }} placeholder="text" value={r.arg || ""}
+                         onChange={e => updateRule(i, { arg: e.target.value })} />
+                )}
+                {r.op === "match-replace" && (
+                  <React.Fragment>
+                    <input style={{ width: 70 }} placeholder="find" value={(r.arg || "").split("")[0] || ""}
+                           onChange={e => updateRule(i, { arg: e.target.value + "" + ((r.arg || "").split("")[1] || "") })} />
+                    <input style={{ width: 70 }} placeholder="replace" value={(r.arg || "").split("")[1] || ""}
+                           onChange={e => updateRule(i, { arg: ((r.arg || "").split("")[0] || "") + "" + e.target.value })} />
+                  </React.Fragment>
+                )}
+                <button className="btn" disabled={i === 0} onClick={() => moveRule(i, -1)} title="move earlier">↑</button>
+                <button className="btn" disabled={i === rules.length - 1} onClick={() => moveRule(i, 1)} title="move later">↓</button>
+                <button className="btn" onClick={() => removeRule(i)} title="remove">×</button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="pane" style={{ minHeight: 0 }}>
           <div className="pane-head">
             <span className="ph-corner">▸</span>
             <span>RESULTS</span>
-            <span className="ph-count">{completed} / {total} · {pct}%</span>
-            <span style={{ flex: 1 }} />
+            <span className="ph-count">{viewRows.length} shown · {completed} / {total} · {pct}%</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderBottom: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
+            <div className="seg-btns">
+              {[2, 3, 4, 5].map(c => (
+                <button key={c} className={statusOn[c] ? "on s" + c : ""}
+                        onClick={() => setStatusOn(s => ({ ...s, [c]: !s[c] }))}>{c}XX</button>
+              ))}
+            </div>
             <label style={{ fontSize: "10.5px", color: "var(--dim)", display: "flex", gap: 4, alignItems: "center" }}>
               <input type="checkbox" checked={hide404}
                      onChange={e => setHide404(e.target.checked)} />
               hide 404s
             </label>
+            <input type="number" placeholder="min B" style={{ width: 64 }}
+                   value={minLen} onChange={e => setMinLen(e.target.value)} />
+            <input type="number" placeholder="max B" style={{ width: 64 }}
+                   value={maxLen} onChange={e => setMaxLen(e.target.value)} />
+            <input placeholder="filter payload/extract (regex, -invert)" style={{ flex: "1 1 160px", minWidth: 160 }}
+                   value={resultFilter} onChange={e => setResultFilter(e.target.value)} />
           </div>
           <div className="progress"><div className="bar" style={{ width: pct + "%" }} /></div>
           <div style={{ overflow: "auto", flex: 1 }}>
@@ -1310,14 +1493,19 @@ function IntruderTab({ intruder, dispatch }) {
                 <col />
               </colgroup>
               <thead>
-                <tr><th>#</th><th>Payload</th><th>Status</th><th>Size</th><th>Time</th><th title="Grep-match hit">Grep</th><th title="Grep-extract capture">Extract</th><th>Error</th><th></th></tr>
+                <tr>
+                  {RESULT_COLS.map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)} title="Click to sort" style={{ cursor: "pointer", userSelect: "none" }}>
+                      {label}{sortKey === key ? (sortDir > 0 ? " ▲" : " ▼") : ""}
+                    </th>
+                  ))}
+                  <th></th>
+                </tr>
               </thead>
               <tbody>
-                {intruder.payloads.map((p, i) => {
-                  const r = intruder.results[i] || { status: null, size: 0, ms: 0, err: "", matched: false, extracted: "" };
+                {viewRows.map(({ p, i, r }) => {
                   const pending = r.status === null;
                   const cls = (r.status >= 400) ? "s4" : (r.status >= 300) ? "s3" : (r.status >= 200) ? "s2" : "";
-                  if (hide404 && r.status === 404) return null;
                   return (
                     <tr key={i} className={pending ? "pending" : ""}>
                       <td>{(i + 1).toString().padStart(3, "0")}</td>
@@ -1354,4 +1542,88 @@ function IntruderTab({ intruder, dispatch }) {
   );
 }
 
-Object.assign(window, { ScopeTab, RepeaterTab, InterceptTab, IntruderTab });
+// Pure helper: auto-mark Intruder payload positions in a raw HTTP request --
+// wraps every query-string value, Cookie value, and (for urlencoded bodies)
+// every form-field value in §markers§. Idempotent: a value already wrapped
+// in § is left alone rather than double-wrapped, so running it twice is safe.
+function autoMarkTemplate(raw) {
+  if (!raw) return raw;
+  const nl = raw.includes("\r\n") ? "\r\n" : "\n";
+  const sep = nl + nl;
+  const cut = raw.indexOf(sep);
+  const head = cut >= 0 ? raw.slice(0, cut) : raw;
+  const body = cut >= 0 ? raw.slice(cut + sep.length) : null;
+  const lines = head.split(nl);
+  if (!lines.length) return raw;
+
+  const markValue = (v) => (v.startsWith("§") && v.endsWith("§") && v.length >= 2) ? v : "§" + v + "§";
+
+  // Request line: mark every query-param value.
+  const rl = lines[0].match(/^(\S+\s+[^\s?]*)(\?[^\s]*)?(\s+HTTP\/\S+)?$/);
+  if (rl && rl[2]) {
+    const marked = rl[2].replace(/=([^&\s]*)/g, (m, v) => "=" + markValue(v));
+    lines[0] = rl[1] + marked + (rl[3] || "");
+  }
+
+  // Headers: mark Cookie values only (leave every other header alone).
+  for (let i = 1; i < lines.length; i++) {
+    const m = lines[i].match(/^(Cookie:\s*)(.*)$/i);
+    if (m) lines[i] = m[1] + m[2].replace(/=([^;]*)/g, (mm, v) => "=" + markValue(v));
+  }
+
+  let newBody = body;
+  const ct = lines.find(l => /^Content-Type:/i.test(l));
+  if (body != null && ct && /x-www-form-urlencoded/i.test(ct)) {
+    newBody = body.replace(/=([^&]*)/g, (mm, v) => "=" + markValue(v));
+  }
+
+  const newHead = lines.join(nl);
+  return body != null ? newHead + sep + newBody : newHead;
+}
+
+// Pure predicate: should this Intruder result row show through the current
+// filter set? Pending rows (status still null, request in flight) always
+// pass so progress stays visible while an attack is running.
+function intruderRowVisible(payload, r, opts) {
+  const { hide404, statusOn, minLen, maxLen, search } = opts;
+  if (r.status == null) return true;
+  if (hide404 && r.status === 404) return false;
+  const cls = Math.floor(r.status / 100);
+  if (statusOn && statusOn[cls] === false) return false;
+  if (minLen !== "" && minLen != null && r.size < Number(minLen)) return false;
+  if (maxLen !== "" && maxLen != null && r.size > Number(maxLen)) return false;
+  if (search) {
+    const neg = search.startsWith("-");
+    const term = neg ? search.slice(1) : search;
+    if (term) {
+      let re = null;
+      try { re = new RegExp(term, "i"); } catch (e) { /* invalid regex: fail open, no filtering */ }
+      if (re) {
+        const hit = re.test(payload) || re.test(r.extracted || "");
+        if (neg ? hit : !hit) return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Pure accessor: the value to compare for a given results-table sort key,
+// numeric-aware for the numeric columns so "10" sorts after "2".
+function intruderSortValue(payload, r, i, key) {
+  switch (key) {
+    case "#":         return i;
+    case "payload":   return payload;
+    case "status":    return r.status == null ? -1 : r.status;
+    case "size":      return r.size || 0;
+    case "ms":        return r.ms || 0;
+    case "matched":   return r.matched ? 1 : 0;
+    case "extracted": return r.extracted || "";
+    case "err":       return r.err || "";
+    default:          return i;
+  }
+}
+
+Object.assign(window, {
+  ScopeTab, RepeaterTab, InterceptTab, IntruderTab,
+  autoMarkTemplate, intruderRowVisible, intruderSortValue,
+});

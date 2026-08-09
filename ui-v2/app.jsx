@@ -3371,6 +3371,11 @@ function App() {
       // just first-paint defaults matching IntruderPool::kDefaultConcurrency.
       concurrency: 10,
       throttleMs: 0,
+      // Payload-processing rule chain ({op,arg}[]). Like grepMatch above,
+      // the snapshot never echoes this back, so nl-snapshot's
+      // {...state.intruder, ...NL.intruder} merge preserves whatever the
+      // user built here across polls (it's still POSTed on every edit).
+      rules: [],
       ...NL.intruder,
       running: false,
     },
