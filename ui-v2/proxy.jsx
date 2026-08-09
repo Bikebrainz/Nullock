@@ -379,31 +379,43 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "100%", minHeight: 0, borderTop: "1px solid var(--line)" }}>
         <div style={{ display:"flex", flexDirection:"column", borderRight: "1px solid var(--line)", minHeight: 0 }}>
           <div className="detail-tabs">
-            {["raw", "headers", "body", "hex"].map(t => (
+            {["raw", "headers", "body", "hex", "inspector"].map(t => (
               <button key={t} className={reqTab === t ? "on" : ""} onClick={() => setReqTab(t)}>
                 REQ · {t}
               </button>
             ))}
           </div>
-          <CodecBar onRun={(name) => {
-            const input = grabFrom(reqRef);
-            setOverlay({ title: "REQ · " + name, body: runCodec(name, input) });
-          }} />
-          <textarea ref={reqRef} className="txt readonly" value={renderView(req, reqTab)} readOnly />
+          {reqTab === "inspector" ? (
+            <RepeaterInspectorPanel raw={req} kind="request" />
+          ) : (
+            <React.Fragment>
+              <CodecBar onRun={(name) => {
+                const input = grabFrom(reqRef);
+                setOverlay({ title: "REQ · " + name, body: runCodec(name, input) });
+              }} />
+              <textarea ref={reqRef} className="txt readonly" value={renderView(req, reqTab)} readOnly />
+            </React.Fragment>
+          )}
         </div>
         <div style={{ display:"flex", flexDirection:"column", minHeight: 0 }}>
           <div className="detail-tabs">
-            {["raw", "headers", "body", "preview", "hex"].map(t => (
+            {["raw", "headers", "body", "preview", "hex", "inspector"].map(t => (
               <button key={t} className={respTab === t ? "on" : ""} onClick={() => setRespTab(t)}>
                 RES · {t}
               </button>
             ))}
           </div>
-          <CodecBar onRun={(name) => {
-            const input = grabFrom(respRef);
-            setOverlay({ title: "RES · " + name, body: runCodec(name, input) });
-          }} />
-          <textarea ref={respRef} className="txt readonly" value={renderView(resp, respTab)} readOnly />
+          {respTab === "inspector" ? (
+            <RepeaterInspectorPanel raw={resp} kind="response" />
+          ) : (
+            <React.Fragment>
+              <CodecBar onRun={(name) => {
+                const input = grabFrom(respRef);
+                setOverlay({ title: "RES · " + name, body: runCodec(name, input) });
+              }} />
+              <textarea ref={respRef} className="txt readonly" value={renderView(resp, respTab)} readOnly />
+            </React.Fragment>
+          )}
         </div>
       </div>
       {overlay && (
