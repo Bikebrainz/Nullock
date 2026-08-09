@@ -3732,13 +3732,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: docked structured side panel in the Repeater / Intruder / Proxy message editors",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Reclassify stub->partial: the engine is a COMPLETE implementation, not scaffold — /api/inspect is live (control_server.cpp:9442-9454) over inspectRequest/inspectResponse (inspector_logic.cpp:153-271) returning method/target/path/query/queryParams/headers/cookies/contentType/bodyParams/bodyKind/jwts (request) and version/status/reason/headers/setCookies/contentType/bodySize/bodyPreview/jwts (respon",
-      "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
-      "evidence": "control_server.cpp:9442-9454 /api/inspect returns full view; inspector_logic.cpp:153-271 complete impl; ui-v2 grep for inspect/inspector returns zero non-vendor hits (no delivered UI).",
-      "audited_state": "stub"
+      "gap": "None — docked in all three named editors via a new \"inspector\" view-tab, live off the existing /api/inspect.",
+      "why": "Closed 2026-08-09: the /api/inspect backend and its field contract already existed (closed the standalone paste-and-parse INSPECTOR tab in 86f094c); this wave added a reusable RepeaterInspectorPanel and mounted it as a debounced, live-updating view-tab inside the actual message editors instead of a separate tool. Verified via bundled-babel transform of both touched files + a vm-sandboxed render of DetailPane/IntruderTab proving the cross-file forward reference (tabs.jsx panel used from proxy.jsx, which loads earlier) resolves at render time, plus a field-name match against inspector_logic.cpp's JSON keys.",
+      "evidence": "ui-v2/tabs.jsx RepeaterInspectorPanel (debounced NL.actions.inspect call) mounted as the \"inspector\" view in RepeaterEditorToolbar's views list for both request+response panes; ui-v2/proxy.jsx DetailPane reqTab/respTab gain the same \"inspector\" option; ui-v2/tabs.jsx IntruderTab TEMPLATE pane gets an INSPECTOR/EDIT toggle. All three call the same control_server.cpp:9442 /api/inspect used by the pre-existing standalone tab.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-09",
+        "commit": "d2350aa",
+        "note": "Added RepeaterInspectorPanel (tabs.jsx), a debounced /api/inspect view reused as a docked \"inspector\" tab in Repeater's request+response editors, Proxy history's DetailPane request+response panes, and Intruder's TEMPLATE editor -- closes the stub->partial reclassification to present."
+      }
     },
     {
       "area": "repeater",
