@@ -2433,7 +2433,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-09",
-        "commit": "PENDING",
+        "commit": "d56b4ae",
         "note": "CSRF PoC wave: wired /api/csrf/poc into the GUI (Proxy history / Site map DetailPane), closing the last GUI-reachability gap."
       }
     },
@@ -4177,7 +4177,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-09",
-        "commit": "PENDING",
+        "commit": "d56b4ae",
         "note": "CSRF PoC wave: wired /api/csrf/poc into the GUI (Proxy history / Site map DetailPane), closing the last GUI-reachability gap."
       }
     },
