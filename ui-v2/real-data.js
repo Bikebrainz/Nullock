@@ -213,6 +213,14 @@
       // params. Throttle defaults to 200ms server-side; pass 0 to go fast.
       return post("/api/probe/all", { throttleMs, limit }).then(r => r.json());
     },
+    auditAll(throttleMs, limit, include) {
+      // Full deep-audit battery (cmdi/xxe/ldap/xpath/smuggle/hostheader/
+      // cache-poison/deser/nosql/mass-assign/cors, etc) against every
+      // history row with a query string or body. `include` optionally
+      // narrows the battery to specific check names (lowercase); omit
+      // for the default sweep.
+      return post("/api/audit/all", { fromHistory: true, throttleMs, limit, include }).then(r => r.json());
+    },
     reconDns(domain)            { return post("/api/recon/dns",      { domain }); },
     reconReverse(ip)            { return post("/api/recon/reverse",  { ip }); },
     reconWhois(domain)          { return post("/api/recon/whois",    { domain }); },

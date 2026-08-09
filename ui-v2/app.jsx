@@ -1048,6 +1048,25 @@ function IssuesTab({ dispatch }) {
             letterSpacing: "0.05em", textTransform: "uppercase",
           }}>Probe all rows</button>
         <button
+          onClick={async () => {
+            if (!confirm("Run the FULL deep-audit battery (cmdi/xxe/ldap/xpath/smuggle/hostheader/cache-poison/deser/nosql/mass-assign/cors) against every row with params or a body? This is slower and noisier than Probe."))
+              return;
+            const r = await NL.actions.auditAll(150, 50);
+            if (r && r.ok === false) {
+              alert(r.error || "deep-audit sweep could not start");
+            } else if (r && r.queued !== undefined) {
+              alert("Queued " + r.queued + " row(s) for deep audit" +
+                    (r.scopeSkipped ? " (" + r.scopeSkipped + " skipped, out of scope)" : "") +
+                    ". Findings will stream in.");
+            }
+          }}
+          style={{
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Deep audit all rows</button>
+        <button
           onClick={() => { if (confirm("Clear all findings?")) NL.actions.clearFindings(); }}
           style={{
             background: "transparent", color: "var(--err, #f88)",
