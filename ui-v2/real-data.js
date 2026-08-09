@@ -47,7 +47,9 @@
     NL.intruder    = snap.intruder    || { host: "", port: 443, tls: true,
                                             template: "", payloads: [],
                                             results: [], running: false,
-                                            concurrency: 10, throttleMs: 0 };
+                                            concurrency: 10, throttleMs: 0,
+                                            attackType: 0, positions: 0,
+                                            payloadSets: [] };
     NL.currentTheme       = snap.currentTheme || "cyber";
     NL.interceptEnabled   = snap.interceptEnabled === true;
     NL.interceptResponsesEnabled = snap.interceptResponsesEnabled === true;
@@ -163,6 +165,9 @@
     // back to POST /load. The backend refuses /load while an attack runs.
     intruderExport()        { return fetch("/api/intruder/export").then(r => r.json()); },
     intruderLoad(doc)       { return post("/api/intruder/load", doc).then(r => r.json()); },
+    // GET discovery: the payload-processing op names the rule engine
+    // understands (prefix/suffix/hash/encode/...). Read-only, allowlisted.
+    intruderRuleOps()       { return fetch("/api/intruder/rule-ops").then(r => r.json()); },
     setTheme(name)          { return post("/api/theme", { name }); },
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },
