@@ -12,6 +12,17 @@ function statusKind(s) {
   return "s" + Math.floor(s / 100);
 }
 
+// Host glob -> RegExp (same convention as the backend scope matcher: '*' is
+// the only wildcard, everything else is literal).
+function globToRegex(glob) {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp("^" + esc + "$", "i");
+}
+function hostInScope(host, scope) {
+  if (!scope || !scope.in || scope.in.length === 0) return true; // no allowlist = everything in scope
+  return scope.in.some(g => globToRegex(g).test(host));
+}
+
 function MethodCell({ m }) {
   let cls = "meth " + m.replace("↑", "").replace("↓", "");
   if (m === "WS↑") cls = "meth WS";
@@ -19,9 +30,12 @@ function MethodCell({ m }) {
   return <span className={cls}>{m}</span>;
 }
 
-function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId }) {
+function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, onRowContextMenu }) {
   const filtered = React.useMemo(() => rows.filter(r => {
     if (hostFilter && !r.host.includes(hostFilter)) return false;
+    if (paramsOnly && !(r.params > 0)) return false;
+    if (hideNotFound && r.status === 404) return false;
+    if (inScopeOnly && !hostInScope(r.host, scope)) return false;
     if (search) {
       const s = search.toLowerCase();
       // Search across every column we display so the box behaves the way
@@ -50,7 +64,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     }
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     return true;
-  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId]);
+  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope]);
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
@@ -85,7 +99,12 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
         </thead>
         <tbody>
           {filtered.map(r => (
-            <tr key={r.id} className={selectedId === r.id ? "sel" : ""} onClick={() => onSelect(r)}>
+            <tr
+              key={r.id}
+              className={selectedId === r.id ? "sel" : ""}
+              onClick={() => onSelect(r)}
+              onContextMenu={onRowContextMenu ? (e => { e.preventDefault(); onRowContextMenu(r.host, e); }) : undefined}
+            >
               <td className="num">{r.id.toString().padStart(3, "0")}</td>
               <td><MethodCell m={r.method} /></td>
               <td><span className={"status " + statusKind(r.status)}>{r.status || "—"}</span></td>
@@ -110,7 +129,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -164,6 +183,24 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
         }}>
         DEEP{deepSearch && deepCount !== null ? " · " + deepCount + (deepTruncated ? "+" : "") : ""}
       </button>
+      {[
+        ["IN-SCOPE", inScopeOnly, setInScopeOnly, "Show only rows whose host matches an in-scope glob"],
+        ["PARAMS", paramsOnly, setParamsOnly, "Show only rows with query/body parameters"],
+        ["HIDE 404", hideNotFound, setHideNotFound, "Hide rows with a 404 Not Found status"],
+      ].map(([label, on, setOn, title]) => (
+        <button
+          key={label}
+          onClick={() => setOn(!on)}
+          title={title}
+          style={{
+            background: on ? "var(--accent)" : "transparent",
+            color: on ? "var(--bg)" : "var(--accent)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            textTransform: "uppercase", letterSpacing: "0.06em",
+            height: 22,
+          }}>{label}</button>
+      ))}
       {selectedHost && (
         <div className="chip accent" style={{ height: 22 }}>
           ◉ {selectedHost}
@@ -178,7 +215,7 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
   );
 }
 
-function SiteMap({ entries, selectedHost, onSelect, totalRows }) {
+function SiteMap({ entries, selectedHost, onSelect, totalRows, onRowContextMenu }) {
   return (
     <div className="pane" style={{ height: "100%" }}>
       <div className="pane-head">
@@ -200,6 +237,7 @@ function SiteMap({ entries, selectedHost, onSelect, totalRows }) {
             key={e.host}
             className={"sm-row " + (selectedHost === e.host ? "sel" : "")}
             onClick={() => onSelect(e.host)}
+            onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev); }) : undefined}
           >
             <span className={"sm-tls" + (e.tls ? "" : " off")}>◉</span>
             <span className="sm-host" title={e.host}>{e.host}</span>
@@ -1171,8 +1209,19 @@ function toHexDump(s) {
 }
 
 function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
-  const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost } = state;
+  const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost, scope } = state;
   const sitemapEntries = NL.sitemap;
+
+  // #392: site-map / history filter chips (in-scope / parameterized / hide-404).
+  const [paramsOnly, setParamsOnly] = React.useState(false);
+  const [hideNotFound, setHideNotFound] = React.useState(false);
+  const [inScopeOnly, setInScopeOnly] = React.useState(false);
+
+  // #398: right-click add/remove scope, on any site-map or history row.
+  const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
+  const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
+  const closeRowMenu = () => setCtxMenu(null);
+  const hostIsInScope = ctxMenu ? (scope.in || []).includes(ctxMenu.host) : false;
 
   // Deep search: when enabled, the search box query is also run against
   // request and response bodies via /api/search. We debounce by 250ms so
@@ -1221,6 +1270,9 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     if (statusClass !== "all" && (Math.floor(r.status / 100) + "xx") !== statusClass) return false;
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     if (search && !r.url.toLowerCase().includes(search.toLowerCase())) return false;
+    if (paramsOnly && !(r.params > 0)) return false;
+    if (hideNotFound && r.status === 404) return false;
+    if (inScopeOnly && !hostInScope(r.host, scope)) return false;
     return true;
   }).length;
   const hidden = rows.length - shown;
@@ -1237,6 +1289,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           selectedHost={selectedHost}
           onSelect={h => dispatch({ type: "set", payload: { selectedHost: h }})}
           totalRows={rows.length}
+          onRowContextMenu={openRowMenu}
         />
       )}
       {showSitemap && <div className="divider-v" />}
@@ -1265,6 +1318,12 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           setDeepSearch={setDeepSearch}
           deepCount={deepCount}
           deepTruncated={deepTruncated}
+          paramsOnly={paramsOnly}
+          setParamsOnly={setParamsOnly}
+          hideNotFound={hideNotFound}
+          setHideNotFound={setHideNotFound}
+          inScopeOnly={inScopeOnly}
+          setInScopeOnly={setInScopeOnly}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -1277,6 +1336,11 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
             search={search}
             deepHits={deepSearch ? deepHits : null}
             deepMinId={deepSearch ? deepMinId : null}
+            paramsOnly={paramsOnly}
+            hideNotFound={hideNotFound}
+            inScopeOnly={inScopeOnly}
+            scope={scope}
+            onRowContextMenu={openRowMenu}
           />
         </div>
         <DetailPane
@@ -1289,6 +1353,36 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           }}
         />
       </div>
+      {ctxMenu && (
+        <React.Fragment>
+          <div style={{ position: "fixed", inset: 0, zIndex: 999 }} onClick={closeRowMenu} onContextMenu={e => { e.preventDefault(); closeRowMenu(); }} />
+          <div className="pane" style={{
+            position: "fixed", left: ctxMenu.x, top: ctxMenu.y, zIndex: 1000,
+            minWidth: 220, boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          }}>
+            <div className="pane-head" style={{ background: "var(--pane)" }}>
+              <span className="ph-corner">▸</span>
+              <span title={ctxMenu.host} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ctxMenu.host}</span>
+            </div>
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left", opacity: hostIsInScope ? 0.4 : 1, cursor: hostIsInScope ? "default" : "pointer" }}
+              onClick={() => { if (!hostIsInScope) { dispatch({ type: "scope-add-in", value: ctxMenu.host }); } closeRowMenu(); }}
+            >+ ADD TO SCOPE</div>
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left", opacity: hostIsInScope ? 1 : 0.4, cursor: hostIsInScope ? "pointer" : "default" }}
+              onClick={() => {
+                if (hostIsInScope) {
+                  const idx = (scope.in || []).indexOf(ctxMenu.host);
+                  if (idx !== -1) dispatch({ type: "scope-remove-in", index: idx });
+                }
+                closeRowMenu();
+              }}
+            >− REMOVE FROM SCOPE</div>
+          </div>
+        </React.Fragment>
+      )}
     </div>
   );
 }
