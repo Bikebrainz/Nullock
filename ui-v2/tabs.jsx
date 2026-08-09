@@ -236,6 +236,113 @@ function RepeaterSelectionReadout({ sel }) {
   );
 }
 
+// Burp's Inspector: a docked structured side panel, live in the message
+// editor, not a separate paste-and-parse tool. Reuses the same /api/inspect
+// backend as the standalone INSPECTOR tab, but is scoped to whichever
+// Repeater pane it is mounted in and re-runs whenever that pane's text
+// changes (debounced so keystrokes in the request editor don't spam the
+// backend).
+function repeaterInspectorKV(rows) {
+  const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top" };
+  const td = { padding: "2px 8px 2px 0", wordBreak: "break-all", color: "var(--text)" };
+  return (
+    <table style={{ borderCollapse: "collapse", fontSize: "11.5px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+      <tbody>{(rows || []).map((r, i) => (
+        <tr key={i}><td style={th}>{r.name}</td><td style={td}>{String(r.value == null ? "" : r.value)}</td></tr>
+      ))}</tbody>
+    </table>
+  );
+}
+function RepeaterInspectorSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: "9.5px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+function RepeaterInspectorPanel({ raw, kind }) {
+  const [view, setView] = React.useState(null);
+  const [err, setErr] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!raw || !raw.trim()) { setView(null); setErr(""); return; }
+    let cancelled = false;
+    setBusy(true);
+    const t = setTimeout(() => {
+      NL.actions.inspect(raw, kind).then(r => {
+        if (cancelled) return;
+        setBusy(false);
+        if (r && r.ok) { setView(r.view || {}); setErr(""); }
+        else { setView(null); setErr((r && r.error) || "inspect failed"); }
+      }).catch(e => {
+        if (cancelled) return;
+        setBusy(false);
+        setView(null);
+        setErr(String(e && e.message ? e.message : e));
+      });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [raw, kind]);
+
+  const isResp = kind === "response";
+  const Section = RepeaterInspectorSection;
+  const KV = repeaterInspectorKV;
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", padding: "10px 12px", minHeight: 0 }}>
+      {!raw || !raw.trim() ? (
+        <span style={{ color: "var(--dim)", fontSize: "11.5px" }}>nothing to inspect yet</span>
+      ) : err ? (
+        <span style={{ color: "var(--err)", fontSize: "11.5px" }}>{err}</span>
+      ) : !view ? (
+        <span style={{ color: "var(--dim)", fontSize: "11.5px" }}>{busy ? "parsing…" : "structured breakdown appears here"}</span>
+      ) : isResp ? (
+        <div>
+          <Section title="Status line">
+            <KV rows={[{ name: "version", value: view.version }, { name: "status", value: view.status }, { name: "reason", value: view.reason }, { name: "content-type", value: view.contentType }, { name: "body size", value: view.bodySize }]} />
+          </Section>
+          {view.headers && view.headers.length ? <Section title={"Headers (" + view.headers.length + ")"}><KV rows={view.headers} /></Section> : null}
+          {view.setCookies && view.setCookies.length ? <Section title={"Set-Cookie (" + view.setCookies.length + ")"}>
+            {repeaterInspectorKV(view.setCookies.map(c => ({ name: c.name, value: c.value + (c.attributes ? "  [" + c.attributes + "]" : "") })))}
+          </Section> : null}
+          {view.jwts && view.jwts.length ? <Section title={"JWTs decoded (" + view.jwts.length + ")"}>
+            {view.jwts.map((j, i) => (
+              <div key={i} style={{ marginBottom: 6 }}>
+                <div style={{ color: "var(--dim)", fontSize: "10.5px" }}>{j.where} · alg={j.alg || "?"}</div>
+                <pre style={{ margin: 0, fontSize: "10.5px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text-2)" }}>
+                  {JSON.stringify(j.payload == null ? { header: j.header } : { header: j.header, payload: j.payload }, null, 2)}
+                </pre>
+              </div>
+            ))}
+          </Section> : null}
+        </div>
+      ) : (
+        <div>
+          <Section title="Request line">
+            <KV rows={[{ name: "method", value: view.method }, { name: "path", value: view.path }, { name: "version", value: view.version }, { name: "content-type", value: view.contentType }, { name: "body size", value: view.bodySize }, { name: "body kind", value: view.bodyKind }]} />
+          </Section>
+          {view.queryParams && view.queryParams.length ? <Section title={"Query params (" + view.queryParams.length + ")"}><KV rows={view.queryParams} /></Section> : null}
+          {view.headers && view.headers.length ? <Section title={"Headers (" + view.headers.length + ")"}><KV rows={view.headers} /></Section> : null}
+          {view.cookies && view.cookies.length ? <Section title={"Cookies (" + view.cookies.length + ")"}><KV rows={view.cookies} /></Section> : null}
+          {view.bodyParams && view.bodyParams.length ? <Section title={"Body params (" + view.bodyParams.length + ")"}><KV rows={view.bodyParams} /></Section> : null}
+          {view.jwts && view.jwts.length ? <Section title={"JWTs decoded (" + view.jwts.length + ")"}>
+            {view.jwts.map((j, i) => (
+              <div key={i} style={{ marginBottom: 6 }}>
+                <div style={{ color: "var(--dim)", fontSize: "10.5px" }}>{j.where} · alg={j.alg || "?"}</div>
+                <pre style={{ margin: 0, fontSize: "10.5px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text-2)" }}>
+                  {JSON.stringify(j.payload == null ? { header: j.header } : { header: j.header, payload: j.payload }, null, 2)}
+                </pre>
+              </div>
+            ))}
+          </Section> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // Real backend handles the send. We only show a spinner-y label while
   // the snapshot reports busy=true, then flip back to the response.
@@ -496,7 +603,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                     onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
           </div>
           <RepeaterEditorToolbar
-            views={["raw", "headers", "body", "preview", "hex"]}
+            views={["raw", "headers", "body", "preview", "hex", "inspector"]}
             active={reqView}
             onView={v => { setReqView(v); setReqSearch(""); setReqMatchIdx(-1); }}
             search={reqSearch}
@@ -509,7 +616,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             regex={reqRegex}
             onRegex={v => { setReqRegex(v); setReqMatchIdx(-1); }}
           />
-          {reqView === "raw" ? (
+          {reqView === "inspector" ? (
+            <RepeaterInspectorPanel raw={rep.request} kind="request" />
+          ) : reqView === "raw" ? (
             <textarea
               ref={reqRef}
               className="txt"
@@ -533,7 +642,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
               onKeyUp={onReqSelect}
             />
           )}
-          <RepeaterSelectionReadout sel={reqSel} />
+          {reqView !== "inspector" && <RepeaterSelectionReadout sel={reqSel} />}
         </div>
         <div className="divider-v" />
         <div className="pane" style={{ minWidth: 0 }}>
@@ -545,7 +654,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                     onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
           </div>
           <RepeaterEditorToolbar
-            views={["raw", "headers", "body", "preview", "hex", "render"]}
+            views={["raw", "headers", "body", "preview", "hex", "render", "inspector"]}
             active={respView}
             onView={v => { setRespView(v); setRespSearch(""); setRespMatchIdx(-1); }}
             search={respSearch}
@@ -558,7 +667,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             regex={respRegex}
             onRegex={v => { setRespRegex(v); setRespMatchIdx(-1); }}
           />
-          {respView === "render" ? (
+          {respView === "inspector" ? (
+            <RepeaterInspectorPanel raw={rep.response} kind="response" />
+          ) : respView === "render" ? (
             <React.Fragment>
               <iframe
                 title="repeater-render"
@@ -803,6 +914,7 @@ function IntruderTab({ intruder, dispatch }) {
 
   const [presetMenuOpen, setPresetMenuOpen] = React.useState(false);
   const [hide404, setHide404] = React.useState(false);
+  const [templateView, setTemplateView] = React.useState("edit"); // edit|inspector
 
   // Quick "set up content discovery" -- prompts for a URL and pre-fills
   // host/port/tls/template/payloads in one shot. Cuts the "type the
@@ -969,13 +1081,22 @@ function IntruderTab({ intruder, dispatch }) {
               <span className="ph-count">
                 {(intruder.template.match(/§/g)?.length || 0) / 2} INSERTION POINT
               </span>
+              <button className="btn" style={{ marginLeft: 6 }}
+                      title="Structured breakdown of the template (Inspector)"
+                      onClick={() => setTemplateView(v => v === "edit" ? "inspector" : "edit")}>
+                {templateView === "edit" ? "▤ INSPECTOR" : "✎ EDIT"}
+              </button>
             </div>
-            <textarea
-              className="txt"
-              value={intruder.template}
-              onChange={e => dispatch({ type: "intruder-set", payload: { template: e.target.value }})}
-              spellCheck={false}
-            />
+            {templateView === "inspector" ? (
+              <RepeaterInspectorPanel raw={intruder.template} kind="request" />
+            ) : (
+              <textarea
+                className="txt"
+                value={intruder.template}
+                onChange={e => dispatch({ type: "intruder-set", payload: { template: e.target.value }})}
+                spellCheck={false}
+              />
+            )}
           </div>
           <div className="divider-v" />
           <div className="pane" style={{ minWidth: 0, position: "relative" }}>
