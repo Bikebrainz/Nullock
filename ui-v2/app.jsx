@@ -14,6 +14,7 @@ const TABS = [
   { id: "probe",     label: "PROBE" },
   { id: "tests",     label: "TESTS" },
   { id: "discover",  label: "DISCOVER" },
+  { id: "collaborator", label: "COLLABORATOR" },
   { id: "reporting", label: "REPORTING" },
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
@@ -2260,6 +2261,179 @@ function ReportingTab() {
   );
 }
 
+function CollaboratorTab() {
+  // Self-hosted Collaborator client: mint out-of-band callback URLs, hand
+  // them to the target by any route (paste into a param, a header, an XXE
+  // body — anywhere), and watch interactions land. The backend already
+  // mints tokens and retains an HTTP-hit ring (oast_server.cpp); this was
+  // the last un-wired piece — previously just a status badge (app.jsx
+  // "OAST: {oastDomain}"). No backend change: /api/oast/mint and
+  // /api/oast/poll already return everything rendered below.
+  const [payloads, setPayloads] = React.useState([]);
+  const [hits, setHits]         = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [running, setRunning]   = React.useState(null);
+  const [baseHost, setBaseHost] = React.useState("");
+  const [port, setPort]         = React.useState(0);
+  const [autoPoll, setAutoPoll] = React.useState(true);
+  const [busy, setBusy]         = React.useState(false);
+  const [err, setErr]           = React.useState("");
+  const [copied, setCopied]     = React.useState("");
+  const sinceRef = React.useRef(0);
+
+  const poll = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.oastPoll(sinceRef.current);
+      if (!r) return;
+      setRunning(!!r.running);
+      setBaseHost(r.baseHost || "");
+      setPort(r.port || 0);
+      if (r.hits && r.hits.length) {
+        sinceRef.current = r.hits.reduce((m, h) => Math.max(m, h.id), sinceRef.current);
+        setHits(prev => [...r.hits.slice().reverse(), ...prev].slice(0, 500));
+      }
+    } catch (e) { /* transient network blip; next tick retries */ }
+  }, []);
+
+  React.useEffect(() => {
+    poll();
+    if (!autoPoll) return;
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
+  }, [poll, autoPoll]);
+
+  const mint = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const r = await NL.actions.oastMint({});
+      if (r && r.ok === false) setErr(r.error || "mint failed");
+      else setPayloads(prev => [{ ...r, mintedAt: Date.now() }, ...prev]);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
+  const copy = (text, key) => {
+    try { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(""), 1000); } catch (e) {}
+  };
+  const fmtTime = (ms) => { try { return new Date(ms).toLocaleTimeString(); } catch (e) { return String(ms); } };
+
+  const Btn = ({ label, onClick, disabled }) => (
+    <button onClick={onClick} disabled={disabled || busy} style={{
+      background: "transparent",
+      color: (disabled || busy) ? "var(--dim)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: (disabled || busy) ? "wait" : "pointer",
+      letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>{label}</button>
+  );
+  const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "3px 12px 3px 0", whiteSpace: "nowrap", verticalAlign: "top" };
+  const td = { padding: "3px 12px 3px 0", wordBreak: "break-word", color: "var(--text)", verticalAlign: "top" };
+  const Section = ({ title, hint, children }) => (
+    <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{title}</span>
+        {hint && <span style={{ color: "var(--dim)", fontSize: "11px" }}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, height: "100%", minHeight: 0, overflow: "auto" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Collaborator</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          self-hosted out-of-band interaction client —{" "}
+          {running === null ? "checking…" : running
+            ? <span style={{ color: "var(--accent)" }}>running on {baseHost}:{port}</span>
+            : <span style={{ color: "var(--err)" }}>OAST server not running</span>}
+        </span>
+        {err && <span style={{ color: "var(--err)", fontSize: "11px" }}>{err}</span>}
+      </div>
+
+      <Section title="Payloads" hint="mint a unique callback URL, paste it anywhere on the target, watch for interactions below">
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Btn label="Mint payload" onClick={mint} disabled={running === false} />
+          <Btn label="Poll now" onClick={poll} />
+          <label style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--dim)", fontSize: "11px", cursor: "pointer" }}>
+            <input type="checkbox" checked={autoPoll} onChange={e => setAutoPoll(e.target.checked)} />
+            auto-poll (3s)
+          </label>
+        </div>
+        {payloads.length === 0
+          ? <div style={{ color: "var(--dim)", fontSize: "12px" }}>no payloads minted yet</div>
+          : (
+            <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+              <thead><tr>{["minted", "token", "url", ""].map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+              <tbody>
+                {payloads.map((p, i) => {
+                  const url = p.hostUrl || p.pathUrl;
+                  const key = "p" + i;
+                  return (
+                    <tr key={i}>
+                      <td style={td}>{fmtTime(p.mintedAt)}</td>
+                      <td style={td}><span style={{ color: "var(--dim)" }}>{p.token}</span></td>
+                      <td style={{ ...td, wordBreak: "break-all" }}><span style={{ color: "var(--accent)" }}>{url}</span></td>
+                      <td style={td}><Btn label={copied === key ? "copied" : "copy"} onClick={() => copy(url, key)} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+      </Section>
+
+      <Section title={"Interactions (" + hits.length + ")"} hint="HTTP callbacks only — DNS-only interactions aren't retained by the DNS sink yet, so pure-DNS confirmations stay invisible here">
+        <div style={{ display: "flex", gap: 12, minHeight: 0, flex: 1 }}>
+          <div style={{ flex: "1 1 55%", overflow: "auto", maxHeight: 320 }}>
+            {hits.length === 0
+              ? <div style={{ color: "var(--dim)", fontSize: "12px" }}>no interactions yet</div>
+              : (
+                <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+                  <thead><tr>{["time", "method", "path", "source", "bytes"].map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+                  <tbody>
+                    {hits.map((h) => (
+                      <tr key={h.id} onClick={() => setSelected(h)}
+                          style={{ cursor: "pointer", background: selected && selected.id === h.id ? "var(--bg-deep)" : "transparent" }}>
+                        <td style={td}>{fmtTime(h.atMs)}</td>
+                        <td style={td}>{h.method}</td>
+                        <td style={{ ...td, wordBreak: "break-all" }}>{h.path}</td>
+                        <td style={td}>{h.sourceIp}</td>
+                        <td style={td}>{h.bodyBytes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </div>
+          <div style={{ flex: "1 1 45%", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 10, fontSize: "12px", fontFamily: "var(--ff-mono)", overflow: "auto", maxHeight: 320 }}>
+            {!selected
+              ? <span style={{ color: "var(--dim)" }}>click an interaction to see detail</span>
+              : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div><span style={{ color: "var(--dim)" }}>token</span> {selected.token}</div>
+                  <div><span style={{ color: "var(--dim)" }}>time</span> {fmtTime(selected.atMs)}</div>
+                  <div><span style={{ color: "var(--dim)" }}>source ip</span> {selected.sourceIp}</div>
+                  <div><span style={{ color: "var(--dim)" }}>method</span> {selected.method}</div>
+                  <div><span style={{ color: "var(--dim)" }}>host header</span> {selected.hostHeader}</div>
+                  <div style={{ wordBreak: "break-all" }}><span style={{ color: "var(--dim)" }}>path</span> {selected.path}</div>
+                  <div><span style={{ color: "var(--dim)" }}>user agent</span> {selected.userAgent}</div>
+                  <div><span style={{ color: "var(--dim)" }}>body bytes</span> {selected.bodyBytes}</div>
+                  {selected.bodyPreview && (
+                    <div>
+                      <div style={{ color: "var(--dim)", marginTop: 4 }}>body preview</div>
+                      <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0, color: "var(--text-2)" }}>{selected.bodyPreview}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+          </div>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
 const TEST_TYPES = [
   "sqli", "xss", "ssrf", "ssti", "idor", "cmdi", "openredirect", "xxe",
   "nosqli", "crlf", "ldapi", "xpathi", "massassign", "protopollution",
@@ -3530,6 +3704,9 @@ function App() {
         )}
         {tab === "discover" && (
           <DiscoverTab />
+        )}
+        {tab === "collaborator" && (
+          <CollaboratorTab />
         )}
         {tab === "reporting" && (
           <ReportingTab />

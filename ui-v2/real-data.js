@@ -288,6 +288,18 @@
     workspacePull(url, key, engagement, since) {
       return post("/api/workspace/pull", { url, key, engagement, since: since || undefined }).then(r => r.json());
     },
+
+    // --- OAST / Collaborator ---
+    // Mint an out-of-band callback token. `opts` optionally registers it with
+    // the correlator so a real callback auto-appears as a confirmed finding:
+    // { register: true, rowId?, host?, param?, note? }.
+    oastMint(opts)  { return post("/api/oast/mint", opts || {}).then(r => r.json()); },
+    // Poll for HTTP callbacks landed since hit id `since` (0 = all). Also
+    // carries live server status (running/port/baseHost) in every response.
+    oastPoll(since) { return fetch("/api/oast/poll?since=" + encodeURIComponent(since || 0)).then(r => r.json()); },
+    // Spray OOB payloads (SSRF param battery + optional XXE/RCE/log4shell)
+    // at one target URL; each vector gets its own registered token.
+    oastBlast(payload) { return post("/api/oast/blast", payload).then(r => r.json()); },
   };
 
   NL.statusText = function (s) {
