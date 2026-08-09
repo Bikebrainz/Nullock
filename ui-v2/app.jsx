@@ -2321,6 +2321,13 @@ function DecoderTab() {
   const [err, setErr]       = React.useState("");
   const [chain, setChain]   = React.useState([]);
   const [copied, setCopied] = React.useState(false);
+  // Per-block Text/Hex view (#358): flip either pane to a hex dump without
+  // mutating the underlying value, so a non-printing or non-ASCII byte in
+  // a decode result is visible instead of silently disappearing in a
+  // plain textarea. Hex view is read-only in both blocks; the input box
+  // itself is still edited as text (see DECODER-HEX-LOSSY note below).
+  const [inputView, setInputView]   = React.useState("text");
+  const [outputView, setOutputView] = React.useState("text");
 
   const OPS = [
     "base64-encode", "base64-decode", "base64url-encode", "base64url-decode",
@@ -2362,6 +2369,22 @@ function DecoderTab() {
     padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)", resize: "none",
     flex: 1, minHeight: 0, whiteSpace: "pre-wrap", wordBreak: "break-all",
   };
+  const hexArea = { ...area, whiteSpace: "pre", overflowX: "auto", fontSize: "11px" };
+
+  const ViewToggle = ({ view, onChange }) => (
+    <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 3, overflow: "hidden" }}>
+      {["text", "hex"].map(v => (
+        <button key={v} onClick={() => onChange(v)} title={v === "hex" ? "Hex dump (read-only)" : "Plain text"}
+          style={{
+            background: view === v ? "var(--accent)" : "transparent",
+            color: view === v ? "var(--bg)" : "var(--dim)",
+            border: "none", padding: "2px 7px", fontSize: "9.5px",
+            fontFamily: "var(--ff-mono)", textTransform: "uppercase",
+            letterSpacing: "0.04em", cursor: "pointer",
+          }}>{v}</button>
+      ))}
+    </div>
+  );
 
   return (
     <div style={{ padding: 14, display: "flex", flexDirection: "column",
@@ -2377,10 +2400,17 @@ function DecoderTab() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
                     flex: 1, minHeight: 0 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
-          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
-                        letterSpacing: "0.06em" }}>Input</div>
-          <textarea style={area} value={input} placeholder="paste text to transform…"
-                    onChange={e => setInput(e.target.value)} spellCheck={false} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                          letterSpacing: "0.06em", flex: 1 }}>Input</div>
+            <ViewToggle view={inputView} onChange={setInputView} />
+          </div>
+          {inputView === "hex" ? (
+            <textarea style={{ ...hexArea, color: "var(--dim)" }} value={toHexDump(input)} readOnly spellCheck={false} />
+          ) : (
+            <textarea style={area} value={input} placeholder="paste text to transform…"
+                      onChange={e => setInput(e.target.value)} spellCheck={false} />
+          )}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2389,13 +2419,18 @@ function DecoderTab() {
               Output {activeOp ? "· " + activeOp : ""}
               {chain.length ? " · chain: " + chain.join(" → ") : ""}
             </div>
+            <ViewToggle view={outputView} onChange={setOutputView} />
             <Btn label={copied ? "copied" : "copy"} onClick={copy} disabled={!output} />
             <Btn label="↑ input" title="Use output as the new input (chain transforms)"
                  onClick={useOutputAsInput} disabled={!output} />
           </div>
-          <textarea style={{ ...area, color: err ? "var(--err)" : "var(--text)" }}
-                    value={err ? (output ? output + "\n\n[" + err + "]" : "[" + err + "]") : output}
-                    readOnly spellCheck={false} />
+          {outputView === "hex" ? (
+            <textarea style={{ ...hexArea, color: "var(--dim)" }} value={toHexDump(output)} readOnly spellCheck={false} />
+          ) : (
+            <textarea style={{ ...area, color: err ? "var(--err)" : "var(--text)" }}
+                      value={err ? (output ? output + "\n\n[" + err + "]" : "[" + err + "]") : output}
+                      readOnly spellCheck={false} />
+          )}
         </div>
       </div>
 

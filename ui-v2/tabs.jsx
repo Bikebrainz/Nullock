@@ -125,15 +125,33 @@ function repeaterSelectionStats(text, start, end) {
   };
 }
 
-// Case-insensitive substring search returning [start,end) match ranges.
+// Substring (or regex) search returning [start,end) match ranges.
 // Capped so a common single-character query against a huge response can't
-// hang the tab.
-function repeaterFindMatches(text, query, limit) {
+// hang the tab. opts: { caseSensitive, regex } -- both default false, so
+// the default behavior (case-insensitive plain substring) is unchanged.
+function repeaterFindMatches(text, query, opts, limit) {
   if (!text || !query) return [];
   const cap = limit || 5000;
-  const hay = text.toLowerCase();
-  const needle = query.toLowerCase();
+  const o = opts || {};
   const out = [];
+
+  if (o.regex) {
+    let re;
+    try { re = new RegExp(query, o.caseSensitive ? "g" : "gi"); }
+    catch (e) { return []; } // invalid pattern mid-typing -- no matches, no throw
+    let m;
+    let guard = 0;
+    while ((m = re.exec(text)) !== null && out.length < cap) {
+      const end = m.index + Math.max(m[0].length, 1);
+      out.push([m.index, m.index + m[0].length]);
+      re.lastIndex = end; // guarantee progress on zero-length matches
+      if (++guard > cap * 2) break;
+    }
+    return out;
+  }
+
+  const hay = o.caseSensitive ? text : text.toLowerCase();
+  const needle = o.caseSensitive ? query : query.toLowerCase();
   let idx = 0;
   while (idx <= hay.length && out.length < cap) {
     const found = hay.indexOf(needle, idx);
@@ -152,7 +170,17 @@ function repeaterGotoMatch(matches, curIdx, dir) {
   return { idx, range: matches[idx] };
 }
 
-function RepeaterEditorToolbar({ views, active, onView, search, onSearch, matchCount, onNext, onPrev }) {
+function RepeaterEditorToolbar({
+  views, active, onView, search, onSearch, matchCount, onNext, onPrev,
+  caseSensitive, onCaseSensitive, regex, onRegex,
+}) {
+  const toggleStyle = (on) => ({
+    background: on ? "var(--accent)" : "transparent",
+    color: on ? "var(--bg)" : "var(--dim)",
+    border: "1px solid " + (on ? "var(--accent)" : "var(--line)"),
+    fontFamily: "var(--ff-mono)", fontSize: "9.5px", padding: "2px 5px",
+    cursor: "pointer", letterSpacing: "0.04em",
+  });
   return (
     <div className="detail-tabs">
       {views.map(v => (
@@ -175,6 +203,16 @@ function RepeaterEditorToolbar({ views, active, onView, search, onSearch, matchC
           fontSize: "11px", padding: "2px 6px",
         }}
       />
+      <button
+        title="Case-sensitive search"
+        style={toggleStyle(caseSensitive)}
+        onClick={() => onCaseSensitive(!caseSensitive)}
+      >Aa</button>
+      <button
+        title="Regex search (JavaScript regex syntax)"
+        style={toggleStyle(regex)}
+        onClick={() => onRegex(!regex)}
+      >.*</button>
       {search && (
         <span className="ph-count" style={{ cursor: matchCount ? "pointer" : "default" }} onClick={onNext}>
           {matchCount} match{matchCount === 1 ? "" : "es"}
@@ -240,6 +278,10 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   const [respSearch, setRespSearch] = React.useState("");
   const [reqMatchIdx, setReqMatchIdx] = React.useState(-1);
   const [respMatchIdx, setRespMatchIdx] = React.useState(-1);
+  const [reqCaseSensitive, setReqCaseSensitive] = React.useState(false);
+  const [respCaseSensitive, setRespCaseSensitive] = React.useState(false);
+  const [reqRegex, setReqRegex] = React.useState(false);
+  const [respRegex, setRespRegex] = React.useState(false);
   const [reqSel, setReqSel] = React.useState(null);
   const [respSel, setRespSel] = React.useState(null);
   const reqRef = React.useRef(null);
@@ -249,8 +291,14 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   const respBody = renderView(rep.response, "body");
   const respText = respView === "raw" ? rep.response : renderView(rep.response, respView);
 
-  const reqMatches = React.useMemo(() => repeaterFindMatches(reqText, reqSearch), [reqText, reqSearch]);
-  const respMatches = React.useMemo(() => repeaterFindMatches(respText, respSearch), [respText, respSearch]);
+  const reqMatches = React.useMemo(
+    () => repeaterFindMatches(reqText, reqSearch, { caseSensitive: reqCaseSensitive, regex: reqRegex }),
+    [reqText, reqSearch, reqCaseSensitive, reqRegex]
+  );
+  const respMatches = React.useMemo(
+    () => repeaterFindMatches(respText, respSearch, { caseSensitive: respCaseSensitive, regex: respRegex }),
+    [respText, respSearch, respCaseSensitive, respRegex]
+  );
 
   const jumpReq = (dir) => {
     const hit = repeaterGotoMatch(reqMatches, reqMatchIdx, dir);
@@ -456,6 +504,10 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             matchCount={reqMatches.length}
             onNext={() => jumpReq(1)}
             onPrev={() => jumpReq(-1)}
+            caseSensitive={reqCaseSensitive}
+            onCaseSensitive={v => { setReqCaseSensitive(v); setReqMatchIdx(-1); }}
+            regex={reqRegex}
+            onRegex={v => { setReqRegex(v); setReqMatchIdx(-1); }}
           />
           {reqView === "raw" ? (
             <textarea
@@ -501,6 +553,10 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             matchCount={respMatches.length}
             onNext={() => jumpResp(1)}
             onPrev={() => jumpResp(-1)}
+            caseSensitive={respCaseSensitive}
+            onCaseSensitive={v => { setRespCaseSensitive(v); setRespMatchIdx(-1); }}
+            regex={respRegex}
+            onRegex={v => { setRespRegex(v); setRespMatchIdx(-1); }}
           />
           {respView === "render" ? (
             <React.Fragment>
