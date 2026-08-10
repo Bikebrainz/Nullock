@@ -334,6 +334,12 @@ int main(int argc, char **argv) {
         // input is not judged (returns 1.0).
         chk("compress: all-zero 1KB -> ratio << 0.85 (fails)", compressionRatio(QByteArray(1024, '\0')) < 0.85);
         chk("compress: 64B input -> 1.0 (not judged)", compressionRatio(QByteArray(64, '\0')) == 1.0);
+        // reliability rating scales with sample size.
+        chk("reliability: 10 -> insufficient", reliabilityRating(10) == "insufficient");
+        chk("reliability: 50 -> low", reliabilityRating(50) == "low");
+        chk("reliability: 500 -> medium", reliabilityRating(500) == "medium");
+        chk("reliability: 2000 -> high", reliabilityRating(2000) == "high");
+        chk("reliability: 10000 -> very-high", reliabilityRating(10000) == "very-high");
     }
 
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);

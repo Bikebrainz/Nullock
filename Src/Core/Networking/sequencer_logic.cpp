@@ -455,6 +455,17 @@ double compressionRatio(const QByteArray &bytes) {
     return double(comp) / double(bytes.size());
 }
 
+QString reliabilityRating(int sampleCount) {
+    // Randomness estimates converge with the corpus size; below the deep-test
+    // floor almost nothing can be said. Thresholds mirror common guidance
+    // (Burp warns under ~100; FIPS-style suites want thousands of samples).
+    if (sampleCount < kDeepMinN) return QStringLiteral("insufficient");
+    if (sampleCount < 100)       return QStringLiteral("low");
+    if (sampleCount < 1000)      return QStringLiteral("medium");
+    if (sampleCount < 5000)      return QStringLiteral("high");
+    return QStringLiteral("very-high");
+}
+
 namespace {
 
 BitLevelResult bitLevelTests(const QStringList &tokens) {
@@ -559,6 +570,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
 QJsonObject analyzeTokens(const QStringList &tokens) {
     QJsonObject result;
     result["n"] = tokens.size();
+    result["reliability"] = reliabilityRating(tokens.size());
     if (tokens.isEmpty()) {
         result["verdict"] = "no-data";
         result["score"]   = 0;
