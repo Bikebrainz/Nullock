@@ -2148,6 +2148,7 @@ function InspectorTab() {
   // backend (inspector_logic: request/response line, headers, cookies, query
   // and body params, and JWT decode) already existed with no UI -- this is the
   // tab that makes it reachable.
+  const [mode, setMode] = React.useState("parse");   // "parse" | "jwt"
   const [raw, setRaw]   = React.useState("");
   const [kind, setKind] = React.useState("");   // "" auto | request | response
   const [view, setView] = React.useState(null);
@@ -2201,9 +2202,16 @@ function InspectorTab() {
     <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
         <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Inspector</span>
-        <span style={{ color: "var(--dim)", fontSize: "11px" }}>structured view of a raw request or response — headers, cookies, params, JWTs</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {mode === "parse" ? "structured view of a raw request or response — headers, cookies, params, JWTs" : "offline JWT analyze/forge + a live acceptance test against a target"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <Btn label="parse" primary={mode === "parse"} onClick={() => setMode("parse")} />
+        <Btn label="jwt toolkit" primary={mode === "jwt"} onClick={() => setMode("jwt")} />
       </div>
 
+      {mode === "jwt" ? <JwtToolkit /> : (
+      <React.Fragment>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 0, height: "40%" }}>
         <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>RAW HTTP</div>
         <textarea style={area} value={raw} placeholder={"paste a raw request or response…\nGET /path?q=1 HTTP/1.1\nHost: example.com\nCookie: token=eyJ..."}
@@ -2247,6 +2255,8 @@ function InspectorTab() {
           </div>
         )}
       </div>
+      </React.Fragment>
+      )}
     </div>
   );
 }
@@ -2264,6 +2274,213 @@ function JwtList({ jwts }) {
           </pre>
         </div>
       ))}
+    </div>
+  );
+}
+
+function JwtToolkit() {
+  // Offline analyze/forge (JwtTool, /api/jwt/analyze + /api/jwt/forge) and a
+  // live acceptance test (JwtProbe, /api/jwt/test) against a real target --
+  // all three were API-only with no UI. A single shared token box feeds all
+  // three actions since forge/test both start from an already-decoded token.
+  const [token, setToken]       = React.useState("");
+  const [wordlist, setWordlist] = React.useState("");
+
+  const [analysis, setAnalysis]   = React.useState(null);
+  const [analyzeErr, setAnalyzeErr] = React.useState("");
+  const [busyA, setBusyA]         = React.useState(false);
+
+  const [attack, setAttack]     = React.useState("none");
+  const [secret, setSecret]     = React.useState("");
+  const [claimsText, setClaimsText] = React.useState("");
+  const [forged, setForged]     = React.useState("");
+  const [forgeErr, setForgeErr] = React.useState("");
+  const [busyF, setBusyF]       = React.useState(false);
+  const [copied, setCopied]     = React.useState(false);
+
+  const [testUrl, setTestUrl]     = React.useState("");
+  const [location, setLocation]   = React.useState("");
+  const [testMethod, setTestMethod] = React.useState("");
+  const [testRes, setTestRes]     = React.useState(null);
+  const [testErr, setTestErr]     = React.useState("");
+  const [busyT, setBusyT]         = React.useState(false);
+
+  const words = () => wordlist.split("\n").map(s => s.trim()).filter(Boolean);
+
+  const doAnalyze = async () => {
+    if (!token.trim()) { setAnalyzeErr("paste a token first"); return; }
+    setAnalyzeErr(""); setBusyA(true); setAnalysis(null);
+    try {
+      const w = words();
+      const r = await NL.actions.jwtAnalyze(token.trim(), w.length ? w : undefined);
+      if (r && r.ok) setAnalysis(r); else setAnalyzeErr((r && r.error) || "analyze failed");
+    } catch (e) { setAnalyzeErr(String(e && e.message ? e.message : e)); }
+    finally { setBusyA(false); }
+  };
+
+  const doForge = async () => {
+    if (!token.trim()) { setForgeErr("paste a token first"); return; }
+    let claims;
+    if (claimsText.trim()) {
+      try { claims = JSON.parse(claimsText); }
+      catch (e) { setForgeErr("claim overrides must be valid JSON"); return; }
+    }
+    setForgeErr(""); setBusyF(true); setForged(""); setCopied(false);
+    try {
+      const r = await NL.actions.jwtForge(token.trim(), attack, attack === "none" ? undefined : secret, claims);
+      if (r && r.ok) setForged(r.token); else setForgeErr((r && r.error) || "forge failed");
+    } catch (e) { setForgeErr(String(e && e.message ? e.message : e)); }
+    finally { setBusyF(false); }
+  };
+
+  const doTest = async () => {
+    if (!testUrl.trim()) { setTestErr("enter a target URL"); return; }
+    if (!token.trim()) { setTestErr("paste the currently-valid token to calibrate against"); return; }
+    setTestErr(""); setBusyT(true); setTestRes(null);
+    try {
+      const opts = {};
+      if (location.trim()) opts.location = location.trim();
+      if (testMethod) opts.method = testMethod;
+      const w = words();
+      if (w.length) opts.wordlist = w;
+      const r = await NL.actions.jwtTest(testUrl.trim(), token.trim(), opts);
+      if (r && r.ok !== false) setTestRes(r); else setTestErr((r && r.error) || "test failed");
+    } catch (e) { setTestErr(String(e && e.message ? e.message : e)); }
+    finally { setBusyT(false); }
+  };
+
+  const inp = {
+    background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+    borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
+  const Btn = ({ label, onClick, primary, disabled }) => (
+    <button onClick={onClick} disabled={disabled} style={{
+      background: primary ? "var(--accent)" : "transparent",
+      color: disabled ? "var(--dim)" : primary ? "var(--bg)" : "var(--accent)",
+      border: "1px solid " + (disabled ? "var(--line)" : "var(--accent)"), padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: disabled ? "default" : "pointer", letterSpacing: "0.04em",
+      textTransform: "uppercase",
+    }}>{label}</button>
+  );
+  const Section = ({ title, children }) => (
+    <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{title}</div>
+      {children}
+    </div>
+  );
+  const sevColor = (s) => ({
+    critical: "var(--err)", high: "#ea580c", medium: "#d97706",
+    low: "#3f8f29", info: "var(--dim)",
+  }[String(s || "").toLowerCase()] || "var(--text-2)");
+
+  return (
+    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+      <Section title="Token">
+        <textarea value={token} onChange={e => setToken(e.target.value)}
+                  placeholder="paste a captured JWT (header.payload.signature)…"
+                  spellCheck={false}
+                  style={{ ...inp, minHeight: 46, resize: "vertical", whiteSpace: "pre-wrap", wordBreak: "break-all" }} />
+        <textarea value={wordlist} onChange={e => setWordlist(e.target.value)}
+                  placeholder="HS* secret wordlist, one per line (optional — used by analyze's brute-force and test's weak-secret attack)"
+                  spellCheck={false} style={{ ...inp, minHeight: 40, resize: "vertical" }} />
+      </Section>
+
+      <Section title="Analyze (offline)">
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Btn label={busyA ? "analyzing…" : "analyze"} primary disabled={busyA} onClick={doAnalyze} />
+          <span style={{ color: "var(--err)", fontSize: "11px" }}>{analyzeErr}</span>
+        </div>
+        {analysis && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: "11px", fontFamily: "var(--ff-mono)", color: "var(--dim)" }}>
+              alg <span style={{ color: "var(--text)" }}>{analysis.alg || "?"}</span>
+              {analysis.typ ? <span> · typ <span style={{ color: "var(--text)" }}>{analysis.typ}</span></span> : null}
+              {analysis.kid ? <span> · kid <span style={{ color: "var(--text)" }}>{analysis.kid}</span></span> : null}
+            </div>
+            {(analysis.weaknesses || []).map((w, i) => (
+              <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 4, padding: "4px 8px", fontSize: "11.5px", fontFamily: "var(--ff-mono)" }}>
+                <span style={{ color: sevColor(w.severity), fontWeight: 600, textTransform: "uppercase" }}>{w.severity}</span>
+                {"  "}<span style={{ color: "var(--accent)" }}>{w.id}</span>
+                <div style={{ color: "var(--text-2)" }}>{w.detail}</div>
+              </div>
+            ))}
+            {!analysis.weaknesses || !analysis.weaknesses.length ? <span style={{ color: "var(--dim)", fontSize: "11px" }}>no weaknesses flagged</span> : null}
+            {"secretRecovered" in analysis && (
+              <div style={{ fontSize: "11.5px", fontFamily: "var(--ff-mono)" }}>
+                {analysis.secretRecovered
+                  ? <span style={{ color: "var(--err)" }}>HS* secret recovered from wordlist: <b>{analysis.secret}</b></span>
+                  : <span style={{ color: "var(--dim)" }}>secret not found in wordlist</span>}
+              </div>
+            )}
+            <pre style={{ margin: 0, fontSize: "11px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text-2)" }}>
+              {JSON.stringify({ header: analysis.header, payload: analysis.payload }, null, 2)}
+            </pre>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Forge">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select value={attack} onChange={e => setAttack(e.target.value)} style={{ ...inp, flex: "0 0 140px" }}>
+            <option value="none">alg:none bypass</option>
+            <option value="hs256">re-sign HS256</option>
+          </select>
+          {attack !== "none" && (
+            <input value={secret} onChange={e => setSecret(e.target.value)} placeholder="HMAC secret (or PEM public key, for RS256→HS256 confusion)"
+                   style={{ ...inp, flex: "1 1 260px" }} spellCheck={false} />
+          )}
+          <Btn label={busyF ? "forging…" : "forge"} primary disabled={busyF} onClick={doForge} />
+        </div>
+        <textarea value={claimsText} onChange={e => setClaimsText(e.target.value)}
+                  placeholder={'claim overrides as JSON, optional — e.g. {"role":"admin"}'}
+                  spellCheck={false} style={{ ...inp, minHeight: 34, resize: "vertical" }} />
+        <span style={{ color: "var(--err)", fontSize: "11px" }}>{forgeErr}</span>
+        {forged && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <textarea readOnly value={forged} style={{ ...inp, minHeight: 46, resize: "vertical", whiteSpace: "pre-wrap", wordBreak: "break-all" }} />
+            <div>
+              <Btn label={copied ? "copied" : "copy"} onClick={() => {
+                navigator.clipboard && navigator.clipboard.writeText(forged).then(() => {
+                  setCopied(true); setTimeout(() => setCopied(false), 1200);
+                });
+              }} />
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Active test (live acceptance check)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={testUrl} onChange={e => setTestUrl(e.target.value)} placeholder="https://target/protected/endpoint"
+                 style={{ ...inp, flex: "1 1 260px" }} spellCheck={false} />
+          <select value={testMethod} onChange={e => setTestMethod(e.target.value)} style={{ ...inp, flex: "0 0 90px" }}>
+            <option value="">auto</option><option value="GET">GET</option><option value="POST">POST</option>
+          </select>
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="location (optional — e.g. cookie:session, header:X-Auth-Token; default fans out)"
+                 style={{ ...inp, flex: "1 1 220px" }} spellCheck={false} />
+          <Btn label={busyT ? "testing…" : "test"} primary disabled={busyT} onClick={doTest} />
+        </div>
+        <span style={{ color: "var(--err)", fontSize: "11px" }}>{testErr}</span>
+        {testRes && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: "12px", fontFamily: "var(--ff-mono)" }}>
+              <span style={{ color: testRes.vulnerable ? "var(--err)" : "var(--ok, #6c8)", fontWeight: 600 }}>
+                {testRes.vulnerable ? "VULNERABLE" : "no accepted forgery"}
+              </span>
+              <span style={{ color: "var(--dim)" }}>
+                {"  · calibrated=" + String(testRes.calibrated) + " · auth=" + testRes.authStatus + " · reject=" + testRes.rejectStatus + " · requests=" + testRes.requestsSent}
+              </span>
+            </div>
+            {(testRes.hits || []).map((h, i) => (
+              <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 4, padding: "4px 8px", fontSize: "11.5px", fontFamily: "var(--ff-mono)" }}>
+                <span style={{ color: "var(--err)", fontWeight: 600 }}>{h.attack}</span>
+                {h.carrier ? <span style={{ color: "var(--dim)" }}> · {h.carrier}</span> : null}
+                <div style={{ color: "var(--text-2)" }}>{h.detail}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
@@ -3144,13 +3361,22 @@ const TEST_TYPES = [
   "sqli", "xss", "ssrf", "ssti", "idor", "cmdi", "openredirect", "xxe",
   "nosqli", "crlf", "ldapi", "xpathi", "massassign", "protopollution",
   "race", "deser", "hostheader", "cors", "cswsh", "verbtamper", "methods",
-  "smuggle", "takeover", "cachedeception", "pathtraversal", "jwt",
+  "smuggle", "takeover", "cachedeception", "pathtraversal",
+  // NOTE: jwt is deliberately excluded. /api/jwt/test needs a `token` (the
+  // currently-valid captured JWT to calibrate against) which this tab's
+  // uniform {url, param?, method?} contract has no field for -- it would
+  // always fail with "token required". Real JWT active-testing lives in
+  // the Inspector tab's JWT TOOLKIT (paste token -> Active test), alongside
+  // offline analyze/forge.
 ];
 
 function TestsTab() {
-  // Unified launcher for the active-vulnerability arsenal: 26 /api/<type>/test
-  // backends that existed with no UI. Uniform {url, param?, method?} request;
-  // results (hits/findings) render generically and also flow to Issues.
+  // Unified launcher for the active-vulnerability arsenal: 24 /api/<type>/test
+  // backends that existed with no UI (of the 26 in the family, jwt needs a
+  // token field this uniform form can't provide -- see Inspector's JWT
+  // toolkit -- and cache/poison has a distinct request shape entirely).
+  // Uniform {url, param?, method?} request; results (hits/findings) render
+  // generically and also flow to Issues.
   const [url, setUrl]     = React.useState("");
   const [param, setParam] = React.useState("");
   const [method, setMethod] = React.useState("");

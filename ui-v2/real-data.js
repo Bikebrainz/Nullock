@@ -250,6 +250,23 @@
     compareBlobs(mode, a, b)    { return post("/api/compare", { mode, a, b }).then(r => r.json()); },
     processPayload(payload)     { return post("/api/process", { payload }).then(r => r.json()); },
     inspect(raw, kind)          { return post("/api/inspect", { raw, kind: kind || "" }).then(r => r.json()); },
+    // JWT attack toolkit (offline analyze/forge + a live acceptance test).
+    // See control_server.cpp /api/jwt/analyze|forge|test for the response shapes.
+    jwtAnalyze(token, wordlist) {
+      const b = { token };
+      if (wordlist && wordlist.length) b.wordlist = wordlist;
+      return post("/api/jwt/analyze", b).then(r => r.json());
+    },
+    jwtForge(token, attack, secret, claims) {
+      const b = { token, attack: attack || "none" };
+      if (secret) b.secret = secret;
+      if (claims) b.claims = claims;
+      return post("/api/jwt/forge", b).then(r => r.json());
+    },
+    jwtTest(url, token, opts) {
+      const b = Object.assign({ url, token }, opts || {});
+      return post("/api/jwt/test", b).then(r => r.json());
+    },
     // Token randomness analyzer (Burp's Sequencer). tokens is a flat array
     // of strings; see sequencer.hpp for the returned JSON shape.
     sequencerAnalyze(tokens)    { return post("/api/sequencer/analyze", { tokens }).then(r => r.json()); },
