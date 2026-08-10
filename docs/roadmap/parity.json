@@ -684,7 +684,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "34740a2",
         "note": "Unified scan/audit runner batch: SCANS tab's Assess & audit section adds a GUI trigger for /api/assess, closing the 'no GUI' half of this gap; the live-feed caveat stands untouched."
       }
     },
@@ -750,7 +750,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "34740a2",
         "note": "Unified scan/audit runner batch: SCANS tab's Audit run panel adds a GUI trigger for /api/audit/run (include-checkbox battery, xxe among them); still absent from TESTS' uniform battery and Probe-all, called out honestly."
       }
     },
@@ -970,7 +970,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "34740a2",
         "note": "Unified scan/audit runner batch: SCANS tab's Param miner panel adds a GUI trigger for /api/paramminer; the deep-audit in-sweep 60-entry cap remains an honest separate gap, untouched."
       }
     },
