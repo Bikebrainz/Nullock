@@ -2030,17 +2030,17 @@
     {
       "area": "sequencer",
       "feature": "Bit-level test: FIPS runs test (counts of runs of length 1..6+ of identical bits, against expected ranges)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "A runs test IS now computed -- the Wald-Wolfowitz total-runs z-score (over/under-alternation, p<0.01) -- but not the exact FIPS 140-2 form that buckets run LENGTHS 1..6+ per bit value against expected ranges. Total-runs is a valid, arguably more robust runs test; the length-bucketed variant is the remaining gap.",
-      "why": "Upgraded absent->partial 2026-08-10: fipsRunsZScore implemented; the length-bucketed FIPS variant is not.",
-      "evidence": "Src/Core/Networking/sequencer_logic.cpp fips{Poker,Runs}/longestBitRun helpers (declared in sequencer.hpp), folded into bitLevelTests + the analysis JSON (bitLevel.poker/.runs/.longRun); mutation-proven in Tests/sequencer (stubbing the helpers fails exactly the 6 discriminating cases). Commit dd9c158.",
-      "audited_state": "absent",
+      "gap": "None. Both a total-runs z-test AND the FIPS length-bucketed form (chi-square over run lengths 1..6+ vs the geometric expectation) are computed and flagged.",
+      "why": "Closed 2026-08-10 (045f671): fipsRunsBucketChi adds the length-bucketed variant the total-runs z-test lacked.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp fipsRunsBucketChi + compressionRatio (sequencer.hpp), in bitLevelTests + JSON (bitLevel.runLengths/.compression); mutation-proven in Tests/sequencer. Commit 045f671.",
+      "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "dd9c158",
-        "note": "Total-runs z-test added; FIPS length-bucketed variant still pending."
+        "commit": "045f671",
+        "note": "FIPS length-bucketed runs test added."
       }
     },
     {
@@ -2072,12 +2072,18 @@
     {
       "area": "sequencer",
       "feature": "Bit-level test: Compression test (ZLIB-compress the bit sequence; compression ratio bounds the entropy)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Absent. Cheapest high-signal test available here — the decoded byte stream is already materialised as `cat`, and it is the one test that catches structured or padded tokens which pass every bit-frequency test.",
-      "why": "Confirmed by counting: zero occurrences of zlib/compress/deflate in all three sequencer files. The dependency-is-already-available point is correct — the project links Qt's z_-prefixed zlib for WS permessage-deflate.",
-      "evidence": "`grep -c -i \"zlib|compress|deflate\"` over Src/Core/Networking/sequencer.cpp, sequencer.hpp, sequencer_logic.cpp: 0, 0, 0. `cat` (sequencer_logic.cpp:365-366) is already the exact byte buffer such a test would consume, so the plumbing is in place."
+      "gap": "None. The decoded byte stream is zlib-compressed and its compression ratio bounds are checked (structure/repetition compresses; random does not).",
+      "why": "Closed 2026-08-10 (045f671): compressionRatio (qCompress) added + flagged in bitLevelTests.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp fipsRunsBucketChi + compressionRatio (sequencer.hpp), in bitLevelTests + JSON (bitLevel.runLengths/.compression); mutation-proven in Tests/sequencer. Commit 045f671.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "045f671",
+        "note": "Compression test implemented + tested."
+      }
     },
     {
       "area": "sequencer",
