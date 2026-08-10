@@ -1664,7 +1664,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "a1aa15d",
         "note": "Sequencer batch: manual-load paste/file/clipboard + Analyze now, closes the pure-GUI dimension of this gap."
       }
     },
@@ -1680,7 +1680,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "a1aa15d",
         "note": "Sequencer batch: pre-analysis client-side sample summary (n / shortest / longest / mean), closes the reachability gap."
       }
     },
@@ -1887,7 +1887,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "PENDING",
+        "commit": "a1aa15d",
         "note": "Sequencer batch: Manual Load + Analysis sub-areas of the Sequencer tool tab; Live Capture stays absent (no backend engine)."
       }
     },
