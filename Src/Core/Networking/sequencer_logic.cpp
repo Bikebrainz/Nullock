@@ -349,6 +349,10 @@ struct BitLevelResult {
     bool   runsFail = false;
     qint64 longestRun = 0;      // longest run of identical bits
     bool   longRunFail = false;
+    double runsBucketChi = -1.0;// FIPS run-length (1..6+) chi-square; <0 = not computed
+    bool   runsBucketFail = false;
+    double compRatio = 1.0;     // zlib compressed/original size
+    bool   compFail = false;
     bool   anyFail = false;
 };
 
@@ -406,6 +410,49 @@ qint64 longestBitRun(const QByteArray &bytes) {
             prev = bit; ++seen;
         }
     return longest;
+}
+
+double fipsRunsBucketChi(const QByteArray &bytes) {
+    const qint64 total = qint64(bytes.size()) * 8;
+    if (total < 200) return -1.0;
+    long long obs[6] = {0, 0, 0, 0, 0, 0};   // run-length buckets: 1,2,3,4,5,6+
+    long long runs = 0;
+    int prev = -1; qint64 seen = 0, cur = 0;
+    auto closeRun = [&](qint64 len) {
+        if (len <= 0) return;
+        obs[int(qMin(len, qint64(6))) - 1]++;
+        ++runs;
+    };
+    for (unsigned char ch : bytes)
+        for (int i = 7; i >= 0; --i) {
+            const int bit = (ch >> i) & 1;
+            if (seen == 0)          cur = 1;
+            else if (bit == prev)   ++cur;
+            else { closeRun(cur);   cur = 1; }
+            prev = bit; ++seen;
+        }
+    closeRun(cur);                            // the final run
+    if (runs < 30) return -1.0;
+    // Geometric run-length model: P(len=k) = 2^-k, the 6+ bucket absorbs the
+    // tail (2^-5). Sum of the six proportions is exactly 1.
+    static const double prop[6] = { 1.0/2, 1.0/4, 1.0/8, 1.0/16, 1.0/32, 1.0/32 };
+    double chi = 0.0;
+    for (int k = 0; k < 6; ++k) {
+        const double exp = double(runs) * prop[k];
+        if (exp < 1.0) continue;
+        const double dv = double(obs[k]) - exp;
+        chi += dv * dv / exp;
+    }
+    return chi;
+}
+
+double compressionRatio(const QByteArray &bytes) {
+    if (bytes.size() < 128) return 1.0;       // qCompress overhead dominates small inputs
+    const QByteArray z = qCompress(bytes, 9);
+    // qCompress prepends a 4-byte big-endian original-size header; drop it so
+    // the ratio reflects the deflate stream, not Qt's framing.
+    const int comp = z.size() > 4 ? z.size() - 4 : z.size();
+    return double(comp) / double(bytes.size());
 }
 
 namespace {
@@ -495,8 +542,15 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
         r.longRunFail = double(r.longestRun) > thr;
     }
 
+    // ---- FIPS length-bucketed runs test + compression test ----
+    r.runsBucketChi = fipsRunsBucketChi(cat);
+    r.runsBucketFail = r.runsBucketChi >= 0.0 && r.runsBucketChi > 15.086;  // 5 dof, p < 0.01
+    r.compRatio = compressionRatio(cat);
+    r.compFail = r.compRatio < 0.85;    // meaningfully compressible -> structure/repetition
+
     r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail
-             || r.pokerFail || r.runsFail || r.longRunFail;
+             || r.pokerFail || r.runsFail || r.longRunFail
+             || r.runsBucketFail || r.compFail;
     return r;
 }
 
@@ -658,6 +712,14 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         longRun["longest"] = double(bit.longestRun);
         longRun["failed"]  = bit.longRunFail;
         bitObj["longRun"] = longRun;
+        QJsonObject runsBucket;
+        runsBucket["chiSquare"] = bit.runsBucketChi;
+        runsBucket["failed"]    = bit.runsBucketFail;
+        bitObj["runLengths"] = runsBucket;
+        QJsonObject comp;
+        comp["ratio"]  = bit.compRatio;
+        comp["failed"] = bit.compFail;
+        bitObj["compression"] = comp;
         bitObj["anyFailed"] = bit.anyFail;
     }
     result["bitLevel"] = bitObj;
