@@ -1053,6 +1053,78 @@ function IntruderTab({ intruder, dispatch }) {
     }).catch(() => {});
   }, []);
 
+  // Generator dialog -- server-side payload generation (numbers/dates/
+  // brute forcer). The engine+API already exist (intruder_generators.cpp);
+  // this is purely a GUI on top of /api/intruder/generate (live preview)
+  // and /api/intruder/set {generator} (apply, which fills payload set 0).
+  const [genMenuOpen, setGenMenuOpen] = React.useState(false);
+  const [genTypes, setGenTypes] = React.useState(["numbers", "dates", "brute"]);
+  const [genType, setGenType] = React.useState("numbers");
+  const [genNumbers, setGenNumbers] = React.useState({ from: "1", to: "10", step: "1", width: "0", hex: false });
+  const [genDates, setGenDates] = React.useState({ from: "", to: "", stepDays: "1", format: "yyyy-MM-dd" });
+  const [genBrute, setGenBrute] = React.useState({ charset: "abc123", minLen: "1", maxLen: "3" });
+  const [genPreview, setGenPreview] = React.useState(null);
+  const [genErr, setGenErr] = React.useState("");
+
+  React.useEffect(() => {
+    NL.actions.intruderGeneratorTypes().then(res => {
+      if (res && Array.isArray(res.types) && res.types.length) setGenTypes(res.types);
+    }).catch(() => {});
+  }, []);
+
+  const buildGenSpec = () => {
+    if (genType === "numbers") {
+      return {
+        type: "numbers",
+        from: Number(genNumbers.from) || 0,
+        to: Number(genNumbers.to) || 0,
+        step: Number(genNumbers.step) || 1,
+        width: Number(genNumbers.width) || 0,
+        hex: !!genNumbers.hex,
+      };
+    }
+    if (genType === "dates") {
+      return {
+        type: "dates",
+        from: genDates.from,
+        to: genDates.to,
+        stepDays: Number(genDates.stepDays) || 1,
+        format: genDates.format || "yyyy-MM-dd",
+      };
+    }
+    if (genType === "brute") {
+      return {
+        type: "brute",
+        charset: genBrute.charset,
+        minLen: Number(genBrute.minLen) || 1,
+        maxLen: Number(genBrute.maxLen) || 1,
+      };
+    }
+    return { type: genType };
+  };
+
+  // Live count+sample preview, debounced while the dialog is open and the
+  // user is still typing.
+  React.useEffect(() => {
+    if (!genMenuOpen) return;
+    const spec = buildGenSpec();
+    const t = setTimeout(() => {
+      NL.actions.intruderGenerate(spec)
+        .then(res => { setGenPreview(res); setGenErr(""); })
+        .catch(() => { setGenPreview(null); setGenErr("preview failed"); });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [genMenuOpen, genType, genNumbers, genDates, genBrute]);
+
+  // Apply: POST the generator spec directly (not through the local
+  // intruder-set dispatch) -- the full expansion can exceed what the
+  // preview samples, so we let the next snapshot poll bring the real
+  // payloads array back rather than guessing it client-side.
+  const applyGenerator = () => {
+    NL.actions.intruderSet({ generator: buildGenSpec() });
+    setGenMenuOpen(false);
+  };
+
   const attackType = intruder.attackType ?? 0;
   const posCount = Math.floor((intruder.template.match(/§/g) || []).length / 2);
   const isMultiSet = (attackType === 2 || attackType === 3) && posCount > 1;
@@ -1345,7 +1417,17 @@ function IntruderTab({ intruder, dispatch }) {
               <span className="ph-count">{intruder.payloads.length}</span>
               <span style={{ flex: 1 }} />
               <button
-                onClick={() => setPresetMenuOpen(o => !o)}
+                onClick={() => { setGenMenuOpen(o => !o); setPresetMenuOpen(false); }}
+                style={{
+                  background: "transparent", color: "var(--accent)",
+                  border: "1px solid var(--accent)", padding: "2px 8px",
+                  fontSize: "10px", fontFamily: "var(--ff-mono)",
+                  cursor: "pointer", letterSpacing: "0.04em",
+                  textTransform: "uppercase", marginRight: 6,
+                }}
+              >GENERATOR ▾</button>
+              <button
+                onClick={() => { setPresetMenuOpen(o => !o); setGenMenuOpen(false); }}
                 style={{
                   background: "transparent", color: "var(--accent)",
                   border: "1px solid var(--accent)", padding: "2px 8px",
@@ -1355,6 +1437,103 @@ function IntruderTab({ intruder, dispatch }) {
                 }}
               >+ PRESET ▾</button>
             </div>
+            {genMenuOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute", top: 28, right: 6, zIndex: 30,
+                  background: "var(--pane)", border: "1px solid var(--accent)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  fontFamily: "var(--ff-mono)", fontSize: "11px",
+                  width: 320, maxHeight: 440, overflow: "auto",
+                }}>
+                <div style={{
+                  padding: "6px 10px", color: "var(--dim)", fontSize: "10px",
+                  textTransform: "uppercase", letterSpacing: "0.06em",
+                  borderBottom: "1px solid var(--line)",
+                  display: "flex", alignItems: "center",
+                }}>
+                  <span style={{ flex: 1 }}>Generate payloads</span>
+                  <span style={{ cursor: "pointer", color: "var(--dim)" }}
+                        onClick={() => setGenMenuOpen(false)}>×</span>
+                </div>
+                <div style={{ display: "flex", gap: 4, padding: "6px 10px", borderBottom: "1px solid var(--line-soft)" }}>
+                  {genTypes.map(t => (
+                    <button key={t} onClick={() => { setGenType(t); setGenPreview(null); }}
+                      style={{
+                        background: genType === t ? "var(--accent)" : "transparent",
+                        color: genType === t ? "var(--bg)" : "var(--text-2)",
+                        border: "1px solid var(--line)", padding: "2px 8px",
+                        fontSize: "10px", fontFamily: "var(--ff-mono)",
+                        cursor: "pointer", textTransform: "uppercase",
+                      }}>{t}</button>
+                  ))}
+                </div>
+                <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {genType === "numbers" && (
+                    <>
+                      <div className="fld"><span className="pre">FROM</span>
+                        <input type="number" value={genNumbers.from} onChange={e => setGenNumbers({ ...genNumbers, from: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">TO</span>
+                        <input type="number" value={genNumbers.to} onChange={e => setGenNumbers({ ...genNumbers, to: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">STEP</span>
+                        <input type="number" value={genNumbers.step} onChange={e => setGenNumbers({ ...genNumbers, step: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">WIDTH</span>
+                        <input type="number" min="0" value={genNumbers.width} onChange={e => setGenNumbers({ ...genNumbers, width: e.target.value })}
+                               title="Zero-pad to this many digits (0 = no padding)" /></div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-2)", cursor: "pointer" }}>
+                        <input type="checkbox" checked={genNumbers.hex} onChange={e => setGenNumbers({ ...genNumbers, hex: e.target.checked })}
+                               style={{ accentColor: "var(--accent)" }} />
+                        HEX
+                      </label>
+                    </>
+                  )}
+                  {genType === "dates" && (
+                    <>
+                      <div className="fld"><span className="pre">FROM</span>
+                        <input placeholder="2026-01-01" value={genDates.from} onChange={e => setGenDates({ ...genDates, from: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">TO</span>
+                        <input placeholder="2026-12-31" value={genDates.to} onChange={e => setGenDates({ ...genDates, to: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">STEP·DAYS</span>
+                        <input type="number" value={genDates.stepDays} onChange={e => setGenDates({ ...genDates, stepDays: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">FORMAT</span>
+                        <input value={genDates.format} onChange={e => setGenDates({ ...genDates, format: e.target.value })}
+                               title="Qt date format string, e.g. yyyy-MM-dd" /></div>
+                    </>
+                  )}
+                  {genType === "brute" && (
+                    <>
+                      <div className="fld"><span className="pre">CHARSET</span>
+                        <input value={genBrute.charset} onChange={e => setGenBrute({ ...genBrute, charset: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">MIN·LEN</span>
+                        <input type="number" min="1" value={genBrute.minLen} onChange={e => setGenBrute({ ...genBrute, minLen: e.target.value })} /></div>
+                      <div className="fld"><span className="pre">MAX·LEN</span>
+                        <input type="number" min="1" value={genBrute.maxLen} onChange={e => setGenBrute({ ...genBrute, maxLen: e.target.value })} /></div>
+                    </>
+                  )}
+                </div>
+                <div style={{ padding: "4px 10px 8px", borderTop: "1px solid var(--line-soft)", color: "var(--dim)" }}>
+                  {genErr ? (
+                    <div style={{ color: "var(--accent-2)" }}>{genErr}</div>
+                  ) : genPreview ? (
+                    <>
+                      <div>{genPreview.count} payload{genPreview.count === 1 ? "" : "s"}{genPreview.capped ? " (capped)" : ""}</div>
+                      <pre style={{ maxHeight: 100, overflow: "auto", margin: "4px 0", whiteSpace: "pre-wrap", color: "var(--text-2)" }}>
+                        {(genPreview.sample || []).slice(0, 20).join("\n")}
+                        {genPreview.sample && genPreview.sample.length > 20 ? "\n…" : ""}
+                      </pre>
+                    </>
+                  ) : (
+                    <div>…</div>
+                  )}
+                </div>
+                <div style={{ padding: "6px 10px", display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                  <button className="btn" onClick={() => setGenMenuOpen(false)}>CANCEL</button>
+                  <button className="btn primary" disabled={!genPreview || !genPreview.count}
+                          onClick={applyGenerator}>APPLY</button>
+                </div>
+              </div>
+            )}
             {presetMenuOpen && (
               <div
                 onClick={(e) => e.stopPropagation()}
