@@ -1,21 +1,21 @@
-# In-app UI navigability audit (2026-08-02, updated 2026-08-09)
+# In-app UI navigability audit (2026-08-02, updated 2026-08-10)
 
 > Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
-> only via the API/CLI, hidden from the desktop GUI. As of 2026-08-09, waves closing the
-> INSPECTOR, PROBE, TESTS, DISCOVER, REPORTING, and COLLABORATOR tabs have wired 44 of those
-> endpoints (TESTS covers 25 of the 26 originally-listed active checks — `/api/cache/poison`
-> has a distinct request shape outside its uniform `/<type>/test` contract and remains
-> orphaned), leaving **53 of 173 (31%) still orphaned**. Verified per-bucket by grepping
-> `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic
+> only via the API/CLI, hidden from the desktop GUI. As of 2026-08-10, waves closing the
+> INSPECTOR, PROBE, TESTS, DISCOVER, REPORTING, COLLABORATOR, and SEQUENCER tabs have wired 45
+> of those endpoints (TESTS covers 25 of the 26 originally-listed active checks —
+> `/api/cache/poison` has a distinct request shape outside its uniform `/<type>/test` contract
+> and remains orphaned), leaving **52 of 173 (30%) still orphaned**. Verified per-bucket by
+> grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic
 > `/api/${...}` URL construction, so a literal-string grep is exhaustive). This is the
 > work-list for surfacing every remaining feature. Closing an item = add a tab/menu/button
 > that invokes the endpoint and renders its result, then flip the matching parity.json item
 > and regenerate.
 
-App exposes 22 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
-decoder, comparer, inspector, probe, tests, discover, collaborator, reporting, processor,
-stats, sessions, repeater, intercept, intruder, settings. The SCANS tab still only drives
-port-scan + recon; the unified audit/assess/gate runners below have no control.
+App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
+decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
+processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab still only
+drives port-scan + recon; the unified audit/assess/gate runners below have no control.
 
 ## Active vulnerability tests (1 remaining — the 26 uniform `/<type>/test` checks are wired via TESTS)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
@@ -56,17 +56,17 @@ wired via REPORTING tab.)
 `/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
 wired via DISCOVER tab.)
 
-## JWT / OAST / crypto (5)
+## JWT / OAST / crypto (4)
 - `/api/jwt/analyze`
 - `/api/jwt/forge`
 - `/api/jwt/test`
 - `/api/oast/blast`
-- `/api/sequencer/analyze`
 
 (`/api/oast/mint`, `/api/oast/poll` wired via COLLABORATOR tab. `/api/oast/blast`
 remains orphaned — the tab's payload-mint/poll loop doesn't yet drive the
 multi-vector SSRF/XXE/RCE/log4shell spray; that's a distinct "attack" action from
-Collaborator's "mint and watch" workflow.)
+Collaborator's "mint and watch" workflow. `/api/sequencer/analyze` wired via the new
+SEQUENCER tab's Manual Load -> Analyze now flow.)
 
 ## Baseline / findings / triage (11)
 - `/api/baseline/`

@@ -1655,22 +1655,34 @@
     {
       "area": "sequencer",
       "feature": "Manual load: paste newline-delimited tokens or load from file, then \"Analyze now\"",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "No paste box, no file load, no stdin `-` (compare cmd_chain at :1604 which DOES accept `-`), no clipboard import, and no UI surface in either front end. The only client is a POSIX bash script \u2014 on this project's primary platform (Windows) that means Git Bash + jq + a running headless instance. Corrected: argv length is not the binding constraint.",
-      "why": "Held at partial, but ONE claim in the first pass is wrong and I am correcting it: the argv-limit argument does not hold. bin/nullock is bash; 5,000 x 32-char tokens is ~165 KB, far under Linux ARG_MAX (~2 MB), and `nullock sequencer $(cat tokens.txt)` works. The real reachability problem is different and worse, so the state is unchanged.",
-      "evidence": "bin/nullock:713-725 verbatim: `cmd_sequencer() { ... [[ -n ${1-} ]] || die \"usage: nullock sequencer <token1> [token2 ...]\"; local tokens=\"[\"; ... for t in \"$@\"; do ... tokens+=$(jsonq \"$t\"); done; tokens+=\"]\"; post /api/sequencer/analyze \"{\\\"tokens\\\":$tokens}\" | pp; }`. Server side, control_server.cpp:4655-4661: `if (path == \"/api/sequencer/analyze\") { QStringList tokens; for (const QJsonValue &v"
+      "gap": "None for the manual-load workflow itself: SequencerTab's textarea accepts newline-delimited pasted tokens, a LOAD FILE button reads a local .txt/.csv/.log via FileReader, a PASTE FROM CLIPBOARD button uses navigator.clipboard.readText() where available (feature-detected, fails closed with a message otherwise), and ANALYZE NOW POSTs the parsed token array to /api/sequencer/analyze. No stdin '-' equivalent in a browser context (not applicable to a GUI) and no bash-only path required anymore.",
+      "why": "Closed 2026-08-10: SequencerTab (ui-v2/app.jsx) manual-load box, wired to the pre-existing analyze endpoint.",
+      "evidence": "ui-v2/app.jsx SequencerTab: textarea + tokens useMemo (newline-split/trim/filter), loadFile() FileReader.readAsText, pasteFromClipboard() navigator.clipboard.readText, analyze() -> NL.actions.sequencerAnalyze(tokens) -> POST /api/sequencer/analyze",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Sequencer batch: manual-load paste/file/clipboard + Analyze now, closes the pure-GUI dimension of this gap."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Manual load sample summary (token count, shortest / longest token length) shown before analysis",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Count and MEAN length only, and the summary arrives AFTER analysis (there is no pre-analysis step). Shortest/longest \u2014 the check that reveals a bad extraction rule \u2014 is computed at :125 and discarded. Nothing is shown before the analysis because there is no capture stage to show it in.",
-      "why": "Confirmed, and I found the detail that makes it sharper: the shortest length IS computed and then thrown away. Held at partial.",
-      "evidence": "sequencer_logic.cpp:435 `result[\"n\"] = tokens.size();` and :443-446 `qint64 totalLen = 0; for (const QString &t : tokens) totalLen += t.size(); const int avgLen = int(totalLen / tokens.size()); result[\"avgLen\"] = avgLen;`. The minimum length is computed at :125-126 inside longestCommonSubstring \u2014 `int minLen = tokens.first().size(); for (const QString &t : tokens) minLen = qMin(minLen, int(t.size("
+      "gap": "None: a client-side sequencerSampleSummary(tokens) helper computes token count, shortest length, longest length, and mean length from the pasted/loaded corpus and renders it live under the manual-load box BEFORE the ANALYZE NOW call -- addressing the prior gap that a summary only existed after analysis and only carried mean length (min/max were computed server-side and discarded).",
+      "why": "Closed 2026-08-10: pure client-side summary, computed and shown pre-analysis, restoring shortest/longest.",
+      "evidence": "ui-v2/app.jsx sequencerSampleSummary(tokens) pure helper + SequencerTab's summary useMemo/render block, shown above the ANALYZE NOW button",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Sequencer batch: pre-analysis client-side sample summary (n / shortest / longest / mean), closes the reachability gap."
+      }
     },
     {
       "area": "sequencer",
@@ -1866,12 +1878,18 @@
     {
       "area": "sequencer",
       "feature": "Sequencer tool tab (dedicated UI with Live capture / Manual load / Analysis sub-tabs)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Confirmed absent. The whole feature is a headless JSON endpoint plus a bash CLI subcommand. Worth flagging separately: docs/index.html:201 ships the row `<tr><td>Token randomness (Sequencer)</td><td class=\"feat-col yes\">\u2713 free</td>...` \u2014 the marketing page claims a tool the app has no screen for.",
-      "why": "Re-ran the greps myself with -a and also enumerated the tab list and the QML directory directly rather than relying on grep alone. Confirmed absent. Note for the owner: docs/index.html:201 markets this as shipped.",
-      "evidence": "ui-v2/app.jsx:3-20 is the complete tab list: `const TABS = [ { id: \"proxy\", label: \"PROXY\" }, { id: \"scope\" ... }, { id: \"rules\" }, { id: \"issues\" }, { id: \"scans\" }, { id: \"recon\" }, { id: \"payloads\" }, { id: \"decoder\" }, { id: \"comparer\" }, { id: \"processor\" }, { id: \"stats\" }, { id: \"sessions\" }, { id: \"repeater\" }, { id: \"intercept\" }, { id: \"intruder\" }, { id: \"settings\" } ];` \u2014 no sequencer."
+      "gap": "A real SEQUENCER tab now exists (ui-v2/app.jsx SequencerTab, registered in TABS + the tab-render switch) with two of Burp's three sub-areas: Manual Load (paste / load-from-file / paste-from-clipboard, a pre-analysis sample summary, ANALYZE NOW) and Analysis (full results render of every field /api/sequencer/analyze returns). Live Capture is intentionally NOT built -- there is no backend request-issuing engine to repeatedly fire a request and harvest a token from each response, so that sub-area stays absent. Honest partial, not present.",
+      "why": "Closed 2026-08-10 (partial dimension): the backend was a headless JSON endpoint plus a bash CLI subcommand with zero frontend callers; docs/index.html even advertised the feature with no screen behind it. This wave gives it a real tab for the two sub-areas the backend actually supports.",
+      "evidence": "ui-v2/app.jsx SequencerTab (TABS entry 'sequencer', tab-render switch); Src/BackEnd/Control/control_server.cpp:4697 POST /api/sequencer/analyze; grep 'Live capture' Src/Core/Networking/sequencer*.cpp = no match (no request-issuing loop exists server-side)",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Sequencer batch: Manual Load + Analysis sub-areas of the Sequencer tool tab; Live Capture stays absent (no backend engine)."
+      }
     },
     {
       "area": "sequencer",

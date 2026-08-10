@@ -12,6 +12,7 @@ const TABS = [
   { id: "comparer",  label: "COMPARER" },
   { id: "inspector", label: "INSPECTOR" },
   { id: "probe",     label: "PROBE" },
+  { id: "sequencer", label: "SEQUENCER" },
   { id: "tests",     label: "TESTS" },
   { id: "discover",  label: "DISCOVER" },
   { id: "collaborator", label: "COLLABORATOR" },
@@ -2104,6 +2105,236 @@ function ProbeTab() {
   );
 }
 
+// Pure: token-count / shortest / longest / mean-length summary shown BEFORE
+// the corpus is sent to /api/sequencer/analyze -- Burp shows this in the
+// Manual Load pane before the user hits "Analyze now".
+function sequencerSampleSummary(tokens) {
+  if (!tokens || !tokens.length) return null;
+  let min = Infinity, max = 0, total = 0;
+  for (const t of tokens) {
+    const len = t.length;
+    if (len < min) min = len;
+    if (len > max) max = len;
+    total += len;
+  }
+  return {
+    n: tokens.length,
+    minLen: min,
+    maxLen: max,
+    meanLen: Math.round((total / tokens.length) * 10) / 10,
+  };
+}
+
+function SequencerTab() {
+  // Token randomness analyzer (Burp's Sequencer). Backend
+  // (/api/sequencer/analyze, Src/Core/Networking/sequencer_logic.cpp) was
+  // complete and API-only -- no tab, no manual-load box, nothing. This is
+  // a Manual Load + Analysis pane; Live Capture (repeatedly issuing a
+  // request and harvesting a token from each response) has no backend
+  // request-issuing engine yet and is intentionally not claimed here.
+  const [text, setText]   = React.useState("");
+  const [result, setResult] = React.useState(null);
+  const [busy, setBusy]   = React.useState(false);
+  const [err, setErr]     = React.useState("");
+  const fileRef = React.useRef(null);
+
+  const tokens = React.useMemo(
+    () => text.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    [text]
+  );
+  const summary = React.useMemo(() => sequencerSampleSummary(tokens), [tokens]);
+
+  function loadFile(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result));
+    reader.readAsText(f);
+    e.target.value = "";
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setErr("clipboard access unavailable in this context");
+        return;
+      }
+      const t = await navigator.clipboard.readText();
+      if (t) setText(prev => (prev ? prev.replace(/\n?$/, "\n") + t : t));
+    } catch (e) {
+      setErr("clipboard read failed: " + String(e && e.message ? e.message : e));
+    }
+  }
+
+  async function analyze() {
+    if (tokens.length < 2) { setErr("need at least 2 tokens"); return; }
+    setBusy(true); setErr(""); setResult(null);
+    try {
+      const r = await NL.actions.sequencerAnalyze(tokens);
+      if (r && r.error) setErr(r.error);
+      else setResult(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  const verdictColor = (v) => ({
+    "looks-random": "#3f8f29",
+    "may-be-predictable": "#d97706",
+    "predictable": "var(--err)",
+    "no-data": "var(--dim)",
+  }[v] || "var(--text-2)");
+
+  const Section = ({ title, children }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{title}</div>
+      {children}
+    </div>
+  );
+  const row = { display: "flex", gap: 16, flexWrap: "wrap", fontSize: "12px", color: "var(--text)" };
+  const lbl = { color: "var(--dim)", marginRight: 4 };
+  const bar = (frac, color) => (
+    <div style={{ background: "var(--bg-deep)", borderRadius: 2, height: 6, width: 80, overflow: "hidden", display: "inline-block", verticalAlign: "middle" }}>
+      <div style={{ background: color, height: "100%", width: Math.max(0, Math.min(100, frac * 100)) + "%" }} />
+    </div>
+  );
+
+  const renderResult = () => {
+    if (!result) return <span style={{ color: "var(--dim)", fontSize: "12px" }}>paste or load a token corpus, then ANALYZE NOW</span>;
+    if (result.verdict === "no-data") return <span style={{ color: "var(--dim)", fontSize: "12px" }}>no tokens analyzed</span>;
+    const sh = result.shannon || {};
+    const cls = result.charClass || {};
+    const ham = result.hamming || {};
+    const lcs = result.lcs || {};
+    const seq = result.sequential || {};
+    const pos = result.positional || {};
+    const bit = result.bitLevel || {};
+    return (
+      <div>
+        <Section title="Verdict">
+          <div style={row}>
+            <span style={{ fontSize: "20px", fontWeight: 700, color: verdictColor(result.verdict) }}>{result.score}</span>
+            <span style={{ color: verdictColor(result.verdict), textTransform: "uppercase", alignSelf: "center" }}>{result.verdict}</span>
+            <span><span style={lbl}>analyzed</span>{result.n}</span>
+            <span><span style={lbl}>distinct</span>{result.distinctTokens != null ? result.distinctTokens : "—"}</span>
+            <span><span style={lbl}>avg len</span>{result.avgLen}</span>
+          </div>
+        </Section>
+        <Section title="Entropy (Shannon)">
+          <div style={row}>
+            <span><span style={lbl}>bits/byte</span>{sh.bitsPerByte != null ? sh.bitsPerByte.toFixed(3) : "—"}</span>
+            <span><span style={lbl}>alphabet</span>{sh.verdict}</span>
+            <span><span style={lbl}>variable len</span>{sh.variableLen}</span>
+            <span><span style={lbl}>effective bits/token</span>{sh.effectiveBitsPerToken != null ? sh.effectiveBitsPerToken.toFixed(1) : "—"}</span>
+          </div>
+        </Section>
+        <Section title="Character class">
+          <div style={row}>
+            {["alphaRatio", "digitRatio", "hexRatio", "upperRatio", "lowerRatio", "specialRatio"].map(k => (
+              <span key={k}>{bar(cls[k] || 0, "var(--accent)")} <span style={lbl}>{k.replace("Ratio", "")}</span>{cls[k] != null ? (cls[k] * 100).toFixed(0) + "%" : "—"}</span>
+            ))}
+          </div>
+        </Section>
+        <Section title="Hamming distance (consecutive tokens)">
+          <div style={row}>
+            <span><span style={lbl}>min</span>{ham.min}</span>
+            <span><span style={lbl}>avg</span>{ham.avg}</span>
+            <span><span style={lbl}>max</span>{ham.max}</span>
+          </div>
+        </Section>
+        <Section title="Longest common substring">
+          <div style={row}>
+            <span><span style={lbl}>length</span>{lcs.length}</span>
+            {lcs.longest ? <span style={{ wordBreak: "break-all", color: "var(--text-2)" }}>"{lcs.longest}"</span> : null}
+          </div>
+        </Section>
+        <Section title="Sequential / counter detection">
+          <div style={row}>
+            <span><span style={lbl}>sequential</span><span style={{ color: seq.looksSequential ? "var(--err)" : "var(--text)" }}>{String(!!seq.looksSequential)}</span></span>
+            <span><span style={lbl}>monotonic</span><span style={{ color: seq.looksMonotonic ? "#d97706" : "var(--text)" }}>{String(!!seq.looksMonotonic)}</span></span>
+            {seq.looksSequential ? <span><span style={lbl}>delta</span>{seq.delta}</span> : null}
+          </div>
+        </Section>
+        <Section title="Per-position entropy (fixed-width corpora, n>=20)">
+          {pos.applicable ? (
+            <div>
+              <div style={row}>
+                <span><span style={lbl}>width</span>{pos.width}</span>
+                <span><span style={lbl}>sampled</span>{pos.n}</span>
+                <span><span style={lbl}>weak columns</span><span style={{ color: pos.biased ? "var(--err)" : "var(--text)" }}>{pos.weakColumns}</span></span>
+                <span><span style={lbl}>biased</span>{String(!!pos.biased)}</span>
+              </div>
+              <div style={{ marginTop: 6, display: "flex", gap: 2, flexWrap: "wrap" }}>
+                {(pos.columnEntropy || []).map((h, i) => (
+                  <div key={i} title={"col " + i + ": " + h.toFixed(2) + " bits"} style={{ width: 5, height: 24, background: "var(--bg-deep)", position: "relative" }}>
+                    <div style={{ position: "absolute", bottom: 0, width: "100%", height: Math.min(100, (h / (pos.reference || 1)) * 100) + "%", background: h < 0.5 * (pos.reference || 1) ? "var(--err)" : "var(--accent)" }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <span style={{ color: "var(--dim)", fontSize: "12px" }}>not applicable — needs ≥20 tokens of the same (modal) width</span>}
+        </Section>
+        <Section title="Bit-level tests (decodable hex/base64 corpora, n>=20)">
+          {bit.applicable ? (
+            <div style={row}>
+              <span><span style={lbl}>scheme</span>{bit.scheme}</span>
+              <span><span style={lbl}>bits</span>{bit.bits}</span>
+              <span><span style={lbl}>monobit p</span><span style={{ color: bit.monobit && bit.monobit.failed ? "var(--err)" : "var(--text)" }}>{bit.monobit ? bit.monobit.pValue.toFixed(3) : "—"}</span></span>
+              <span><span style={lbl}>two-bit χ²</span><span style={{ color: bit.twoBit && bit.twoBit.failed ? "var(--err)" : "var(--text)" }}>{bit.twoBit ? bit.twoBit.chiSquare.toFixed(2) : "—"}</span></span>
+              <span><span style={lbl}>serial r</span><span style={{ color: bit.serialCorrelation && bit.serialCorrelation.failed ? "var(--err)" : "var(--text)" }}>{bit.serialCorrelation ? bit.serialCorrelation.r.toFixed(3) : "—"}</span></span>
+            </div>
+          ) : <span style={{ color: "var(--dim)", fontSize: "12px" }}>not applicable — needs ≥20 tokens that are all hex or all base64</span>}
+        </Section>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Sequencer</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>manual-load token randomness analysis — Shannon/positional/bit-level tests, sequential-counter detection</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="paste one token per line (session cookies, CSRF tokens, reset-URL tokens, ...)"
+          spellCheck={false}
+          style={{ minHeight: 90, resize: "vertical", background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "6px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }}
+        />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn" onClick={() => fileRef.current && fileRef.current.click()}>LOAD FILE</button>
+          <input ref={fileRef} type="file" accept=".txt,.csv,.log" style={{ display: "none" }} onChange={loadFile} />
+          <button className="btn" onClick={pasteFromClipboard}>PASTE FROM CLIPBOARD</button>
+          <button className="btn" onClick={() => { setText(""); setResult(null); setErr(""); }}>CLEAR</button>
+          <button
+            onClick={analyze}
+            disabled={busy || tokens.length < 2}
+            style={{
+              background: "var(--accent)", color: "var(--bg)", border: "1px solid var(--accent)",
+              padding: "4px 10px", fontSize: "11px", fontFamily: "var(--ff-mono)",
+              cursor: busy ? "wait" : "pointer", letterSpacing: "0.04em", textTransform: "uppercase",
+              opacity: tokens.length < 2 ? 0.5 : 1,
+            }}
+          >{busy ? "ANALYZING…" : "ANALYZE NOW"}</button>
+          <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{err || ""}</span>
+        </div>
+        {summary && (
+          <div style={{ fontSize: "11px", color: "var(--dim)" }}>
+            sample: <span style={{ color: "var(--text)" }}>{summary.n}</span> tokens ·
+            {" "}shortest <span style={{ color: "var(--text)" }}>{summary.minLen}</span> ·
+            {" "}longest <span style={{ color: "var(--text)" }}>{summary.maxLen}</span> ·
+            {" "}mean <span style={{ color: "var(--text)" }}>{summary.meanLen}</span>
+          </div>
+        )}
+      </div>
+      <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+        {renderResult()}
+      </div>
+    </div>
+  );
+}
+
 function DiscoverTab() {
   // Recon/discovery backends that existed with no UI: wordlist-based content
   // (directory/file) discovery, robots.txt + sitemap recon, and the BFS link
@@ -3836,6 +4067,9 @@ function App() {
         )}
         {tab === "probe" && (
           <ProbeTab />
+        )}
+        {tab === "sequencer" && (
+          <SequencerTab />
         )}
         {tab === "tests" && (
           <TestsTab />
