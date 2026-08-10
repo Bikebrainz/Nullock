@@ -1984,12 +1984,18 @@
     {
       "area": "sequencer",
       "feature": "Reliability rating of the estimate (how much the result can be trusted given sample size)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No reliability rating, no minimum-sample warning text, and `applicable:false` carries no reason. A single token analysed alone returns `\"verdict\":\"looks-random\",\"score\":100`. Mitigating: `n` is always echoed and the applicable flags are machine-readable, so a careful CLI reader is not blind.",
-      "why": "Confirmed absent (0 hits for \"reliability\" across Src/). I am LOWERING impact from high to medium: the first pass called it \"a false-negative machine on small samples\", but the JSON does disclose `n` and emits `positional.applicable:false` / `bitLevel.applicable:false`, and the only consumer today is a CLI user reading raw JSON who knows their own sample size. I also verified the worst case is rea",
-      "evidence": "Gates that fire silently: sequencer_logic.cpp:226 `constexpr int kDeepMinN = 20;`, :254 `if (tokens.size() < kDeepMinN) return r;`, :359 same, :367 `if (cat.size() < 32) return r;`, :397 `if (pairs >= 20) {`, :412 `if (m >= 16) {`. Disclosure is only the boolean at :546 `posObj[\"applicable\"] = pos.applicable;` and :561 `bitObj[\"applicable\"] = bit.applicable;`. With n=1 the distinctness check (:611"
+      "gap": "None. The analysis reports a reliability rating (insufficient/low/medium/high/very-high) derived from the token sample size.",
+      "why": "Closed 2026-08-10 (da103c8): reliabilityRating added + surfaced as result['reliability'].",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp reliabilityRating (sequencer.hpp), set as result['reliability'] in analyzeTokens; 5 threshold-band tests in Tests/sequencer.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "da103c8",
+        "note": "Sample-size reliability rating implemented + tested."
+      }
     },
     {
       "area": "sequencer",
