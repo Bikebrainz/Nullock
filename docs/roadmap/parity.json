@@ -2014,32 +2014,50 @@
     {
       "area": "sequencer",
       "feature": "Bit-level test: FIPS poker test (non-overlapping 4-bit groups, chi-square over 16 buckets)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "A 2-bit / 4-bucket / 3-dof serial test is a strictly weaker relative of the FIPS poker test (16 buckets, 15 dof). Nibble-level structure — a generator that never emits certain hex digits — passes the 2-bit test cleanly. The existing loop is one array-size and one threshold away from being the poker test, hence the low effort.",
-      "why": "Confirmed: 0 hits for \"poker\". The only chi-square in the file is over four 2-bit buckets, verified verbatim.",
-      "evidence": "sequencer_logic.cpp:386-405: `qint64 counts[4] = {0, 0, 0, 0}; qint64 bitIdx = 0; int first = 0; for (unsigned char ch : cat) for (int i = 7; i >= 0; --i) { const int bit = (ch >> i) & 1; if ((bitIdx & 1) == 0) first = bit; else counts[(first << 1) | bit]++; ++bitIdx; } const qint64 pairs = bitIdx / 2; if (pairs >= 20) { const double exp = double(pairs) / 4.0; double chi = 0.0; for (int k = 0; k <"
+      "gap": "None. FIPS poker chi-square (15 dof) over non-overlapping 4-bit groups is computed on the decoded bit stream and surfaced in the analysis.",
+      "why": "Closed 2026-08-10: fipsPokerChiSquare added + wired into bitLevelTests.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp fips{Poker,Runs}/longestBitRun helpers (declared in sequencer.hpp), folded into bitLevelTests + the analysis JSON (bitLevel.poker/.runs/.longRun); mutation-proven in Tests/sequencer (stubbing the helpers fails exactly the 6 discriminating cases). Commit dd9c158.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "dd9c158",
+        "note": "FIPS poker test implemented + tested."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Bit-level test: FIPS runs test (counts of runs of length 1..6+ of identical bits, against expected ranges)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Absent.",
-      "why": "Confirmed. I read the BitLevelResult struct in full — there is no field that could carry a runs result, so this is absent at the data-structure level, not just the algorithm level.",
-      "evidence": "sequencer_logic.cpp:336-347 is the complete result type: `struct BitLevelResult { bool applicable = false; QString scheme; qint64 bits = 0; double monobitP = 1.0; bool monobitFail = false; double twoBitChi = 0.0; bool twoBitFail = false; double serialR = 0.0; bool serialFail = false; bool anyFail = false; };` — three tests, no runs. Computation is :371-425 with nothing else in between."
+      "gap": "A runs test IS now computed -- the Wald-Wolfowitz total-runs z-score (over/under-alternation, p<0.01) -- but not the exact FIPS 140-2 form that buckets run LENGTHS 1..6+ per bit value against expected ranges. Total-runs is a valid, arguably more robust runs test; the length-bucketed variant is the remaining gap.",
+      "why": "Upgraded absent->partial 2026-08-10: fipsRunsZScore implemented; the length-bucketed FIPS variant is not.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp fips{Poker,Runs}/longestBitRun helpers (declared in sequencer.hpp), folded into bitLevelTests + the analysis JSON (bitLevel.poker/.runs/.longRun); mutation-proven in Tests/sequencer (stubbing the helpers fails exactly the 6 discriminating cases). Commit dd9c158.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "dd9c158",
+        "note": "Total-runs z-test added; FIPS length-bucketed variant still pending."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Bit-level test: FIPS long runs test (flag any run of identical bits exceeding the threshold)",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Absent.",
-      "why": "Confirmed by the same struct read — no field, no computation.",
-      "evidence": "sequencer_logic.cpp:336-347 (BitLevelResult, quoted in full under the runs-test item) has no run-length member. `grep -i \"longRuns|long run|FIPS\"` across Src/: 0 hits each."
+      "gap": "None. Longest identical-bit run is computed and flagged when a run that long is <1% likely for the sample size (a size-scaled generalisation of FIPS' fixed-26 rule).",
+      "why": "Closed 2026-08-10: longestBitRun added + wired into bitLevelTests.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp fips{Poker,Runs}/longestBitRun helpers (declared in sequencer.hpp), folded into bitLevelTests + the analysis JSON (bitLevel.poker/.runs/.longRun); mutation-proven in Tests/sequencer (stubbing the helpers fails exactly the 6 discriminating cases). Commit dd9c158.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "dd9c158",
+        "note": "FIPS long-runs test implemented + tested."
+      }
     },
     {
       "area": "sequencer",
