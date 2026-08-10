@@ -1132,17 +1132,17 @@
     {
       "area": "extender",
       "feature": "[A5] BApp Store: extension detail page (full description, author, version, source-code link, 'Report a bug')",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "No detail page, no changelog, no source link beyond the raw .js, no bug-report path, no screenshots, and nothing in-app. `hooks` remains unverified metadata. The static catalog page renders untrusted fields unescaped.",
-      "why": "DOWNGRADED. I re-read docs/marketplace/index.html in full: it is one flat `for (const ext of data.extensions)` loop emitting a card. There is no detail view, no route, no expansion \u2014 a summary row in a list is not the feature. It is also not in the app at all: `grep -rna marketplace ui-v2/` = 0 hits, so a user inside Nullock has no extension detail surface whatsoever. The new /api/marketplace/cata",
+      "gap": "No changelog and no screenshots (the catalog has no per-entry changelog field or images to show); everything else is closed. The Marketplace card's per-item DETAILS button opens an in-app panel with author/version/summary/categories/permissions/full sha256, a link to the published docs/marketplace/e/<id>.html detail page (rendered source), a raw-source download link, and a prefilled GitHub issue link for bug reports.",
+      "why": "Closed 2026-08-10: the prior gap was specifically the missing IN-APP detail surface (the web catalog detail pages already existed). Added a DETAILS toggle per Marketplace row (ui-v2/app.jsx Marketplace) that renders a panel from the already-fetched catalog entry -- no new fetch -- plus three links (full description & source, raw source, report a bug) built from the entry's `id`.",
       "evidence": "docs/marketplace/index.html:88-91 `<p class=\"summary\">${ext.summary || \"\"}</p> ... <span>by ${ext.author || \"unknown\"}</span>` assigned via `div.innerHTML = ...` (line 81); marketplace_logic.hpp:61-63 `-- \"summary\" and \"author\" in particular are free text from a remote file and must be escaped by whoever renders them.`; EXTENSIONS.md:141-143 `the manifest's hooks is descriptive metadata for the ca",
-      "audited_state": "stub",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-07-31",
-        "commit": "ef17dc4 + a47b310",
-        "note": "Per-extension detail pages with rendered, syntax-highlighted source now exist on the web catalog, and the stored XSS the audit flagged (unescaped catalog fields in innerHTML) is fixed and browser-proven against a hostile catalog. Still partial: no in-APP detail view."
+        "date": "2026-08-10",
+        "commit": "c28f16a",
+        "note": "Extender/BApp-store batch: in-app extension detail panel closes #99."
       }
     },
     {
@@ -1173,12 +1173,18 @@
     {
       "area": "extender",
       "feature": "[A8] Per-extension declared capability visibility (Burp shows only what the extension registered)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "bootInfo.extensionGrants is published but no front end reads it. The only user-visible signal is a log line that ages out of the 30-line tail, so on a busy load a pentester cannot tell which installed extension may rewrite their traffic.",
-      "why": "DOWNGRADED, but with a correction in Nullock's FAVOUR too. The backend half is exactly as claimed and the parser hardening is real. However `grep -rna extensionGrants ui-v2/` = 0 \u2014 the structured field is published and never rendered, so the 'exceeds' rests on data no user sees. Against that, the auditor's flat claim that 'the UI shows filenames without their grants' is WRONG: loadAll writes the g",
-      "evidence": "extensions_api.cpp:145-147 `appendLog(g.isEmpty() ? QString(\"[ext] loaded %1 (observe-only)\").arg(fi.fileName()) : QString(\"[ext] loaded %1 (granted: %2)\").arg(fi.fileName(), g.join(\", \")));`; control_server.cpp:1237-1241 `const auto &sg = m_wiring.extensions->scriptGrants(); ... bootInfo[\"extensionGrants\"] = grants;`; ui-v2/app.jsx:456-476 renders only `<Row label=\"Folder\">`, `<Row label=\"Loaded\""
+      "gap": "None -- the Extensions card in Settings now renders a per-script row with a modifies-traffic / observe-only badge sourced from bootInfo.extensionGrants (the DOWNLOADED script's own declared capabilities, not the marketplace catalog's claim).",
+      "why": "Closed 2026-08-10: bootInfo.extensionGrants was already published (control_server.cpp:1240-1244) but nothing in ui-v2 read it. Added a per-script row under the Extensions card (ui-v2/app.jsx SettingsTab) that looks up extensionGrants[filename] and flags modify-requests/modify-responses as 'modifies traffic', anything else as 'observe-only', with the full declared-capability list in a title tooltip. No backend change -- the field already existed and was unread.",
+      "evidence": "extensions_api.cpp:145-147 `appendLog(g.isEmpty() ? QString(\"[ext] loaded %1 (observe-only)\").arg(fi.fileName()) : QString(\"[ext] loaded %1 (granted: %2)\").arg(fi.fileName(), g.join(\", \")));`; control_server.cpp:1237-1241 `const auto &sg = m_wiring.extensions->scriptGrants(); ... bootInfo[\"extensionGrants\"] = grants;`; ui-v2/app.jsx:456-476 renders only `<Row label=\"Folder\">`, `<Row label=\"Loaded\"; ui-v2/app.jsx SettingsTab Extensions card now maps scripts to b.extensionGrants[s] per row (2026-08-10).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "c28f16a",
+        "note": "Extender/BApp-store batch: per-extension capability badges close #102."
+      }
     },
     {
       "area": "extender",
@@ -1477,13 +1483,18 @@
     {
       "area": "extender",
       "feature": "[B29] BApp Store: search box and category filtering",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "STALE evidence. The PUBLISHED catalog website (docs/marketplace/index.html:44-192) now has a full search input (name/summary/author/category), clickable category chips (state.cat filter, filtered() at :99-113), and a name/updated sort segmented control \u2014 a complete reference implementation. But the IN-APP store (ui-v2/app.jsx Marketplace) still renders state.items unfiltered with no search/categor",
-      "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
+      "gap": "None -- the in-app Marketplace (ui-v2/app.jsx) now has the same filter/category-chip model as the published catalog site: a free-text search over name/summary/author/categories, and clickable category chips derived from the live catalog, both applied client-side before the item list renders.",
+      "why": "Closed 2026-08-10: ported the filter/chip logic from docs/marketplace/index.html's categories()/filtered() into the Marketplace React component as a useMemo-derived categories list and visibleItems array, with a search <input> and clickable chip row above the item list. No backend change -- all fields were already in the fetched catalog response.",
       "evidence": "ui-v2/app.jsx:342 state.items.map with no predicate + no <input> in the component; docs/marketplace/index.html:46 search input, :91-113 categories()/filtered(), :183-190 sort handlers",
-      "audited_state": "absent"
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "c28f16a",
+        "note": "Extender/BApp-store batch: in-app search + category chips close #131."
+      }
     },
     {
       "area": "extender",
