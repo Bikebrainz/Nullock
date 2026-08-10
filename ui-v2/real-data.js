@@ -359,6 +359,20 @@
     getPosture()     { return fetch("/api/posture").then(r => r.json()); },
     getCompliance()  { return fetch("/api/compliance").then(r => r.json()); },
     getGate(failOn)  { return fetch("/api/gate?fail-on=" + encodeURIComponent(failOn || "")).then(r => r.json()); },
+
+    // --- issue grouping / baseline delta / AI triage ---
+    // Findings bucketed by kind+host (count, max severity/CVSS, sample row ids)
+    // -- the "group similar issues" view Burp does automatically.
+    findingsGrouped()  { return fetch("/api/findings/grouped").then(r => r.json()); },
+    // Save/compare a findings snapshot across engagements (scan-to-scan delta).
+    // save/clear mutate a project-local baseline.json; status/diff are read-only.
+    baselineSave()   { return post("/api/baseline/save").then(r => r.json()); },
+    baselineStatus() { return fetch("/api/baseline/status").then(r => r.json()); },
+    baselineDiff()   { return fetch("/api/baseline/diff").then(r => r.json()); },
+    baselineClear()  { return post("/api/baseline/clear").then(r => r.json()); },
+    // Ask a local Ollama model (falls back to a heuristic if unreachable) to
+    // grade impact / suggest a fix / flag false-positive risk for one finding.
+    triageFinding(payload) { return post("/api/triage/finding", payload).then(r => r.json()); },
   };
 
   NL.statusText = function (s) {

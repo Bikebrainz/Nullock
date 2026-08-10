@@ -1111,11 +1111,12 @@ function RulesTab() {
 // Passive scanner findings list. Each row is a single issue -- click to
 // jump to the originating request in the Proxy tab. Group counts at the
 // top, filter chips below, scrolling list.
-const SEVERITY_ORDER = { high: 0, medium: 1, low: 2, info: 3 };
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 const SEVERITY_COLOR = {
-  high:   "var(--err, #f88)",
-  medium: "#f0c060",
-  low:    "var(--accent)",
+  critical: "var(--err, #f88)",
+  high:   "#ea580c",
+  medium: "#d97706",
+  low:    "#3f8f29",
   info:   "var(--dim)",
 };
 
@@ -1131,9 +1132,10 @@ function IssuesTab({ dispatch }) {
   const total    = (window.NL && NL.findingsCount) || findings.length;
   const [sevFilter,  setSevFilter]  = React.useState("all");
   const [kindFilter, setKindFilter] = React.useState("all");
+  const [view, setView] = React.useState("flat"); // flat | grouped
 
   // Aggregate counts per severity and per kind for the filter chips.
-  const sevCounts  = { high: 0, medium: 0, low: 0, info: 0 };
+  const sevCounts  = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   const kindCounts = {};
   for (const f of findings) {
     sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1;
@@ -1144,11 +1146,74 @@ function IssuesTab({ dispatch }) {
     (sevFilter  === "all" || f.severity === sevFilter)
     && (kindFilter === "all" || f.kind     === kindFilter)
   ).sort((a, b) => {
-    const sa = SEVERITY_ORDER[a.severity] ?? 4;
-    const sb = SEVERITY_ORDER[b.severity] ?? 4;
+    const sa = SEVERITY_ORDER[a.severity] ?? 5;
+    const sb = SEVERITY_ORDER[b.severity] ?? 5;
     if (sa !== sb) return sa - sb;
     return b.id - a.id;  // newest first within same severity
   });
+
+  // Findings grouped by kind+host (/api/findings/grouped) -- fetched lazily
+  // when the GROUPED view is selected, refetched on demand via Refresh.
+  const [grouped, setGrouped] = React.useState(null);
+  const [groupedLoading, setGroupedLoading] = React.useState(false);
+  const loadGrouped = React.useCallback(async () => {
+    setGroupedLoading(true);
+    try { setGrouped(await NL.actions.findingsGrouped()); }
+    finally { setGroupedLoading(false); }
+  }, []);
+  const switchView = (v) => {
+    setView(v);
+    if (v === "grouped" && !grouped) loadGrouped();
+  };
+
+  // Scan-to-scan baseline delta (/api/baseline/*): save a snapshot of the
+  // current findings, diff later to see what's NEW vs FIXED since.
+  const [baselineStatus, setBaselineStatus] = React.useState(null);
+  const [baselineDiff,   setBaselineDiff]   = React.useState(null);
+  const [baselineBusy,   setBaselineBusy]   = React.useState(false);
+  const refreshBaselineStatus = React.useCallback(async () => {
+    setBaselineStatus(await NL.actions.baselineStatus());
+  }, []);
+  React.useEffect(() => { refreshBaselineStatus(); }, [refreshBaselineStatus]);
+  const doBaselineSave = async () => {
+    setBaselineBusy(true);
+    try {
+      const r = await NL.actions.baselineSave();
+      if (r && r.ok === false) alert(r.error || "failed to save baseline");
+      await refreshBaselineStatus();
+    } finally { setBaselineBusy(false); }
+  };
+  const doBaselineDiff = async () => {
+    setBaselineBusy(true);
+    try { setBaselineDiff(await NL.actions.baselineDiff()); }
+    finally { setBaselineBusy(false); }
+  };
+  const doBaselineClear = async () => {
+    if (!confirm("Clear the saved baseline? This can't be undone.")) return;
+    setBaselineBusy(true);
+    try {
+      await NL.actions.baselineClear();
+      setBaselineDiff(null);
+      await refreshBaselineStatus();
+    } finally { setBaselineBusy(false); }
+  };
+
+  // AI-assisted triage (/api/triage/finding) -- per-finding, keyed by id.
+  const [triage, setTriage] = React.useState({});      // id -> {loading,ok,triage,error,model}
+  const [triageOpenId, setTriageOpenId] = React.useState(null);
+  const doTriage = async (f) => {
+    setTriageOpenId(f.id);
+    setTriage(prev => ({ ...prev, [f.id]: { loading: true } }));
+    try {
+      const r = await NL.actions.triageFinding({
+        rowId: f.rowId, kind: f.kind, severity: f.severity,
+        summary: f.summary, evidence: f.evidence || "",
+      });
+      setTriage(prev => ({ ...prev, [f.id]: { loading: false, ...r } }));
+    } catch (e) {
+      setTriage(prev => ({ ...prev, [f.id]: { loading: false, error: String(e) } }));
+    }
+  };
 
   const jumpToRow = (rowId) => {
     dispatch({ type: "set", payload: { tab: "proxy", selectedRowId: rowId }});
@@ -1180,8 +1245,26 @@ function IssuesTab({ dispatch }) {
           letterSpacing: "0.06em", fontWeight: 600,
         }}>Findings</span>
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>
-          {total} total · showing {visible.length}
+          {total} total · showing {view === "grouped"
+            ? (grouped ? grouped.groups.length + " groups" : "…")
+            : visible.length}
         </span>
+        <button onClick={() => switchView("flat")}
+          style={{
+            background: view === "flat" ? "var(--accent)" : "transparent",
+            color: view === "flat" ? "var(--bg)" : "var(--text-2)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Flat</button>
+        <button onClick={() => switchView("grouped")}
+          style={{
+            background: view === "grouped" ? "var(--accent)" : "transparent",
+            color: view === "grouped" ? "var(--bg)" : "var(--text-2)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Grouped</button>
         <span style={{ flex: 1 }} />
         <button
           onClick={() => {
@@ -1243,74 +1326,250 @@ function IssuesTab({ dispatch }) {
           }}>Clear all</button>
       </div>
 
-      <div>
-        <Chip label="all" active={sevFilter === "all"} onClick={() => setSevFilter("all")} />
-        {["high", "medium", "low", "info"].map(s => (
-          <Chip key={s} label={s} count={sevCounts[s]}
-                color={SEVERITY_COLOR[s]}
-                active={sevFilter === s}
-                onClick={() => setSevFilter(s)} />
-        ))}
+      <div style={{
+        display: "flex", alignItems: "baseline", gap: 10,
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4, padding: "6px 10px",
+      }}>
+        <span style={{
+          fontSize: "10.5px", color: "var(--text-2)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Baseline</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {baselineStatus == null
+            ? "…"
+            : baselineStatus.corrupt
+              ? "baseline file present but unreadable"
+              : baselineStatus.hasBaseline
+                ? baselineStatus.baselineCount + " findings saved " + baselineStatus.savedAt
+                : "no baseline saved yet"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <button disabled={baselineBusy} onClick={doBaselineSave}
+          style={{
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "2px 8px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)",
+            cursor: baselineBusy ? "not-allowed" : "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Save baseline</button>
+        <button disabled={baselineBusy || !baselineStatus || !baselineStatus.hasBaseline}
+          onClick={doBaselineDiff}
+          style={{
+            background: "transparent",
+            color: (!baselineStatus || !baselineStatus.hasBaseline) ? "var(--dim)" : "var(--accent)",
+            border: "1px solid " + ((!baselineStatus || !baselineStatus.hasBaseline) ? "var(--line)" : "var(--accent)"),
+            padding: "2px 8px", fontSize: "10px", fontFamily: "var(--ff-mono)",
+            cursor: (baselineBusy || !baselineStatus || !baselineStatus.hasBaseline) ? "not-allowed" : "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Diff vs current</button>
+        <button disabled={baselineBusy || !baselineStatus || (!baselineStatus.hasBaseline && !baselineStatus.corrupt)}
+          onClick={doBaselineClear}
+          style={{
+            background: "transparent", color: "var(--err, #f88)",
+            border: "1px solid var(--err, #f88)", padding: "2px 8px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)",
+            cursor: baselineBusy ? "not-allowed" : "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Clear</button>
       </div>
-      <div>
-        <Chip label="any kind" active={kindFilter === "all"} onClick={() => setKindFilter("all")} />
-        {Object.entries(kindCounts).sort((a, b) => b[1] - a[1]).map(([k, c]) => (
-          <Chip key={k} label={k} count={c}
-                active={kindFilter === k}
-                onClick={() => setKindFilter(k)} />
-        ))}
-      </div>
+      {baselineDiff && baselineDiff.hasBaseline && (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: "8px 10px", fontSize: "11px",
+          display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <span style={{ color: "var(--text-2)" }}>
+            saved {baselineDiff.savedAt} ({baselineDiff.baselineCount}) vs current ({baselineDiff.currentCount}) —
+            {" "}<span style={{ color: "var(--err, #f88)" }}>{baselineDiff.newCount} new</span>
+            {" "}·{" "}<span style={{ color: "#3f8f29" }}>{baselineDiff.fixedCount} fixed</span>
+            {" "}· {baselineDiff.unchangedCount} unchanged
+          </span>
+          {baselineDiff.new.length > 0 && (
+            <div>
+              <div style={{ color: "var(--err, #f88)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>New</div>
+              {baselineDiff.new.map((f, i) => (
+                <div key={i} style={{ color: "var(--text)", padding: "2px 0" }}>
+                  <span style={{ color: SEVERITY_COLOR[f.severity] || "var(--dim)" }}>{f.severity}</span> {f.kind} — {f.summary} <span style={{ color: "var(--dim)" }}>({f.host})</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {baselineDiff.fixed.length > 0 && (
+            <div>
+              <div style={{ color: "#3f8f29", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Fixed</div>
+              {baselineDiff.fixed.map((f, i) => (
+                <div key={i} style={{ color: "var(--dim)", padding: "2px 0" }}>
+                  {f.kind} — {f.summary} <span>({f.host})</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "flat" && (
+        <React.Fragment>
+          <div>
+            <Chip label="all" active={sevFilter === "all"} onClick={() => setSevFilter("all")} />
+            {["critical", "high", "medium", "low", "info"].map(s => (
+              <Chip key={s} label={s} count={sevCounts[s]}
+                    color={SEVERITY_COLOR[s]}
+                    active={sevFilter === s}
+                    onClick={() => setSevFilter(s)} />
+            ))}
+          </div>
+          <div>
+            <Chip label="any kind" active={kindFilter === "all"} onClick={() => setKindFilter("all")} />
+            {Object.entries(kindCounts).sort((a, b) => b[1] - a[1]).map(([k, c]) => (
+              <Chip key={k} label={k} count={c}
+                    active={kindFilter === k}
+                    onClick={() => setKindFilter(k)} />
+            ))}
+          </div>
+        </React.Fragment>
+      )}
 
       <div style={{
         background: "var(--pane)", border: "1px solid var(--line)",
         borderRadius: 4, flex: 1, minHeight: 0, overflow: "auto",
       }}>
-        {visible.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
-            no findings yet — proxy some traffic and check back
-          </div>
+        {view === "flat" ? (
+          <React.Fragment>
+            {visible.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+                no findings yet — proxy some traffic and check back
+              </div>
+            )}
+            {visible.map(f => (
+              <div key={f.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+                <div onClick={() => jumpToRow(f.rowId)}
+                     style={{
+                       display: "grid",
+                       gridTemplateColumns: "70px 60px 180px 1fr 60px",
+                       gap: 8, padding: "6px 12px",
+                       alignItems: "baseline",
+                       cursor: "pointer", fontSize: "12px",
+                       fontFamily: "var(--ff-mono)",
+                     }}
+                     title={"Click to jump to row #" + String(f.rowId).padStart(3, "0")}>
+                  <span style={{
+                    color: SEVERITY_COLOR[f.severity],
+                    fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.05em",
+                    fontSize: "10.5px",
+                  }}>{f.severity}</span>
+                  <span style={{ color: "var(--dim)" }}>
+                    #{String(f.rowId).padStart(3, "0")}
+                  </span>
+                  <span style={{ color: "var(--accent)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.kind}
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span style={{ color: "var(--text)" }}>{f.summary}</span>
+                    <span style={{
+                      color: "var(--text-2)", fontSize: "10.5px",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{f.host} · {f.url}</span>
+                    {f.evidence && (
+                      <span style={{
+                        color: "var(--dim)", fontSize: "10px",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>↳ {f.evidence}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); doTriage(f); }}
+                    style={{
+                      background: "transparent", color: "var(--accent)",
+                      border: "1px solid var(--accent)", padding: "1px 6px",
+                      fontSize: "9.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                      letterSpacing: "0.05em", textTransform: "uppercase",
+                      justifySelf: "start",
+                    }}>Triage</button>
+                </div>
+                {triageOpenId === f.id && triage[f.id] && (
+                  <div style={{
+                    margin: "0 12px 8px", padding: "6px 8px",
+                    background: "var(--bg-deep)", border: "1px solid var(--line)",
+                    borderRadius: 3, fontSize: "11px", color: "var(--text-2)",
+                    whiteSpace: "pre-wrap",
+                  }}>
+                    {triage[f.id].loading
+                      ? "asking the AI triage model…"
+                      : (!triage[f.id].triage && triage[f.id].error)
+                        ? <span style={{ color: "var(--err, #f88)" }}>{String(triage[f.id].error)}</span>
+                        : (
+                          <React.Fragment>
+                            <span style={{ color: "var(--dim)", fontSize: "10px" }}>
+                              model: {triage[f.id].model || "?"}{triage[f.id].ok === false ? " (fallback heuristic — " + triage[f.id].error + ")" : ""}
+                            </span>
+                            <div>{triage[f.id].triage}</div>
+                          </React.Fragment>
+                        )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            {groupedLoading && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+                loading grouped findings…
+              </div>
+            )}
+            {!groupedLoading && grouped && grouped.groups.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+                no findings yet — proxy some traffic and check back
+              </div>
+            )}
+            {!groupedLoading && grouped && grouped.groups
+              .slice()
+              .sort((a, b) => {
+                const sa = SEVERITY_ORDER[a.severity] ?? 5;
+                const sb = SEVERITY_ORDER[b.severity] ?? 5;
+                if (sa !== sb) return sa - sb;
+                return b.instances - a.instances;
+              })
+              .map((g, i) => (
+                <div key={i}
+                     onClick={() => g.sampleRowIds.length && jumpToRow(g.sampleRowIds[0])}
+                     style={{
+                       display: "grid",
+                       gridTemplateColumns: "70px 60px 180px 1fr 70px",
+                       gap: 8, padding: "6px 12px",
+                       borderBottom: "1px solid var(--line-soft)",
+                       alignItems: "baseline",
+                       cursor: g.sampleRowIds.length ? "pointer" : "default",
+                       fontSize: "12px", fontFamily: "var(--ff-mono)",
+                     }}
+                     title={g.sampleRowIds.length ? "Click to jump to row #" + String(g.sampleRowIds[0]).padStart(3, "0") : ""}>
+                  <span style={{
+                    color: SEVERITY_COLOR[g.severity] || "var(--dim)",
+                    fontWeight: 600, textTransform: "uppercase",
+                    letterSpacing: "0.05em", fontSize: "10.5px",
+                  }}>{g.severity}</span>
+                  <span style={{ color: "var(--dim)" }}>{g.instances}×</span>
+                  <span style={{ color: "var(--accent)", overflow: "hidden",
+                                 textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {g.kind}
+                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span style={{ color: "var(--text)" }}>{g.summary}</span>
+                    <span style={{
+                      color: "var(--text-2)", fontSize: "10.5px",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{g.host}{g.cwe ? " · " + g.cwe : ""}{g.owasp ? " · " + g.owasp : ""}</span>
+                  </div>
+                  <span style={{ color: "var(--dim)", fontSize: "10.5px", textAlign: "right" }}>
+                    {g.cvssScore ? "cvss " + g.cvssScore.toFixed(1) : ""}
+                  </span>
+                </div>
+              ))}
+          </React.Fragment>
         )}
-        {visible.map(f => (
-          <div key={f.id}
-               onClick={() => jumpToRow(f.rowId)}
-               style={{
-                 display: "grid",
-                 gridTemplateColumns: "70px 60px 180px 1fr",
-                 gap: 8, padding: "6px 12px",
-                 borderBottom: "1px solid var(--line-soft)",
-                 alignItems: "baseline",
-                 cursor: "pointer", fontSize: "12px",
-                 fontFamily: "var(--ff-mono)",
-               }}
-               title={"Click to jump to row #" + String(f.rowId).padStart(3, "0")}>
-            <span style={{
-              color: SEVERITY_COLOR[f.severity],
-              fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.05em",
-              fontSize: "10.5px",
-            }}>{f.severity}</span>
-            <span style={{ color: "var(--dim)" }}>
-              #{String(f.rowId).padStart(3, "0")}
-            </span>
-            <span style={{ color: "var(--accent)", overflow: "hidden",
-                           textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {f.kind}
-            </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-              <span style={{ color: "var(--text)" }}>{f.summary}</span>
-              <span style={{
-                color: "var(--text-2)", fontSize: "10.5px",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>{f.host} · {f.url}</span>
-              {f.evidence && (
-                <span style={{
-                  color: "var(--dim)", fontSize: "10px",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>↳ {f.evidence}</span>
-              )}
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );

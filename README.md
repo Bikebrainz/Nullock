@@ -25,6 +25,11 @@ Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mo
                   brute forcer), a payload-processing rule chain (prefix/suffix/case/reverse/
                   match-replace/encode/hash), sortable + filterable results, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
+Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count, max CVSS, CWE/
+                  OWASP rollup); a Baseline bar saves/diffs/clears a findings snapshot for
+                  scan-to-scan delta (new vs fixed vs unchanged); a per-finding Triage button asks
+                  a local Ollama model (falls back to a heuristic verdict) for impact/fix/
+                  false-positive assessment -- all three were API-only before this
 Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
                   mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure
@@ -58,8 +63,8 @@ Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): 
 CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +
                   GET /api/gate pipeline pass/fail; composite GitHub Action + reference Dockerfile
 Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
-                  asset inventory, findings baseline/diff for repeat engagements; in-app REPORTING
-                  tab also drives OpenAPI export/import, SBOM download, and workspace push/pull
+                  asset inventory; in-app REPORTING tab also drives OpenAPI export/import, SBOM
+                  download, and workspace push/pull (findings baseline/diff lives in ISSUES, see Findings)
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
                   in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
