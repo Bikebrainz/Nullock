@@ -30,6 +30,7 @@
 // All tests are O(N * len). The whole analyze() call returns in
 // under 50ms for typical corpora of 100 tokens.
 
+#include <QByteArray>
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -41,6 +42,21 @@ namespace Nullock::Core {
 // Sequencer::analyze() is a thin Q_INVOKABLE wrapper around this. Returns the
 // JSON shape documented on Sequencer::analyze below.
 QJsonObject analyzeTokens(const QStringList &tokens);
+
+// FIPS 140-2-style bit-level randomness tests over a decoded byte stream
+// (exposed for direct unit testing; used by the bit-level analysis). The
+// monobit/serial tests already lived in sequencer_logic; these add the poker,
+// runs, and long-runs tests the Sequencer was missing.
+//   fipsPokerChiSquare: chi-square (15 dof) over non-overlapping 4-bit groups.
+//     A flat stream spreads the 16 nibble values evenly (~0); a biased or
+//     structured stream concentrates them (large). < 0 sentinel if too short.
+//   fipsRunsZScore: Wald-Wolfowitz total-runs z-score. ~0 for random; large
+//     positive = too many runs (over-alternating), large negative = too few
+//     (sticky/clumped). 0 if degenerate (all one symbol / too short).
+//   longestBitRun: length of the longest run of identical bits.
+double fipsPokerChiSquare(const QByteArray &bytes);
+double fipsRunsZScore(const QByteArray &bytes);
+qint64 longestBitRun(const QByteArray &bytes);
 
 class Sequencer : public QObject {
     Q_OBJECT

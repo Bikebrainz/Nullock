@@ -306,6 +306,28 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ===== FIPS 140-2 bit-level tests (poker / runs / long-runs) =========
+    // Pure helpers over a byte stream, tested directly with deterministic
+    // inputs (no RNG -> no flake). These are the tests the Sequencer was
+    // missing; they now feed bitLevelTests + the analysis JSON.
+    {
+        // longest run of identical bits
+        chk("longRun: 4x 0xFF -> 32", longestBitRun(QByteArray(4, char(0xFF))) == 32);
+        chk("longRun: 0xAA alternating -> 1", longestBitRun(QByteArray::fromHex("AAAAAAAA")) == 1);
+        chk("longRun: 0x00 0xFF -> 8", longestBitRun(QByteArray::fromHex("00FF")) == 8);
+        // poker chi-square (15 dof): perfectly uniform nibbles -> 0; all-zero
+        // -> every nibble in one bin -> huge; too short -> -1 sentinel.
+        QByteArray uniform;
+        for (int i = 0; i < 10; ++i) uniform += QByteArray::fromHex("0123456789abcdef");
+        chk("poker: uniform nibbles -> chi ~ 0", fipsPokerChiSquare(uniform) < 1e-6);
+        chk("poker: all-zero -> chi huge (fails)", fipsPokerChiSquare(QByteArray(40, '\0')) > 30.578);
+        chk("poker: too short -> -1 sentinel", fipsPokerChiSquare(QByteArray(4, '\0')) < 0.0);
+        // runs z-score: perfectly alternating -> far too many runs (large +z);
+        // a constant stream is degenerate (no second symbol) -> z = 0, no test.
+        chk("runs: alternating 0xAA -> huge +z (fails)", fipsRunsZScore(QByteArray(20, char(0xAA))) > 2.576);
+        chk("runs: constant 0xFF -> degenerate z = 0", fipsRunsZScore(QByteArray(20, char(0xFF))) == 0.0);
+    }
+
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

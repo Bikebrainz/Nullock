@@ -343,6 +343,12 @@ struct BitLevelResult {
     bool   twoBitFail = false;
     double serialR = 0.0;       // byte-level lag-1 serial correlation coefficient
     bool   serialFail = false;
+    double pokerChi = -1.0;     // FIPS poker chi-square (15 dof); <0 = not computed
+    bool   pokerFail = false;
+    double runsZ = 0.0;         // Wald-Wolfowitz total-runs z-score
+    bool   runsFail = false;
+    qint64 longestRun = 0;      // longest run of identical bits
+    bool   longRunFail = false;
     bool   anyFail = false;
 };
 
@@ -354,6 +360,56 @@ struct BitLevelResult {
 //             lattice / java.util.Random low-bit tell. A CSPRNG stream gives
 //             r ~ 0; |r| past max(0.08, 3/sqrt(m)) (a generous ~3-sigma floor)
 //             flags a linear dependency.
+} // anonymous namespace boundary marker (functions below are exported)
+
+double fipsPokerChiSquare(const QByteArray &bytes) {
+    const qint64 bits = qint64(bytes.size()) * 8;
+    const qint64 blocks = bits / 4;
+    if (blocks < 80) return -1.0;              // too short for a meaningful chi-square
+    long long f[16] = {0};
+    qint64 idx = 0; int acc = 0;
+    for (unsigned char ch : bytes)
+        for (int i = 7; i >= 0; --i) {
+            acc = (acc << 1) | ((ch >> i) & 1);
+            if ((++idx & 3) == 0) { f[acc & 0xF]++; acc = 0; }
+        }
+    double sum = 0.0;
+    for (int k = 0; k < 16; ++k) sum += double(f[k]) * double(f[k]);
+    return (16.0 / double(blocks)) * sum - double(blocks);
+}
+
+double fipsRunsZScore(const QByteArray &bytes) {
+    const qint64 total = qint64(bytes.size()) * 8;
+    if (total < 100) return 0.0;
+    qint64 ones = 0, runs = 0; int prev = -1; qint64 seen = 0;
+    for (unsigned char ch : bytes)
+        for (int i = 7; i >= 0; --i) {
+            const int bit = (ch >> i) & 1;
+            ones += bit;
+            if (seen == 0 || bit != prev) ++runs;
+            prev = bit; ++seen;
+        }
+    const double n1 = double(ones), n0 = double(total - ones), N = double(total);
+    if (n1 <= 0.0 || n0 <= 0.0) return 0.0;    // degenerate: all one symbol
+    const double mu  = 2.0 * n1 * n0 / N + 1.0;
+    const double var = 2.0 * n1 * n0 * (2.0 * n1 * n0 - N) / (N * N * (N - 1.0));
+    return var > 1e-12 ? (double(runs) - mu) / std::sqrt(var) : 0.0;
+}
+
+qint64 longestBitRun(const QByteArray &bytes) {
+    qint64 longest = 0, cur = 0; int prev = -1; qint64 seen = 0;
+    for (unsigned char ch : bytes)
+        for (int i = 7; i >= 0; --i) {
+            const int bit = (ch >> i) & 1;
+            cur = (seen > 0 && bit == prev) ? cur + 1 : 1;
+            if (cur > longest) longest = cur;
+            prev = bit; ++seen;
+        }
+    return longest;
+}
+
+namespace {
+
 BitLevelResult bitLevelTests(const QStringList &tokens) {
     BitLevelResult r;
     if (tokens.size() < kDeepMinN) return r;
@@ -424,7 +480,23 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
         }
     }
 
-    r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail;
+    // ---- FIPS 140-2 poker / runs / long-runs (over the same byte stream) ----
+    r.pokerChi = fipsPokerChiSquare(cat);
+    r.pokerFail = r.pokerChi >= 0.0 && r.pokerChi > 30.578;   // 15 dof, p < 0.01
+    r.runsZ = fipsRunsZScore(cat);
+    r.runsFail = std::fabs(r.runsZ) > 2.576;                  // p < 0.01
+    r.longestRun = longestBitRun(cat);
+    {
+        // Expected count of a run of length >= L is ~ total * 2^-L; flag the
+        // longest run only when even ONE run that long is highly improbable
+        // (<1%) for this many bits. Scales with sample size (FIPS' fixed 26 is
+        // tuned for a 20k-bit sample; this generalises).
+        const double thr = std::log2(double(r.bits > 0 ? r.bits : 1)) + 6.64;  // log2(bits/0.01)
+        r.longRunFail = double(r.longestRun) > thr;
+    }
+
+    r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail
+             || r.pokerFail || r.runsFail || r.longRunFail;
     return r;
 }
 
@@ -574,6 +646,18 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         ser["r"]      = bit.serialR;
         ser["failed"] = bit.serialFail;
         bitObj["serialCorrelation"] = ser;
+        QJsonObject poker;
+        poker["chiSquare"] = bit.pokerChi;
+        poker["failed"]    = bit.pokerFail;
+        bitObj["poker"] = poker;
+        QJsonObject runs;
+        runs["z"]      = bit.runsZ;
+        runs["failed"] = bit.runsFail;
+        bitObj["runs"] = runs;
+        QJsonObject longRun;
+        longRun["longest"] = double(bit.longestRun);
+        longRun["failed"]  = bit.longRunFail;
+        bitObj["longRun"] = longRun;
         bitObj["anyFailed"] = bit.anyFail;
     }
     result["bitLevel"] = bitObj;
