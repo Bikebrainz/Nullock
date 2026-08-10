@@ -2650,6 +2650,19 @@ function CollaboratorTab() {
   const [copied, setCopied]     = React.useState("");
   const sinceRef = React.useRef(0);
 
+  // Blast: the multi-vector SSRF/XXE/blind-RCE/Log4Shell spray. Distinct from
+  // mint-and-watch — this fires a battery of OOB probes at one target in one
+  // call, each with its own registered token, so any callback auto-confirms
+  // as a finding tagged with its attack class (control_server.cpp /api/oast/blast).
+  const [blastUrl, setBlastUrl]           = React.useState("");
+  const [blastSsrf, setBlastSsrf]         = React.useState(true);
+  const [blastXxe, setBlastXxe]           = React.useState(true);
+  const [blastRce, setBlastRce]           = React.useState(true);
+  const [blastLog4shell, setBlastLog4shell] = React.useState(false);
+  const [blastBusy, setBlastBusy]         = React.useState(false);
+  const [blastErr, setBlastErr]           = React.useState("");
+  const [blastResult, setBlastResult]     = React.useState(null);
+
   const poll = React.useCallback(async () => {
     try {
       const r = await NL.actions.oastPoll(sinceRef.current);
@@ -2681,6 +2694,19 @@ function CollaboratorTab() {
     finally { setBusy(false); }
   };
 
+  const blast = async () => {
+    if (!blastUrl) { setBlastErr("enter a target URL"); return; }
+    setBlastErr(""); setBlastBusy(true); setBlastResult(null);
+    try {
+      const r = await NL.actions.oastBlast({
+        url: blastUrl, ssrf: blastSsrf, xxe: blastXxe, rce: blastRce, log4shell: blastLog4shell,
+      });
+      if (r && r.ok === false) setBlastErr(r.error || "blast failed");
+      else setBlastResult(r);
+    } catch (e) { setBlastErr(String(e && e.message ? e.message : e)); }
+    finally { setBlastBusy(false); }
+  };
+
   const copy = (text, key) => {
     try { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(""), 1000); } catch (e) {}
   };
@@ -2697,6 +2723,10 @@ function CollaboratorTab() {
   );
   const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "3px 12px 3px 0", whiteSpace: "nowrap", verticalAlign: "top" };
   const td = { padding: "3px 12px 3px 0", wordBreak: "break-word", color: "var(--text)", verticalAlign: "top" };
+  const inp = {
+    background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+    borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)",
+  };
   const Section = ({ title, hint, children }) => (
     <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -2750,6 +2780,48 @@ function CollaboratorTab() {
               </tbody>
             </table>
           )}
+      </Section>
+
+      <Section title="Blast" hint="fire SSRF / blind-XXE / blind-RCE / Log4Shell out-of-band probes at one target in a single call — confirmed callbacks surface in Interactions below and as findings">
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input value={blastUrl} onChange={e => setBlastUrl(e.target.value)}
+            placeholder="https://target/endpoint" style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} />
+          {[
+            ["SSRF", blastSsrf, setBlastSsrf],
+            ["XXE", blastXxe, setBlastXxe],
+            ["RCE", blastRce, setBlastRce],
+            ["Log4Shell", blastLog4shell, setBlastLog4shell],
+          ].map(([label, val, set]) => (
+            <label key={label} style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--dim)", fontSize: "11px", cursor: "pointer" }}>
+              <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} />
+              {label}
+            </label>
+          ))}
+          <Btn label="Fire" onClick={blast} disabled={running === false || !blastUrl || blastBusy} />
+        </div>
+        {blastErr && <div style={{ color: "var(--err)", fontSize: "11px" }}>{blastErr}</div>}
+        {blastResult && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: "var(--dim)", fontSize: "11px" }}>
+              {blastResult.fired} vector(s) fired at <span style={{ color: "var(--text)" }}>{blastResult.target}</span>
+            </div>
+            {blastResult.vectors && blastResult.vectors.length > 0 && (
+              <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
+                <thead><tr>{["kind", "note", "token", "callback url"].map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+                <tbody>
+                  {blastResult.vectors.map((v, i) => (
+                    <tr key={i}>
+                      <td style={td}>{v.kind}</td>
+                      <td style={td}>{v.note}</td>
+                      <td style={td}><span style={{ color: "var(--dim)" }}>{v.token}</span></td>
+                      <td style={{ ...td, wordBreak: "break-all" }}><span style={{ color: "var(--accent)" }}>{v.callbackUrl}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section title={"Interactions (" + hits.length + ")"} hint="HTTP callbacks only — DNS-only interactions aren't retained by the DNS sink yet, so pure-DNS confirmations stay invisible here">
