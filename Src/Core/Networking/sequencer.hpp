@@ -64,6 +64,11 @@ qint64 longestBitRun(const QByteArray &bytes);
 //   Random data barely compresses (~1); structure/repetition compresses (<1).
 double fipsRunsBucketChi(const QByteArray &bytes);
 double compressionRatio(const QByteArray &bytes);
+// reliabilityRating: how far to trust the estimate given the sample size (the
+//   number of tokens). Statistical randomness tests need a corpus to converge;
+//   Burp's Sequencer likewise gates confidence on sample count. Returns one of
+//   "insufficient" / "low" / "medium" / "high" / "very-high".
+QString reliabilityRating(int sampleCount);
 
 class Sequencer : public QObject {
     Q_OBJECT
