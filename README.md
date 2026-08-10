@@ -16,7 +16,9 @@
 
 ```
 Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue with
-                  pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets
+                  pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets;
+                  HTTP history/Site map filter bar -- scope/params/404 chips, MIME class, extension
+                  show/hide, case-sensitive toggle, and negative ("-term") search
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/

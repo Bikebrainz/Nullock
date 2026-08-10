@@ -23,6 +23,46 @@ function hostInScope(host, scope) {
   return scope.in.some(g => globToRegex(g).test(host));
 }
 
+// #267/#371: MIME class bucketing over the raw Content-Type string a row
+// carries (r.mime, e.g. "application/json", "text/html; ..." already
+// stripped of the charset by the backend). "all" always matches.
+const MIME_CATEGORIES = ["all", "html", "script", "xml", "css", "json", "images", "other"];
+function mimeCategory(mime) {
+  const m = (mime || "").toLowerCase();
+  if (!m) return "other";
+  if (m.includes("html")) return "html";
+  if (m.includes("javascript") || m.includes("ecmascript")) return "script";
+  if (m.includes("json")) return "json";
+  if (m.includes("xml")) return "xml";
+  if (m.includes("css")) return "css";
+  if (m.startsWith("image/")) return "images";
+  return "other";
+}
+
+// #371: comma-separated extension list derived from the row's path, e.g.
+// ".js, .png" -- matched against the path's trailing ".ext" (case-insensitive).
+function pathExtension(path) {
+  const clean = (path || "").split(/[?#]/)[0];
+  const m = /\.([a-zA-Z0-9]{1,8})$/.exec(clean);
+  return m ? m[1].toLowerCase() : "";
+}
+function parseExtList(text) {
+  return (text || "").split(",").map(s => s.trim().replace(/^\./, "").toLowerCase()).filter(Boolean);
+}
+function extFilterMatch(path, extList, hideMode) {
+  if (extList.length === 0) return true;
+  const ext = pathExtension(path);
+  const hit = extList.includes(ext);
+  return hideMode ? !hit : hit;
+}
+
+// #371: a leading "-" negates a search term (Burp's site-map negative-search
+// convention). Returns { term, negate }.
+function parseSearchTerm(raw) {
+  if (raw && raw.startsWith("-") && raw.length > 1) return { term: raw.slice(1), negate: true };
+  return { term: raw || "", negate: false };
+}
+
 function MethodCell({ m }) {
   let cls = "meth " + m.replace("↑", "").replace("↓", "");
   if (m === "WS↑") cls = "meth WS";
@@ -30,31 +70,38 @@ function MethodCell({ m }) {
   return <span className={cls}>{m}</span>;
 }
 
-function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, onRowContextMenu }) {
+function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive, onRowContextMenu }) {
   const filtered = React.useMemo(() => rows.filter(r => {
     if (hostFilter && !r.host.includes(hostFilter)) return false;
     if (paramsOnly && !(r.params > 0)) return false;
     if (hideNotFound && r.status === 404) return false;
     if (inScopeOnly && !hostInScope(r.host, scope)) return false;
+    if (mimeFilter && mimeFilter !== "all" && mimeCategory(r.mime) !== mimeFilter) return false;
+    if (extList && extList.length > 0 && !extFilterMatch(r.path, extList, extHide)) return false;
     if (search) {
-      const s = search.toLowerCase();
+      const { term, negate } = parseSearchTerm(search);
+      const s = caseSensitive ? term : term.toLowerCase();
       // Search across every column we display so the box behaves the way
       // people expect: typing "401" matches status, "json" matches mime,
       // "POST" matches method, etc. When deep search is on, also keep
       // rows whose request/response *bodies* matched on the server.
-      const blob = [
+      const rawBlob = [
         r.url, r.path, r.host, r.method, r.mime,
         String(r.status || ""), String(r.params || ""),
         r.ip || "",
-      ].join(" ").toLowerCase();
-      const localHit = blob.includes(s);
+      ].join(" ");
+      const blob = caseSensitive ? rawBlob : rawBlob.toLowerCase();
+      const localHit = s ? blob.includes(s) : true;
       const deepHit  = deepHits ? deepHits.has(r.id) : false;
-      if (!localHit && !deepHit) {
+      const matched = negate ? !(s ? blob.includes(s) : false) : (localHit || deepHit);
+      if (!matched) {
         // Never hide a row the server did not actually scan. On a truncated
         // body scan, rows with id < deepMinId were not examined, so their
         // absence from the hit set means "unknown", not "no match" -- keep
-        // them visible rather than silently hiding matching traffic.
-        const unscanned = deepHits && deepMinId != null && r.id < deepMinId;
+        // them visible rather than silently hiding matching traffic. This
+        // exception does not apply to negative search, which only ever
+        // looks at locally-available columns.
+        const unscanned = !negate && deepHits && deepMinId != null && r.id < deepMinId;
         if (!unscanned) return false;
       }
     }
@@ -64,7 +111,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     }
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     return true;
-  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope]);
+  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive]);
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
@@ -129,7 +176,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly, mimeFilter, setMimeFilter, extText, setExtText, extHide, setExtHide, caseSensitive, setCaseSensitive }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -159,15 +206,66 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
       >
         {methods.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
+      {setMimeFilter && (
+        <select
+          className="fld"
+          style={{ flex: "0 0 90px", paddingRight: 8 }}
+          value={mimeFilter}
+          title="Filter by MIME class"
+          onChange={e => setMimeFilter(e.target.value)}
+        >
+          {MIME_CATEGORIES.map(c => <option key={c} value={c}>{c === "all" ? "ALL MIME" : c.toUpperCase()}</option>)}
+        </select>
+      )}
       <div className="fld" style={{ flex: 1 }}>
         <span className="pre">/</span>
         <input
-          placeholder={deepSearch ? "regex search (body too)…" : "search url or path…"}
+          placeholder={deepSearch ? "regex search (body too)… (-neg to negate)" : "search url or path… (-neg to negate)"}
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         {search && <span style={{ cursor:"pointer", color:"var(--dim)" }} onClick={() => setSearch("")}>×</span>}
       </div>
+      {setExtText && (
+        <div className="fld" style={{ flex: "0 0 140px" }}>
+          <span className="pre">EXT</span>
+          <input
+            placeholder="js,png,…"
+            value={extText}
+            onChange={e => setExtText(e.target.value)}
+          />
+        </div>
+      )}
+      {setExtHide && (
+        <button
+          onClick={() => setExtHide(!extHide)}
+          title={extHide ? "Hiding rows whose extension matches EXT" : "Showing only rows whose extension matches EXT"}
+          style={{
+            background: extHide ? "var(--accent)" : "transparent",
+            color: extHide ? "var(--bg)" : "var(--accent)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            textTransform: "uppercase", letterSpacing: "0.06em",
+            height: 22,
+          }}>
+          {extHide ? "EXT: HIDE" : "EXT: SHOW"}
+        </button>
+      )}
+      {setCaseSensitive && (
+        <button
+          onClick={() => setCaseSensitive(!caseSensitive)}
+          title="Case-sensitive search"
+          style={{
+            background: caseSensitive ? "var(--accent)" : "transparent",
+            color: caseSensitive ? "var(--bg)" : "var(--accent)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            textTransform: "uppercase", letterSpacing: "0.06em",
+            height: 22,
+          }}>
+          Aa
+        </button>
+      )}
       <button
         onClick={() => setDeepSearch && setDeepSearch(!deepSearch)}
         title={deepTruncated
@@ -1257,6 +1355,15 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [hideNotFound, setHideNotFound] = React.useState(false);
   const [inScopeOnly, setInScopeOnly] = React.useState(false);
 
+  // #267/#371: MIME class, extension show/hide, and case-sensitivity, on top
+  // of the existing free-text search (which now also supports a leading "-"
+  // to negate, handled inside HistoryTable/parseSearchTerm).
+  const [mimeFilter, setMimeFilter] = React.useState("all");
+  const [extText, setExtText] = React.useState("");
+  const [extHide, setExtHide] = React.useState(false);
+  const [caseSensitive, setCaseSensitive] = React.useState(false);
+  const extList = React.useMemo(() => parseExtList(extText), [extText]);
+
   // #398: right-click add/remove scope, on any site-map or history row.
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
   const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
@@ -1304,15 +1411,24 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const tableHostFilter = selectedHost || hostFilter;
   const selectedRow = rows.find(r => r.id === selectedRowId) || null;
 
-  // count hidden
+  // count hidden -- mirrors HistoryTable's own filter predicate so the
+  // "shown / total" header stays in sync with what the table actually renders.
   const shown = rows.filter(r => {
     if (tableHostFilter && !r.host.includes(tableHostFilter)) return false;
     if (statusClass !== "all" && (Math.floor(r.status / 100) + "xx") !== statusClass) return false;
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
-    if (search && !r.url.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const { term, negate } = parseSearchTerm(search);
+      const s = caseSensitive ? term : term.toLowerCase();
+      const hay = caseSensitive ? r.url : r.url.toLowerCase();
+      const hit = s ? hay.includes(s) : true;
+      if (negate ? hit : !hit) return false;
+    }
     if (paramsOnly && !(r.params > 0)) return false;
     if (hideNotFound && r.status === 404) return false;
     if (inScopeOnly && !hostInScope(r.host, scope)) return false;
+    if (mimeFilter !== "all" && mimeCategory(r.mime) !== mimeFilter) return false;
+    if (extList.length > 0 && !extFilterMatch(r.path, extList, extHide)) return false;
     return true;
   }).length;
   const hidden = rows.length - shown;
@@ -1349,7 +1465,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           search={search}
           setSearch={v => dispatch({ type: "set", payload: { search: v }})}
           hidden={hidden}
-          onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); setDeepTruncated(false); setDeepMinId(null); dispatch({ type: "set", payload: {
+          onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); setDeepTruncated(false); setDeepMinId(null); setMimeFilter("all"); setExtText(""); setExtHide(false); setCaseSensitive(false); dispatch({ type: "set", payload: {
             hostFilter: "", statusClass: "all", methodFilter: "ALL", search: "", selectedHost: null
           }}); }}
           selectedHost={selectedHost}
@@ -1364,6 +1480,14 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           setHideNotFound={setHideNotFound}
           inScopeOnly={inScopeOnly}
           setInScopeOnly={setInScopeOnly}
+          mimeFilter={mimeFilter}
+          setMimeFilter={setMimeFilter}
+          extText={extText}
+          setExtText={setExtText}
+          extHide={extHide}
+          setExtHide={setExtHide}
+          caseSensitive={caseSensitive}
+          setCaseSensitive={setCaseSensitive}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -1380,6 +1504,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
             hideNotFound={hideNotFound}
             inScopeOnly={inScopeOnly}
             scope={scope}
+            mimeFilter={mimeFilter}
+            extList={extList}
+            extHide={extHide}
+            caseSensitive={caseSensitive}
             onRowContextMenu={openRowMenu}
           />
         </div>
