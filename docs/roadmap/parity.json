@@ -2566,7 +2566,7 @@
       "evidence": "ui-v2/app.jsx CollaboratorTab (mint/poll/hit-table/detail-pane, plus the new Blast section); ui-v2/real-data.js NL.actions.oastMint/oastPoll/oastBlast; control_server.cpp:3593 POST /api/oast/mint returns {token,pathUrl,hostUrl,port,baseHost}; control_server.cpp:1927 GET /api/oast/poll returns {running,port,baseHost,hits:[{id,atMs,token,sourceIp,method,hostHeader,path,bodyBytes,userAgent,bodyPreview}]}; control_server.cpp:3619-3829 POST /api/oast/blast accepts {url,ssrf?,xxe?,rce?,log4shell?,paramNames?} and returns {fired,target,vectors:[{kind,note,token,callbackUrl}]} — every field the Blast section reads or sends matches.",
       "reconciled": {
         "date": "2026-08-10",
-        "commit": "5d9c3c6/PLACEHOLDER",
+        "commit": "5d9c3c6/1c6133b",
         "note": "Collaborator wave: dedicated COLLABORATOR tab wires /api/oast/mint and /api/oast/poll (mint payload, copy URL, poll now / auto-poll, click-through interaction detail). Extended this wave: a Blast section wires /api/oast/blast (SSRF/XXE/RCE/Log4Shell spray with target + toggles, fired-vector list). DNS-hit listing in the panel itself remains open, tracked separately under \"Collaborator: DNS interaction capture\"."
       }
     },
