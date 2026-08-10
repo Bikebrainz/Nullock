@@ -220,7 +220,11 @@ rewrite outgoing requests, or emit findings — evaluated in an embedded,
 sandboxed `QJSEngine` (no filesystem, no network). Traffic-mutation is
 capability-gated and default-deny: an extension must declare
 `// nullock:permissions modify-requests` (or `modify-responses`) or it stays
-observe-only. Full authoring guide, API reference, and the permission model:
+observe-only. The Settings tab shows this per loaded script (badge derived
+from the DOWNLOADED script's own declaration, not the catalog's marketing
+copy). The in-app Marketplace supports search/category filtering and a
+per-extension detail panel (author, permissions, sha256, source link).
+Full authoring guide, API reference, and the permission model:
 [`EXTENSIONS.md`](EXTENSIONS.md).
 
 ## Security model

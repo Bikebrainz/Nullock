@@ -281,6 +281,9 @@ function Marketplace({ Card, Btn }) {
   const [busy, setBusy]   = React.useState("");     // id currently installing
   const [confirm, setConfirm] = React.useState(null); // { id, name, permissions, warnings }
   const [note, setNote]   = React.useState("");
+  const [query, setQuery] = React.useState("");
+  const [category, setCategory] = React.useState("all");
+  const [detailId, setDetailId] = React.useState(null);
 
   const load = React.useCallback(async () => {
     setState(s => ({ ...s, status: "loading", error: "" }));
@@ -342,6 +345,27 @@ function Marketplace({ Card, Btn }) {
     return null;
   };
 
+  // Categories present in the live catalog, "all" first -- mirrors the
+  // published marketplace site's chip filter (docs/marketplace/index.html).
+  const categories = React.useMemo(() => {
+    const s = [];
+    state.items.forEach(x => (x.categories || []).forEach(c => { if (s.indexOf(c) < 0) s.push(c); }));
+    s.sort();
+    return ["all", ...s];
+  }, [state.items]);
+
+  const visibleItems = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return state.items.filter(x => {
+      if (category !== "all" && (x.categories || []).indexOf(category) < 0) return false;
+      if (!q) return true;
+      const hay = (x.name + " " + x.summary + " " + x.author + " " + (x.categories || []).join(" ")).toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }, [state.items, query, category]);
+
+  const detail = detailId ? state.items.find(x => x.id === detailId) : null;
+
   return (
     <Card
       title={"Marketplace" + (state.items.length ? " (" + state.items.length + ")" : "")}
@@ -395,7 +419,95 @@ function Marketplace({ Card, Btn }) {
         </div>
       )}
 
-      {state.items.map(x => (
+      {/* The detail panel -- everything here comes straight off the merged
+          catalog entry already in state; nothing new is fetched. */}
+      {detail && (
+        <div style={{
+          border: "1px solid var(--accent)", padding: "10px 12px",
+          borderRadius: 3, display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: "12.5px", color: "var(--text)", fontWeight: 600, flex: 1 }}>
+              {detail.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>v{detail.version}</span>
+            </span>
+            <Btn label="Close" onClick={() => setDetailId(null)} />
+          </div>
+          <div style={{ fontSize: "11px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+            by {detail.author || "unknown"}
+          </div>
+          <div style={{ fontSize: "11.5px", color: "var(--text-2)" }}>{detail.summary}</div>
+          <div style={{ fontSize: "10.5px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+            {(detail.categories || []).join(" · ")}
+          </div>
+          <div style={{ fontSize: "11px", fontFamily: "var(--ff-mono)", color: "var(--text)" }}>
+            Permissions: {(detail.permissions || []).join(", ") || "(none — observe-only)"}
+          </div>
+          <div style={{ fontSize: "10.5px", color: "var(--dim)", fontFamily: "var(--ff-mono)", wordBreak: "break-all" }}>
+            sha256 {detail.sha256}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+            <a href={"https://bikebrainz.github.io/Nullock/marketplace/e/" + encodeURIComponent(detail.id) + ".html"}
+               target="_blank" rel="noopener noreferrer"
+               style={{ fontSize: "11px", color: "var(--accent)", fontFamily: "var(--ff-mono)",
+                        textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Full description &amp; source ↗
+            </a>
+            <a href={"https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/" + encodeURIComponent(detail.id) + ".js"}
+               target="_blank" rel="noopener noreferrer"
+               style={{ fontSize: "11px", color: "var(--accent)", fontFamily: "var(--ff-mono)",
+                        textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              View raw source ↗
+            </a>
+            <a href={"https://github.com/Bikebrainz/Nullock/issues/new?title=" +
+                     encodeURIComponent("extension: " + detail.id + " — ")}
+               target="_blank" rel="noopener noreferrer"
+               style={{ fontSize: "11px", color: "var(--dim)", fontFamily: "var(--ff-mono)",
+                        textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Report a bug ↗
+            </a>
+          </div>
+        </div>
+      )}
+
+      {state.items.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input
+            placeholder="filter by name, summary, author, category…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            style={{
+              background: "var(--bg-deep)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 8px",
+              fontSize: "11.5px", fontFamily: "var(--ff-mono)",
+            }} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {categories.map(c => (
+              <span key={c}
+                    onClick={() => setCategory(c)}
+                    style={{
+                      fontSize: "10px", padding: "2px 7px", borderRadius: 10,
+                      border: "1px solid " + (category === c ? "var(--accent)" : "var(--line)"),
+                      color: category === c ? "var(--accent)" : "var(--dim)",
+                      fontFamily: "var(--ff-mono)", cursor: "pointer",
+                      textTransform: "uppercase", letterSpacing: "0.04em",
+                    }}>{c}</span>
+            ))}
+          </div>
+          <div style={{ fontSize: "10px", color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>
+            {visibleItems.length === state.items.length
+              ? visibleItems.length + " extensions"
+              : visibleItems.length + " of " + state.items.length + " extensions"}
+          </div>
+        </div>
+      )}
+
+      {state.items.length > 0 && visibleItems.length === 0 && (
+        <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>
+          No extensions match this filter.
+        </div>
+      )}
+
+      {visibleItems.map(x => (
         <div key={x.id} style={{
           borderTop: "1px solid var(--line-soft)", paddingTop: 8, marginTop: 2,
           display: "flex", flexDirection: "column", gap: 4,
@@ -412,6 +524,7 @@ function Marketplace({ Card, Btn }) {
             {stateBadge(x.state)}
             {(x.permissions || []).length > 0 && badge("modifies traffic", "var(--warn, #d0a03a)")}
             <span style={{ flex: 1 }} />
+            <Btn label="Details" onClick={() => setDetailId(detailId === x.id ? null : x.id)} />
             {x.state === "not-installed" && (
               <Btn label={busy === x.id ? "…" : "Install"} onClick={() => doInstall(x.id, false)} />
             )}
@@ -699,7 +812,32 @@ function SettingsTab() {
         action={<Btn label="Reload" onClick={() => NL.actions.reloadExtensions()} />}
       >
         <Row label="Folder" value={b.extensionsDir} copyable />
-        <Row label="Loaded" value={scripts.length ? scripts.join(", ") : ""} hint="none yet" />
+        {scripts.length === 0 && <Row label="Loaded" value="" hint="none yet" />}
+        {scripts.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
+            {scripts.map(s => {
+              // What the DOWNLOADED/loaded script itself declared, not what the
+              // catalog claims -- mirrors the marketplace confirm-panel's trust
+              // model (bootInfo.extensionGrants, control_server.cpp:1240-1244).
+              const grants = (b.extensionGrants && b.extensionGrants[s]) || [];
+              const mutates = grants.indexOf("modify-requests") >= 0 || grants.indexOf("modify-responses") >= 0;
+              return (
+                <div key={s} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px" }}>
+                  <span style={{ fontFamily: "var(--ff-mono)", color: "var(--text)", flex: 1,
+                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
+                  <span style={{
+                    fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
+                    border: "1px solid " + (mutates ? "var(--warn, #d0a03a)" : "var(--dim)"),
+                    color: mutates ? "var(--warn, #d0a03a)" : "var(--dim)",
+                    padding: "1px 5px", borderRadius: 2, fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
+                  }} title={grants.length ? grants.join(", ") : "no declared capabilities"}>
+                    {mutates ? "modifies traffic" : "observe-only"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div style={{
           marginTop: 6, padding: 8, background: "var(--bg-deep)",
           border: "1px solid var(--line-soft)", borderRadius: 3,
