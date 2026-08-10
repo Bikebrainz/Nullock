@@ -4,26 +4,32 @@
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-10, waves closing the
 > INSPECTOR, PROBE, TESTS, DISCOVER, REPORTING, COLLABORATOR, and SEQUENCER tabs, plus GUI
 > reachability adds to existing tabs (deep-audit-all, the Intruder payload-generator dialog,
-> the CSRF PoC generator, the Collaborator Blast spray, and the SCANS tab's Assess & audit
-> section covering all 9 unified scan/audit runners), have wired 60 of those endpoints
-> (TESTS covers 25 of the 26 originally-listed active checks — `/api/cache/poison` has a
-> distinct request shape outside its uniform `/<type>/test` contract and remains orphaned),
-> leaving **37 of 173 (21%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and
-> `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic `/api/${...}` URL
-> construction, so a literal-string grep is exhaustive) — this pass also caught and corrected
-> five endpoints (`/api/audit/all`, `/api/csrf/poc`, `/api/intruder/generate`,
-> `/api/intruder/generator-types`, `/api/intruder/rule-ops`) that earlier waves had already
-> wired into the GUI but never removed from this list. This is the work-list for surfacing
-> every remaining feature. Closing an item = add a tab/menu/button that invokes the endpoint
-> and renders its result, then flip the matching parity.json item and regenerate.
+> the CSRF PoC generator, the Collaborator Blast spray, the SCANS tab's Assess & audit
+> section covering all 9 unified scan/audit runners, and Inspector's JWT TOOLKIT covering
+> the JWT attack toolkit), have wired 63 of those endpoints (TESTS covers 24 of the 26
+> originally-listed active checks — `/api/cache/poison` has a distinct request shape outside
+> its uniform `/<type>/test` contract, and `/api/jwt/test` was deliberately pulled out of
+> TEST_TYPES since that endpoint needs a `token` field the uniform `{url,param?,method?}`
+> contract has no place for; both are wired elsewhere instead), leaving **34 of 173 (20%)
+> still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js`
+> for each path literal — with one correction to the stated methodology: `NL.actions.runTest`
+> builds its URL as `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a
+> pure literal-string grep alone would have missed that `jwt` sat in `TEST_TYPES` but could
+> never actually succeed (the endpoint requires a captured `token`, which the generic TESTS
+> form never collects) — this pass traced that path by hand rather than trusting the grep.
+> This is the work-list for surfacing every remaining feature. Closing an item = add a
+> tab/menu/button that invokes the endpoint and renders its result, then flip the matching
+> parity.json item and regenerate.
 
 App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
 port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
-pipeline-run, and posture/inventory/compliance/gate rollups).
+pipeline-run, and posture/inventory/compliance/gate rollups). The INSPECTOR tab now has a
+PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
+acceptance test.
 
-## Active vulnerability tests (1 remaining — the 26 uniform `/<type>/test` checks are wired via TESTS)
+## Active vulnerability tests (1 remaining — 24 of the 26 `/<type>/test` family are wired via TESTS, `jwt` via Inspector's JWT TOOLKIT)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
 
 (`/api/assess`, `/api/audit/run`, `/api/chain/run`, `/api/compliance`, `/api/gate`,
@@ -35,6 +41,12 @@ SCANS tab's Assess & audit section. `/api/headers/audit` wired via PROBE tab.)
 - `/api/tls/inspect`
 
 (`/api/inspect` wired via INSPECTOR tab.)
+
+(`/api/jwt/analyze`, `/api/jwt/forge`, `/api/jwt/test` wired via the INSPECTOR tab's
+JWT TOOLKIT mode: offline decode/weakness-analyze/HS*-brute-force, alg:none and
+HS256-resign/algorithm-confusion forging, and a live acceptance test against a target
+with calibration. `jwt` was removed from the TESTS tab's TEST_TYPES — that generic
+form has no `token` field, so it could never have actually worked.)
 
 (`/api/export/sbom`, `/api/openapi/export`, `/api/openapi/import`, `/api/report/build`,
 `/api/report/html`, `/api/report/json`, `/api/workspace/pull`, `/api/workspace/push`
@@ -52,15 +64,11 @@ wired via REPORTING tab.)
 `/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
 wired via DISCOVER tab.)
 
-## JWT / OAST / crypto (3)
-- `/api/jwt/analyze`
-- `/api/jwt/forge`
-- `/api/jwt/test`
-
 (`/api/oast/mint`, `/api/oast/poll` wired via COLLABORATOR tab. `/api/oast/blast` (the
 multi-vector SSRF/XXE/blind-RCE/Log4Shell spray) wired via the tab's new Blast section —
 a distinct "attack" action alongside Collaborator's "mint and watch" workflow.
-`/api/sequencer/analyze` wired via the SEQUENCER tab's Manual Load -> Analyze now flow.)
+`/api/sequencer/analyze` wired via the SEQUENCER tab's Manual Load -> Analyze now flow.
+`/api/jwt/analyze`, `/api/jwt/forge`, `/api/jwt/test` wired via INSPECTOR's JWT TOOLKIT.)
 
 ## Baseline / findings / triage (11)
 - `/api/baseline/`
