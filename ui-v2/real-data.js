@@ -168,6 +168,13 @@
     // GET discovery: the payload-processing op names the rule engine
     // understands (prefix/suffix/hash/encode/...). Read-only, allowlisted.
     intruderRuleOps()       { return fetch("/api/intruder/rule-ops").then(r => r.json()); },
+    // GET discovery: the generator types this build understands (numbers/
+    // dates/brute). Read-only, allowlisted.
+    intruderGeneratorTypes() { return fetch("/api/intruder/generator-types").then(r => r.json()); },
+    // POST preview: expand a generator spec into a count + bounded sample
+    // without touching the live payload set. spec is {type,...} bare (no
+    // {generator:} wrapper needed -- the endpoint accepts either).
+    intruderGenerate(spec)  { return post("/api/intruder/generate", spec).then(r => r.json()); },
     setTheme(name)          { return post("/api/theme", { name }); },
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },

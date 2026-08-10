@@ -19,8 +19,9 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
-                  per-position payload-set editor, a payload-processing rule chain (prefix/suffix/
-                  case/reverse/match-replace/encode/hash), sortable + filterable results, rate-limit-aware
+                  per-position payload-set editor, a live-preview payload generator (numbers/dates/
+                  brute forcer), a payload-processing rule chain (prefix/suffix/case/reverse/
+                  match-replace/encode/hash), sortable + filterable results, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
 Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
