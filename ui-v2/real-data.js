@@ -250,6 +250,9 @@
     compareBlobs(mode, a, b)    { return post("/api/compare", { mode, a, b }).then(r => r.json()); },
     processPayload(payload)     { return post("/api/process", { payload }).then(r => r.json()); },
     inspect(raw, kind)          { return post("/api/inspect", { raw, kind: kind || "" }).then(r => r.json()); },
+    // Token randomness analyzer (Burp's Sequencer). tokens is a flat array
+    // of strings; see sequencer.hpp for the returned JSON shape.
+    sequencerAnalyze(tokens)    { return post("/api/sequencer/analyze", { tokens }).then(r => r.json()); },
     fingerprintUrl(url)         { return post("/api/fingerprint", { url }).then(r => r.json()); },
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
     detectWaf(url)              { return post("/api/waf/detect", { url }).then(r => r.json()); },

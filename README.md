@@ -54,7 +54,10 @@ Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + 
                   asset inventory, findings baseline/diff for repeat engagements; in-app REPORTING
                   tab also drives OpenAPI export/import, SBOM download, and workspace push/pull
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
-Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent)
+Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
+                  in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
+                  pre-analysis sample summary, full results (entropy, char class, hamming, LCS,
+                  sequential-counter detection, per-position + bit-level tests where applicable)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
 Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64, hex, JSON transcode
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
@@ -177,7 +180,7 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  22 tabs:     │
+   │  ActiveProbe    20+ vuln classes               │         │  23 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
