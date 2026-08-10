@@ -116,9 +116,15 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No generator UI in ui-v2 (grep for 'generator'/'brute'/'numbers' in the JSX is empty); the payloads pane only offers static presets. Numbers is reachable via API only.",
-      "why": "Re-read generators + API wiring; signed-overflow guard confirmed. But it is control-API only \u2014 grep of ui-v2 for a generator UI returns nothing.",
-      "evidence": "intruder_generators.cpp:23-39 numbers(from,to,step,width,hex), stops before qint64 wrap. control_server.cpp:3143-3147 expandGen wires it; /api/intruder/generate previews."
+      "gap": "None -- a GENERATOR dialog in the Intruder PAYLOADS pane (numbers/dates/brute tabs, discovered from /api/intruder/generator-types) offers from/to/step/width/hex fields with a live count+sample preview, applying via /api/intruder/set{generator}.",
+      "why": "GUI closed: engine+API were already complete (re-read 2026-08-02), the only gap was that ui-v2 never called them. Generator dialog now covers all three types.",
+      "evidence": "intruder_generators.cpp:23-39 numbers(from,to,step,width,hex), stops before qint64 wrap. control_server.cpp:3143-3147 expandGen wires it; /api/intruder/generate previews. GUI: ui-v2/tabs.jsx IntruderTab GENERATOR dialog (buildGenSpec numbers branch); ui-v2/real-data.js intruderGenerate/intruderGeneratorTypes actions.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "de1824b",
+        "note": "Intruder generator-dialog wave: numbers/dates/brute-forcer payload generation is now reachable from the GUI (was API-only)."
+      }
     },
     {
       "area": "intruder",
@@ -126,9 +132,15 @@
       "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "API-only; no GUI date generator (no generator dialog exists in ui-v2).",
-      "why": "Re-read generators + wiring; QDate range/step/format confirmed. API-only.",
-      "evidence": "intruder_generators.cpp:76-87 dates(fromIso,toIso,stepDays,format) via QDate::addDays. control_server.cpp:3151-3154."
+      "gap": "None -- same GENERATOR dialog (dates tab: from/to ISO, stepDays, format), live preview via /api/intruder/generate.",
+      "why": "GUI closed alongside Numbers/Brute in the same dialog; no backend change needed.",
+      "evidence": "intruder_generators.cpp:76-87 dates(fromIso,toIso,stepDays,format) via QDate::addDays. control_server.cpp:3151-3154. GUI: ui-v2/tabs.jsx IntruderTab GENERATOR dialog (buildGenSpec dates branch).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "de1824b",
+        "note": "Intruder generator-dialog wave: numbers/dates/brute-forcer payload generation is now reachable from the GUI (was API-only)."
+      }
     },
     {
       "area": "intruder",
@@ -136,9 +148,15 @@
       "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "API-only; no GUI brute-forcer dialog.",
-      "why": "Re-read generators; code-point odometer with a cumulative-char OOM cap confirmed. API-only.",
-      "evidence": "intruder_generators.cpp:41-74 brute(charset,minLen,maxLen) over `charset.toUcs4()`, `kMaxChars = kMaxCount*64` (~6.4M) cap. control_server.cpp:3148-3150."
+      "gap": "None -- same GENERATOR dialog (brute tab: charset/minLen/maxLen), live preview shows count + capped flag before apply.",
+      "why": "GUI closed alongside Numbers/Dates in the same dialog; no backend change needed.",
+      "evidence": "intruder_generators.cpp:41-74 brute(charset,minLen,maxLen) over `charset.toUcs4()`, `kMaxChars = kMaxCount*64` (~6.4M) cap. control_server.cpp:3148-3150. GUI: ui-v2/tabs.jsx IntruderTab GENERATOR dialog (buildGenSpec brute branch).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "de1824b",
+        "note": "Intruder generator-dialog wave: numbers/dates/brute-forcer payload generation is now reachable from the GUI (was API-only)."
+      }
     },
     {
       "area": "intruder",
