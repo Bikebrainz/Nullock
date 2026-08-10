@@ -48,7 +48,11 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
                   Self-hosted Collaborator client tab: mint callback URLs, poll for HTTP
                   interactions, inspect hit detail (source IP, headers, body preview), and
                   fire the SSRF/XXE/RCE/Log4Shell blast at a target URL from a Blast panel
-Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
+Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings);
+                  in-app SCANS tab drives target assess, synchronous audit-run, param miner,
+                  multi-step request chains, and the pipeline orchestrator, plus on-demand
+                  posture grade / asset inventory / OWASP-compliance coverage / CI-gate rollups
+                  -- all previously API-only
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
                   + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
 CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +

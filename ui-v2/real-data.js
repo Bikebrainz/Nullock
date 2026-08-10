@@ -310,6 +310,38 @@
     // Spray OOB payloads (SSRF param battery + optional XXE/RCE/log4shell)
     // at one target URL; each vector gets its own registered token.
     oastBlast(payload) { return post("/api/oast/blast", payload).then(r => r.json()); },
+
+    // --- unified scan/audit runners ---
+    // One-shot passive+active fingerprint/CVE/header/method/TLS assessment
+    // of a single target URL. Also emits findings into the scanner.
+    assess(url) { return post("/api/assess", { url }).then(r => r.json()); },
+    // Synchronous (blocking) deep-audit battery against one URL. `opts` may
+    // carry { method, body, headers, include } -- include narrows the
+    // tester set (see runDeepAudit); omit for the default sweep.
+    auditRun(url, opts) {
+      return post("/api/audit/run", Object.assign({ url }, opts)).then(r => r.json());
+    },
+    // Hidden query-param/body-param discovery via response-diffing.
+    // `opts` may carry { method, wordlist, headers, batchSize }.
+    paramMine(url, opts) {
+      return post("/api/paramminer", Object.assign({ url }, opts)).then(r => r.json());
+    },
+    // Multi-step raw-HTTP request chain with {{var}} extraction/substitution
+    // between steps (login -> use token -> ...). `steps` is the raw array
+    // the backend expects; see ChainRunner::run.
+    chainRun(steps, continueOnError) {
+      return post("/api/chain/run", { steps, continueOnError: !!continueOnError }).then(r => r.json());
+    },
+    // Capstone "point at a host" orchestrator: bridges port-scan results
+    // into findings, then runs `assess` against every open web port found.
+    // `opts` may carry { host, assessWeb, includeOpenPorts, correlateCves }.
+    pipelineRun(opts) { return post("/api/pipeline/run", opts || {}).then(r => r.json()); },
+    // Read-only posture/coverage rollups over the in-memory finding set --
+    // no scanning, just aggregation, safe to poll on demand.
+    getInventory()   { return fetch("/api/inventory").then(r => r.json()); },
+    getPosture()     { return fetch("/api/posture").then(r => r.json()); },
+    getCompliance()  { return fetch("/api/compliance").then(r => r.json()); },
+    getGate(failOn)  { return fetch("/api/gate?fail-on=" + encodeURIComponent(failOn || "")).then(r => r.json()); },
   };
 
   NL.statusText = function (s) {

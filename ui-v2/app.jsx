@@ -1338,6 +1338,91 @@ function ScansTab() {
   const [throttleMs, setThrottleMs] = React.useState(0);
   const [randomize, setRandomize]   = React.useState(false);
 
+  // --- unified scan/audit runners: assess/audit/paramminer/chain/pipeline
+  // plus the read-only posture/inventory/compliance/gate rollups. All were
+  // complete backends with zero ui-v2 callers before this.
+  const [busy2, setBusy2] = React.useState("");
+  const [err2, setErr2]   = React.useState("");
+
+  const [postureRes, setPostureRes]       = React.useState(null);
+  const [inventoryRes, setInventoryRes]   = React.useState(null);
+  const [complianceRes, setComplianceRes] = React.useState(null);
+  const [gateRes, setGateRes]             = React.useState(null);
+  const [gateFailOn, setGateFailOn]       = React.useState("high");
+
+  const [assessUrl, setAssessUrl] = React.useState("");
+  const [assessRes, setAssessRes] = React.useState(null);
+
+  const [pmUrl, setPmUrl]           = React.useState("");
+  const [pmWordlist, setPmWordlist] = React.useState("");
+  const [pmRes, setPmRes]           = React.useState(null);
+
+  const [auditUrl, setAuditUrl]       = React.useState("");
+  const [auditMethod, setAuditMethod] = React.useState("");
+  const [auditBody, setAuditBody]     = React.useState("");
+  const [auditInclude, setAuditInclude] = React.useState([]);
+  const [auditRes, setAuditRes]       = React.useState(null);
+
+  const [pipeHost, setPipeHost]                 = React.useState("");
+  const [pipeAssessWeb, setPipeAssessWeb]       = React.useState(true);
+  const [pipeIncludePorts, setPipeIncludePorts] = React.useState(true);
+  const [pipeCorrelateCves, setPipeCorrelateCves] = React.useState(true);
+  const [pipeRes, setPipeRes]                   = React.useState(null);
+
+  const [chainSteps, setChainSteps]     = React.useState("");
+  const [chainContinue, setChainContinue] = React.useState(false);
+  const [chainRes, setChainRes]         = React.useState(null);
+
+  const runBusy2 = async (key, setRes, fn) => {
+    setErr2(""); setBusy2(key); setRes(null);
+    try {
+      const r = await fn();
+      if (r && r.ok === false) setErr2(r.error || (key + " failed"));
+      setRes(r);
+    } catch (e) { setErr2(String(e && e.message ? e.message : e)); }
+    finally { setBusy2(""); }
+  };
+
+  const loadPosture    = () => runBusy2("posture", setPostureRes, () => NL.actions.getPosture());
+  const loadInventory  = () => runBusy2("inventory", setInventoryRes, () => NL.actions.getInventory());
+  const loadCompliance = () => runBusy2("compliance", setComplianceRes, () => NL.actions.getCompliance());
+  const loadGate       = () => runBusy2("gate", setGateRes, () => NL.actions.getGate(gateFailOn));
+
+  const doAssess = () => {
+    if (!assessUrl.trim()) { setErr2("enter a target URL"); return; }
+    runBusy2("assess", setAssessRes, () => NL.actions.assess(assessUrl.trim()));
+  };
+
+  const doParamMine = () => {
+    if (!pmUrl.trim()) { setErr2("enter a target URL"); return; }
+    const wl = pmWordlist.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    runBusy2("paramminer", setPmRes, () => NL.actions.paramMine(pmUrl.trim(), wl.length ? { wordlist: wl } : {}));
+  };
+
+  const AUDIT_INCLUDES = ["params", "verbs", "cors", "idor", "massassign", "openredirect", "cache", "hostheader", "smuggle", "nosqli", "xxe"];
+  const toggleInclude = (name) => setAuditInclude(prev => prev.includes(name) ? prev.filter(x => x !== name) : [...prev, name]);
+  const doAuditRun = () => {
+    if (!auditUrl.trim()) { setErr2("enter a target URL"); return; }
+    const opts = {};
+    if (auditMethod) opts.method = auditMethod;
+    if (auditBody) opts.body = auditBody;
+    if (auditInclude.length) opts.include = auditInclude;
+    runBusy2("audit", setAuditRes, () => NL.actions.auditRun(auditUrl.trim(), opts));
+  };
+
+  const doPipeline = () => {
+    const opts = { assessWeb: pipeAssessWeb, includeOpenPorts: pipeIncludePorts, correlateCves: pipeCorrelateCves };
+    if (pipeHost.trim()) opts.host = pipeHost.trim();
+    runBusy2("pipeline", setPipeRes, () => NL.actions.pipelineRun(opts));
+  };
+
+  const doChainRun = () => {
+    let steps;
+    try { steps = JSON.parse(chainSteps); } catch (e) { setErr2("steps must be valid JSON: " + (e && e.message ? e.message : e)); return; }
+    if (!Array.isArray(steps) || !steps.length) { setErr2("steps must be a non-empty JSON array"); return; }
+    runBusy2("chain", setChainRes, () => NL.actions.chainRun(steps, chainContinue));
+  };
+
   const start = async () => {
     // Recognize three host-field shapes:
     // 1. CIDR "192.168.1.0/24" -> backend expands
@@ -1396,8 +1481,38 @@ function ScansTab() {
     fontSize: "12px", fontFamily: "var(--ff-mono)",
   };
 
+  const Section = ({ title, hint, children }) => (
+    <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>{title}</span>
+        {hint && <span style={{ color: "var(--dim)", fontSize: "11px" }}>{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+  const Btn2 = ({ label, onClick, k, disabled }) => (
+    <button onClick={onClick} disabled={disabled || !!busy2} style={{
+      background: "transparent",
+      color: (disabled || busy2) ? "var(--dim)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "4px 10px", fontSize: "11px",
+      fontFamily: "var(--ff-mono)", cursor: (disabled || busy2) ? (busy2 ? "wait" : "not-allowed") : "pointer",
+      letterSpacing: "0.04em", textTransform: "uppercase",
+    }}>{busy2 === k ? "…" : label}</button>
+  );
+  const CHAIN_STEPS_PLACEHOLDER =
+    '[\n  {\n    "name": "login",\n    "host": "example.com",\n    "tls": true,\n' +
+    '    "request": "POST /login HTTP/1.1\\r\\nHost: example.com\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 13\\r\\n\\r\\nuser=a&pass=b",\n' +
+    '    "extract": [ { "var": "token", "from": "json", "key": "data.token" } ]\n  }\n]';
+  const RawResult = ({ res }) => res ? (
+    <pre style={{
+      margin: 0, padding: 8, background: "var(--bg-deep)", border: "1px solid var(--line)",
+      fontSize: "11px", maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
+      color: "var(--text-2)",
+    }}>{JSON.stringify(res, null, 2)}</pre>
+  ) : null;
+
   return (
-    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0, overflow: "auto" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
         <span style={{
           fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
@@ -1494,7 +1609,8 @@ function ScansTab() {
       {/* RESULTS */}
       <div style={{
         background: "var(--pane)", border: "1px solid var(--line)",
-        borderRadius: 4, flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+        borderRadius: 4, flex: "0 1 320px", minHeight: 120, maxHeight: 320,
+        display: "flex", flexDirection: "column",
       }}>
         <div style={{
           display: "grid",
@@ -1540,6 +1656,155 @@ function ScansTab() {
           ))}
         </div>
       </div>
+
+      {/* UNIFIED SCAN/AUDIT RUNNERS -- assess/audit/paramminer/chain/pipeline
+          plus the read-only posture/inventory/compliance/gate rollups. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 4 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Assess &amp; audit</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>one-shot target assessment, deep audit, hidden-param mining, multi-step chains, and posture rollups</span>
+        {err2 && <span style={{ color: "var(--err)", fontSize: "11px" }}>{err2}</span>}
+      </div>
+
+      <Section title="Posture / inventory / compliance / gate" hint="rollups over the current in-memory finding set -- no scanning, safe to poll">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Btn2 k="posture" label="Posture grade" onClick={loadPosture} />
+          <Btn2 k="inventory" label="Inventory" onClick={loadInventory} />
+          <Btn2 k="compliance" label="Compliance coverage" onClick={loadCompliance} />
+          <select value={gateFailOn} onChange={e => setGateFailOn(e.target.value)} style={{ ...inp, width: 110 }}>
+            <option value="critical">critical</option><option value="high">high</option>
+            <option value="medium">medium</option><option value="low">low</option>
+            <option value="info">info</option><option value="none">none</option>
+          </select>
+          <Btn2 k="gate" label="CI gate check" onClick={loadGate} />
+        </div>
+        {postureRes && postureRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            posture: <span style={{ color: "var(--accent)" }}>{postureRes.grade}</span> ({postureRes.score}/100) ·{" "}
+            penalty {postureRes.penalty} · {postureRes.totalFindings} findings
+          </div>
+        )}
+        {inventoryRes && inventoryRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {inventoryRes.hostCount} hosts · {inventoryRes.totalOpenPorts} open ports · {inventoryRes.totalFindings} findings
+          </div>
+        )}
+        {complianceRes && complianceRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {complianceRes.mappedFindings}/{complianceRes.totalFindings} findings mapped ·{" "}
+            {complianceRes.owaspCategoriesHit} OWASP Top 10 categories hit · {complianceRes.complianceTagsHit} compliance tags hit
+          </div>
+        )}
+        {gateRes && gateRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: gateRes.pass ? "#8ee5a0" : "var(--err)" }}>
+            {gateRes.pass ? "PASS" : "FAIL"} (exit {gateRes.exitCode}) — fail-on {gateRes.failOn}, {gateRes.offendingCount} offending / {gateRes.totalFindings} total
+          </div>
+        )}
+        <RawResult res={postureRes || inventoryRes || complianceRes || gateRes} />
+      </Section>
+
+      <Section title="Assess target" hint="fingerprint + CVE correlation + header/method/TLS audit against one URL">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={assessUrl} onChange={e => setAssessUrl(e.target.value)} placeholder="https://target/"
+                 onKeyDown={e => { if (e.key === "Enter") doAssess(); }}
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <Btn2 k="assess" label="Assess" onClick={doAssess} />
+        </div>
+        {assessRes && assessRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {assessRes.host}:{assessRes.port} {assessRes.tls ? "(tls)" : ""} · tech: {(assessRes.tech || []).join(", ") || "—"} ·{" "}
+            {assessRes.findingCount} findings
+          </div>
+        )}
+        <RawResult res={assessRes} />
+      </Section>
+
+      <Section title="Param miner" hint="response-diff hidden query/body parameter discovery">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={pmUrl} onChange={e => setPmUrl(e.target.value)} placeholder="https://target/path"
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <Btn2 k="paramminer" label="Mine params" onClick={doParamMine} />
+        </div>
+        <textarea value={pmWordlist} onChange={e => setPmWordlist(e.target.value)}
+                  placeholder="custom wordlist, one per line or comma-separated (optional -- default wordlist used if empty)"
+                  rows={2} style={{ ...inp, resize: "vertical", fontSize: "11px" }} spellCheck={false} />
+        {pmRes && pmRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {pmRes.requestsSent} requests · {pmRes.candidatesTried} candidates tried · {pmRes.foundCount} found
+          </div>
+        )}
+        <RawResult res={pmRes} />
+      </Section>
+
+      <Section title="Audit run" hint="synchronous deep-audit battery against one URL (blocks until done)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={auditUrl} onChange={e => setAuditUrl(e.target.value)} placeholder="https://target/path?id=1"
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <select value={auditMethod} onChange={e => setAuditMethod(e.target.value)} style={{ ...inp, width: 90 }}>
+            <option value="">auto</option><option value="GET">GET</option><option value="POST">POST</option>
+          </select>
+          <Btn2 k="audit" label="Run audit" onClick={doAuditRun} />
+        </div>
+        <textarea value={auditBody} onChange={e => setAuditBody(e.target.value)} placeholder="request body (optional)"
+                  rows={1} style={{ ...inp, resize: "vertical", fontSize: "11px" }} spellCheck={false} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {AUDIT_INCLUDES.map(name => (
+            <label key={name} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+              <input type="checkbox" checked={auditInclude.includes(name)} onChange={() => toggleInclude(name)} />
+              {name}{name === "smuggle" ? " (opt-in, not in default sweep)" : ""}
+            </label>
+          ))}
+        </div>
+        <div style={{ fontSize: "10px", color: "var(--dim)" }}>no boxes checked = run the default battery (all except smuggle)</div>
+        {auditRes && auditRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {auditRes.totalFindings} tester(s) hit on {auditRes.target}
+          </div>
+        )}
+        <RawResult res={auditRes} />
+      </Section>
+
+      <Section title="Pipeline run" hint="capstone: bridge port-scan results into findings, then assess every open web port">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={pipeHost} onChange={e => setPipeHost(e.target.value)} placeholder="host filter (blank = all scanned hosts)"
+                 style={{ ...inp, flex: "1 1 220px", minWidth: 180 }} spellCheck={false} />
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={pipeAssessWeb} onChange={e => setPipeAssessWeb(e.target.checked)} /> assess web
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={pipeIncludePorts} onChange={e => setPipeIncludePorts(e.target.checked)} /> include open ports
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={pipeCorrelateCves} onChange={e => setPipeCorrelateCves(e.target.checked)} /> correlate CVEs
+          </label>
+          <Btn2 k="pipeline" label="Run pipeline" onClick={doPipeline} />
+        </div>
+        <div style={{ fontSize: "10px", color: "var(--dim)" }}>runs against results already collected by the port scanner above — run a port scan first</div>
+        {pipeRes && pipeRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {pipeRes.openPorts} open ports · {pipeRes.networkFindings} network findings ·{" "}
+            {pipeRes.webTargetsAssessed} web targets assessed · {pipeRes.webFindings} web findings
+          </div>
+        )}
+        <RawResult res={pipeRes} />
+      </Section>
+
+      <Section title="Request chain" hint="multi-step raw-HTTP chain with {{var}} extraction/substitution (e.g. login -> use token)">
+        <textarea value={chainSteps} onChange={e => setChainSteps(e.target.value)}
+                  placeholder={CHAIN_STEPS_PLACEHOLDER}
+                  rows={5} style={{ ...inp, resize: "vertical", fontSize: "11px" }} spellCheck={false} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={chainContinue} onChange={e => setChainContinue(e.target.checked)} /> continue on error
+          </label>
+          <Btn2 k="chain" label="Run chain" onClick={doChainRun} />
+        </div>
+        {chainRes && chainRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            ran {chainRes.ran} step(s) · vars: {Object.keys(chainRes.vars || {}).join(", ") || "—"}
+          </div>
+        )}
+        <RawResult res={chainRes} />
+      </Section>
     </div>
   );
 }

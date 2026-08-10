@@ -4,10 +4,11 @@
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-10, waves closing the
 > INSPECTOR, PROBE, TESTS, DISCOVER, REPORTING, COLLABORATOR, and SEQUENCER tabs, plus GUI
 > reachability adds to existing tabs (deep-audit-all, the Intruder payload-generator dialog,
-> the CSRF PoC generator, and the Collaborator Blast spray), have wired 51 of those endpoints
+> the CSRF PoC generator, the Collaborator Blast spray, and the SCANS tab's Assess & audit
+> section covering all 9 unified scan/audit runners), have wired 60 of those endpoints
 > (TESTS covers 25 of the 26 originally-listed active checks — `/api/cache/poison` has a
 > distinct request shape outside its uniform `/<type>/test` contract and remains orphaned),
-> leaving **46 of 173 (27%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and
+> leaving **37 of 173 (21%) still orphaned**. Verified per-bucket by grepping `ui-v2/*.jsx` and
 > `ui-v2/real-data.js` for each path literal (ui-v2 uses no dynamic `/api/${...}` URL
 > construction, so a literal-string grep is exhaustive) — this pass also caught and corrected
 > five endpoints (`/api/audit/all`, `/api/csrf/poc`, `/api/intruder/generate`,
@@ -18,24 +19,16 @@
 
 App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
-processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab still only
-drives port-scan + recon; the unified audit/assess/gate runners below have no control.
+processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
+port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
+pipeline-run, and posture/inventory/compliance/gate rollups).
 
 ## Active vulnerability tests (1 remaining — the 26 uniform `/<type>/test` checks are wired via TESTS)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
 
-## Unified scan / audit runners (9)
-- `/api/assess`
-- `/api/audit/run`
-- `/api/chain/run`
-- `/api/compliance`
-- `/api/gate`
-- `/api/inventory`
-- `/api/paramminer`
-- `/api/pipeline/run`
-- `/api/posture`
-
-(`/api/headers/audit` wired via PROBE tab.)
+(`/api/assess`, `/api/audit/run`, `/api/chain/run`, `/api/compliance`, `/api/gate`,
+`/api/inventory`, `/api/paramminer`, `/api/pipeline/run`, `/api/posture` all wired via the
+SCANS tab's Assess & audit section. `/api/headers/audit` wired via PROBE tab.)
 
 ## Inspector / decoder / request tools (2)
 - `/api/request/curl`
