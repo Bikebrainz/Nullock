@@ -88,6 +88,19 @@ qint64 nextReadTimeoutMs(qint64 elapsedMs, qint64 perReadMs, qint64 totalMs);
 QList<QPair<QString, QString>> parseHeaders(const QByteArray &block);
 QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name);
 
+// --- Repeater target/Host-header sync ------------------------------------
+// When the Repeater target host is changed, the request's `Host:` header must
+// follow -- otherwise the request connects to the new host but still announces
+// the OLD one, landing on an unintended virtual host with no visible sign.
+// This rewrites the Host line to `newHost` ONLY when its current hostname
+// still equals `oldHost`; if it names anything else it is a DELIBERATE desync
+// (host-header-injection testing) and is left untouched. An optional ":port"
+// suffix on the header is preserved, line endings (LF/CRLF) are preserved, and
+// a request with no Host header is returned unchanged. Host names compare
+// case-insensitively.
+QString rewriteHostHeader(const QString &requestText,
+                          const QString &oldHost, const QString &newHost);
+
 // --- Content-Length validation ------------------------------------------
 struct ContentLength {
     bool   ok = false;   // false => header present but malformed/over-cap; reject
