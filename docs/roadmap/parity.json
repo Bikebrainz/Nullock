@@ -2388,13 +2388,18 @@
     {
       "area": "platform",
       "feature": "Scan-to-scan issue delta (new vs fixed findings between runs)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "The baseline persists to a file and /api/baseline/diff computes new-vs-fixed correctly, but the CURRENT set is in-memory only and there is NO GUI to run or view the delta -- Burp surfaces it in the UI.",
-      "why": "Corrected from 'present' on independent re-derivation (2026-08-02): the delta engine and baseline file persistence are real, but with no ui-v2 caller it is not at Burp parity.",
-      "evidence": "control_server.cpp:4189-4218 /api/baseline/diff (loadBaseline file + scanner->findings(0) in-memory current); no 'baseline' reference anywhere in ui-v2.",
-      "audited_state": "present"
+      "gap": "None -- the ISSUES tab has a Baseline bar (Save baseline / Diff vs current / Clear) showing hasBaseline/savedAt/count status and, after a diff, the new/fixed/unchanged counts plus the new and fixed finding lists.",
+      "why": "Closed 2026-08-10: ui-v2/app.jsx IssuesTab wires /api/baseline/save|status|diff|clear (previously API-only, zero ui-v2 callers).",
+      "evidence": "ui-v2/app.jsx IssuesTab Baseline bar + diff panel; control_server.cpp:4116 save, :4172 status, :4184 clear, :4189 diff.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "06e1d6d",
+        "note": "Issues/Baseline batch: Baseline bar in the ISSUES tab (save/status/diff/clear) closes the GUI-reachability gap."
+      }
     },
     {
       "area": "platform",
@@ -2538,9 +2543,15 @@
       "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "No UI entry point, no persistence of the verdict, and an unbundled external dependency (Ollama + a 14B model) with silent heuristic fallback — so the AI path is off by default in practice.",
-      "why": "DOWNGRADED. The endpoint exists at control_server.cpp:4749 and the first pass's description of its prompt and evidence-inlining is accurate. But three things stop it being 'present': there is no UI (grep for 'triage' across ui-v2 returns nothing, and it is absent from the NL.actions table), the verdict is returned and never stored, and it depends on a local Ollama serving qwen2.5:14b that Nullock ",
-      "evidence": "control_server.cpp:4743-4749 `// POST /api/triage/finding { rowId, kind, severity, summary, evidence }` ... `if (path == \"/api/triage/finding\") {` with the hardcoded local endpoint and model at :4749-4750 `QString ollama = \"http://127.0.0.1:11434\"; QString model = \"qwen2.5:14b\";`. No UI: `grep -an \"triage\" ui-v2/*.jsx ui-v2/*.js` → no output; the NL.actions table (ui-v2/real-data.js:119-215) conta"
+      "gap": "A Triage button per finding in the ISSUES tab now calls the endpoint and renders the model verdict (or the heuristic fallback text) inline -- closing the \"no UI entry point\" blocker. Two blockers remain, unchanged: the verdict is never persisted (re-opening the tab loses it), and it still depends on an unbundled local Ollama instance serving qwen2.5:14b, with a silent heuristic fallback when that is not running.",
+      "why": "UPGRADED (partial, was already partial): ui-v2/app.jsx IssuesTab adds a Triage button per finding row -> POST /api/triage/finding, rendered inline (model name + verdict text, or the heuristic fallback with its reason when Ollama is unreachable). Closes the 'no UI entry point' third of the prior gap; persistence and the external-dependency caveats are real and untouched.",
+      "evidence": "ui-v2/app.jsx IssuesTab doTriage()/triage state + inline result panel; control_server.cpp:4791 /api/triage/finding (rowId/kind/severity/summary/evidence in; ok/model/triage/error out).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "06e1d6d",
+        "note": "Issues/Baseline batch: Triage button closes the GUI-reachability third of the gap; persistence and the Ollama dependency remain honest partials."
+      }
     },
     {
       "area": "platform",
