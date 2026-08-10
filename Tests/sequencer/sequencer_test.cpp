@@ -326,6 +326,14 @@ int main(int argc, char **argv) {
         // a constant stream is degenerate (no second symbol) -> z = 0, no test.
         chk("runs: alternating 0xAA -> huge +z (fails)", fipsRunsZScore(QByteArray(20, char(0xAA))) > 2.576);
         chk("runs: constant 0xFF -> degenerate z = 0", fipsRunsZScore(QByteArray(20, char(0xFF))) == 0.0);
+        // FIPS length-bucketed runs: alternating -> all length-1 runs -> huge
+        // chi; all-zero -> a single run -> too few to judge -> sentinel.
+        chk("runLen: alternating 0xAA -> chi huge (fails)", fipsRunsBucketChi(QByteArray(30, char(0xAA))) > 15.086);
+        chk("runLen: all-zero -> < 30 runs -> -1 sentinel", fipsRunsBucketChi(QByteArray(30, '\0')) < 0.0);
+        // compression: a constant stream compresses to almost nothing; a tiny
+        // input is not judged (returns 1.0).
+        chk("compress: all-zero 1KB -> ratio << 0.85 (fails)", compressionRatio(QByteArray(1024, '\0')) < 0.85);
+        chk("compress: 64B input -> 1.0 (not judged)", compressionRatio(QByteArray(64, '\0')) == 1.0);
     }
 
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);

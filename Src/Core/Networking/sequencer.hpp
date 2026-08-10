@@ -57,6 +57,13 @@ QJsonObject analyzeTokens(const QStringList &tokens);
 double fipsPokerChiSquare(const QByteArray &bytes);
 double fipsRunsZScore(const QByteArray &bytes);
 qint64 longestBitRun(const QByteArray &bytes);
+// fipsRunsBucketChi: the FIPS-shaped runs test -- chi-square (5 dof) of the
+//   run-LENGTH distribution (buckets 1,2,3,4,5,6+) against the geometric
+//   expectation (P(len=k)=2^-k). < 0 sentinel when too few runs to judge.
+// compressionRatio: zlib-compressed size / original size of the byte stream.
+//   Random data barely compresses (~1); structure/repetition compresses (<1).
+double fipsRunsBucketChi(const QByteArray &bytes);
+double compressionRatio(const QByteArray &bytes);
 
 class Sequencer : public QObject {
     Q_OBJECT
