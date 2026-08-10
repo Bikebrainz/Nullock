@@ -44,7 +44,8 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
                   confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
                   plus a deployable standalone server (nullock-oast) for a public / hosted tier.
                   Self-hosted Collaborator client tab: mint callback URLs, poll for HTTP
-                  interactions, inspect hit detail (source IP, headers, body preview)
+                  interactions, inspect hit detail (source IP, headers, body preview), and
+                  fire the SSRF/XXE/RCE/Log4Shell blast at a target URL from a Blast panel
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings)
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
                   + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
