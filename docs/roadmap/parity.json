@@ -678,9 +678,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Passive fingerprints carry no CVE; CVE correlation is a separate /api/assess call (no GUI) and depends on the bundled cve_database.cpp table, not a live advisory feed.",
-      "why": "Downgraded exceeds->present. Re-read passive_scanner.cpp:1394-1523: ~13 CMS + ~8 frameworks, but these emit info-only 'cms-*'/'fw-*' findings with NO CVE. CVE correlation lives only in assessWebTarget (control_server.cpp:431-435) which is reachable via /api/assess (API-only, no GUI) and is version-string-based against a curated DB. Real and useful, but 'exceeds' overstates: the passive path has no",
-      "evidence": "control_server.cpp:432 `for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + \" \" + t.version)) addF(... \"cve-correlated\" ...)`; passive_scanner.cpp:1394 flagCms(...\"cms-wordpress\"...) emits info, no CVE"
+      "gap": "Passive fingerprints carry no CVE; CVE correlation runs via /api/assess, which now has a GUI trigger (SCANS tab's Assess target panel) but still depends on the bundled cve_database.cpp table, not a live advisory feed.",
+      "why": "Re-read passive_scanner.cpp:1394-1523: ~13 CMS + ~8 frameworks emit info-only 'cms-*'/'fw-*' findings with NO CVE; CVE correlation lives only in assessWebTarget (control_server.cpp:396-470), reachable via /api/assess. That endpoint was API-only through 2026-08-10; the SCANS tab's new Assess & audit section (ui-v2/app.jsx) wires a URL input -> /api/assess -> host/port/tls/tech/findingCount display, closing the GUI-reachability half of the gap. The static-DB-vs-live-feed caveat is unchanged and still holds 'present' rather than 'exceeds'.",
+      "evidence": "control_server.cpp:432 `for (const auto &m : Nullock::Core::CveDatabase::lookup(t.cveKind, t.name + \" \" + t.version)) addF(... \"cve-correlated\" ...)`; passive_scanner.cpp:1394 flagCms(...\"cms-wordpress\"...) emits info, no CVE; ui-v2/app.jsx ScansTab's 'Assess target' Section calls NL.actions.assess(url) -> POST /api/assess.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Unified scan/audit runner batch: SCANS tab's Assess & audit section adds a GUI trigger for /api/assess, closing the 'no GUI' half of this gap; the live-feed caveat stands untouched."
+      }
     },
     {
       "area": "scanner",
@@ -738,9 +744,15 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Reachable only via /api/audit/run|all -- no GUI trigger and NOT in the GUI probe battery, so a GUI-only user never runs XXE.",
-      "why": "Re-read control_server.cpp:655-668: XxeInjection::test, content-type/body-gated to XML, emits xxe-injection critical. Module file xxe_injection.cpp (91 lines) exists. Present but API-only.",
-      "evidence": "control_server.cpp:663 `const auto res = Nullock::Core::XxeInjection::test(xrr);` gated by :658 `if (ctl.contains(\"xml\") || bt.startsWith(\"<?xml\") ...)`"
+      "gap": "Reachable via /api/audit/run|all. /api/audit/run now has a GUI trigger (SCANS tab's Audit run panel with per-tester include checkboxes) but XXE is still not part of the TESTS tab's uniform battery or the 'Probe all rows' quick action.",
+      "why": "Re-read control_server.cpp:655-668: XxeInjection::test, content-type/body-gated to XML, emits xxe-injection critical. Module file xxe_injection.cpp (91 lines) exists. Was present but fully API-only through 2026-08-10; the SCANS tab's new Audit run panel now POSTs url/method/body/include (xxe among the checkboxes) to /api/audit/run and renders the per-tester hit summary + raw response.",
+      "evidence": "control_server.cpp:663 `const auto res = Nullock::Core::XxeInjection::test(xrr);` gated by :658 `if (ctl.contains(\"xml\") || bt.startsWith(\"<?xml\") ...)`; ui-v2/app.jsx ScansTab's 'Audit run' Section include-checkbox list contains \"xxe\", posting to NL.actions.auditRun -> POST /api/audit/run.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Unified scan/audit runner batch: SCANS tab's Audit run panel adds a GUI trigger for /api/audit/run (include-checkbox battery, xxe among them); still absent from TESTS' uniform battery and Probe-all, called out honestly."
+      }
     },
     {
       "area": "scanner",
@@ -952,9 +964,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Deep-audit param-mining uses only the first 60 wordlist entries; standalone endpoint is API-only (no GUI button).",
-      "why": "Downgraded exceeds->present. Re-read control_server.cpp:6604-6634 (/api/paramminer, wordlist capped 2000, off-thread) and runDeepAudit:500-510 (folded in, but wordlist there is capped to only the first 60 names via .mid(0,60)). Real response-diff miner beyond Burp core, but the in-audit variant is heavily truncated and both surfaces are API-only (grep ui-v2 'parammin' empty). 'exceeds' overstates.",
-      "evidence": "control_server.cpp:6627 `wordlist = Nullock::Core::ParamMiner::defaultWordlist();` :6628 capped 2000; runDeepAudit:505 `ParamMiner::defaultWordlist().mid(0, 60)`"
+      "gap": "Deep-audit param-mining still uses only the first 60 wordlist entries (runDeepAudit's in-sweep variant, unchanged). The standalone /api/paramminer endpoint now has a GUI button (SCANS tab's Param miner panel, default or pasted wordlist, uncapped up to the backend's 2000-entry limit).",
+      "why": "Re-read control_server.cpp:6604-6634 (/api/paramminer, wordlist capped 2000, off-thread) and runDeepAudit:500-510 (folded in, but wordlist there is capped to only the first 60 names via .mid(0,60)) -- that in-audit truncation is unchanged. The standalone endpoint was API-only through 2026-08-10 (grep ui-v2 'parammin' was empty); the SCANS tab's new Param miner panel now POSTs url + optional pasted wordlist to /api/paramminer and renders requestsSent/candidatesTried/foundCount + the found-param list.",
+      "evidence": "control_server.cpp:6627 `wordlist = Nullock::Core::ParamMiner::defaultWordlist();` :6628 capped 2000; runDeepAudit:505 `ParamMiner::defaultWordlist().mid(0, 60)`; ui-v2/app.jsx ScansTab's 'Param miner' Section calls NL.actions.paramMine(url, opts) -> POST /api/paramminer.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "PENDING",
+        "note": "Unified scan/audit runner batch: SCANS tab's Param miner panel adds a GUI trigger for /api/paramminer; the deep-audit in-sweep 60-entry cap remains an honest separate gap, untouched."
+      }
     },
     {
       "area": "scanner",
