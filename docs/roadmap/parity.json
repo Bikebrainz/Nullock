@@ -2950,12 +2950,17 @@
     {
       "area": "proxy",
       "feature": "HTTP history filter bar (in-scope only / hide items without responses / MIME / status / regex + negative + case-sensitive search / extension show-hide / annotation / listener)",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "No MIME-type filter, no file-extension show/hide (the single most-used filter), no 'hide items without responses', no in-scope-only toggle, no negative search, no case-sensitivity toggle, no listener/annotation filter. Regex search is always case-insensitive and covers only the oldest 500 in-memory rows within a 1 s budget (kSearchBudgetMs).",
-      "why": "Partly UPGRADED the evidence: the claim 'no regex search' is wrong. There is a server-side REGEX body search reachable from the UI's DEEP toggle -- GET /api/search?q=<regex>&where=req|resp|both. State stays partial because I also found a defect the first pass missed: that search only ever scans the FIRST 500 rows of the in-memory window (the OLDEST ones), so on any real engagement it silently miss",
-      "evidence": "Regex search exists: Src/BackEnd/Control/control_server.cpp:1719 `// GET /api/search?q=<regex>&where=req|resp|both&limit=N` -> :1769-1771 `const QRegularExpression rx(pattern, QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);` wired at ui-v2/proxy.jsx:1144 `const res = await NL.actions.search(search, \"both\", 500);`. But the row cap: control_server.cpp:1756 `constexp"
+      "gap": "Annotation and listener/port filters remain missing -- Nullock has no per-row annotation store to filter by (tracked separately), and no dedicated listener-port dropdown (the port is visible per-row but not a filter dimension). Server-side deep body search (/api/search) is still forced case-insensitive (control_server.cpp:1769-1771) -- the new case-sensitivity toggle only applies to the local-column fast path, not the regex body scan.",
+      "why": "Closed 2026-08-10: FilterBar/HistoryTable (ui-v2/proxy.jsx) gain a MIME-class <select> (mimeCategory() bucketing r.mime into html/script/json/xml/css/images/other), an EXT text field + SHOW/HIDE toggle (pathExtension()/parseExtList()/extFilterMatch()), a case-sensitivity toggle button, and negative search via a leading '-' (parseSearchTerm()) -- on top of the in-scope/params/hide-404 chips and status/method filters already shipped in earlier waves. That closes every dimension the gap called out except annotation and listener, both blocked on missing backend stores.",
+      "evidence": "ui-v2/proxy.jsx: MIME_CATEGORIES/mimeCategory() and pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() helpers; HistoryTable's useMemo predicate applies mimeFilter/extList/extHide/caseSensitive/negate; FilterBar renders the MIME select, EXT input+toggle, and Aa case-sensitivity button; ProxyTab's `shown` count mirrors the same predicate so the header stays in sync.",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "5c0c4b4",
+        "note": "Proxy/Target filter-bar batch: MIME class, extension show/hide, case-sensitivity, and negative search closed the remaining frontend-only dimensions of #267 and #371 in one shared component."
+      }
     },
     {
       "area": "proxy",
@@ -4091,12 +4096,17 @@
     {
       "area": "target",
       "feature": "Site map filter — by MIME type (HTML/Script/XML/CSS/Other text/Images/Flash/Other binary), by status code family, by file extension (show only / hide), by search term (regex, case-sensitive, negative), by annotation (commented / highlighted)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No structured MIME/extension/annotation filter, no negative search, no case-sensitivity toggle (the regex is force-CaseInsensitive, control_server.cpp:1769-1771). mime, port and tls are all indexed columns in SQLite and none of them is filterable.",
-      "why": "Held. I additionally checked ProxyFilterModel (the Qt-side filter the first pass never opened) in case MIME filtering lived there -- it does not; it has the same three dimensions.",
-      "evidence": "ui-v2/proxy.jsx:40-44 `if (statusClass !== \"all\") { const sc = Math.floor(r.status / 100) + \"xx\"; if (sc !== statusClass) return false; } if (methodFilter !== \"ALL\" && r.method !== methodFilter) return false;`. MIME appears only inside the free-text blob, proxy.jsx:31-35 `const blob = [r.url, r.path, r.host, r.method, r.mime, ...].join(\" \").toLowerCase();`. Qt side is identical: Src/FrontEnd/GUI/M"
+      "gap": "Annotation filter (commented/highlighted) remains missing -- blocked on the same missing annotation store as #267, tracked separately. Case-sensitivity now applies to the local column/free-text match; the server regex body-search path is still forced case-insensitive.",
+      "why": "Closed 2026-08-10: the Site map and HTTP history share the exact same FilterBar/HistoryTable component in ui-v2/proxy.jsx (Proxy tab: sitemap left, history top-right), so the MIME-class select, extension show/hide, negative search, and case-sensitivity toggle added for #267 apply identically here -- clicking a Site map host still routes into the same filtered HistoryTable. Status-family and method filtering were already present.",
+      "evidence": "ui-v2/proxy.jsx ProxyTab renders <SiteMap> beside the same <FilterBar>/<HistoryTable> pair used for HTTP history; mimeCategory()/pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() are the same pure helpers exercised by both surfaces.",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "5c0c4b4",
+        "note": "Proxy/Target filter-bar batch: same component change as #267, since Nullock's Site map and HTTP history share one FilterBar/HistoryTable."
+      }
     },
     {
       "area": "target",
