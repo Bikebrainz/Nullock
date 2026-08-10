@@ -1,6 +1,7 @@
 #include "repeater.hpp"
 
 #include "Proxy/proxy_model.hpp"
+#include "networking_logic.hpp"
 
 namespace Nullock::Core {
 
@@ -53,7 +54,16 @@ QString Repeater::autoTabName(const QString &host, const QString &request) const
 void Repeater::setHost(const QString &h) {
     auto &t = activeTab_();
     if (h == t.host) return;
+    const QString oldHost = t.host;
     t.host = h;
+    // Keep the request's Host header pointed at the new target -- unless the
+    // user deliberately aimed it elsewhere (host-header-injection testing), in
+    // which case rewriteHostHeader leaves it be.
+    const QString synced = NetworkingLogic::rewriteHostHeader(t.requestText, oldHost, h);
+    if (synced != t.requestText) {
+        t.requestText = synced;
+        emit requestTextChanged();
+    }
     emit targetChanged();
 }
 void Repeater::setPort(int p) {

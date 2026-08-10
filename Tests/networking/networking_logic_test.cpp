@@ -607,6 +607,38 @@ int main(int argc, char **argv) {
         chkb("fuzz: parseStatusLine ok <=> line has >= 2 spaces", okInvariant, true);
     }
 
+    // ===== rewriteHostHeader (Repeater target/Host sync) =================
+    // The bug: changing the Repeater target host left the request's Host header
+    // naming the OLD host, so send() connected to the new host but announced the
+    // old one -- silently landing on the wrong virtual host. These pin that the
+    // Host line follows the target, that a DELIBERATE desync is preserved (so
+    // host-header-injection testing still works), and the format edge cases.
+    {
+        const QString base = "GET /p HTTP/1.1\r\nHost: old.com\r\nAccept: */*\r\n\r\nbody";
+        chks("host: rewrites matching Host (CRLF)",
+             rewriteHostHeader(base, "old.com", "new.com"),
+             "GET /p HTTP/1.1\r\nHost: new.com\r\nAccept: */*\r\n\r\nbody");
+        const QString desync = "GET / HTTP/1.1\r\nHost: evil.example\r\n\r\n";
+        chks("host: preserves deliberate desync (Host names a third host)",
+             rewriteHostHeader(desync, "old.com", "new.com"), desync);
+        chks("host: preserves :port suffix",
+             rewriteHostHeader("GET / HTTP/1.1\r\nHost: old.com:8443\r\n\r\n", "old.com", "new.com"),
+             "GET / HTTP/1.1\r\nHost: new.com:8443\r\n\r\n");
+        const QString noHost = "GET / HTTP/1.1\r\nAccept: */*\r\n\r\n";
+        chks("host: no Host header is unchanged",
+             rewriteHostHeader(noHost, "old.com", "new.com"), noHost);
+        chks("host: same host is a no-op",
+             rewriteHostHeader(base, "old.com", "old.com"), base);
+        chks("host: empty oldHost is a no-op",
+             rewriteHostHeader(base, "", "new.com"), base);
+        chks("host: LF-only line endings preserved",
+             rewriteHostHeader("GET / HTTP/1.1\nHost: old.com\n\n", "old.com", "new.com"),
+             "GET / HTTP/1.1\nHost: new.com\n\n");
+        chks("host: case-insensitive match, header-name casing kept",
+             rewriteHostHeader("GET / HTTP/1.1\r\nhost: OLD.com\r\n\r\n", "old.com", "new.com"),
+             "GET / HTTP/1.1\r\nhost: new.com\r\n\r\n");
+    }
+
     std::fprintf(stderr, "networking_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

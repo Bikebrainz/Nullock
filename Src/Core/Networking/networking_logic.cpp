@@ -75,6 +75,43 @@ QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name)
     return {};
 }
 
+QString rewriteHostHeader(const QString &requestText,
+                          const QString &oldHost, const QString &newHost) {
+    const QString oh = oldHost.trimmed();
+    if (oh.isEmpty() || oldHost == newHost) return requestText;
+    // Split on '\n' but keep any trailing '\r' on each piece so line endings
+    // round-trip exactly. lines[0] is the request line and is never a header.
+    QStringList lines = requestText.split(QLatin1Char('\n'));
+    for (int i = 1; i < lines.size(); ++i) {
+        QString bare = lines[i];
+        const bool cr = bare.endsWith(QLatin1Char('\r'));
+        if (cr) bare.chop(1);
+        if (bare.isEmpty()) break;                 // blank line: end of headers
+        const int colon = bare.indexOf(QLatin1Char(':'));
+        if (colon <= 0) continue;
+        if (bare.left(colon).trimmed().compare(QStringLiteral("Host"), Qt::CaseInsensitive) != 0)
+            continue;
+        const QString value = bare.mid(colon + 1).trimmed();
+        // Match the hostname, tolerating an optional ":port" suffix which we
+        // carry across unchanged. Anything else is a deliberate desync.
+        QString suffix;
+        bool match = false;
+        if (value.compare(oh, Qt::CaseInsensitive) == 0) {
+            match = true;
+        } else if (value.size() > oh.size()
+                   && value.startsWith(oh, Qt::CaseInsensitive)
+                   && value.at(oh.size()) == QLatin1Char(':')) {
+            match = true;
+            suffix = value.mid(oh.size());         // e.g. ":8443"
+        }
+        if (!match) return requestText;            // Host names elsewhere -> leave it
+        lines[i] = bare.left(colon + 1) + QLatin1Char(' ') + newHost + suffix
+                 + (cr ? QStringLiteral("\r") : QString());
+        return lines.join(QLatin1Char('\n'));
+    }
+    return requestText;                            // no Host header present
+}
+
 bool transferEncodingIsChunked(const QString &transferEncodingValue) {
     // RFC 9112 6.1: the body is chunk-framed only when "chunked" is the FINAL coding.
     // A bare contains("chunked") also fires on "chunked, gzip" (NOT chunk-framed --
