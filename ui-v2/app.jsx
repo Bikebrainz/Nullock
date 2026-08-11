@@ -1777,6 +1777,10 @@ function ScansTab() {
   const [jsreconUrl, setJsreconUrl] = React.useState("");
   const [jsreconRes, setJsreconRes] = React.useState(null);
 
+  const [tlsHost, setTlsHost] = React.useState("");
+  const [tlsPort, setTlsPort] = React.useState("");
+  const [tlsRes, setTlsRes]   = React.useState(null);
+
   const runBusy2 = async (key, setRes, fn) => {
     setErr2(""); setBusy2(key); setRes(null);
     try {
@@ -1843,6 +1847,14 @@ function ScansTab() {
   const doJsRecon = () => {
     if (!jsreconUrl.trim()) { setErr2("enter a target URL"); return; }
     runBusy2("jsrecon", setJsreconRes, () => NL.actions.jsReconScan(jsreconUrl.trim()));
+  };
+
+  const doTlsInspect = () => {
+    if (!tlsHost.trim()) { setErr2("enter a target host"); return; }
+    const opts = {};
+    const port = parseInt(tlsPort, 10);
+    if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;
+    runBusy2("tls", setTlsRes, () => NL.actions.tlsInspect(tlsHost.trim(), opts));
   };
 
   const start = async () => {
@@ -2274,6 +2286,35 @@ function ScansTab() {
           </div>
         )}
         <RawResult res={jsreconRes} />
+      </Section>
+
+      <Section title="TLS / certificate inspection" hint="opens a live TLS connection and flags expired/self-signed/weak-key/hostname-mismatch/legacy-protocol config (CWE-295)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={tlsHost} onChange={e => setTlsHost(e.target.value)} placeholder="host or IP"
+                 onKeyDown={e => { if (e.key === "Enter") doTlsInspect(); }}
+                 style={{ ...inp, flex: "1 1 200px", minWidth: 160 }} spellCheck={false} />
+          <input value={tlsPort} onChange={e => setTlsPort(e.target.value)} placeholder="port (default 443)"
+                 onKeyDown={e => { if (e.key === "Enter") doTlsInspect(); }}
+                 style={{ ...inp, flex: "0 1 160px", minWidth: 120 }} spellCheck={false} />
+          <Btn2 k="tls" label="Inspect" onClick={doTlsInspect} />
+        </div>
+        {tlsRes && tlsRes.connected && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {tlsRes.protocol} · {tlsRes.cipher} · subject: {tlsRes.subject || "—"} ·{" "}
+            expires in {tlsRes.daysToExpiry != null ? tlsRes.daysToExpiry + "d" : "—"} ·{" "}
+            {tlsRes.findingCount} finding(s)
+          </div>
+        )}
+        {tlsRes && tlsRes.findingCount > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "12px" }}>
+            {tlsRes.findings.map((f, i) => (
+              <div key={i}>
+                <span style={{ color: SEVERITY_COLOR[f.severity] || "var(--dim)" }}>{f.severity}</span> {f.kind} — <span style={{ color: "var(--text-2)" }}>{f.detail}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <RawResult res={tlsRes} />
       </Section>
     </div>
   );

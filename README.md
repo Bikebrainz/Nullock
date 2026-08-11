@@ -54,7 +54,8 @@ Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum
                   scope-gated BFS crawler
 Discovery         In-app content/directory brute-force (soft-404 calibrated), robots.txt + sitemap
                   recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
-TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto)
+TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto) --
+                  SCANS tab
 OAST              In-process HTTP + DNS callback sinks for out-of-band confirmation -- one blast
                   confirms blind SSRF, RCE (OS command injection), XXE, and Log4Shell (jndi/DNS);
                   plus a deployable standalone server (nullock-oast) for a public / hosted tier.
@@ -64,7 +65,8 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings);
                   in-app SCANS tab drives target assess, synchronous audit-run, param miner,
                   multi-step request chains, exposure scan, service CVE correlation, JS recon,
-                  and the pipeline orchestrator, plus on-demand posture grade / asset inventory /
+                  TLS/certificate inspection, and the pipeline orchestrator, plus on-demand
+                  posture grade / asset inventory /
                   OWASP-compliance coverage / CI-gate rollups -- all previously API-only
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
                   + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
