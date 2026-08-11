@@ -5,14 +5,15 @@
 > INSPECTOR, PROBE, TESTS, DISCOVER, REPORTING, COLLABORATOR, and SEQUENCER tabs, plus GUI
 > reachability adds to existing tabs (deep-audit-all, the Intruder payload-generator dialog,
 > the CSRF PoC generator, the Collaborator Blast spray, the SCANS tab's Assess & audit
-> section covering all 9 unified scan/audit runners, Inspector's JWT TOOLKIT covering the JWT
-> attack toolkit, the ISSUES tab's Baseline bar / grouped view / per-finding Triage button,
-> and the PROBE tab's GraphQL schema-introspection audit + 5-attack active probe suite), have
-> wired 73 of those endpoints (TESTS covers 24 of the 26 originally-listed active checks —
+> section covering all 9 unified scan/audit runners plus Exposure scan / Service CVE
+> correlation / JS recon, Inspector's JWT TOOLKIT covering the JWT attack toolkit, the ISSUES
+> tab's Baseline bar / grouped view / per-finding Triage button, and the PROBE tab's
+> GraphQL schema-introspection audit + 5-attack active probe suite), have
+> wired 76 of those endpoints (TESTS covers 24 of the 26 originally-listed active checks —
 > `/api/cache/poison` has a distinct request shape outside its uniform `/<type>/test` contract,
 > and `/api/jwt/test` was deliberately pulled out of TEST_TYPES since that endpoint needs a
 > `token` field the uniform `{url,param?,method?}` contract has no place for; both are wired
-> elsewhere instead), leaving **24 of 173 (14%) still orphaned**. Verified per-bucket by
+> elsewhere instead), leaving **21 of 173 (12%) still orphaned**. Verified per-bucket by
 > grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with one correction
 > to the stated methodology: `NL.actions.runTest` builds its URL as `"/api/" + type + "/test"`,
 > one dynamic construction ui-v2 does use, so a pure literal-string grep alone would have missed
@@ -31,7 +32,8 @@ App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloa
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
 port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
-pipeline-run, and posture/inventory/compliance/gate rollups). The INSPECTOR tab now has a
+pipeline-run, posture/inventory/compliance/gate rollups, and exposure-scan/service-CVE-
+correlation/JS-recon single-target probes). The INSPECTOR tab now has a
 PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
 header-audit/waf-detect/secret-scan.
@@ -59,17 +61,17 @@ form has no `token` field, so it could never have actually worked.)
 `/api/report/html`, `/api/report/json`, `/api/workspace/pull`, `/api/workspace/push`
 wired via REPORTING tab.)
 
-## Recon / discovery (6)
-- `/api/exposure/scan`
+## Recon / discovery (3)
 - `/api/h2/events`
 - `/api/h2/streams`
 - `/api/http3/detect`
-- `/api/jsrecon/scan`
-- `/api/servicevulns/scan`
 
 (`/api/fingerprint`, `/api/waf/detect`, `/api/secrets/scan` wired via PROBE tab;
 `/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
-wired via DISCOVER tab.)
+wired via DISCOVER tab. `/api/exposure/scan`, `/api/servicevulns/scan`, `/api/jsrecon/scan`
+wired via the SCANS tab's Assess & audit section -- Exposure scan (curated sensitive-path
+probe), Service CVE correlation (banner-grab + curated CVE table), and JS recon
+(same-origin JS bundle endpoint/secret/source-map mining).)
 
 (`/api/oast/mint`, `/api/oast/poll` wired via COLLABORATOR tab. `/api/oast/blast` (the
 multi-vector SSRF/XXE/blind-RCE/Log4Shell spray) wired via the tab's new Blast section —

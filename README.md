@@ -40,11 +40,15 @@ Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE
                   deserialization (Java/PHP/Python/Ruby/.NET), active JWT attacks (alg:none /
                   signature-not-verified / weak-secret / RS256->HS256 confusion), cross-site WebSocket hijacking,
                   host-header injection, server-side prototype pollution, security-header/CSP audit,
-                  web cache poisoning + deception, dangerous HTTP methods, sensitive-file exposure,
+                  web cache poisoning + deception, dangerous HTTP methods, sensitive-file exposure
+                  (curated .git/.env/actuator/backup paths, confirmed by content signature -- SCANS tab),
                   HTTP request smuggling, race conditions
 Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
                   database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/Elasticsearch/Kibana/Tomcat/PHP/...),
-                  with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay
+                  with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay;
+                  network-service banner-grab + CVE correlation reachable from the SCANS tab
+JS recon          Mines same-origin JS bundles for API endpoints, hardcoded secrets, and exposed
+                  source maps -- SCANS tab
 Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
                   WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness,
                   scope-gated BFS crawler
@@ -59,9 +63,9 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
                   fire the SSRF/XXE/RCE/Log4Shell blast at a target URL from a Blast panel
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings);
                   in-app SCANS tab drives target assess, synchronous audit-run, param miner,
-                  multi-step request chains, and the pipeline orchestrator, plus on-demand
-                  posture grade / asset inventory / OWASP-compliance coverage / CI-gate rollups
-                  -- all previously API-only
+                  multi-step request chains, exposure scan, service CVE correlation, JS recon,
+                  and the pipeline orchestrator, plus on-demand posture grade / asset inventory /
+                  OWASP-compliance coverage / CI-gate rollups -- all previously API-only
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
                   + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
 CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +
