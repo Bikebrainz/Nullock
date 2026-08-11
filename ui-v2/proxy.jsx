@@ -366,6 +366,7 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
   const [overlay, setOverlay] = React.useState(null); // { title, body } | null
   const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
   const [cmpMenuOpen, setCmpMenuOpen] = React.useState(false);
+  const [authzOpen, setAuthzOpen] = React.useState(false);
 
   if (!row) {
     return (
@@ -505,6 +506,8 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
             alert("CSRF PoC error: " + e);
           }
         }} title="Generate an auto-submitting CSRF proof-of-concept HTML page for this request (CWE-352)">⚔ CSRF POC</button>
+        <button onClick={() => setAuthzOpen(true)}
+                title="Replay this request as multiple identities and flag divergent responses (BOLA / horizontal / vertical privilege, CWE-863)">⚖ AUTHZ TEST</button>
         {diffMark === null && (
           <button onClick={() => setDiffMark(row.id)}
                   title="Mark this row as the left-hand side of a diff">
@@ -580,6 +583,184 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
           onClearMark={() => { setDiffMark(null); setDiffOpen(null); }}
         />
       )}
+      {authzOpen && (
+        <AuthzTestOverlay rowId={row.id} onClose={() => setAuthzOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+// Parse "Header: value" lines (one per line) into a plain object, skipping
+// blank lines and lines with no ':'. Shared by the Authz Test identity
+// editor -- each identity's overlay headers are typed as raw header text.
+function parseHeaderLines(text) {
+  const headers = {};
+  (text || "").split(/\r?\n/).forEach((line) => {
+    const idx = line.indexOf(":");
+    if (idx <= 0) return;
+    const k = line.slice(0, idx).trim();
+    const v = line.slice(idx + 1).trim();
+    if (k) headers[k] = v;
+  });
+  return headers;
+}
+
+// Multi-identity authz replay (Burp Auth Analyzer equivalent). Lets the
+// user define N identities as name + raw "Header: value" lines, replays
+// the captured row as each, and shows per-identity status/size plus a
+// divergence flag (server also files an authz-divergence finding when
+// divergent, which shows up in Issues independently of this modal).
+function AuthzTestOverlay({ rowId, onClose }) {
+  const [identities, setIdentities] = React.useState([
+    { id: 1, name: "user-a", headersText: "Cookie: session=" },
+    { id: 2, name: "user-b", headersText: "Cookie: session=" },
+  ]);
+  const [nextId, setNextId] = React.useState(3);
+  const [result, setResult] = React.useState(null); // { ok, divergent, results, row } | null
+  const [error, setError] = React.useState(null);
+  const [running, setRunning] = React.useState(false);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const setField = (id, field, value) => {
+    setIdentities((prev) => prev.map((it) => (it.id === id ? { ...it, [field]: value } : it)));
+  };
+  const addIdentity = () => {
+    setIdentities((prev) => [...prev, { id: nextId, name: "identity-" + nextId, headersText: "" }]);
+    setNextId((n) => n + 1);
+  };
+  const removeIdentity = (id) => {
+    setIdentities((prev) => prev.filter((it) => it.id !== id));
+  };
+
+  const run = async () => {
+    setError(null);
+    setResult(null);
+    const payload = identities
+      .map((it) => ({ name: it.name.trim(), headers: parseHeaderLines(it.headersText) }))
+      .filter((it) => it.name);
+    if (payload.length === 0) { setError("At least one named identity is required."); return; }
+    setRunning(true);
+    try {
+      const r = await NL.actions.authzTest(rowId, payload);
+      if (!r.ok) setError(r.error || "authz-test failed");
+      else setResult(r);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--accent)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(80vw, 760px)", maxHeight: "80vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>⚖ AUTHZ TEST · row #{rowId}</span>
+          <button onClick={onClose} style={{ ...btn, borderColor: "var(--line)", color: "var(--dim)" }}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Replays this request once per identity below, overlaying each identity's headers
+          onto the captured request (unlisted headers pass through unchanged). A divergent
+          status code or body size across identities suggests a BOLA / horizontal / vertical
+          privilege issue and is also filed as a finding in Issues.
+        </div>
+        <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {identities.map((it) => (
+            <div key={it.id} style={{ border: "1px solid var(--line-soft)", padding: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input value={it.name}
+                       onChange={(e) => setField(it.id, "name", e.target.value)}
+                       placeholder="identity name"
+                       style={{
+                         flex: 1, background: "var(--bg-deep)", color: "var(--text)",
+                         border: "1px solid var(--line)", padding: "3px 6px",
+                         fontFamily: "var(--ff-mono)", fontSize: "11px",
+                       }} />
+                <button onClick={() => removeIdentity(it.id)} style={btn}>REMOVE</button>
+              </div>
+              <textarea value={it.headersText}
+                        onChange={(e) => setField(it.id, "headersText", e.target.value)}
+                        placeholder={"Header: value\\nAuthorization: Bearer ..."}
+                        style={{
+                          width: "100%", minHeight: 50, background: "var(--bg-deep)",
+                          color: "var(--text)", border: "1px solid var(--line)",
+                          padding: 6, fontFamily: "var(--ff-mono)", fontSize: "11px",
+                          resize: "vertical", boxSizing: "border-box",
+                        }} />
+            </div>
+          ))}
+          <div>
+            <button onClick={addIdentity} style={btn}>+ ADD IDENTITY</button>
+          </div>
+          <div>
+            <button onClick={run} disabled={running}
+                    style={{ ...btn, opacity: running ? 0.5 : 1 }}>
+              {running ? "RUNNING…" : "▸ RUN"}
+            </button>
+          </div>
+          {error && (
+            <div style={{ color: "var(--err, #e05555)", fontSize: "11px" }}>{error}</div>
+          )}
+          {result && (
+            <div>
+              <div style={{
+                marginBottom: 6, fontSize: "11px",
+                color: result.divergent ? "var(--err, #e05555)" : "var(--ok, #55c07a)",
+              }}>
+                {result.divergent
+                  ? "⚠ DIVERGENT — responses differ across identities (finding filed in Issues)"
+                  : "✓ consistent — same status/size across all identities"}
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                <thead>
+                  <tr style={{ color: "var(--dim)", textAlign: "left" }}>
+                    <th style={{ padding: "4px 6px" }}>identity</th>
+                    <th style={{ padding: "4px 6px" }}>status</th>
+                    <th style={{ padding: "4px 6px" }}>body size</th>
+                    <th style={{ padding: "4px 6px" }}>error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(result.results || []).map((r, i) => (
+                    <tr key={i} style={{ borderTop: "1px solid var(--line-soft)" }}>
+                      <td style={{ padding: "4px 6px", color: "var(--text)" }}>{r.identity}</td>
+                      <td style={{ padding: "4px 6px" }}>{r.ok ? r.status : "—"}</td>
+                      <td style={{ padding: "4px 6px" }}>{r.ok ? r.bodySize : "—"}</td>
+                      <td style={{ padding: "4px 6px", color: "var(--dim)" }}>{r.error || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

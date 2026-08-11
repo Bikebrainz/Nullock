@@ -222,6 +222,12 @@
       // Returns { ok, method, url, note, html }.
       return post("/api/csrf/poc", { id: rowId }).then(r => r.json());
     },
+    authzTest(rowId, identities) {
+      // Multi-identity replay (Burp Auth Analyzer equivalent, CWE-863).
+      // identities: [{name, headers: {...}}]. Returns
+      // { ok, divergent, results: [{identity,ok,status,bodySize,error}], row }.
+      return post("/api/authz-test", { rowId, identities }).then(r => r.json());
+    },
     portscanStart(payload) { return post("/api/portscan/start", payload).then(r => r.json()); },
     portscanStop()         { return post("/api/portscan/stop"); },
     portscanClear()        { return post("/api/portscan/clear"); },
