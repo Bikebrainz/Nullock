@@ -8,11 +8,11 @@
 > section covering all 9 unified scan/audit runners, Inspector's JWT TOOLKIT covering the JWT
 > attack toolkit, the ISSUES tab's Baseline bar / grouped view / per-finding Triage button,
 > and the PROBE tab's GraphQL schema-introspection audit + 5-attack active probe suite), have
-> wired 72 of those endpoints (TESTS covers 24 of the 26 originally-listed active checks —
+> wired 73 of those endpoints (TESTS covers 24 of the 26 originally-listed active checks —
 > `/api/cache/poison` has a distinct request shape outside its uniform `/<type>/test` contract,
 > and `/api/jwt/test` was deliberately pulled out of TEST_TYPES since that endpoint needs a
 > `token` field the uniform `{url,param?,method?}` contract has no place for; both are wired
-> elsewhere instead), leaving **25 of 173 (14%) still orphaned**. Verified per-bucket by
+> elsewhere instead), leaving **24 of 173 (14%) still orphaned**. Verified per-bucket by
 > grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with one correction
 > to the stated methodology: `NL.actions.runTest` builds its URL as `"/api/" + type + "/test"`,
 > one dynamic construction ui-v2 does use, so a pure literal-string grep alone would have missed
@@ -96,8 +96,7 @@ entry point at all yet.)
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (11)
-- `/api/authz-test`
+## GraphQL / WS / session (10)
 - `/api/intruder/multi`
 - `/api/portscan/import-nmap`
 - `/api/portscan/to-findings`
@@ -111,7 +110,8 @@ FLAT/GROUPED toggle, and per-finding Triage button.)
 
 (`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
 dialog; `/api/intruder/rule-ops` wired via Intruder's RULES bar. `/api/graphql/probe`,
-`/api/graphql/schema` wired via the PROBE tab.)
+`/api/graphql/schema` wired via the PROBE tab. `/api/authz-test` wired via the AUTHZ TEST
+button in Proxy history / Site map's DetailPane.)
 
 ## Other (1)
 - `/api/extensions/install-builtins`
