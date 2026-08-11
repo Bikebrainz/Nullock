@@ -171,6 +171,14 @@
         <p>One-shot target assessment (fingerprint + CVE correlation + header/method/TLS audit), a synchronous deep-audit run against a single URL with per-tester include toggles, a response-diff hidden-parameter miner, multi-step raw-HTTP request chains with variable extraction/substitution, and the capstone pipeline that bridges port-scan results straight into a full web assessment — all from the SCANS tab, alongside on-demand posture grade, asset inventory, OWASP/compliance coverage, and CI-gate pass/fail rollups. The same tab also drives an exposure scan (curated .git/.env/actuator/backup path probe, confirmed by content signature), a service CVE correlation scan (banner-grab a host's open ports against a curated CVE table), and JS recon (mines a page's same-origin JS bundles for API endpoints, hardcoded secrets, and exposed source maps).</p>
       </div>
       <div class="card">
+        <h3>Engagement notes</h3>
+        <p>Free-text notes for the current project, editable right in the Scope tab and persisted server-side — no more curling <code>/api/scope/notes</code> by hand.</p>
+      </div>
+      <div class="card">
+        <h3>Update check</h3>
+        <p>A dismissible corner banner surfaces new releases as soon as the background version check finds one — current/latest version and a link straight to the release notes.</p>
+      </div>
+      <div class="card">
         <h3>Local first</h3>
         <p>Your captures never leave the machine. No telemetry, no account, no license server. Air-gap it if you want.</p>
       </div>

@@ -56,6 +56,7 @@
     NL.themeColors        = snap.themeColors || {};
     NL.themeIsBuiltin     = snap.themeIsBuiltin === true;
     NL.themesDir          = snap.themesDir || "";
+    NL.update             = snap.update || { available: false, currentVersion: "", latestVersion: "", releaseUrl: "", releaseNotes: "", publishedAt: "" };
 
     // Push the backend theme's colors into the document as inline CSS
     // variables. The CSS file already supplies defaults via

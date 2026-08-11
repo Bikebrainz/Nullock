@@ -105,6 +105,8 @@ AI payloads       Local Ollama expands a seed payload set into new candidates (o
 Scriptable CLI    Drive every panel from your shell
 Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/)
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
+Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
+Update check       Dismissible in-app banner surfaces new-release availability + release notes
 ```
 
 ## 30 seconds to first capture
