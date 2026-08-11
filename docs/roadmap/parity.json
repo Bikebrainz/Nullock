@@ -2028,12 +2028,18 @@
     {
       "area": "sequencer",
       "feature": "Character-level test: Character transition analysis (is the character at position i in token k independent of the character at position i in token k-1)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Completely absent. This is the test that catches a generator whose successive outputs are correlated per-position while each position's marginal distribution is uniform — precisely the case positionalEntropy is blind to by construction.",
-      "why": "Confirmed: 1 hit for \"transition\" across Src/ and it is unrelated. I verified the two candidates the first pass named are indeed not transition tests by reading them.",
-      "evidence": "positionalEntropy (sequencer_logic.cpp:252-298) computes a marginal per-column histogram across the whole sample — `for (const QString &t : fw) cnt[t[c].unicode()]++;` — with no reference to token order. hammingDistance (:69-75) is `for (int i = 0; i < n; ++i) if (a[i] != b[i]) ++d;` — a count of differing positions between consecutive tokens, not P(char_k | char_{k-1}) per position."
+      "gap": "None. Per-position character-transition independence is measured as Cramer's V of the consecutive-token contingency table and flagged when any position is strongly associated -- catching per-position serial correlation that per-position entropy is blind to.",
+      "why": "Closed 2026-08-10 (80e3672): maxPositionalTransitionV added + surfaced as result['transition']; mutation-proven.",
+      "evidence": "Src/Core/Networking/sequencer_logic.cpp maxPositionalTransitionV (sequencer.hpp), set as result['transition'] in analyzeTokens; Tests/sequencer +1-shift + sentinel cases.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "80e3672",
+        "note": "Per-position character-transition (Cramer's V) test implemented + tested."
+      }
     },
     {
       "area": "sequencer",
