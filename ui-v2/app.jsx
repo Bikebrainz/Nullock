@@ -217,6 +217,9 @@ function reducer(state, action) {
       act("scopeRemoveOut", glob);
       return { ...state, scope: { ...state.scope, out: state.scope.out.filter((_, i) => i !== action.index) } };
     }
+    case "scope-set-notes":
+      act("scopeSetNotes", action.value);
+      return { ...state, scope: { ...state.scope, notes: action.value } };
 
     case "clear-history":
       act("clearHistory");
@@ -765,7 +768,7 @@ function SettingsTab() {
         <Row label="Scope (in)"  value={String((scope.in || []).length) + " globs"} />
         <Row label="Scope (out)" value={String((scope.out || []).length) + " globs"} />
         <Row label="Themes dir" value={b.themesDir || (window.NL ? NL.themesDir : "")} copyable />
-        <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="(none)" />
+        <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="edit in Scope tab" />
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
           <Btn label="Export HAR" onClick={() => NL.actions.exportHar()} />
           <Btn label="Export Postman" onClick={() => {
@@ -4933,11 +4936,58 @@ function ColorsEditor() {
   );
 }
 
+// Dismissible corner banner for the backend's async update check
+// (UpdateChecker, packed into every /api/snapshot as `update`). Pure
+// presentational -- App owns the dismissed-version state.
+function UpdateBanner({ update, onDismiss }) {
+  if (!update || !update.available || !update.latestVersion) return null;
+  const openRelease = () => {
+    const u = update.releaseUrl;
+    if (!u) return;
+    if (typeof Qt !== "undefined" && Qt.openUrlExternally) Qt.openUrlExternally(u);
+    else window.open(u, "_blank");
+  };
+  return (
+    <div style={{
+      position: "fixed", top: 8, right: 8, zIndex: 60, width: 300,
+      background: "var(--pane)", border: "1px solid var(--accent)",
+      padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6,
+      boxShadow: "0 4px 16px rgba(0,0,0,0.35)", fontFamily: "var(--ff-mono)",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--accent)", fontWeight: 600 }}>
+          Update available
+        </span>
+        <span onClick={onDismiss} title="Dismiss" style={{ cursor: "pointer", color: "var(--dim)" }}>✕</span>
+      </div>
+      <div style={{ fontSize: "var(--fz-sm)", color: "var(--text)" }}>
+        {update.currentVersion ? `v${update.currentVersion} → ` : ""}v{update.latestVersion}
+      </div>
+      {update.releaseNotes && (
+        <div title={update.releaseNotes} style={{
+          fontSize: "var(--fz-xs)", color: "var(--dim)", maxHeight: 60,
+          overflow: "auto", whiteSpace: "pre-wrap",
+        }}>
+          {update.releaseNotes.slice(0, 240)}
+        </div>
+      )}
+      {update.releaseUrl && (
+        <button className="btn" onClick={openRelease} style={{ alignSelf: "flex-start" }}>
+          VIEW RELEASE
+        </button>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = React.useState("proxy");
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [bootShown, setBootShown] = React.useState(() => tweaks.bootSplash !== false);
+  const [updateDismissed, setUpdateDismissed] = React.useState(() => {
+    try { return localStorage.getItem("nl-update-dismissed") || ""; } catch { return ""; }
+  });
 
   const initialState = React.useMemo(() => ({
     rows: NL.rows,
@@ -5040,8 +5090,16 @@ function App() {
 
   const copyCa = () => navigator.clipboard?.writeText(NL.bootInfo.caPath);
 
+  const update = (window.NL && NL.update) || { available: false };
+  const showUpdateBanner = update.available && update.latestVersion && update.latestVersion !== updateDismissed;
+  const dismissUpdate = () => {
+    setUpdateDismissed(update.latestVersion);
+    try { localStorage.setItem("nl-update-dismissed", update.latestVersion); } catch {}
+  };
+
   return (
     <div className="nl-window" data-screen-label="Nullock">
+      {showUpdateBanner && <UpdateBanner update={update} onDismiss={dismissUpdate} />}
       <TitleBar
         tabs={tabsWithDots}
         current={tab}

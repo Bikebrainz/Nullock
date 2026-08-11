@@ -96,9 +96,26 @@ function ScopeColumn({ label, colorVar, list, kind, dispatch, includeSubdomains 
 function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
   const [includeSubdomains, setIncludeSubdomains] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
+  const [notesDraft, setNotesDraft] = React.useState(scope.notes || "");
+  const [notesDirty, setNotesDirty] = React.useState(false);
+  const [notesSaved, setNotesSaved] = React.useState(false);
+
+  // Stay in sync with the snapshot (e.g. another client editing the same
+  // project) except while the user has unsaved local edits -- otherwise a
+  // poll mid-typing would stomp on what they're writing.
+  React.useEffect(() => {
+    if (!notesDirty) setNotesDraft(scope.notes || "");
+  }, [scope.notes, notesDirty]);
+
+  const saveNotes = () => {
+    dispatch({ type: "scope-set-notes", value: notesDraft });
+    setNotesDirty(false);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 1400);
+  };
 
   return (
-    <div className="tab-body" style={{ gridTemplateRows: "auto auto 1fr" }}>
+    <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
       <div className="ca-card">
         <div className="ca-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -130,6 +147,31 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
           include subdomains when adding
         </label>
         <span className="ph-count">project: {bootInfo.project}</span>
+      </div>
+
+      <div style={{ padding: "8px 10px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="ph-corner">▸</span>
+          <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)" }}>Notes</span>
+          <span style={{ flex: 1 }} />
+          {notesDirty && <span style={{ fontSize: "var(--fz-xs)", color: "var(--accent)" }}>unsaved</span>}
+          <button className="btn" disabled={!notesDirty} onClick={saveNotes}>
+            {notesSaved ? "✓ SAVED" : "SAVE"}
+          </button>
+        </div>
+        <textarea
+          value={notesDraft}
+          onChange={e => { setNotesDraft(e.target.value); setNotesDirty(true); }}
+          onBlur={() => { if (notesDirty) saveNotes(); }}
+          onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveNotes(); } }}
+          placeholder="free-text engagement notes for this project…"
+          style={{
+            width: "100%", minHeight: 44, maxHeight: 120, resize: "vertical",
+            background: "var(--bg-deep)", color: "var(--text)",
+            border: "1px solid var(--line)", fontFamily: "var(--ff-mono)",
+            fontSize: "var(--fz-sm)", padding: "6px 8px", boxSizing: "border-box",
+          }}
+        />
       </div>
 
       <div className="scope-grid">
