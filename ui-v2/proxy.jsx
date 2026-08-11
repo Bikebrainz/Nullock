@@ -1306,10 +1306,38 @@ function runCodec(name, input) {
   }
 }
 
+// Re-indent an XML/HTML fragment with no DOM dependency (works identically
+// in a browser and under plain Node for testing). Regex-based: split on
+// adjacent tag boundaries, then walk lines tracking a nesting depth so
+// closing tags dedent before they print and self-closing/void/inline
+// open-close tags don't affect depth at all.
+const VOID_TAGS = /^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b[^>]*>$/i;
+function prettyPrintMarkup(text) {
+  const xml = String(text).replace(/></g, ">\n<").trim();
+  if (!xml) return "";
+  const lines = xml.split("\n");
+  let depth = 0;
+  const out = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const isClosing = /^<\//.test(line);
+    if (isClosing) depth = Math.max(0, depth - 1);
+    out.push("  ".repeat(depth) + line);
+    if (isClosing) continue;
+    const selfClosing = /\/>$/.test(line) || /^<[?!]/.test(line);
+    const openCloseSame = /^<([a-zA-Z][\w:-]*)\b[^>]*>.*<\/\1>$/.test(line);
+    if (!selfClosing && !VOID_TAGS.test(line) && !openCloseSame && /^<[a-zA-Z]/.test(line)) {
+      depth++;
+    }
+  }
+  return out.join("\n");
+}
+
 // Split a raw HTTP message into {firstLine, headers, body} and render
 // according to the selected view tab. 'raw' = original, 'headers' =
 // status/request line + header block, 'body' = body only, 'preview' =
-// pretty-print JSON or just the body, 'hex' = canonical hex dump.
+// pretty-print JSON/XML/HTML or just the body, 'hex' = canonical hex dump.
 function renderView(raw, view) {
   if (!raw || view === "raw") return raw || "";
   const splitIdx = raw.indexOf("\n\n");
@@ -1319,10 +1347,14 @@ function renderView(raw, view) {
   if (view === "headers") return headers;
   if (view === "body")    return body || "(no body)";
   if (view === "preview") {
-    // Try JSON pretty-print first; fall back to body as-is.
+    // Try JSON pretty-print first, then XML/HTML re-indentation; fall back
+    // to the body as-is.
     const t = (body || "").trim();
     if (t.startsWith("{") || t.startsWith("[")) {
       try { return JSON.stringify(JSON.parse(t), null, 2); } catch (e) {}
+    }
+    if (t.startsWith("<")) {
+      try { return prettyPrintMarkup(t); } catch (e) {}
     }
     return body || "(no body)";
   }
