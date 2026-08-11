@@ -384,6 +384,23 @@
     // Ask a local Ollama model (falls back to a heuristic if unreachable) to
     // grade impact / suggest a fix / flag false-positive risk for one finding.
     triageFinding(payload) { return post("/api/triage/finding", payload).then(r => r.json()); },
+
+    // --- recon: sensitive-path exposure / service-banner CVE / JS mining ---
+    // Probes curated sensitive paths (.git/.env/actuator/...) against one
+    // target URL, confirmed by content signature. Read-only.
+    exposureScan(url, opts) {
+      return post("/api/exposure/scan", Object.assign({ url }, opts)).then(r => r.json());
+    },
+    // Banner-grabs network services on a host and matches versions against a
+    // curated CVE table. `opts` may carry { ports: [...], timeoutMs }.
+    servicevulnsScan(host, opts) {
+      return post("/api/servicevulns/scan", Object.assign({ host }, opts)).then(r => r.json());
+    },
+    // Mines a page's same-origin JS bundles for API endpoints, hardcoded
+    // secrets, and exposed source maps. `opts` may carry { headers, maxScripts }.
+    jsReconScan(url, opts) {
+      return post("/api/jsrecon/scan", Object.assign({ url }, opts)).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {

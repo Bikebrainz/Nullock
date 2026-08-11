@@ -1764,6 +1764,16 @@ function ScansTab() {
   const [chainContinue, setChainContinue] = React.useState(false);
   const [chainRes, setChainRes]         = React.useState(null);
 
+  const [exposureUrl, setExposureUrl] = React.useState("");
+  const [exposureRes, setExposureRes] = React.useState(null);
+
+  const [svHost, setSvHost]   = React.useState("");
+  const [svPorts, setSvPorts] = React.useState("");
+  const [svRes, setSvRes]     = React.useState(null);
+
+  const [jsreconUrl, setJsreconUrl] = React.useState("");
+  const [jsreconRes, setJsreconRes] = React.useState(null);
+
   const runBusy2 = async (key, setRes, fn) => {
     setErr2(""); setBusy2(key); setRes(null);
     try {
@@ -1812,6 +1822,24 @@ function ScansTab() {
     try { steps = JSON.parse(chainSteps); } catch (e) { setErr2("steps must be valid JSON: " + (e && e.message ? e.message : e)); return; }
     if (!Array.isArray(steps) || !steps.length) { setErr2("steps must be a non-empty JSON array"); return; }
     runBusy2("chain", setChainRes, () => NL.actions.chainRun(steps, chainContinue));
+  };
+
+  const doExposureScan = () => {
+    if (!exposureUrl.trim()) { setErr2("enter a target URL"); return; }
+    runBusy2("exposure", setExposureRes, () => NL.actions.exposureScan(exposureUrl.trim()));
+  };
+
+  const doServiceVulns = () => {
+    if (!svHost.trim()) { setErr2("enter a target host"); return; }
+    const opts = {};
+    const ports = svPorts.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(p => Number.isFinite(p) && p > 0 && p < 65536);
+    if (ports.length) opts.ports = ports;
+    runBusy2("servicevulns", setSvRes, () => NL.actions.servicevulnsScan(svHost.trim(), opts));
+  };
+
+  const doJsRecon = () => {
+    if (!jsreconUrl.trim()) { setErr2("enter a target URL"); return; }
+    runBusy2("jsrecon", setJsreconRes, () => NL.actions.jsReconScan(jsreconUrl.trim()));
   };
 
   const start = async () => {
@@ -2195,6 +2223,54 @@ function ScansTab() {
           </div>
         )}
         <RawResult res={chainRes} />
+      </Section>
+
+      <Section title="Exposure scan" hint="probes curated sensitive paths (.git/.env/actuator/backups/...), confirmed by content signature">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={exposureUrl} onChange={e => setExposureUrl(e.target.value)} placeholder="https://target/"
+                 onKeyDown={e => { if (e.key === "Enter") doExposureScan(); }}
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <Btn2 k="exposure" label="Scan" onClick={doExposureScan} />
+        </div>
+        {exposureRes && exposureRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {exposureRes.probed} path(s) probed · {exposureRes.hitCount} hit(s){exposureRes.catchAll ? " · catch-all response detected (results may be unreliable)" : ""}
+          </div>
+        )}
+        <RawResult res={exposureRes} />
+      </Section>
+
+      <Section title="Service CVE correlation" hint="banner-grabs network services and matches versions against a curated CVE table">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={svHost} onChange={e => setSvHost(e.target.value)} placeholder="host or IP"
+                 onKeyDown={e => { if (e.key === "Enter") doServiceVulns(); }}
+                 style={{ ...inp, flex: "1 1 200px", minWidth: 160 }} spellCheck={false} />
+          <input value={svPorts} onChange={e => setSvPorts(e.target.value)} placeholder="ports (optional, e.g. 22,80,443)"
+                 style={{ ...inp, flex: "1 1 200px", minWidth: 160 }} spellCheck={false} />
+          <Btn2 k="servicevulns" label="Scan" onClick={doServiceVulns} />
+        </div>
+        {svRes && svRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {svRes.portsProbed} port(s) probed · {svRes.hitCount} CVE hit(s)
+          </div>
+        )}
+        <RawResult res={svRes} />
+      </Section>
+
+      <Section title="JS recon" hint="mines same-origin JS bundles for API endpoints, hardcoded secrets, and exposed source maps">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={jsreconUrl} onChange={e => setJsreconUrl(e.target.value)} placeholder="https://target/"
+                 onKeyDown={e => { if (e.key === "Enter") doJsRecon(); }}
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <Btn2 k="jsrecon" label="Mine" onClick={doJsRecon} />
+        </div>
+        {jsreconRes && jsreconRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {(jsreconRes.scripts || []).length} script(s) · {jsreconRes.endpointCount} endpoint(s) found ·{" "}
+            {(jsreconRes.sourceMaps || []).filter(m => m.accessible).length} exposed source map(s) · {jsreconRes.secretCount} secret(s)
+          </div>
+        )}
+        <RawResult res={jsreconRes} />
       </Section>
     </div>
   );
