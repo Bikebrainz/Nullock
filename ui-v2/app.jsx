@@ -2952,6 +2952,25 @@ function ProbeTab() {
         {res.hits && res.hits.length ? <Table cols={["severity", "type", "location", "masked"]} rows={res.hits} cell={h => [<span style={{ color: sevColor(h.severity) }}>{h.severity}</span>, h.type, <span style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{h.location}</span>, <span style={{ color: "var(--dim)" }}>{h.masked}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no secrets found in client code</div>}
       </div>
     );
+    if (kind === "graphqlSchema") {
+      if (res.ok === true && res.introspectionEnabled === false) return (
+        <div style={{ color: "var(--dim)", fontSize: "12px" }}>introspection disabled or unreachable{res.note ? " — " + res.note : ""}</div>
+      );
+      return (
+        <div>
+          <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>introspection enabled · {res.types || 0} types · {res.fields || 0} fields · mutation root: {res.mutationType || "—"}</div>
+          {res.dangerousMutations && res.dangerousMutations.length ? <Section title={"Dangerous mutations (" + res.dangerousMutations.length + ")"}><Table cols={["mutation"]} rows={res.dangerousMutations} cell={m => [<span style={{ color: "var(--err)" }}>{m}</span>]} /></Section> : <div style={{ color: "var(--dim)", fontSize: "12px", marginBottom: 8 }}>no obviously dangerous mutation names found</div>}
+          {res.sensitiveFields && res.sensitiveFields.length ? <Section title={"Sensitive fields (" + res.sensitiveFields.length + ")"}><Table cols={["type.field"]} rows={res.sensitiveFields} cell={f => [<span style={{ color: "var(--err)" }}>{f}</span>]} /></Section> : null}
+        </div>
+      );
+    }
+    if (kind === "graphqlProbe") return (
+      <div style={{ color: "var(--dim)", fontSize: "12px" }}>
+        {res.queued !== undefined
+          ? "queued " + res.queued + " active GraphQL probe(s) (introspection / field-suggestion / alias-amplification / depth-bypass / batch-bypass) against " + res.target + " — findings stream into Issues"
+          : (res.error || "no response")}
+      </div>
+    );
     return null;
   };
 
@@ -2959,16 +2978,18 @@ function ProbeTab() {
     <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
         <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Probe</span>
-        <span style={{ color: "var(--dim)", fontSize: "11px" }}>active per-URL checks — tech/CVE, security headers, WAF, client-side secrets (also sent to Issues)</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>active per-URL checks — tech/CVE, security headers, WAF, client-side secrets, GraphQL (also sent to Issues)</span>
       </div>
       <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://target.example.com/path"
-               onKeyDown={e => { if (e.key === "Enter" && kind) run(kind, { fingerprint: NL.actions.fingerprintUrl, headers: NL.actions.auditHeaders, waf: NL.actions.detectWaf, secrets: NL.actions.scanSecrets }[kind]); }}
+               onKeyDown={e => { if (e.key === "Enter" && kind) run(kind, { fingerprint: NL.actions.fingerprintUrl, headers: NL.actions.auditHeaders, waf: NL.actions.detectWaf, secrets: NL.actions.scanSecrets, graphqlSchema: NL.actions.graphqlSchema, graphqlProbe: NL.actions.graphqlProbe }[kind]); }}
                style={{ flex: "1 1 320px", minWidth: 220, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
         <Btn label="fingerprint" k="fingerprint" fn={NL.actions.fingerprintUrl} />
         <Btn label="header audit" k="headers" fn={NL.actions.auditHeaders} />
         <Btn label="waf detect" k="waf" fn={NL.actions.detectWaf} />
         <Btn label="secret scan" k="secrets" fn={NL.actions.scanSecrets} />
+        <Btn label="graphql schema" k="graphqlSchema" fn={NL.actions.graphqlSchema} />
+        <Btn label="graphql probe" k="graphqlProbe" fn={NL.actions.graphqlProbe} />
         <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{busy ? "probing…" : err || ""}</span>
       </div>
       <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
