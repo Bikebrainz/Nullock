@@ -455,6 +455,43 @@ double compressionRatio(const QByteArray &bytes) {
     return double(comp) / double(bytes.size());
 }
 
+double maxPositionalTransitionV(const QStringList &tokens) {
+    const int n = tokens.size();
+    if (n < 40) return -1.0;
+    int width = tokens[0].size();
+    for (const QString &t : tokens) width = qMin(width, int(t.size()));
+    if (width <= 0) return -1.0;
+    const double N = double(n - 1);          // number of consecutive-token pairs
+    double maxV = 0.0;
+    for (int p = 0; p < width; ++p) {
+        // Index the distinct "from" (prev-token) and "to" (this-token) symbols
+        // at this position, then build the contingency table.
+        QHash<QChar, int> rowIdx, colIdx;
+        for (int k = 1; k < n; ++k) {
+            const QChar a = tokens[k - 1].at(p), b = tokens[k].at(p);
+            if (!rowIdx.contains(a)) rowIdx.insert(a, rowIdx.size());
+            if (!colIdx.contains(b)) colIdx.insert(b, colIdx.size());
+        }
+        const int R = rowIdx.size(), C = colIdx.size();
+        if (R < 2 || C < 2) continue;        // no variation -> entropy tests own this
+        QVector<QVector<double>> obs(R, QVector<double>(C, 0.0));
+        QVector<double> rowT(R, 0.0), colT(C, 0.0);
+        for (int k = 1; k < n; ++k) {
+            const int a = rowIdx[tokens[k - 1].at(p)], b = colIdx[tokens[k].at(p)];
+            obs[a][b] += 1.0; rowT[a] += 1.0; colT[b] += 1.0;
+        }
+        double chi = 0.0;
+        for (int a = 0; a < R; ++a)
+            for (int b = 0; b < C; ++b) {
+                const double e = rowT[a] * colT[b] / N;
+                if (e > 0.0) { const double d = obs[a][b] - e; chi += d * d / e; }
+            }
+        const double v = std::sqrt(chi / (N * double(qMin(R, C) - 1)));   // Cramer's V
+        if (v > maxV) maxV = v;
+    }
+    return maxV;
+}
+
 QString reliabilityRating(int sampleCount) {
     // Randomness estimates converge with the corpus size; below the deep-test
     // floor almost nothing can be said. Thresholds mirror common guidance
@@ -665,6 +702,18 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     lcsObj["longest"] = lcs;
     lcsObj["length"]  = lcs.size();
     result["lcs"] = lcsObj;
+
+    // Per-position character-transition independence (serial correlation across
+    // consecutive tokens). Flags a generator that is per-position predictable
+    // even when each position's marginal distribution looks uniform.
+    {
+        const double transV = maxPositionalTransitionV(tokens);
+        QJsonObject tr;
+        tr["maxCramersV"] = transV;
+        tr["applicable"]  = transV >= 0.0;
+        tr["failed"]      = transV >= 0.0 && transV > 0.5;   // strong association
+        result["transition"] = tr;
+    }
 
     // Sequential / monotonic counter detection.
     qint64 delta = 0;

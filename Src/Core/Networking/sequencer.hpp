@@ -69,6 +69,13 @@ double compressionRatio(const QByteArray &bytes);
 //   Burp's Sequencer likewise gates confidence on sample count. Returns one of
 //   "insufficient" / "low" / "medium" / "high" / "very-high".
 QString reliabilityRating(int sampleCount);
+// maxPositionalTransitionV: the strongest per-position serial dependence across
+//   consecutive tokens, as Cramer's V (0 = the character at a position is
+//   independent of the same position in the previous token; 1 = fully
+//   determined). Catches a generator whose successive outputs are correlated
+//   per-position even when each position's marginal distribution looks uniform
+//   -- the exact blind spot of per-position entropy. < 0 when too few tokens.
+double maxPositionalTransitionV(const QStringList &tokens);
 
 class Sequencer : public QObject {
     Q_OBJECT

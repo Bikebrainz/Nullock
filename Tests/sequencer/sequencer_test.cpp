@@ -340,6 +340,19 @@ int main(int argc, char **argv) {
         chk("reliability: 500 -> medium", reliabilityRating(500) == "medium");
         chk("reliability: 2000 -> high", reliabilityRating(2000) == "high");
         chk("reliability: 10000 -> very-high", reliabilityRating(10000) == "very-high");
+        // Per-position character-transition (Cramer's V). A "+1 shift" corpus
+        // has uniform per-position marginals but a deterministic transition ->
+        // strong association; too few tokens -> sentinel.
+        {
+            QStringList shift;
+            for (int k = 0; k < 48; ++k) {
+                const char c = "0123456789abcdef"[k % 16];
+                shift << QString(2, QChar(c));      // "00","11",...,"ff","00",...
+            }
+            chk("transition: +1 shift corpus -> V > 0.5", maxPositionalTransitionV(shift) > 0.5);
+            chk("transition: < 40 tokens -> -1 sentinel",
+                maxPositionalTransitionV(QStringList() << "aa" << "bb" << "cc") < 0.0);
+        }
     }
 
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);
