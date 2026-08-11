@@ -75,12 +75,15 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   pre-analysis sample summary, full results (entropy, char class, hamming, LCS,
                   sequential-counter detection, per-position + bit-level tests where applicable)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
-Decoders          JWT (security-annotated) + forge, GraphQL schema/probe, base64, hex, JSON transcode
+Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
                   docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab.
                   JWT TOOLKIT mode: offline decode/weakness-analyze/HS*-secret-brute-force, alg:none and
                   HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a
                   target -- active JWT auth-bypass testing Burp only offers via a paid extension
+GraphQL toolkit   In-app PROBE tab: schema introspection with dangerous-mutation + sensitive-field
+                  flagging, plus an active probe suite (introspection/field-suggestion/alias-amplification/
+                  depth-bypass/batch-bypass) -- findings feed Issues like every other active test
 Active tests      25 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app, findings feed Issues
 Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xxe/ldap/xpath/
                   smuggle/hostheader/cache-poison/deser/nosql/mass-assign/cors) against every

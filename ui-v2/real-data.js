@@ -274,6 +274,11 @@
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
     detectWaf(url)              { return post("/api/waf/detect", { url }).then(r => r.json()); },
     scanSecrets(url)            { return post("/api/secrets/scan", { url }).then(r => r.json()); },
+    // GraphQL: introspection/schema analysis (synchronous) and an active
+    // probe suite (introspection/field-suggestion/alias-amplification/
+    // depth-bypass/batch-bypass -- async, findings stream into Issues).
+    graphqlSchema(url, headers)  { return post("/api/graphql/schema", { url, headers: headers || undefined }).then(r => r.json()); },
+    graphqlProbe(url, headers)   { return post("/api/graphql/probe", { url, headers: headers || undefined }).then(r => r.json()); },
     discoverContent(url, max)   { return post("/api/content/discover", { url, max: max || undefined }).then(r => r.json()); },
     scanRobots(url)             { return post("/api/robots/scan", { url }).then(r => r.json()); },
     crawlerStart(seed, maxPages, maxDepth) {
