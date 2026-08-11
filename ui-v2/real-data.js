@@ -402,6 +402,13 @@
     jsReconScan(url, opts) {
       return post("/api/jsrecon/scan", Object.assign({ url }, opts)).then(r => r.json());
     },
+    // Opens a live TLS connection to host:port, reads the peer cert +
+    // negotiated protocol/cipher, and flags weak config (expired/self-signed/
+    // weak-key/hostname-mismatch/legacy-protocol). Findings also file into
+    // Issues. `opts` may carry { port, timeoutMs, probeLegacy }.
+    tlsInspect(host, opts) {
+      return post("/api/tls/inspect", Object.assign({ host }, opts)).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {

@@ -6,35 +6,35 @@
 > reachability adds to existing tabs (deep-audit-all, the Intruder payload-generator dialog,
 > the CSRF PoC generator, the Collaborator Blast spray, the SCANS tab's Assess & audit
 > section covering all 9 unified scan/audit runners plus Exposure scan / Service CVE
-> correlation / JS recon, Inspector's JWT TOOLKIT covering the JWT attack toolkit, the ISSUES
-> tab's Baseline bar / grouped view / per-finding Triage button, and the PROBE tab's
-> GraphQL schema-introspection audit + 5-attack active probe suite), have
-> wired 76 of those endpoints (TESTS covers 24 of the 26 originally-listed active checks —
-> `/api/cache/poison` has a distinct request shape outside its uniform `/<type>/test` contract,
-> and `/api/jwt/test` was deliberately pulled out of TEST_TYPES since that endpoint needs a
-> `token` field the uniform `{url,param?,method?}` contract has no place for; both are wired
-> elsewhere instead), leaving **21 of 173 (12%) still orphaned**. Verified per-bucket by
-> grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with one correction
-> to the stated methodology: `NL.actions.runTest` builds its URL as `"/api/" + type + "/test"`,
-> one dynamic construction ui-v2 does use, so a pure literal-string grep alone would have missed
-> that `jwt` sat in `TEST_TYPES` but could never actually succeed (the endpoint requires a
-> captured `token`, which the generic TESTS form never collects) — this pass traced that path
-> by hand rather than trusting the grep. This pass also caught doc drift from an earlier wave:
-> the 2026-08-10 Issues/Baseline batch (06e1d6d/3e7cae8) wired `/api/baseline/{save,status,
-> diff,clear}`, `/api/findings/grouped`, and `/api/triage/finding` into the ISSUES tab but this
-> file was never updated to drop them from the orphaned list — corrected here (a fresh literal
-> grep confirms all six are called from `ui-v2/app.jsx` / `ui-v2/real-data.js`). This is the
-> work-list for surfacing every remaining feature. Closing an item = add a tab/menu/button that
-> invokes the endpoint and renders its result, then flip the matching parity.json item and
-> regenerate.
+> correlation / JS recon / TLS-certificate inspection, Inspector's JWT TOOLKIT covering the
+> JWT attack toolkit, the ISSUES tab's Baseline bar / grouped view / per-finding Triage
+> button, and the PROBE tab's GraphQL schema-introspection audit + 5-attack active probe
+> suite), have wired 77 of those endpoints (TESTS covers 24 of the 26 originally-listed active
+> checks — `/api/cache/poison` has a distinct request shape outside its uniform
+> `/<type>/test` contract, and `/api/jwt/test` was deliberately pulled out of TEST_TYPES since
+> that endpoint needs a `token` field the uniform `{url,param?,method?}` contract has no place
+> for; both are wired elsewhere instead), leaving **20 of 173 (12%) still orphaned**. Verified
+> per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
+> one correction to the stated methodology: `NL.actions.runTest` builds its URL as
+> `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
+> literal-string grep alone would have missed that `jwt` sat in `TEST_TYPES` but could never
+> actually succeed (the endpoint requires a captured `token`, which the generic TESTS form
+> never collects) — this pass traced that path by hand rather than trusting the grep. This
+> pass also caught doc drift from an earlier wave: the 2026-08-10 Issues/Baseline batch
+> (06e1d6d/3e7cae8) wired `/api/baseline/{save,status,diff,clear}`, `/api/findings/grouped`,
+> and `/api/triage/finding` into the ISSUES tab but this file was never updated to drop them
+> from the orphaned list — corrected here (a fresh literal grep confirms all six are called
+> from `ui-v2/app.jsx` / `ui-v2/real-data.js`). This is the work-list for surfacing every
+> remaining feature. Closing an item = add a tab/menu/button that invokes the endpoint and
+> renders its result, then flip the matching parity.json item and regenerate.
 
 App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
 port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
 pipeline-run, posture/inventory/compliance/gate rollups, and exposure-scan/service-CVE-
-correlation/JS-recon single-target probes). The INSPECTOR tab now has a
-PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
+correlation/JS-recon/TLS-certificate-inspection single-target probes). The INSPECTOR tab now
+has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
 header-audit/waf-detect/secret-scan.
 
@@ -45,11 +45,18 @@ header-audit/waf-detect/secret-scan.
 `/api/inventory`, `/api/paramminer`, `/api/pipeline/run`, `/api/posture` all wired via the
 SCANS tab's Assess & audit section. `/api/headers/audit` wired via PROBE tab.)
 
-## Inspector / decoder / request tools (2)
-- `/api/request/curl`
-- `/api/tls/inspect`
+## Inspector / decoder / request tools (1)
+- `/api/request/curl` — intentionally left orphaned: functionally superseded by the
+  client-side COPY AS exporter (`renderRequestAs` in ui-v2/proxy.jsx, reachable from both
+  Proxy history and Repeater) which already produces a curl command — plus 8 other formats
+  (wget/httpie/powershell/fetch/sqlmap/postman/nuclei/burp-raw) — with sensitive-header
+  redaction the backend endpoint doesn't do. Parity item on this ("Copy as curl command")
+  is already `exceeds`. Wiring the backend endpoint too would add a second, weaker,
+  redundant path to the same capability rather than close a real gap.
 
-(`/api/inspect` wired via INSPECTOR tab.)
+(`/api/inspect` wired via INSPECTOR tab. `/api/tls/inspect` wired via the SCANS tab's
+Assess & audit section — a host:port TLS/certificate inspection probe alongside the
+other single-target recon tools.)
 
 (`/api/jwt/analyze`, `/api/jwt/forge`, `/api/jwt/test` wired via the INSPECTOR tab's
 JWT TOOLKIT mode: offline decode/weakness-analyze/HS*-brute-force, alg:none and
