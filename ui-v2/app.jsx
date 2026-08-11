@@ -3897,7 +3897,9 @@ function DecoderTab() {
     "base64-encode", "base64-decode", "base64url-encode", "base64url-decode",
     "url-encode", "url-decode", "html-encode", "html-decode",
     "hex-encode", "hex-decode", "unicode-escape", "unicode-unescape",
-    "rot13", "jwt-decode", "md5", "sha1", "sha256", "sha512",
+    "rot13", "jwt-decode", "octal-encode", "octal-decode",
+    "binary-encode", "binary-decode",
+    "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512", "sha3-256",
   ];
 
   const run = async (operation) => {

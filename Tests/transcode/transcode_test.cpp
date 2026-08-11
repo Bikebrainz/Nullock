@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
     // ===== operation registry ==========================================
-    chk("operations: 18 listed", operations().size() == 18);
+    chk("operations: 26 listed", operations().size() == 26);
 
     // ===== base64 round-trip + failure =================================
     chk("base64 encode", ap("base64-encode", "Hello, World!") == "SGVsbG8sIFdvcmxkIQ==");
@@ -80,6 +80,20 @@ int main(int argc, char **argv) {
     chk("sha1('abc')",   ap("sha1", "abc")   == "a9993e364706816aba3e25717850c26c9cd0d89d");
     chk("sha256('abc')", ap("sha256", "abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     chk("sha512('') len 128", ap("sha512", "").size() == 128);
+    // Added hashes (#320).
+    chk("md4('')",       ap("md4", "")       == "31d6cfe0d16ae931b73c59d7e0c089c0");
+    chk("sha224('abc')", ap("sha224", "abc") == "23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7");
+    chk("sha384('abc')", ap("sha384", "abc") == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7");
+    chk("sha3-256('abc')", ap("sha3-256", "abc") == "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
+    // Octal codec (#355).
+    chk("octal encode 'Hi'",   ap("octal-encode", "Hi") == "110 151");
+    chk("octal round-trip",    ap("octal-decode", ap("octal-encode", "Hello \xE2\x9c\x93")) == "Hello \xE2\x9c\x93");
+    chk("octal decode invalid -> not ok", !apply("octal-decode", "999").ok);
+    // Binary codec (#356).
+    chk("binary encode 'Hi'",  ap("binary-encode", "Hi") == "01001000 01101001");
+    chk("binary round-trip",   ap("binary-decode", ap("binary-encode", "Bin \xE2\x9c\x93")) == "Bin \xE2\x9c\x93");
+    chk("binary decode odd length -> not ok", !apply("binary-decode", "0101").ok);
+    chk("binary decode bad digit -> not ok", !apply("binary-decode", "01010102").ok);
 
     // ===== jwt decode ==================================================
     {
