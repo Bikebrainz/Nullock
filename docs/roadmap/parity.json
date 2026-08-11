@@ -2434,12 +2434,18 @@
     {
       "area": "platform",
       "feature": "Notes (free-text engagement notes stored in the project)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No editor in either front end; notes settable only by POSTing JSON. One project-wide blob \u2014 no per-host, per-issue or per-request notes.",
-      "why": "Verified both halves independently. Backend is real \u2014 setNotes writes through saveMetadata and `notes` is one of the seven fields actually serialised. Front end is genuinely dead: I grepped ui-v2 recursively for scopeSetNotes and setNotes and got exactly ONE hit, the definition itself, zero callers. notes.qml is confirmed 8 lines by wc. 'partial' stands.",
-      "evidence": "Src/Core/Storage/project_store.cpp:335-338 `void ProjectStore::setNotes(const QString &notes) { m_meta.notes = notes; saveMetadata(); }`; persisted at project_store.cpp:287 `o[\"notes\"] = m_meta.notes;`. Dead setter \u2014 `grep -an \"scopeSetNotes\\|setNotes\" ui-v2/ -r` returns only `ui-v2/real-data.js:130: scopeSetNotes(notes) { return post(\"/api/scope/notes\", { notes }); },`. `wc -l Src/FrontEnd/GUI/Wo"
+      "gap": "None -- a Notes editor now lives in the Scope tab (tabs.jsx ScopeTab): a textarea bound to scope.notes, dirty-tracked so a mid-typing snapshot poll never stomps unsaved edits, saved on blur / Ctrl+Enter / an explicit SAVE button via the pre-existing NL.actions.scopeSetNotes -> POST /api/scope/notes. Still a single project-wide blob -- per-host/per-issue/per-request notes remain out of scope, as originally flagged.",
+      "why": "Closed 2026-08-11: the backend setter (project_store.cpp setNotes/saveMetadata) and the client action (real-data.js scopeSetNotes) were already wired to /api/scope/notes; the only gap was a UI consumer. Added one in the Scope tab next to the existing in/out glob columns, reusing the tab where scope.notes already lives in app state.",
+      "evidence": "ui-v2/tabs.jsx ScopeTab -- new notes textarea + SAVE control calling dispatch({type:\"scope-set-notes\"}); ui-v2/app.jsx reducer case \"scope-set-notes\" calls act(\"scopeSetNotes\", value) -> NL.actions.scopeSetNotes (real-data.js:141, POST /api/scope/notes); Src/Core/Storage/project_store.cpp:335-338 setNotes persists via saveMetadata.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "58346ff",
+        "note": "Scope-tab Notes editor + Update-check banner batch: adds the missing UI consumer for the already-complete scopeSetNotes/setNotes path."
+      }
     },
     {
       "area": "platform",
@@ -2640,12 +2646,18 @@
     {
       "area": "platform",
       "feature": "Update check / new-version notification",
-      "state": "stub",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "The check runs and the answer is discarded \u2014 no front end reads root[\"update\"]. No notification of any kind reaches the user, and there is no in-app download or apply.",
-      "why": "DOWNGRADED TWO STEPS \u2014 this is the clearest wrong 'present' in the set. The backend half is exactly as quoted: the check fires at startup and the result is packed into the snapshot under root[\"update\"]. But I grepped ui-v2 for `data.update`, `.update.available`, `latestVersion` and `releaseUrl` and got NOTHING. The snapshot key is written and no front end ever reads it. There is no badge, no pill,",
-      "evidence": "Backend real: Src/App/app.cpp:920-929 `updateChecker.checkAsync(QCoreApplication::applicationVersion()...)` gated by `hasFlag(argc, argv, \"--no-update-check\") || Nullock::Core::UpdateLogic::noUpdateRequested(qEnvironmentVariable(\"NULLOCK_NO_UPDATE\"))`. Packed at control_server.cpp:1552-1558 `upd[\"available\"] = u.available; ... upd[\"latestVersion\"] = u.latestVersion; upd[\"releaseUrl\"] = u.releaseUr"
+      "gap": "None -- App() now reads snapshot.update and shows a dismissible corner banner (current->latest version, release notes excerpt, a VIEW RELEASE button honoring the Qt.openUrlExternally convention used elsewhere in the app) whenever update.available is true. Dismissal is remembered per latest version (localStorage, best-effort) so it does not reappear until a newer release ships. No in-app download/apply -- the banner links out to the release page, matching the backend, which only checks and reports.",
+      "why": "Closed 2026-08-11: backend was already complete (UpdateChecker + root[\"update\"] in every snapshot). Added the one missing piece -- a frontend consumer -- as a small dismissible UpdateBanner component in app.jsx, wired off the existing nl-update snapshot-poll event so no new polling was needed.",
+      "evidence": "ui-v2/real-data.js applySnapshot: NL.update = snap.update || {available:false,...}; ui-v2/app.jsx UpdateBanner component + App() showUpdateBanner/dismissUpdate wiring; control_server.cpp:1552-1563 root[\"update\"] = {available,currentVersion,latestVersion,releaseUrl,releaseNotes,publishedAt}.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "58346ff",
+        "note": "Scope-tab Notes editor + Update-check banner batch: adds the missing UI consumer for the already-complete UpdateChecker/root[update] path."
+      }
     },
     {
       "area": "platform",
