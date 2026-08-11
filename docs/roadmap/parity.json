@@ -3533,12 +3533,18 @@
     {
       "area": "repeater",
       "feature": "Decoder: Hash operations (MD2, MD4, MD5, SHA, SHA-224, SHA-256, SHA-384, SHA-512)",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Missing MD4, SHA-224, SHA-384 and SHA-3 — each is one QCryptographicHash enum value. Hashing `in.toUtf8()` means binary input cannot be hashed correctly. Same registry feeds Intruder payload processing (intruder_rules.cpp:45 `const Transcode::Result r = Transcode::apply(op, value);`), so the gap is doubled.",
-      "why": "Verified verbatim — exactly four algorithms, and the input really is the UTF-8 of a QString.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:256-259 `if (o == QLatin1String(\"md5\")) return hashOp(input, QCryptographicHash::Md5); if (o == QLatin1String(\"sha1\")) ... Sha1); if (o == QLatin1String(\"sha256\")) ... Sha256); if (o == QLatin1String(\"sha512\")) ... Sha512);` over :177-179 `return ok(QString::fromLatin1(QCryptographicHash::hash(in.toUtf8(), alg).toHex()));`. operations() :236-237 lis"
+      "gap": "Comprehensive hash set: MD4, MD5, SHA-1, SHA-224/256/384/512, SHA3-256. MD2 is intentionally omitted -- Qt/OpenSSL do not expose it and it is a broken, deprecated hash.",
+      "why": "Closed 2026-08-10 (eb944ee): added md4/sha224/sha384/sha3-256 to transcode; MD2 unavailable in Qt (documented).",
+      "evidence": "transcode.cpp apply() hash dispatch + ops(); Tests/transcode known-vector assertions (md4/sha224/sha384/sha3-256).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "eb944ee",
+        "note": "Hash set extended (all but MD2, which Qt cannot provide)."
+      }
     },
     {
       "area": "repeater",
@@ -3947,22 +3953,34 @@
     {
       "area": "repeater",
       "feature": "Decoder: Octal encode / decode",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Octal escaping is a standard filter-bypass encoding (path traversal, shell metacharacters). Missing from the Decoder AND from Intruder payload processing, which shares this registry (Src/Core/Networking/intruder_rules.cpp:45 `const Transcode::Result r = Transcode::apply(op, value);`).",
-      "why": "Confirmed. I read the full operations() registry and the UI OPS array myself; neither contains octal, and grep -i octal across Src/ and ui-v2 returns nothing.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:228-238 `QStringList operations() { return { \"base64-encode\", \"base64-decode\", \"base64url-encode\", \"base64url-decode\", \"url-encode\", \"url-decode\", \"html-encode\", \"html-decode\", \"hex-encode\", \"hex-decode\", \"unicode-escape\", \"unicode-unescape\", \"rot13\", \"jwt-decode\", \"md5\", \"sha1\", \"sha256\", \"sha512\" }; }` and the matching apply() chain :242-260 with "
+      "gap": "None. octal-encode/decode (3-digit octal per byte) added to the transcode engine + Decoder UI.",
+      "why": "Closed 2026-08-10 (eb944ee).",
+      "evidence": "transcode.cpp octalEncode/octalDecode + apply()/ops(); Tests/transcode round-trip + reject cases; ui-v2 Decoder op list.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "eb944ee",
+        "note": "Octal codec added + tested."
+      }
     },
     {
       "area": "repeater",
       "feature": "Decoder: Binary encode / decode",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "",
-      "why": "Confirmed against the same registry read.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:228-238 operations() (quoted in the octal item) contains no binary op, and apply() :242-260 has no binary branch. UI list ui-v2/app.jsx DecoderTab `const OPS = [\"base64-encode\", ..., \"sha512\"]` matches."
+      "gap": "None. binary-encode/decode (8 bits per byte) added to the transcode engine + Decoder UI.",
+      "why": "Closed 2026-08-10 (eb944ee).",
+      "evidence": "transcode.cpp binaryEncode/binaryDecode + apply()/ops(); Tests/transcode round-trip + reject cases.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-10",
+        "commit": "eb944ee",
+        "note": "Binary codec added + tested."
+      }
     },
     {
       "area": "repeater",
