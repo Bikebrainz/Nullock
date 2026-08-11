@@ -82,7 +82,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read findMarkers/applyPayloads; scan-and-splice with null=default confirmed. Template textarea and \u00a7 counter present in GUI.",
-      "evidence": "intruder_engine.cpp:15-32 findMarkers scans U+00A7 pairs; :134-148 applyPayloads splices, `out += p.isNull() ? m.def : p;`. tabs.jsx:620 `(intruder.template.match(/\u00a7/g)?.length||0)/2` shows insertion-point count."
+      "evidence": "intruder_engine.cpp:15-32 findMarkers scans U+00A7 pairs; :134-148 applyPayloads splices, `out += p.isNull() ? m.def : p;`. tabs.jsx:620 `(intruder.template.match(/\u00a7/g)?.length||0)/2` shows insertion-point count.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -108,7 +114,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read parseSet and the payloads textarea/presets. Fully GUI-reachable.",
-      "evidence": "intruder.cpp:20-27 parseSet splits the newline block, trims, drops empties. tabs.jsx:699-704 payloads textarea; PAYLOAD_PRESETS tabs.jsx:339-447 curated lists."
+      "evidence": "intruder.cpp:20-27 parseSet splits the newline block, trims, drops empties. tabs.jsx:699-704 payloads textarea; PAYLOAD_PRESETS tabs.jsx:339-447 curated lists.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -630,7 +642,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read passive_scanner.cpp:218-238 (CSP/HSTS/XFO/XCTO/RP table, HSTS gated on wasTls) and 408-431 (Permissions-Policy+Feature-Policy fallback, COOP, COEP, CORP). Runs on every proxied response via onResponseReceived (passive_scanner.hpp:71-73). All nine headers present and live.",
-      "evidence": "passive_scanner.cpp:219 `{ \"Content-Security-Policy\", \"missing-csp\", ... }` ... :412 `addFinding(...,\"missing-permissions-policy\"...)` :417 missing-coop :422 missing-coep :427 missing-corp"
+      "evidence": "passive_scanner.cpp:219 `{ \"Content-Security-Policy\", \"missing-csp\", ... }` ... :412 `addFinding(...,\"missing-permissions-policy\"...)` :417 missing-coop :422 missing-coep :427 missing-corp",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -640,7 +658,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read passive_scanner.cpp:249-260 (no-httponly/no-secure gated on wasTls/no-samesite) and 456-488 (__Secure- prefix, __Host- prefix with tokenized Path=/ check, broad-path-no-samesite). Present and live per response.",
-      "evidence": "passive_scanner.cpp:250 cookie-no-httponly; :457 cookie-secure-prefix-violation; :476 cookie-host-prefix-violation; :485 cookie-broad-path-no-samesite (uses tokenized pathRoot, not substring)"
+      "evidence": "passive_scanner.cpp:250 cookie-no-httponly; :457 cookie-secure-prefix-violation; :476 cookie-host-prefix-violation; :485 cookie-broad-path-no-samesite (uses tokenized pathRoot, not substring)",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -650,7 +674,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read passive_scanner.cpp:283-292 (wildcard+creds high / wildcard info) and 766-793 (origin-reflection-with-creds high, null-origin medium, ACAM/ACAH wildcard). All present and live.",
-      "evidence": "passive_scanner.cpp:284 cors-wildcard-creds; :771 cors-origin-reflection (high); :777 cors-null-origin; :785 cors-methods-wildcard; :790 cors-headers-wildcard"
+      "evidence": "passive_scanner.cpp:284 cors-wildcard-creds; :771 cors-origin-reflection (high); :777 cors-null-origin; :785 cors-methods-wildcard; :790 cors-headers-wildcard",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -660,7 +690,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read passive_scanner.cpp:266-277 (server-version-leak, x-powered-by), 700-711 (internal-ip-leak/internal-hostname-leak), 733 (html-comment-leak), plus grep confirmed source-map-exposed:568, exposed-dev-file:671, phpinfo-output:936, server-timing-leak:843. All present.",
-      "evidence": "passive_scanner.cpp:268 server-version-leak; :700 internal-ip-leak; :733 html-comment-leak; grep: :568 source-map-exposed, :671 exposed-dev-file, :936 phpinfo-output"
+      "evidence": "passive_scanner.cpp:268 server-version-leak; :700 internal-ip-leak; :733 html-comment-leak; grep: :568 source-map-exposed, :671 exposed-dev-file, :936 phpinfo-output",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -716,7 +752,13 @@
       "effort": "hours",
       "gap": "Reflected-only by design (stored/DOM out of scope per xss_reflected.hpp:12).",
       "why": "Re-read control_server.cpp:729-737 (XssReflected::test in runDeepAudit) and xss_reflected.hpp:1-13 (conservative element-content reflection confirm). Also independently reachable via the GUI probe path (control_server.cpp:2141-2154 canary reflection). Present on both surfaces.",
-      "evidence": "control_server.cpp:733 `const auto res = Nullock::Core::XssReflected::test(xrr);`; :2148 GUI probe emits reflected-xss on unencoded canary"
+      "evidence": "control_server.cpp:733 `const auto res = Nullock::Core::XssReflected::test(xrr);`; :2148 GUI probe emits reflected-xss on unencoded canary",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -736,7 +778,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read control_server.cpp:749-757 (PathTraversal::test -> path-traversal critical) and GUI probe traversal at :2304-2317 (etc/passwd marker). Present on both surfaces.",
-      "evidence": "control_server.cpp:753 `const auto res = Nullock::Core::PathTraversal::test(ptr);`; :2309 `if (body.contains(\"root:x:0:0:\") ...)`"
+      "evidence": "control_server.cpp:753 `const auto res = Nullock::Core::PathTraversal::test(ptr);`; :2309 `if (body.contains(\"root:x:0:0:\") ...)`",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -762,7 +810,13 @@
       "effort": "hours",
       "gap": "API-only (/api/audit/*); not in the GUI probe battery, so a GUI-only user never runs SSTI.",
       "why": "Re-read control_server.cpp:786-801: iterates up to 5 query params, Ssti::test, emits ssti-confirmed critical with engine names. Present but API-only.",
-      "evidence": "control_server.cpp:796 `const auto res = Nullock::Core::Ssti::test(sr);` :797 `if (res.confirmed) { ++hits; engines << res.engines; }`"
+      "evidence": "control_server.cpp:796 `const auto res = Nullock::Core::Ssti::test(sr);` :797 `if (res.confirmed) { ++hits; engines << res.engines; }`",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -997,7 +1051,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read passive_scanner.hpp:26 (severity 'info|low|medium|high|critical') and control_server.cpp severityRank/computePostureGrade. Adds a critical tier above Burp's High. Confirmed.",
-      "evidence": "passive_scanner.hpp:26 `QString severity;     // \"info\" | \"low\" | \"medium\" | \"high\" | \"critical\"`"
+      "evidence": "passive_scanner.hpp:26 `QString severity;     // \"info\" | \"low\" | \"medium\" | \"high\" | \"critical\"`",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -1007,7 +1067,13 @@
       "effort": "hours",
       "gap": "Confidence is derived from the kind string, not per-evidence; no user override.",
       "why": "Re-read passive_scanner.hpp:39-47 (confidence field) and finding_enricher.cpp:463-487 confidenceForKind maps kinds -> confirmed/firm/tentative. Confirmed.",
-      "evidence": "finding_enricher.cpp:463 confidenceForKind(); passive_scanner.hpp:47 `QString confidence;`"
+      "evidence": "finding_enricher.cpp:463 confidenceForKind(); passive_scanner.hpp:47 `QString confidence;`",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -1037,7 +1103,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read control_server.cpp:6535/6560 (audit/all blocksScope with scopeSkipped), :2048 (GUI probe refuses out-of-scope row, 403), :4571-4574 (authz refuses off-scope), crawler.cpp:13-19 (fail-closed to seed origin). Scope is enforced before active traffic on every path. Confirmed.",
-      "evidence": "control_server.cpp:6535 `if (blocksScope(uu.host())) { ++scopeSkipped; return; }`; :2048 probe `if (m_wiring.proxy && !m_wiring.proxy->isInScope(base.host))` -> 403"
+      "evidence": "control_server.cpp:6535 `if (blocksScope(uu.host())) { ++scopeSkipped; return; }`; :2048 probe `if (m_wiring.proxy && !m_wiring.proxy->isInScope(base.host))` -> 403",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -1202,14 +1274,15 @@
       "state": "exceeds",
       "impact": "low",
       "effort": "days",
-      "gap": "Extensions share one QJSEngine, so an observe-only script can still pollute globals or prototypes another relies on WHILE both are loaded. But reload() now rebuilds the engine (f0efb74), so those effects no longer persist past uninstall or reload. Remaining: no per-extension execution-time bound -- a runaway script freezes the main event loop, including the endpoint you would use to remove it.",
-      "why": "CONFIRMED \u2014 every quoted line re-read verbatim, and I re-ran `grep -rn installExtensions Src/` myself = 0 hits, so the no-console/no-require/no-network claim holds. The new marketplace strengthens it further: install verifies sha256 before the bytes land, restricts transport to https on a two-host allow-list, confines the filename, and derives the consent prompt from the DOWNLOADED BYTES rather th",
-      "evidence": "extensions_api.cpp:87-88 `QJSValue nullockObj = m_engine.newQObject(m_bridge); m_engine.globalObject().setProperty(\"nullock\", nullockObj);`; extension_perms_logic.cpp:88-91 `bool isAllowed(...) { if (!requiresGrant(capability)) return true; return granted.contains(capability); }`; extensions_api.cpp:463 `if (!h.mayMutate) continue;`; extensions_api.cpp:135 `const QJSValue result = m_engine.evaluat",
+      "gap": "Extensions still share one QJSEngine, so a loaded observe-only script can pollute globals/prototypes another relies on while both are active. reload() now DESTROYS and rebuilds the QJSEngine (rebuildEngine, extensions_api.cpp:93-107 / reload :121-146), so those effects no longer persist past an uninstall or reload. Remaining real gap (tracked separately as task #115): no per-extension execution-time bound -- grep for setInterrupted/isInterrupted/watchdog/deadline in ExtensionsAPI/ is empty, so a runaway handler freezes the main event loop, including the removal endpoint. That hardening (a watchdog thread calling QJSEngine::setInterrupted) is a separate ~1-day build, not required to keep the 'exceeds' verdict.",
+      "why": "Re-confirmed 2026-08-11 against live source: default-deny modify-requests/modify-responses grants parsed from the script (ExtensionPerms::isAllowed, enforced at onRequest registration and in doMutateResponse per-handler, extensions_api.cpp:36-59,489-491) -- a real permission model Burp lacks entirely. rebuildEngine confirmed to fully replace the QJSEngine on reload, not just clear a namespace. setInterrupted/watchdog/deadline confirmed still absent (0 grep hits in Src/Core/APIs/Extensions/).",
+      "evidence": "extensions_api.cpp:93-107 rebuildEngine fresh QJSEngine per reload; :36-59 grant-gated registration; :489-491 mayMutate discard; grep setInterrupted/watchdog/deadline ExtensionsAPI/ = empty (no time bound)",
       "reconciled": {
-        "date": "2026-07-31",
-        "commit": "f0efb74",
-        "note": "gap narrowed; state unchanged"
-      }
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: gap/evidence text was stale (referred to an earlier reload() that only cleared a namespace) -- refreshed to describe the current rebuildEngine behavior and the still-open execution-time-bound gap (task #115), re-verified against live source. State unchanged (exceeds)."
+      },
+      "audited_state": "exceeds"
     },
     {
       "area": "extender",
@@ -1511,14 +1584,14 @@
       "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "No UI at all \u2014 no browse list, no install button, no confirm dialog to consume `needsConfirmation`. Catalog still holds three first-party entries. Uncommitted and unbuilt at time of audit.",
-      "why": "UPGRADED \u2014 the single biggest change since the first pass, and the reason the first pass's own caveat was right. The working tree (uncommitted: marketplace.cpp/hpp, marketplace_logic.cpp/hpp, Tests/marketplace_logic, CMake + CI wiring) adds a genuine install pipeline: catalog fetch over an https host allow-list, sha256 verification before the bytes are written, permissions re-derived from the DOWN",
-      "evidence": "control_server.cpp:5312 `if (path == \"/api/marketplace/catalog\")` and :5376 `if (path == \"/api/marketplace/install\")`; marketplace.cpp:131-137 `if (!verifyIntegrity(f.body, entry.sha256)) { r.error = QStringLiteral(\"integrity check FAILED for %1 ... Not installing.\")`; marketplace.cpp:152-157 `if (audit.mutatesTraffic && !confirmedMutatingInstall) { r.error = QStringLiteral(\"confirmation required:",
-      "audited_state": "partial",
+      "gap": "None outstanding for this item's scope (browse + one-click install). BApp Store: search box/category filtering (item [B29]), ratings/last-updated sort (item [B30]), version-compatibility gating (item [B31]), and Pro-only gating (item [B32]) are tracked as separate, distinct roadmap items -- not part of this row's bar.",
+      "why": "Re-confirmed 2026-08-11 against live source, and updated for the 2026-08-10 Extender/BApp-store wave (c28f16a): the in-app Marketplace (ui-v2/app.jsx:223-385) is mounted in SettingsTab (app.jsx:639), fetches the merged catalog (NL.actions.marketplaceCatalog -> control_server.cpp:5354), renders per-extension cards with name/version/summary/categories/sha256, and now also a per-item DETAILS panel (author/full sha256/permissions/docs link/raw-source download/prefilled bug-report link). The two-step consent gate is fully wired: first install call sends confirmMutating:false, the server refuses traffic-mutating extensions with needsConfirmation:true (control_server.cpp:5455), and the UI shows the consent panel (app.jsx:315-340) built from permissions read out of the DOWNLOADED+verified bytes. Catalog now holds 14 entries (extensions/marketplace.json), not the 3 present at the original audit. With sha256 pinning + bytes-derived consent this arguably exceeds Burp's BApp store, but is graded 'present' (not 'exceeds') pending the search/ratings/version-gating items above.",
+      "evidence": "ui-v2/app.jsx:223-385 Marketplace component + :639 mount; control_server.cpp:5354 /catalog, :5418 /install (needsConfirmation :5455), :5467 /uninstall; extensions/marketplace.json = 14 ids; c28f16a search input + category chips + per-item DETAILS panel",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-07-31",
-        "commit": "d0d80dc + ef17dc4",
-        "note": "Settings -> Marketplace browses the catalog and installs with a sha256-verified download plus a two-step confirm for traffic-mutating extensions; verified live end-to-end. A browsable web catalog with per-extension detail pages ships alongside."
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: gap/evidence text was stale (still described the pre-c28f16a 3-entry catalog with no search/detail panel). Refreshed to match the live 14-entry catalog, search/category filter, and per-item DETAILS panel; re-verified against source. State unchanged (present)."
       }
     },
     {
@@ -1855,7 +1928,13 @@
       "effort": "hours",
       "gap": "Correct as implemented. Two scope caveats, neither a correctness defect: it only runs on the proxy inject path (injectInto is called solely from proxy_server.cpp:1484), and the cookie's Path is never surfaced in the UI (ui-v2/app.jsx:1932-1946 renders name / value / HO / S / SameSite only), so a path-suppressed cookie is undiagnosable from the app.",
       "why": "Attacked hardest per instructions and it survives. I read session_manager_logic.cpp:81-116 and the inject site in full. The dot-segment normalisation is real RFC 3986 5.2.4, the directory-prefix and '/'-boundary cases are both handled, query and fragment are stripped, and an absent or relative path correctly defaults to \"/\". Enforcement is at the actual inject site, not just declared. Held at pres",
-      "evidence": "session_manager_logic.cpp:94-116 verbatim: `QString cp = cookiePath; if (cp.isEmpty() || !cp.startsWith('/')) cp = QStringLiteral(\"/\"); QString rp = reqPath.isEmpty() ? QStringLiteral(\"/\") : reqPath; const int cut = rp.indexOf(QChar('?')); if (cut >= 0) rp = rp.left(cut); const int hash = rp.indexOf(QChar('#')); if (hash >= 0) rp = rp.left(hash); ... rp = removeDotSegments(rp); if (cp == rp) retur"
+      "evidence": "session_manager_logic.cpp:94-116 verbatim: `QString cp = cookiePath; if (cp.isEmpty() || !cp.startsWith('/')) cp = QStringLiteral(\"/\"); QString rp = reqPath.isEmpty() ? QStringLiteral(\"/\") : reqPath; const int cut = rp.indexOf(QChar('?')); if (cut >= 0) rp = rp.left(cut); const int hash = rp.indexOf(QChar('#')); if (hash >= 0) rp = rp.left(hash); ... rp = removeDotSegments(rp); if (cp == rp) retur",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "sequencer",
@@ -2308,7 +2387,13 @@
       "effort": "hours",
       "gap": "None for HTTP capture itself. (Reachability of the hits is a separate item \u2014 see Collaborator client.)",
       "why": "Re-read Src/Core/APIs/Oast/oast_server.cpp in full. Every quoted line is real and at the cited offsets, and the wiring at app.cpp:877-882 exists verbatim. This one holds unchanged \u2014 it is a real socket server, not a lookalike: it parses the request line and headers, enforces slowloris deadlines on both header and body reads, extracts the token from BOTH the Host header and the path, and records so",
-      "evidence": "oast_server.cpp:111 `void OastServer::handleClient(QTcpSocket *socket) {`; :182-189 `hit.token = extractToken(hostHdr, path); hit.sourceIp = socket->peerAddress().toString(); ... hit.bodyPreview = QString::fromUtf8(rest.left(4096));`; :199-205 `static const QByteArray kBody = \"nullock-oast: callback received\\n\"; ... resp += \"HTTP/1.1 200 OK\\r\\n\";`. Wired at Src/App/app.cpp:877-878 `Nullock::Core::"
+      "evidence": "oast_server.cpp:111 `void OastServer::handleClient(QTcpSocket *socket) {`; :182-189 `hit.token = extractToken(hostHdr, path); hit.sourceIp = socket->peerAddress().toString(); ... hit.bodyPreview = QString::fromUtf8(rest.left(4096));`; :199-205 `static const QByteArray kBody = \"nullock-oast: callback received\\n\"; ... resp += \"HTTP/1.1 200 OK\\r\\n\";`. Wired at Src/App/app.cpp:877-878 `Nullock::Core::",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2328,7 +2413,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read Src/Core/APIs/Oast/oast_correlator.cpp end-to-end (85 lines) and the registration sites. Confirmed with no downgrade, and it is genuinely Burp-equivalent rather than a lookalike: registry is mutex-guarded, deduped via m_confirmed, bounded at 50k, and the kind is derived from the registered probe class so log4shell/xxe/rce callbacks each land as their own enriched finding. The register-befo",
-      "evidence": "oast_correlator.cpp:57 `const QString kind = baseKind + \"-confirmed\";`; :76-78 `baseKind.startsWith(\"log4shell\") || baseKind.startsWith(\"rce\") ? QStringLiteral(\"critical\") : QStringLiteral(\"high\");`; :80-81 `m_scanner->reportFinding(origin.rowId, severity, kind, summary, evidence, origin.host, origin.url);`. Registration-before-fire verified at control_server.cpp:2252-2264 `// Register BEFORE firi"
+      "evidence": "oast_correlator.cpp:57 `const QString kind = baseKind + \"-confirmed\";`; :76-78 `baseKind.startsWith(\"log4shell\") || baseKind.startsWith(\"rce\") ? QStringLiteral(\"critical\") : QStringLiteral(\"high\");`; :80-81 `m_scanner->reportFinding(origin.rowId, severity, kind, summary, evidence, origin.host, origin.url);`. Registration-before-fire verified at control_server.cpp:2252-2264 `// Register BEFORE firi",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2394,7 +2485,13 @@
       "effort": "hours",
       "gap": "",
       "why": "CONFIRMED, and the first pass actually UNDERSOLD the UI story while getting its line numbers stale. Every endpoint exists (line numbers have drifted ~140 lines since their pass; I re-located each). More importantly, they claimed 'exactly one export button at app.jsx:809' \u2014 that is wrong twice over: app.jsx:809 is a `placeholder=\"csrf strip\"` input, and there are THREE working download buttons. All",
-      "evidence": "control_server.cpp:5748 `// GET /api/export/nmap-xml`; :5806 `// GET /api/export/sarif  -> findings as SARIF v2 (CI-friendly)`; :5875 `// GET /api/export/sbom  -> CycloneDX 1.5 SBOM`; :6009 `// GET /api/export/postman`; :4670 `if (path == \"/api/openapi/export\")`; :5225 `if (path == \"/api/report/json\")`. Allowlisted at control_server.cpp:1682 `|| p.startsWith(\"/api/export/\")`. UI buttons: ui-v2/app"
+      "evidence": "control_server.cpp:5748 `// GET /api/export/nmap-xml`; :5806 `// GET /api/export/sarif  -> findings as SARIF v2 (CI-friendly)`; :5875 `// GET /api/export/sbom  -> CycloneDX 1.5 SBOM`; :6009 `// GET /api/export/postman`; :4670 `if (path == \"/api/openapi/export\")`; :5225 `if (path == \"/api/report/json\")`. Allowlisted at control_server.cpp:1682 `|| p.startsWith(\"/api/export/\")`. UI buttons: ui-v2/app",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2470,7 +2567,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read app.cpp around the flag and the app-class selection. Both quotes are verbatim and correct, and I confirmed the consequence they imply: QCoreApplication means no QPA platform plugin and no display server is required, and the QQuickStyle call is guarded behind `if (!headless)`. The headless run loop with worker drain is real. Confirmed present.",
-      "evidence": "Src/App/app.cpp:568 `const bool headless = hasFlag(argc, argv, \"--headless\") || !scanUrl.isEmpty();`; :623-626 `if (!headless) { QQuickStyle::setStyle(QStringLiteral(\"Basic\")); }`; :631-634 `QScopedPointer<QCoreApplication> app(headless ? new QCoreApplication(argc, argv) : static_cast<QCoreApplication *>(new QGuiApplication(argc, argv)));`; :1133-1143 `if (headless) { const int rc = app->exec(); s"
+      "evidence": "Src/App/app.cpp:568 `const bool headless = hasFlag(argc, argv, \"--headless\") || !scanUrl.isEmpty();`; :623-626 `if (!headless) { QQuickStyle::setStyle(QStringLiteral(\"Basic\")); }`; :631-634 `QScopedPointer<QCoreApplication> app(headless ? new QCoreApplication(argc, argv) : static_cast<QCoreApplication *>(new QGuiApplication(argc, argv)));`; :1133-1143 `if (headless) { const int rc = app->exec(); s",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2480,7 +2583,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Read runGateScan in full plus all of ci_gate_logic.cpp. The fail-closed preflight is real and correctly reasoned \u2014 any complete HTTP response counts as reachable, only a transport failure trips it, and the only escape from exit 3 is an explicit fail-on=none. Threshold parsing defaults unknown/empty to 'high' rather than to 'never fail', which is the safe direction. The shipped Action is real. 'exc",
-      "evidence": "control_server.cpp:9613 `int runGateScan(const QString &url, const QString &failOn, bool ndjson) {`; preflight at :9646-9678 `const auto pr = probe.send(t.host, ...); if (!pr.ok) { ... return ug.exitCode; }`. Src/Core/Networking/ci_gate_logic.cpp:83-87 `// An explicit \"none\"/\"off\" means the operator opted out ... Everyone else fails CLOSED: not scanning is not passing.` and `r.exitCode = neverFail"
+      "evidence": "control_server.cpp:9613 `int runGateScan(const QString &url, const QString &failOn, bool ndjson) {`; preflight at :9646-9678 `const auto pr = probe.send(t.host, ...); if (!pr.ok) { ... return ug.exitCode; }`. Src/Core/Networking/ci_gate_logic.cpp:83-87 `// An explicit \"none\"/\"off\" means the operator opted out ... Everyone else fails CLOSED: not scanning is not passing.` and `r.exitCode = neverFail",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2490,7 +2599,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Read the whole ndjson block. The context-object threading fix is real and the explanatory comment is verbatim; the rowId uses lastId() not rowCount() specifically so ids stay monotonic past the window cap, which means response and finding events remain joinable \u2014 that is a subtlety a lookalike would get wrong. Query stripping defaults to ON. Every write is followed by an explicit flush, which matt",
-      "evidence": "Src/App/app.cpp:1040-1048 `without a context object this lambda would be a DirectConnection and run there ... so the one-object-per-line NDJSON contract tears apart under load.`; :1036 `const bool includeQuery = hasFlag(argc, argv, \"--ndjson-include-query\");`; :1069 `e[\"rowId\"] = model.lastId();` guarded by the comment `lastId(), NOT rowCount()`; :1075-1076 `QTextStream(stdout) << QJsonDocument(e)"
+      "evidence": "Src/App/app.cpp:1040-1048 `without a context object this lambda would be a DirectConnection and run there ... so the one-object-per-line NDJSON contract tears apart under load.`; :1036 `const bool includeQuery = hasFlag(argc, argv, \"--ndjson-include-query\");`; :1069 `e[\"rowId\"] = model.lastId();` guarded by the comment `lastId(), NOT rowCount()`; :1075-1076 `QTextStream(stdout) << QJsonDocument(e)",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -2865,7 +2980,13 @@
       "effort": "hours",
       "gap": "leaves/*.key inherit default permissions -- and those keys are signed by the trusted root, so reading one still lets a same-user process impersonate that host. Additionally every error branch in lockdownPrivateKeyFile (cert_authority.cpp:44-65) returns without logging, so a failure is silent.",
       "why": "Verified the Windows DACL rewrite (single ACE, PROTECTED_DACL_SECURITY_INFORMATION, NO_INHERITANCE) and the POSIX chmod fallback, plus the re-assert on every startup for pre-existing keys. This genuinely is beyond Burp. The stated leaf-key hole is real -- I confirmed the persist writes at cert_authority.cpp:259-265 call no lockdown. I also found a second hole worth recording: every failure path in",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:56-74 `ea.grfAccessPermissions = GENERIC_ALL; ... SetNamedSecurityInfoW(..., DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, pNewDacl, nullptr);`; POSIX at :77-78 `QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);`; re-assert at :134-141. Leaf keys bypass it: cert_authority.cpp:263-265 `out.setFileName(persist"
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:56-74 `ea.grfAccessPermissions = GENERIC_ALL; ... SetNamedSecurityInfoW(..., DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, pNewDacl, nullptr);`; POSIX at :77-78 `QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);`; re-assert at :134-141. Leaf keys bypass it: cert_authority.cpp:263-265 `out.setFileName(persist",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -2935,7 +3056,13 @@
       "effort": "hours",
       "gap": "Backpressure cap: Src/BackEnd/Proxy/intercept_logic.hpp:48 `kMaxPendingIntercepts = 256` -- past that, requests auto-forward uninterceptable (intercept.cpp:162-167). Burp queues without bound. Also no interception rules at all (Group B #10), so every held message must be resolved by hand.",
       "why": "Verified the full chain: the worker really blocks on a QSemaphore, the operator's forward()/drop() releases it, the resolver returns the original bytes verbatim when unedited, and both front ends drive it (ui-v2 buttons and QML app.qml:864-868). Confirmed present. Filled the empty gap with a real limit I found in the code: a hard 256-message cap silently auto-forwards once the operator falls behin",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:284-291 `if (auto *ic = m_server->interceptController(); ic && inScope) {\\n            const InterceptResult ir = ic->pend(outBytes, req.host, req.port, /*tls=*/false);\\n            if (ir.dropped) { m_client->disconnectFromHost(); return; }` ; block at Src/BackEnd/Proxy/intercept.cpp:221 `p->done.acquire();` ; resolve at intercept.cpp:44-62 forward()/64-78 drop("
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:284-291 `if (auto *ic = m_server->interceptController(); ic && inScope) {\\n            const InterceptResult ir = ic->pend(outBytes, req.host, req.port, /*tls=*/false);\\n            if (ir.dropped) { m_client->disconnectFromHost(); return; }` ; block at Src/BackEnd/Proxy/intercept.cpp:221 `p->done.acquire();` ; resolve at intercept.cpp:44-62 forward()/64-78 drop(",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -2975,7 +3102,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified the field, the compile step, the per-rule enforcement AND the user-facing input -- the host glob is a first-class field in the rules form, so it is genuinely reachable, not internal-only. Burp has no per-rule host scoping. Exceeds confirmed.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:86 `QString     hostGlob;    // empty = all hosts; \"*.example.com\" style` ; compiled at proxy_server.cpp:1375-1385; enforced at proxy_server.cpp:1454 `if (!c.hostAll && !c.host.match(req.host).hasMatch()) continue;` ; whole-ruleset gate at :1447 `if (!isInScope(req.host)) return;` with the exfil rationale at :1438-1446. UI: ui-v2/app.jsx:812-814 `<input style={in"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:86 `QString     hostGlob;    // empty = all hosts; \"*.example.com\" style` ; compiled at proxy_server.cpp:1375-1385; enforced at proxy_server.cpp:1454 `if (!c.hostAll && !c.host.match(req.host).hasMatch()) continue;` ; whole-ruleset gate at :1447 `if (!isInScope(req.host)) return;` with the exfil rationale at :1438-1446. UI: ui-v2/app.jsx:812-814 `<input style={in",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -3071,7 +3204,13 @@
       "effort": "weeks",
       "gap": "Only reachable inside a successful MITM tunnel, so it inherits the openssl dependency and the blocklist stickiness. Editing an intercepted request on this leg is honoured, but the response the operator sees is re-framed by serializeResponse rather than being upstream's wire bytes.",
       "why": "Verified the ALPN offer, the negotiation check, the reject-unexpected-ALPN branch, the persistent-session bridge loop, and the header translation (pseudo-header order, hop-by-hop drop, Connection-named-field drop). This is a real, default-on, user-reachable path. Present confirmed.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:438-441 `upstreamCfg.setAllowedNextProtocols({\\n            QByteArrayLiteral(\"h2\"),\\n            QByteArrayLiteral(\"http/1.1\"),\\n        });` ; :489-495 negotiation + unexpected-ALPN bailout; bridge at :584-614 `if (upstreamIsH2) { m_server->noteH2Upstream(); H2Client h2; ... const auto h2res = h2.send(upstream, req);` ; translation Src/BackEnd/Proxy/h2_client_l"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:438-441 `upstreamCfg.setAllowedNextProtocols({\\n            QByteArrayLiteral(\"h2\"),\\n            QByteArrayLiteral(\"http/1.1\"),\\n        });` ; :489-495 negotiation + unexpected-ALPN bailout; bridge at :584-614 `if (upstreamIsH2) { m_server->noteH2Upstream(); H2Client h2; ... const auto h2res = h2.send(upstream, req);` ; translation Src/BackEnd/Proxy/h2_client_l",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -3589,7 +3728,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified verbatim, wired, and surfaced. Burp has no equivalent.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:287-308 `QStringList identifyHash(const QString &input)` \u2014 `if (s.startsWith(QLatin1String(\"$2a$\")) || ... \"$2b$\" || \"$2y$\") { out << QStringLiteral(\"bcrypt\"); return out; } ... \"$1$\" md5crypt, \"$5$\" sha256crypt, \"$6$\" sha512crypt, \"$argon2\"` then hex-length classification `case 32: out << \"MD5\" << \"NTLM\" << \"MD4\"; case 40: SHA-1/RIPEMD-160; case 56"
+      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:287-308 `QStringList identifyHash(const QString &input)` \u2014 `if (s.startsWith(QLatin1String(\"$2a$\")) || ... \"$2b$\" || \"$2y$\") { out << QStringLiteral(\"bcrypt\"); return out; } ... \"$1$\" md5crypt, \"$5$\" sha256crypt, \"$6$\" sha512crypt, \"$argon2\"` then hex-length classification `case 32: out << \"MD5\" << \"NTLM\" << \"MD4\"; case 40: SHA-1/RIPEMD-160; case 56",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -3599,7 +3744,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified on both sides. The proxy-side analyser is substantially richer than the auditor even credited (alg-confusion hint, kid injection, nbf/iat/iss/aud, JWE).",
-      "evidence": "Backend D:/dev/Nullock/Src/Core/Networking/transcode.cpp:166-174 `QString out = QStringLiteral(\"=== HEADER ===\\n\") + pretty(hdr) + ... if (alg.compare(QLatin1String(\"none\"), Qt::CaseInsensitive) == 0) out += \"\\n\\n[!] alg=none -- signature not verified; forgeable.\" else if (alg.startsWith(QLatin1String(\"HS\"))) ... out += \"\\n\\n[i] Signature is NOT verified here (no key).\"`. Proxy-side ui-v2/proxy.js"
+      "evidence": "Backend D:/dev/Nullock/Src/Core/Networking/transcode.cpp:166-174 `QString out = QStringLiteral(\"=== HEADER ===\\n\") + pretty(hdr) + ... if (alg.compare(QLatin1String(\"none\"), Qt::CaseInsensitive) == 0) out += \"\\n\\n[!] alg=none -- signature not verified; forgeable.\" else if (alg.startsWith(QLatin1String(\"HS\"))) ... out += \"\\n\\n[i] Signature is NOT verified here (no key).\"`. Proxy-side ui-v2/proxy.js",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
