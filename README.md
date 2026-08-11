@@ -29,7 +29,10 @@ Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count,
                   OWASP rollup); a Baseline bar saves/diffs/clears a findings snapshot for
                   scan-to-scan delta (new vs fixed vs unchanged); a per-finding Triage button asks
                   a local Ollama model (falls back to a heuristic verdict) for impact/fix/
-                  false-positive assessment -- all three were API-only before this
+                  false-positive assessment -- all three were API-only before this; clicking a
+                  finding opens an inline Advisory/Request/Response detail pane (CWE/OWASP/CVSS/
+                  compliance/fix guidance, plus the underlying raw request/response with the
+                  scanner's evidence string highlighted) instead of jumping straight to Proxy
 Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
                   mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure

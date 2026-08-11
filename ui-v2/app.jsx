@@ -1120,6 +1120,91 @@ const SEVERITY_COLOR = {
   info:   "var(--dim)",
 };
 
+// Splits `text` into {s,hit} segments around every literal occurrence of
+// `evidence`, so the issue-detail request/response view can highlight the
+// exact bytes the passive scanner flagged instead of leaving the reader to
+// hunt for them in a raw dump.
+function highlightEvidence(text, evidence) {
+  if (!text) return [];
+  if (!evidence) return [{ s: text, hit: false }];
+  if (text.indexOf(evidence) === -1) return [{ s: text, hit: false }];
+  const segments = [];
+  let cursor = 0, idx;
+  while ((idx = text.indexOf(evidence, cursor)) !== -1) {
+    if (idx > cursor) segments.push({ s: text.slice(cursor, idx), hit: false });
+    segments.push({ s: text.slice(idx, idx + evidence.length), hit: true });
+    cursor = idx + evidence.length;
+  }
+  if (cursor < text.length) segments.push({ s: text.slice(cursor), hit: false });
+  return segments;
+}
+
+// Advisory / Request / Response body of a finding's inline detail pane.
+// Advisory renders the enrichment fields FindingEnricher already attaches
+// to every finding (cwe/owasp/cvss/compliance/fixSummary); Request/Response
+// pull the same raw history bytes proxy.jsx's DetailPane uses, with the
+// finding's evidence string highlighted inline where it appears.
+function IssueDetailBody({ finding, tab }) {
+  if (tab === "advisory") {
+    const rows = [
+      ["CWE", finding.cwe || "—"],
+      ["OWASP", finding.owasp || "—"],
+      ["CVSS", finding.cvssScore
+        ? finding.cvssScore.toFixed(1) + (finding.cvssVector ? "  (" + finding.cvssVector + ")" : "")
+        : "—"],
+      ["Confidence", finding.confidence || "—"],
+      ["Compliance", (finding.compliance && finding.compliance.length) ? finding.compliance.join(", ") : "—"],
+    ];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ color: "var(--text)" }}>{finding.summary}</div>
+        {rows.map(([k, v]) => (
+          <div key={k} style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 8 }}>
+            <span style={{ color: "var(--dim)", textTransform: "uppercase", fontSize: "10px" }}>{k}</span>
+            <span style={{ color: "var(--text-2)" }}>{v}</span>
+          </div>
+        ))}
+        {finding.fixSummary && (
+          <div>
+            <div style={{ color: "var(--dim)", textTransform: "uppercase", fontSize: "10px", marginBottom: 2 }}>Fix</div>
+            <div style={{ color: "var(--text)" }}>{finding.fixSummary}</div>
+          </div>
+        )}
+        {finding.evidence && (
+          <div>
+            <div style={{ color: "var(--dim)", textTransform: "uppercase", fontSize: "10px", marginBottom: 2 }}>Evidence</div>
+            <div style={{ color: "var(--text-2)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{finding.evidence}</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!finding.rowId) {
+    return (
+      <div style={{ color: "var(--dim)", fontStyle: "italic" }}>
+        no associated request — this finding has no underlying HTTP transaction (extension-sourced)
+      </div>
+    );
+  }
+
+  const raw = tab === "request" ? NL.requestRawById(finding.rowId) : NL.responseRawById(finding.rowId);
+  if (!raw) {
+    return <div style={{ color: "var(--dim)", fontStyle: "italic" }}>no {tab} captured for row #{finding.rowId}</div>;
+  }
+  const segments = highlightEvidence(raw, finding.evidence);
+  return (
+    <pre style={{
+      margin: 0, maxHeight: 260, overflow: "auto", whiteSpace: "pre-wrap",
+      wordBreak: "break-all", color: "var(--text-2)", fontFamily: "var(--ff-mono)",
+    }}>
+      {segments.map((seg, i) => seg.hit
+        ? <mark key={i} style={{ background: "var(--accent)", color: "var(--bg)" }}>{seg.s}</mark>
+        : <React.Fragment key={i}>{seg.s}</React.Fragment>)}
+    </pre>
+  );
+}
+
 function IssuesTab({ dispatch }) {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -1217,6 +1302,18 @@ function IssuesTab({ dispatch }) {
 
   const jumpToRow = (rowId) => {
     dispatch({ type: "set", payload: { tab: "proxy", selectedRowId: rowId }});
+  };
+
+  // Inline issue-detail pane (Advisory / Request / Response) -- clicking a
+  // finding used to navigate straight away to the Proxy tab with no way to
+  // see the advisory data (cwe/owasp/cvss/fix) or the underlying request in
+  // context. jumpToRow() above still exists as an explicit escape hatch.
+  const [detailOpenId, setDetailOpenId] = React.useState(null);
+  const [detailTab, setDetailTab] = React.useState("advisory"); // advisory|request|response
+  const toggleDetail = (f) => {
+    if (detailOpenId === f.id) { setDetailOpenId(null); return; }
+    setDetailOpenId(f.id);
+    setDetailTab("advisory");
   };
 
   const Chip = ({ label, active, onClick, color, count }) => (
@@ -1443,7 +1540,7 @@ function IssuesTab({ dispatch }) {
             )}
             {visible.map(f => (
               <div key={f.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
-                <div onClick={() => jumpToRow(f.rowId)}
+                <div onClick={() => toggleDetail(f)}
                      style={{
                        display: "grid",
                        gridTemplateColumns: "70px 60px 180px 1fr 60px",
@@ -1452,7 +1549,7 @@ function IssuesTab({ dispatch }) {
                        cursor: "pointer", fontSize: "12px",
                        fontFamily: "var(--ff-mono)",
                      }}
-                     title={"Click to jump to row #" + String(f.rowId).padStart(3, "0")}>
+                     title="Click to view Advisory / Request / Response">
                   <span style={{
                     color: SEVERITY_COLOR[f.severity],
                     fontWeight: 600,
@@ -1508,6 +1605,41 @@ function IssuesTab({ dispatch }) {
                             <div>{triage[f.id].triage}</div>
                           </React.Fragment>
                         )}
+                  </div>
+                )}
+                {detailOpenId === f.id && (
+                  <div style={{
+                    margin: "0 12px 10px", border: "1px solid var(--line)",
+                    borderRadius: 3, background: "var(--bg-deep)",
+                  }}>
+                    <div style={{ display: "flex", borderBottom: "1px solid var(--line)" }}>
+                      {["advisory", "request", "response"].map(t => (
+                        <button key={t} onClick={() => setDetailTab(t)}
+                          style={{
+                            background: detailTab === t ? "var(--pane)" : "transparent",
+                            color: detailTab === t ? "var(--accent)" : "var(--text-2)",
+                            border: "none", borderRight: "1px solid var(--line)",
+                            padding: "5px 12px", fontSize: "10.5px",
+                            fontFamily: "var(--ff-mono)", cursor: "pointer",
+                            letterSpacing: "0.05em", textTransform: "uppercase",
+                          }}>{t}</button>
+                      ))}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (f.rowId) jumpToRow(f.rowId); }}
+                        disabled={!f.rowId}
+                        title={f.rowId ? "Open the underlying request/response in Proxy" : "No associated request (extension finding)"}
+                        style={{
+                          marginLeft: "auto", background: "transparent",
+                          color: f.rowId ? "var(--accent)" : "var(--dim)",
+                          border: "none", padding: "5px 12px", fontSize: "10.5px",
+                          fontFamily: "var(--ff-mono)",
+                          cursor: f.rowId ? "pointer" : "not-allowed",
+                          letterSpacing: "0.05em", textTransform: "uppercase",
+                        }}>Open in proxy ↦</button>
+                    </div>
+                    <div style={{ padding: "8px 10px", fontSize: "11px" }}>
+                      <IssueDetailBody finding={f} tab={detailTab} />
+                    </div>
                   </div>
                 )}
               </div>
