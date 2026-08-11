@@ -90,6 +90,10 @@ Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xx
                   captured history row with params or a body, throttled, off the UI thread
 CSRF PoC          One-click auto-submitting CSRF PoC generator for any captured request --
                   download or copy from Proxy history / Site map to host on an attacker page
+Authz test        Multi-identity replay from Proxy history / Site map -- define named identities
+                  (header overlays), replay a captured request as each, and see a per-identity
+                  status/size table with a divergence flag (BOLA / horizontal / vertical
+                  privilege, CWE-863); divergent runs also file a finding in Issues
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
 SQLite history    200k+ row engagements stay snappy
