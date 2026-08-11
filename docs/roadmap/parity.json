@@ -4456,12 +4456,18 @@
     {
       "area": "target",
       "feature": "Issue detail view with Advisory / Request / Response sub-tabs and per-instance evidence highlighting",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No advisory text, no request/response pair beside the issue, no evidence marking. You are bounced to the Proxy tab to find it yourself -- and for extension-reported findings (rowId 0) the jump goes nowhere.",
-      "why": "Confirmed. Corrected line numbers -- the click handler is app.jsx:1061 and jumpToRow is app.jsx:958, not 874/775.",
-      "evidence": "ui-v2/app.jsx:1060-1061 `<div key={f.id} onClick={() => jumpToRow(f.rowId)}` -> app.jsx:958-960 `const jumpToRow = (rowId) => { dispatch({ type: \"set\", payload: { tab: \"proxy\", selectedRowId: rowId }}); };` -- it navigates away rather than opening a pane. No advisory component exists in app.jsx (function list: Marketplace, SettingsTab, RulesTab, IssuesTab, ScansTab, ProcessorTab, ComparerTab, Deco"
+      "gap": "None for the core pane -- clicking a finding in the flat ISSUES list opens an inline detail pane (Advisory / Request / Response tabs) instead of navigating away. Advisory renders the enrichment fields the backend already attaches (cwe/owasp/cvssScore/cvssVector/confidence/compliance/fixSummary); Request/Response pull the same raw history bytes proxy.jsx's DetailPane uses, with every literal occurrence of the finding's evidence string highlighted inline. One honest remainder: extension-sourced findings (rowId 0) have no underlying HTTP transaction to show -- the pane says so rather than fetching row 0, tied to item #390's rowId-0 gap, not a new one.",
+      "why": "Closed 2026-08-11: ui-v2/app.jsx IssuesTab's flat-view row click now toggles an inline IssueDetailBody (Advisory/Request/Response tabs) instead of calling jumpToRow() directly; jumpToRow is still reachable via an explicit \"Open in proxy\" button in the pane's header. A new highlightEvidence() pure helper marks every occurrence of the finding's evidence string in the raw request/response text.",
+      "evidence": "ui-v2/app.jsx IssueDetailBody()/highlightEvidence()/toggleDetail() + IssuesTab's detailOpenId/detailTab state; NL.requestRawById/responseRawById (ui-v2/real-data.js) for the raw pair; control_server.cpp:1311-1328 finding JSON contract (cwe/owasp/cvssScore/cvssVector/compliance/fixSummary/confidence/rowId) matched field-for-field.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "dc22e4d",
+        "note": "Issue-detail batch: inline Advisory/Request/Response pane with evidence highlighting replaces the old navigate-away-on-click behavior in the ISSUES tab."
+      }
     },
     {
       "area": "target",
