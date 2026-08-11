@@ -178,6 +178,54 @@ Result hashOp(const QString &in, QCryptographicHash::Algorithm alg) {
     return ok(QString::fromLatin1(QCryptographicHash::hash(in.toUtf8(), alg).toHex()));
 }
 
+Result octalEncode(const QString &in) {
+    const QByteArray b = in.toUtf8();
+    QStringList out;
+    out.reserve(b.size());
+    for (unsigned char c : b) out << QString::asprintf("%03o", c);   // 3-digit octal/byte
+    return ok(out.join(QLatin1Char(' ')));
+}
+Result octalDecode(const QString &in) {
+    const QStringList parts = in.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) return err(QStringLiteral("empty"));
+    QByteArray out;
+    for (const QString &p : parts) {
+        bool okp = false;
+        const uint v = p.toUInt(&okp, 8);
+        if (!okp || v > 255) return err(QStringLiteral("invalid octal byte: %1").arg(p));
+        out.append(char(uchar(v)));
+    }
+    return ok(QString::fromUtf8(out));
+}
+Result binaryEncode(const QString &in) {
+    const QByteArray b = in.toUtf8();
+    QStringList out;
+    out.reserve(b.size());
+    for (unsigned char c : b) {
+        QString bits;
+        for (int i = 7; i >= 0; --i) bits += QLatin1Char(((c >> i) & 1) ? '1' : '0');
+        out << bits;
+    }
+    return ok(out.join(QLatin1Char(' ')));   // 8 bits/byte, space-separated
+}
+Result binaryDecode(const QString &in) {
+    QString s = in;
+    s.remove(QLatin1Char(' ')).remove(QLatin1Char('\n'))
+     .remove(QLatin1Char('\t')).remove(QLatin1Char('\r'));   // spaced or packed
+    if (s.isEmpty()) return err(QStringLiteral("empty"));
+    if (s.size() % 8 != 0) return err(QStringLiteral("binary length must be a multiple of 8"));
+    for (const QChar c : s)
+        if (c != QLatin1Char('0') && c != QLatin1Char('1'))
+            return err(QStringLiteral("invalid binary digit"));
+    QByteArray out;
+    for (int i = 0; i < s.size(); i += 8) {
+        int v = 0;
+        for (int j = 0; j < 8; ++j) v = (v << 1) | (s.at(i + j) == QLatin1Char('1') ? 1 : 0);
+        out.append(char(uchar(v)));
+    }
+    return ok(QString::fromUtf8(out));
+}
+
 // --- smart-decode detectors ---
 bool looksLikeJwt(const QString &s) {
     const QStringList p = s.trimmed().split(QLatin1Char('.'));
@@ -233,8 +281,12 @@ QStringList operations() {
              QStringLiteral("hex-encode"), QStringLiteral("hex-decode"),
              QStringLiteral("unicode-escape"), QStringLiteral("unicode-unescape"),
              QStringLiteral("rot13"), QStringLiteral("jwt-decode"),
-             QStringLiteral("md5"), QStringLiteral("sha1"),
-             QStringLiteral("sha256"), QStringLiteral("sha512") };
+             QStringLiteral("octal-encode"), QStringLiteral("octal-decode"),
+             QStringLiteral("binary-encode"), QStringLiteral("binary-decode"),
+             QStringLiteral("md4"), QStringLiteral("md5"), QStringLiteral("sha1"),
+             QStringLiteral("sha224"), QStringLiteral("sha256"),
+             QStringLiteral("sha384"), QStringLiteral("sha512"),
+             QStringLiteral("sha3-256") };
 }
 
 Result apply(const QString &op, const QString &input) {
@@ -253,10 +305,18 @@ Result apply(const QString &op, const QString &input) {
     if (o == QLatin1String("unicode-unescape"))  return unicodeUnescape(input);
     if (o == QLatin1String("rot13"))             return rot13(input);
     if (o == QLatin1String("jwt-decode"))        return jwtDecode(input);
+    if (o == QLatin1String("octal-encode"))  return octalEncode(input);
+    if (o == QLatin1String("octal-decode"))  return octalDecode(input);
+    if (o == QLatin1String("binary-encode")) return binaryEncode(input);
+    if (o == QLatin1String("binary-decode")) return binaryDecode(input);
+    if (o == QLatin1String("md4"))    return hashOp(input, QCryptographicHash::Md4);
     if (o == QLatin1String("md5"))    return hashOp(input, QCryptographicHash::Md5);
     if (o == QLatin1String("sha1"))   return hashOp(input, QCryptographicHash::Sha1);
+    if (o == QLatin1String("sha224")) return hashOp(input, QCryptographicHash::Sha224);
     if (o == QLatin1String("sha256")) return hashOp(input, QCryptographicHash::Sha256);
+    if (o == QLatin1String("sha384")) return hashOp(input, QCryptographicHash::Sha384);
     if (o == QLatin1String("sha512")) return hashOp(input, QCryptographicHash::Sha512);
+    if (o == QLatin1String("sha3-256")) return hashOp(input, QCryptographicHash::Sha3_256);
     return err(QStringLiteral("unknown operation: %1").arg(op));
 }
 
