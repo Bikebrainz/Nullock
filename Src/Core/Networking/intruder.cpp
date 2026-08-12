@@ -194,6 +194,10 @@ void Intruder::setPayloadRules(const QList<IntruderRules::Rule> &rules) {
     m_payloadRules = rules;
 }
 
+void Intruder::setGlobalEncodeChars(const QString &chars) {
+    m_globalEncodeChars = chars;
+}
+
 void Intruder::setGrepMatch(const QStringList &needles) {
     m_grepMatch = needles;
 }
@@ -403,7 +407,12 @@ void Intruder::start() {
     const int portCopy = m_port;
     const bool tlsCopy = m_useTls;
     const QList<QStringList> combosCopy = combos;
-    const QList<IntruderRules::Rule> rulesCopy = m_payloadRules;   // copy: worker reads it off-thread
+    // Effective chain = per-position rules + the global "URL-encode these
+    // characters" safety net appended LAST (empty set = off). Copied for the
+    // off-thread worker.
+    QList<IntruderRules::Rule> rulesCopy = m_payloadRules;
+    if (!m_globalEncodeChars.isEmpty())
+        rulesCopy.append({ QStringLiteral("url-encode-chars"), m_globalEncodeChars });
     const QStringList grepMatchCopy = m_grepMatch;                 // copy: scanned off-thread
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
     const int concurrencyCopy = m_maxConcurrency;
@@ -543,8 +552,12 @@ bool Intruder::resend(int row) {
     auto *a = m_attacks[row];
     // Apply the same payload-processing rules as a full run (safe to read
     // m_payloadRules here -- we're on the GUI thread; the worker captures the
-    // already-transformed combo).
-    const QStringList combo = applyRulesToCombo(a->m_combo, m_payloadRules);
+    // already-transformed combo). Include the global URL-encode-these-chars
+    // safety net as the final step, exactly as a full run does.
+    QList<IntruderRules::Rule> resendRules = m_payloadRules;
+    if (!m_globalEncodeChars.isEmpty())
+        resendRules.append({ QStringLiteral("url-encode-chars"), m_globalEncodeChars });
+    const QStringList combo = applyRulesToCombo(a->m_combo, resendRules);
     a->m_statusCode   = 0;
     a->m_responseSize = 0;
     a->m_elapsedMs    = 0;

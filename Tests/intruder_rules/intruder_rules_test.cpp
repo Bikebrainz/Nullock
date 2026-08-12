@@ -52,6 +52,39 @@ int main(int argc, char **argv) {
     chk("match-replace no separator -> unchanged", applyRule("val", rule("match-replace", "nofind")) == "val");
     chk("match-replace empty find -> unchanged",   applyRule("val", rule("match-replace", QString(US) + "X")) == "val");
 
+    // ----- url-encode-chars (Burp "URL-encode these characters" safety net) -----
+    // Percent-encode ONLY the listed characters, leaving the rest verbatim.
+    chk("url-encode-chars encodes only the listed set",
+        applyRule("a=b&c", rule("url-encode-chars", "=&")) == "a%3Db%26c");
+    chk("url-encode-chars leaves unlisted specials verbatim",
+        applyRule("a=b#c", rule("url-encode-chars", "=")) == "a%3Db#c");
+    chk("url-encode-chars encodes a space when listed",
+        applyRule("a b", rule("url-encode-chars", " ")) == "a%20b");
+    chk("url-encode-chars uses UPPERCASE hex",
+        applyRule("=", rule("url-encode-chars", "=")) == "%3D");
+    chk("url-encode-chars no listed char present -> unchanged",
+        applyRule("abc", rule("url-encode-chars", "=&")) == "abc");
+    chk("url-encode-chars empty set -> no-op",
+        applyRule("a=b", rule("url-encode-chars", "")) == "a=b");
+    {
+        // Code-point-safe encoding: a multi-byte char in the set encodes ALL its
+        // UTF-8 bytes; the euro sign U+20AC is E2 82 AC.
+        const QString euro = QString::fromUtf8("\xE2\x82\xAC");
+        chk("url-encode-chars encodes a multi-byte char's full UTF-8",
+            applyRule("a" + euro + "b", rule("url-encode-chars", euro)) == "a%E2%82%ACb");
+        // Code-point-safe pass-through: a non-BMP glyph NOT in the set survives
+        // intact (never split into lone surrogates).
+        const QString smile = QString::fromUcs4(U"\U0001F600");
+        chk("url-encode-chars passes a non-target non-BMP glyph through intact",
+            applyRule("x" + smile + "y", rule("url-encode-chars", "=")) == "x" + smile + "y");
+    }
+    chk("url-encode-chars is advertised in operations()",
+        operations().contains("url-encode-chars"));
+    // As the GLOBAL safety net the Intruder appends it as the FINAL chain step:
+    // prove that composition here (prefix first, then encode the '=' it added).
+    chk("url-encode-chars as a trailing global step encodes earlier output",
+        applyRules("v", { rule("prefix", "id="), rule("url-encode-chars", "=") }) == "id%3Dv");
+
     // ----- delegation to the Transcode workbench -----
     chk("base64-encode delegates", applyRule("abc", rule("base64-encode")) == "YWJj");  // standard base64
     { const QString h = applyRule("abc", rule("sha256")); chk("sha256 -> 64 hex chars", h.size() == 64); }

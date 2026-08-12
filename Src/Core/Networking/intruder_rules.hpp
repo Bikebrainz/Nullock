@@ -30,6 +30,11 @@ struct Rule {
 //   uppercase / lowercase / reverse
 //   match-replace -> arg is "find\x1freplace" (US-delimited); replaces all
 //                    literal occurrences of find with replace.
+//   url-encode-chars -> arg is a SET of characters; percent-encodes only those
+//                    (byte-by-byte, code-point-safe), leaving the rest verbatim.
+//                    This is Burp's global "URL-encode these characters" safety
+//                    net; the Intruder appends it to every payload's chain when
+//                    a global char-set is configured.
 // An unknown op, or an encode/hash op that fails, leaves the value UNCHANGED (a
 // payload run must never silently vanish).
 QString applyRule(const QString &value, const Rule &rule);

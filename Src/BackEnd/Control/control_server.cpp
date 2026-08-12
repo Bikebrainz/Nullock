@@ -3310,6 +3310,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 }
                 m_wiring.intruder->setPayloadRules(rules);
             }
+            if (bodyJson.contains("encodeChars")) {
+                // Burp's global "URL-encode these characters" safety net: a set
+                // of characters percent-encoded in EVERY payload (appended as the
+                // final processing step). "" clears it (off). e.g. "&=;+#% ".
+                m_wiring.intruder->setGlobalEncodeChars(
+                    bodyJson.value("encodeChars").toString());
+            }
             if (bodyJson.contains("generator")) {
                 // Expand the generator into set 0 (capped). A caller can pass
                 // payloadSets/payloads instead; generator is the compact form.

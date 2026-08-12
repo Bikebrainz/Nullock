@@ -10,6 +10,20 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Added
+- **Intruder "URL-encode these characters" global safety net.** Burp applies an
+  always-on payload encoder that percent-encodes a configured set of characters
+  in every payload; Nullock now matches it. A new `url-encode-chars`
+  payload-processing op encodes *only* the listed characters (code-point-safe:
+  a multi-byte character encodes all of its UTF-8 bytes, and a non-target
+  non-BMP glyph passes through without being split), and the Intruder appends it
+  as the final step of every payload's processing chain when a global character
+  set is configured (via `encodeChars` on the intruder-set API). Off by default
+  (empty set) so existing attacks are byte-for-byte unchanged. Mutation-proven
+  (the uppercase-hex formatting and the char-set membership each fail their
+  cases when broken). Closes roadmap parity item "Payload encoding (global
+  'URL-encode these characters')".
+
 ### Fixed
 - **Verbose-error detection no longer misses the two most common leaks.** The
   SQL/framework error detector was gated `400 <= status < 500`, so it missed a

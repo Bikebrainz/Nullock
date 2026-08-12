@@ -145,6 +145,12 @@ public:
     // threaded through these transforms before it's substituted into the request.
     // A single global chain applied to every position (v1). Operator-configured.
     void setPayloadRules(const QList<Nullock::Core::IntruderRules::Rule> &rules);
+    // Burp "URL-encode these characters" GLOBAL safety net: when non-empty, a
+    // url-encode-chars step over this character set is appended to EVERY
+    // payload's processing chain (applied LAST, after the per-position rules).
+    // Empty = off. Kept separate from the saved rule chain so it can't be
+    // double-applied on save/resume.
+    void setGlobalEncodeChars(const QString &chars);
     // Result-grep config (Burp-parity): after each response lands it's scanned
     // for these match needles (any-hit -> matched=true) and this extract spec
     // (regex capture or start/end delimiters -> extracted). Both are bounded and
@@ -221,6 +227,7 @@ private:
     // "payloads" alias. Empty list == no payloads configured.
     QStringList m_payloadSets;
     QList<Nullock::Core::IntruderRules::Rule> m_payloadRules;
+    QString m_globalEncodeChars;   // Burp "URL-encode these characters" set (empty=off)
     QStringList m_grepMatch;                              // grep-match needles
     Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;

@@ -2,6 +2,7 @@
 
 #include "transcode.hpp"
 
+#include <QSet>
 #include <algorithm>
 
 namespace Nullock::Core::IntruderRules {
@@ -37,6 +38,33 @@ QString applyRule(const QString &value, const Rule &rule) {
         s.replace(find, repl);
         return s;
     }
+    if (op == QLatin1String("url-encode-chars")) {
+        // Burp's "URL-encode these characters" safety net: percent-encode ONLY
+        // the characters listed in arg (byte-by-byte over their UTF-8 encoding),
+        // leaving every other character verbatim. Distinct from url-encode,
+        // which encodes the whole payload. An empty arg is a no-op. Membership
+        // and encoding are CODE-POINT-safe: a non-BMP char in the set encodes
+        // all of its UTF-8 bytes, and a non-target non-BMP char passes through
+        // as its surrogate pair (never split).
+        if (rule.arg.isEmpty()) return value;
+        QSet<uint> targets;
+        for (const uint cp : rule.arg.toUcs4()) targets.insert(cp);
+        QString out;
+        for (const uint cp : value.toUcs4()) {
+            const char32_t u = cp;
+            if (targets.contains(cp)) {
+                const QByteArray bytes = QString::fromUcs4(&u, 1).toUtf8();
+                for (const char c : bytes) {
+                    const quint8 b = static_cast<quint8>(c);
+                    out += QLatin1Char('%');
+                    out += QStringLiteral("%1").arg(b, 2, 16, QLatin1Char('0')).toUpper();
+                }
+            } else {
+                out += QString::fromUcs4(&u, 1);
+            }
+        }
+        return out;
+    }
 
     // Everything else delegates to the Transcode workbench (base64-encode,
     // base64url-encode, url-encode, hex-encode, html-encode, unicode-escape,
@@ -68,6 +96,7 @@ QStringList operations() {
         QStringLiteral("prefix"), QStringLiteral("suffix"),
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
+        QStringLiteral("url-encode-chars"),
         QStringLiteral("base64-encode"), QStringLiteral("base64url-encode"),
         QStringLiteral("url-encode"), QStringLiteral("hex-encode"),
         QStringLiteral("html-encode"), QStringLiteral("unicode-escape"),
