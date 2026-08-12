@@ -506,12 +506,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Username generator",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No name->username permutation generator for auth testing.",
-      "why": "Confirmed: there is a static 'common usernames' preset list but no name->username permutation generator.",
-      "evidence": "tabs.jsx:342-346 'common usernames' is a fixed preset list; intruder_generators.cpp types() has no username generator."
+      "gap": "None -- a name/email -> username permutation generator produces the common schemes (concatenations, dot/underscore/hyphen separated, reversed order, first/last-initial combos).",
+      "why": "Closed 2026-08-12: added IntruderGenerators::usernameGen (semantics confirmed vs PortSwigger), advertised in types() and dispatched by control_server expandGen ('username', arg 'name'); pure, deduped, capped, mutation-proven.",
+      "evidence": "intruder_generators.cpp usernameGen + types(); control_server.cpp expandGen username branch; Tests/intruder_generators (+17 cases, mutation-proven initial + email handling).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "6c85cfe",
+        "note": "Intruder wave: Username generator payload type -- name/email -> username candidates via common schemes (PortSwigger-verified), lower-cased/deduped/capped; pure + mutation-proven, no engine wiring."
+      }
     },
     {
       "area": "intruder",
