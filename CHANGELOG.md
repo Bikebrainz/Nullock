@@ -51,6 +51,16 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder payload-processing now offers Decode rules (Burp "Decode" parity).**
+  The rule dropdown (`/api/intruder/rule-ops`) previously advertised only encode
+  and hash transforms — decode was deliberately hidden ("payloads are authored,
+  not received"), but real payload lists arrive pre-encoded (base64 wordlists,
+  URL/hex-encoded fuzz strings) and Burp offers decode rules for exactly that.
+  The decode inverse of each advertised reversible encode — `base64-decode`,
+  `base64url-decode`, `url-decode`, `hex-decode`, `html-decode` — is now offered.
+  The ops already executed (they delegate to the Transcode workbench) and fail
+  safe: a decode of non-decodable input is a no-op, so a payload never vanishes.
+  Round-trips are unit- and mutation-tested. Closes roadmap #40.
 - **Sequencer now detects WRAPPED counters.** The sequential/counter detector
   previously required a token to be numeric end-to-end, so a real-world wrapped
   counter — `sess_1001`, `user-42`, `id_007` — was reported "not sequential"

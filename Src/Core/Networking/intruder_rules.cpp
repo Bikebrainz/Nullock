@@ -53,9 +53,17 @@ QString applyRules(const QString &value, const QList<Rule> &rules) {
 }
 
 QStringList operations() {
-    // Local ops first, then the Transcode ops that make sense as an OUTBOUND
-    // payload transform (encode/hash + rot13/unicode-escape). Decode ops are
-    // excluded on purpose -- an Intruder payload is authored, not received.
+    // Local ops first, then the Transcode ops that make sense as a payload
+    // transform: the encode/hash set, plus -- matching Burp's "Decode" payload
+    // rule -- the DECODE inverse of each advertised reversible encode. Decode is
+    // authored just as often as encode: payload lists frequently arrive
+    // pre-encoded (a base64 wordlist, URL-/hex-encoded fuzz strings), and a
+    // decode->transform->re-encode chain is a real workflow. The ops already
+    // execute (applyRule delegates to Transcode::apply) and fail safe -- a decode
+    // of non-decodable input is a no-op (line 46) -- so advertising them adds no
+    // risk. Non-payload / non-standard decodes (jwt-decode's multi-line JSON,
+    // octal/binary-decode whose encoders aren't advertised) stay unadvertised but
+    // still run if named explicitly.
     return {
         QStringLiteral("prefix"), QStringLiteral("suffix"),
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
@@ -64,6 +72,9 @@ QStringList operations() {
         QStringLiteral("url-encode"), QStringLiteral("hex-encode"),
         QStringLiteral("html-encode"), QStringLiteral("unicode-escape"),
         QStringLiteral("rot13"),
+        QStringLiteral("base64-decode"), QStringLiteral("base64url-decode"),
+        QStringLiteral("url-decode"), QStringLiteral("hex-decode"),
+        QStringLiteral("html-decode"),
         QStringLiteral("md5"), QStringLiteral("sha1"),
         QStringLiteral("sha256"), QStringLiteral("sha512"),
     };

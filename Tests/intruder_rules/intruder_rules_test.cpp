@@ -70,11 +70,29 @@ int main(int argc, char **argv) {
     chk("chain: order matters",
         applyRules("ab", { rule("prefix", "x"), rule("reverse") }) == "bax");   // "xab" -> "bax"
 
+    // ----- DECODE payload rules (Burp "Decode" parity, #40) -----
+    // The decode inverse of each advertised reversible encode is now offered:
+    // real payload lists arrive pre-encoded. Behaviour locks -- prove the
+    // advertised op actually decodes, so advertising it isn't a hollow label.
+    chk("base64-decode round-trips",  applyRule("YWJj", rule("base64-decode")) == "abc");
+    chk("url-decode round-trips",     applyRule("a%20b", rule("url-decode"))   == "a b");
+    chk("hex-decode round-trips",     applyRule("616263", rule("hex-decode"))  == "abc");
+    chk("html-decode round-trips",    applyRule("a&amp;b", rule("html-decode")) == "a&b");
+    // encode->decode chain returns the original (the decode-transform workflow).
+    chk("chain base64-encode THEN base64-decode is identity",
+        applyRules("payload!", { rule("base64-encode"), rule("base64-decode") }) == "payload!");
+    // a decode of non-decodable input is a SAFE no-op (payload never vanishes).
+    chk("hex-decode of non-hex -> unchanged (fail-safe)",
+        applyRule("not-hex!", rule("hex-decode")) == "not-hex!");
+
     // ----- operations() discovery -----
     chk("operations non-empty", !operations().isEmpty());
-    chk("operations exclude DECODE ops (payloads are authored, not received)",
-        !operations().contains("base64-decode") && !operations().contains("url-decode")
-        && !operations().contains("jwt-decode"));
+    chk("operations now ADVERTISE the standard decode ops (Burp Decode parity)",
+        operations().contains("base64-decode") && operations().contains("base64url-decode")
+        && operations().contains("url-decode") && operations().contains("hex-decode")
+        && operations().contains("html-decode"));
+    chk("operations still EXCLUDE jwt-decode (multi-line JSON, not a payload transform)",
+        !operations().contains("jwt-decode"));
     chk("operations include the local + encode/hash ops",
         operations().contains("prefix") && operations().contains("match-replace")
         && operations().contains("base64-encode") && operations().contains("sha256"));
