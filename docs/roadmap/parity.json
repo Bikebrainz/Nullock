@@ -592,12 +592,18 @@
     {
       "area": "intruder",
       "feature": "Payload encoding (global 'URL-encode these characters')",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Missing the always-on 'URL-encode these characters' safety net Burp applies to every payload.",
-      "why": "Re-read the fire loop; it does CRLF normalization only, no configurable per-attack character-set encoding. url-encode exists only as an explicit chain rule.",
-      "evidence": "intruder.cpp:449-453 `req.replace(\"\\r\\n\",\"\\n\"); req.replace(\"\\n\",\"\\r\\n\");` only; url-encode is an opt-in rule (intruder_rules.cpp:64)."
+      "gap": "None -- the global 'URL-encode these characters' safety net is implemented: a configured character set is percent-encoded in every payload.",
+      "why": "Closed 2026-08-12: added a code-point-safe `url-encode-chars` payload-processing op (percent-encodes ONLY the listed chars, byte-by-byte over UTF-8) and wired Intruder::setGlobalEncodeChars to append it as the FINAL step of every payload's chain (full run + single-row resend), configured via `encodeChars` on /api/intruder/set. Off by default so existing attacks are unchanged.",
+      "evidence": "intruder_rules.cpp url-encode-chars op + operations(); intruder.cpp setGlobalEncodeChars + effective-chain append at the run and resend sites; control_server.cpp /api/intruder/set encodeChars; Tests/intruder_rules (+11 cases, mutation-proven).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "60f0b2f",
+        "note": "Intruder wave: global URL-encode-these-characters safety net via a code-point-safe url-encode-chars op appended to every payload's processing chain; opt-in (empty=off), mutation-proven."
+      }
     },
     {
       "area": "intruder",
