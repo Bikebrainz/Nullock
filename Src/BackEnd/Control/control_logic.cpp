@@ -1,5 +1,7 @@
 #include "control_logic.hpp"
 
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
@@ -122,6 +124,56 @@ QString xmlAttrEscape(const QString &s) {
         default:   out += c;
         }
     }
+    return out;
+}
+
+QString findingsJsonToXml(const QJsonArray &findings, const QString &project,
+                          const QString &generatedIso) {
+    // Emit an already-escaped attribute ` name="val"`, or "" when val is empty
+    // (so absent enrichment doesn't litter the document with empty attributes).
+    auto attr = [](const QString &name, const QString &val) -> QString {
+        if (val.isEmpty()) return QString();
+        return QStringLiteral(" %1=\"%2\"").arg(name, xmlAttrEscape(val));
+    };
+    // Emit `    <tag>escaped</tag>\n`, or "" when the value is empty.
+    auto el = [](const QString &tag, const QString &val) -> QString {
+        if (val.isEmpty()) return QString();
+        return QStringLiteral("    <%1>%2</%1>\n").arg(tag, xmlAttrEscape(val));
+    };
+    auto str = [](const QJsonObject &f, const char *k) {
+        return f.value(QLatin1String(k)).toString();
+    };
+
+    QString out = QStringLiteral("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    out += QStringLiteral("<nullockReport project=\"%1\" generated=\"%2\" issueCount=\"%3\">\n")
+               .arg(xmlAttrEscape(project), xmlAttrEscape(generatedIso),
+                    QString::number(findings.size()));
+    for (const QJsonValue &v : findings) {
+        const QJsonObject f = v.toObject();
+        const double cvss = f.value(QLatin1String("cvssScore")).toDouble();
+
+        out += QStringLiteral("  <issue");
+        out += attr(QStringLiteral("severity"),   str(f, "severity"));
+        out += attr(QStringLiteral("confidence"), str(f, "confidence"));
+        // A CVSS base score is 0-10; only emit a positive score (0.0 means the
+        // finding carries no CVSS). One decimal matches the CVSS v3.1 convention.
+        if (cvss > 0.0)
+            out += QStringLiteral(" cvss=\"%1\"")
+                       .arg(xmlAttrEscape(QString::number(cvss, 'f', 1)));
+        if (f.value(QLatin1String("fixed")).toBool())
+            out += QStringLiteral(" fixed=\"true\"");
+        out += QStringLiteral(">\n");
+
+        out += el(QStringLiteral("name"),        str(f, "kind"));
+        out += el(QStringLiteral("host"),        str(f, "host"));
+        out += el(QStringLiteral("url"),         str(f, "url"));
+        out += el(QStringLiteral("cwe"),         str(f, "cwe"));
+        out += el(QStringLiteral("owasp"),       str(f, "owasp"));
+        out += el(QStringLiteral("detail"),      str(f, "summary"));
+        out += el(QStringLiteral("remediation"), str(f, "fixSummary"));
+        out += QStringLiteral("  </issue>\n");
+    }
+    out += QStringLiteral("</nullockReport>\n");
     return out;
 }
 

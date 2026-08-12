@@ -1681,6 +1681,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/gate"
             || p == "/api/compliance"
             || p == "/api/report/json"
+            || p == "/api/report/xml"
             || p == "/api/cve/overlay"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
@@ -5304,6 +5305,36 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             { "findingsTotal", findings.size() },
             { "findings", findingsArr },
         });
+    }
+
+    // GET /api/report/xml -- the same engagement findings as report/json,
+    // serialized as a Burp-style XML issue report for CI systems / SIEM
+    // ingestion / XSLT pipelines that consume XML. The finding->XML pass is a
+    // pure, unit-tested helper (ControlLogic::findingsJsonToXml) so hostile scan
+    // data (a host/url/summary carrying </issue>, <, &, quotes, or control
+    // bytes) is xmlAttrEscape'd and cannot break the document framing.
+    if (path == "/api/report/xml") {
+        const QString proj = m_wiring.projectStore
+            ? m_wiring.projectStore->metadata().name : QStringLiteral("default");
+        const auto findings = m_wiring.scanner
+            ? m_wiring.scanner->findings(0) : QList<Nullock::Core::Finding>();
+
+        QJsonArray findingsArr;
+        for (const auto &f : findings) {
+            // Coalesce severity identically to report/json so both reports agree.
+            const QString t = f.severity.trimmed().toLower();
+            findingsArr.append(QJsonObject{
+                { "severity", t.isEmpty() ? QStringLiteral("info") : t }, { "kind", f.kind },
+                { "summary", f.summary }, { "host", f.host }, { "url", f.url },
+                { "cwe", f.cwe }, { "owasp", f.owasp },
+                { "cvssScore", f.cvssScore }, { "fixSummary", f.fixSummary },
+                { "confidence", f.confidence },
+            });
+        }
+
+        const QString generatedIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        const QString xml = ControlLogic::findingsJsonToXml(findingsArr, proj, generatedIso);
+        return httpResponse(200, "application/xml; charset=utf-8", xml.toUtf8());
     }
 
     // ---- Built-in extensions install ---------------------------------

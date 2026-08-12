@@ -15,6 +15,8 @@
 #include "control_logic.hpp"
 
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 #include <cstdio>
@@ -318,6 +320,72 @@ int main(int argc, char **argv) {
     // byte-loop; only the constantTimeEquals length fold rejects it -> real auth gate.
     chk("tokauth: a repeated-token guess is rejected (length fold)",
         !isTokenAuthorized("Bearer s3crets3cret", "s3cret"));
+
+    // ===== findingsJsonToXml: XML issue report ============================
+    // The report bundles PRIVATE scan data (hosts, URLs, summaries) that an
+    // attacker's own traffic can shape. If any value reached the document
+    // un-escaped, a summary/host carrying "</issue>" or "<" would break the
+    // framing (a report-consuming XSLT/SIEM parser then mis-parses or, worse,
+    // executes injected markup). These lock the escaping + the element/attr shape.
+    {
+        const QString empty = findingsJsonToXml(QJsonArray{}, "proj",
+                                                "2026-08-11T00:00:00Z");
+        chk("xml-report: XML prolog present",
+            empty.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        chk("xml-report: empty corpus -> issueCount 0 + closed root",
+            empty.contains("issueCount=\"0\"") && empty.contains("</nullockReport>"));
+
+        QJsonArray arr;
+        arr.append(QJsonObject{
+            { "severity", "high" }, { "confidence", "firm" }, { "kind", "sqli" },
+            { "host", "ex&ample.com" }, { "url", "http://x/?q=<script>" },
+            { "summary", "breakout </issue><evil/>" }, { "cwe", "CWE-89" },
+            { "owasp", "A03:2021-Injection" }, { "cvssScore", 9.8 },
+            { "fixSummary", "parameterize the query" }, { "fixed", false },
+        });
+        // Second finding is sparse: no cwe/owasp/fixSummary and a 0 CVSS.
+        arr.append(QJsonObject{
+            { "severity", "info" }, { "kind", "banner" }, { "host", "h" },
+            { "url", "u" }, { "summary", "s" }, { "cvssScore", 0.0 },
+        });
+        const QString x = findingsJsonToXml(arr, "My \"Proj\" & Co",
+                                            "2026-08-11T00:00:00Z");
+
+        chk("xml-report: project attribute escaped",
+            x.contains("project=\"My &quot;Proj&quot; &amp; Co\""));
+        chk("xml-report: issueCount reflects 2", x.contains("issueCount=\"2\""));
+        chk("xml-report: severity + confidence attributes",
+            x.contains("<issue severity=\"high\" confidence=\"firm\""));
+        chk("xml-report: positive CVSS emitted as attribute", x.contains("cvss=\"9.8\""));
+        // THE load-bearing case: a "</issue>" in the summary must be escaped so it
+        // cannot close the element early and inject sibling markup.
+        chk("xml-report: element-breakout payload neutralized",
+            x.contains("<detail>breakout &lt;/issue&gt;&lt;evil/&gt;</detail>"));
+        chk("xml-report: host ampersand escaped in element text",
+            x.contains("<host>ex&amp;ample.com</host>"));
+        chk("xml-report: url angle brackets escaped in element text",
+            x.contains("q=&lt;script&gt;"));
+        chk("xml-report: name/cwe/owasp elements rendered",
+            x.contains("<name>sqli</name>") && x.contains("<cwe>CWE-89</cwe>")
+            && x.contains("<owasp>A03:2021-Injection</owasp>"));
+        // Framing intact: exactly one <issue>...</issue> pair per finding despite
+        // the breakout payload -- if escaping failed this count would be wrong.
+        chk("xml-report: exactly two issue elements (framing intact)",
+            x.count("<issue ") == 2 && x.count("</issue>") == 2);
+
+        // The sparse finding must omit absent enrichment (no empty <cwe/> litter)
+        // and emit NO cvss attribute for a 0 score.
+        const QString second = x.mid(x.indexOf("</issue>"));  // 2nd issue + tail
+        chk("xml-report: absent cwe omitted (no empty element)", !second.contains("<cwe>"));
+        chk("xml-report: absent remediation omitted", !second.contains("<remediation>"));
+        chk("xml-report: zero CVSS emits no cvss attribute", !second.contains("cvss="));
+
+        // The baseline-diff "fixed" flag surfaces as an attribute when set.
+        const QString fx = findingsJsonToXml(
+            QJsonArray{ QJsonObject{{ "severity", "low" }, { "kind", "k" },
+                                    { "fixed", true }} }, "p", "t");
+        chk("xml-report: fixed=true surfaces as attribute", fx.contains(" fixed=\"true\""));
+    }
 
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

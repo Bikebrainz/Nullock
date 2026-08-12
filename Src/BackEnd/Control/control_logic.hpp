@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QString>
 
 // Pure pre-dispatch security-gate logic for ControlServer::handle(), split out
@@ -88,6 +89,16 @@ QString mdTextSafe(const QString &s);
 // attribute / inject markup. Returns a QString; callers serializing to a byte
 // stream apply .toUtf8().
 QString xmlAttrEscape(const QString &s);
+
+// Render a findings array (the /api/report/json finding shape:
+// kind/host/url/summary/severity/cwe/owasp/cvssScore/fixSummary/confidence)
+// as a well-formed Burp-style XML issue report. Every attribute and element
+// value is xmlAttrEscape'd, so hostile scan data (a host/url/summary
+// containing </issue>, <, &, quotes, or control bytes) cannot break the
+// document framing or inject markup. Pure + deterministic (the timestamp is
+// passed in, not read), so it is unit-tested directly.
+QString findingsJsonToXml(const QJsonArray &findings, const QString &project,
+                          const QString &generatedIso);
 
 // --- Finding severity mapping (report export) ----------------------------
 // Rank a severity string (critical>high>medium>low>info>unknown=0) so the worst

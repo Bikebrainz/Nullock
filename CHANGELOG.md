@@ -37,6 +37,16 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **XML issue report (`GET /api/report/xml`).** Serializes the engagement's
+  findings — the same corpus as `report/json` — into a Burp-style XML issue
+  report (`<nullockReport>` → `<issue severity/confidence/cvss/fixed>` with
+  `name/host/url/cwe/owasp/detail/remediation` elements) for CI systems, SIEM
+  ingestion, and XSLT pipelines that consume XML rather than SARIF/JSON. The
+  finding→XML pass is a pure, unit-tested helper
+  (`ControlLogic::findingsJsonToXml`): every attacker-influenced value
+  (host/url/summary) is `xmlAttrEscape`'d, so a summary carrying `</issue>` or
+  `<` cannot break the document framing — mutation-tested to prove the escaping
+  discriminates.
 - **Nuclei-style template scanner.** Author detection templates (JSON) or feed
   real nuclei `.yaml` templates (including `|` literal / `>` folded block
   scalars with chomping, for multi-line request bodies): matchers (status / word
