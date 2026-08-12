@@ -10,6 +10,7 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
 #include <cstdio>
 #include <limits>
 
@@ -87,9 +88,24 @@ int main(int argc, char **argv) {
     chk("dates from>to -> empty",   dates("2026-02-01", "2026-01-01", 1).isEmpty());
     chk("dates step<=0 -> empty",   dates("2026-01-01", "2026-01-05", 0).isEmpty());
 
+    // ----- nullPayloads (Burp "Null payloads") -----
+    chk("null: count 3 -> 3 empty strings",
+        nullPayloads(3) == (QStringList{ QString(), QString(), QString() }));
+    { const QStringList np = nullPayloads(5);
+      chk("null: every element is empty",
+          np.size() == 5 && std::all_of(np.cbegin(), np.cend(),
+                                        [](const QString &s){ return s.isEmpty(); })); }
+    chk("null: count 0 -> empty list",   nullPayloads(0).isEmpty());
+    chk("null: negative count -> empty", nullPayloads(-4).isEmpty());
+    chk("null: count 1 -> exactly one empty payload", nullPayloads(1).size() == 1);
+    // capped at kMaxCount (truncated, never OOM) -- ask for more than the cap.
+    chk("null: over-cap request truncates to kMaxCount",
+        nullPayloads(kMaxCount + 500).size() == kMaxCount);
+
     // ----- types() -----
-    chk("types lists numbers+brute+dates",
-        types().contains("numbers") && types().contains("brute") && types().contains("dates"));
+    chk("types lists numbers+brute+dates+null",
+        types().contains("numbers") && types().contains("brute")
+        && types().contains("dates") && types().contains("null"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

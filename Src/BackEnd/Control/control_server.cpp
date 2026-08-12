@@ -3196,6 +3196,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return IG::dates(g.value("from").toString(), g.value("to").toString(),
                              g.value("stepDays").toInt(),
                              g.value("format").toString(QStringLiteral("yyyy-MM-dd")));
+        if (t == QLatin1String("null"))
+            return IG::nullPayloads(g.value("count").toInt());
         return {};
     };
 

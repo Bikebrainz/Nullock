@@ -51,6 +51,12 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Null payloads" generator (Burp parity).** A new `null` payload type
+  (`IntruderGenerators::nullPayloads`) emits N empty payloads, filling a position
+  with nothing so the base request is re-sent unchanged N times — the standard way
+  to probe rate limits, race conditions, or non-deterministic responses. Capped at
+  `kMaxCount`; wired into `/api/intruder/generate` + advertised by `types()`.
+  Unit- and mutation-tested. Closes roadmap #33.
 - **Intruder payload-processing now offers Decode rules (Burp "Decode" parity).**
   The rule dropdown (`/api/intruder/rule-ops`) previously advertised only encode
   and hash transforms — decode was deliberately hidden ("payloads are authored,

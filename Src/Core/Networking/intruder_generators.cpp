@@ -86,8 +86,18 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList nullPayloads(int count) {
+    QStringList out;
+    if (count < 1) return out;
+    const int n = qMin(count, kMaxCount);
+    out.reserve(n);
+    for (int i = 0; i < n; ++i) out.append(QString());   // empty -> re-sends the base request
+    return out;
+}
+
 QStringList types() {
-    return { QStringLiteral("numbers"), QStringLiteral("brute"), QStringLiteral("dates") };
+    return { QStringLiteral("numbers"), QStringLiteral("brute"),
+             QStringLiteral("dates"), QStringLiteral("null") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

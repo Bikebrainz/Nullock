@@ -30,6 +30,12 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
 
+// Burp "Null payloads": emit `count` EMPTY payloads, so a position is filled
+// with nothing and the base request is re-sent unchanged `count` times (rate-limit
+// probing, race conditions, observing non-deterministic responses). count < 1 ->
+// empty; capped at kMaxCount (truncated, never OOM).
+QStringList nullPayloads(int count);
+
 // Generator type names this module understands (for UI discovery).
 QStringList types();
 
