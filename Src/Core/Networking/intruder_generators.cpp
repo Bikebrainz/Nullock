@@ -100,6 +100,18 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList bitFlip(const QString &base) {
+    QStringList out;
+    const QByteArray bytes = base.toUtf8();
+    for (int i = 0; i < bytes.size() && out.size() < kMaxCount; ++i)
+        for (unsigned b = 0; b < 8 && out.size() < kMaxCount; ++b) {
+            QByteArray mod = bytes;
+            mod[i] = static_cast<char>(static_cast<unsigned char>(mod[i]) ^ (1u << b));  // flip one bit
+            out << QString::fromLatin1(mod);   // byte-preserving render (matches Burp's display)
+        }
+    return out;
+}
+
 QStringList charSub(const QStringList &items, const QHash<QChar, QChar> &subs) {
     QStringList out;
     if (subs.isEmpty()) return out;
@@ -192,7 +204,8 @@ QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
-             QStringLiteral("casemod"), QStringLiteral("charsub") };
+             QStringLiteral("casemod"), QStringLiteral("charsub"),
+             QStringLiteral("bitflip") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

@@ -31,6 +31,17 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
 
+// Burp "Bit flipper": for EACH byte of the base (its UTF-8 encoding), emit one
+// payload per bit position 0..7 with that single bit XOR-flipped -- byte order
+// left-to-right, bit order LEAST-significant (0x01) to most-significant (0x80),
+// matching Burp's output exactly (e.g. "ab" -> `b, cb, eb, ib, qb, Ab, !b, áb,
+// ac, a`, af, aj, ar, aB, a", aâ). Flipped bytes are rendered via Latin-1 so a
+// high byte (0xE1 -> 'á') matches Burp's display. base empty -> empty; capped at
+// kMaxCount. NOTE: a most-significant-bit flip yields a >=0x80 byte that a
+// string payload re-encodes to two UTF-8 bytes on the wire; the 7 lower-bit
+// flips per byte are byte-exact.
+QStringList bitFlip(const QString &base);
+
 // Burp "Character substitution" (leetspeak): for EACH item, emit one payload for
 // every combination of applying-or-not each substitutable position, i.e. all 2^k
 // permutations where k = the number of characters in the item that have a

@@ -3244,6 +3244,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             }
             return IG::charSub(items, subs);
         }
+        if (t == QLatin1String("bitflip"))
+            return IG::bitFlip(g.value("base").toString());
         return {};
     };
 

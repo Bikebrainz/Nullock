@@ -102,6 +102,19 @@ int main(int argc, char **argv) {
     chk("null: over-cap request truncates to kMaxCount",
         nullPayloads(kMaxCount + 500).size() == kMaxCount);
 
+    // ----- bitFlip (Burp "Bit flipper") -----
+    {
+        // The documented "ab" example, all 8 bits per byte, LSB->MSB, byte order
+        // left-to-right. 0xE1 renders 'á' and 0xE2 'â' (Latin-1), as Burp shows.
+        const QStringList exp{
+            "`b", "cb", "eb", "ib", "qb", "Ab", "!b", QString(QChar(0x00E1)) + "b",
+            "ac", "a`", "af", "aj", "ar", "aB", "a\"", "a" + QString(QChar(0x00E2)) };
+        chk("bitflip: ab -> 16 payloads, exact Burp order (XOR, LSB->MSB)",
+            bitFlip("ab") == exp);
+    }
+    chk("bitflip: one byte -> 8 payloads", bitFlip("A").size() == 8);
+    chk("bitflip: empty -> empty", bitFlip(QString()).isEmpty());
+
     // ----- charSub (Burp "Character substitution", leetspeak) -----
     {
         const QHash<QChar, QChar> leet{ { QChar('e'), QChar('3') }, { QChar('t'), QChar('7') } };
@@ -195,11 +208,12 @@ int main(int argc, char **argv) {
     }
 
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub",
+    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
         && types().contains("frobber") && types().contains("blocks")
-        && types().contains("casemod") && types().contains("charsub"));
+        && types().contains("casemod") && types().contains("charsub")
+        && types().contains("bitflip"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

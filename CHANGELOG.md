@@ -62,6 +62,14 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Bit flipper" generator (Burp parity).** A new `bitflip` payload
+  type (`IntruderGenerators::bitFlip`) walks each byte of the base and emits one
+  payload per bit position (LSB→MSB) with that single bit XOR-flipped — the
+  standard fuzz for off-by-one parsers, checksum/MAC validators, and encoding
+  edges. Output order and rendering match Burp exactly (`"ab"` → the 16 variants
+  `` `b,cb,eb,ib,qb,Ab,!b,áb, ac,a`,af,aj,ar,aB,a",aâ``). Bounded at `kMaxCount`;
+  wired into `/api/intruder/generate` + `types()`. Unit- and mutation-tested.
+  Closes roadmap #35.
 - **Intruder "Character substitution" generator (Burp parity).** A new `charsub`
   payload type (`IntruderGenerators::charSub`) takes a list of items and a
   character-substitution map (e.g. `e→3`, `t→7`) and, for each item, emits every
