@@ -1769,13 +1769,18 @@
     {
       "area": "sequencer",
       "feature": "Live capture option: \"Ignore token length differences\" (tolerate variable-length tokens)",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
       "gap": "The core analysis (Shannon, char-class, hamming, LCS, sequential) already runs over the full variable-length list -- only the positional and bit-level cross-sample tests require a fixed modal width and silently drop off-width tokens (sequencer_logic.cpp:262 gate `if (modeW<8 || modeC<kDeepMinN || modeC*2<tokens.size()) return r;`), surfacing a bare `applicable:false` at :546 that is indistinguisha",
       "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
       "evidence": "sequencer_logic.cpp:257-268 (modal-width selection + drop gate), :262 (silent early return -> applicable=false), :544-556 (caller emits only applicable + fields, no dropped count / reason); core tests at :433-539 already consume the raw variable-length list.",
-      "audited_state": "stub"
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "66eb638",
+        "note": "Closed 2026-08-12: positionalEntropy now ALWAYS reports modalWidth/atModalWidth/offWidth and, when it can't run, a skipReason (length-variance / too-few-tokens / too-few-at-width / tokens-too-short) -- so the previously-indistinguishable bare applicable:false is now diagnosable, and when the cross-sample test DOES run the count of excluded off-width tokens is surfaced instead of silently dropped. The core analysis already tolerated variable lengths (Shannon/char-class/hamming/LCS/sequential run over the raw list); this closes the remaining signal gap. Gating/applicable outcome unchanged. Unit- + mutation-tested (zeroing offWidth fails the counted cases)."
+      }
     },
     {
       "area": "sequencer",
