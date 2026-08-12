@@ -215,11 +215,17 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Modify case",
-      "state": "partial",
+      "state": "present",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "564e4d2",
+        "note": "Added propername + propername-keep processing-rule ops (upper-first / lower-or-keep-rest, code-point-safe, reusing the casemod generator's proper-case semantics) alongside the existing uppercase/lowercase; pure + mutation-proven. Reachable via the rule chain like every other processing op."
+      },
       "impact": "low",
       "effort": "hours",
-      "gap": "Only full upper/lower; Burp also offers 'to lower except first' / capitalize-first. No first-char variant, and API-only (no GUI).",
-      "why": "Re-read rules; only uppercase/lowercase exist. Confirmed partial.",
+      "gap": "None -- uppercase/lowercase PLUS propername (Titlecase) and propername-keep (upper-first, keep rest) processing-rule ops cover Burp's Modify-case modes.",
+      "why": "Closed 2026-08-12: added the propername ops to applyRule (see reconciled).",
       "evidence": "intruder_rules.cpp:15-16 `if(op==\"uppercase\") return value.toUpper(); if(op==\"lowercase\") return value.toLower();`."
     },
     {
