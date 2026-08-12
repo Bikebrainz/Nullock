@@ -52,6 +52,31 @@ int main(int argc, char **argv) {
     chk("match-replace no separator -> unchanged", applyRule("val", rule("match-replace", "nofind")) == "val");
     chk("match-replace empty find -> unchanged",   applyRule("val", rule("match-replace", QString(US) + "X")) == "val");
 
+    // ----- substring / reverse-substring (Burp payload-processing) -----
+    // substring: START offset (0-indexed) + optional length.
+    chk("substring offset+length",  applyRule("abcdefgh", rule("substring", "2,3")) == "cde");
+    chk("substring offset to end",   applyRule("abcdefgh", rule("substring", "2"))   == "cdefgh");
+    chk("substring offset 0",        applyRule("abcdefgh", rule("substring", "0,3")) == "abc");
+    // reverse-substring: END offset from the end, length back from that end offset.
+    chk("reverse-substring mid",     applyRule("abcdefgh", rule("reverse-substring", "2,3")) == "def");
+    chk("reverse-substring last-N",  applyRule("abcdefgh", rule("reverse-substring", "0,2")) == "gh");
+    // Fail-safe: out-of-range / malformed leaves the payload UNCHANGED (never vanish).
+    chk("substring out-of-range -> unchanged",  applyRule("abc", rule("substring", "100,5")) == "abc");
+    chk("substring no numeric offset -> unchanged", applyRule("abc", rule("substring", "x")) == "abc");
+    chk("substring negative offset -> unchanged", applyRule("abc", rule("substring", "-1,2")) == "abc");
+    chk("reverse-substring out-of-range -> unchanged",
+        applyRule("abc", rule("reverse-substring", "100,2")) == "abc");
+    {
+        // Code-point safety: a non-BMP glyph is ONE unit, never split.
+        const QString smile = QString::fromUcs4(U"\U0001F600");   // U+1F600
+        chk("substring extracts a whole non-BMP glyph",
+            applyRule("a" + smile + "b", rule("substring", "1,1")) == smile);
+        chk("substring does not split a surrogate pair",
+            applyRule("a" + smile + "b", rule("substring", "0,2")) == "a" + smile);
+    }
+    chk("substring / reverse-substring advertised in operations()",
+        operations().contains("substring") && operations().contains("reverse-substring"));
+
     // ----- url-encode-chars (Burp "URL-encode these characters" safety net) -----
     // Percent-encode ONLY the listed characters, leaving the rest verbatim.
     chk("url-encode-chars encodes only the listed set",

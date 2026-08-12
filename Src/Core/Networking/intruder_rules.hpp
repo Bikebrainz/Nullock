@@ -30,6 +30,10 @@ struct Rule {
 //   uppercase / lowercase / reverse
 //   match-replace -> arg is "find\x1freplace" (US-delimited); replaces all
 //                    literal occurrences of find with replace.
+//   substring / reverse-substring -> arg is "offset" or "offset,length"; extracts
+//                    a code-point-safe slice. substring counts the offset from the
+//                    START (0-indexed); reverse-substring counts the end offset
+//                    (and length) backwards from the END. Out-of-range -> unchanged.
 //   url-encode-chars -> arg is a SET of characters; percent-encodes only those
 //                    (byte-by-byte, code-point-safe), leaving the rest verbatim.
 //                    This is Burp's global "URL-encode these characters" safety

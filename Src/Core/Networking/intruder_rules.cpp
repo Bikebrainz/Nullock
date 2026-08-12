@@ -66,6 +66,45 @@ QString applyRule(const QString &value, const Rule &rule) {
         return out;
     }
 
+    if (op == QLatin1String("substring") || op == QLatin1String("reverse-substring")) {
+        // Burp "Substring" / "Reverse substring" payload-processing:
+        //   substring          -> START offset (0-indexed) + optional length
+        //                         (omitted length runs to the end);
+        //   reverse-substring   -> END offset counted BACKWARDS from the end, and
+        //                         length counted backwards from that end offset.
+        // arg = "offset" or "offset,length". Operates by CODE POINT (a non-BMP
+        // glyph is one unit, never split into surrogates). Indices clamp to the
+        // string; an empty / out-of-range result leaves the value UNCHANGED (a
+        // payload must never silently vanish from the run).
+        const QStringList a = rule.arg.split(QLatin1Char(','));
+        bool okOff = false;
+        const int off = a.value(0).trimmed().toInt(&okOff);
+        if (!okOff || off < 0) return value;                    // need a >= 0 offset
+        bool okLen = false;
+        const int lenArg = a.size() > 1 ? a.value(1).trimmed().toInt(&okLen) : -1;
+        if (a.size() > 1 && (!okLen || lenArg < 0)) return value;  // malformed length -> no-op
+
+        const QList<uint> cps = value.toUcs4();
+        const int n = cps.size();
+        int start = 0, count = 0;
+        if (op == QLatin1String("substring")) {
+            start = qMin(off, n);
+            count = okLen ? qMin(lenArg, n - start) : (n - start);
+        } else {
+            const int end = qBound(0, n - off, n);              // window end (from start)
+            count = okLen ? qMin(lenArg, end) : end;            // no length -> back to string start
+            start = end - count;
+        }
+        if (count <= 0) return value;                           // empty -> no-op (never vanish)
+        QString out;
+        out.reserve(count);
+        for (int i = start; i < start + count; ++i) {
+            const char32_t u = cps[i];
+            out.append(QString::fromUcs4(&u, 1));
+        }
+        return out;
+    }
+
     // Everything else delegates to the Transcode workbench (base64-encode,
     // base64url-encode, url-encode, hex-encode, html-encode, unicode-escape,
     // rot13, md5, sha1, sha256, sha512, ...). A failed/unknown op leaves the
@@ -96,6 +135,7 @@ QStringList operations() {
         QStringLiteral("prefix"), QStringLiteral("suffix"),
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
+        QStringLiteral("substring"), QStringLiteral("reverse-substring"),
         QStringLiteral("url-encode-chars"),
         QStringLiteral("base64-encode"), QStringLiteral("base64url-encode"),
         QStringLiteral("url-encode"), QStringLiteral("hex-encode"),

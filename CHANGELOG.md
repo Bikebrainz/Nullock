@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "Substring" / "Reverse substring" payload-processing rules.** Two new
+  processing ops matching Burp: `substring` extracts a slice from a 0-indexed
+  start offset (plus optional length; omitted length runs to the end), and
+  `reverse-substring` counts the end offset and length backwards from the end of
+  the payload (verified against the PortSwigger definition). Both are code-point
+  safe (a non-BMP glyph is never split) and fail safe — an out-of-range or
+  malformed spec leaves the payload unchanged rather than dropping it from the
+  run. Mutation-proven (the start offset and the reverse end-offset each fail
+  their cases when broken). Closes roadmap parity item "Processing rule:
+  Substring / Reverse substring".
 - **Cookie jar respects cookie lifetime (Max-Age / Expires) — expired cookies are
   no longer replayed.** The jar stored `Expires` as an opaque string and ignored
   `Max-Age`, so an expired or logged-out cookie could be replayed forever. Now:
