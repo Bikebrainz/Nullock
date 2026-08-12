@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Fixed
+- **Site nav no longer drops links on secondary pages.** The hand-written
+  pages (about, pricing, changelog, license, privacy, security, support,
+  terms, and the docs landing) carried a stale nav missing the
+  Extensions/Labs/Roadmap links, so those tabs "disappeared" once you left the
+  homepage. All pages now expose the full section set; a whole-site check
+  confirms 0 broken links and every page reaches all five sections.
+
 ### Security
 - **Header-audit redirect follower is now same-origin-only.** It previously
   gated redirects on hostname alone, so it would follow an `https→http` scheme
