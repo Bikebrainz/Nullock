@@ -114,6 +114,15 @@ QStringList usernameGen(const QString &nameOrEmail);
 QStringList illegalUnicode(const QString &base, int minBytes, int maxBytes,
                            bool percentPrefix, bool upperHex);
 
+// Burp "ECB block shuffler": split a hex-encoded ciphertext into blockSize-byte
+// blocks and emit the block-shuffled variants (each rendered back to hex). In ECB
+// mode a block permutation permutes the corresponding plaintext blocks -- the
+// classic token-forgery attack. The Burp docs do not pin an exact permutation
+// order, so this emits the COMPLETE permutation set in lexicographic index order,
+// DEDUPED (ECB commonly repeats blocks) and capped at kMaxCount. Input must be
+// valid hex and a whole number of blocks (else empty); blockSize < 1 -> empty.
+QStringList ecbBlockShuffle(const QString &ciphertextHex, int blockSize);
+
 // Generator type names this module understands (for UI discovery).
 QStringList types();
 

@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "ECB block shuffler" payload type.** Splits a hex-encoded ciphertext
+  into `blockSize`-byte blocks and emits the block-shuffled variants (rendered
+  back to hex) — the classic attack against ECB-mode tokens, where permuting
+  ciphertext blocks permutes the decrypted plaintext blocks. It emits the complete
+  block-permutation set (lexicographic order), deduplicated (ECB repeats blocks)
+  and capped; non-hex or non-block-aligned input yields nothing. Mutation-proven
+  (the block-alignment guard and the dedup each fail their cases when broken).
+  Closes roadmap parity item "Payload type: ECB block shuffler".
 - **Intruder regex match/replace processing rule.** The payload-processing chain
   had only a literal `match-replace`; it now also offers `regex-replace`, which
   matches a regular expression and replaces every occurrence, with Burp-style

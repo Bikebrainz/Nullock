@@ -260,6 +260,27 @@ int main(int argc, char **argv) {
         illegalUnicode("/", 3, 3, true, true) == (QStringList{ "%E0%80%AF" }));
     chk("illegal-unicode: empty base -> empty", illegalUnicode("", 2, 6, true, true).isEmpty());
 
+    // ----- ecbBlockShuffle (Burp "ECB block shuffler") -----
+    // 2 one-byte blocks "41","42" -> both orderings.
+    chk("ecb-shuffle: 2x1-byte blocks -> 2 permutations",
+        ecbBlockShuffle("4142", 1) == (QStringList{ "4142", "4241" }));
+    // blockSize 2 over 2 blocks.
+    chk("ecb-shuffle: 2x2-byte blocks",
+        ecbBlockShuffle("41424344", 2) == (QStringList{ "41424344", "43444142" }));
+    // 3 distinct one-byte blocks -> 3! = 6 permutations, lexicographic index order.
+    chk("ecb-shuffle: 3 blocks -> 6 permutations",
+        ecbBlockShuffle("414243", 1)
+            == (QStringList{ "414243", "414342", "424143", "424341", "434142", "434241" }));
+    // ECB repeats blocks: two identical blocks -> permutations collapse (dedup).
+    chk("ecb-shuffle: identical blocks dedup to 1",
+        ecbBlockShuffle("4141", 1) == (QStringList{ "4141" }));
+    // Fail-safe cases.
+    chk("ecb-shuffle: not block-aligned -> empty", ecbBlockShuffle("414243", 2).isEmpty());
+    chk("ecb-shuffle: non-hex input -> empty",     ecbBlockShuffle("zzzz", 1).isEmpty());
+    chk("ecb-shuffle: odd hex length -> empty",    ecbBlockShuffle("41424", 1).isEmpty());
+    chk("ecb-shuffle: blockSize < 1 -> empty",     ecbBlockShuffle("4142", 0).isEmpty());
+    chk("ecb-shuffle: empty input -> empty",       ecbBlockShuffle("", 16).isEmpty());
+
     // ----- types() -----
     chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip+username",
         types().contains("numbers") && types().contains("brute")
@@ -267,7 +288,7 @@ int main(int argc, char **argv) {
         && types().contains("frobber") && types().contains("blocks")
         && types().contains("casemod") && types().contains("charsub")
         && types().contains("bitflip") && types().contains("username")
-        && types().contains("illegal-unicode"));
+        && types().contains("illegal-unicode") && types().contains("ecb-shuffle"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

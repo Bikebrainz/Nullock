@@ -2,8 +2,10 @@
 
 #include <QDate>
 #include <QRegularExpression>
+#include <QSet>
 #include <QVector>
 
+#include <algorithm>
 #include <limits>
 
 namespace Nullock::Core::IntruderGenerators {
@@ -278,13 +280,44 @@ QStringList illegalUnicode(const QString &base, int minBytes, int maxBytes,
     return out;
 }
 
+QStringList ecbBlockShuffle(const QString &ciphertextHex, int blockSize) {
+    if (blockSize < 1) return {};
+    const QByteArray hex = ciphertextHex.trimmed().remove(' ').toLatin1();
+    if (hex.isEmpty() || hex.size() % 2 != 0) return {};
+    const QByteArray bytes = QByteArray::fromHex(hex);
+    // fromHex silently drops invalid nibbles, so a non-hex input yields a shorter
+    // result -- reject it (fail-safe) rather than shuffle garbage.
+    if (bytes.size() != hex.size() / 2) return {};
+    if (bytes.isEmpty() || bytes.size() % blockSize != 0) return {};   // must be block-aligned
+    const int n = bytes.size() / blockSize;
+    QList<QByteArray> blocks;
+    blocks.reserve(n);
+    for (int i = 0; i < n; ++i) blocks << bytes.mid(i * blockSize, blockSize);
+
+    // Enumerate all permutations of the block ORDER, lexicographically from the
+    // identity, rendering each back to hex. Dedup (ECB repeats blocks, so distinct
+    // index permutations can produce identical byte strings) and cap at kMaxCount.
+    QList<int> idx(n);
+    for (int i = 0; i < n; ++i) idx[i] = i;
+    QStringList out;
+    QSet<QString> seen;
+    do {
+        QByteArray perm;
+        perm.reserve(bytes.size());
+        for (const int k : idx) perm += blocks[k];
+        const QString h = QString::fromLatin1(perm.toHex());
+        if (!seen.contains(h)) { seen.insert(h); out << h; }
+    } while (out.size() < kMaxCount && std::next_permutation(idx.begin(), idx.end()));
+    return out;
+}
+
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
              QStringLiteral("casemod"), QStringLiteral("charsub"),
              QStringLiteral("bitflip"), QStringLiteral("username"),
-             QStringLiteral("illegal-unicode") };
+             QStringLiteral("illegal-unicode"), QStringLiteral("ecb-shuffle") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

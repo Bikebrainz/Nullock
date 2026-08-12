@@ -3256,6 +3256,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                       g.value("maxBytes").toInt(6),
                                       g.value("percent").toBool(true),
                                       g.value("upper").toBool(true));
+        if (t == QLatin1String("ecb-shuffle"))
+            return IG::ecbBlockShuffle(g.value("ciphertext").toString(),
+                                       g.value("blockSize").toInt(16));
         return {};
     };
 
