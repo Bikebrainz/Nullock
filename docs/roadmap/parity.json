@@ -389,13 +389,19 @@
     },
     {
       "area": "intruder",
-      "feature": "Payload type: Character substring",
-      "state": "absent",
+      "feature": "Payload type: Character substitution",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
       "gap": "Cannot emit progressive substrings of a value as payloads.",
       "why": "Grep over intruder sources for substring returns nothing; no generator emits progressive substrings.",
-      "evidence": "intruder_generators.cpp only defines numbers/brute/dates; intruder_rules.cpp operations() (55-70) has no substring."
+      "evidence": "intruder_generators.cpp only defines numbers/brute/dates; intruder_rules.cpp operations() (55-70) has no substring.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "e8b8695",
+        "note": "Closed 2026-08-12. NAME CORRECTED: the audit labelled this 'Character substring' with a 'progressive substrings' gap, but Burp Intruder has no 'substring' payload type -- its documented type is 'Character substitution' (leetspeak). Implemented that (the real Burp feature): IntruderGenerators::charSub(items, subs) emits, per item, all 2^k permutations of applying-or-not each substitutable character position (e.g. peter + {e:3,t:7} -> peter/p3ter/pe7er/p37er/pet3r/p3t3r/pe73r/p373r), enumerated leftmost-position-as-LSB to match Burp's order. Verified against the PortSwigger docs. Wired into control_server expandGen (t==charsub, items from array/newline, subs from a {char:char} object) + types(). Unit- + mutation-tested (linearising the 2^k enumeration fails the multi-position cases)."
+      }
     },
     {
       "area": "intruder",
