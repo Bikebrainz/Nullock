@@ -100,6 +100,30 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList charSub(const QStringList &items, const QHash<QChar, QChar> &subs) {
+    QStringList out;
+    if (subs.isEmpty()) return out;
+    for (const QString &item : items) {
+        if (out.size() >= kMaxCount) break;
+        QList<int> positions;                        // indices whose char has a substitution
+        for (int i = 0; i < item.size(); ++i)
+            if (subs.contains(item[i])) positions << i;
+        const int k = positions.size();
+        // Bit `b` (LSB = leftmost substitutable position) selects whether that
+        // position is substituted. qint64 + a 31-bit clamp avoids UB on a huge k;
+        // the kMaxCount guard stops the enumeration long before that anyway.
+        const int kb = qMin(k, 31);
+        const qint64 combos = qint64(1) << kb;
+        for (qint64 mask = 0; mask < combos && out.size() < kMaxCount; ++mask) {
+            QString s = item;
+            for (int b = 0; b < kb; ++b)
+                if (mask & (qint64(1) << b)) s[positions[b]] = subs.value(item[positions[b]]);
+            out << s;
+        }
+    }
+    return out;
+}
+
 QStringList caseMod(const QStringList &items, unsigned modes) {
     QStringList out;
     if (modes == 0) return out;
@@ -168,7 +192,7 @@ QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
-             QStringLiteral("casemod") };
+             QStringLiteral("casemod"), QStringLiteral("charsub") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

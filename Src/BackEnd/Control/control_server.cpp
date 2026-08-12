@@ -3228,6 +3228,22 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                       | IG::CaseProper | IG::CaseProperKeep;
             return IG::caseMod(items, modes);
         }
+        if (t == QLatin1String("charsub")) {
+            QStringList items;
+            const QJsonValue iv = g.value("items");
+            if (iv.isArray())
+                for (const QJsonValue &e : iv.toArray()) items << e.toString();
+            else
+                items = iv.toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            QHash<QChar, QChar> subs;
+            const QJsonObject so = g.value("subs").toObject();   // { "e": "3", "t": "7", ... }
+            for (auto sit = so.constBegin(); sit != so.constEnd(); ++sit) {
+                const QString key = sit.key();
+                const QString val = sit.value().toString();
+                if (!key.isEmpty() && !val.isEmpty()) subs.insert(key.at(0), val.at(0));
+            }
+            return IG::charSub(items, subs);
+        }
         return {};
     };
 

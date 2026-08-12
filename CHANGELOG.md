@@ -51,6 +51,15 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Character substitution" generator (Burp parity).** A new `charsub`
+  payload type (`IntruderGenerators::charSub`) takes a list of items and a
+  character-substitution map (e.g. `e→3`, `t→7`) and, for each item, emits every
+  combination of applying-or-not each substitutable position — all 2^k
+  permutations (`peter` + `{e:3,t:7}` → the 8 leetspeak variants). Enumerated
+  as a binary counter (leftmost position = LSB) to match Burp's order exactly;
+  bounded at `kMaxCount`. Wired into `/api/intruder/generate` + `types()`. Unit-
+  and mutation-tested. Closes roadmap #28 (which the audit mis-labelled
+  "Character substring"; Burp's actual payload type is Character substitution).
 - **Sequencer positional test now explains length-tolerance (Burp "Ignore token
   length differences").** The per-position (cross-sample) analysis needs a
   dominant token width and previously reported a bare `applicable:false` when it

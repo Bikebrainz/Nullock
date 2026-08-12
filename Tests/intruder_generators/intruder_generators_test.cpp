@@ -102,6 +102,24 @@ int main(int argc, char **argv) {
     chk("null: over-cap request truncates to kMaxCount",
         nullPayloads(kMaxCount + 500).size() == kMaxCount);
 
+    // ----- charSub (Burp "Character substitution", leetspeak) -----
+    {
+        const QHash<QChar, QChar> leet{ { QChar('e'), QChar('3') }, { QChar('t'), QChar('7') } };
+        // Documented example: all 2^3 permutations of the 3 substitutable positions,
+        // leftmost position = least-significant bit -> this exact order.
+        chk("charsub: peter e:3 t:7 -> 8 permutations in canonical order",
+            charSub(QStringList{ "peter" }, leet)
+            == (QStringList{ "peter", "p3ter", "pe7er", "p37er", "pet3r", "p3t3r", "pe73r", "p373r" }));
+    }
+    chk("charsub: aa a:@ -> {aa,@a,a@,@@} (2^2)",
+        charSub(QStringList{ "aa" }, QHash<QChar, QChar>{ { QChar('a'), QChar('@') } })
+        == (QStringList{ "aa", "@a", "a@", "@@" }));
+    chk("charsub: no substitutable char -> item unchanged (1 payload)",
+        charSub(QStringList{ "xyz" }, QHash<QChar, QChar>{ { QChar('e'), QChar('3') } })
+        == (QStringList{ "xyz" }));
+    chk("charsub: empty subs -> empty",
+        charSub(QStringList{ "peter" }, QHash<QChar, QChar>{}).isEmpty());
+
     // ----- caseMod (Burp "Case modification") -----
     // All FIVE options in canonical order, on an item where every option differs,
     // locks each transform + order + count in one shot.
@@ -177,11 +195,11 @@ int main(int argc, char **argv) {
     }
 
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod",
+    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
         && types().contains("frobber") && types().contains("blocks")
-        && types().contains("casemod"));
+        && types().contains("casemod") && types().contains("charsub"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

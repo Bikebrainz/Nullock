@@ -6,6 +6,7 @@
 // charset^length can never OOM or hang; callers get a truncated set, never a
 // crash. PURE: no I/O -- links against Qt6::Core alone.
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
 
@@ -29,6 +30,15 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 // format). Invalid dates / from > to / stepDays <= 0 -> empty. Capped.
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
+
+// Burp "Character substitution" (leetspeak): for EACH item, emit one payload for
+// every combination of applying-or-not each substitutable position, i.e. all 2^k
+// permutations where k = the number of characters in the item that have a
+// substitution in `subs`. Enumerated as a binary counter with the LEFTMOST
+// substitutable position as the least-significant bit -- so e.g. "peter" with
+// {e:3, t:7} yields peter, p3ter, pe7er, p37er, pet3r, p3t3r, pe73r, p373r.
+// Empty `subs` -> empty. Bounded at kMaxCount (large k is truncated, never OOM).
+QStringList charSub(const QStringList &items, const QHash<QChar, QChar> &subs);
 
 // Burp "Case modification" options (bit flags -- combine with |). The bit order
 // below IS the canonical generation order.
