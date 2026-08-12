@@ -37,6 +37,7 @@ struct HttpRequest {
     QString httpVersion;
     QString host;
     quint16 port = 80;
+    bool    tls = false;   // client leg encrypted? (set true on the MITM'd HTTPS path)
     QString path;
     QList<QPair<QString, QString>> headers;
     QByteArray body;

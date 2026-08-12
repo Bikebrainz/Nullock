@@ -31,19 +31,22 @@ CapturedCookie secure(bool s) { CapturedCookie c; c.secure = s; return c; }
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
-    // ===== injectableOverTransport: honor Secure (the CRITICAL fix) =====
-    chk("transport: a Secure cookie is NOT injectable over cleartext :80 (no leak)",
-        !injectableOverTransport(secure(true), 80));
-    chk("transport: a Secure cookie is NOT injectable over :8080",
-        !injectableOverTransport(secure(true), 8080));
-    chk("transport: a Secure cookie IS injectable over the TLS port :443",
-        injectableOverTransport(secure(true), 443));
-    chk("transport: a non-Secure cookie is injectable over cleartext :80",
-        injectableOverTransport(secure(false), 80));
-    chk("transport: a non-Secure cookie is injectable over :443",
-        injectableOverTransport(secure(false), 443));
-    chk("transport: a Secure cookie over an unknown high TLS port fails CLOSED (not injected)",
-        !injectableOverTransport(secure(true), 8443));
+    // ===== injectableOverTransport: honor Secure over an ACTUAL TLS check =====
+    // Secure cookies inject only over TLS -- a real transport flag, not the old
+    // port==443 heuristic (#165). The heuristic BOTH leaked a Secure cookie over
+    // cleartext on :443 AND refused it over TLS on a non-standard port (:8443);
+    // a boolean tls check fixes both directions.
+    chk("transport: a Secure cookie is NOT injectable over cleartext (tls=false, no leak)",
+        !injectableOverTransport(secure(true), false));
+    chk("transport: a Secure cookie IS injectable over TLS -- ANY port, incl. :8443 (was the bug)",
+        injectableOverTransport(secure(true), true));
+    chk("transport: a non-Secure cookie is injectable over cleartext (tls=false)",
+        injectableOverTransport(secure(false), false));
+    chk("transport: a non-Secure cookie is injectable over TLS (tls=true)",
+        injectableOverTransport(secure(false), true));
+    // Fail-closed: an unknown/default transport (tls=false) never injects a Secure cookie.
+    chk("transport: fail-closed -- Secure + default transport (tls=false) not injected",
+        !injectableOverTransport(secure(true), false));
 
     // ===== pathMatches: RFC 6265 §5.1.4 (stop path over-injection) ======
     chk("path: exact match", pathMatches("/admin", "/admin"));

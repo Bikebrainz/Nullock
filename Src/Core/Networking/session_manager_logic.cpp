@@ -115,9 +115,14 @@ bool pathMatches(const QString &cookiePath, const QString &reqPath) {
     return false;
 }
 
-bool injectableOverTransport(const CapturedCookie &c, int port) {
+bool injectableOverTransport(const CapturedCookie &c, bool tls) {
     if (!c.secure) return true;     // a non-Secure cookie may ride any transport
-    return port == 443;             // Secure: fail closed to the standard TLS port
+    return tls;                     // Secure: only over an actual TLS connection --
+                                    // a real transport check, not the old port==443
+                                    // heuristic (which both leaked a Secure cookie
+                                    // over cleartext on port 443 and refused it over
+                                    // TLS on 8443). Fails closed: unknown transport
+                                    // (tls=false) never injects a Secure cookie.
 }
 
 } // namespace Nullock::Core::SessionLogic

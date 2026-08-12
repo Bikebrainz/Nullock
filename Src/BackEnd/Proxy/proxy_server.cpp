@@ -551,6 +551,7 @@ public:
                     req.method = f.method;
                     req.host   = host;
                     req.port   = port;
+                    req.tls    = true;   // HTTP/2 over the MITM'd TLS leg
                     req.path   = f.path.startsWith('/') ? f.path : ("/" + f.path);
                     req.headers = f.headers;
                     req.body    = body;
@@ -626,6 +627,7 @@ public:
                     break;   // clean keep-alive close (empty read), not an error
                 req.host = host;
                 req.port = port;
+                req.tls  = true;   // decrypted HTTPS via the MITM sslClient
                 if (req.path.isEmpty() || !req.path.startsWith('/'))
                     req.path = "/" + req.path;
                 emit m_server->requestReceived(req);
@@ -707,6 +709,7 @@ public:
             }
             req.host = host;
             req.port = port;
+            req.tls  = true;   // decrypted HTTPS via the MITM sslClient
             if (req.path.isEmpty() || !req.path.startsWith('/'))
                 req.path = "/" + req.path;
             emit m_server->requestReceived(req);

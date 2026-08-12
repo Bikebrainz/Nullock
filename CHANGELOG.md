@@ -33,6 +33,17 @@ developer-facing record.
   confirms 0 broken links and every page reaches all five sections.
 
 ### Security
+- **Cookie jar no longer replays a Secure cookie over cleartext (or refuses it on
+  a non-standard TLS port).** The session/cookie-jar auto-inject gate decided a
+  Secure cookie's transport by a port heuristic (`port == 443`) instead of the
+  actual connection encryption. That both *leaked* a captured Secure cookie onto a
+  cleartext request that happened to use port 443 and *refused* to inject it over a
+  genuine TLS connection on a non-standard port (e.g. 8443). `HttpRequest` now
+  carries a real `tls` flag (set on the MITM'd HTTPS paths), and
+  `injectableOverTransport(cookie, tls)` gates a Secure cookie strictly on TLS —
+  fail-closed (an unknown transport never injects a Secure cookie). Mutation-tested.
+  Fixes roadmap #165.
+
 - **Header-audit redirect follower is now same-origin-only.** It previously
   gated redirects on hostname alone, so it would follow an `https→http` scheme
   downgrade or a port change and re-emit the captured `Cookie`/`Authorization`

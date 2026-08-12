@@ -128,7 +128,7 @@ void SessionManager::injectInto(Nullock::Proxy::HttpRequest &req) const {
         }
     }
     for (const auto &c : use) {
-        if (!SessionLogic::injectableOverTransport(c, req.port)) continue;  // Secure over cleartext -> skip
+        if (!SessionLogic::injectableOverTransport(c, req.tls)) continue;   // Secure over cleartext -> skip
         if (!SessionLogic::pathMatches(c.path, req.path))         continue;  // path-scope mismatch -> skip
         auto f = pos.find(c.name);
         if (f != pos.end()) ordered[f.value()].second = c.value;            // override, keep position

@@ -46,7 +46,7 @@ bool pathMatches(const QString &cookiePath, const QString &reqPath);
 // cleartext to a passive observer. HttpRequest carries no scheme flag, so we fail
 // CLOSED: a Secure cookie is injectable only on the standard TLS port (443); a
 // non-Secure cookie is always injectable.
-bool injectableOverTransport(const CapturedCookie &c, int port);
+bool injectableOverTransport(const CapturedCookie &c, bool tls);
 
 } // namespace SessionLogic
 } // namespace Nullock::Core
