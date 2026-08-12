@@ -3397,9 +3397,15 @@
       "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "API-only -- no frame viewer, no stream table, no filtering in either front end. /api/h2/events takes a `since` cursor but nothing polls it.",
-      "why": "DOWNGRADED one notch on reachability. The event log is genuine -- fed from the real nghttp2 frame callbacks on both client and server sides -- and both endpoints return well-formed JSON with frame-type names decoded. But it has NO UI: grep for 'h2/streams|h2/events|h2/' across ui-v2 (minus vendor) and Src/App/app.qml returns nothing. It beats Burp on capability but only for someone willing to curl",
-      "evidence": "Src/BackEnd/Proxy/h2_events.hpp:31-42 `struct H2Event { qint64 ts; QString conn; quint8 frameType; ... quint32 errorCode;` ; fed at Src/BackEnd/Proxy/http2_client.cpp:153 `H2EventLog::instance()->noteFrame(sess->connName, frame->hd.type, frame->hd.flags,` and h2_server.cpp:111. Endpoints Src/BackEnd/Control/control_server.cpp:1923-1971 including the decode table `const char *kTypes[] = { \"DATA\", \""
+      "gap": "None on GUI reachability -- the Proxy tab's HTTP HISTORY pane-head gains an H2 FRAME LOG button (an overlay showing a per-stream summary table from GET /api/h2/streams and a live-tailing raw frame feed from GET /api/h2/events?since=<cursor>, polled every 2s while open). The remaining honest caveat: this is a passive viewer, not a filter/search tool -- no per-connection filtering, no frame-type filter, capped at the last 500 tailed frames client-side.",
+      "why": "Closed the GUI-reachability gap this wave: NL.actions.h2Streams()/h2Events(sinceMs) added to real-data.js, and a new H2FrameLogOverlay component in ui-v2/proxy.jsx renders the stream table (conn/streamId/method/path/status/bytesIn/bytesOut/framesIn/framesOut/closed) plus the frame feed (ts/conn/type/flags/streamId/bytes/errorCode), reusing the WS Repeater overlay's polling-modal pattern. Every field read matches control_server.cpp's actual JSON response for both handlers exactly -- no invented fields.",
+      "evidence": "ui-v2/real-data.js NL.actions.h2Streams/h2Events; ui-v2/proxy.jsx H2FrameLogOverlay + the H2 FRAME LOG button in the HTTP HISTORY pane-head; backend unchanged -- control_server.cpp:1961 GET /api/h2/streams, :1984 GET /api/h2/events?since=<ms>, both already allowlisted in isReadPath (:1669-1670).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "PENDING",
+        "note": "Wave 2 (frontend-only): added the H2 Frame Log overlay to the Proxy tab, closing #277's GUI-reachability gap (state stays present -- the underlying capability was already present, only the UI affordance was missing). No backend touched."
+      }
     },
     {
       "area": "proxy",

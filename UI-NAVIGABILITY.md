@@ -24,9 +24,14 @@
 > detection" section was added to the SCANS tab's Assess & audit block wiring the
 > previously-orphaned `/api/http3/detect` (reads the Alt-Svc response header for advertised
 > h3/h3-* support), the same single-target-probe pattern as TLS inspection/exposure
-> scan/service-CVE correlation/JS recon. True orphaned count, re-verified by a fresh
+> scan/service-CVE correlation/JS recon, true orphaned count corrected 16 -> 13 of 173 (8%).
+> This run added an H2 FRAME LOG overlay to the Proxy tab's HTTP HISTORY pane-head, wiring
+> the previously-orphaned `/api/h2/streams` (per-stream summary table) and `/api/h2/events`
+> (a live-tailing raw frame feed polled with a `since` cursor) -- closing parity item #277's
+> GUI-reachability gap, the last of "the 97 orphaned endpoints" plan's HTTP/2-specific asks.
+> True orphaned count, re-verified by a fresh
 > literal-string grep of every endpoint in this file against live `ui-v2/*.jsx` +
-> `ui-v2/real-data.js`: **13 of 173 (8%) orphaned**. Verified
+> `ui-v2/real-data.js`: **11 of 173 (6%) orphaned**. Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -83,11 +88,13 @@ form has no `token` field, so it could never have actually worked.)
 `/api/report/html`, `/api/report/json`, `/api/workspace/pull`, `/api/workspace/push`
 wired via REPORTING tab.)
 
-## Recon / discovery (2)
-- `/api/h2/events`
-- `/api/h2/streams`
+## Recon / discovery (0)
 
-(`/api/fingerprint`, `/api/waf/detect`, `/api/secrets/scan` wired via PROBE tab;
+(`/api/h2/events`, `/api/h2/streams` wired via the Proxy tab's new H2 FRAME LOG
+overlay (HTTP HISTORY pane-head) -- a per-stream summary table plus a live-tailing
+raw frame feed, polled every 2s while open (#277).
+
+`/api/fingerprint`, `/api/waf/detect`, `/api/secrets/scan` wired via PROBE tab;
 `/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
 wired via DISCOVER tab. `/api/exposure/scan`, `/api/servicevulns/scan`, `/api/jsrecon/scan`
 wired via the SCANS tab's Assess & audit section -- Exposure scan (curated sensitive-path

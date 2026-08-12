@@ -950,6 +950,158 @@ function WsRepeaterOverlay({ onClose }) {
   );
 }
 
+// ===================== H2 FRAME LOG (HTTP/2 frame-level visibility) ===
+// #277: H2EventLog captures every h2 frame on both MITM legs (client and
+// upstream) but had zero front-end callers -- API-only, "Burp has no frame
+// log at all" per the parity plan. This overlay shows the per-stream
+// summary table (GET /api/h2/streams) plus a live-tailing raw frame feed
+// (GET /api/h2/events?since=<cursor ms>), polled while open.
+function H2FrameLogOverlay({ onClose }) {
+  const [streams, setStreams] = React.useState([]);
+  const [events, setEvents] = React.useState([]);
+  const [autoPoll, setAutoPoll] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const sinceRef = React.useRef(0);
+
+  const refresh = React.useCallback(async () => {
+    try {
+      const [sr, er] = await Promise.all([
+        NL.actions.h2Streams(),
+        NL.actions.h2Events(sinceRef.current),
+      ]);
+      setStreams(sr.streams || []);
+      const fresh = er.events || [];
+      if (fresh.length) {
+        sinceRef.current = fresh.reduce((m, e) => Math.max(m, e.ts), sinceRef.current);
+        setEvents(prev => [...fresh, ...prev].slice(0, 500));
+      }
+      setError(null);
+    } catch (e) { setError(String(e)); }
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [refresh, onClose]);
+
+  React.useEffect(() => {
+    if (!autoPoll) return undefined;
+    const t = setInterval(refresh, 2000);
+    return () => clearInterval(t);
+  }, [autoPoll, refresh]);
+
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--accent)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+  const cellStyle = { padding: "3px 6px", borderBottom: "1px solid var(--line-soft)" };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(90vw, 900px)", maxHeight: "85vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>⇅ H2 FRAME LOG</span>
+          <label style={{ color: "var(--dim)", fontSize: "10px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <input type="checkbox" checked={autoPoll} onChange={(e) => setAutoPoll(e.target.checked)} />
+            auto (2s)
+          </label>
+          <button onClick={refresh} style={{ ...btn, borderColor: "var(--line)", color: "var(--dim)" }}>REFRESH</button>
+          <button onClick={onClose} style={{ ...btn, borderColor: "var(--line)", color: "var(--dim)" }}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Per-stream summary and a raw frame-level feed captured on either MITM leg
+          (client or upstream) of any HTTP/2 connection the proxy negotiated via ALPN.
+        </div>
+        {error && <div style={{ padding: "6px 12px", color: "var(--err, #e05555)", fontSize: "11px" }}>{error}</div>}
+        <div style={{ padding: "8px 12px 4px", color: "var(--dim)", fontSize: "10px" }}>STREAMS ({streams.length})</div>
+        <div style={{ overflowX: "auto", padding: "0 12px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--ff-mono)", fontSize: "11px" }}>
+            <thead>
+              <tr style={{ color: "var(--dim)", textAlign: "left" }}>
+                <th style={cellStyle}>conn</th>
+                <th style={cellStyle}>stream</th>
+                <th style={cellStyle}>method</th>
+                <th style={cellStyle}>path</th>
+                <th style={cellStyle}>status</th>
+                <th style={cellStyle}>bytes in/out</th>
+                <th style={cellStyle}>frames in/out</th>
+                <th style={cellStyle}>state</th>
+              </tr>
+            </thead>
+            <tbody>
+              {streams.length === 0 && (
+                <tr><td colSpan={8} style={{ ...cellStyle, color: "var(--dim)" }}>— no HTTP/2 streams captured yet —</td></tr>
+              )}
+              {streams.map(s => (
+                <tr key={s.conn + ":" + s.streamId}>
+                  <td style={cellStyle}>{s.conn}</td>
+                  <td style={cellStyle}>{s.streamId}</td>
+                  <td style={cellStyle}>{s.method || ""}</td>
+                  <td style={{ ...cellStyle, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.path || ""}</td>
+                  <td style={cellStyle}>{s.status || ""}</td>
+                  <td style={cellStyle}>{s.bytesIn}/{s.bytesOut}</td>
+                  <td style={cellStyle}>{s.framesIn}/{s.framesOut}</td>
+                  <td style={cellStyle}>{s.closed ? "closed" : "open"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: "10px 12px 4px", color: "var(--dim)", fontSize: "10px" }}>FRAMES ({events.length}, newest first)</div>
+        <div style={{ overflowX: "auto", padding: "0 12px 10px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--ff-mono)", fontSize: "11px" }}>
+            <thead>
+              <tr style={{ color: "var(--dim)", textAlign: "left" }}>
+                <th style={cellStyle}>ts</th>
+                <th style={cellStyle}>conn</th>
+                <th style={cellStyle}>type</th>
+                <th style={cellStyle}>flags</th>
+                <th style={cellStyle}>stream</th>
+                <th style={cellStyle}>bytes</th>
+                <th style={cellStyle}>error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.length === 0 && (
+                <tr><td colSpan={7} style={{ ...cellStyle, color: "var(--dim)" }}>— no frames yet —</td></tr>
+              )}
+              {events.map((e, i) => (
+                <tr key={e.ts + ":" + e.conn + ":" + e.streamId + ":" + i}>
+                  <td style={cellStyle}>{new Date(e.ts).toLocaleTimeString()}</td>
+                  <td style={cellStyle}>{e.conn}</td>
+                  <td style={cellStyle}>{e.type}</td>
+                  <td style={cellStyle}>{e.flags}</td>
+                  <td style={cellStyle}>{e.streamId}</td>
+                  <td style={cellStyle}>{e.bytes}</td>
+                  <td style={cellStyle}>{e.errorCode ? e.errorCode : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===================== COPY AS (tool integration) ====================
 
 // Parse a captured raw HTTP request into { method, fullUrl, headers, body }.
@@ -1764,6 +1916,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
 
   // #398: right-click add/remove scope, on any site-map or history row.
   const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
+  const [h2LogOpen, setH2LogOpen] = React.useState(false);
 
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
   const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
@@ -1855,8 +2008,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <span>HTTP HISTORY</span>
           <span className="ph-count">{shown} / {rows.length}</span>
           <button onClick={() => setWsRepeaterOpen(true)} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
+          <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
         </div>
         {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
+        {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
         <FilterBar
           hostFilter={hostFilter}
           setHostFilter={v => dispatch({ type: "set", payload: { hostFilter: v }})}

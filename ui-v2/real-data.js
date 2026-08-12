@@ -450,6 +450,23 @@
     wsSend(sessionId, direction, opcode, payload) {
       return post("/api/ws/send", { sessionId, direction, opcode, payload }).then(r => r.json());
     },
+
+    // --- HTTP/2 frame-level visibility (#277: Burp has no frame log at all) ---
+    // Lists every h2 stream captured on either MITM leg (client or upstream).
+    // Read-only, safe to poll. Response: { streams: [{streamId, conn, method,
+    // path, status, bytesIn, bytesOut, framesIn, framesOut, lastError,
+    // openedAtMs, closed}] }.
+    h2Streams() { return fetch("/api/h2/streams").then(r => r.json()); },
+    // Raw h2 frame log since a cursor timestamp (ms), for a live tail. Pass
+    // the previous call's latest `ts` back in as `sinceMs` to page forward.
+    // Read-only. Response: { events: [{ts, conn, type, flags, streamId,
+    // bytes, errorCode}] } -- type is a decoded frame-type name (DATA,
+    // HEADERS, PRIORITY, RST_STREAM, SETTINGS, PUSH_PROMISE, PING, GOAWAY,
+    // WINDOW_UPDATE, CONTINUATION) or the raw numeric type if unrecognized.
+    h2Events(sinceMs) {
+      const q = sinceMs ? ("?since=" + encodeURIComponent(sinceMs)) : "";
+      return fetch("/api/h2/events" + q).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {
