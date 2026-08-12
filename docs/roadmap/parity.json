@@ -510,13 +510,18 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Decode",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
       "gap": "MISCLASSIFICATION. The decode capability already EXECUTES: applyRule delegates any non-local op to Transcode::apply (intruder_rules.cpp:45-46), and Transcode::apply supports base64-decode/base64url-decode/url-decode/html-decode/hex-decode/jwt-decode (transcode.cpp:243-248). So passing op=\"base64-decode\" as a rule already decodes today. Only the discovery list operations() deliberately omits them (",
       "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
       "evidence": "intruder_rules.cpp:45-46 fallthrough to Transcode::apply(op,value); transcode.cpp:229-235 ops() and :243-248 apply() implement base64/url/html/hex/jwt decode; intruder_rules.cpp:56-58 comment excludes them from the advertised list only.",
-      "audited_state": "absent"
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "233729a",
+        "note": "Closed 2026-08-11: operations() now advertises the decode inverse of each advertised reversible encode -- base64-decode/base64url-decode/url-decode/hex-decode/html-decode -- matching Burp's Decode payload rule. The ops already executed (applyRule -> Transcode::apply) and fail safe (a decode of non-decodable input is a no-op), so this only closes the discoverability gap; /api/intruder/rule-ops (control_server.cpp:3305) serves operations() verbatim so the UI dropdown picks them up. The prior blanket exclusion ('payloads are authored, not received') was re-derived as incomplete -- payload lists routinely arrive pre-encoded. Round-trips unit- + mutation-tested. Non-payload decodes (jwt-decode multi-line JSON; octal/binary-decode, no advertised encoder) stay unadvertised but still run if named."
+      }
     },
     {
       "area": "intruder",
