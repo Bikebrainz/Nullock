@@ -2027,13 +2027,18 @@
     {
       "area": "sequencer",
       "feature": "Cookie jar transport safety (do not replay a Secure cookie over cleartext)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "The gate is still a port heuristic, not a TLS check: injectableOverTransport returns `port == 443` for Secure cookies. Confirmed HttpRequest (proxy_server.hpp:34-44) has NO tls/secure/scheme field, and session_manager.cpp:131 passes only req.port. Fix: (1) add `bool tls = false;` to Nullock::Proxy::HttpRequest; (2) set it true at the two places requests are constructed on a TLS connection (proxy M",
       "why": "Reclassified present -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
       "evidence": "session_manager_logic.cpp:118-121 (`if (!c.secure) return true; return port == 443;`); session_manager.cpp:131 (`injectableOverTransport(c, req.port)`); proxy_server.hpp:34-44 (HttpRequest struct \u2014 method/target/host/port/path/headers/body/timestamp, no tls flag).",
-      "audited_state": "present"
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "1f250cf",
+        "note": "Closed 2026-08-12 (SECURITY). Replaced the port==443 heuristic with a real TLS check: added `bool tls=false` to Proxy::HttpRequest, set true on the MITM'd HTTPS paths (proxy_server.cpp H2 + the two sslClient read loops; the plain Connection::run leaves it false), changed injectableOverTransport(c,int port)->(c,bool tls){return c.secure?tls:true;} and its caller session_manager.cpp req.port->req.tls. The heuristic both LEAKED a Secure cookie over cleartext on :443 and REFUSED it over TLS on a non-standard port (:8443); the bool check fixes both. Fail-closed: an unknown/default transport never injects a Secure cookie. Mutation-tested (ignoring transport fails the Secure-over-cleartext cases)."
+      }
     },
     {
       "area": "sequencer",
