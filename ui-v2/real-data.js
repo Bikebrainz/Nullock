@@ -409,6 +409,20 @@
     tlsInspect(host, opts) {
       return post("/api/tls/inspect", Object.assign({ host }, opts)).then(r => r.json());
     },
+
+    // --- WebSocket Repeater (Burp: WebSocket Repeater) ---
+    // Lists every currently-open WS tunnel the MITM proxy is relaying, with
+    // frame counters. Read-only, safe to poll. Response: { sessions: [{id,
+    // host, port, openedAtMs, framesUp, framesDown}] }.
+    wsSessions() { return fetch("/api/ws/sessions").then(r => r.json()); },
+    // Queues a frame onto a live session's relay thread. direction is
+    // "up" (client->server) or "down" (server->client); opcode 0x1=text,
+    // 0x2=binary (payload sent as base64), 0x8=close, 0x9=ping, 0xA=pong.
+    // Response: { ok, queued } -- queued=false means no session with that id
+    // is open anymore (nothing about delivery to the wire is known here).
+    wsSend(sessionId, direction, opcode, payload) {
+      return post("/api/ws/send", { sessionId, direction, opcode, payload }).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {

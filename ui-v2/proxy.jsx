@@ -765,6 +765,168 @@ function AuthzTestOverlay({ rowId, onClose }) {
   );
 }
 
+// ===================== WS REPEATER (WebSocket message injection) =====
+// #270: the backend (WsRepeater + POST /api/ws/send + GET /api/ws/sessions)
+// is complete but had zero front-end callers -- the only way to inject a
+// frame into a live WebSocket tunnel was to hand-craft a curl POST. This
+// overlay lists live sessions (polled while open) and lets the operator
+// pick a direction/opcode, edit a payload, and queue it onto the tunnel's
+// relay thread, with a one-click resend of the last frame sent.
+const WS_OPCODES = [
+  { v: 0x1, label: "0x1 text" },
+  { v: 0x2, label: "0x2 binary (base64)" },
+  { v: 0x8, label: "0x8 close" },
+  { v: 0x9, label: "0x9 ping" },
+  { v: 0xA, label: "0xA pong" },
+];
+
+function WsRepeaterOverlay({ onClose }) {
+  const [sessions, setSessions] = React.useState([]);
+  const [sessionId, setSessionId] = React.useState(null);
+  const [direction, setDirection] = React.useState("up");
+  const [opcode, setOpcode] = React.useState(0x1);
+  const [payload, setPayload] = React.useState("");
+  const [lastSent, setLastSent] = React.useState(null); // {sessionId,direction,opcode,payload} | null
+  const [result, setResult] = React.useState(null); // {ok,queued} | null
+  const [error, setError] = React.useState(null);
+  const [sending, setSending] = React.useState(false);
+
+  const refresh = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.wsSessions();
+      const list = r.sessions || [];
+      setSessions(list);
+      setSessionId(id => (id != null && list.some(s => s.id === id)) ? id : (list[0] ? list[0].id : null));
+    } catch (e) { /* transient poll failure, keep last-known list */ }
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 2000);
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => { clearInterval(t); window.removeEventListener("keydown", onKey); };
+  }, [refresh, onClose]);
+
+  const send = async (overrides) => {
+    const req = Object.assign({ sessionId, direction, opcode, payload }, overrides || {});
+    if (req.sessionId == null) { setError("No live WebSocket session -- open one via the intercepting proxy first."); return; }
+    setError(null);
+    setSending(true);
+    try {
+      // The endpoint's "ok" mirrors "queued" by design (a closed session is
+      // an expected, non-exceptional outcome) -- render it via the result
+      // block below, not as an error state. `error` here is reserved for
+      // actual transport/parse failures (network drop, malformed JSON).
+      const r = await NL.actions.wsSend(req.sessionId, req.direction, req.opcode, req.payload);
+      setResult(r);
+      if (r && r.queued) setLastSent(req);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--accent)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+  const field = {
+    background: "var(--bg-deep)", color: "var(--text)",
+    border: "1px solid var(--line)", padding: "3px 6px",
+    fontFamily: "var(--ff-mono)", fontSize: "11px",
+  };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(80vw, 720px)", maxHeight: "80vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>⇄ WS REPEATER</span>
+          <button onClick={onClose} style={{ ...btn, borderColor: "var(--line)", color: "var(--dim)" }}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Injects a frame directly onto a live WebSocket tunnel the MITM proxy is currently
+          relaying (TLS-MITM leg only). Sessions list refreshes every 2s -- open/keep a
+          WebSocket connection through the proxy to see one here.
+        </div>
+        <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 4 }}>LIVE SESSIONS ({sessions.length})</div>
+            <select value={sessionId == null ? "" : sessionId}
+                    onChange={(e) => setSessionId(e.target.value === "" ? null : Number(e.target.value))}
+                    style={{ ...field, width: "100%" }}>
+              {sessions.length === 0 && <option value="">— none open —</option>}
+              {sessions.map(s => (
+                <option key={s.id} value={s.id}>
+                  #{s.id} {s.host}:{s.port} — ↑{s.framesUp} ↓{s.framesDown}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 4 }}>DIRECTION</div>
+              <select value={direction} onChange={(e) => setDirection(e.target.value)} style={{ ...field, width: "100%" }}>
+                <option value="up">↑ up (client → server)</option>
+                <option value="down">↓ down (server → client)</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 4 }}>OPCODE</div>
+              <select value={opcode} onChange={(e) => setOpcode(Number(e.target.value))} style={{ ...field, width: "100%" }}>
+                {WS_OPCODES.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 4 }}>
+              PAYLOAD {opcode === 0x2 ? "(base64-encoded bytes)" : "(text)"}
+            </div>
+            <textarea value={payload} onChange={(e) => setPayload(e.target.value)}
+                      placeholder={opcode === 0x2 ? "base64…" : "frame payload…"}
+                      style={{ width: "100%", minHeight: 80, resize: "vertical", boxSizing: "border-box", ...field }} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => send()} disabled={sending || sessionId == null}
+                    style={{ ...btn, opacity: (sending || sessionId == null) ? 0.5 : 1 }}>
+              {sending ? "SENDING…" : "▸ SEND"}
+            </button>
+            <button onClick={() => send(lastSent)} disabled={sending || !lastSent}
+                    style={{ ...btn, opacity: (sending || !lastSent) ? 0.5 : 1 }}>
+              ↻ RESEND LAST
+            </button>
+          </div>
+          {error && <div style={{ color: "var(--err, #e05555)", fontSize: "11px" }}>{error}</div>}
+          {result && !error && (
+            <div style={{ color: result.queued ? "var(--ok, #55c07a)" : "var(--err, #e05555)", fontSize: "11px" }}>
+              {result.queued
+                ? "✓ queued — handed to the relay thread (delivery to the wire isn't observable here)"
+                : "✗ not queued — session closed before this frame reached it"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===================== COPY AS (tool integration) ====================
 
 // Parse a captured raw HTTP request into { method, fullUrl, headers, body }.
@@ -1578,6 +1740,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const extList = React.useMemo(() => parseExtList(extText), [extText]);
 
   // #398: right-click add/remove scope, on any site-map or history row.
+  const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
+
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
   const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
   const closeRowMenu = () => setCtxMenu(null);
@@ -1667,7 +1831,9 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <span className="ph-corner">▸</span>
           <span>HTTP HISTORY</span>
           <span className="ph-count">{shown} / {rows.length}</span>
+          <button onClick={() => setWsRepeaterOpen(true)} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
         </div>
+        {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
         <FilterBar
           hostFilter={hostFilter}
           setHostFilter={v => dispatch({ type: "set", payload: { hostFilter: v }})}
