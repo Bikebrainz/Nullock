@@ -248,12 +248,43 @@ QStringList usernameGen(const QString &nameOrEmail) {
     return out;
 }
 
+QStringList illegalUnicode(const QString &base, int minBytes, int maxBytes,
+                           bool percentPrefix, bool upperHex) {
+    if (base.isEmpty()) return {};
+    minBytes = qBound(2, minBytes, 6);
+    maxBytes = qBound(minBytes, maxBytes, 6);
+    const uint cp = base.toUcs4().first();          // encode the first code point
+    QStringList out;
+    for (int n = minBytes; n <= maxBytes && out.size() < kMaxCount; ++n) {
+        // The code point must fit in the n-byte payload (5n+1 bits) to be encoded.
+        const int payloadBits = 5 * n + 1;
+        if (payloadBits < 32 && cp >= (1u << payloadBits)) continue;
+        QVector<quint8> bytes(n);
+        uint v = cp;
+        for (int i = n - 1; i >= 1; --i) { bytes[i] = static_cast<quint8>(0x80 | (v & 0x3F)); v >>= 6; }
+        const quint8 lead = static_cast<quint8>((0xFF << (8 - n)) & 0xFF);   // n high bits set
+        const int leadBits = 7 - n;
+        const uint leadMask = leadBits > 0 ? ((1u << leadBits) - 1) : 0u;
+        bytes[0] = static_cast<quint8>(lead | (v & leadMask));
+        QString s;
+        for (int i = 0; i < n; ++i) {
+            QString hx = QStringLiteral("%1").arg(bytes[i], 2, 16, QLatin1Char('0'));
+            if (upperHex) hx = hx.toUpper();
+            if (percentPrefix) s += QLatin1Char('%');
+            s += hx;
+        }
+        out << s;
+    }
+    return out;
+}
+
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
              QStringLiteral("casemod"), QStringLiteral("charsub"),
-             QStringLiteral("bitflip"), QStringLiteral("username") };
+             QStringLiteral("bitflip"), QStringLiteral("username"),
+             QStringLiteral("illegal-unicode") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

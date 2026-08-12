@@ -104,6 +104,16 @@ QStringList nullPayloads(int count);
 // kMaxCount. Empty / token-less input -> empty.
 QStringList usernameGen(const QString &nameOrEmail);
 
+// Burp "Illegal Unicode": emit the OVERLONG UTF-8 encodings of the first code
+// point of `base` at each byte length in [minBytes, maxBytes] (each clamped to
+// [2,6]). An overlong encoding uses more bytes than necessary -- the classic
+// WAF/path-traversal bypass, e.g. '/' -> %C0%AF, %E0%80%AF, ... Rendered as hex,
+// optionally `%`-prefixed per byte (percentPrefix) and upper-cased (upperHex). A
+// byte length that can't represent the code point is skipped; empty base ->
+// empty. Capped at kMaxCount.
+QStringList illegalUnicode(const QString &base, int minBytes, int maxBytes,
+                           bool percentPrefix, bool upperHex);
+
 // Generator type names this module understands (for UI discovery).
 QStringList types();
 

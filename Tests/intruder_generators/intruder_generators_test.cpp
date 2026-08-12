@@ -240,13 +240,34 @@ int main(int argc, char **argv) {
     }
     chk("username: empty input -> empty", usernameGen("   ").isEmpty());
 
+    // ----- illegalUnicode (Burp "Illegal Unicode", overlong UTF-8) -----
+    // The classic overlong slash sequence, 2..6 bytes, %-prefixed uppercase hex.
+    chk("illegal-unicode: '/' 2..6 bytes -> overlong ladder",
+        illegalUnicode("/", 2, 6, true, true) == (QStringList{
+            "%C0%AF", "%E0%80%AF", "%F0%80%80%AF", "%F8%80%80%80%AF", "%FC%80%80%80%80%AF" }));
+    // 'A' (0x41): 2-byte overlong is C1 81.
+    chk("illegal-unicode: 'A' 2-byte -> %C1%81",
+        illegalUnicode("A", 2, 2, true, true) == (QStringList{ "%C1%81" }));
+    // Lower-case hex + no percent prefix.
+    chk("illegal-unicode: lowercase hex",
+        illegalUnicode("/", 2, 2, true, false) == (QStringList{ "%c0%af" }));
+    chk("illegal-unicode: no percent prefix -> raw hex",
+        illegalUnicode("/", 2, 2, false, true) == (QStringList{ "C0AF" }));
+    // Byte-length clamping: min clamps up to 2, max clamps down to 6.
+    chk("illegal-unicode: minBytes<2 clamps to 2, maxBytes>6 clamps to 6",
+        illegalUnicode("/", 0, 99, true, true).size() == 5);   // n=2..6
+    chk("illegal-unicode: single length",
+        illegalUnicode("/", 3, 3, true, true) == (QStringList{ "%E0%80%AF" }));
+    chk("illegal-unicode: empty base -> empty", illegalUnicode("", 2, 6, true, true).isEmpty());
+
     // ----- types() -----
     chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip+username",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
         && types().contains("frobber") && types().contains("blocks")
         && types().contains("casemod") && types().contains("charsub")
-        && types().contains("bitflip") && types().contains("username"));
+        && types().contains("bitflip") && types().contains("username")
+        && types().contains("illegal-unicode"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

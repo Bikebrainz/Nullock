@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "Illegal Unicode" payload type.** Generates the overlong UTF-8
+  encodings of a target character at each byte length from 2 to 6 — the classic
+  WAF / path-traversal bypass, e.g. `/` → `%C0%AF`, `%E0%80%AF`,
+  `%F0%80%80%AF`, … Output is hex, optionally `%`-prefixed per byte and
+  upper/lower-cased; byte lengths are clamped to the legal 2–6 range and a length
+  that can't represent the code point is skipped. Semantics confirmed against the
+  PortSwigger docs; pure + mutation-proven (the lead-byte prefix and the
+  continuation-byte marker each fail their cases when broken). Closes roadmap
+  parity item "Payload type: Illegal Unicode".
 - **Intruder "Username generator" payload type.** Derives candidate usernames
   from a full name or email address using common schemes (first/last,
   concatenations, dot/underscore/hyphen separated, reversed order, and

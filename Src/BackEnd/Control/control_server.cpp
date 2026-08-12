@@ -3250,6 +3250,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return IG::bitFlip(g.value("base").toString());
         if (t == QLatin1String("username"))
             return IG::usernameGen(g.value("name").toString());
+        if (t == QLatin1String("illegal-unicode"))
+            return IG::illegalUnicode(g.value("base").toString(),
+                                      g.value("minBytes").toInt(2),
+                                      g.value("maxBytes").toInt(6),
+                                      g.value("percent").toBool(true),
+                                      g.value("upper").toBool(true));
         return {};
     };
 
