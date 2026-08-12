@@ -157,6 +157,58 @@ QList<TestCase> buildCorpus() {
                  "<html><head><title>404 Not Found</title></head>"
                  "<body><h1>404 Not Found</h1><hr>nginx</body></html>") });
 
+    // ---- Subdomain-takeover POSITIVE locks (were untested) -------------
+    // Each vendor error-page needle raises a HIGH takeover finding, but ONLY
+    // on a 404/503 response. One positive per vendor, plus a 503-branch lock
+    // (s3 at 503) and a status-gate negative (same needle in a 200 body must
+    // NOT fire). Bodies each contain exactly one vendor needle so the first-
+    // match-wins break resolves to that vendor's kind.
+    tc.append({ "S3 NoSuchBucket at 503 -> takeover-s3", "takeover-s3", false,
+        makeReq("GET", "assets.example.test", "/logo.png"),
+        makeResp(503, "application/xml",
+                 "<Error><Code>NoSuchBucket</Code>"
+                 "<Message>The specified bucket does not exist</Message></Error>") });
+
+    tc.append({ "NoSuchBucket in a 200 body must NOT fire takeover-s3",
+                "takeover-s3", true,
+        makeReq("GET", "assets.example.test", "/"),
+        makeResp(200, "application/xml",
+                 "<Error><Code>NoSuchBucket</Code></Error>") });
+
+    tc.append({ "Heroku 'No such app' 404 -> takeover-heroku", "takeover-heroku", false,
+        makeReq("GET", "app.example.test", "/"),
+        makeResp(404, "text/html",
+                 "<html><body><h1>No such app</h1>"
+                 "<p>There's nothing here, yet.</p></body></html>") });
+
+    tc.append({ "GitHub Pages 404 -> takeover-github", "takeover-github", false,
+        makeReq("GET", "docs.example.test", "/"),
+        makeResp(404, "text/html",
+                 "<html><body><h1>404</h1>"
+                 "<p>There isn't a GitHub Pages site here.</p></body></html>") });
+
+    tc.append({ "Azure 'Web Site not found' 404 -> takeover-azure", "takeover-azure", false,
+        makeReq("GET", "svc.example.test", "/"),
+        makeResp(404, "text/html",
+                 "<html><body>404 Web Site not found.</body></html>") });
+
+    tc.append({ "Fastly unknown domain 404 -> takeover-fastly", "takeover-fastly", false,
+        makeReq("GET", "cdn.example.test", "/"),
+        makeResp(404, "text/plain",
+                 "Fastly error: unknown domain: cdn.example.test") });
+
+    tc.append({ "Shopify shop unavailable 404 -> takeover-shopify", "takeover-shopify", false,
+        makeReq("GET", "shop.example.test", "/"),
+        makeResp(404, "text/html",
+                 "<html><body>Sorry, this shop is currently unavailable.</body></html>") });
+
+    tc.append({ "Tumblr 'Whatever you were looking' 404 -> takeover-tumblr",
+                "takeover-tumblr", false,
+        makeReq("GET", "blog.example.test", "/"),
+        makeResp(404, "text/html",
+                 "<html><body>Whatever you were looking for doesn't currently "
+                 "exist at this address.</body></html>") });
+
     // ---- Cookie hardening ----------------------------------------------
     tc.append({ "cookie missing HttpOnly", "cookie-no-httponly", false,
         makeReq("GET", "example.test", "/"),

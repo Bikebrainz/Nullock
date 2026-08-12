@@ -39,6 +39,14 @@ developer-facing record.
   stopped detecting GitHub App, Slack, SendGrid, Mapbox, Google API, PEM private
   key, or AWS secret leaks. Added positive detection cases for all seven (built at
   runtime from fragments so no literal secret sits in the repo); mutation-proven.
+- **Locked all seven subdomain-takeover fingerprints.** The passive scanner
+  raises a HIGH `takeover-*` finding when a 404/503 body carries a vendor
+  "unclaimed resource" error page (S3 `NoSuchBucket`, Heroku *No such app*,
+  GitHub Pages, Azure *Web Site not found*, Fastly *unknown domain*, Shopify
+  *shop unavailable*, Tumblr), but none had a positive test — a broken needle
+  would have silently stopped flagging takeovers. Added one positive case per
+  vendor, a 503-branch lock, and a status-gate negative (the same needle in a
+  `200` body must **not** fire); mutation-proven (s3 + tumblr needles).
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a
