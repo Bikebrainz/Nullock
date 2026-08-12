@@ -71,7 +71,9 @@ Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host
                   posture grade / asset inventory /
                   OWASP-compliance coverage / CI-gate rollups -- all previously API-only
 Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): matchers + extractors
-                  + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate
+                  + request crafting with {{payload}} expansion; bundled starter library, hits feed the gate --
+                  in-app "Detection templates" section (SCANS tab): pick a bundled template or paste a
+                  custom JSON one, run against a target URL
 CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +
                   GET /api/gate pipeline pass/fail; composite GitHub Action + reference Dockerfile
 Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,

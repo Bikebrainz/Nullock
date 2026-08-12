@@ -1781,6 +1781,13 @@ function ScansTab() {
   const [tlsPort, setTlsPort] = React.useState("");
   const [tlsRes, setTlsRes]   = React.useState(null);
 
+  // Detection templates (nuclei-style matcher/extractor engine, /api/template/*)
+  const [tplList, setTplList]     = React.useState(null);
+  const [tplUrl, setTplUrl]       = React.useState("");
+  const [tplSelected, setTplSelected] = React.useState("");
+  const [tplCustom, setTplCustom] = React.useState("");
+  const [tplRes, setTplRes]       = React.useState(null);
+
   const runBusy2 = async (key, setRes, fn) => {
     setErr2(""); setBusy2(key); setRes(null);
     try {
@@ -1855,6 +1862,19 @@ function ScansTab() {
     const port = parseInt(tlsPort, 10);
     if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;
     runBusy2("tls", setTlsRes, () => NL.actions.tlsInspect(tlsHost.trim(), opts));
+  };
+
+  const loadTemplates = React.useCallback(() => runBusy2("templates", setTplList, () => NL.actions.templateList()), []);
+  React.useEffect(() => { loadTemplates(); }, [loadTemplates]);
+  const doTemplateRun = (spec) => {
+    if (!tplUrl.trim()) { setErr2("enter a target URL"); return; }
+    runBusy2("templaterun", setTplRes, () => NL.actions.templateRun(tplUrl.trim(), spec));
+  };
+  const doCustomTemplateRun = () => {
+    if (!tplCustom.trim()) { setErr2("enter a custom template JSON"); return; }
+    let tpl;
+    try { tpl = JSON.parse(tplCustom); } catch (e) { setErr2("template must be valid JSON: " + (e && e.message ? e.message : e)); return; }
+    doTemplateRun({ template: tpl });
   };
 
   const start = async () => {
@@ -2315,6 +2335,40 @@ function ScansTab() {
           </div>
         )}
         <RawResult res={tlsRes} />
+      </Section>
+
+      <Section title="Detection templates" hint="nuclei-style matcher/extractor engine -- bundled templates or custom JSON, a match also files a finding into Issues">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={tplUrl} onChange={e => setTplUrl(e.target.value)} placeholder="https://target/"
+                 onKeyDown={e => { if (e.key === "Enter" && tplSelected) doTemplateRun({ templateId: tplSelected }); }}
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <select style={inp} value={tplSelected} onChange={e => setTplSelected(e.target.value)}>
+            <option value="">-- pick a bundled template --</option>
+            {((tplList && tplList.templates) || []).map(t => (
+              <option key={t.id} value={t.id}>{t.name} ({t.severity})</option>
+            ))}
+          </select>
+          <Btn2 k="templaterun" label="Run" disabled={!tplSelected} onClick={() => doTemplateRun({ templateId: tplSelected })} />
+          <Btn2 k="templates" label="Reload list" onClick={loadTemplates} />
+        </div>
+        {tplList && tplList.templates && tplList.templates.length > 0 && (
+          <Table cols={["id", "name", "severity", "description"]} rows={tplList.templates}
+                 cell={t => [t.id, t.name, <span style={{ color: SEVERITY_COLOR[t.severity] || "var(--dim)" }}>{t.severity}</span>, t.description]} />
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", color: "var(--dim)" }}>Custom template (JSON) — nuclei-style matchers/extractors, runs against the URL above</label>
+          <textarea value={tplCustom} onChange={e => setTplCustom(e.target.value)}
+                    placeholder={'{"matchers-condition":"and","matchers":[{"type":"status","status":[200]}]}'}
+                    style={{ ...inp, minHeight: 70, resize: "vertical" }} spellCheck={false} />
+          <div><Btn2 k="templaterun" label="Run custom" onClick={doCustomTemplateRun} /></div>
+        </div>
+        {tplRes && tplRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {tplRes.matched ? <span style={{ color: "var(--err)" }}>MATCHED</span> : "no match"} · {tplRes.requests} request(s){tplRes.capped ? " (capped)" : ""}
+            {tplRes.name ? " · " + tplRes.name : ""}{tplRes.severity ? " (" + tplRes.severity + ")" : ""}
+          </div>
+        )}
+        <RawResult res={tplRes} />
       </Section>
     </div>
   );

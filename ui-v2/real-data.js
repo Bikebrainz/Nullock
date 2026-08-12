@@ -410,6 +410,22 @@
       return post("/api/tls/inspect", Object.assign({ host }, opts)).then(r => r.json());
     },
 
+    // --- Detection templates (nuclei-style matcher/extractor engine) ---
+    // Lists the bundled template library (templates/detections/*.json).
+    // Read-only. Response: { ok, count, templates: [{id, name, severity,
+    // description}] }.
+    templateList() { return fetch("/api/template/list").then(r => r.json()); },
+    // Runs a detection template against one URL. `spec` is exactly one of
+    // { templateId } (library template), { template: {...} } (inline JSON),
+    // or { yaml } (nuclei-YAML, converted server-side). A template with a
+    // "request" block crafts and fires its own request(s); otherwise a plain
+    // GET is issued. A match also files a finding into Issues. Response:
+    // { ok, matched, matchedCount, requests, capped, results: [{payloads,
+    // status, matched, extracted, error?}], templateId, name, severity, url }.
+    templateRun(url, spec) {
+      return post("/api/template/run", Object.assign({ url }, spec)).then(r => r.json());
+    },
+
     // --- WebSocket Repeater (Burp: WebSocket Repeater) ---
     // Lists every currently-open WS tunnel the MITM proxy is relaying, with
     // frame counters. Read-only, safe to poll. Response: { sessions: [{id,

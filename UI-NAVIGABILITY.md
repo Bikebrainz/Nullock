@@ -15,7 +15,10 @@
 > that endpoint needs a `token` field the uniform `{url,param?,method?}` contract has no place
 > for; both are wired elsewhere instead), leaving 20 of 173 (12%) orphaned as of 2026-08-11.
 > The 2026-08-12 wave added a WS REPEATER overlay to the Proxy tab wiring `/api/ws/sessions`
-> and `/api/ws/send`, leaving **18 of 173 (10%) still orphaned**. Verified
+> and `/api/ws/send`, leaving 18 of 173 (10%) orphaned. A same-day follow-up wired the
+> nuclei-style detection-template engine (`/api/template/list`, `/api/template/run`) into a
+> new "Detection templates" section in the SCANS tab, leaving **16 of 173 (9%) still
+> orphaned**. Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -34,8 +37,10 @@ App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloa
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
 port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
-pipeline-run, posture/inventory/compliance/gate rollups, and exposure-scan/service-CVE-
-correlation/JS-recon/TLS-certificate-inspection single-target probes). The INSPECTOR tab now
+pipeline-run, posture/inventory/compliance/gate rollups, exposure-scan/service-CVE-
+correlation/JS-recon/TLS-certificate-inspection single-target probes, and a Detection
+templates section running the bundled nuclei-style template library or a custom-JSON
+template against a target URL). The INSPECTOR tab now
 has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
 header-audit/waf-detect/secret-scan.
@@ -107,22 +112,22 @@ entry point at all yet.)
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (8)
+## GraphQL / WS / session (6)
 - `/api/intruder/multi`
 - `/api/portscan/import-nmap`
 - `/api/portscan/to-findings`
 - `/api/project/templates`
 - `/api/session-rules/clear-vars`
 - `/api/session-rules/set`
-- `/api/template/list`
-- `/api/template/run`
 
 (`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
 dialog; `/api/intruder/rule-ops` wired via Intruder's RULES bar. `/api/graphql/probe`,
 `/api/graphql/schema` wired via the PROBE tab. `/api/authz-test` wired via the AUTHZ TEST
 button in Proxy history / Site map's DetailPane. `/api/ws/sessions`, `/api/ws/send` wired via
 the Proxy tab's WS REPEATER overlay (HTTP HISTORY pane-head) -- session dropdown, direction/
-opcode selectors, payload editor, resend-last.)
+opcode selectors, payload editor, resend-last. `/api/template/list`, `/api/template/run`
+wired via the SCANS tab's new "Detection templates" section -- bundled template picker plus a
+custom-JSON template editor, both firing against a target URL.)
 
 ## Other (1)
 - `/api/extensions/install-builtins`
