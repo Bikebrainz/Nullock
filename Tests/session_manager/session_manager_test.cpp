@@ -154,6 +154,60 @@ int main(int argc, char **argv) {
         stripCtrl(QString("a") + QChar('\r') + QChar('\n') + QChar(0) + QString("b")) == "ab");
     chk("stripCtrl: a clean string is unchanged", stripCtrl("clean-value_123") == "clean-value_123");
 
+    // ----- cookie expiry (Max-Age / Expires) : cookie-jar expiry handling -----
+    {
+        const long long cap = 1000000;   // pinned capture epoch
+        auto resolve = [&](const char *sc) {
+            CapturedCookie c = parseSetCookie(QString::fromLatin1(sc));
+            resolveCookieExpiry(c, cap);
+            return c;
+        };
+        // Max-Age -> absolute expiry = capture + delta.
+        {
+            const CapturedCookie c = resolve("s=1; Max-Age=3600");
+            chk("max-age parsed to delta", c.maxAge == 3600);
+            chk("max-age -> persistent cookie", c.persistent);
+            chk("max-age -> expiry = capture + delta", c.expiresEpoch == cap + 3600);
+            chk("max-age not expired just before", !cookieExpired(c, cap + 3599));
+            chk("max-age expired at the boundary", cookieExpired(c, cap + 3600));
+        }
+        // Max-Age <= 0 is an immediate deletion (logout).
+        chk("max-age=0 -> expired now", cookieExpired(resolve("s=1; Max-Age=0"), cap));
+        chk("max-age=-1 -> expired now", cookieExpired(resolve("s=1; Max-Age=-1"), cap));
+        // Neither attribute -> SESSION cookie: never time-expires.
+        {
+            const CapturedCookie c = resolve("s=1; Path=/");
+            chk("no max-age/expires -> session cookie", !c.persistent);
+            chk("session cookie never expires by time", !cookieExpired(c, cap + 999999999));
+        }
+        // A non-numeric Max-Age is ignored (stays a session cookie when no Expires).
+        chk("invalid max-age ignored -> session cookie",
+            !resolve("s=1; Max-Age=abc").persistent);
+        // Expires (HTTP-date) -> absolute epoch.
+        chk("expires HTTP-date -> epoch",
+            parseCookieExpires("Thu, 01 Jan 1970 00:00:10 GMT") == 10);
+        {
+            const CapturedCookie c = resolve("s=1; Expires=Thu, 01 Jan 1970 00:00:10 GMT");
+            chk("expires -> persistent w/ parsed epoch", c.persistent && c.expiresEpoch == 10);
+            chk("past expires -> expired", cookieExpired(c, 11));
+        }
+        chk("future expires -> not yet expired",
+            !cookieExpired(resolve("s=1; Expires=Wed, 21 Oct 2099 07:28:00 GMT"), cap));
+        // RFC 6265 §5.3: Max-Age WINS over Expires -- a live Max-Age overrides a
+        // past Expires so the cookie stays valid.
+        {
+            const CapturedCookie c =
+                resolve("s=1; Max-Age=100; Expires=Thu, 01 Jan 1970 00:00:10 GMT");
+            chk("max-age overrides a past expires (still valid)", !cookieExpired(c, cap + 50));
+            chk("max-age overrides expires (expiry = capture+maxage)",
+                c.expiresEpoch == cap + 100);
+        }
+        // Unparseable Expires -> -1 -> treated as a session cookie (safe default).
+        chk("garbage expires -> -1", parseCookieExpires("not a date") == -1);
+        chk("only-garbage-expires -> session cookie",
+            !resolve("s=1; Expires=not a date").persistent);
+    }
+
     std::fprintf(stderr, "session_manager_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

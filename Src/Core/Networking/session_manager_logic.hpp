@@ -11,17 +11,26 @@ namespace Nullock::Core {
 
 // One captured cookie. Holds the raw Set-Cookie value plus the parsed name=value
 // pair and attributes so it can be displayed and re-injected on outgoing requests.
+// Sentinel: no Max-Age attribute was present on the Set-Cookie.
+constexpr long long kNoMaxAge = (-9223372036854775807LL - 1);   // LLONG_MIN
+
 struct CapturedCookie {
     QString name;
     QString value;
     QString raw;          // full Set-Cookie value (everything after the colon)
     QString path;
-    QString expires;
+    QString expires;      // raw Expires attribute value (unparsed HTTP-date string)
+    long long maxAge = kNoMaxAge;   // raw Max-Age delta-seconds; kNoMaxAge if absent
     bool    httpOnly = false;
     bool    secure   = false;
     QString sameSite;
     QString domain;       // the Domain attribute, lowercased, leading '.' stripped.
                           // Empty => host-only cookie (matches its origin host exactly).
+    // Resolved lifetime (filled by resolveCookieExpiry at capture time). A cookie
+    // with neither Max-Age nor a parseable Expires is a SESSION cookie
+    // (persistent=false): it never time-expires and is dropped when the session ends.
+    bool      persistent   = false;
+    long long expiresEpoch = 0;     // absolute expiry (unix seconds); valid iff persistent
 };
 
 namespace SessionLogic {
@@ -59,6 +68,28 @@ bool injectableOverTransport(const CapturedCookie &c, bool tls);
 // This is the pure scoping predicate for the cookie jar (roadmap #194); wiring it
 // into domain-aware injection is a separate step.
 bool domainMatches(const QString &cookieDomain, const QString &reqHost);
+
+// Parse a Set-Cookie "Expires" HTTP-date to unix seconds, or -1 if unparseable.
+// Cookie dates are lenient (RFC 6265 §5.1.1); we accept the RFC 1123 / RFC 2822
+// forms Set-Cookie uses in practice ("Wed, 21 Oct 2015 07:28:00 GMT"), always in
+// the C locale + UTC so a non-English system locale can't break parsing. An
+// unparseable date returns -1 -> treated as a session cookie (never wrongly
+// expired), which is the safe default.
+long long parseCookieExpires(const QString &httpDate);
+
+// Resolve a cookie's absolute lifetime from its Max-Age / Expires attributes,
+// given the epoch at which it was CAPTURED. RFC 6265 §5.3: Max-Age takes
+// precedence over Expires; a Max-Age <= 0 (or a past Expires) yields an expiry at
+// or before capture time (an immediate deletion / logout). Sets c.persistent and
+// c.expiresEpoch in place; leaves persistent=false (session cookie) when neither
+// attribute is present or the Expires date is unparseable.
+void resolveCookieExpiry(CapturedCookie &c, long long capturedAtEpoch);
+
+// Has a (resolved) cookie expired as of `nowEpoch`? A session cookie
+// (persistent=false) never time-expires. This is the pure lifetime predicate for
+// the cookie jar (roadmap: cookie expiry handling); wiring it into capture-side
+// deletion and inject-side skipping is a separate step.
+bool cookieExpired(const CapturedCookie &c, long long nowEpoch);
 
 } // namespace SessionLogic
 } // namespace Nullock::Core

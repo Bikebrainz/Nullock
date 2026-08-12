@@ -11,6 +11,18 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Cookie jar now parses cookie lifetime (Max-Age / Expires) — foundation.** The
+  jar stored the `Expires` attribute as an opaque string and ignored `Max-Age`
+  entirely, so an expired or logged-out cookie could be replayed forever. Added
+  pure lifetime logic: `parseSetCookie` now reads `Max-Age`; `resolveCookieExpiry`
+  computes an absolute expiry at capture time with RFC 6265 §5.3 precedence
+  (Max-Age wins over Expires; `Max-Age <= 0` or a past `Expires` is an immediate
+  deletion); `parseCookieExpires` parses the HTTP-date (C-locale/UTC, unparseable
+  → treated as a session cookie); and `cookieExpired` is the lifetime predicate.
+  Cookies are now distinguished as session vs. persistent. Mutation-proven
+  (Max-Age-over-Expires precedence and the expiry boundary each fail when broken).
+  Enforcement wiring (dropping expired cookies on capture, skipping them on
+  inject) is a separate step, mirroring the #194 domain-matching foundation.
 - **Intruder "Grep - Payloads" reflected-payload flagging.** Burp auto-flags a
   result row when one of its submitted payloads is reflected in the response;
   Nullock now does too, so you no longer hand-build a grep-match needle per

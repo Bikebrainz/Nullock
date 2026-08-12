@@ -2,6 +2,8 @@
 
 #include "session_manager_logic.hpp"
 
+#include <QDateTime>
+#include <QLocale>
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -67,6 +69,13 @@ CapturedCookie parseSetCookie(const QString &raw) {
         const QString val = eq2 < 0 ? QString() : asciiTrimmed(seg.mid(eq2 + 1));
         if      (key == "path")     c.path     = val;
         else if (key == "expires")  c.expires  = val;
+        else if (key == "max-age") {
+            // RFC 6265 §5.2.2: Max-Age is delta-seconds (a possibly-negative
+            // integer). A non-numeric / empty value is ignored (stays absent).
+            bool ok = false;
+            const long long ma = val.toLongLong(&ok);
+            if (ok) c.maxAge = ma;
+        }
         else if (key == "httponly") c.httpOnly = true;
         else if (key == "secure")   c.secure   = true;
         else if (key == "samesite") c.sameSite = val;
@@ -146,6 +155,55 @@ bool injectableOverTransport(const CapturedCookie &c, bool tls) {
                                     // over cleartext on port 443 and refused it over
                                     // TLS on 8443). Fails closed: unknown transport
                                     // (tls=false) never injects a Secure cookie.
+}
+
+long long parseCookieExpires(const QString &httpDate) {
+    const QString s = httpDate.trimmed();
+    if (s.isEmpty()) return -1;
+    // Qt's RFC 2822 parser handles the common Set-Cookie form incl. the obsolete
+    // "GMT" zone; it resolves the zone itself, so convert to UTC for the epoch.
+    QDateTime dt = QDateTime::fromString(s, Qt::RFC2822Date);
+    if (dt.isValid()) return dt.toUTC().toSecsSinceEpoch();
+    // Fallbacks: parse the wall-clock in the C locale (a non-English system
+    // locale must not break month/day-name matching) and interpret it as UTC,
+    // matching the literal 'GMT' these formats carry.
+    static const char *kFmts[] = {
+        "ddd, dd MMM yyyy hh:mm:ss 'GMT'",
+        "ddd, dd-MMM-yyyy hh:mm:ss 'GMT'",   // '-'-separated variant
+        "ddd MMM d hh:mm:ss yyyy",           // asctime() style (no zone)
+    };
+    for (const char *f : kFmts) {
+        QDateTime local = QLocale::c().toDateTime(s, QString::fromLatin1(f));
+        if (local.isValid()) {
+            local.setTimeSpec(Qt::UTC);
+            return local.toSecsSinceEpoch();
+        }
+    }
+    return -1;
+}
+
+void resolveCookieExpiry(CapturedCookie &c, long long capturedAtEpoch) {
+    c.persistent = false;
+    c.expiresEpoch = 0;
+    if (c.maxAge != kNoMaxAge) {
+        // RFC 6265 §5.3: Max-Age takes precedence over Expires. Max-Age <= 0
+        // yields an expiry at/before capture time (an immediate deletion).
+        c.persistent = true;
+        constexpr long long kMax = 9223372036854775807LL;
+        c.expiresEpoch = (c.maxAge > 0 && capturedAtEpoch > kMax - c.maxAge)
+                             ? kMax                          // clamp overflow -> far future
+                             : capturedAtEpoch + c.maxAge;
+        return;
+    }
+    if (!c.expires.isEmpty()) {
+        const long long e = parseCookieExpires(c.expires);
+        if (e >= 0) { c.persistent = true; c.expiresEpoch = e; }
+    }
+    // else: neither attribute -> a SESSION cookie (persistent stays false).
+}
+
+bool cookieExpired(const CapturedCookie &c, long long nowEpoch) {
+    return c.persistent && nowEpoch >= c.expiresEpoch;
 }
 
 } // namespace Nullock::Core::SessionLogic
