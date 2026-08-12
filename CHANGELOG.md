@@ -58,6 +58,15 @@ developer-facing record.
   and mutation-proved the python + spring needles. (Noted for follow-up: the
   `stack-django` needle appears on Django's DEBUG **404** page, but the gate is
   `>= 500` — a behaviour question tracked separately, not changed here.)
+- **Locked the four remaining cloud-storage endpoint detectors.** Only
+  `cloud-s3-bucket` had a test; `cloud-gcs-bucket`, `cloud-azure-blob`,
+  `cloud-firebase`, and `cloud-firebase-storage` did not — a broken bucket-URL
+  regex would have silently stopped surfacing exposed public storage. Added a
+  positive per vendor plus two discriminating negatives: a GCS URL in a
+  non-HTML (JSON) body must **not** fire (the detector is HTML-gated), and a
+  suffix-append look-alike host (`storage.googleapis.com.evil.test`) must **not**
+  fire (the regex requires the exact host followed by a path separator).
+  Mutation-proven (gcs + azure regexes).
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a

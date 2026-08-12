@@ -150,6 +150,56 @@ QList<TestCase> buildCorpus() {
                  QByteArray("<html><body>https://") + QByteArray("x.s3.").repeated(100000)
                      + QByteArray("</body></html>")) });
 
+    // ---- Other cloud-storage endpoints (were untested) -----------------
+    // Only cloud-s3-bucket had coverage; GCS / Azure Blob / Firebase RTDB /
+    // Firebase Storage did not, so a broken bucket-URL regex would have
+    // silently stopped surfacing exposed public storage. These are gated on
+    // an HTML content-type and run WITHOUT a first-match break, so each body
+    // carries exactly one bucket URL for a clean assertion.
+    tc.append({ "GCS bucket URL in HTML -> cloud-gcs-bucket", "cloud-gcs-bucket", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>dump at "
+                 "https://storage.googleapis.com/my-bucket/key.json</body></html>") });
+
+    tc.append({ "Azure Blob URL in HTML -> cloud-azure-blob", "cloud-azure-blob", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>see "
+                 "https://myacct.blob.core.windows.net/container/blob.txt</body></html>") });
+
+    tc.append({ "Firebase RTDB URL in HTML -> cloud-firebase", "cloud-firebase", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>db "
+                 "https://myapp-default-rtdb.firebaseio.com/users.json</body></html>") });
+
+    tc.append({ "Firebase Storage URL in HTML -> cloud-firebase-storage",
+                "cloud-firebase-storage", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>img "
+                 "https://firebasestorage.googleapis.com/v0/b/app.appspot.com/o/f.png"
+                 "</body></html>") });
+
+    // Content-type gate: a GCS URL in a NON-HTML body (JSON) must NOT fire --
+    // the cloud detector only scans HTML/XHTML responses.
+    tc.append({ "GCS URL in a JSON body must NOT fire cloud-gcs-bucket",
+                "cloud-gcs-bucket", true,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json",
+                 "{\"url\":\"https://storage.googleapis.com/my-bucket/key.json\"}") });
+
+    // Precision: a look-alike host that merely *contains* the real host as a
+    // prefix (storage.googleapis.com.evil.test) must NOT fire -- the regex
+    // requires the exact host immediately followed by a path separator, so a
+    // suffix-append phishing domain is not a match.
+    tc.append({ "look-alike storage.googleapis.com.evil host must NOT fire cloud-gcs-bucket",
+                "cloud-gcs-bucket", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>https://storage.googleapis.com.evil.test/x</body></html>") });
+
     // ---- Subdomain-takeover cargo FP removed ---------------------------
     tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,
         makeReq("GET", "example.test", "/missing"),
