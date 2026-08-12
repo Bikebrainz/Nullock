@@ -536,12 +536,18 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Substring / Reverse substring",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Cannot trim a payload to a [from,len] window as a processing step.",
-      "why": "Re-read applyRule and operations(); prefix/suffix/case/reverse/match-replace + Transcode only. No substring op.",
-      "evidence": "intruder_rules.cpp:9-47 applyRule op set; operations() 59-69 omits substring/reverse-substring."
+      "gap": "None -- substring (0-indexed start offset + optional length) and reverse-substring (end offset + length counted from the end) are both processing ops, code-point-safe and fail-safe.",
+      "why": "Closed 2026-08-12: added substring + reverse-substring ops to applyRule (arg = 'offset' or 'offset,length', semantics verified vs PortSwigger), advertised in operations(); pure + mutation-proven. No engine wiring needed -- rules round-trip as {op,arg} via the control API.",
+      "evidence": "intruder_rules.cpp applyRule substring/reverse-substring branch + operations(); Tests/intruder_rules (+12 cases, mutation-proven start-offset + reverse end-offset).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "19b7bb3",
+        "note": "Intruder wave: substring + reverse-substring payload-processing ops (PortSwigger-verified semantics), code-point-safe, fail-safe on out-of-range; pure + mutation-proven, no engine wiring."
+      }
     },
     {
       "area": "intruder",
