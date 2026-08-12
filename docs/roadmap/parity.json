@@ -540,12 +540,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: ECB block shuffler",
-      "state": "absent",
+      "state": "present",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "7423a96",
+        "note": "Added IntruderGenerators::ecbBlockShuffle -- hex ciphertext -> blockSize-byte blocks -> the complete deduped block-permutation set (capped), dispatched via expandGen ('ecb-shuffle'); pure + mutation-proven, fail-safe on non-hex/misaligned input. (Burp's optional 'additional encrypted strings' block-pooling is a future refinement.)"
+      },
       "impact": "low",
       "effort": "days",
-      "gap": "No ECB block-shuffling type for encrypted-cookie attacks.",
-      "why": "Grep 'ecb|block.?shuffl' over the repo returns nothing. Confirmed absent.",
-      "evidence": "No ECB/block-shuffle code in intruder_generators.cpp or engine."
+      "gap": "None -- a hex ciphertext is split into blockSize-byte blocks and the block-permutation variants are emitted (deduped, capped). The classic ECB token-forgery shuffle.",
+      "why": "Closed 2026-08-12: added ecbBlockShuffle (see reconciled).",
+      "evidence": "intruder_generators.cpp ecbBlockShuffle + types(); control_server.cpp expandGen ecb-shuffle branch; Tests/intruder_generators (+9 cases, mutation-proven align guard + dedup)."
     },
     {
       "area": "intruder",
