@@ -1915,12 +1915,18 @@
     {
       "area": "sequencer",
       "feature": "Session handling rules: named, ordered, individually enable/disable-able rules in a rules editor",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "CORRECTED: rules ARE user-authorable via `nullock session-rules set <file.json>` (bash + curl + jq against a running instance), so this is not GUI-only-absent. Still no editor in either front end \u2014 the RULES tab (ui-v2/app.jsx:722 `function RulesTab()` with `{ enabled, name, hostGlob, section, find, replace, ... }`) is Match & Replace, a different subsystem. And still zero persistence: every rule is lost on restart, with no import/export beyond re-running the CLI.",
-      "why": "State held, but the first pass MISSED a user surface and I am correcting the evidence: `bin/nullock session-rules {list|set <file>|clear-vars}` exists and is a real (if crude) rules editor path. I independently re-ran the front-end greps and confirm zero hits in ui-v2/ and Src/FrontEnd/ \u2014 the GUI claim was right. I also confirmed the persistence claim: no save/load anywhere.",
-      "evidence": "Struct confirmed verbatim, session_rules.hpp:40-47 `struct SessionRule { QString name; bool enabled = true; QString hostGlob = \"*\"; QString pathGlob = \"*\";` \u2014 name, enable flag and list order all present, honored at session_rules.cpp:85 `if (!r.enabled) continue;`. MISSED SURFACE: bin/nullock:551-567 `cmd_session_rules() { ... list) snapshot | \"$JQ\" '.sessionRules' ;; clear-vars) post /api/session"
+      "gap": "GUI editor now ships: the SESSIONS tab (ui-v2/app.jsx SessionsTab) gains a Session handling rules section -- add/edit/delete a named rule with host+path glob, extract-from (header/cookie/JSON path/regex) + extract key + variable name, inject-into (header/cookie/body/URL query) + inject key + template, and a per-rule enable/disable checkbox, plus a live captured-variables readout with a Clear button. The bin/nullock session-rules CLI editor from the prior audit still exists too. Honest remainder: no persistence across restarts (tracked separately, see \"Cookie jar and session rules persist...\" -- state absent) and no manual drag-to-reorder control (rules apply in array/insertion order, matching how the engine evaluates them and the sibling Match & Replace RULES tab's own precedent of no reorder UI despite a ruleMove backend action existing unused).",
+      "why": "Closed 2026-08-12: /api/session-rules/set (whole-list replace) and /api/session-rules/clear-vars were fully wired in the backend and published on every snapshot poll (root[\"sessionRules\"]={rules,variables}, control_server.cpp:1587-1611) but had zero frontend callers -- confirmed by grep across ui-v2/*.jsx and real-data.js before this change. The new editor reads/writes that exact contract with no backend change.",
+      "evidence": "ui-v2/app.jsx SessionsTab Session-handling-rules section (sessionRuleUpsert/sessionRuleRemoveAt/sessionRuleToggle pure helpers + the editor form/list/variables readout); ui-v2/real-data.js sessionRulesSet/sessionRulesClearVars actions and NL.sessionRules snapshot field; field names (name/enabled/hostGlob/pathGlob/extractFrom/extractKey/variable/injectInto/injectKey/injectTemplate; variables as a flat string map) matched verbatim against control_server.cpp:1587-1611 (snapshot) and :3869-3895 (/api/session-rules/set, /clear-vars).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "4d1d832",
+        "note": "Sessions tab gains a Session handling rules editor (name/enable/host+path glob/extract/inject fields) wired to the previously-orphaned /api/session-rules/set + /clear-vars; closes the GUI-reachability gap."
+      }
     },
     {
       "area": "sequencer",

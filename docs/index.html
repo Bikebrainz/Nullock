@@ -127,6 +127,10 @@
         <p>Rule-based rewriting on the wire. Regex headers and bodies in both directions without touching the client.</p>
       </div>
       <div class="card">
+        <h3>Session handling rules</h3>
+        <p>Burp's macro-driven session handling, in a named rules editor on the Sessions tab: extract a value from a matched response by header, cookie, JSON path, or regex, store it under a variable, and inject it into every subsequent matched request — header, cookie, body, or URL query — scoped by host and path glob. Rules can be added, edited, deleted, and individually enabled or disabled; captured variables show live with a one-click clear.</p>
+      </div>
+      <div class="card">
         <h3>Inspector</h3>
         <p>Structured breakdown of any request or response — headers, cookies, query and body params, and JWTs decoded right where they sit. Paste-and-parse in its own tab, or docked live in Repeater, Proxy history, and Intruder's template editor. A JWT TOOLKIT mode adds an active attack toolkit — offline decode with weakness flags and HS* secret brute-force, alg:none and HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a target that confirms whether a forged token is actually accepted. Burp only offers active JWT testing through a paid extension; this is core.</p>
       </div>

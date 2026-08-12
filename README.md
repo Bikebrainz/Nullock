@@ -79,7 +79,10 @@ CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -
 Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
                   asset inventory; in-app REPORTING tab also drives OpenAPI export/import, SBOM
                   download, and workspace push/pull (findings baseline/diff lives in ISSUES, see Findings)
-Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent)
+Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent); a named,
+                  individually enable/disable-able rules editor lives in the SESSIONS tab
+                  (host/path glob, extract-from header/cookie/JSON-path/regex, inject-into
+                  header/cookie/body/URL) alongside the captured variable bag
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
                   in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
                   pre-analysis sample summary, full results (entropy, char class, hamming, LCS,
