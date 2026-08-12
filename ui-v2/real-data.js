@@ -412,6 +412,14 @@
     tlsInspect(host, opts) {
       return post("/api/tls/inspect", Object.assign({ host }, opts)).then(r => r.json());
     },
+    // Checks whether a target advertises HTTP/3 support via the Alt-Svc
+    // response header (h3/h3-* protocol IDs). An advertised-but-not-yet-used
+    // protocol also files an info finding into Issues. `opts` may carry
+    // { headers }. Response: { ok, error, advertisesHttp3, http3Versions,
+    // altSvc, protocols: [{id, authority, maxAge, isHttp3}], baselineStatus }.
+    http3Detect(url, opts) {
+      return post("/api/http3/detect", Object.assign({ url }, opts)).then(r => r.json());
+    },
 
     // --- Detection templates (nuclei-style matcher/extractor engine) ---
     // Lists the bundled template library (templates/detections/*.json).

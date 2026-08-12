@@ -1794,6 +1794,8 @@ function ScansTab() {
   const [tlsHost, setTlsHost] = React.useState("");
   const [tlsPort, setTlsPort] = React.useState("");
   const [tlsRes, setTlsRes]   = React.useState(null);
+  const [http3Url, setHttp3Url] = React.useState("");
+  const [http3Res, setHttp3Res] = React.useState(null);
 
   // Detection templates (nuclei-style matcher/extractor engine, /api/template/*)
   const [tplList, setTplList]     = React.useState(null);
@@ -1876,6 +1878,11 @@ function ScansTab() {
     const port = parseInt(tlsPort, 10);
     if (Number.isFinite(port) && port > 0 && port < 65536) opts.port = port;
     runBusy2("tls", setTlsRes, () => NL.actions.tlsInspect(tlsHost.trim(), opts));
+  };
+
+  const doHttp3Detect = () => {
+    if (!http3Url.trim()) { setErr2("enter a target URL"); return; }
+    runBusy2("http3", setHttp3Res, () => NL.actions.http3Detect(http3Url.trim()));
   };
 
   const loadTemplates = React.useCallback(() => runBusy2("templates", setTplList, () => NL.actions.templateList()), []);
@@ -2349,6 +2356,35 @@ function ScansTab() {
           </div>
         )}
         <RawResult res={tlsRes} />
+      </Section>
+
+      <Section title="HTTP/3 detection" hint="checks the Alt-Svc response header for advertised h3/h3-* protocol support (QUIC transport, not yet fetched over)">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={http3Url} onChange={e => setHttp3Url(e.target.value)} placeholder="https://target/"
+                 onKeyDown={e => { if (e.key === "Enter") doHttp3Detect(); }}
+                 style={{ ...inp, flex: "1 1 260px", minWidth: 200 }} spellCheck={false} />
+          <Btn2 k="http3" label="Detect" onClick={doHttp3Detect} />
+        </div>
+        {http3Res && http3Res.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {http3Res.advertisesHttp3
+              ? <>advertises HTTP/3 ({(http3Res.http3Versions || []).join(", ") || "—"})</>
+              : "no HTTP/3 advertised"}
+            {http3Res.altSvc ? <> · Alt-Svc: <code>{http3Res.altSvc}</code></> : null}
+          </div>
+        )}
+        {http3Res && (http3Res.protocols || []).length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: "12px" }}>
+            {http3Res.protocols.map((p, i) => (
+              <div key={i}>
+                <span style={{ color: p.isHttp3 ? "var(--ok)" : "var(--text-2)" }}>{p.id}</span>{" "}
+                {p.authority ? <>· authority: {p.authority}</> : null}{" "}
+                {p.maxAge ? <>· max-age: {p.maxAge}</> : null}
+              </div>
+            ))}
+          </div>
+        )}
+        <RawResult res={http3Res} />
       </Section>
 
       <Section title="Detection templates" hint="nuclei-style matcher/extractor engine -- bundled templates or custom JSON, a match also files a finding into Issues">

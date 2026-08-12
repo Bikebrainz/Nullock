@@ -52,8 +52,8 @@ Version -> CVE    Active fingerprint + service-banner version detection correlat
 JS recon          Mines same-origin JS bundles for API endpoints, hardcoded secrets, and exposed
                   source maps -- SCANS tab
 Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
-                  WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness,
-                  scope-gated BFS crawler
+                  WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness
+                  probe -- SCANS tab, scope-gated BFS crawler
 Discovery         In-app content/directory brute-force (soft-404 calibrated), robots.txt + sitemap
                   recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto) --
@@ -291,7 +291,7 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
 - [x] v2: native h2/gRPC/GraphQL/CBOR/SAML, reverse OpenAPI, AI triage, cookie tomography, 12 labs, CI
 - [x] v2-ship: installers, marketing site, docs portal, crash reporter, update checker, project templates, report builder
 - [ ] v3:
-  - [x] HTTP/3 detection — Alt-Svc `h3` readiness probe (`nullock http3`); full QUIC client transport still pending a QUIC dependency
+  - [x] HTTP/3 detection — Alt-Svc `h3` readiness probe (`nullock http3`, or the SCANS tab's HTTP/3 detection section); full QUIC client transport still pending a QUIC dependency
   - [x] code signing + Apple notarization — release CI wired (activates on cert secrets); see [`RELEASE_SIGNING.md`](RELEASE_SIGNING.md)
   - [x] hosted OAST tier — deployable `nullock-oast` server + Docker + [`DEPLOY_OAST.md`](DEPLOY_OAST.md) (you supply the host + DNS)
   - [ ] team workspaces — **Phase-1 findings-sync server shipped** (`nullock-workspace`, [`DEPLOY_WORKSPACE.md`](DEPLOY_WORKSPACE.md)); design + later phases: [`design/team-workspaces.md`](design/team-workspaces.md)

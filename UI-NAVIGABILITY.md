@@ -17,8 +17,16 @@
 > The 2026-08-12 wave added a WS REPEATER overlay to the Proxy tab wiring `/api/ws/sessions`
 > and `/api/ws/send`, leaving 18 of 173 (10%) orphaned. A same-day follow-up wired the
 > nuclei-style detection-template engine (`/api/template/list`, `/api/template/run`) into a
-> new "Detection templates" section in the SCANS tab, leaving **16 of 173 (9%) still
-> orphaned**. Verified
+> new "Detection templates" section in the SCANS tab, leaving 16 of 173 (9%) orphaned. A
+> further same-day wave wired the session-handling-rules macro editor into the SESSIONS tab
+> (`/api/session-rules/set`, `/api/session-rules/clear-vars`) but skipped updating this file's
+> tracking at the time -- corrected here alongside this pass's own delta: an "HTTP/3
+> detection" section was added to the SCANS tab's Assess & audit block wiring the
+> previously-orphaned `/api/http3/detect` (reads the Alt-Svc response header for advertised
+> h3/h3-* support), the same single-target-probe pattern as TLS inspection/exposure
+> scan/service-CVE correlation/JS recon. True orphaned count, re-verified by a fresh
+> literal-string grep of every endpoint in this file against live `ui-v2/*.jsx` +
+> `ui-v2/real-data.js`: **13 of 173 (8%) orphaned**. Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -38,9 +46,9 @@ decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, r
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
 port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
 pipeline-run, posture/inventory/compliance/gate rollups, exposure-scan/service-CVE-
-correlation/JS-recon/TLS-certificate-inspection single-target probes, and a Detection
-templates section running the bundled nuclei-style template library or a custom-JSON
-template against a target URL). The INSPECTOR tab now
+correlation/JS-recon/TLS-certificate-inspection/HTTP-3-detection single-target probes, and a
+Detection templates section running the bundled nuclei-style template library or a
+custom-JSON template against a target URL). The INSPECTOR tab now
 has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
 header-audit/waf-detect/secret-scan.
@@ -75,17 +83,17 @@ form has no `token` field, so it could never have actually worked.)
 `/api/report/html`, `/api/report/json`, `/api/workspace/pull`, `/api/workspace/push`
 wired via REPORTING tab.)
 
-## Recon / discovery (3)
+## Recon / discovery (2)
 - `/api/h2/events`
 - `/api/h2/streams`
-- `/api/http3/detect`
 
 (`/api/fingerprint`, `/api/waf/detect`, `/api/secrets/scan` wired via PROBE tab;
 `/api/content/discover`, `/api/crawler/start`, `/api/crawler/stop`, `/api/robots/scan`
 wired via DISCOVER tab. `/api/exposure/scan`, `/api/servicevulns/scan`, `/api/jsrecon/scan`
 wired via the SCANS tab's Assess & audit section -- Exposure scan (curated sensitive-path
 probe), Service CVE correlation (banner-grab + curated CVE table), and JS recon
-(same-origin JS bundle endpoint/secret/source-map mining).)
+(same-origin JS bundle endpoint/secret/source-map mining). `/api/http3/detect` wired via the
+same section's HTTP/3 detection probe (Alt-Svc h3/h3-* advertisement check).)
 
 (`/api/oast/mint`, `/api/oast/poll` wired via COLLABORATOR tab. `/api/oast/blast` (the
 multi-vector SSRF/XXE/blind-RCE/Log4Shell spray) wired via the tab's new Blast section —
@@ -112,13 +120,11 @@ entry point at all yet.)
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (6)
+## GraphQL / WS / session (4)
 - `/api/intruder/multi`
 - `/api/portscan/import-nmap`
 - `/api/portscan/to-findings`
 - `/api/project/templates`
-- `/api/session-rules/clear-vars`
-- `/api/session-rules/set`
 
 (`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
 dialog; `/api/intruder/rule-ops` wired via Intruder's RULES bar. `/api/graphql/probe`,
@@ -127,7 +133,10 @@ button in Proxy history / Site map's DetailPane. `/api/ws/sessions`, `/api/ws/se
 the Proxy tab's WS REPEATER overlay (HTTP HISTORY pane-head) -- session dropdown, direction/
 opcode selectors, payload editor, resend-last. `/api/template/list`, `/api/template/run`
 wired via the SCANS tab's new "Detection templates" section -- bundled template picker plus a
-custom-JSON template editor, both firing against a target URL.)
+custom-JSON template editor, both firing against a target URL. `/api/session-rules/set`,
+`/api/session-rules/clear-vars` wired via the SESSIONS tab's session-handling-rules editor
+(named rule form + live captured-variables readout) -- this file's tracking had drifted since
+that wave shipped, corrected here.)
 
 ## Other (1)
 - `/api/extensions/install-builtins`
