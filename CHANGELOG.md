@@ -33,6 +33,12 @@ developer-facing record.
   confirms 0 broken links and every page reaches all five sections.
 
 ### Security
+- **Locked seven previously-untested leaked-secret detectors.** The passive
+  scanner ships ten `leaked-*` credential patterns but only three (AWS key, GitHub
+  PAT, Stripe) had a regression test — so a regex regression could have silently
+  stopped detecting GitHub App, Slack, SendGrid, Mapbox, Google API, PEM private
+  key, or AWS secret leaks. Added positive detection cases for all seven (built at
+  runtime from fragments so no literal secret sits in the repo); mutation-proven.
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a

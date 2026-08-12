@@ -232,6 +232,39 @@ QList<TestCase> buildCorpus() {
             makeResp(200, "application/json", fake) });
     }
 
+    // The other 7 leaked-* patterns had NO test -- lock them here. Each secret is
+    // BUILT AT RUNTIME from fragments so no literal secret-shaped string sits in
+    // the source (trips push-protection / our own secret scan otherwise).
+    {
+        const QByteArray a36(36, 'a'), a35(35, 'a'), a40(40, 'a'),
+                         a22(22, 'a'), a43(43, 'a'), a20(20, 'a');
+        auto j = [](const QByteArray &v) { return QByteArray("{\"k\":\"") + v + "\"}"; };
+        const QByteArray us("_"), dot(".");
+        tc.append({ "leaked GitHub App token", "leaked-gh-app", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("ghs") + us + a36)) });
+        tc.append({ "leaked Slack bot token", "leaked-slack", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("xox") + "b" + "-1234567890-abcdef")) });
+        tc.append({ "leaked SendGrid API key", "leaked-sendgrid", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("SG") + dot + a22 + dot + a43)) });
+        tc.append({ "leaked Mapbox token", "leaked-mapbox", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("pk") + dot + "eyJ" + a20 + dot + a20)) });
+        tc.append({ "leaked Google API key", "leaked-google-api", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("AI") + "za" + a35)) });
+        tc.append({ "leaked PEM private key block", "leaked-private-key", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "text/plain",
+                     QByteArray("-----") + "BEGIN " + "PRIVATE KEY" + "-----\n" + a40) });
+        tc.append({ "leaked AWS secret (with aws/secret/access context)", "leaked-aws-secret", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json",
+                     QByteArray("{\"aws_secret_access_key\":\"") + a40 + "\"}") });
+    }
+
     // ---- Exposed dev files --------------------------------------------
     tc.append({ "exposed .git/HEAD", "git-head-exposed", false,
         makeReq("GET", "example.test", "/.git/HEAD"),
