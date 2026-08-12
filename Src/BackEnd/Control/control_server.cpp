@@ -3248,6 +3248,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         if (t == QLatin1String("bitflip"))
             return IG::bitFlip(g.value("base").toString());
+        if (t == QLatin1String("username"))
+            return IG::usernameGen(g.value("name").toString());
         return {};
     };
 

@@ -9,6 +9,7 @@
 #include "intruder_generators.hpp"
 
 #include <QCoreApplication>
+#include <QSet>
 
 #include <algorithm>
 #include <cstdio>
@@ -207,13 +208,45 @@ int main(int argc, char **argv) {
             !r.isEmpty() && r.size() < 20000 && r.size() <= kMaxCount);
     }
 
+    // ----- username generator -----
+    {
+        const QStringList u = usernameGen("Peter Wiener");
+        auto has = [&](const char *s) { return u.contains(QString::fromLatin1(s)); };
+        chk("username: full name concatenation", has("peterwiener"));
+        chk("username: dot-separated", has("peter.wiener"));
+        chk("username: reversed order", has("wienerpeter"));
+        chk("username: reversed dot", has("wiener.peter"));
+        chk("username: underscore-separated", has("peter_wiener"));
+        chk("username: first + last-initial", has("peterw"));
+        chk("username: first-initial + last", has("pwiener"));
+        chk("username: first-initial dot last", has("p.wiener"));
+        chk("username: last-initial dot first", has("w.peter"));
+        chk("username: first name alone", has("peter"));
+        chk("username: last name alone", has("wiener"));
+        chk("username: raw 'first last' kept", has("peter wiener"));
+        chk("username: lower-cased (no 'Peter')", !u.contains("Peter"));
+        // Dedup: every entry is unique.
+        chk("username: no duplicates", QSet<QString>(u.begin(), u.end()).size() == u.size());
+    }
+    // Email input uses the local part; a dotted local part tokenizes the same.
+    chk("username: email local part -> peter.wiener form",
+        usernameGen("peter.wiener@corp.example").contains("peterwiener"));
+    // A single token yields the name + its initial (no two-token forms).
+    {
+        const QStringList u = usernameGen("admin");
+        chk("username: single token -> name", u.contains("admin"));
+        chk("username: single token -> initial", u.contains("a"));
+        chk("username: single token -> no separated forms", !u.contains("admin.admin"));
+    }
+    chk("username: empty input -> empty", usernameGen("   ").isEmpty());
+
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip",
+    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip+username",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
         && types().contains("frobber") && types().contains("blocks")
         && types().contains("casemod") && types().contains("charsub")
-        && types().contains("bitflip"));
+        && types().contains("bitflip") && types().contains("username"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

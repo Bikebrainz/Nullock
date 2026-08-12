@@ -1,6 +1,7 @@
 #include "intruder_generators.hpp"
 
 #include <QDate>
+#include <QRegularExpression>
 #include <QVector>
 
 #include <limits>
@@ -200,12 +201,59 @@ QStringList nullPayloads(int count) {
     return out;
 }
 
+QStringList usernameGen(const QString &nameOrEmail) {
+    QString src = nameOrEmail.trimmed().toLower();
+    if (src.isEmpty()) return {};
+    // An email address contributes its LOCAL part (before '@') as the name source.
+    const int at = src.indexOf(QLatin1Char('@'));
+    if (at >= 0) src = src.left(at);
+    // Split into name tokens on whitespace / . / _ / - and strip each to [a-z0-9].
+    static const QRegularExpression sep(QStringLiteral("[\\s._\\-]+"));
+    static const QRegularExpression nonAlnum(QStringLiteral("[^a-z0-9]"));
+    QStringList toks;
+    for (QString t : src.split(sep, Qt::SkipEmptyParts)) {
+        t.remove(nonAlnum);
+        if (!t.isEmpty()) toks << t;
+    }
+    if (toks.isEmpty()) return {};
+
+    QStringList out;
+    auto add = [&](const QString &s) {
+        if (!s.isEmpty() && out.size() < kMaxCount && !out.contains(s)) out << s;
+    };
+
+    const QString first = toks.first();
+    const QString fi = first.left(1);
+    add(first);
+    add(fi);
+    if (toks.size() < 2) return out;            // one token -> name + initial only
+
+    const QString last = toks.last();
+    const QString li = last.left(1);
+    add(toks.join(QLatin1Char(' ')));           // the raw "first last"
+    add(last);
+    add(li);
+    // concatenations + separated forms, both orders
+    add(first + last);            add(last + first);
+    add(first + "." + last);      add(last + "." + first);
+    add(first + "_" + last);      add(last + "_" + first);
+    add(first + "-" + last);      add(last + "-" + first);
+    // name + other's initial
+    add(first + li);              add(fi + last);          // peterw, pwiener
+    add(first + "." + li);        add(fi + "." + last);    // peter.w, p.wiener
+    add(li + first);              add(last + fi);          // wpeter, wienerp
+    add(li + "." + first);        add(last + "." + fi);    // w.peter, wiener.p
+    // initials only
+    add(fi + li);                 add(li + fi);            // pw, wp
+    return out;
+}
+
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
              QStringLiteral("casemod"), QStringLiteral("charsub"),
-             QStringLiteral("bitflip") };
+             QStringLiteral("bitflip"), QStringLiteral("username") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

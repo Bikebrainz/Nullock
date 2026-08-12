@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "Username generator" payload type.** Derives candidate usernames
+  from a full name or email address using common schemes (first/last,
+  concatenations, dot/underscore/hyphen separated, reversed order, and
+  first/last-initial combinations) — e.g. `peter wiener` → `peterwiener`,
+  `peter.wiener`, `wienerpeter`, `peterw`, `pwiener`, `p.wiener`, … An email uses
+  its local part; output is lower-cased, deduplicated, and hard-capped. Pure +
+  mutation-proven (the initial extraction and the email local-part handling each
+  fail their cases when broken). Closes roadmap parity item "Payload type:
+  Username generator".
 - **Intruder "Substring" / "Reverse substring" payload-processing rules.** Two new
   processing ops matching Burp: `substring` extracts a slice from a 0-indexed
   start offset (plus optional length; omitted length runs to the end), and

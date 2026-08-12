@@ -96,6 +96,14 @@ QStringList frob(const QString &base);
 // empty; capped at kMaxCount (truncated, never OOM).
 QStringList nullPayloads(int count);
 
+// Burp "Username generator": derive candidate usernames from a full name or an
+// email address using common schemes -- first/last, concatenations, dot/underscore
+// separated, reversed order, and first/last-initial combinations. An email uses
+// its local part (before '@'); tokens are split on whitespace / . _ - and stripped
+// to [a-z0-9]. Output is lower-cased, DEDUPED (first-seen order), and capped at
+// kMaxCount. Empty / token-less input -> empty.
+QStringList usernameGen(const QString &nameOrEmail);
+
 // Generator type names this module understands (for UI discovery).
 QStringList types();
 
