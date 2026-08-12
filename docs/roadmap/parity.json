@@ -608,12 +608,18 @@
     {
       "area": "intruder",
       "feature": "Grep - Payloads (flag reflected payloads)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No automatic reflection column; you must hand-build a grep-match per payload.",
-      "why": "Re-read computeGrep \u2014 it runs match/extract against configured needles/spec only; it never compares the response to the sent payload.",
-      "evidence": "intruder.cpp:72-85 computeGrep uses `needles` and `spec` only; no reference to the row's payload value for a reflection check."
+      "gap": "None -- an automatic reflection column flags a row when one of its submitted payloads echoes literally in the response.",
+      "why": "Closed 2026-08-12: added IntruderGrep::payloadReflected (LITERAL substring, bounded, never regex -- a payload is data not a pattern) and wired it into computeGrep as a per-row `reflected` flag driven by the row's combo, exposed via a ReflectedRole/Q_PROPERTY, toggled by `grepPayloads` on /api/intruder/set, and persisted across save/resume. Off by default.",
+      "evidence": "intruder_grep.cpp payloadReflected + Tests/intruder_grep (+11, mutation-proven); intruder.cpp computeGrep reflected-out + ReflectedRole + setGrepPayloadReflection + run/resend compute; intruder_persist_logic AttackRow.reflected + RunConfig.grepPayloadReflection JSON round-trip; control_server.cpp grepPayloads.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "35a0361",
+        "note": "Intruder wave: automatic reflected-payload column via a literal (non-regex) payloadReflected predicate; per-row flag, persisted, opt-in, mutation-proven."
+      }
     },
     {
       "area": "intruder",
