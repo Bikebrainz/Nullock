@@ -103,7 +103,8 @@ Authz test        Multi-identity replay from Proxy history / Site map -- define 
                   status/size table with a divergence flag (BOLA / horizontal / vertical
                   privilege, CWE-863); divergent runs also file a finding in Issues
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
-Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR
+Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR, XML issue report
+                  (Burp-style, GET /api/report/xml)
 SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
@@ -160,7 +161,7 @@ Full quickstart: <https://bikebrainz.github.io/Nullock/docs/index.html>
 | Price | Free | Free | $475/yr | Free |
 | Active scanner | ✓ (20+ classes) | — | ✓ | — |
 | Version→CVE correlation | built-in | — | addon | — |
-| Reporting (HTML/SARIF/SBOM) | ✓ | — | partial | — |
+| Reporting (HTML/SARIF/SBOM/XML) | ✓ | — | partial | — |
 | OAST (Collaborator) | in-process | — | hosted | — |
 | Session handling rules | ✓ | — | ✓ | — |
 | CLI control of every panel | ✓ | — | jython | ✓ |

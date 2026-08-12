@@ -2831,12 +2831,18 @@
     {
       "area": "platform",
       "feature": "Reporting: XML issue report",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
       "gap": "Pipelines built on burp_issues XML (Dradis/Faraday importers, report generators) cannot ingest Nullock output directly. SARIF/JSON are arguably a better modern answer, so this is a compatibility gap rather than a capability gap.",
       "why": "Confirmed. I enumerated every /api/export/ route in control_server.cpp myself: nmap-xml, sarif, sbom, postman. The only XML emitter is the port-scan nmap format; there is no issue-XML schema anywhere. The first pass's line numbers were stale by ~140 lines but the conclusion is right.",
-      "evidence": "`grep -n \"/api/export/\" Src/BackEnd/Control/control_server.cpp` \u2192 :5748 `// GET /api/export/nmap-xml  -> port scan results as nmap-compatible XML`, :5806 `// GET /api/export/sarif`, :5875 `// GET /api/export/sbom`, :6009 `// GET /api/export/postman`. No burp_issues-shaped XML exists."
+      "evidence": "`grep -n \"/api/export/\" Src/BackEnd/Control/control_server.cpp` \u2192 :5748 `// GET /api/export/nmap-xml  -> port scan results as nmap-compatible XML`, :5806 `// GET /api/export/sarif`, :5875 `// GET /api/export/sbom`, :6009 `// GET /api/export/postman`. No burp_issues-shaped XML exists.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "5d45642",
+        "note": "Closed 2026-08-11: GET /api/report/xml serializes the report/json finding corpus into a Burp-style XML issue report (<nullockReport>/<issue> with name/host/url/cwe/owasp/detail/remediation). The finding->XML pass is the pure, mutation-tested ControlLogic::findingsJsonToXml -- every attacker-influenced value is xmlAttrEscape'd so a summary carrying </issue> cannot break framing."
+      }
     },
     {
       "area": "platform",
