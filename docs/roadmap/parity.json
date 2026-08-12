@@ -1843,12 +1843,18 @@
     {
       "area": "sequencer",
       "feature": "Sequential / counter token detection (Burp infers this indirectly from low entropy; no dedicated test)",
-      "state": "partial",
+      "state": "exceeds",
       "impact": "medium",
       "effort": "hours",
       "gap": "Detects bare decimal/hex counters only. A prefixed counter (`sess_1001`), a suffixed one, a zero-padded-with-separator one, or a base64-wrapped one is reported `looksSequential:false, looksMonotonic:false`. Such corpora still tend to score \"predictable\" via the keyspace deduction, but the analyst is told the wrong reason \u2014 and a LONG prefixed counter (40-char prefix + 8-digit counter) clears `varLen`-based deductions too. Not an exceed over Burp: Burp's indirect low-entropy inference is encoding-agnostic and would still flag it.",
       "why": "DOWNGRADED exceeds -> partial. The quoted code is verbatim correct, but the first pass never looked at what feeds it. `looksSequential` and `looksMonotonic` both go through `decodeNumeric` -> `parseToken`, which requires the ENTIRE token to match `^[0-9]+$` or `^(0[xX])?[0-9a-fA-F]+$`. `sess_1001`, `user-42`, `AAAAZg==` \u2014 the counter shapes that actually appear in the wild \u2014 all fail and are invis",
-      "evidence": "sequencer_logic.cpp:41-53 `static const QRegularExpression decRe(\"^[0-9]+$\"); static const QRegularExpression hexRe(\"^(0[xX])?[0-9a-fA-F]+$\"); ... if (decRe.match(t).hasMatch()) { out = t.toLongLong(&ok, 10); return ok; } if (hexRe.match(t).hasMatch()) { ... } return false;` \u2014 no affix stripping. Call sites pass the RAW list: :533 `const bool seq = looksSequential(tokens, delta);` and :534 `const "
+      "evidence": "sequencer_logic.cpp:41-53 `static const QRegularExpression decRe(\"^[0-9]+$\"); static const QRegularExpression hexRe(\"^(0[xX])?[0-9a-fA-F]+$\"); ... if (decRe.match(t).hasMatch()) { out = t.toLongLong(&ok, 10); return ok; } if (hexRe.match(t).hasMatch()) { ... } return false;` \u2014 no affix stripping. Call sites pass the RAW list: :533 `const bool seq = looksSequential(tokens, delta);` and :534 `const ",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "65f4035",
+        "note": "UPGRADED partial -> exceeds. The partial verdict was correct and its concrete reason (looksSequential/looksMonotonic route through parseToken, which rejects the whole token, so wrapped counters sess_1001/user-42 were false-negatives Burp's low-entropy inference still caught) is now FIXED: stripCommonNumericWrapper strips a shared non-numeric prefix/suffix (up to its last / from its first non-digit -- constant wrapper only, never a varying digit) before the counter tests. Prefixed/suffixed/zero-padded decimal & hex counters are now detected with their TRUE step; a bare stepped counter (100,200,300, all-digit suffix) keeps delta 100 (regression-locked); wrapped noise does not become a false counter (all mutation-proven). sequential.delta value is now locked too, not just the boolean. With the dedicated looksSequential/looksMonotonic/delta verdict -- which Burp has NO equivalent for -- now covering wrapped counters, Nullock exceeds Burp. Residual: base64-wrapped counters stay keyspace/entropy-flagged (predictable) not sequential-labelled, matching Burp's indirect approach."
+      }
     },
     {
       "area": "sequencer",
