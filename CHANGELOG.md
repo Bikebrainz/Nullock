@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Verbose-error detection no longer misses the two most common leaks.** The
+  SQL/framework error detector was gated `400 <= status < 500`, so it missed a
+  SQL error **echoed in a 200** (the app catches the DB exception and renders
+  it) and a framework **DEBUG page on a 500** (Werkzeug/Symfony/Whoops). Widened
+  with a **per-needle status policy** to avoid new false positives: the specific
+  SQL-error signatures now flag on any status; framework debug-page markers flag
+  on 4xx **and** 5xx; and the generic php `Warning:` / `Notice:` needles stay
+  **4xx-only** (they appear in ordinary 200 copy like "Warning: low battery", so
+  widening them would fire on innocuous pages). Locked with FP negatives (a 200
+  saying "Warning: low battery" must not fire) and revert-proven (both the SQL
+  widening and the php 4xx-only guard fail their cases when reverted).
 - **Outbound-PII check no longer skips PUBLIC 172.x destinations.** The
   exfiltration gate treated any host matching `startsWith("172.")` as private,
   but RFC 1918 reserves only `172.16.0.0`–`172.31.255.255` (172.16/12). So SSN /

@@ -393,19 +393,49 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "api.example.test", "/x"),
         makeResp(404, "text/html", "<title>Symfony Exception</title>") });
 
-    // Status gate (lower bound): a SQL error echoed in a 200 body must NOT fire
-    // -- verbose-* only scans 4xx responses.
-    tc.append({ "ORA- error in a 200 body must NOT fire verbose-sql-err",
-                "verbose-sql-err", true,
+    // Per-needle status policy (Q3 fix). SQL-error signatures are specific
+    // enough to flag on ANY status: an app that catches the DB error and echoes
+    // it in a 200 IS leaking it, and a 5xx that dumps it is too.
+    tc.append({ "ORA- error echoed in a 200 body -> FIRES verbose-sql-err",
+                "verbose-sql-err", false,
         makeReq("GET", "api.example.test", "/q"),
         makeResp(200, "text/plain", "ORA-00933: SQL command not properly ended") });
-
-    // Status gate (upper bound): the same error in a 5xx body must NOT fire
-    // verbose-* either -- 5xx server errors are the stack-trace family's domain.
-    tc.append({ "ORA- error in a 500 body must NOT fire verbose-sql-err",
-                "verbose-sql-err", true,
+    tc.append({ "ORA- error in a 500 body -> FIRES verbose-sql-err",
+                "verbose-sql-err", false,
         makeReq("GET", "api.example.test", "/q"),
         makeResp(500, "text/plain", "ORA-00933: SQL command not properly ended") });
+
+    // Framework DEBUG pages render on 5xx too (not only 4xx) -- must fire there.
+    tc.append({ "Werkzeug debug page on a 500 -> FIRES verbose-debug-page",
+                "verbose-debug-page", false,
+        makeReq("GET", "api.example.test", "/x"),
+        makeResp(500, "text/html", "<title>Werkzeug Debugger</title>") });
+
+    // CRITICAL FP guards: the php Warning/Notice needles are ordinary English
+    // that appears in normal 200 content -- they must stay 4xx-only and NOT fire
+    // on a 200. (If a future edit widens them, these fail.)
+    tc.append({ "'Warning: low battery' in a 200 body must NOT fire verbose-php-err",
+                "verbose-php-err", true,
+        makeReq("GET", "api.example.test", "/status"),
+        makeResp(200, "text/html", "<p>Warning: low battery. Please charge.</p>") });
+    tc.append({ "'Notice: cookies' in a 200 body must NOT fire verbose-php-err",
+                "verbose-php-err", true,
+        makeReq("GET", "api.example.test", "/"),
+        makeResp(200, "text/html", "<div>Notice: this site uses cookies.</div>") });
+
+    // ...and php Warning/Notice stays 4xx-only on the 5xx side too.
+    tc.append({ "'Warning: ' in a 500 body must NOT fire verbose-php-err (4xx-only)",
+                "verbose-php-err", true,
+        makeReq("GET", "api.example.test", "/x"),
+        makeResp(500, "text/html", "Warning: something happened server-side") });
+
+    // Debug-page needles are error-page markers: the LITERAL needle in a 200
+    // body must NOT fire (debug pages are 4xx/5xx only). Same needle as the
+    // 4xx positive above -- only the 200 status suppresses it.
+    tc.append({ "literal Symfony marker in a 200 body must NOT fire verbose-debug-page",
+                "verbose-debug-page", true,
+        makeReq("GET", "api.example.test", "/blog"),
+        makeResp(200, "text/html", "<title>Symfony Exception</title>") });
 
     // ---- Subdomain-takeover cargo FP removed ---------------------------
     tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,

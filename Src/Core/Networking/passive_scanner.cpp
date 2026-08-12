@@ -1153,9 +1153,21 @@ void PassiveScanner::checkResponse(int rowId,
         }
     }
 
-    // ---- Verbose 4xx errors leaking SQL / framework info --------------
-    if (resp.statusCode >= 400 && resp.statusCode < 500
-        && scanBody.size() < 256 * 1024) {
+    // ---- Verbose error leaks (SQL / framework) -------------------------
+    // Per-needle STATUS POLICY, so widening past 4xx doesn't create false
+    // positives from the generic needles:
+    //   * SQL-error signatures (ORA-, sqlite3.OperationalError, ...) are
+    //     specific enough to flag on ANY status -- an app that catches the DB
+    //     error and echoes it in a 200 IS leaking it, and a 5xx that dumps it
+    //     is too. (The old >=400 && <500 gate missed both.)
+    //   * Framework DEBUG pages render on 4xx AND 5xx.
+    //   * The php "Warning: " / "Notice: " needles are ordinary English that
+    //     appears in normal 200 text ("Warning: low battery"), so they stay
+    //     4xx-ONLY -- widening them would fire on innocuous pages.
+    if (scanBody.size() < 256 * 1024) {
+        const int sc = resp.statusCode;
+        const bool is4xx = sc >= 400 && sc < 500;
+        const bool is5xx = sc >= 500 && sc < 600;
         const QString body = QString::fromUtf8(scanBody);
         struct ErrPat { const char *kind; const char *needle; };
         static const ErrPat kErrPats[] = {
@@ -1171,11 +1183,19 @@ void PassiveScanner::checkResponse(int rowId,
             { "verbose-debug-page",   "Whoops! There was an error" },
             { "verbose-debug-page",   "<title>Symfony Exception" },
         };
+        const auto eligible = [&](const char *kind) -> bool {
+            if (QLatin1String(kind) == QLatin1String("verbose-sql-err"))
+                return true;                       // specific DB signatures -> any status
+            if (QLatin1String(kind) == QLatin1String("verbose-debug-page"))
+                return is4xx || is5xx;             // error pages render on 4xx + 5xx
+            return is4xx;                          // php Warning/Notice -> 4xx only (too generic)
+        };
         for (const auto &e : kErrPats) {
+            if (!eligible(e.kind)) continue;
             if (body.contains(QString::fromLatin1(e.needle))) {
                 addFinding(rowId, req, resp, "medium", e.kind,
                            "Verbose error leak (" + QString::fromLatin1(e.needle)
-                               + ") in 4xx response",
+                               + ") in response",
                            "needle: " + QString::fromLatin1(e.needle));
                 break;
             }
