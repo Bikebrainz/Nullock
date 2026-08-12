@@ -3827,7 +3827,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "<pending-self>",
+        "commit": "df50bbc",
         "note": "Wave 2: \"Send to Decoder\" wired from Proxy/Site-map DetailPane, Repeater's request/response panes, and the Intercept held-message toolbar, closing the affordance half of #323 (partial -> present); the codec-divergence caveat is left honestly in gap as unrelated follow-up."
       }
     },
