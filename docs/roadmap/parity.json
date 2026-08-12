@@ -1833,12 +1833,18 @@
     {
       "area": "sequencer",
       "feature": "Token bit-conversion across encodings (map the token's character set to a bit sequence for the bit-level tests)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
       "gap": "CORRECTED: (a) an ODD-length hex corpus fails `(t.size() % 2) != 0`, falls through, and is silently decoded as BASE64 \u2014 the report then claims `\"scheme\":\"base64\"` for a hex corpus; (b) base32/base36/alphanumeric are silently relabelled base64 too; (c) the genuine total loss is any corpus containing a character outside `[A-Za-z0-9+/_-]` \u2014 which includes JWTs (`.`), and any decimal-with-separator or URL-encoded token: those report `applicable:false` and get ZERO bit-level analysis. Any single non-conforming token in the corpus kills the whole test via `break`.",
       "why": "I re-read decodeCorpusBytes at :304-333 and the first pass's characterisation of the failure trigger is WRONG in a way that matters in both directions. `b64Re` is `^[A-Za-z0-9+/_-]+={0,2}$`, which MATCHES base32, base36 and alphanumeric session IDs \u2014 so those corpora are NOT lost, they are decoded (as base64) and DO get bit-tested. Conversely there are two silent-wrong paths the first pass missed.",
-      "evidence": "sequencer_logic.cpp:306-332: `static const QRegularExpression hexRe(\"^[0-9a-fA-F]+$\"); static const QRegularExpression b64Re(\"^[A-Za-z0-9+/_-]+={0,2}$\"); bool allHex = !tokens.isEmpty(); for (const QString &t : tokens) { if (t.isEmpty() || (t.size() % 2) != 0 || !hexRe.match(t).hasMatch()) { allHex = false; break; } } ... bool allB64 = !tokens.isEmpty(); for (const QString &t : tokens) { if (t.siz"
+      "evidence": "sequencer_logic.cpp:306-332: `static const QRegularExpression hexRe(\"^[0-9a-fA-F]+$\"); static const QRegularExpression b64Re(\"^[A-Za-z0-9+/_-]+={0,2}$\"); bool allHex = !tokens.isEmpty(); for (const QString &t : tokens) { if (t.isEmpty() || (t.size() % 2) != 0 || !hexRe.match(t).hasMatch()) { allHex = false; break; } } ... bool allB64 = !tokens.isEmpty(); for (const QString &t : tokens) { if (t.siz",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "211b9c3",
+        "note": "Closed 2026-08-11: decodeCorpusBytes rewritten to pick the scheme by charset MAJORITY. Both silent-wrong paths fixed: (a) an odd-length hex corpus is now HEX (odd tokens left-padded to preserve the half-byte) instead of falling through and being decoded+labelled base64; (c) a single non-conforming token (a truncated sample, a JWT's '.') is now SKIPPED (with the count surfaced as bitLevel.skipped) instead of setting the whole corpus applicable:false and zeroing all bit-level analysis. A >=50% majority is required so a genuinely mixed corpus still reports not-applicable. Mutation-proven twice (revert-skip-to-fatal fails the (c) cases; count-even-hex-only fails the (a) case). Residual (documented, cosmetic): base32/base36/alphanumeric is decoded correctly but labelled base64 -- Qt has no base32 decoder, and Burp likewise doesn't distinguish it, so this stays at parity."
+      }
     },
     {
       "area": "sequencer",
