@@ -209,6 +209,85 @@ QList<TestCase> buildCorpus() {
                  "<html><body>Whatever you were looking for doesn't currently "
                  "exist at this address.</body></html>") });
 
+    // ---- Server-error stack-trace fingerprints (were untested) ---------
+    // A 5xx body leaking an internal stack trace tells an attacker which
+    // framework + line numbers to hit. Gated on statusCode >= 500; the
+    // needle table is scanned first-match-wins with a break, so each fixture
+    // below is crafted to contain EXACTLY its own vendor needle and none of
+    // the needles listed above it -- if the table is ever reordered so an
+    // earlier row shadows a later one, that vendor's case flips to the wrong
+    // kind and fails here.
+    tc.append({ "Python traceback 500 -> stack-python", "stack-python", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "Traceback (most recent call last):\n"
+                 "  File /app/views.py line 42 in get\n"
+                 "    raise ValueError\nValueError: boom\n") });
+
+    // Status gate: the same traceback in a 200 body must NOT fire (a 200 that
+    // merely quotes a stack trace, e.g. a docs/paste page, is not a leak).
+    tc.append({ "Python traceback in a 200 body must NOT fire stack-python",
+                "stack-python", true,
+        makeReq("GET", "docs.example.test", "/paste"),
+        makeResp(200, "text/plain",
+                 "Traceback (most recent call last):\n"
+                 "  File /app/views.py line 42 in get\n") });
+
+    tc.append({ "Java stack 500 -> stack-java", "stack-java", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "java.lang.NullPointerException\n"
+                 "\tat com.example.Service.handle(Service.java:88)\n") });
+
+    tc.append({ ".NET stack 500 -> stack-dotnet", "stack-dotnet", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "System.NullReferenceException: Object reference not set.\n"
+                 "   at System.Web.Mvc.ActionMethodDispatcher.Execute()\n") });
+
+    tc.append({ "PHP stack 500 -> stack-php", "stack-php", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "Fatal error: Uncaught Exception: boom in /var/www/index.php:10\n"
+                 "Stack trace:\n#0 /var/www/app.php(5): doThing()\n") });
+
+    tc.append({ "Ruby stack 500 -> stack-ruby", "stack-ruby", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "NoMethodError: undefined method foo for nil:NilClass\n"
+                 "\tfrom /usr/lib/ruby/3.0.0/app.rb:22\n") });
+
+    tc.append({ "Node stack 500 -> stack-node", "stack-node", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "TypeError: Cannot read properties of undefined\n"
+                 "    at Object.<anonymous> (/app/index.js:5:10)\n") });
+
+    tc.append({ "Rails stack 500 -> stack-rails", "stack-rails", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "ActionController::RoutingError (No route matches [GET] /foo):\n"
+                 "  actionpack (7.0.0) lib/action_dispatch/middleware/debug.rb:1\n") });
+
+    // NOTE: Django's URLconf needle appears on its DEBUG 404 page in the wild,
+    // but the detector gate is statusCode >= 500 -- so this locks the needle +
+    // table ordering under the current gate. (Widening the gate to 404 is a
+    // behaviour change, not a test-only lock; tracked separately.)
+    tc.append({ "Django URLconf leak 500 -> stack-django", "stack-django", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/html",
+                 "Using the URLconf defined in myproject.urls, "
+                 "Django tried these URL patterns, in this order:\n"
+                 "1. admin/\n2. api/\n") });
+
+    tc.append({ "Spring stack 500 -> stack-spring", "stack-spring", false,
+        makeReq("GET", "api.example.test", "/boom"),
+        makeResp(500, "text/plain",
+                 "org.springframework.beans.factory.BeanCreationException: "
+                 "Error creating bean userService\n"
+                 "\tat org.springframework.beans.factory.support."
+                 "AbstractAutowireCapableBeanFactory.doCreateBean()\n") });
+
     // ---- Cookie hardening ----------------------------------------------
     tc.append({ "cookie missing HttpOnly", "cookie-no-httponly", false,
         makeReq("GET", "example.test", "/"),

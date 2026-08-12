@@ -47,6 +47,17 @@ developer-facing record.
   would have silently stopped flagging takeovers. Added one positive case per
   vendor, a 503-branch lock, and a status-gate negative (the same needle in a
   `200` body must **not** fire); mutation-proven (s3 + tumblr needles).
+- **Locked all nine server-error stack-trace fingerprints.** A 5xx body
+  leaking an internal stack trace (`stack-python`/`java`/`dotnet`/`php`/`ruby`/
+  `node`/`rails`/`django`/`spring`) tells an attacker which framework and line
+  numbers to target, but the family had no test. The needle table is scanned
+  first-match-wins, so each positive fixture is crafted to carry exactly its own
+  vendor needle and none listed above it — the cases now also pin the table
+  ordering (a reorder that shadowed a later vendor would fail here). Added a
+  status-gate negative (a stack trace quoted in a `200` body must **not** fire)
+  and mutation-proved the python + spring needles. (Noted for follow-up: the
+  `stack-django` needle appears on Django's DEBUG **404** page, but the gate is
+  `>= 500` — a behaviour question tracked separately, not changed here.)
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a
