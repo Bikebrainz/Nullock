@@ -2377,12 +2377,18 @@
     {
       "area": "sequencer",
       "feature": "Cookie jar honors cookie domain scope (Domain attribute, host-only vs domain cookies, subdomain matching)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "`Set-Cookie: SESSION=...; Domain=.example.com` from www.example.com is never sent to api.example.com. The workaround is the manual copyTo button (session_manager.cpp:177), which the analyst must remember and which copies EVERY cookie for the host \u2014 over-sharing in the other direction, including cookies that were host-only by design.",
       "why": "Confirmed by reading the attribute parser in full \u2014 `domain` is genuinely not one of the five handled keys, and I confirmed storage is exact-host.",
-      "evidence": "session_manager_logic.cpp:67-71 verbatim, the complete attribute switch: `if      (key == \"path\")     c.path     = val; else if (key == \"expires\")  c.expires  = val; else if (key == \"httponly\") c.httpOnly = true; else if (key == \"secure\")   c.secure   = true; else if (key == \"samesite\") c.sameSite = val;` \u2014 no domain arm; the attribute is parsed and then dropped on the floor. Storage: session_mana"
+      "evidence": "session_manager_logic.cpp:67-71 verbatim, the complete attribute switch: `if      (key == \"path\")     c.path     = val; else if (key == \"expires\")  c.expires  = val; else if (key == \"httponly\") c.httpOnly = true; else if (key == \"secure\")   c.secure   = true; else if (key == \"samesite\") c.sameSite = val;` \u2014 no domain arm; the attribute is parsed and then dropped on the floor. Storage: session_mana",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "c37a99d",
+        "note": "absent -> partial 2026-08-12: the gap's core deficiency ('domain is parsed and then dropped on the floor') is fixed -- parseSetCookie now records the Domain attribute into CapturedCookie.domain (lowercased, a single leading '.' stripped, empty => host-only) and a pure RFC 6265 5.1.3 domainMatches(cookieDomain, reqHost) predicate is implemented with a real label boundary (evil-example.com does NOT match example.com) + IP-literal exact-only handling, unit- + mutation-tested (dropping the '.' boundary fails the label-trick case). NOT yet a full close: injectInto still does an exact-host lookup -- wiring domain-aware, DETERMINISTIC (m_byHost is a QHash) multi-host cookie collection plus the RFC 6265 5.3 Domain-vs-origin-host validation into injection is the remaining architectural step."
+      }
     },
     {
       "area": "sequencer",
