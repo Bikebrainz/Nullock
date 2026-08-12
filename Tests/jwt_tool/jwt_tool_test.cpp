@@ -155,6 +155,33 @@ int main(int argc, char **argv) {
     chk("kid: a pipe is risky (was missed)", kidLooksRisky("a|b"));
     chk("kid: a space is risky", kidLooksRisky("a b"));
 
+    // ===== analyze: jwt-kid emission (wires the risk predicate) ==========
+    // kidLooksRisky is exercised directly above; these lock that analyze()
+    // actually EMITS jwt-kid when a kid is present, maps the severity
+    // (medium when risky / info when benign), and stays SILENT when there is
+    // no kid at all. A dropped emit, an inverted gate, or a backwards severity
+    // map would pass the predicate tests above but slip through here.
+    {
+        // Risky kid (path traversal) -> jwt-kid at medium.
+        const auto w = analyze(decode(mkToken(
+            "{\"alg\":\"HS256\",\"kid\":\"../../../../dev/null\"}", "{\"sub\":\"x\"}")), kNow);
+        chk("analyze: risky kid -> jwt-kid present", hasId(w, "jwt-kid"));
+        chk("analyze: risky kid -> jwt-kid severity medium", sevOf(w, "jwt-kid") == "medium");
+    }
+    {
+        // Benign opaque kid -> jwt-kid at info.
+        const auto w = analyze(decode(mkToken(
+            "{\"alg\":\"HS256\",\"kid\":\"key-2024_v1\"}", "{\"sub\":\"x\"}")), kNow);
+        chk("analyze: benign kid -> jwt-kid present", hasId(w, "jwt-kid"));
+        chk("analyze: benign kid -> jwt-kid severity info", sevOf(w, "jwt-kid") == "info");
+    }
+    {
+        // No kid header -> analyze must NOT emit jwt-kid.
+        const auto w = analyze(decode(mkToken(
+            "{\"alg\":\"HS256\"}", "{\"sub\":\"x\"}")), kNow);
+        chk("analyze: absent kid -> NO jwt-kid", !hasId(w, "jwt-kid"));
+    }
+
     // ===== bruteHmac: HMAC-only + a real round-trip =====================
     {
         // Sign a token with a known secret, then recover it.

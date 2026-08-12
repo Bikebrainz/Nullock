@@ -103,6 +103,14 @@ developer-facing record.
   (Noted for follow-up: the 4xx-only gate misses the two most common cases — SQL
   errors echoed in a `200` and framework debug pages rendered on a `500`; a
   gate widening with FP analysis is tracked separately.)
+- **Locked the JWT `analyze()` → `jwt-kid` emission.** `kidLooksRisky()` was
+  directly unit-tested, but nothing asserted that `analyze()` actually turns a
+  `kid` header into a `jwt-kid` finding at the right severity — a dropped emit,
+  an inverted presence gate, or a backwards severity map (risky↔benign) would
+  have passed the predicate tests yet silently broken the finding. Added
+  analyze-level cases: a risky kid (path traversal) → `jwt-kid` at **medium**, a
+  benign opaque kid → **info**, and no kid → no finding. Mutation-proven (the
+  severity map and the emit id each break exactly the expected cases).
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a
