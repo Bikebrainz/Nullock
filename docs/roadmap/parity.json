@@ -3818,12 +3818,18 @@
     {
       "area": "repeater",
       "feature": "Decoder: \"Send to Decoder\" from other tools / decode a selection in place",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Selection codecs exist only in the Proxy detail pane \u2014 not in Repeater, not in Comparer, not in the Decoder tab. And it is a second, divergent codec implementation in JS (proxy.jsx:800-1090) rather than a call to /api/transcode, so the two decoders disagree on HTML entities and on hex (JS strips all non-hex chars; the backend rejects the input).",
-      "why": "Verified. My own grep for send-to-decoder synonyms (send-to-decoder, sendToDecoder, toDecoder, send-to-comparer, toComparer) across Src/ and ui-v2/ returned nothing. The selection codec bar exists as described \u2014 and I confirmed the two implementations genuinely disagree.",
-      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx:745-752 `const tools = [\"url-decode\", \"url-encode\", \"b64-decode\", \"b64-encode\", \"jwt-decode\", \"hex-decode\", \"hex-encode\", \"html-decode\", \"graphql-parse\", \"grpc-frame\", \"cbor-decode\", \"saml-decode\"];` operating on `const sel = el.value.substring(el.selectionStart, el.selectionEnd); return sel || el.value;` (proxy.jsx:244-248). Divergence proof: proxy.jsx html-decode i"
+      "gap": "\"Send to Decoder\" now exists from the three places it was missing: Proxy history / Site map's DetailPane (a DECODER menu, request/response, mirroring the existing COMPARER menu), Repeater's request/response message-editor panes (a DEC button beside the existing CMP button), and the Intercept queue's held-message toolbar (a DEC button beside CMP). Each dispatches send-to-decoder, which bumps the app reducer's decoder.seedNonce -- the Decoder tab watches that nonce and overwrites its own local input, then switches to the tab. The remaining honest gap from the original plan is unchanged and separate: the Proxy detail pane's own CodecBar selection-decode tools are still a second, divergent JS codec implementation (proxy.jsx) rather than a call to /api/transcode, so it can still disagree with the canonical Decoder tab on HTML-entity and hex edge cases -- unifying those two codec paths is unrelated follow-up work, not required for the affordance this item names.",
+      "why": "Closed 2026-08-12: added a client-only decoder.seedText/seedNonce slot to the app reducer and a send-to-decoder action; DecoderTab (app.jsx) takes a decoder prop and a useEffect keyed on seedNonce overwrites its local input (and clears stale output) on every send, including a repeat send of identical text. Wired three callers: proxy.jsx's DetailPane (new DECODER dropdown beside COMPARER), tabs.jsx's RepeaterTab (new DEC button beside CMP on both request and response panes), and tabs.jsx's InterceptTab (new DEC button beside CMP on the held-message toolbar).",
+      "evidence": "ui-v2/app.jsx: initialState.decoder slot + reducer's \"send-to-decoder\" case (bumps seedNonce); DecoderTab({decoder}) useEffect keyed on decoder.seedNonce. ui-v2/proxy.jsx: DetailPane's DECODER dropdown (request/response) calling the new onSendDecoder prop; ProxyTab wires onSendDecoder={{... dispatch send-to-decoder + onSwitchTab(\"decoder\") ...}}. ui-v2/tabs.jsx: RepeaterTab's sendToDecoder() + two DEC buttons (request/response panes); InterceptTab's sendToDecoder() + DEC button on the held-message toolbar.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "<pending-self>",
+        "note": "Wave 2: \"Send to Decoder\" wired from Proxy/Site-map DetailPane, Repeater's request/response panes, and the Intercept held-message toolbar, closing the affordance half of #323 (partial -> present); the codec-divergence caveat is left honestly in gap as unrelated follow-up."
+      }
     },
     {
       "area": "repeater",

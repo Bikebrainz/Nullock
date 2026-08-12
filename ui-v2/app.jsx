@@ -98,6 +98,20 @@ function reducer(state, action) {
       return { ...state, comparer: { ...state.comparer, [key]: action.id } };
     }
 
+    // Decoder: a "Send to Decoder" action from Proxy/Repeater/Intercept
+    // (#323). No backend round-trip -- the Decoder tab is client-only, so
+    // this just hands the text off via a bumped seedNonce.
+    case "send-to-decoder": {
+      return {
+        ...state,
+        decoder: {
+          seedText: action.text || "",
+          seedLabel: action.label || "",
+          seedNonce: (state.decoder.seedNonce || 0) + 1,
+        },
+      };
+    }
+
     case "send-to-intruder": {
       if (!action.row) return state;
       const row = action.row;
@@ -4052,13 +4066,24 @@ function TestsTab() {
   );
 }
 
-function DecoderTab() {
+function DecoderTab({ decoder }) {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
   const [activeOp, setOp]   = React.useState("");
   const [err, setErr]       = React.useState("");
   const [chain, setChain]   = React.useState([]);
   const [copied, setCopied] = React.useState(false);
+
+  // #323 "Send to Decoder": Proxy/Repeater/Intercept dispatch send-to-decoder,
+  // which bumps decoder.seedNonce in the app reducer. Every bump (even a
+  // repeat of the same text) overwrites this tab's local input and clears
+  // any stale output from a previous run.
+  const seedNonce = decoder && decoder.seedNonce;
+  React.useEffect(() => {
+    if (!seedNonce) return;
+    setInput(decoder.seedText || "");
+    setOutput(""); setOp(""); setErr(""); setChain([]);
+  }, [seedNonce]);
   // Per-block Text/Hex view (#358): flip either pane to a hex dump without
   // mutating the underlying value, so a non-printing or non-ASCII byte in
   // a decode result is visible instead of silently disappearing in a
@@ -5298,6 +5323,13 @@ function App() {
     scope: NL.scope,
     repeater: NL.repeater,
     comparer: { items: [], selA: null, selB: null },
+    // Decoder: client-only seed slot (#323). The Decoder tab keeps its own
+    // local input/output useState (nothing to persist across polls), so
+    // this is just a hand-off: "Send to Decoder" bumps seedNonce, and
+    // DecoderTab's effect watches seedNonce to overwrite its input --
+    // bumping (not just setting seedText) is what lets sending the exact
+    // same text twice in a row still trigger the overwrite.
+    decoder: { seedText: "", seedLabel: "", seedNonce: 0 },
     intruder: {
       // UI-only grep fields: the snapshot never echoes these back, so the
       // nl-snapshot merge ({...state.intruder, ...NL.intruder}) preserves
@@ -5462,7 +5494,7 @@ function App() {
           <PayloadsTab />
         )}
         {tab === "decoder" && (
-          <DecoderTab />
+          <DecoderTab decoder={state.decoder} />
         )}
         {tab === "comparer" && (
           <ComparerTab comparer={state.comparer} dispatch={dispatch} />

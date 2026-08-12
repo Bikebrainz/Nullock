@@ -436,6 +436,10 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
     dispatch({ type: "comparer-add", label, text });
     if (onSwitchTab) onSwitchTab("comparer");
   };
+  const sendToDecoder = (label, text) => {
+    dispatch({ type: "send-to-decoder", label, text });
+    if (onSwitchTab) onSwitchTab("decoder");
+  };
 
   // Live tab strip pulled from the snapshot. Fall back to a single fake
   // entry if the backend hasn't reported tabs yet (older builds).
@@ -684,6 +688,8 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <span className="ph-count">{rep.request.split("\n").length} LINES</span>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
+            <button className="btn" style={{ marginLeft: 6 }} title="Send to Decoder"
+                    onClick={() => sendToDecoder("repeater request", rep.request)}>↦ DEC</button>
           </div>
           <RepeaterEditorToolbar
             views={["raw", "headers", "body", "preview", "hex", "inspector"]}
@@ -735,6 +741,8 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <span className="ph-count">{rep.response.split("\n").length} LINES</span>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
+            <button className="btn" style={{ marginLeft: 6 }} title="Send to Decoder"
+                    onClick={() => sendToDecoder("repeater response", rep.response)}>↦ DEC</button>
           </div>
           <RepeaterEditorToolbar
             views={["raw", "headers", "body", "preview", "hex", "render", "inspector"]}
@@ -842,6 +850,11 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
     dispatch({ type: "comparer-add", label: (current.kind === 1 ? "intercept response" : "intercept request") + " #" + current.id, text: editedText });
     if (onSwitchTab) onSwitchTab("comparer");
   };
+  const sendToDecoder = () => {
+    if (!current) return;
+    dispatch({ type: "send-to-decoder", label: (current.kind === 1 ? "intercept response" : "intercept request") + " #" + current.id, text: editedText });
+    if (onSwitchTab) onSwitchTab("decoder");
+  };
 
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto 1fr" }}>
@@ -894,6 +907,7 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
               <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held request to Intruder" onClick={sendToIntruder}>↦ INT</button>
             )}
             <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held message to Comparer" onClick={sendToComparer}>↦ CMP</button>
+            <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held message to Decoder" onClick={sendToDecoder}>↦ DEC</button>
             {more > 0 && (
               <span style={{ color: "var(--warn)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }} className="blink">
                 ▮ {more} more waiting

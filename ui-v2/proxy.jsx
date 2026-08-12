@@ -347,7 +347,7 @@ function SiteMap({ entries, selectedHost, onSelect, totalRows, onRowContextMenu 
   );
 }
 
-function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
+function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSendDecoder }) {
   const [view, setView] = React.useState("split"); // split | req | resp
   const [reqTab, setReqTab] = React.useState("raw"); // raw|headers|body
   const [respTab, setRespTab] = React.useState("raw");
@@ -366,6 +366,7 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
   const [overlay, setOverlay] = React.useState(null); // { title, body } | null
   const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
   const [cmpMenuOpen, setCmpMenuOpen] = React.useState(false);
+  const [decMenuOpen, setDecMenuOpen] = React.useState(false);
   const [authzOpen, setAuthzOpen] = React.useState(false);
 
   if (!row) {
@@ -426,6 +427,28 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer }) {
                 request
               </div>
               <div onClick={() => { onSendComparer("response", "#" + row.id + " response", resp); setCmpMenuOpen(false); }}
+                   style={{ padding: "6px 10px", cursor: "pointer", color: "var(--text)" }}>
+                response
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button onClick={() => setDecMenuOpen(o => !o)} title="Send to Decoder">↦ DECODER ▾</button>
+          {decMenuOpen && (
+            <div onClick={(e) => e.stopPropagation()}
+                 style={{
+                   position: "absolute", top: "100%", right: 0, zIndex: 30,
+                   background: "var(--pane)", border: "1px solid var(--accent)",
+                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                   fontFamily: "var(--ff-mono)", fontSize: "11px",
+                   minWidth: 140, marginTop: 4,
+                 }}>
+              <div onClick={() => { onSendDecoder("#" + row.id + " request", req); setDecMenuOpen(false); }}
+                   style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid var(--line-soft)", color: "var(--text)" }}>
+                request
+              </div>
+              <div onClick={() => { onSendDecoder("#" + row.id + " response", resp); setDecMenuOpen(false); }}
                    style={{ padding: "6px 10px", cursor: "pointer", color: "var(--text)" }}>
                 response
               </div>
@@ -1897,6 +1920,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           onSendComparer={(kind, label, text) => {
             dispatch({ type: "comparer-add", label, text });
             if (onSwitchTab) onSwitchTab("comparer");
+          }}
+          onSendDecoder={(label, text) => {
+            dispatch({ type: "send-to-decoder", label, text });
+            if (onSwitchTab) onSwitchTab("decoder");
           }}
         />
       </div>
