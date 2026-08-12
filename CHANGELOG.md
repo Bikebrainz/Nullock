@@ -51,6 +51,17 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Sequencer positional test now explains length-tolerance (Burp "Ignore token
+  length differences").** The per-position (cross-sample) analysis needs a
+  dominant token width and previously reported a bare `applicable:false` when it
+  couldn't run — indistinguishable from a too-small corpus. The `positional`
+  result now always carries `modalWidth`, `atModalWidth`, and `offWidth` (tokens
+  excluded for not matching the modal width), plus a `skipReason`
+  (`length-variance` / `too-few-tokens` / `too-few-at-width` / `tokens-too-short`)
+  when it's skipped. So a variable-length corpus is now clearly flagged as such,
+  and when the test does run the count of excluded off-width tokens is surfaced
+  rather than silently dropped. Same applicable/gating behaviour as before;
+  mutation-tested. Closes roadmap #144.
 - **Intruder "Case modification" generator (Burp parity).** A new `casemod`
   payload type (`IntruderGenerators::caseMod`) takes a list of items and, for each,
   emits one payload per selected case option in canonical order — the five Burp

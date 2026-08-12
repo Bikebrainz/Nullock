@@ -345,6 +345,48 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ===== #144: positional length-tolerance diagnostics ==================
+    // A skipped positional test must be DISTINGUISHABLE: report the modal width,
+    // the count at it, the off-width (excluded) count, and WHY it was skipped --
+    // not a bare applicable:false that could mean length variance OR too few.
+    {
+        std::mt19937_64 rng(0x00144144ULL);
+        auto hx = [&](int n) { QString s; for (int i = 0; i < n; ++i) s += QChar("0123456789abcdef"[rng() & 0xF]); return s; };
+
+        // (a) no dominant width -> "length-variance", not applicable, off-width counted.
+        {
+            QStringList mixed;
+            for (int i = 0; i < 9; ++i) mixed << hx(8);
+            for (int i = 0; i < 8; ++i) mixed << hx(11);
+            for (int i = 0; i < 8; ++i) mixed << hx(14);   // 25 tokens; width 8 leads with 9 (no majority)
+            const QJsonObject p = analyze(mixed)["positional"].toObject();
+            chk("positional #144: variable lengths -> skipped as length-variance (not a bare false)",
+                !p["applicable"].toBool() && p["skipReason"].toString() == "length-variance");
+            chk("positional #144: variable lengths -> modal + off-width reported",
+                p["modalWidth"].toInt() == 8 && p["atModalWidth"].toInt() == 9 && p["offWidth"].toInt() == 16);
+        }
+        // (b) fixed width -> applicable, nothing excluded.
+        {
+            QStringList fixed;
+            for (int i = 0; i < 24; ++i) fixed << hx(16);
+            const QJsonObject p = analyze(fixed)["positional"].toObject();
+            chk("positional #144: fixed width -> applicable, offWidth 0",
+                p["applicable"].toBool() && p["offWidth"].toInt() == 0
+                && p["modalWidth"].toInt() == 16 && p["atModalWidth"].toInt() == 24);
+        }
+        // (c) dominant width WITH a few outliers -> applicable AND the excluded
+        // count is surfaced (the key #144 signal: tokens WERE dropped, and we say so).
+        {
+            QStringList dom;
+            for (int i = 0; i < 22; ++i) dom << hx(16);
+            for (int i = 0; i < 3; ++i)  dom << hx(20);
+            const QJsonObject p = analyze(dom)["positional"].toObject();
+            chk("positional #144: dominant width + outliers -> applicable, offWidth==3",
+                p["applicable"].toBool() && p["offWidth"].toInt() == 3
+                && p["modalWidth"].toInt() == 16 && p["atModalWidth"].toInt() == 22);
+        }
+    }
+
     // ===== #152: decodeCorpusBytes scheme selection + non-conformer tolerance =
     {
         std::mt19937_64 rng(0x00C0FFEEULL);

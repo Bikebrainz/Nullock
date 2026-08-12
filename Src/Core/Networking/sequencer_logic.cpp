@@ -266,6 +266,15 @@ struct PositionalResult {
     double reference = 0.0;      // the strongest variable column (healthy baseline)
     int    weakColumns = 0;
     bool   biased = false;
+    // Length-tolerance diagnostics (Burp "Ignore token length differences", #144):
+    // ALWAYS populated, so a skipped positional test is DISTINGUISHABLE (a bare
+    // applicable:false hid whether the cause was length variance or too few
+    // tokens). modalWidth/atModalWidth describe the width the cross-sample test
+    // uses; offWidth is how many tokens were excluded for not matching it.
+    int    modalWidth = 0;
+    int    atModalWidth = 0;
+    int    offWidth = 0;
+    QString skipReason;          // set only when !applicable: why it didn't run
 };
 
 // Per-character-position Shannon entropy across the fixed-width tokens. A
@@ -284,15 +293,24 @@ struct PositionalResult {
 // majority before flagging.
 PositionalResult positionalEntropy(const QStringList &tokens) {
     PositionalResult r;
-    if (tokens.size() < kDeepMinN) return r;
 
-    // Modal token width.
+    // Modal token width -- computed ALWAYS (even when the test can't run) so the
+    // caller can report WHY it was skipped instead of a bare applicable:false.
     QHash<int, int> widthCount;
     for (const QString &t : tokens) widthCount[t.size()]++;
     int modeW = 0, modeC = 0;
     for (auto it = widthCount.cbegin(); it != widthCount.cend(); ++it)
         if (it.value() > modeC) { modeC = it.value(); modeW = it.key(); }
-    if (modeW < 8 || modeC < kDeepMinN || modeC * 2 < tokens.size()) return r;
+    r.modalWidth   = modeW;
+    r.atModalWidth = modeC;
+    r.offWidth     = tokens.size() - modeC;
+
+    // Same gate as before (unchanged applicable outcome), split so each failure
+    // reports a distinct, actionable reason. Order most-specific first.
+    if (tokens.size() < kDeepMinN) { r.skipReason = QStringLiteral("too-few-tokens");   return r; }
+    if (modeC * 2 < tokens.size()) { r.skipReason = QStringLiteral("length-variance");  return r; }
+    if (modeC < kDeepMinN)         { r.skipReason = QStringLiteral("too-few-at-width");  return r; }
+    if (modeW < 8)                 { r.skipReason = QStringLiteral("tokens-too-short");  return r; }
 
     QStringList fw;
     for (const QString &t : tokens) if (t.size() == modeW) fw << t;
@@ -835,6 +853,13 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     const PositionalResult pos = positionalEntropy(tokens);
     QJsonObject posObj;
     posObj["applicable"] = pos.applicable;
+    // Length-tolerance diagnostics (#144) -- always present. offWidth > 0 means
+    // tokens of other lengths exist; when applicable it's how many the modal-width
+    // cross-sample test excluded, when skipped it says whether length variance (no
+    // dominant width) or sample size was the cause.
+    posObj["modalWidth"]   = pos.modalWidth;
+    posObj["atModalWidth"] = pos.atModalWidth;
+    posObj["offWidth"]     = pos.offWidth;
     if (pos.applicable) {
         posObj["width"] = pos.width;
         posObj["n"]     = pos.n;
@@ -844,6 +869,8 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         posObj["reference"]     = pos.reference;
         posObj["weakColumns"]   = pos.weakColumns;
         posObj["biased"]        = pos.biased;
+    } else {
+        posObj["skipReason"] = pos.skipReason;
     }
     result["positional"] = posObj;
 
