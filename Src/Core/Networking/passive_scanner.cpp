@@ -635,8 +635,13 @@ void PassiveScanner::checkResponse(int rowId,
 
     // ---- Stack-trace fragments -----------------------------------------
     // A 500-class response leaking internal stack lines tells the attacker
-    // which framework + line numbers to target.
-    if (resp.statusCode >= 500 && scanBody.size() < 1 * 1024 * 1024) {
+    // which framework + line numbers to target. Django is the exception: its
+    // DEBUG error page renders the URLconf resolver on a 404 (not only on 5xx),
+    // so its needle also runs on a 404. Every other needle stays 5xx-only -- a
+    // generic 404 page mentioning "java.lang." / "at Object." must not fire.
+    if ((resp.statusCode >= 500 || resp.statusCode == 404)
+        && scanBody.size() < 1 * 1024 * 1024) {
+        const bool is404 = resp.statusCode == 404;
         const QString body = QString::fromUtf8(scanBody.left(64 * 1024));
         struct Trace {
             const char *kind;
@@ -654,6 +659,10 @@ void PassiveScanner::checkResponse(int rowId,
             { "stack-spring",  "org.springframework" },
         };
         for (const auto &t : kTraces) {
+            // On a 404 only the Django URLconf needle is specific enough to fire
+            // without false positives on ordinary not-found pages.
+            if (is404 && QLatin1String(t.kind) != QLatin1String("stack-django"))
+                continue;
             if (body.contains(QString::fromLatin1(t.needle), Qt::CaseInsensitive)) {
                 addFinding(rowId, req, resp, "medium", t.kind,
                            QString("Server error response leaks %1 stack trace")

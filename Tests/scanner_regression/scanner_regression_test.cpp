@@ -509,16 +509,35 @@ QList<TestCase> buildCorpus() {
                  "ActionController::RoutingError (No route matches [GET] /foo):\n"
                  "  actionpack (7.0.0) lib/action_dispatch/middleware/debug.rb:1\n") });
 
-    // NOTE: Django's URLconf needle appears on its DEBUG 404 page in the wild,
-    // but the detector gate is statusCode >= 500 -- so this locks the needle +
-    // table ordering under the current gate. (Widening the gate to 404 is a
-    // behaviour change, not a test-only lock; tracked separately.)
     tc.append({ "Django URLconf leak 500 -> stack-django", "stack-django", false,
         makeReq("GET", "api.example.test", "/boom"),
         makeResp(500, "text/html",
                  "Using the URLconf defined in myproject.urls, "
                  "Django tried these URL patterns, in this order:\n"
                  "1. admin/\n2. api/\n") });
+
+    // Django's DEBUG page renders the URLconf resolver on a 404 (not only 5xx),
+    // so the real-world exposure IS a 404 -- the detector must fire there. This
+    // is the previously-dead-row fix: with the old >=500 gate this case did not
+    // fire at all.
+    tc.append({ "Django URLconf leak 404 -> stack-django (dead-row fix)",
+                "stack-django", false,
+        makeReq("GET", "api.example.test", "/missing"),
+        makeResp(404, "text/html",
+                 "Page not found (404)\n"
+                 "Using the URLconf defined in myproject.urls, "
+                 "Django tried these URL patterns, in this order:\n"
+                 "1. admin/\n2. api/\n") });
+
+    // Gate precision: the 404 arm is Django-ONLY. A generic 404 page that merely
+    // mentions a framework stack token ("java.lang.") must NOT fire -- otherwise
+    // every not-found page quoting a class name becomes a false stack leak.
+    tc.append({ "generic 404 mentioning java.lang. must NOT fire stack-java",
+                "stack-java", true,
+        makeReq("GET", "api.example.test", "/missing"),
+        makeResp(404, "text/html",
+                 "<html><body>Not found. Contact support re: "
+                 "java.lang.NullPointerException tickets.</body></html>") });
 
     tc.append({ "Spring stack 500 -> stack-spring", "stack-spring", false,
         makeReq("GET", "api.example.test", "/boom"),

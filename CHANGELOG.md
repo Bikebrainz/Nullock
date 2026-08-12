@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Django DEBUG page exposure is detected again (`stack-django` was a dead
+  row).** Django renders its URLconf resolver on a **404** DEBUG page, not only
+  on 5xx, but the stack-trace detector was gated `statusCode >= 500` — so the
+  `stack-django` needle ("Django tried these URL patterns") never fired on the
+  page where it actually appears, silently missing every `DEBUG=True`
+  deployment. The gate now also admits a 404, but **only** the Django needle is
+  eligible there; every other framework needle stays 5xx-only so an ordinary
+  not-found page that merely quotes `java.lang.` / `at Object.` can't produce a
+  false stack leak. Covered by a 404 positive and a Django-only gate negative;
+  the fix is proven necessary (reverting the gate fails the 404 case).
 - **Sequencer bit-level tests no longer mislabel or silently skip corpora.** The
   token→bytes decoder had two silent-wrong paths: an odd-length hex corpus failed
   the even-length gate, fell through, and was decoded *and labelled* base64
