@@ -38,6 +38,7 @@
     NL.portScan      = snap.portScan      || { host: "", running: false, done: 0, total: 0, results: [], error: "" };
     NL.recon         = snap.recon         || { target: "", running: false, dns: [], subdomains: [], error: "" };
     NL.sessions      = snap.sessions      || [];
+    NL.sessionRules  = snap.sessionRules  || { rules: [], variables: {} };
     NL.rows          = snap.rows          || [];
     NL.sitemap     = snap.sitemap     || [];
     NL.intercepted = snap.intercepted || [];
@@ -305,6 +306,8 @@
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },
     sessionCopyTo(from, to)     { return post("/api/sessions/copyTo",     { from, to }); },
+    sessionRulesSet(rules)      { return post("/api/session-rules/set",        { rules }); },
+    sessionRulesClearVars()     { return post("/api/session-rules/clear-vars", {}); },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
     ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },

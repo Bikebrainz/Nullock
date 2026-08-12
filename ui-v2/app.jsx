@@ -4540,6 +4540,28 @@ function ReconTab() {
 // per-host bag. Toggle "auto-inject" on a host and all outgoing
 // requests for that host get the captured cookies merged into their
 // Cookie header. Burp-flavored "log in once, scan with that session".
+// Session handling rules (Burp's "Sessions > Session handling rules"
+// macro engine, session_rules.hpp): extract a value from a matched
+// response (header/cookie/JSON-path/regex), store it under a variable,
+// and inject it into every subsequent matched request (header/cookie/
+// body/URL). The backend's /api/session-rules/set replaces the WHOLE
+// rule list in one call -- no per-rule add/update/remove/toggle
+// endpoints exist -- so these pure helpers build the next full array
+// from the current one; the editor POSTs the result back wholesale.
+const EXTRACT_FROM_LABEL = ["Header", "Cookie", "JSON path", "Regex (body, 1st group)"];
+const INJECT_INTO_LABEL  = ["Header", "Cookie", "Body ({{var}})", "URL query"];
+
+function sessionRuleUpsert(rules, index, rule) {
+  if (index < 0) return [...rules, rule];
+  return rules.map((r, i) => (i === index ? rule : r));
+}
+function sessionRuleRemoveAt(rules, index) {
+  return rules.filter((_, i) => i !== index);
+}
+function sessionRuleToggle(rules, index) {
+  return rules.map((r, i) => (i === index ? { ...r, enabled: !r.enabled } : r));
+}
+
 function SessionsTab() {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -4550,6 +4572,24 @@ function SessionsTab() {
 
   const sessions = (window.NL && NL.sessions) ? NL.sessions : [];
   const [expanded, setExpanded] = React.useState(null); // host being shown in detail
+
+  const sessionRules = (window.NL && NL.sessionRules && NL.sessionRules.rules) || [];
+  const sessionVars  = (window.NL && NL.sessionRules && NL.sessionRules.variables) || {};
+  const SR_DEFAULT = {
+    name: "", enabled: true, hostGlob: "*", pathGlob: "*",
+    extractFrom: 0, extractKey: "", variable: "",
+    injectInto: 0, injectKey: "", injectTemplate: "",
+  };
+  const [srDraft, setSrDraft] = React.useState(SR_DEFAULT);
+  const [srEditingIndex, setSrEditingIndex] = React.useState(-1);
+  const setSrK = (k, v) => setSrDraft(d => ({ ...d, [k]: v }));
+  const srReset = () => { setSrDraft(SR_DEFAULT); setSrEditingIndex(-1); };
+  const srSubmit = () => {
+    if (!srDraft.variable) return;
+    NL.actions.sessionRulesSet(sessionRuleUpsert(sessionRules, srEditingIndex, srDraft));
+    srReset();
+  };
+  const srStartEdit = (i) => { setSrDraft({ ...SR_DEFAULT, ...sessionRules[i] }); setSrEditingIndex(i); };
 
   const Btn = ({ label, onClick, danger, primary, disabled, title, size }) => (
     <button onClick={onClick} disabled={disabled} title={title}
@@ -4689,6 +4729,165 @@ function SessionsTab() {
           )}
         </div>
       ))}
+
+      {/* SESSION HANDLING RULES -- extract a value from a matched response
+          (header/cookie/JSON path/regex), inject it into every subsequent
+          matched request. Burp's macro-driven session handling rules. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 6 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Session handling rules</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {sessionRules.length} rule{sessionRules.length === 1 ? "" : "s"} ·
+          {" "}{Object.keys(sessionVars).length} captured variable{Object.keys(sessionVars).length === 1 ? "" : "s"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <Btn label="Clear captured vars" danger
+             disabled={Object.keys(sessionVars).length === 0}
+             onClick={() => { if (confirm("Clear all captured session-rule variables?")) NL.actions.sessionRulesClearVars(); }} />
+      </div>
+
+      {(() => {
+        const inputStyle = {
+          background: "var(--bg-deep)", color: "var(--text)",
+          border: "1px solid var(--line)", padding: "4px 6px",
+          fontSize: "12px", fontFamily: "var(--ff-mono)",
+        };
+        return (
+          <div style={{
+            background: "var(--pane)", border: "1px solid var(--line)",
+            padding: 12, borderRadius: 4, display: "grid",
+            gridTemplateColumns: "120px 1fr 120px 1fr", gap: 8,
+            alignItems: "center",
+          }}>
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Name</label>
+            <input style={inputStyle} value={srDraft.name}
+                   placeholder="refresh csrf token"
+                   onChange={e => setSrK("name", e.target.value)} />
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Enabled</label>
+            <input type="checkbox" checked={srDraft.enabled}
+                   onChange={e => setSrK("enabled", e.target.checked)} />
+
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Host glob</label>
+            <input style={inputStyle} value={srDraft.hostGlob}
+                   placeholder="*.example.com"
+                   onChange={e => setSrK("hostGlob", e.target.value)} />
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Path glob</label>
+            <input style={inputStyle} value={srDraft.pathGlob}
+                   placeholder="/form* (blank = all)"
+                   onChange={e => setSrK("pathGlob", e.target.value)} />
+
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Extract from</label>
+            <select style={inputStyle} value={srDraft.extractFrom}
+                    onChange={e => setSrK("extractFrom", parseInt(e.target.value, 10))}>
+              {EXTRACT_FROM_LABEL.map((l, i) => <option key={i} value={i}>{l}</option>)}
+            </select>
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Extract key</label>
+            <input style={inputStyle} value={srDraft.extractKey}
+                   placeholder="header/cookie name, JSON path, or regex"
+                   onChange={e => setSrK("extractKey", e.target.value)} />
+
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Store as var</label>
+            <input style={inputStyle} value={srDraft.variable}
+                   placeholder="csrf_token"
+                   onChange={e => setSrK("variable", e.target.value)} />
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Inject into</label>
+            <select style={inputStyle} value={srDraft.injectInto}
+                    onChange={e => setSrK("injectInto", parseInt(e.target.value, 10))}>
+              {INJECT_INTO_LABEL.map((l, i) => <option key={i} value={i}>{l}</option>)}
+            </select>
+
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Inject key</label>
+            <input style={inputStyle} value={srDraft.injectKey}
+                   placeholder="header/cookie/param name"
+                   onChange={e => setSrK("injectKey", e.target.value)} />
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Inject template</label>
+            <input style={inputStyle} value={srDraft.injectTemplate}
+                   placeholder="{{csrf_token}} (blank = bare variable)"
+                   onChange={e => setSrK("injectTemplate", e.target.value)} />
+
+            <div style={{ gridColumn: "1 / span 4", display: "flex", gap: 6, marginTop: 4 }}>
+              <Btn label={srEditingIndex >= 0 ? "Update rule" : "Add rule"}
+                   primary onClick={srSubmit} disabled={!srDraft.variable} />
+              {srEditingIndex >= 0 && <Btn label="Cancel" onClick={srReset} />}
+              <span style={{ flex: 1 }} />
+              <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+                A value captured from a matching response is stored under its variable name,
+                then substituted (as {"{{var}}"}) into every subsequent matching request.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4,
+      }}>
+        {sessionRules.length === 0 && (
+          <div style={{ padding: 16, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+            No session handling rules yet. Add one above to auto-refresh a
+            CSRF token, JWT, or nonce across requests.
+          </div>
+        )}
+        {sessionRules.map((r, i) => (
+          <div key={i} style={{
+            display: "grid",
+            gridTemplateColumns: "40px 40px 140px 1fr 1fr 1fr 140px",
+            gap: 6, padding: "6px 10px", alignItems: "center",
+            fontSize: "11.5px", fontFamily: "var(--ff-mono)",
+            borderBottom: "1px solid var(--line-soft)",
+            opacity: r.enabled ? 1 : 0.45,
+          }}>
+            <span style={{ color: "var(--dim)" }}>{i + 1}</span>
+            <input type="checkbox" checked={!!r.enabled}
+                   onChange={() => NL.actions.sessionRulesSet(sessionRuleToggle(sessionRules, i))} />
+            <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {r.name || <span style={{ color: "var(--dim)" }}>(unnamed)</span>}
+            </span>
+            <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              extract {EXTRACT_FROM_LABEL[r.extractFrom] || "?"} &quot;{r.extractKey}&quot; on {r.hostGlob || "*"}
+            </span>
+            <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              &rarr; {"{{" + r.variable + "}}"}
+            </span>
+            <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              inject {INJECT_INTO_LABEL[r.injectInto] || "?"} &quot;{r.injectKey}&quot;
+            </span>
+            <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+              <Btn label="Edit" size="sm" onClick={() => srStartEdit(i)} />
+              <Btn label="Del" size="sm" danger onClick={() => {
+                if (confirm("Delete rule \"" + (r.name || "(unnamed)") + "\"?"))
+                  NL.actions.sessionRulesSet(sessionRuleRemoveAt(sessionRules, i));
+              }} />
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {Object.keys(sessionVars).length > 0 && (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: 8,
+        }}>
+          <div style={{ fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
+                        letterSpacing: "0.06em", marginBottom: 4 }}>
+            Captured variables (this engagement)
+          </div>
+          {Object.entries(sessionVars).map(([k, v]) => (
+            <div key={k} style={{
+              display: "grid", gridTemplateColumns: "160px 1fr", gap: 6,
+              padding: "3px 4px", fontFamily: "var(--ff-mono)", fontSize: "11.5px",
+              borderBottom: "1px solid var(--line-soft)",
+            }}>
+              <span style={{ color: "var(--accent)" }}>{k}</span>
+              <span style={{ color: "var(--text)", overflow: "hidden",
+                             textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={v}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
