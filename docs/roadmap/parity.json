@@ -3170,12 +3170,18 @@
     {
       "area": "proxy",
       "feature": "WebSocket message injection into a live connection (Burp: WebSocket Repeater)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No UI in either front end -- the operator must read a session id out of /api/ws/sessions and hand-POST base64 payloads to /api/ws/send. No frame history, no resend-last, no editor.",
-      "why": "DOWNGRADED for reachability. The backend is real and correct (session registry, frame builder, thread-safe hand-off to the owning relay) and POST /api/ws/send exists. But I grepped ui-v2 (*.js/*.jsx, excluding vendor) and Src/App/*.qml for ws/send, wsSend, ws/sessions and WsRepeater: ZERO hits. There is no button, no session list, no payload field anywhere in either front end. Burp's WebSocket Rep",
-      "evidence": "Backend: Src/BackEnd/Proxy/ws_repeater.hpp:77-80 `Q_INVOKABLE bool sendFrame(qint64 id, const QString &direction, int opcode, const QByteArray &payload);` ; registered at proxy_server.cpp:1001-1002; written by the owning worker at proxy_server.cpp:1025-1032. API: control_server.cpp:5647-5666 `if (path == \"/api/ws/send\") { const qint64 sid = bodyJson.value(\"sessionId\").toVariant().toLongLong(); ..."
+      "gap": "None -- ProxyTab (ui-v2/proxy.jsx) HTTP HISTORY pane-head gains a WS REPEATER button opening an overlay that polls GET /api/ws/sessions every 2s, offers direction (up/down) + opcode (text/binary/close/ping/pong) selectors and a payload editor, queues the frame via POST /api/ws/send, and offers a one-click resend-last. Frame history in the panel itself is still absent (each send is fire-and-forget against the live relay) -- that gap is tracked separately under #269 WebSockets history.",
+      "why": "Closed 2026-08-12: added NL.actions.wsSessions()/wsSend() (ui-v2/real-data.js) and a WsRepeaterOverlay component (ui-v2/proxy.jsx) wired to a toolbar button in the Proxy tab. Both response fields read by the overlay (sessions[].id/host/port/framesUp/framesDown and send response ok/queued) match control_server.cpp exactly -- verified by reading the handlers directly (GET /api/ws/sessions control_server.cpp:2009-2024, POST /api/ws/send :5689-5735) rather than trusting the prior audit note alone.",
+      "evidence": "ui-v2/proxy.jsx WsRepeaterOverlay + WS_OPCODES + wsRepeaterOpen toolbar button in ProxyTab; ui-v2/real-data.js NL.actions.wsSessions/wsSend; backend unchanged -- Src/BackEnd/Proxy/ws_repeater.hpp Q_INVOKABLE sendFrame; control_server.cpp:2009-2024 (/api/ws/sessions) and :5689-5735 (/api/ws/send).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "1b5c530",
+        "note": "WS Repeater wave: WebSocket message injection UI closes the GUI-reachability gap for /api/ws/send + /api/ws/sessions."
+      }
     },
     {
       "area": "proxy",

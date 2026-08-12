@@ -167,6 +167,10 @@
         <p>Multi-identity replay for a captured request — define named identities as header overlays (session cookie, bearer token, ...), replay the same request as each, and see a per-identity status/size table with a divergence flag. Divergent responses hint at BOLA / horizontal / vertical privilege issues and also file a finding in Issues, one click from Proxy history or the site map.</p>
       </div>
       <div class="card">
+        <h3>WS Repeater</h3>
+        <p>Inject a frame straight onto a live WebSocket tunnel — pick the session, direction (client→server / server→client), and opcode (text, binary, close, ping, pong), edit the payload, send, and one-click resend the last frame. One panel over the tunnels the intercepting proxy is currently relaying, no separate client required.</p>
+      </div>
+      <div class="card">
         <h3>Assess &amp; audit</h3>
         <p>One-shot target assessment (fingerprint + CVE correlation + header/method/TLS audit), a synchronous deep-audit run against a single URL with per-tester include toggles, a response-diff hidden-parameter miner, multi-step raw-HTTP request chains with variable extraction/substitution, and the capstone pipeline that bridges port-scan results straight into a full web assessment — all from the SCANS tab, alongside on-demand posture grade, asset inventory, OWASP/compliance coverage, and CI-gate pass/fail rollups. The same tab also drives an exposure scan (curated .git/.env/actuator/backup path probe, confirmed by content signature), a service CVE correlation scan (banner-grab a host's open ports against a curated CVE table), JS recon (mines a page's same-origin JS bundles for API endpoints, hardcoded secrets, and exposed source maps), and a TLS/certificate inspection (live connection, flags expired/self-signed/weak-key/hostname-mismatch/legacy-protocol config).</p>
       </div>

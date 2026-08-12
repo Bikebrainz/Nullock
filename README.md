@@ -17,6 +17,8 @@
 ```
 Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue with
                   pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets;
+                  WS Repeater overlay injects text/binary/close/ping/pong frames into a live
+                  WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
                   HTTP history/Site map filter bar -- scope/params/404 chips, MIME class, extension
                   show/hide, case-sensitive toggle, and negative ("-term") search
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
