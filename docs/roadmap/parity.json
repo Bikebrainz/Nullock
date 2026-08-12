@@ -2052,11 +2052,17 @@
       "area": "sequencer",
       "feature": "Cookie jar viewer: list every cookie, and add / edit / remove individual cookies by hand",
       "state": "partial",
+      "audited_state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Read + clear-host + clear-all + copy-host only. Cannot add a cookie obtained out-of-band, cannot edit a value, cannot delete one cookie. And the viewer hides Path and Expires \u2014 the two attributes that determine whether a cookie will actually be injected (path) and whether it is stale (expires) \u2014 so when injection silently does not happen the UI shows nothing that explains it.",
-      "why": "Read SessionsTab in full (ui-v2/app.jsx:1804-1946) and the full mutation surface in session_manager.hpp. Confirmed: four mutations, none of them per-cookie. Held at partial, and I add that the viewer omits two attributes that matter for debugging.",
-      "evidence": "ui-v2/app.jsx:1932-1946 renders a three-column grid of `{c.name}` / `{c.value}` / `{c.httpOnly && \"HO \"}{c.secure && \"S \"}{c.sameSite && c.sameSite}` \u2014 no Path, no Expires column. Buttons at :1861, :1913-1916, :1917-1920 map to ui-v2/real-data.js:218-221 `sessionAutoInject / sessionClearHost / sessionClearAll / sessionCopyTo`. Backend mutation surface is exactly those four: session_manager.cpp:146"
+      "gap": "Read + clear-host + clear-all + copy-host only. Cannot add a cookie obtained out-of-band, cannot edit a value, cannot delete one cookie -- no backend endpoint exists for any of those three per-cookie mutations, so the remainder is a real absent capability, not just an unwired one. The prior half of this gap (the viewer hiding Path and Expires, the two attributes that determine whether a cookie is actually injected and whether it is stale) is now fixed: the Sessions tab's new Cookie Jar section (wiring the previously-orphaned GET /api/cookies) shows Path and a resolved Expires/session column per cookie, plus per-host httpOnly/Secure/SameSite coverage percentages the inject-focused list above never had.",
+      "why": "Read SessionsTab in full (ui-v2/app.jsx) and the full mutation surface in session_manager.hpp/control_server.cpp. Confirmed: /api/cookies is GET-only (control_server.cpp:4954-4993, host/cookie read model with path/expires/expiresEpoch/persistent/httpOnlyPct/securePct/sameSitePct), and the only mutations anywhere are the four whole-host/whole-jar ones already wired (sessionAutoInject/sessionClearHost/sessionClearAll/sessionCopyTo) -- no per-cookie add/edit/remove route exists server-side, so building the GUI control without the backend support would be a stub. Held at partial for that honest reason; the missing-attribute half of the original complaint is genuinely closed.",
+      "evidence": "control_server.cpp:4954 `if (path == \"/api/cookies\")` -- GET-only, no mutating counterpart; :4966-4978 per-cookie path/expires/expiresEpoch/persistent/httpOnly/secure/sameSite fields. ui-v2/real-data.js `cookieJar()` GET wrapper. ui-v2/app.jsx SessionsTab's new Cookie Jar section renders host.count/httpOnlyPct/securePct/sameSitePct plus a per-cookie name/path/expires/flags row -- Path and Expires now shown, closing that half. grep for an add/edit/remove-single-cookie handler in control_server.cpp and session_manager*.cpp/.hpp = no hits beyond the four whole-jar mutations already cited.",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "PENDING",
+        "note": "Wave 1/2 (frontend-only): added a Cookie Jar section to the Sessions tab wiring the previously-orphaned GET /api/cookies -- full per-host inventory with Path, resolved Expires/session state, and httpOnly/Secure/SameSite coverage percentages, closing the missing-attribute half of this item's gap. State held at partial: no backend route exists for per-cookie add/edit/remove, so that half remains a real absent capability, not just an unwired one. No backend touched."
+      }
     },
     {
       "area": "sequencer",
@@ -2596,11 +2602,17 @@
       "area": "platform",
       "feature": "Project templates / scan configuration presets applied at project creation",
       "state": "partial",
+      "audited_state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Template schema advertises `rules` and `extensionsEnabled`; create-from-template silently drops both. A template promising to enable an extension does nothing.",
-      "why": "Read the whole create-from-template handler and the shipped template. The claim is precisely correct \u2014 I confirmed the applier touches exactly three fields and that web-app-pentest.json really does advertise both dropped keys. Path confinement via safeJoin is also real. 'partial' confirmed unchanged.",
-      "evidence": "control_server.cpp:4943-4948 `for (const auto &v : tplObj.value(\"inScope\").toArray()) inS.append(v.toString()); ... m_wiring.projectStore->setInScope(inS); m_wiring.projectStore->setOutOfScope(outS); m_wiring.projectStore->setNotes(tplObj.value(\"notes\").toString());` \u2014 the function returns immediately after, so `rules` and `extensionsEnabled` are never read. templates/projects/web-app-pentest.json"
+      "gap": "Template schema advertises `rules` and `extensionsEnabled`; create-from-template silently drops both. A template promising to enable an extension does nothing. Separately (now fixed): GET /api/project/templates and POST /api/project/create-from-template had zero ui-v2 callers -- a GUI user could not discover or apply a template at all, only a curl/CLI user could. Settings' Projects card now lists every template (name + description) next to the existing new-project-name field and a 'Create from template' button, so the schema-fidelity gap above is the sole honest remainder.",
+      "why": "Read the whole create-from-template handler and the shipped template. The claim is precisely correct \u2014 I confirmed the applier touches exactly three fields and that web-app-pentest.json really does advertise both dropped keys. Path confinement via safeJoin is also real. 'partial' confirmed unchanged; the reachability half of the gap is fixed, the schema-fidelity half is not (still a backend fix, not buildable/verifiable from this cloud session).",
+      "evidence": "control_server.cpp:4943-4948 `for (const auto &v : tplObj.value(\"inScope\").toArray()) inS.append(v.toString()); ... m_wiring.projectStore->setInScope(inS); m_wiring.projectStore->setOutOfScope(outS); m_wiring.projectStore->setNotes(tplObj.value(\"notes\").toString());` \u2014 the function returns immediately after, so `rules` and `extensionsEnabled` are never read. templates/projects/web-app-pentest.json. New reachability: ui-v2/real-data.js `projectTemplates()`/`projectCreateFromTemplate()`; ui-v2/app.jsx SettingsTab's Projects card renders a template `<select>` (id/name from control_server.cpp:5018-5024) + description hint + a 'Create from template' button calling POST /api/project/create-from-template (control_server.cpp:5031-5073).",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "PENDING",
+        "note": "Wave 1/2 (frontend-only): added a template picker + 'Create from template' button to Settings' Projects card, wiring the previously-orphaned GET /api/project/templates and POST /api/project/create-from-template. Closes the GUI-reachability half of this item's gap; the schema-fidelity half (rules/extensionsEnabled silently dropped server-side) is a real, separate backend gap left honestly untouched -- state held at partial. No backend touched."
+      }
     },
     {
       "area": "platform",

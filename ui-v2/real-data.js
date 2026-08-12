@@ -472,6 +472,34 @@
       return post("/api/extensions/install-builtins").then(r => r.json());
     },
 
+    // --- Cookie jar inventory (host-wide, beyond the Sessions tab's
+    // inject-focused per-host list -- adds path/expiry + httpOnly/secure/
+    // sameSite percentage rollups per host). Response: { hosts: [{host,
+    // lastSeenMs, autoInject, count, httpOnlyPct, securePct, sameSitePct,
+    // cookies: [{name, valueLen, path, expires, persistent, expiresEpoch,
+    // httpOnly, secure, sameSite}] }] }.
+    cookieJar() { return fetch("/api/cookies").then(r => r.json()); },
+
+    // --- CVE overlay (extend Service CVE correlation at runtime) ---
+    // GET current overlay size. Response: { ok, count }.
+    cveOverlay() { return fetch("/api/cve/overlay").then(r => r.json()); },
+    // Clears every pushed/synced overlay entry. Response: { ok, count: 0 }.
+    cveOverlayClear() { return post("/api/cve/overlay/clear").then(r => r.json()); },
+    // payload is either { entries: [...] } (direct/air-gapped push) or
+    // { url: "https://..." } (fetch + parse a JSON feed, SSRF-guarded
+    // server-side). Response: { ok, synced, received, dropped, source }.
+    cveSync(payload) { return post("/api/cve/sync", payload).then(r => r.json()); },
+
+    // --- Project templates (Burp: New project from template) ---
+    // Response: { templates: [{id, name, description, inScope, outOfScope,
+    // extensionsEnabled}] }.
+    projectTemplates() { return fetch("/api/project/templates").then(r => r.json()); },
+    // Applies a template's scope/notes onto a freshly-created project.
+    // Response: { ok, project, applied } or { ok:false, error }.
+    projectCreateFromTemplate(templateId, projectName) {
+      return post("/api/project/create-from-template", { templateId, projectName }).then(r => r.json());
+    },
+
     // --- WebSocket Repeater (Burp: WebSocket Repeater) ---
     // Lists every currently-open WS tunnel the MITM proxy is relaying, with
     // frame counters. Read-only, safe to poll. Response: { sessions: [{id,

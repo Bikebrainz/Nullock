@@ -1,4 +1,4 @@
-# In-app UI navigability audit (2026-08-02, updated 2026-08-12b)
+# In-app UI navigability audit (2026-08-02, updated 2026-08-12c)
 
 > Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-11, waves closing the
@@ -35,7 +35,18 @@
 > card (wiring `/api/extensions/install-builtins`) -- the last one closing the "Other" bucket
 > entirely. True orphaned count, re-verified by a fresh
 > literal-string grep of every endpoint in this file against live `ui-v2/*.jsx` +
-> `ui-v2/real-data.js`: **8 of 173 (5%) orphaned**. Verified
+> `ui-v2/real-data.js`: 8 of 173 (5%) orphaned. This run closed the last real
+> gaps in that 8: a Cookie Jar section on the SESSIONS tab wires `/api/cookies` (full
+> per-host inventory with Path/Expires and httpOnly/secure/sameSite coverage percentages,
+> beyond the inject-focused list already there), a CVE overlay section on the SCANS tab
+> wires `/api/cve/overlay`, `/api/cve/overlay/clear`, and `/api/cve/sync` (push extra
+> service CVEs directly or sync a feed URL, live entry count, Clear button), and a template
+> picker + "Create from template" button on Settings' Projects card wires
+> `/api/project/templates` + `/api/project/create-from-template`. The sole remaining
+> endpoint, `/api/intruder/multi`, is intentionally left orphaned (a redundant synchronous
+> alternative to the already-wired async Intruder flow -- see its own bucket note) --
+> **true orphaned count corrected 8 -> 3 of 173 (2%), all three intentional**
+> (`/api/cache/poison`, `/api/request/curl`, `/api/intruder/multi`). Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -58,10 +69,14 @@ audit section (assess/audit-run/param-miner/chain-run/pipeline-run, posture/inve
 compliance/gate rollups, exposure-scan/service-CVE-correlation/JS-recon/TLS-certificate-
 inspection/HTTP-3-detection single-target probes, a Port scan -> findings bridge, and a
 Detection templates section running the bundled nuclei-style template library or a
-custom-JSON template against a target URL). The INSPECTOR tab now
+custom-JSON template against a target URL, and now a CVE overlay section for pushing/syncing
+extra service CVEs into the correlation table). The INSPECTOR tab now
 has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
-header-audit/waf-detect/secret-scan.
+header-audit/waf-detect/secret-scan. The SESSIONS tab now has a Cookie Jar section (full
+per-host inventory: Path/Expires + httpOnly/secure/sameSite coverage percentages) below its
+inject-focused per-host list. SETTINGS' Projects card now offers a template picker and a
+"Create from template" button.
 
 ## Active vulnerability tests (1 remaining — 24 of the 26 `/<type>/test` family are wired via TESTS, `jwt` via Inspector's JWT TOOLKIT)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
@@ -115,28 +130,31 @@ a distinct "attack" action alongside Collaborator's "mint and watch" workflow.
 `/api/graphql/schema`, `/api/graphql/probe` wired via the PROBE tab's graphql schema /
 graphql probe buttons.)
 
-## Cookies / CVE overlay (4)
-- `/api/cookies`
-- `/api/cve/overlay`
-- `/api/cve/overlay/clear`
-- `/api/cve/sync`
+## Cookies / CVE overlay (0)
 
-(No matching parity-backlog item for the host-wide cookie-jar inventory endpoint — the
-SESSIONS tab already renders per-host captured cookies from the `/api/snapshot` sessions
-block, a different data path with the same underlying capture; `/api/cookies` adds
-path/expires fields and httpOnly/secure/sameSite percentage rollups the SESSIONS tab
-doesn't show. CVE overlay sync (air-gapped feed ingestion for ServiceVulns) has no UI
-entry point at all yet.)
+(`/api/cookies` wired via the SESSIONS tab's new Cookie Jar section -- full per-host
+inventory (path/expiry + httpOnly/secure/sameSite coverage percentages) distinct from the
+inject-focused per-host list above it, which reads the `/api/snapshot` sessions block
+instead. `/api/cve/overlay`, `/api/cve/overlay/clear`, `/api/cve/sync` wired via the SCANS
+tab's new "CVE overlay" section -- push extra service CVEs directly (air-gapped JSON array)
+or sync from a feed URL, with a live entry count and a Clear button.)
 
 (`/api/baseline/save`, `/api/baseline/status`, `/api/baseline/diff`, `/api/baseline/clear`,
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (2)
-- `/api/intruder/multi`
-- `/api/project/templates`
+## GraphQL / WS / session (1)
+- `/api/intruder/multi` — intentionally left orphaned: a synchronous one-shot alternative
+  to the already-wired async Intruder flow (`/api/intruder/set` + `/api/intruder/start`,
+  polled via snapshot). Both accept the identical field set (host/port/tls/template/
+  attackType/payloadSets) -- confirmed by reading both handlers side by side
+  (control_server.cpp:3265-3299 set, :3446-3503 multi) -- so wiring a second GUI path to the
+  same capability would be a redundant, weaker (no live progress, no resend, no rule chain)
+  duplicate rather than closing a real gap. Same precedent as `/api/request/curl` below.
 
-(`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
+(`/api/project/templates`, `/api/project/create-from-template` wired via Settings' Projects
+card -- a template `<select>` (name + description) next to the existing new-project-name
+field, plus a "Create from template" button. `/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
 dialog; `/api/intruder/rule-ops` wired via Intruder's RULES bar. `/api/graphql/probe`,
 `/api/graphql/schema` wired via the PROBE tab. `/api/authz-test` wired via the AUTHZ TEST
 button in Proxy history / Site map's DetailPane. `/api/ws/sessions`, `/api/ws/send` wired via

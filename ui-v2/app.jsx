@@ -590,6 +590,30 @@ function SettingsTab() {
   }, []);
   React.useEffect(() => { refreshProjects(); }, [refreshProjects]);
 
+  // Project templates (Burp: New project from template) -- prefills scope
+  // + notes on a freshly-created project from templates/projects/*.json.
+  const [templates, setTemplates]   = React.useState([]);
+  const [templateId, setTemplateId] = React.useState("");
+  const refreshTemplates = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.projectTemplates();
+      setTemplates(r.templates || []);
+    } catch {}
+  }, []);
+  React.useEffect(() => { refreshTemplates(); }, [refreshTemplates]);
+  const createFromTemplate = async () => {
+    const n = newProject.trim();
+    if (!n) { alert("Enter a project name above first."); return; }
+    if (!templateId) return;
+    const r = await NL.actions.projectCreateFromTemplate(templateId, n);
+    if (r && r.ok === false) {
+      alert("Could not create from template: " + (r.error || "unknown error"));
+      return;
+    }
+    setNewProject(""); setTemplateId("");
+    await refreshProjects();
+  };
+
   const b = (window.NL && NL.bootInfo) || {};
   const scope = (window.NL && NL.scope) || { in: [], out: [], notes: "" };
   const rowCount = (window.NL && NL.rows) ? NL.rows.length : 0;
@@ -790,6 +814,26 @@ function SettingsTab() {
             await refreshProjects();
           }} />
         </div>
+        {templates.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <select value={templateId} onChange={e => setTemplateId(e.target.value)}
+              style={{
+                background: "var(--bg-deep)", color: "var(--text)",
+                border: "1px solid var(--line)", padding: "4px 6px",
+                fontSize: "12px", fontFamily: "var(--ff-mono)", minWidth: 180,
+              }}>
+              <option value="">-- or start from a template --</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <Btn label="Create from template" disabled={!templateId} onClick={createFromTemplate} />
+          </div>
+        )}
+        {templateId && (() => {
+          const t = templates.find(x => x.id === templateId);
+          return t && t.description ? (
+            <div style={{ fontSize: "10.5px", color: "var(--dim)" }}>{t.description}</div>
+          ) : null;
+        })()}
       </Card>
 
       <Card title="Project">
@@ -1846,6 +1890,12 @@ function ScansTab() {
   const [tplCustom, setTplCustom] = React.useState("");
   const [tplRes, setTplRes]       = React.useState(null);
 
+  // CVE overlay (extend Service CVE correlation at runtime, /api/cve/*)
+  const [cveOverlay, setCveOverlay]   = React.useState(null);
+  const [cveEntries, setCveEntries]   = React.useState("");
+  const [cveUrl, setCveUrl]           = React.useState("");
+  const [cveSyncRes, setCveSyncRes]   = React.useState(null);
+
   // Port scan -> findings bridge: promotes the port scanner's current
   // results (exposed db/remote-admin/mgmt-API/cleartext/file-share, plus
   // banner->CVE correlation) into the shared findings pipeline.
@@ -1949,6 +1999,24 @@ function ScansTab() {
     try { tpl = JSON.parse(tplCustom); } catch (e) { setErr2("template must be valid JSON: " + (e && e.message ? e.message : e)); return; }
     doTemplateRun({ template: tpl });
   };
+
+  const loadCveOverlay = React.useCallback(() => runBusy2("cveoverlay", setCveOverlay, () => NL.actions.cveOverlay()), []);
+  React.useEffect(() => { loadCveOverlay(); }, [loadCveOverlay]);
+  const doCveSync = () => {
+    let payload;
+    if (cveEntries.trim()) {
+      let entries;
+      try { entries = JSON.parse(cveEntries); } catch (e) { setErr2("entries must be valid JSON: " + (e && e.message ? e.message : e)); return; }
+      if (!Array.isArray(entries)) { setErr2("entries must be a JSON array"); return; }
+      payload = { entries };
+    } else if (cveUrl.trim()) {
+      payload = { url: cveUrl.trim() };
+    } else {
+      setErr2("provide entries JSON or a feed URL"); return;
+    }
+    runBusy2("cvesync", setCveSyncRes, () => NL.actions.cveSync(payload).then(r => { loadCveOverlay(); return r; }));
+  };
+  const doCveClear = () => runBusy2("cveclear", setCveOverlay, () => NL.actions.cveOverlayClear());
 
   const start = async () => {
     // Recognize three host-field shapes:
@@ -2497,6 +2565,40 @@ function ScansTab() {
           </div>
         )}
         <RawResult res={tplRes} />
+      </Section>
+
+      <Section title="CVE overlay" hint="extend Service CVE correlation at runtime -- push extra service CVEs directly (air-gapped) or sync from a JSON feed URL">
+        <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+          {cveOverlay && cveOverlay.ok !== false
+            ? cveOverlay.count + " overlay entr" + (cveOverlay.count === 1 ? "y" : "ies") + " loaded"
+            : "—"}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", color: "var(--dim)" }}>
+            Entries (JSON array) — each needs product + cveId, and either minVer/maxVer or exact
+          </label>
+          <textarea value={cveEntries} onChange={e => setCveEntries(e.target.value)}
+                    placeholder={'[{"product":"nginx","cveId":"CVE-2021-23017","cvss":9.8,"minVer":"1.20.0","maxVer":"1.20.0","summary":"off-by-one in resolver","fix":"upgrade to 1.20.1"}]'}
+                    style={{ ...inp, minHeight: 70, resize: "vertical" }} spellCheck={false} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={cveUrl} onChange={e => setCveUrl(e.target.value)}
+                 placeholder="or a feed URL (JSON array, or {entries:[...]} / {cves:[...]}) -- used if entries above is blank"
+                 onKeyDown={e => { if (e.key === "Enter") doCveSync(); }}
+                 style={{ ...inp, flex: "1 1 320px", minWidth: 220 }} spellCheck={false} />
+          <Btn2 k="cvesync" label="Sync" onClick={doCveSync} />
+          <Btn2 k="cveclear" label="Clear overlay" disabled={!cveOverlay || !cveOverlay.count} onClick={doCveClear} />
+          <Btn2 k="cveoverlay" label="Refresh count" onClick={loadCveOverlay} />
+        </div>
+        {cveSyncRes && cveSyncRes.ok !== false && cveSyncRes.synced != null && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            synced {cveSyncRes.synced} of {cveSyncRes.received} (dropped {cveSyncRes.dropped}) from {cveSyncRes.source}
+          </div>
+        )}
+        {cveSyncRes && cveSyncRes.ok === false && (
+          <div style={{ fontSize: "12px", color: "var(--err)" }}>{cveSyncRes.error}</div>
+        )}
+        <RawResult res={cveSyncRes} />
       </Section>
     </div>
   );
@@ -4712,6 +4814,18 @@ function SessionsTab() {
   const sessions = (window.NL && NL.sessions) ? NL.sessions : [];
   const [expanded, setExpanded] = React.useState(null); // host being shown in detail
 
+  // Cookie jar (full inventory: path/expiry + httpOnly/secure/sameSite
+  // percentage rollups) -- distinct from the inject-focused list above,
+  // which only ever shows name/value/flags per captured Set-Cookie.
+  const [cookieJar, setCookieJar]     = React.useState(null);
+  const [cookieJarBusy, setCookieJarBusy] = React.useState(false);
+  const loadCookieJar = React.useCallback(async () => {
+    setCookieJarBusy(true);
+    try { setCookieJar(await NL.actions.cookieJar()); }
+    finally { setCookieJarBusy(false); }
+  }, []);
+  React.useEffect(() => { loadCookieJar(); }, [loadCookieJar]);
+
   const sessionRules = (window.NL && NL.sessionRules && NL.sessionRules.rules) || [];
   const sessionVars  = (window.NL && NL.sessionRules && NL.sessionRules.variables) || {};
   const SR_DEFAULT = {
@@ -4861,6 +4975,68 @@ function SessionsTab() {
                         title={c.value}>{c.value}</span>
                   <span style={{ color: "var(--dim)", fontSize: "10px", textAlign: "right" }}>
                     {c.httpOnly && "HO "}{c.secure && "S "}{c.sameSite && c.sameSite}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* COOKIE JAR -- full per-host cookie inventory (path/expiry, plus
+          httpOnly/secure/sameSite percentage rollups), reading /api/cookies
+          directly rather than the /api/snapshot sessions block above. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 6 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Cookie jar</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          path/expiry + httpOnly/secure/sameSite coverage per host
+        </span>
+        <span style={{ flex: 1 }} />
+        <Btn label={cookieJarBusy ? "…" : "Refresh"} disabled={cookieJarBusy} onClick={loadCookieJar} />
+      </div>
+
+      {cookieJar && (cookieJar.hosts || []).length === 0 && (
+        <div style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: 16, textAlign: "center",
+          color: "var(--dim)", fontSize: "12px",
+        }}>
+          No cookies captured yet.
+        </div>
+      )}
+
+      {cookieJar && (cookieJar.hosts || []).map(h => (
+        <div key={h.host} style={{
+          background: "var(--pane)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: 8,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "11.5px", fontFamily: "var(--ff-mono)", flexWrap: "wrap" }}>
+            <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.host}>{h.host}</span>
+            <span style={{ color: "var(--dim)" }}>{h.count} cookie{h.count === 1 ? "" : "s"}</span>
+            <span style={{ color: "var(--dim)" }}>HttpOnly {h.httpOnlyPct}%</span>
+            <span style={{ color: "var(--dim)" }}>Secure {h.securePct}%</span>
+            <span style={{ color: "var(--dim)" }}>SameSite {h.sameSitePct}%</span>
+          </div>
+          {(h.cookies || []).length > 0 && (
+            <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+              {h.cookies.map((c, i) => (
+                <div key={i} style={{
+                  display: "grid", gridTemplateColumns: "160px 90px 1fr 110px",
+                  gap: 6, padding: "3px 4px", fontFamily: "var(--ff-mono)", fontSize: "11px",
+                  borderBottom: "1px solid var(--line-soft)",
+                }}>
+                  <span style={{ color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</span>
+                  <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.path}>{c.path || "/"}</span>
+                  <span style={{ color: "var(--dim)" }}>
+                    {c.persistent
+                      ? (c.expiresEpoch ? new Date(c.expiresEpoch * 1000).toISOString().slice(0, 19).replace("T", " ") + " UTC" : (c.expires || "persistent"))
+                      : "session"}
+                  </span>
+                  <span style={{ color: "var(--dim)", fontSize: "10px", textAlign: "right" }}>
+                    {c.httpOnly && "HO "}{c.secure && "S "}{c.sameSite}
                   </span>
                 </div>
               ))}

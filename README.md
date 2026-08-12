@@ -50,8 +50,10 @@ Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE
                   HTTP request smuggling, race conditions
 Version -> CVE    Active fingerprint + service-banner version detection correlated to a curated CVE
                   database (WordPress/Drupal/Joomla/Confluence/Jira/Jenkins/Grafana/Elasticsearch/Kibana/Tomcat/PHP/...),
-                  with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay;
-                  network-service banner-grab + CVE correlation reachable from the SCANS tab
+                  with multi-branch ranges so patched builds aren't flagged; runtime NVD feed overlay
+                  (push entries directly for air-gapped use, or sync a JSON feed URL -- SCANS tab's
+                  "CVE overlay" section); network-service banner-grab + CVE correlation reachable
+                  from the SCANS tab
 JS recon          Mines same-origin JS bundles for API endpoints, hardcoded secrets, and exposed
                   source maps -- SCANS tab
 Recon             Port/CIDR sweeps (with nmap XML import for scans run outside Nullock, and a
@@ -128,6 +130,12 @@ Scriptable CLI    Drive every panel from your shell
 Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/)
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
+Project templates  Start a new project pre-seeded with scope + notes from a bundled template
+                  (web-app/API/cloud pentest, OAuth review) -- picker + "Create from template"
+                  button in Settings' Projects card
+Cookie jar         Full per-host cookie inventory (Path, resolved Expires/session state, plus
+                  httpOnly/Secure/SameSite coverage percentages) -- SESSIONS tab, alongside the
+                  existing inject-focused per-host list
 Update check       Dismissible in-app banner surfaces new-release availability + release notes
 ```
 
