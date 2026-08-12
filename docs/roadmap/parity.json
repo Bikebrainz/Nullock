@@ -430,12 +430,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Character blocks",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
       "gap": "No generator producing blocks of a repeated character at increasing sizes (buffer/limit testing).",
       "why": "Grep for char-block returns nothing; no repeated-character block generator.",
-      "evidence": "intruder_generators.cpp:89-91 types() lists only numbers/brute/dates."
+      "evidence": "intruder_generators.cpp:89-91 types() lists only numbers/brute/dates.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "60d5bc4",
+        "note": "Closed 2026-08-11: added IntruderGenerators::charBlocks(base,minMult,maxMult,step) -- one payload per multiplier k in [minMult,maxMult] step, each `base` repeated k times (base x k). Semantics verified against the PortSwigger docs: Burp MULTIPLIES/whole-repeats the base, it does NOT truncate to a length (my first guess was truncate -- the docs corrected it). Wired into control_server expandGen (t==blocks) + types()={numbers,brute,dates,null,frobber,blocks}. Bounded in count + total chars, refuses to build an over-cap block (no OOM). Unit- + mutation-tested (replacing repeated(k) with left(k) fails the exact-output cases)."
+      }
     },
     {
       "area": "intruder",

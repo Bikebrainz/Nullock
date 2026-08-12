@@ -25,7 +25,7 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
                   auto-indents JSON/XML/HTML bodies
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
-                  brute-forcer/null/frobber), a payload-processing rule chain (prefix/suffix/case/reverse/
+                  brute-forcer/null/frobber/blocks), a payload-processing rule chain (prefix/suffix/case/reverse/
                   match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
 Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count, max CVSS, CWE/
