@@ -36,6 +36,22 @@ bool isHtmlResponse(const QString &contentType) {
         || contentType.contains("application/xhtml",  Qt::CaseInsensitive);
 }
 
+// RFC 1918 172.16.0.0/12 is ONLY 172.16.x - 172.31.x. A naive startsWith("172.")
+// wrongly classifies PUBLIC 172.x hosts (172.0-15.x, 172.32-255.x) as private,
+// which suppressed the outbound-PII check on real exfiltration to those hosts.
+// Parse the second octet; a non-numeric second label ("172.example.com") is a
+// hostname, not a private IP.
+bool is172RangePrivate(const QString &host) {
+    if (!host.startsWith(QLatin1String("172."))) return false;
+    const int start = 4;                                  // after "172."
+    const int nextDot = host.indexOf(QLatin1Char('.'), start);
+    const QString octet2 = (nextDot < 0) ? host.mid(start)
+                                         : host.mid(start, nextDot - start);
+    bool ok = false;
+    const int n = octet2.toInt(&ok);
+    return ok && n >= 16 && n <= 31;
+}
+
 } // namespace
 
 PassiveScanner::PassiveScanner(QObject *parent) : QObject(parent) {}
@@ -1312,7 +1328,7 @@ void PassiveScanner::checkResponse(int rowId,
             && !req.host.startsWith("127.")
             && !req.host.startsWith("10.")
             && !req.host.startsWith("192.168.")
-            && !req.host.startsWith("172.")
+            && !is172RangePrivate(req.host)   // 172.16-31.x only, not all 172.x
             && !req.host.endsWith(".local", Qt::CaseInsensitive)
             && !req.host.endsWith(".internal", Qt::CaseInsensitive)
             && !req.host.endsWith(".corp", Qt::CaseInsensitive);

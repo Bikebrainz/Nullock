@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Outbound-PII check no longer skips PUBLIC 172.x destinations.** The
+  exfiltration gate treated any host matching `startsWith("172.")` as private,
+  but RFC 1918 reserves only `172.16.0.0`–`172.31.255.255` (172.16/12). So SSN /
+  card / phone / IBAN leaving in a request to a **public** 172.x host
+  (172.0–15.x, 172.32–255.x — e.g. `172.200.1.1`) was silently not flagged. The
+  gate now parses the second octet and treats only 172.16–31.x as private (a
+  non-numeric second label like `172.example.com` is a hostname, not a private
+  IP). Boundary cases (172.15/16/31/32) lock the range; proven necessary
+  (restoring the old gate fails exactly the public-172 cases).
 - **Django DEBUG page exposure is detected again (`stack-django` was a dead
   row).** Django renders its URLconf resolver on a **404** DEBUG page, not only
   on 5xx, but the stack-trace detector was gated `statusCode >= 500` — so the

@@ -306,13 +306,30 @@ QList<TestCase> buildCorpus() {
             makeReq("POST", "db.internal", "/collect", {}, "ssn=123-45-6789"),
             makeResp(200, "application/json", "{}") });
 
-        // Current-behaviour lock + KNOWN QUIRK: the gate uses startsWith("172.")
-        // which over-broadly suppresses PUBLIC 172.x too (only 172.16-31 are
-        // RFC-1918 private). Locked as-is so a future tightening is a deliberate
-        // change; flagged for follow-up.
-        tc.append({ "SSN to public 172.200.x host -> currently suppressed (quirk, locked)",
-                    "pii-ssn-outbound", true,
+        // RFC-1918 172.16.0.0/12 is ONLY 172.16.x - 172.31.x. Public 172.x hosts
+        // (172.0-15.x, 172.32-255.x) must be treated as PUBLIC so exfiltration to
+        // them is flagged. These lock the corrected second-octet boundary.
+        tc.append({ "SSN to public 172.200.x host -> FIRES pii-ssn-outbound (172 quirk fix)",
+                    "pii-ssn-outbound", false,
             makeReq("POST", "172.200.1.1", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+        tc.append({ "SSN to 172.15.x (just below private range) -> FIRES",
+                    "pii-ssn-outbound", false,
+            makeReq("POST", "172.15.255.255", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+        tc.append({ "SSN to 172.32.x (just above private range) -> FIRES",
+                    "pii-ssn-outbound", false,
+            makeReq("POST", "172.32.0.1", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+
+        // ...but the genuine RFC-1918 172.16-31.x range stays private (no fire).
+        tc.append({ "SSN to 172.16.x (RFC-1918 private) -> NOT fire",
+                    "pii-ssn-outbound", true,
+            makeReq("POST", "172.16.0.5", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+        tc.append({ "SSN to 172.31.x (RFC-1918 private upper bound) -> NOT fire",
+                    "pii-ssn-outbound", true,
+            makeReq("POST", "172.31.255.255", "/collect", {}, "ssn=123-45-6789"),
             makeResp(200, "application/json", "{}") });
     }
 
