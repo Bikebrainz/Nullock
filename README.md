@@ -81,7 +81,9 @@ Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equiva
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
                   in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
                   pre-analysis sample summary, full results (entropy, char class, hamming, LCS,
-                  sequential-counter detection, per-position + bit-level tests where applicable)
+                  sequential-counter detection, per-position + FIPS 140-2 bit-level tests where
+                  applicable), plus sample-size guidance -- warns under ~100 tokens and flags the
+                  20,000-bit FIPS conformance threshold
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
 Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
