@@ -1924,7 +1924,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "4d1d832",
+        "commit": "223f9ec",
         "note": "Sessions tab gains a Session handling rules editor (name/enable/host+path glob/extract/inject fields) wired to the previously-orphaned /api/session-rules/set + /clear-vars; closes the GUI-reachability gap."
       }
     },
