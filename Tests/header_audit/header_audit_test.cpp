@@ -20,6 +20,7 @@
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QString>
+#include <QUrl>
 
 #include <cstdio>
 
@@ -292,6 +293,31 @@ int main(int argc, char **argv) {
         Request noPath; noPath.host = "victim.tld";
         chk("build: empty basePath normalizes to '/'",
             buildRequest(noPath).startsWith("GET / HTTP/1.1\r\n"));
+    }
+
+    // ===== redirect-follower same-origin gate (credential-leak fix) =========
+    // The follower may only continue on a redirect that stays on the exact same
+    // origin; anything else must stop so the captured Cookie/Authorization is
+    // never re-emitted to a different (or downgraded) origin.
+    {
+        chk("same-origin: https victim:443 -> https victim/b -> follow",
+            isSameOriginRedirect(true, "victim", 443, QUrl("https://victim/b")));
+        chk("same-origin: relative path stays same origin -> follow",
+            isSameOriginRedirect(true, "victim", 443, QUrl("https://victim:443/x/y")));
+        chk("downgrade https->http (+port) -> STOP",
+            !isSameOriginRedirect(true, "victim", 443, QUrl("http://victim:8080/b")));
+        chk("bare downgrade https->http -> STOP",
+            !isSameOriginRedirect(true, "victim", 443, QUrl("http://victim/b")));
+        chk("host change -> STOP",
+            !isSameOriginRedirect(true, "victim", 443, QUrl("https://evil/b")));
+        chk("port change -> STOP",
+            !isSameOriginRedirect(true, "victim", 443, QUrl("https://victim:8443/b")));
+        chk("non-http(s) scheme -> STOP",
+            !isSameOriginRedirect(true, "victim", 443, QUrl("ftp://victim:443/b")));
+        chk("cleartext same-origin (http:80) -> follow",
+            isSameOriginRedirect(false, "victim", 80, QUrl("http://victim/b")));
+        chk("http->https upgrade is a different origin -> STOP",
+            !isSameOriginRedirect(false, "victim", 80, QUrl("https://victim/b")));
     }
 
     std::fprintf(stderr, "header_audit_test: %d passed, %d failed\n", pass, fail);

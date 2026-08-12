@@ -10,6 +10,16 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Security
+- **Header-audit redirect follower is now same-origin-only.** It previously
+  gated redirects on hostname alone, so it would follow an `https→http` scheme
+  downgrade or a port change and re-emit the captured `Cookie`/`Authorization`
+  to that origin — over cleartext on a downgrade — while binding the new
+  origin's verdicts to the original URL. It now requires an exact
+  scheme+host+port match before following and never carries credentials across
+  an origin change (`isSameOriginRedirect`, mutation-tested). Fixes finding #1
+  of the multi-agent `Src/Core/Networking` security review.
+
 ### Added
 - **Nuclei-style template scanner.** Author detection templates (JSON) or feed
   real nuclei `.yaml` templates (including `|` literal / `>` folded block

@@ -466,4 +466,16 @@ QByteArray buildRequest(const Request &req) {
     return out;
 }
 
+bool isSameOriginRedirect(bool curTls, const QString &curHost, int curPort,
+                          const QUrl &next) {
+    const QString sc = next.scheme().toLower();
+    if (sc != QLatin1String("http") && sc != QLatin1String("https"))
+        return false;                          // non-http(s) target is never same-origin
+    const bool nextTls  = (sc == QLatin1String("https"));
+    const int  nextPort = next.port(nextTls ? 443 : 80);
+    return nextTls == curTls
+        && next.host().compare(curHost, Qt::CaseInsensitive) == 0
+        && nextPort == curPort;
+}
+
 } // namespace Nullock::Core::HeaderAudit

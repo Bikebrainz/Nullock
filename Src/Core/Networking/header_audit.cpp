@@ -52,10 +52,13 @@ Result test(const Request &req) {
         base.setHost(cur.host); base.setPort(cur.port);
         base.setPath(cur.basePath.isEmpty() ? "/" : cur.basePath);
         const QUrl next = base.resolved(QUrl(loc, QUrl::TolerantMode));
-        if (next.host().compare(req.host, Qt::CaseInsensitive) != 0) break; // off-origin
-        effTls = (next.scheme() == "https");
-        cur.host = next.host();
-        cur.port = next.port(effTls ? 443 : 80);
+        // Only follow a SAME-ORIGIN redirect (same scheme+host+port). A scheme
+        // downgrade, host change, or port change is a different origin: the
+        // captured Cookie/Authorization must not be re-emitted to it (over
+        // cleartext on a downgrade), and its verdicts must not be bound to the
+        // original URL. Stop the chain and audit what we have.
+        if (!isSameOriginRedirect(effTls, cur.host, cur.port, next)) break;
+        // Same origin -> scheme/host/port are unchanged; only the path/query move.
         cur.basePath = next.path().isEmpty() ? QStringLiteral("/") : next.path();
         cur.query = next.query(QUrl::FullyEncoded);
     }

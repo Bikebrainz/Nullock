@@ -16,6 +16,7 @@
 #include <QPair>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 
 namespace Nullock::Core::HeaderAudit {
 
@@ -61,5 +62,14 @@ QMap<QString, QStringList> parseCsp(const QString &csp);
 QString hostOf(QString source);
 bool hostMatches(const QString &cspHost, const QString &gadget);
 QByteArray buildRequest(const Request &req);
+//   isSameOriginRedirect -- may the redirect follower continue to `next`?
+//     True ONLY when `next` is the SAME ORIGIN as (curTls, curHost, curPort):
+//     an http(s) URL with the same scheme, host (case-insensitive), and
+//     effective port. A scheme downgrade (https->http), host change, or port
+//     change is a DIFFERENT origin -- following it would re-emit the captured
+//     Cookie/Authorization to that origin (over cleartext on a downgrade) and
+//     bind its verdicts to the original URL, so the chain must stop instead.
+bool isSameOriginRedirect(bool curTls, const QString &curHost, int curPort,
+                          const QUrl &next);
 
 } // namespace Nullock::Core::HeaderAudit
