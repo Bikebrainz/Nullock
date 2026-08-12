@@ -91,6 +91,39 @@ int commonAffixLen(const QStringList &t, bool prefix) {
     return k;
 }
 
+// Strip a shared NON-NUMERIC wrapper so a WRAPPED counter -- "sess_1001",
+// "user-42", an id with a constant tag -- exposes its numeric core to the
+// counter tests. parseToken otherwise rejects the whole token, so a
+// prefixed/suffixed counter was reported looksSequential:false while Burp's
+// encoding-agnostic low-entropy inference still flagged it (the concrete #153
+// gap). The shared prefix is removed up to and INCLUDING its last non-digit,
+// and the shared suffix from its first non-digit to the end -- so only constant
+// wrapper characters are dropped, never a varying digit. A bare numeric/hex
+// counter (no wrapper) and a stepped counter whose step lives in trailing
+// digits ("100","200","300" -> common suffix "00" is all-digit) are returned
+// UNCHANGED, so the recovered delta stays the TRUE step. Base64-wrapped counters
+// are out of scope (their wrapper is not a constant affix).
+QStringList stripCommonNumericWrapper(const QStringList &tokens) {
+    if (tokens.size() < 2) return tokens;
+    const QString first = tokens.first();
+    const int p = commonAffixLen(tokens, true);
+    const int s = commonAffixLen(tokens, false);
+    int stripPre = 0;
+    for (int i = 0; i < p; ++i)
+        if (!first[i].isDigit()) stripPre = i + 1;                 // last non-digit of the shared prefix
+    int stripSuf = 0;
+    for (int j = 0; j < s; ++j)
+        if (!first[first.size() - s + j].isDigit()) { stripSuf = s - j; break; }  // first non-digit of the shared suffix
+    if (stripPre == 0 && stripSuf == 0) return tokens;             // no non-numeric wrapper
+    QStringList out;
+    out.reserve(tokens.size());
+    for (const QString &t : tokens) {
+        const int keep = t.size() - stripPre - stripSuf;
+        out << (keep > 0 ? t.mid(stripPre, keep) : QString());     // over-strip -> empty -> skipped downstream
+    }
+    return out;
+}
+
 static QString lcsPair(const QString &a, const QString &b) {
     const int n = a.size(), m = b.size();
     if (n == 0 || m == 0) return {};
@@ -142,7 +175,7 @@ QString longestCommonSubstring(const QStringList &tokens) {
 // If the tokens decode to integers AND the deltas are consistent, that's a
 // sequential counter (common for auto-incrementing session IDs).
 bool looksSequential(const QStringList &tokens, qint64 &outDelta) {
-    const QList<qint64> nums = decodeNumeric(tokens);
+    const QList<qint64> nums = decodeNumeric(stripCommonNumericWrapper(tokens));
     if (nums.size() < 3) return false;
     // Anchor the reference delta on the MEDIAN step, not the FIRST pair: a single
     // outlier at the HEAD of the capture (a gap before the counter settles) made the
@@ -178,7 +211,7 @@ bool looksSequential(const QStringList &tokens, qint64 &outDelta) {
 // in the same direction, so a random corpus (P(all same direction) ~ 2^-(n-1))
 // won't trip it.
 bool looksMonotonic(const QStringList &tokens) {
-    const QList<qint64> nums = decodeNumeric(tokens);
+    const QList<qint64> nums = decodeNumeric(stripCommonNumericWrapper(tokens));
     if (nums.size() < 8) return false;
     int inc = 0, dec = 0;
     for (int i = 1; i < nums.size(); ++i) {

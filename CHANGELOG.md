@@ -37,6 +37,17 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Sequencer now detects WRAPPED counters.** The sequential/counter detector
+  previously required a token to be numeric end-to-end, so a real-world wrapped
+  counter — `sess_1001`, `user-42`, `id_007` — was reported "not sequential"
+  (a false negative Burp's encoding-agnostic low-entropy inference still caught).
+  A shared non-numeric wrapper is now stripped before the counter tests, so
+  prefixed/suffixed decimal & hex counters are flagged with their true step,
+  while a bare stepped counter (`100,200,300`) keeps its real delta and random
+  tokens don't become false counters — all mutation-tested. The recovered step
+  (`sequential.delta`) is now also value-locked, not just its boolean. This plus
+  the dedicated `looksSequential`/`looksMonotonic`/`delta` verdict (which Burp
+  has no equivalent for) makes counter detection exceed Burp. Closes roadmap #153.
 - **Sequencer sample-size + FIPS 140-2 guidance.** The token-analysis result now
   carries a `sampleGuidance` block that makes two thresholds explicit and
   machine-readable: a warning under the recommended ~100-token minimum (with a

@@ -117,6 +117,45 @@ int main(int argc, char **argv) {
     chk("hex counter aa..b0 -> sequential (hex base auto-detect)",
         analyze(L({"aa","ab","ac","ad","ae","af","b0"}))["sequential"].toObject()["looksSequential"].toBool());
 
+    // ===== the recovered STEP value (seqObj["delta"]) is surfaced to consumers
+    // but only the boolean was ever pinned. Lock the VALUE so a detector that
+    // flags "sequential" yet reports the wrong step (sign or magnitude) fails.
+    chk("sequential delta value: 18..23 -> delta == +1",
+        analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["delta"].toDouble() == 1.0);
+    chk("sequential delta value: descending 102..97 -> delta == -1",
+        analyze(L({"102","101","100","99","98","97"}))["sequential"].toObject()["delta"].toDouble() == -1.0);
+    // A step-2 counter proves delta is the MEASURED step, not hardcoded to +/-1.
+    chk("sequential delta value: step-2 counter 10..20 -> delta == +2",
+        analyze(L({"10","12","14","16","18","20"}))["sequential"].toObject()["delta"].toDouble() == 2.0);
+
+    // ===== #153: WRAPPED counters (prefix/suffix). parseToken rejects the whole
+    // token, so before wrapper-stripping these were looksSequential:false -- a
+    // false negative Burp's low-entropy inference still caught. Now detected, and
+    // the recovered delta is the TRUE step (only the constant wrapper is stripped).
+    {
+        const QJsonObject a = analyze(L({"sess_1001","sess_1002","sess_1003","sess_1004","sess_1005"}));
+        chk("prefixed counter sess_1001.. -> sequential", a["sequential"].toObject()["looksSequential"].toBool());
+        chk("prefixed counter sess_1001.. -> delta == +1", a["sequential"].toObject()["delta"].toDouble() == 1.0);
+
+        const QJsonObject b = analyze(L({"42_tok","43_tok","44_tok","45_tok","46_tok","47_tok"}));
+        chk("suffixed counter NN_tok -> sequential", b["sequential"].toObject()["looksSequential"].toBool());
+        chk("suffixed counter NN_tok -> delta == +1", b["sequential"].toObject()["delta"].toDouble() == 1.0);
+
+        // zero-padded, wrapped: "id_007".."id_012" -> the '0' padding stays in the
+        // number (leading zeros parse base-10), delta is the true +1.
+        const QJsonObject c = analyze(L({"id_007","id_008","id_009","id_010","id_011","id_012"}));
+        chk("zero-padded wrapped counter id_007.. -> sequential", c["sequential"].toObject()["looksSequential"].toBool());
+        chk("zero-padded wrapped counter id_007.. -> delta == +1", c["sequential"].toObject()["delta"].toDouble() == 1.0);
+    }
+
+    // ===== #153 REGRESSION guards: wrapper-stripping must NOT corrupt the delta of
+    // a bare stepped counter (its step lives in trailing digits, an all-DIGIT common
+    // suffix that must be kept), and must NOT invent a counter from wrapped noise.
+    chk("stepped counter 100,200,300 -> delta stays +100 (all-digit suffix NOT stripped)",
+        analyze(L({"100","200","300","400","500"}))["sequential"].toObject()["delta"].toDouble() == 100.0);
+    chk("wrapped NON-counter node_{88,12,57,31,90} -> NOT sequential (no false positive)",
+        !analyze(L({"node_88","node_12","node_57","node_31","node_90"}))["sequential"].toObject()["looksSequential"].toBool());
+
     // ===== #2 n=3 threshold: unrelated third token is NOT sequential ======
     chk("3 tokens 5,10,9999 (unrelated third) -> NOT sequential (FP fix)",
         !analyze(L({"5","10","9999"}))["sequential"].toObject()["looksSequential"].toBool());
