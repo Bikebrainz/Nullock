@@ -129,6 +129,18 @@
       body: JSON.stringify(payload || {}),
     });
   }
+  // Same CSRF contract as post(), but for endpoints that take a raw
+  // non-JSON body (e.g. nmap XML) rather than a JSON payload.
+  function postRaw(path, text, contentType) {
+    return fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType || "text/plain",
+        "X-Nullock-UI": "1",
+      },
+      body: text || "",
+    });
+  }
   NL.actions = {
     toggleProxy()           { return post("/api/proxy/toggle"); },
     toggleIntercept()          { return post("/api/intercept/toggle"); },
@@ -435,6 +447,29 @@
     // status, matched, extracted, error?}], templateId, name, severity, url }.
     templateRun(url, spec) {
       return post("/api/template/run", Object.assign({ url }, spec)).then(r => r.json());
+    },
+
+    // --- port scan <-> findings / nmap XML bridge ---
+    // Imports a raw nmap XML scan (<host>/<ports>/<port>/<state>/<service>)
+    // into the port scanner's result set, so scans run outside Nullock
+    // still populate one findings pipeline. Response: { ok, imported }.
+    portscanImportNmap(xmlText) {
+      return postRaw("/api/portscan/import-nmap", xmlText, "application/xml").then(r => r.json());
+    },
+    // Turns the port scanner's *current* results into first-class findings
+    // (exposed database/remote-admin/management-API/cleartext/file-share,
+    // plus banner->CVE correlation), idempotent on re-post. `opts` may carry
+    // { includeOpenPorts, correlateCves }. Response: { ok, openPorts,
+    // emitted, skippedDuplicates, bySeverity: {sev:count}, findings: [...] }.
+    portscanToFindings(opts) {
+      return post("/api/portscan/to-findings", opts || {}).then(r => r.json());
+    },
+
+    // --- built-in extensions install ---
+    // Copies the extensions shipped with the repo (extensions/*.js) into the
+    // user's extensions dir and reloads. Response: { ok, installed, destDir }.
+    installBuiltinExtensions() {
+      return post("/api/extensions/install-builtins").then(r => r.json());
     },
 
     // --- WebSocket Repeater (Burp: WebSocket Repeater) ---

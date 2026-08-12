@@ -54,9 +54,11 @@ Version -> CVE    Active fingerprint + service-banner version detection correlat
                   network-service banner-grab + CVE correlation reachable from the SCANS tab
 JS recon          Mines same-origin JS bundles for API endpoints, hardcoded secrets, and exposed
                   source maps -- SCANS tab
-Recon             Port/CIDR sweeps, DNS, WHOIS, cert transparency, wordlist enum, robots/sitemap,
-                  WAF/CDN detection, subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness
-                  probe -- SCANS tab, scope-gated BFS crawler
+Recon             Port/CIDR sweeps (with nmap XML import for scans run outside Nullock, and a
+                  one-click bridge promoting scan results into the shared findings list), DNS,
+                  WHOIS, cert transparency, wordlist enum, robots/sitemap, WAF/CDN detection,
+                  subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness probe -- SCANS
+                  tab, scope-gated BFS crawler
 Discovery         In-app content/directory brute-force (soft-404 calibrated), robots.txt + sitemap
                   recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto) --
@@ -93,7 +95,9 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   the recovered step, per-position + FIPS 140-2 bit-level tests where
                   applicable), plus sample-size guidance -- warns under ~100 tokens and flags the
                   20,000-bit FIPS conformance threshold
-Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
+Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
+                  bundled" button in Settings copies the extensions shipped with the repo into
+                  the user's extensions dir in one click
 Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode; "Send to Decoder"
                   pivots from Proxy history/Site map (request/response), Repeater's request/response
                   panes, and the Intercept queue seed the Decoder tab's input directly

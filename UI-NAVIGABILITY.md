@@ -1,4 +1,4 @@
-# In-app UI navigability audit (2026-08-02, updated 2026-08-12)
+# In-app UI navigability audit (2026-08-02, updated 2026-08-12b)
 
 > Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-11, waves closing the
@@ -29,9 +29,13 @@
 > the previously-orphaned `/api/h2/streams` (per-stream summary table) and `/api/h2/events`
 > (a live-tailing raw frame feed polled with a `since` cursor) -- closing parity item #277's
 > GUI-reachability gap, the last of "the 97 orphaned endpoints" plan's HTTP/2-specific asks.
-> True orphaned count, re-verified by a fresh
+> A further run added an "Import nmap XML" file-picker to the SCANS tab's port scanner (wiring
+> `/api/portscan/import-nmap`), a "Port scan -> findings" Section in the Assess & audit block
+> (wiring `/api/portscan/to-findings`), and an "Install bundled" button in Settings' Extensions
+> card (wiring `/api/extensions/install-builtins`) -- the last one closing the "Other" bucket
+> entirely. True orphaned count, re-verified by a fresh
 > literal-string grep of every endpoint in this file against live `ui-v2/*.jsx` +
-> `ui-v2/real-data.js`: **11 of 173 (6%) orphaned**. Verified
+> `ui-v2/real-data.js`: **8 of 173 (5%) orphaned**. Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -49,9 +53,10 @@
 App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
 processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
-port-scan + recon plus an Assess & audit section (assess/audit-run/param-miner/chain-run/
-pipeline-run, posture/inventory/compliance/gate rollups, exposure-scan/service-CVE-
-correlation/JS-recon/TLS-certificate-inspection/HTTP-3-detection single-target probes, and a
+port-scan (with an Import nmap XML file-picker alongside Export) + recon plus an Assess &
+audit section (assess/audit-run/param-miner/chain-run/pipeline-run, posture/inventory/
+compliance/gate rollups, exposure-scan/service-CVE-correlation/JS-recon/TLS-certificate-
+inspection/HTTP-3-detection single-target probes, a Port scan -> findings bridge, and a
 Detection templates section running the bundled nuclei-style template library or a
 custom-JSON template against a target URL). The INSPECTOR tab now
 has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
@@ -127,10 +132,8 @@ entry point at all yet.)
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (4)
+## GraphQL / WS / session (2)
 - `/api/intruder/multi`
-- `/api/portscan/import-nmap`
-- `/api/portscan/to-findings`
 - `/api/project/templates`
 
 (`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
@@ -143,9 +146,18 @@ wired via the SCANS tab's new "Detection templates" section -- bundled template 
 custom-JSON template editor, both firing against a target URL. `/api/session-rules/set`,
 `/api/session-rules/clear-vars` wired via the SESSIONS tab's session-handling-rules editor
 (named rule form + live captured-variables readout) -- this file's tracking had drifted since
-that wave shipped, corrected here.)
+that wave shipped, corrected here. `/api/portscan/import-nmap` wired via an "Import nmap XML"
+file-picker button next to the port scanner's existing "Export nmap XML" (SCANS tab),
+feeding a saved or externally-run nmap `-oX` scan into the same PortResult pipeline as a live
+scan. `/api/portscan/to-findings` wired via a new "Port scan -> findings" Section in the
+SCANS tab's Assess & audit block -- promotes the port scanner's current results (exposed
+db/remote-admin/mgmt-API/cleartext/file-share, plus banner->CVE correlation) into the shared
+findings list, idempotent on re-post.)
 
-## Other (1)
-- `/api/extensions/install-builtins`
+## Other (0)
 
-(`/api/csrf/poc` wired via the CSRF POC button in Proxy history / Site map's DetailPane.)
+(`/api/csrf/poc` wired via the CSRF POC button in Proxy history / Site map's DetailPane.
+`/api/extensions/install-builtins` wired via an "Install bundled" button in Settings' Extensions
+card, next to the existing "Reload" button -- copies the extensions shipped with the repo into
+the user's extensions dir and reloads, removing the "go find the file in github and copy it
+yourself" onboarding step.)

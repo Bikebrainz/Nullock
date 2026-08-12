@@ -597,6 +597,20 @@ function SettingsTab() {
   const extLog = b.extensionsLog || [];
   const scripts = b.extensionScripts || [];
 
+  const [installBusy, setInstallBusy] = React.useState(false);
+  const [installMsg, setInstallMsg]   = React.useState("");
+  const doInstallBuiltins = async () => {
+    setInstallBusy(true); setInstallMsg("");
+    try {
+      const r = await NL.actions.installBuiltinExtensions();
+      setInstallMsg(r && r.ok ? ("installed " + r.installed + " to " + r.destDir) : ("failed: " + ((r && r.error) || "unknown error")));
+    } catch (e) {
+      setInstallMsg("failed: " + String(e && e.message ? e.message : e));
+    } finally {
+      setInstallBusy(false);
+    }
+  };
+
   const copy = (text) => { try { navigator.clipboard?.writeText(text); } catch {} };
 
   const Card = ({ title, children, action }) => (
@@ -636,15 +650,17 @@ function SettingsTab() {
     </div>
   );
 
-  const Btn = ({ label, onClick, danger }) => (
+  const Btn = ({ label, onClick, danger, disabled, title }) => (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       style={{
         background: "transparent",
-        color: danger ? "var(--err)" : "var(--accent)",
-        border: "1px solid " + (danger ? "var(--err)" : "var(--accent)"),
+        color: disabled ? "var(--dim)" : danger ? "var(--err)" : "var(--accent)",
+        border: "1px solid " + (disabled ? "var(--line)" : danger ? "var(--err)" : "var(--accent)"),
         padding: "4px 10px", fontSize: "11px",
-        fontFamily: "var(--ff-mono)", cursor: "pointer",
+        fontFamily: "var(--ff-mono)", cursor: disabled ? "not-allowed" : "pointer",
         letterSpacing: "0.05em", textTransform: "uppercase",
       }}
     >{label}</button>
@@ -827,7 +843,14 @@ function SettingsTab() {
 
       <Card
         title={"Extensions (" + scripts.length + ")"}
-        action={<Btn label="Reload" onClick={() => NL.actions.reloadExtensions()} />}
+        action={
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {installMsg && <span style={{ color: "var(--dim)", fontSize: "10.5px", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{installMsg}</span>}
+            <Btn label="Install bundled" onClick={doInstallBuiltins} disabled={installBusy}
+                 title="Copy the extensions shipped with Nullock (extensions/*.js) into your extensions folder" />
+            <Btn label="Reload" onClick={() => NL.actions.reloadExtensions()} />
+          </div>
+        }
       >
         <Row label="Folder" value={b.extensionsDir} copyable />
         {scripts.length === 0 && <Row label="Loaded" value="" hint="none yet" />}
@@ -1746,6 +1769,25 @@ function ScansTab() {
   const [throttleMs, setThrottleMs] = React.useState(0);
   const [randomize, setRandomize]   = React.useState(false);
 
+  // --- nmap XML import: lets a scan run outside Nullock (or a saved
+  // nmap -oX file) feed the same port-result pipeline as a live scan.
+  const nmapFileRef = React.useRef(null);
+  const [importBusy, setImportBusy] = React.useState(false);
+  const [importMsg, setImportMsg]   = React.useState("");
+  const doImportNmap = async (file) => {
+    if (!file) return;
+    setImportBusy(true); setImportMsg("");
+    try {
+      const text = await file.text();
+      const r = await NL.actions.portscanImportNmap(text);
+      setImportMsg(r && r.ok ? ("imported " + r.imported + " port results") : ("import failed: " + ((r && r.error) || "unknown error")));
+    } catch (e) {
+      setImportMsg("import failed: " + String(e && e.message ? e.message : e));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   // --- unified scan/audit runners: assess/audit/paramminer/chain/pipeline
   // plus the read-only posture/inventory/compliance/gate rollups. All were
   // complete backends with zero ui-v2 callers before this.
@@ -1803,6 +1845,13 @@ function ScansTab() {
   const [tplSelected, setTplSelected] = React.useState("");
   const [tplCustom, setTplCustom] = React.useState("");
   const [tplRes, setTplRes]       = React.useState(null);
+
+  // Port scan -> findings bridge: promotes the port scanner's current
+  // results (exposed db/remote-admin/mgmt-API/cleartext/file-share, plus
+  // banner->CVE correlation) into the shared findings pipeline.
+  const [bridgeIncludeOpen, setBridgeIncludeOpen]     = React.useState(true);
+  const [bridgeCorrelateCves, setBridgeCorrelateCves] = React.useState(true);
+  const [bridgeRes, setBridgeRes]                     = React.useState(null);
 
   const runBusy2 = async (key, setRes, fn) => {
     setErr2(""); setBusy2(key); setRes(null);
@@ -1884,6 +1933,9 @@ function ScansTab() {
     if (!http3Url.trim()) { setErr2("enter a target URL"); return; }
     runBusy2("http3", setHttp3Res, () => NL.actions.http3Detect(http3Url.trim()));
   };
+
+  const doBridgeToFindings = () => runBusy2("bridge", setBridgeRes,
+    () => NL.actions.portscanToFindings({ includeOpenPorts: bridgeIncludeOpen, correlateCves: bridgeCorrelateCves }));
 
   const loadTemplates = React.useCallback(() => runBusy2("templates", setTplList, () => NL.actions.templateList()), []);
   React.useEffect(() => { loadTemplates(); }, [loadTemplates]);
@@ -2067,6 +2119,10 @@ function ScansTab() {
             a.href = "/api/export/nmap-xml"; a.download = "nullock-portscan.xml";
             document.body.appendChild(a); a.click(); a.remove();
           }} disabled={!ps.results.length} />
+          <input ref={nmapFileRef} type="file" accept=".xml" style={{ display: "none" }}
+                 onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; doImportNmap(f); }} />
+          <Btn label="Import nmap XML" onClick={() => nmapFileRef.current && nmapFileRef.current.click()} disabled={importBusy} />
+          {importMsg && <span style={{ color: "var(--dim)", fontSize: "11px" }}>{importMsg}</span>}
           <span style={{ flex: 1 }} />
           <span style={{ color: "var(--dim)", fontSize: "11px" }}>
             {ps.running ? "scanning… " : "ready · "}
@@ -2139,6 +2195,28 @@ function ScansTab() {
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>one-shot target assessment, deep audit, hidden-param mining, multi-step chains, and posture rollups</span>
         {err2 && <span style={{ color: "var(--err)", fontSize: "11px" }}>{err2}</span>}
       </div>
+
+      <Section title="Port scan → findings" hint="promotes the port scanner's current results (exposed db/remote-admin/mgmt-API/cleartext/file-share, plus banner→CVE correlation) into the shared findings list -- makes no network requests, re-posting is a no-op on unchanged results">
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={bridgeIncludeOpen} onChange={e => setBridgeIncludeOpen(e.target.checked)} />
+            include open-port findings
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: "11px", color: "var(--text)" }}>
+            <input type="checkbox" checked={bridgeCorrelateCves} onChange={e => setBridgeCorrelateCves(e.target.checked)} />
+            correlate banners against CVE table
+          </label>
+          <Btn2 k="bridge" label="Convert to findings" onClick={doBridgeToFindings} disabled={!ps.results.length} />
+        </div>
+        {bridgeRes && bridgeRes.ok !== false && (
+          <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            {bridgeRes.openPorts} open ports · {bridgeRes.emitted} finding(s) emitted · {bridgeRes.skippedDuplicates} duplicate(s) skipped
+            {bridgeRes.bySeverity && Object.keys(bridgeRes.bySeverity).length > 0 &&
+              (" · " + Object.entries(bridgeRes.bySeverity).map(([k, v]) => k + ":" + v).join(", "))}
+          </div>
+        )}
+        <RawResult res={bridgeRes} />
+      </Section>
 
       <Section title="Posture / inventory / compliance / gate" hint="rollups over the current in-memory finding set -- no scanning, safe to poll">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
