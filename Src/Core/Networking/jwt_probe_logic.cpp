@@ -91,9 +91,15 @@ QByteArray buildRequest(const Request &req, const QString &token) {
         if (!req.body.isEmpty() && h.first.compare("Content-Type", Qt::CaseInsensitive) == 0) continue;
         if (!authHeaderName.isEmpty()
             && h.first.compare(authHeaderName, Qt::CaseInsensitive) == 0) continue;
-        // On the no-token shot, drop secondary credentials so they don't keep
-        // the request authorized and defeat calibration.
-        if (token.isEmpty() && isCredentialHeader(h.first)) continue;
+        // Drop EVERY secondary credential on BOTH the calibration and the
+        // attack shots. The tested JWT is injected explicitly above (the
+        // Authorization/Cookie carrier), so it stays the request's SOLE
+        // credential -- otherwise a carried session Cookie keeps a cookie-auth
+        // endpoint authorized on the forged-token shot too, and the no-token
+        // vs forged differential is misreported as a signature/algorithm
+        // bypass that does not exist. (The carrier header itself was already
+        // dropped above, so this cannot strip the token we just set.)
+        if (isCredentialHeader(h.first)) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

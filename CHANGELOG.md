@@ -27,6 +27,14 @@ developer-facing record.
   scheme+host+port match before following and never carries credentials across
   an origin change (`isSameOriginRedirect`, mutation-tested). Fixes finding #1
   of the multi-agent `Src/Core/Networking` security review.
+- **JWT probe no longer reports false signature/algorithm bypasses on
+  cookie-auth endpoints.** It stripped secondary credentials only on the
+  no-token calibration shot, so a forged-token shot kept a carried session
+  `Cookie` — a cookie-authenticated endpoint that ignores the JWT stayed
+  authorized, and the (no-token denied / forged allowed) differential was
+  misreported as a real bypass. It now strips every non-target credential on
+  BOTH shots, leaving the injected JWT as the sole credential; the test that
+  pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
 - **Nuclei-style template scanner.** Author detection templates (JSON) or feed

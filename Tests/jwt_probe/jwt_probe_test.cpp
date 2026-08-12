@@ -128,9 +128,20 @@ int main(int argc, char **argv) {
         chk("build: no-token shot drops the Cookie credential", !noTok.contains("session=abc"));
         chk("build: no-token shot drops X-Api-Key credential", !noTok.contains("X-Api-Key"));
         chk("build: no-token shot keeps a non-credential header", noTok.contains("X-Trace: t\r\n"));
-        // With a token, the credentials ride along.
+        // With a token, the JWT is the SOLE credential: the injected carrier is
+        // sent, but every carried secondary credential (session cookie, api key)
+        // is stripped -- so a "bypass" verdict can only mean the forged JWT
+        // itself authorized the request, not a session cookie riding along.
+        // Non-credential headers still ride along.
         const QByteArray withTok = buildRequest(r, "TOK");
-        chk("build: WITH a token, the Cookie credential is kept", withTok.contains("session=abc"));
+        chk("build: WITH a token, the JWT carrier IS sent",
+            withTok.contains("Authorization: Bearer TOK\r\n"));
+        chk("build: WITH a token, secondary Cookie credential is STRIPPED",
+            !withTok.contains("session=abc"));
+        chk("build: WITH a token, X-Api-Key credential is STRIPPED",
+            !withTok.contains("X-Api-Key"));
+        chk("build: WITH a token, a non-credential header is kept",
+            withTok.contains("X-Trace: t\r\n"));
     }
 
     // ===== buildRequest body + CR/LF guards ==============================
