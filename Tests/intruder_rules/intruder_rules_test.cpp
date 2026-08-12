@@ -66,6 +66,26 @@ int main(int argc, char **argv) {
     chk("match-replace no separator -> unchanged", applyRule("val", rule("match-replace", "nofind")) == "val");
     chk("match-replace empty find -> unchanged",   applyRule("val", rule("match-replace", QString(US) + "X")) == "val");
 
+    // ----- regex-replace (Burp match/replace: regex + $-backreferences) -----
+    chk("regex-replace basic",
+        applyRule("hello123world", rule("regex-replace", "[0-9]+" + QString(US) + "#")) == "hello#world");
+    chk("regex-replace ALL occurrences (global)",
+        applyRule("a1b2c3", rule("regex-replace", "[0-9]" + QString(US) + "_")) == "a_b_c_");
+    chk("regex-replace back-references $1/$2/$3",
+        applyRule("2026-08-12",
+                  rule("regex-replace", "(\\d+)-(\\d+)-(\\d+)" + QString(US) + "$3/$2/$1")) == "12/08/2026");
+    chk("regex-replace $0 = whole match",
+        applyRule("abc", rule("regex-replace", "b" + QString(US) + "[$0]")) == "a[b]c");
+    chk("regex-replace $$ -> literal dollar",
+        applyRule("x", rule("regex-replace", "x" + QString(US) + "$$")) == "$");
+    chk("regex-replace invalid regex -> unchanged (fail-safe)",
+        applyRule("val", rule("regex-replace", "[unclosed" + QString(US) + "X")) == "val");
+    chk("regex-replace no separator -> unchanged",
+        applyRule("val", rule("regex-replace", "nopat")) == "val");
+    chk("regex-replace empty pattern -> unchanged",
+        applyRule("val", rule("regex-replace", QString(US) + "X")) == "val");
+    chk("regex-replace is advertised in operations()", operations().contains("regex-replace"));
+
     // ----- substring / reverse-substring (Burp payload-processing) -----
     // substring: START offset (0-indexed) + optional length.
     chk("substring offset+length",  applyRule("abcdefgh", rule("substring", "2,3")) == "cde");

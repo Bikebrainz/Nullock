@@ -32,6 +32,10 @@ struct Rule {
 //   propername-keep -> upper-case the first char, KEEP the rest as-is
 //   match-replace -> arg is "find\x1freplace" (US-delimited); replaces all
 //                    literal occurrences of find with replace.
+//   regex-replace -> arg is "pattern\x1freplacement" (US-delimited); matches the
+//                    regex and replaces each occurrence. The replacement may use
+//                    Burp-style back-references: $0 (whole match), $1..$9
+//                    (groups), $$ (literal '$'). Invalid regex -> unchanged.
 //   substring / reverse-substring -> arg is "offset" or "offset,length"; extracts
 //                    a code-point-safe slice. substring counts the offset from the
 //                    START (0-indexed); reverse-substring counts the end offset

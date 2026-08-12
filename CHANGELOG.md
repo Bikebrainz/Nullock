@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder regex match/replace processing rule.** The payload-processing chain
+  had only a literal `match-replace`; it now also offers `regex-replace`, which
+  matches a regular expression and replaces every occurrence, with Burp-style
+  back-references in the replacement (`$0` whole match, `$1`–`$9` captured
+  groups, `$$` a literal `$`) — closing the defining gap of Burp's match/replace
+  rule. An invalid pattern or missing separator leaves the payload unchanged.
+  Mutation-proven (the capture-group expansion and the global iteration each fail
+  their cases when broken). Closes roadmap parity item "Processing rule:
+  Match/replace".
 - **Intruder "Modify case" processing rule gains the propername variants.** The
   payload-processing chain had only `uppercase` / `lowercase`; it now also offers
   `propername` (Titlecase — upper-case the first character, lower the rest) and

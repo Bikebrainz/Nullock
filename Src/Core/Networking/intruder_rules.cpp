@@ -2,6 +2,7 @@
 
 #include "transcode.hpp"
 
+#include <QRegularExpression>
 #include <QSet>
 #include <algorithm>
 
@@ -56,6 +57,39 @@ QString applyRule(const QString &value, const Rule &rule) {
         QString s = value;
         s.replace(find, repl);
         return s;
+    }
+    if (op == QLatin1String("regex-replace")) {
+        // Burp's match/replace processing rule: match a REGEX and replace each
+        // occurrence. arg = "pattern\x1freplacement" (US-delimited). The
+        // replacement may reference captured groups Burp-style: $0 = whole match,
+        // $1..$9 = groups, $$ = a literal '$'. A missing separator, an empty
+        // pattern, or an INVALID regex leaves the value UNCHANGED (never vanish).
+        const int sep = rule.arg.indexOf(QChar(0x1f));
+        if (sep < 0) return value;
+        const QString pat  = rule.arg.left(sep);
+        const QString repl = rule.arg.mid(sep + 1);
+        if (pat.isEmpty()) return value;
+        const QRegularExpression re(pat);
+        if (!re.isValid()) return value;               // malformed -> no-op
+        QString out;
+        qsizetype lastEnd = 0;
+        auto it = re.globalMatch(value);
+        int guard = 0;
+        while (it.hasNext() && guard++ < 200000) {
+            const QRegularExpressionMatch m = it.next();
+            out += value.mid(lastEnd, m.capturedStart() - lastEnd);   // text before the match
+            for (int i = 0; i < repl.size(); ++i) {                   // expand $-references
+                if (repl[i] == QLatin1Char('$') && i + 1 < repl.size()) {
+                    const QChar c = repl[i + 1];
+                    if (c == QLatin1Char('$')) { out += QLatin1Char('$'); ++i; continue; }
+                    if (c.isDigit())           { out += m.captured(c.digitValue()); ++i; continue; }
+                }
+                out += repl[i];
+            }
+            lastEnd = m.capturedEnd();
+        }
+        out += value.mid(lastEnd);                     // trailing text after the last match
+        return out;
     }
     if (op == QLatin1String("url-encode-chars")) {
         // Burp's "URL-encode these characters" safety net: percent-encode ONLY
@@ -155,6 +189,7 @@ QStringList operations() {
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
         QStringLiteral("propername"), QStringLiteral("propername-keep"),
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
+        QStringLiteral("regex-replace"),
         QStringLiteral("substring"), QStringLiteral("reverse-substring"),
         QStringLiteral("url-encode-chars"),
         QStringLiteral("base64-encode"), QStringLiteral("base64url-encode"),
