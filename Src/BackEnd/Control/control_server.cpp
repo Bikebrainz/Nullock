@@ -3198,6 +3198,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                              g.value("format").toString(QStringLiteral("yyyy-MM-dd")));
         if (t == QLatin1String("null"))
             return IG::nullPayloads(g.value("count").toInt());
+        if (t == QLatin1String("frobber"))
+            return IG::frob(g.value("base").toString());
         return {};
     };
 

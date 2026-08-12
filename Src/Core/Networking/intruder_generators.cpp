@@ -86,6 +86,30 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList frob(const QString &base) {
+    QStringList out;
+    const QList<uint> cps = base.toUcs4();
+    if (cps.isEmpty()) return out;
+    // Bound total emitted chars too, not just count: frob emits N payloads each of
+    // length N, so an L-char base is O(L^2) chars -- the same OOM shape brute()
+    // guards against. Cap volume at kMaxCount*64 chars.
+    constexpr qint64 kMaxChars = static_cast<qint64>(kMaxCount) * 64;
+    qint64 emitted = 0;
+    for (int i = 0; i < cps.size() && out.size() < kMaxCount && emitted < kMaxChars; ++i) {
+        QList<uint> mod = cps;
+        uint n = mod[i] + 1;
+        if (n > 0x10FFFFu) n = 0;                        // wrapped past the max Unicode scalar
+        if (n >= 0xD800u && n <= 0xDFFFu) n = 0xE000u;   // skip the surrogate range -> stay valid
+        mod[i] = n;
+        QString s;
+        s.reserve(cps.size());
+        for (const uint cp : mod) { const char32_t u = cp; s.append(QString::fromUcs4(&u, 1)); }
+        out.append(s);
+        emitted += cps.size();
+    }
+    return out;
+}
+
 QStringList nullPayloads(int count) {
     QStringList out;
     if (count < 1) return out;
@@ -97,7 +121,8 @@ QStringList nullPayloads(int count) {
 
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
-             QStringLiteral("dates"), QStringLiteral("null") };
+             QStringLiteral("dates"), QStringLiteral("null"),
+             QStringLiteral("frobber") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

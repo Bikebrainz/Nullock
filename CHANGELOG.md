@@ -51,6 +51,15 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Character frobber" generator (Burp parity).** A new `frobber`
+  payload type (`IntruderGenerators::frob`) walks a base string one position at a
+  time, emitting one payload per position that is the whole base with exactly that
+  character's code point incremented by +1 (Burp's frobber) — for probing
+  off-by-one parsers, checksum/signature validators, and encoding edge cases. It
+  increments by code point (not UTF-16 unit) and keeps every result a valid
+  Unicode scalar (a bump into the surrogate range skips to U+E000, past U+10FFFF
+  wraps to 0), and is bounded in both count and total char volume so a huge base
+  can't OOM. Unit- and mutation-tested. Closes roadmap #34.
 - **Intruder "Null payloads" generator (Burp parity).** A new `null` payload type
   (`IntruderGenerators::nullPayloads`) emits N empty payloads, filling a position
   with nothing so the base request is re-sent unchanged N times — the standard way

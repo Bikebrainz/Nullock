@@ -30,6 +30,16 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
 
+// Burp "Character frobber": walk the base one position at a time, emitting one
+// payload per position that is the whole base with exactly THAT position's
+// character incremented by +1 and every other character unchanged (output count
+// == base length in code points). Increments by CODE POINT (toUcs4), not UTF-16
+// unit, and keeps the result a valid Unicode scalar -- a bump into the surrogate
+// range 0xD800..0xDFFF skips to 0xE000, past 0x10FFFF wraps to 0 -- so a non-BMP
+// base char is never split into lone surrogates. Empty base -> empty. Bounded in
+// BOTH count (kMaxCount) and total emitted chars, so a huge base can't OOM.
+QStringList frob(const QString &base);
+
 // Burp "Null payloads": emit `count` EMPTY payloads, so a position is filled
 // with nothing and the base request is re-sent unchanged `count` times (rate-limit
 // probing, race conditions, observing non-deterministic responses). count < 1 ->

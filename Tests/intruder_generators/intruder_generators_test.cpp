@@ -102,10 +102,39 @@ int main(int argc, char **argv) {
     chk("null: over-cap request truncates to kMaxCount",
         nullPayloads(kMaxCount + 500).size() == kMaxCount);
 
+    // ----- frob (Burp "Character frobber") -----
+    chk("frob: abc -> per-position +1", frob("abc") == (QStringList{ "bbc", "acc", "abd" }));
+    chk("frob: az -> z bumps to '{'",   frob("az")  == (QStringList{ "bz", "a{" }));
+    chk("frob: single char a -> {b}",   frob("a")   == (QStringList{ "b" }));
+    chk("frob: empty -> empty",         frob(QString()).isEmpty());
+    // code-point safe: a non-BMP base char is bumped whole, never split into surrogates.
+    {
+        const char32_t emoji = 0x1F600;
+        const QString base = QString::fromUcs4(&emoji, 1) + QStringLiteral("x");
+        const QStringList r = frob(base);
+        chk("frob: non-BMP base -> one payload per code point (2)", r.size() == 2);
+        const QList<uint> c0 = r.at(0).toUcs4();
+        chk("frob: non-BMP first glyph bumped whole (no surrogate split)",
+            c0.size() == 2 && c0.at(0) == 0x1F601u && c0.at(1) == uint('x'));
+    }
+    // a bump landing in the surrogate range is skipped to keep the string valid.
+    {
+        const QStringList r = frob(QString(QChar(0xD7FF)));   // +1 = 0xD800 (surrogate) -> 0xE000
+        chk("frob: surrogate-range bump skips to 0xE000",
+            r.size() == 1 && r.at(0).toUcs4() == (QList<uint>{ 0xE000u }));
+    }
+    // volume-capped: an L-char base is O(L^2) chars; a large base must be bounded.
+    {
+        const QStringList r = frob(QString(20000, QChar('a')));
+        chk("frob: long base is volume-capped (not all positions emitted)",
+            !r.isEmpty() && r.size() < 20000 && r.size() <= kMaxCount);
+    }
+
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null",
+    chk("types lists numbers+brute+dates+null+frobber",
         types().contains("numbers") && types().contains("brute")
-        && types().contains("dates") && types().contains("null"));
+        && types().contains("dates") && types().contains("null")
+        && types().contains("frobber"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
