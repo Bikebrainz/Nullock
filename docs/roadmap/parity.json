@@ -3403,7 +3403,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "PENDING",
+        "commit": "ea7d3e5",
         "note": "Wave 2 (frontend-only): added the H2 Frame Log overlay to the Proxy tab, closing #277's GUI-reachability gap (state stays present -- the underlying capability was already present, only the UI affordance was missing). No backend touched."
       }
     },
