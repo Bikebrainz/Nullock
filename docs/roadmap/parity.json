@@ -490,12 +490,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Bit flipper",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
       "gap": "No bit-flipping type for CBC/padding-oracle and encrypted-token fuzzing.",
       "why": "Grep 'bit.?flip' over the repo returns nothing. Confirmed absent.",
-      "evidence": "No bit-flip generator in intruder_generators.cpp; types() lists numbers/brute/dates only."
+      "evidence": "No bit-flip generator in intruder_generators.cpp; types() lists numbers/brute/dates only.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "2f60292",
+        "note": "Closed 2026-08-12: added IntruderGenerators::bitFlip(base) -- per byte of the base (its UTF-8 bytes), one payload per bit position 0..7 with that single bit XOR-flipped, byte order left-to-right, bit order LSB(0x01)->MSB(0x80). Matches Burp's documented output exactly (ab -> `b,cb,eb,ib,qb,Ab,!b,ab-with-0xE1, ac,a`,af,aj,ar,aB,a-quote,a-with-0xE2), verified against the PortSwigger docs; flipped bytes render via Latin-1 as Burp displays them. Wired into control_server expandGen (t==bitflip) + types(). Unit- + mutation-tested (OR-instead-of-XOR fails the exact-output list). Caveat noted in the header: an MSB flip yields a >=0x80 byte that a string payload re-encodes to two UTF-8 bytes on the wire; the 7 lower-bit flips are byte-exact."
+      }
     },
     {
       "area": "intruder",
