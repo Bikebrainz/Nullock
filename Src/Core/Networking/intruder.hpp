@@ -39,6 +39,7 @@ class IntruderAttack : public QObject {
     // Grep columns (Burp "Grep - Match" / "Grep - Extract"): did the response
     // hit any configured match needle, and the value pulled out of it.
     Q_PROPERTY(bool        matched       MEMBER m_matched       NOTIFY changed)
+    Q_PROPERTY(bool        reflected     MEMBER m_reflected     NOTIFY changed)
     Q_PROPERTY(QString     extracted     MEMBER m_extracted     NOTIFY changed)
 public:
     explicit IntruderAttack(QObject *parent = nullptr) : QObject(parent) {}
@@ -57,6 +58,7 @@ public:
     QString     m_errorMessage;
     bool        m_complete = false;
     bool        m_matched = false;   // any grep-match needle hit this response
+    bool        m_reflected = false; // a payload of this row echoed in the response
     QString     m_extracted;         // grep-extract value (empty if none)
 signals:
     void changed();
@@ -108,6 +110,7 @@ public:
         ErrorRole,
         CompleteRole,
         MatchedRole,
+        ReflectedRole,
         ExtractedRole,
     };
 
@@ -157,6 +160,10 @@ public:
     // safe against malformed regex / huge bodies (see IntruderGrep). Empty
     // needles / empty spec = column stays off.
     void setGrepMatch(const QStringList &needles);
+    // Burp "Grep - Payloads": when on, each result row is flagged (reflected) if
+    // one of its submitted payloads echoes literally in the response body -- the
+    // automatic reflection column, no hand-built per-payload match needle needed.
+    void setGrepPayloadReflection(bool on);
     void setGrepExtract(const Nullock::Core::IntruderGrep::ExtractSpec &spec);
     // Request-pool config (Burp-parity "resource pool"): how many requests may be
     // in flight at once, and an optional inter-dispatch delay (rate limit). Both
@@ -214,6 +221,7 @@ private:
                    const QString &host, int port, bool useTls,
                    const QList<Nullock::Core::IntruderRules::Rule> &rules,
                    const QStringList &grepMatch,
+                   bool grepReflection,
                    const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
                    int concurrency, int throttleMs);
 
@@ -229,6 +237,7 @@ private:
     QList<Nullock::Core::IntruderRules::Rule> m_payloadRules;
     QString m_globalEncodeChars;   // Burp "URL-encode these characters" set (empty=off)
     QStringList m_grepMatch;                              // grep-match needles
+    bool    m_grepPayloadReflection = false;             // flag reflected payloads
     Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
     int     m_throttleMs = 0;                            // inter-dispatch delay

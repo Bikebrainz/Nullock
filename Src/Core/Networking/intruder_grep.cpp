@@ -35,6 +35,15 @@ bool grepMatch(const QString &text, const QStringList &needles) {
     return false;
 }
 
+bool payloadReflected(const QString &text, const QString &payload, bool caseSensitive) {
+    // A submitted payload is DATA, not a pattern -- reflection is a LITERAL
+    // substring test (never regex), so "a.b" is reflected only by "a.b", never
+    // by "axb". Empty payload -> false (an empty string is "in" everything).
+    if (payload.isEmpty()) return false;
+    return bounded(text).contains(payload,
+        caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive);
+}
+
 QString grepExtract(const QString &text, const ExtractSpec &spec) {
     const QString hay = bounded(text);
 

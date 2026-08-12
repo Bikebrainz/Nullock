@@ -3334,6 +3334,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 }
                 m_wiring.intruder->setGrepMatch(needles);
             }
+            if (bodyJson.contains("grepPayloads")) {
+                // Grep - Payloads: when true, each result row is flagged
+                // (reflected) if one of its submitted payloads echoes literally
+                // in the response body. No hand-built per-payload match needed.
+                m_wiring.intruder->setGrepPayloadReflection(
+                    bodyJson.value("grepPayloads").toBool());
+            }
             if (bodyJson.contains("grepExtract")) {
                 // Grep - Extract: { regex } OR { start, end }. regex wins; the
                 // first capture group (or whole match) is pulled out. An empty

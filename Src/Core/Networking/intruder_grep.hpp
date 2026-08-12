@@ -48,6 +48,15 @@ struct ExtractSpec {
 // only-empty needles, returns false.
 bool grepMatch(const QString &text, const QStringList &needles);
 
+// True if `payload` appears LITERALLY in `text` (scanning bounded to kMaxScan
+// chars). Unlike grepMatch (which tries each needle as a REGEX first), a
+// submitted payload is DATA, not a pattern -- reflection must be a literal
+// substring test so "a.b" is reflected only by "a.b", never by "axb". Empty
+// payload -> false. Powers the Intruder "flag reflected payloads" column
+// (Burp-parity): a row is flagged when one of its payloads echoes in the body.
+bool payloadReflected(const QString &text, const QString &payload,
+                      bool caseSensitive = true);
+
 // Extract a value from `text` per `spec` (see ExtractSpec). Scanning is bounded
 // to kMaxScan chars. Returns an empty string on no match, invalid regex, or a
 // missing delimiter -- never throws.

@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "Grep - Payloads" reflected-payload flagging.** Burp auto-flags a
+  result row when one of its submitted payloads is reflected in the response;
+  Nullock now does too, so you no longer hand-build a grep-match needle per
+  payload. A new `IntruderGrep::payloadReflected` predicate does a **literal**
+  substring test (a payload is data, not a pattern — `a.b` is reflected only by
+  `a.b`, never `axb`; bounded to the same 256 KiB scan cap), wired into a
+  per-row `reflected` flag/column that persists across save/resume. Enabled with
+  `grepPayloads: true` on the intruder-set API; off by default. Mutation-proven
+  (the literal-vs-regex behaviour and the case-sensitivity option each fail
+  their cases when broken). Closes roadmap parity item "Grep - Payloads (flag
+  reflected payloads)".
 - **Intruder "URL-encode these characters" global safety net.** Burp applies an
   always-on payload encoder that percent-encodes a configured set of characters
   in every payload; Nullock now matches it. A new `url-encode-chars`

@@ -66,6 +66,7 @@ QJsonObject rowToJson(const ResultRow &r) {
         { "err",       r.errorMessage },
         { "complete",  r.complete },
         { "matched",   r.matched },
+        { "reflected", r.reflected },
         { "extracted", r.extracted },
     };
 }
@@ -81,6 +82,7 @@ ResultRow rowFromJson(const QJsonObject &o) {
     r.errorMessage  = o.value("err").toString();
     r.complete      = o.value("complete").toBool();
     r.matched       = o.value("matched").toBool();
+    r.reflected     = o.value("reflected").toBool();
     r.extracted     = o.value("extracted").toString();
     return r;
 }
@@ -105,6 +107,7 @@ QJsonObject toJson(const SavedRun &run) {
         { "payloadSets", stringsToJson(c.payloadSets) },
         { "rules",       rulesToJson(c.rules) },
         { "grepMatch",   stringsToJson(c.grepMatch) },
+        { "grepPayloadReflection", c.grepPayloadReflection },
         { "grepExtract", grepExtract },
         { "concurrency", c.concurrency },
         { "throttleMs",  c.throttleMs },
@@ -140,6 +143,7 @@ SavedRun fromJson(const QJsonObject &obj) {
     c.payloadSets     = stringsFromJson(config.value("payloadSets").toArray());
     c.rules           = rulesFromJson(config.value("rules").toArray());
     c.grepMatch       = stringsFromJson(config.value("grepMatch").toArray());
+    c.grepPayloadReflection = config.value("grepPayloadReflection").toBool();
 
     const QJsonObject ge = config.value("grepExtract").toObject();
     c.grepExtract.regex = ge.value("regex").toString();

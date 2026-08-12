@@ -71,17 +71,32 @@ QString grepScanText(const Nullock::Proxy::HttpResponse &resp) {
 // it's pure and bounded (see IntruderGrep). `resp` is the parsed response.
 void computeGrep(const Nullock::Proxy::HttpResponse &resp,
                  const QStringList &needles,
+                 const QStringList &combo,
+                 bool reflectionOn,
                  const IntruderGrep::ExtractSpec &spec,
-                 bool &matchedOut, QString &extractedOut) {
+                 bool &matchedOut, bool &reflectedOut, QString &extractedOut) {
     const bool wantMatch = !needles.isEmpty();
     const bool wantExtract =
         !spec.regex.isEmpty() || !spec.start.isEmpty() || !spec.end.isEmpty();
+    const bool wantReflected = reflectionOn && !combo.isEmpty();
     matchedOut = false;
+    reflectedOut = false;
     extractedOut.clear();
-    if (!wantMatch && !wantExtract) return;
+    if (!wantMatch && !wantExtract && !wantReflected) return;
     const QString scan = grepScanText(resp);
     if (wantMatch)   matchedOut   = IntruderGrep::grepMatch(scan, needles);
     if (wantExtract) extractedOut = IntruderGrep::grepExtract(scan, spec);
+    if (wantReflected) {
+        // Flag the row if ANY of its submitted payloads echoes literally in the
+        // response. Null combo entries are "leave the marker at its default" and
+        // aren't a submitted payload, so they're skipped.
+        for (const QString &p : combo) {
+            if (!p.isNull() && IntruderGrep::payloadReflected(scan, p)) {
+                reflectedOut = true;
+                break;
+            }
+        }
+    }
 }
 
 // Wait `totalMs`, abandoning the wait the moment `stop` is set. QThread::msleep
@@ -140,6 +155,7 @@ QVariant Intruder::data(const QModelIndex &index, int role) const {
         case ErrorRole:    return a->m_errorMessage;
         case CompleteRole: return a->m_complete;
         case MatchedRole:  return a->m_matched;
+        case ReflectedRole:return a->m_reflected;
         case ExtractedRole:return a->m_extracted;
         default:           return {};
     }
@@ -156,6 +172,7 @@ QHash<int, QByteArray> Intruder::roleNames() const {
         { ErrorRole,    "errorMessage" },
         { CompleteRole, "complete"     },
         { MatchedRole,  "matched"      },
+        { ReflectedRole,"reflected"    },
         { ExtractedRole,"extracted"    },
     };
 }
@@ -196,6 +213,10 @@ void Intruder::setPayloadRules(const QList<IntruderRules::Rule> &rules) {
 
 void Intruder::setGlobalEncodeChars(const QString &chars) {
     m_globalEncodeChars = chars;
+}
+
+void Intruder::setGrepPayloadReflection(bool on) {
+    m_grepPayloadReflection = on;
 }
 
 void Intruder::setGrepMatch(const QStringList &needles) {
@@ -261,6 +282,7 @@ QByteArray Intruder::saveRun() const {
     c.payloadSets     = m_payloadSets;
     c.rules           = m_payloadRules;
     c.grepMatch       = m_grepMatch;
+    c.grepPayloadReflection = m_grepPayloadReflection;
     c.grepExtract     = m_grepExtract;
     c.concurrency     = m_maxConcurrency;
     c.throttleMs      = m_throttleMs;
@@ -276,6 +298,7 @@ QByteArray Intruder::saveRun() const {
         r.errorMessage  = a->m_errorMessage;
         r.complete      = a->m_complete;
         r.matched       = a->m_matched;
+        r.reflected     = a->m_reflected;
         r.extracted     = a->m_extracted;
         run.rows.append(r);
     }
@@ -300,6 +323,7 @@ bool Intruder::loadRun(const QByteArray &bytes) {
     m_payloadSets = c.payloadSets;
     m_payloadRules = c.rules;
     m_grepMatch   = c.grepMatch;
+    m_grepPayloadReflection = c.grepPayloadReflection;
     m_grepExtract = c.grepExtract;
     setMaxConcurrency(c.concurrency);
     setThrottleMs(c.throttleMs);
@@ -321,6 +345,7 @@ bool Intruder::loadRun(const QByteArray &bytes) {
         a->m_errorMessage  = r.errorMessage;
         a->m_complete      = r.complete;
         a->m_matched       = r.matched;
+        a->m_reflected     = r.reflected;
         a->m_extracted     = r.extracted;
         if (r.complete) ++m_completedCount;
         m_attacks.append(a);
@@ -415,15 +440,16 @@ void Intruder::start() {
         rulesCopy.append({ QStringLiteral("url-encode-chars"), m_globalEncodeChars });
     const QStringList grepMatchCopy = m_grepMatch;                 // copy: scanned off-thread
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
+    const bool grepReflectionCopy = m_grepPayloadReflection;
     const int concurrencyCopy = m_maxConcurrency;
     const int throttleCopy = m_throttleMs;
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
-                                  grepMatchCopy, grepExtractCopy,
+                                  grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                                   concurrencyCopy, throttleCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
-                  rulesCopy, grepMatchCopy, grepExtractCopy,
+                  rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                   concurrencyCopy, throttleCopy);
     });
 }
@@ -433,6 +459,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const QString &host, int port, bool useTls,
                          const QList<IntruderRules::Rule> &rules,
                          const QStringList &grepMatch,
+                         bool grepReflection,
                          const IntruderGrep::ExtractSpec &grepExtract,
                          int concurrency, int throttleMs) {
     // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
@@ -452,7 +479,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // one instance across tasks. Grep runs here (bounded, off the GUI thread);
     // the queued callback only assigns the finished values.
     auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
-                    grepMatch, grepExtract](int row, const QStringList &combo) {
+                    grepMatch, grepReflection, grepExtract](int row, const QStringList &combo) {
         HttpClient client;
 
         QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
@@ -491,12 +518,14 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         const QString errMsg = result.ok ? QString() : result.errorMessage;
 
         bool matched = false;
+        bool reflected = false;
         QString extracted;
         if (result.ok)
-            computeGrep(result.parsed, grepMatch, grepExtract, matched, extracted);
+            computeGrep(result.parsed, grepMatch, combo, grepReflection, grepExtract,
+                        matched, reflected, extracted);
 
         QMetaObject::invokeMethod(this, [this, row, statusCode, size, elapsedMs,
-                                         errMsg, matched, extracted]() {
+                                         errMsg, matched, reflected, extracted]() {
             if (row < 0 || row >= m_attacks.size()) return;
             auto *a = m_attacks[row];
             a->m_statusCode = statusCode;
@@ -504,6 +533,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
             a->m_elapsedMs = static_cast<int>(elapsedMs);
             a->m_errorMessage = errMsg;
             a->m_matched = matched;
+            a->m_reflected = reflected;
             a->m_extracted = extracted;
             a->m_complete = true;
             emit a->changed();
@@ -574,10 +604,12 @@ bool Intruder::resend(int row) {
     const int     portCopy = m_port;
     const bool    tlsCopy  = m_useTls;
     const QStringList grepMatchCopy = m_grepMatch;                 // read on GUI thread, scanned off-thread
+    const bool grepReflectionCopy = m_grepPayloadReflection;
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
 
     m_resendWorker = QtConcurrent::run([this, row, combo, templateCopy, hostCopy,
-                             portCopy, tlsCopy, grepMatchCopy, grepExtractCopy]() {
+                             portCopy, tlsCopy, grepMatchCopy, grepReflectionCopy,
+                             grepExtractCopy]() {
         HttpClient client;
         QString req = IE::applyPayloads(templateCopy, combo);
         req.replace("\r\n", "\n");
@@ -593,12 +625,14 @@ bool Intruder::resend(int row) {
         const QString errMsg = result.ok ? QString() : result.errorMessage;
 
         bool matched = false;
+        bool reflected = false;
         QString extracted;
         if (result.ok)
-            computeGrep(result.parsed, grepMatchCopy, grepExtractCopy, matched, extracted);
+            computeGrep(result.parsed, grepMatchCopy, combo, grepReflectionCopy,
+                        grepExtractCopy, matched, reflected, extracted);
 
         QMetaObject::invokeMethod(this, [this, row, statusCode, size, elapsedMs,
-                                         errMsg, matched, extracted]() {
+                                         errMsg, matched, reflected, extracted]() {
             if (row < 0 || row >= m_attacks.size()) return;
             auto *a = m_attacks[row];
             a->m_statusCode   = statusCode;
@@ -606,6 +640,7 @@ bool Intruder::resend(int row) {
             a->m_elapsedMs    = static_cast<int>(elapsedMs);
             a->m_errorMessage = errMsg;
             a->m_matched      = matched;
+            a->m_reflected    = reflected;
             a->m_extracted    = extracted;
             a->m_complete     = true;
             emit a->changed();

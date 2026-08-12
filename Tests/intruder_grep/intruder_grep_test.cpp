@@ -107,6 +107,34 @@ int main(int argc, char **argv) {
             grepExtract(huge, { QStringLiteral("EARLY_(TOKEN)"), {}, {} }) == QStringLiteral("TOKEN"));
     }
 
+    // ----- payloadReflected: LITERAL reflection (never regex) -----
+    chk("reflected: payload echoed in body",  payloadReflected(body, "tok_A1B2C3"));
+    chk("reflected: payload not echoed",      !payloadReflected(body, "not-present"));
+    chk("reflected: empty payload -> false",  !payloadReflected(body, QString()));
+    // The critical difference from grepMatch: a payload is DATA, not a regex.
+    // "a.b" must be reflected ONLY by the literal "a.b", never by "axb".
+    chk("reflected: literal dot NOT matched by axb",
+        !payloadReflected(QStringLiteral("value=axb;"), "a.b"));
+    chk("reflected: literal dot matched by a.b",
+        payloadReflected(QStringLiteral("value=a.b;"), "a.b"));
+    // A regex-metachar payload (a real fuzz string) is matched literally, not
+    // interpreted -- grepMatch would treat "(?:" as an invalid/again-literal case,
+    // but reflection is unconditionally literal.
+    chk("reflected: regex-metachar payload matched literally",
+        payloadReflected(QStringLiteral("err near '(?:' token"), "(?:"));
+    // Case sensitivity is a caller option (default sensitive).
+    chk("reflected: case-sensitive default misses different case",
+        !payloadReflected(QStringLiteral("Value=ADMIN"), "admin"));
+    chk("reflected: case-insensitive opt-in hits",
+        payloadReflected(QStringLiteral("Value=ADMIN"), "admin", /*caseSensitive=*/false));
+    // Bounded like the rest: a reflection past kMaxScan is not scanned.
+    {
+        QString huge = QString(kMaxScan * 2, QLatin1Char('.'));
+        huge += QStringLiteral("LATE_PAYLOAD");
+        chk("reflected: payload past the scan cap is NOT flagged",
+            !payloadReflected(huge, "LATE_PAYLOAD"));
+    }
+
     std::fprintf(stderr, "intruder_grep_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -41,6 +41,7 @@ struct ResultRow {
     QString     errorMessage;
     bool        complete = false;
     bool        matched = false;
+    bool        reflected = false;   // a payload of this row echoed in the response
     QString     extracted;
 };
 
@@ -54,6 +55,7 @@ struct RunConfig {
     QStringList payloadSets;                          // newline-joined block/pos
     QList<IntruderRules::Rule> rules;
     QStringList grepMatch;
+    bool        grepPayloadReflection = false;   // flag rows whose payload reflects
     IntruderGrep::ExtractSpec grepExtract;
     int         concurrency = 10;
     int         throttleMs = 0;
