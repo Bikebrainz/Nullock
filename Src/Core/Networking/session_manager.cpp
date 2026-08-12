@@ -36,10 +36,16 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
     if (req.host.isEmpty()) return;
 
     QList<CapturedCookie> fresh;
+    // One capture timestamp for the whole response: resolveCookieExpiry turns a
+    // Max-Age delta into an absolute expiry relative to THIS moment, and the
+    // deletion check below reuses it so both agree.
+    const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
     for (const auto &h : resp.headers) {
         if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) != 0) continue;
-        const CapturedCookie c = SessionLogic::parseSetCookie(h.second);
-        if (!c.name.isEmpty()) fresh.append(c);
+        CapturedCookie c = SessionLogic::parseSetCookie(h.second);
+        if (c.name.isEmpty()) continue;
+        SessionLogic::resolveCookieExpiry(c, nowSec);   // fill persistent / expiresEpoch
+        fresh.append(c);
     }
     if (fresh.isEmpty()) return;
 
@@ -70,6 +76,15 @@ void SessionManager::onResponseReceived(const Nullock::Proxy::HttpRequest &req,
         // unboundedly (O(n) per insert with the same lock held).
         constexpr int kMaxCookiesPerHost = 256;
         for (const auto &c : fresh) {
+            // A freshly-set cookie that is ALREADY expired (Max-Age <= 0, or a
+            // past Expires) is a DELETION -- this is how a server logs you out.
+            // Drop any stored cookie of that name and do NOT store the new one.
+            if (SessionLogic::cookieExpired(c, nowSec)) {
+                for (int i = 0; i < s.cookies.size(); ++i) {
+                    if (s.cookies[i].name == c.name) { s.cookies.removeAt(i); break; }
+                }
+                continue;
+            }
             bool replaced = false;
             for (auto &existing : s.cookies) {
                 if (existing.name == c.name) {
@@ -127,7 +142,9 @@ void SessionManager::injectInto(Nullock::Proxy::HttpRequest &req) const {
             break;
         }
     }
+    const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
     for (const auto &c : use) {
+        if (SessionLogic::cookieExpired(c, nowSec))               continue;  // past its Max-Age/Expires -> never replay
         if (!SessionLogic::injectableOverTransport(c, req.tls)) continue;   // Secure over cleartext -> skip
         if (!SessionLogic::pathMatches(c.path, req.path))         continue;  // path-scope mismatch -> skip
         auto f = pos.find(c.name);

@@ -1400,6 +1400,8 @@ QByteArray ControlServer::buildSnapshot() const {
                 co["value"]    = c.value;
                 co["path"]     = c.path;
                 co["expires"]  = c.expires;
+                co["persistent"]   = c.persistent;                       // session vs persistent
+                co["expiresEpoch"] = static_cast<double>(c.expiresEpoch); // resolved absolute expiry (0 if session)
                 co["httpOnly"] = c.httpOnly;
                 co["secure"]   = c.secure;
                 co["sameSite"] = c.sameSite;
@@ -4955,6 +4957,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 co["valueLen"] = c.value.size();
                 co["path"]     = c.path;
                 co["expires"]  = c.expires;
+                co["persistent"]   = c.persistent;                       // session vs persistent
+                co["expiresEpoch"] = static_cast<double>(c.expiresEpoch); // resolved absolute expiry (0 if session)
                 co["httpOnly"] = c.httpOnly;
                 co["secure"]   = c.secure;
                 co["sameSite"] = c.sameSite;
