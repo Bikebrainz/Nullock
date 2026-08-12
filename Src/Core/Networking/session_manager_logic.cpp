@@ -2,6 +2,7 @@
 
 #include "session_manager_logic.hpp"
 
+#include <QRegularExpression>
 #include <QStringList>
 
 namespace Nullock::Core::SessionLogic {
@@ -69,6 +70,13 @@ CapturedCookie parseSetCookie(const QString &raw) {
         else if (key == "httponly") c.httpOnly = true;
         else if (key == "secure")   c.secure   = true;
         else if (key == "samesite") c.sameSite = val;
+        else if (key == "domain") {
+            // RFC 6265 5.2.3: a single leading '.' is ignored; the domain is
+            // matched case-insensitively. (No longer dropped on the floor -- #194.)
+            QString d = val.trimmed().toLower();
+            if (d.startsWith(QLatin1Char('.'))) d = d.mid(1);
+            c.domain = d;
+        }
     }
     return c;
 }
@@ -113,6 +121,21 @@ bool pathMatches(const QString &cookiePath, const QString &reqPath) {
         if (rp.size() > cp.size() && rp.at(cp.size()) == QChar('/')) return true;  // boundary at '/'
     }
     return false;
+}
+
+bool domainMatches(const QString &cookieDomain, const QString &reqHost) {
+    if (cookieDomain.isEmpty()) return false;          // host-only cookie: no Domain scope
+    const QString cd = cookieDomain.toLower();
+    const QString rh = reqHost.trimmed().toLower();
+    if (rh.isEmpty()) return false;
+    // A Domain cookie cannot broaden an IP-literal host -- IPs match only exactly.
+    static const QRegularExpression ipv4(QStringLiteral("^(\\d{1,3}\\.){3}\\d{1,3}$"));
+    if (ipv4.match(rh).hasMatch() || rh.contains(QLatin1Char(':')))
+        return rh == cd;
+    if (rh == cd) return true;
+    // Subdomain: reqHost ends with "." + cookieDomain, so a real label boundary
+    // separates them -- "evil-example.com" must NOT match "example.com".
+    return rh.endsWith(QLatin1Char('.') + cd);
 }
 
 bool injectableOverTransport(const CapturedCookie &c, bool tls) {

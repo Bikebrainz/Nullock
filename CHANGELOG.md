@@ -62,6 +62,16 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Cookie jar now captures the `Domain` attribute + RFC 6265 domain-matching
+  (foundation for domain-scoped injection, #194).** The cookie-jar parser was
+  dropping the `Domain` attribute entirely (only path/expires/httponly/secure/
+  samesite were handled), so a `Domain=.example.com` cookie could never be scoped.
+  `Set-Cookie` parsing now records the domain (lowercased, a single leading `.`
+  stripped, empty ⇒ host-only), and a pure `domainMatches` predicate implements
+  RFC 6265 §5.1.3 with a proper label boundary (`evil-example.com` does not match
+  `example.com`) and IP-literal handling (exact-only). Unit- and mutation-tested.
+  This is the foundation for #194 — wiring domain-aware, deterministic multi-host
+  injection (plus the §5.3 Domain-vs-origin check) into `injectInto` remains.
 - **Intruder "Bit flipper" generator (Burp parity).** A new `bitflip` payload
   type (`IntruderGenerators::bitFlip`) walks each byte of the base and emits one
   payload per bit position (LSB→MSB) with that single bit XOR-flipped — the

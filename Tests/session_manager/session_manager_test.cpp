@@ -99,6 +99,27 @@ int main(int argc, char **argv) {
         parseSetCookie("=value").name.isEmpty());
     chk("parse: an attribute-only segment doesn't crash and Secure still parses",
         parseSetCookie("a=b; ; Secure").secure);
+    // Domain attribute (#194): now parsed (lowercased, a single leading '.'
+    // stripped) instead of dropped on the floor.
+    chk("parse: Domain attribute (leading dot stripped, lowercased)",
+        parseSetCookie("SID=x; Domain=.Example.COM").domain == "example.com");
+    chk("parse: Domain without a leading dot", parseSetCookie("SID=x; Domain=api.example.com").domain == "api.example.com");
+    chk("parse: no Domain -> host-only (empty domain)", parseSetCookie("SID=x; Path=/").domain.isEmpty());
+
+    // ===== domainMatches: RFC 6265 §5.1.3 (cookie-jar domain scope, #194) =====
+    chk("domain: exact host matches", domainMatches("example.com", "example.com"));
+    chk("domain: subdomain matches", domainMatches("example.com", "api.example.com"));
+    chk("domain: deep subdomain matches", domainMatches("example.com", "a.b.example.com"));
+    chk("domain: case-insensitive", domainMatches("Example.COM", "API.Example.com"));
+    chk("domain: NOT a label-boundary trick -- evil-example.com !~ example.com",
+        !domainMatches("example.com", "evil-example.com"));
+    chk("domain: NOT a wrong suffix -- example.com.evil.com !~ example.com",
+        !domainMatches("example.com", "example.com.evil.com"));
+    chk("domain: unrelated host does not match", !domainMatches("example.com", "other.org"));
+    chk("domain: empty cookie domain (host-only) never domain-matches",
+        !domainMatches("", "example.com"));
+    chk("domain: an IPv4 host matches only exactly, never as a subdomain",
+        domainMatches("1.2.3.4", "1.2.3.4") && !domainMatches("2.3.4", "1.2.3.4"));
     // audit-11: only ASCII OWS (SP/HTAB) may be trimmed. QString::trimmed() is
     // Unicode-aware and also eats U+00A0/U+0085, which are legitimate BYTES of the
     // token -- silently corrupting the session we replay.
