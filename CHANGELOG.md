@@ -11,6 +11,20 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Sequencer bit-level tests no longer mislabel or silently skip corpora.** The
+  token→bytes decoder had two silent-wrong paths: an odd-length hex corpus failed
+  the even-length gate, fell through, and was decoded *and labelled* base64
+  (wrong bytes and wrong scheme); and a single non-conforming token (a truncated
+  sample, a JWT's `.`) set the whole corpus to "not applicable", so 999 good
+  tokens got zero bit-level analysis because of one bad one. The decoder now
+  picks the scheme by charset **majority**, treats a hex-charset corpus as hex at
+  any length (odd tokens left-padded to preserve the half-byte), and **skips**
+  non-conforming tokens instead of aborting — reporting the skipped count
+  (`bitLevel.skipped`) rather than dropping it silently. A genuinely mixed corpus
+  still reports not-applicable. Mutation-tested (both fixes discriminate). Closes
+  roadmap #152. (Residual, documented: a base32/alphanumeric corpus is still
+  labelled "base64" — the bytes are analysed correctly, only the label is
+  imprecise; Qt ships no base32 decoder.)
 - **Site nav no longer drops links on secondary pages.** The hand-written
   pages (about, pricing, changelog, license, privacy, security, support,
   terms, and the docs landing) carried a stale nav missing the

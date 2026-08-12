@@ -330,45 +330,82 @@ PositionalResult positionalEntropy(const QStringList &tokens) {
     return r;
 }
 
-// Decode every token to bytes IFF the whole corpus is consistently hex or
-// base64; otherwise return empty (the bit tests then report not-applicable
-// rather than decoding garbage). Hex is tried first because a hex corpus is also
-// a valid base64 charset.
-QList<QByteArray> decodeCorpusBytes(const QStringList &tokens, QString &scheme) {
+// Decode the corpus to bytes for the bit-level tests, picking the scheme by
+// charset MAJORITY. Two silent-wrong paths the naive "all-or-nothing, hex only
+// if EVEN length, else fall through to base64" version had (roadmap #152):
+//   (a) an ODD-length hex corpus failed the even-length gate, fell through, and
+//       was decoded + labelled "base64" -- wrong bytes AND wrong scheme. Now a
+//       hex-charset corpus is HEX at any length; an odd token is left-padded with
+//       a leading '0' so its half-byte is preserved, not reinterpreted.
+//   (c) a SINGLE non-conforming token (a truncated sample, a JWT's '.') set
+//       all-hex=all-b64=false via `break` and returned empty -> the ENTIRE corpus
+//       got applicable:false and ZERO bit-level analysis. Now non-conformers are
+//       SKIPPED (not fatal) as long as a scheme still holds a majority, and the
+//       skipped count is reported to the caller (via `skipped`) rather than
+//       silently dropped. Requires a >=50% majority so a truly mixed corpus still
+//       reports not-applicable instead of decoding garbage.
+// Known residual: a base32/base36/alphanumeric corpus matches the base64 charset
+// and is decoded + labelled "base64" -- the bytes are still analysed correctly,
+// only the label is imprecise (Qt ships no base32 decoder); tracked, not fatal.
+QList<QByteArray> decodeCorpusBytes(const QStringList &tokens, QString &scheme,
+                                    int *skipped = nullptr) {
     scheme.clear();
+    if (skipped) *skipped = 0;
+    if (tokens.isEmpty()) return {};
     static const QRegularExpression hexRe("^[0-9a-fA-F]+$");
     static const QRegularExpression b64Re("^[A-Za-z0-9+/_-]+={0,2}$");
 
-    bool allHex = !tokens.isEmpty();
+    // Count charset conformers to choose the scheme by majority.
+    int hexN = 0, b64N = 0;
     for (const QString &t : tokens) {
-        if (t.isEmpty() || (t.size() % 2) != 0 || !hexRe.match(t).hasMatch()) { allHex = false; break; }
+        if (!t.isEmpty() && hexRe.match(t).hasMatch()) ++hexN;      // hex charset, any length
+        if (t.size() >= 4 && b64Re.match(t).hasMatch())  ++b64N;    // base64 charset
     }
-    if (allHex) {
+    const int n = tokens.size();
+
+    // Prefer hex when it holds a majority (hex is the more specific charset --
+    // every hex token is also base64-charset, so ties go to hex).
+    if (hexN * 2 >= n && hexN >= b64N) {
         QList<QByteArray> out;
-        for (const QString &t : tokens) out << QByteArray::fromHex(t.toLatin1());
+        int skip = 0;
+        for (const QString &t : tokens) {
+            if (t.isEmpty() || !hexRe.match(t).hasMatch()) { ++skip; continue; }
+            const QString even = (t.size() % 2) ? (QStringLiteral("0") + t) : t;   // preserve the half-byte
+            out << QByteArray::fromHex(even.toLatin1());
+        }
+        if (out.isEmpty()) return {};
         scheme = "hex";
+        if (skipped) *skipped = skip;
         return out;
     }
 
-    bool allB64 = !tokens.isEmpty();
-    QList<QByteArray> out;
-    for (const QString &t : tokens) {
-        if (t.size() < 4 || !b64Re.match(t).hasMatch()) { allB64 = false; break; }
-        QByteArray b = QByteArray::fromBase64(
-            t.toLatin1(), QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
-        if (b.isEmpty())
-            b = QByteArray::fromBase64(
-                t.toLatin1(), QByteArray::Base64UrlEncoding | QByteArray::AbortOnBase64DecodingErrors);
-        if (b.isEmpty()) { allB64 = false; break; }
-        out << b;
+    if (b64N * 2 >= n) {
+        QList<QByteArray> out;
+        int skip = 0;
+        for (const QString &t : tokens) {
+            QByteArray b;
+            if (t.size() >= 4 && b64Re.match(t).hasMatch()) {
+                b = QByteArray::fromBase64(
+                    t.toLatin1(), QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+                if (b.isEmpty())
+                    b = QByteArray::fromBase64(
+                        t.toLatin1(), QByteArray::Base64UrlEncoding | QByteArray::AbortOnBase64DecodingErrors);
+            }
+            if (b.isEmpty()) { ++skip; continue; }
+            out << b;
+        }
+        if (out.isEmpty()) return {};
+        scheme = "base64";
+        if (skipped) *skipped = skip;
+        return out;
     }
-    if (allB64) { scheme = "base64"; return out; }
-    return {};
+    return {};   // no majority scheme -> genuinely mixed, not applicable
 }
 
 struct BitLevelResult {
     bool   applicable = false;
     QString scheme;
+    int    skipped = 0;         // tokens skipped as non-conforming to the chosen scheme
     qint64 bits = 0;
     double monobitP = 1.0;      // NIST SP 800-22 frequency (monobit) p-value
     bool   monobitFail = false;
@@ -575,7 +612,8 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
     if (tokens.size() < kDeepMinN) return r;
 
     QString scheme;
-    const QList<QByteArray> per = decodeCorpusBytes(tokens, scheme);
+    int skipped = 0;
+    const QList<QByteArray> per = decodeCorpusBytes(tokens, scheme, &skipped);
     if (per.isEmpty()) return r;
 
     QByteArray cat;
@@ -583,6 +621,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
     if (cat.size() < 32) return r;              // need >= 256 bits to be meaningful
     r.applicable = true;
     r.scheme = scheme;
+    r.skipped = skipped;
 
     // ---- monobit ----
     qint64 ones = 0;
@@ -812,8 +851,9 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     QJsonObject bitObj;
     bitObj["applicable"] = bit.applicable;
     if (bit.applicable) {
-        bitObj["scheme"] = bit.scheme;
-        bitObj["bits"]   = double(bit.bits);
+        bitObj["scheme"]  = bit.scheme;
+        bitObj["skipped"] = bit.skipped;   // non-conforming tokens dropped from the decode (signal, not silent)
+        bitObj["bits"]    = double(bit.bits);
         QJsonObject mono;
         mono["pValue"] = bit.monobitP;
         mono["failed"] = bit.monobitFail;

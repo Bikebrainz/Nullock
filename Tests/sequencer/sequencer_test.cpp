@@ -345,6 +345,56 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ===== #152: decodeCorpusBytes scheme selection + non-conformer tolerance =
+    {
+        std::mt19937_64 rng(0x00C0FFEEULL);
+        auto hex16 = [&]() { QByteArray b(16, '\0'); for (char &c : b) c = char(uint8_t(rng())); return QString::fromLatin1(b.toHex()); };
+
+        // (a) an ODD-length hex corpus is HEX, not base64. The old even-length
+        // gate failed, fell through, and mislabelled the scheme "base64".
+        {
+            QStringList odd;
+            for (int i = 0; i < 24; ++i) { QString h = hex16(); h.chop(1); odd << h; }  // 31 hex chars = odd
+            const QJsonObject bl = analyze(odd)["bitLevel"].toObject();
+            chk("odd-length hex corpus -> scheme 'hex' (not mislabelled base64)",
+                bl["applicable"].toBool() && bl["scheme"].toString() == "hex");
+        }
+
+        // (c) ONE non-conforming token (a JWT-shaped 'a.b.c') no longer zeroes the
+        // whole analysis -- the hex majority is decoded, the stray is SKIPPED and
+        // COUNTED. Old code broke on it and returned applicable:false.
+        {
+            QStringList mostlyHex;
+            for (int i = 0; i < 23; ++i) mostlyHex << hex16();
+            mostlyHex << "aaaa.bbbb.cccc";                       // '.' -> neither hex nor base64 charset
+            const QJsonObject bl = analyze(mostlyHex)["bitLevel"].toObject();
+            chk("one non-conforming token -> still applicable (not zeroed)", bl["applicable"].toBool());
+            chk("one non-conforming token -> skipped == 1 (signalled, not silently dropped)",
+                bl["skipped"].toInt() == 1);
+            chk("mostly-hex corpus -> scheme 'hex'", bl["scheme"].toString() == "hex");
+        }
+
+        // regression: a clean even-hex corpus still decodes fully -> hex, 0 skipped.
+        {
+            QStringList clean;
+            for (int i = 0; i < 24; ++i) clean << hex16();
+            const QJsonObject bl = analyze(clean)["bitLevel"].toObject();
+            chk("clean even-hex corpus -> scheme hex, skipped 0",
+                bl["applicable"].toBool() && bl["scheme"].toString() == "hex" && bl["skipped"].toInt() == 0);
+        }
+
+        // majority guard: a corpus MOSTLY outside both charsets (JWT-shaped) has no
+        // majority scheme -> not applicable (silence beats decoding garbage).
+        {
+            QStringList mixed;
+            for (int i = 0; i < 16; ++i) mixed << (QStringLiteral("aa.bb.cc") + QString::number(i));  // '.' -> neither charset
+            for (int i = 0; i < 8; ++i)  mixed << hex16();
+            const QJsonObject bl = analyze(mixed)["bitLevel"].toObject();
+            chk("mostly non-charset corpus -> not applicable (no majority scheme)",
+                !bl["applicable"].toBool());
+        }
+    }
+
     // ===== FIPS 140-2 bit-level tests (poker / runs / long-runs) =========
     // Pure helpers over a byte stream, tested directly with deterministic
     // inputs (no RNG -> no flake). These are the tests the Sequencer was
