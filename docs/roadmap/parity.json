@@ -2060,7 +2060,7 @@
       "evidence": "control_server.cpp:4954 `if (path == \"/api/cookies\")` -- GET-only, no mutating counterpart; :4966-4978 per-cookie path/expires/expiresEpoch/persistent/httpOnly/secure/sameSite fields. ui-v2/real-data.js `cookieJar()` GET wrapper. ui-v2/app.jsx SessionsTab's new Cookie Jar section renders host.count/httpOnlyPct/securePct/sameSitePct plus a per-cookie name/path/expires/flags row -- Path and Expires now shown, closing that half. grep for an add/edit/remove-single-cookie handler in control_server.cpp and session_manager*.cpp/.hpp = no hits beyond the four whole-jar mutations already cited.",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "PENDING",
+        "commit": "69ab754",
         "note": "Wave 1/2 (frontend-only): added a Cookie Jar section to the Sessions tab wiring the previously-orphaned GET /api/cookies -- full per-host inventory with Path, resolved Expires/session state, and httpOnly/Secure/SameSite coverage percentages, closing the missing-attribute half of this item's gap. State held at partial: no backend route exists for per-cookie add/edit/remove, so that half remains a real absent capability, not just an unwired one. No backend touched."
       }
     },
@@ -2610,7 +2610,7 @@
       "evidence": "control_server.cpp:4943-4948 `for (const auto &v : tplObj.value(\"inScope\").toArray()) inS.append(v.toString()); ... m_wiring.projectStore->setInScope(inS); m_wiring.projectStore->setOutOfScope(outS); m_wiring.projectStore->setNotes(tplObj.value(\"notes\").toString());` \u2014 the function returns immediately after, so `rules` and `extensionsEnabled` are never read. templates/projects/web-app-pentest.json. New reachability: ui-v2/real-data.js `projectTemplates()`/`projectCreateFromTemplate()`; ui-v2/app.jsx SettingsTab's Projects card renders a template `<select>` (id/name from control_server.cpp:5018-5024) + description hint + a 'Create from template' button calling POST /api/project/create-from-template (control_server.cpp:5031-5073).",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "PENDING",
+        "commit": "69ab754",
         "note": "Wave 1/2 (frontend-only): added a template picker + 'Create from template' button to Settings' Projects card, wiring the previously-orphaned GET /api/project/templates and POST /api/project/create-from-template. Closes the GUI-reachability half of this item's gap; the schema-fidelity half (rules/extensionsEnabled silently dropped server-side) is a real, separate backend gap left honestly untouched -- state held at partial. No backend touched."
       }
     },
