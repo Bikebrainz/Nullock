@@ -440,12 +440,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Null payloads",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "Cannot fire the same base request N times (session/CSRF/timing tests) without a real payload list.",
       "why": "Confirmed: the only 'null' concept is the null-combo default for unfilled markers, not a null-payloads type that fires the base request N times.",
-      "evidence": "intruder_engine.cpp:64 `const QString def = QString(); // null => use the marker's own default`; no null-payloads generator in types()."
+      "evidence": "intruder_engine.cpp:64 `const QString def = QString(); // null => use the marker's own default`; no null-payloads generator in types().",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-11",
+        "commit": "ce02c64",
+        "note": "Closed 2026-08-11: added IntruderGenerators::nullPayloads(count) -- emits `count` empty payloads so a position is filled with nothing and the base request is re-sent unchanged N times (Burp's Null payloads: rate-limit / race / non-determinism probing). Wired into control_server expandGen (/api/intruder/generate + /set) and advertised by types()={numbers,brute,dates,null}. count<1 -> empty; capped at kMaxCount. Unit- + mutation-tested (emitting a non-empty payload fails the emptiness assertions; the size/count checks pass)."
+      }
     },
     {
       "area": "intruder",
