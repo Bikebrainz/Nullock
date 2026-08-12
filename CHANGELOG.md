@@ -67,6 +67,18 @@ developer-facing record.
   suffix-append look-alike host (`storage.googleapis.com.evil.test`) must **not**
   fire (the regex requires the exact host followed by a path separator).
   Mutation-proven (gcs + azure regexes).
+- **Locked the inline-JS DOM-XSS sink + credential-storage detectors.** The
+  four `dom-*` sinks (`innerHTML <- location`, `eval/setTimeout(location…)`,
+  `postMessage(_, '*')`, `eval(responseText)`) and `storage-of-secrets`
+  (`localStorage.setItem('token'…)`) had no test — a broken regex would have
+  silently stopped flagging client-side XSS sinks and credential-in-storage
+  patterns. Added a positive per sink (each body carries exactly one pattern,
+  pinning the first-match-wins table order) plus three precision negatives: the
+  same sink in a non-HTML (`application/javascript`) body must **not** fire (the
+  scan is HTML-gated), `postMessage` with an explicit origin must **not** fire
+  (only the `'*'` wildcard does), and `innerHTML` set to a static string must
+  **not** fire (the sink keys on a tainted source). Mutation-proven (innerHTML +
+  eval-of-fetch regexes).
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a

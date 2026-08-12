@@ -200,6 +200,67 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html",
                  "<html><body>https://storage.googleapis.com.evil.test/x</body></html>") });
 
+    // ---- Inline-JS DOM-XSS sinks + credential storage (were untested) --
+    // Gated on an HTML content-type. The dom-* table is first-match-wins with
+    // a break, so each positive body carries exactly one sink pattern and none
+    // listed above it (this also pins the table ordering). storage-of-secrets
+    // is a separate detector under the same HTML gate.
+    tc.append({ "innerHTML <- location -> dom-xss-innerhtml-location",
+                "dom-xss-innerhtml-location", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>el.innerHTML = location.hash;</script></html>") });
+
+    tc.append({ "setTimeout(location...) -> dom-xss-eval-location",
+                "dom-xss-eval-location", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>setTimeout(location.hash, 100);</script></html>") });
+
+    tc.append({ "postMessage(_, '*') -> dom-postmessage-wildcard",
+                "dom-postmessage-wildcard", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>win.postMessage(payload, '*');</script></html>") });
+
+    tc.append({ "eval(xhr.responseText) -> dom-eval-of-fetch",
+                "dom-eval-of-fetch", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>eval(xhr.responseText);</script></html>") });
+
+    tc.append({ "localStorage.setItem('token',...) -> storage-of-secrets",
+                "storage-of-secrets", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>localStorage.setItem('token', t);</script></html>") });
+
+    // Content-type gate: the same innerHTML<-location sink in a NON-HTML body
+    // (an external script served as application/javascript) must NOT fire --
+    // the DOM-sink scan only runs on HTML/XHTML responses.
+    tc.append({ "innerHTML<-location in a JS body must NOT fire dom-xss-innerhtml-location",
+                "dom-xss-innerhtml-location", true,
+        makeReq("GET", "example.test", "/app.js"),
+        makeResp(200, "application/javascript",
+                 "el.innerHTML = location.hash;") });
+
+    // Precision: postMessage with an EXPLICIT target origin (not '*') must NOT
+    // fire -- the detector keys on the wildcard origin, not on postMessage.
+    tc.append({ "postMessage with explicit origin must NOT fire dom-postmessage-wildcard",
+                "dom-postmessage-wildcard", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>win.postMessage(payload, 'https://example.test');"
+                 "</script></html>") });
+
+    // Precision: innerHTML assigned a STATIC string (no location/referrer/name
+    // source) must NOT fire -- the sink keys on a tainted source.
+    tc.append({ "innerHTML = static string must NOT fire dom-xss-innerhtml-location",
+                "dom-xss-innerhtml-location", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>el.innerHTML = 'hello world';</script></html>") });
+
     // ---- Subdomain-takeover cargo FP removed ---------------------------
     tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,
         makeReq("GET", "example.test", "/missing"),
