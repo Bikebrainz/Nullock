@@ -1,4 +1,4 @@
-# In-app UI navigability audit (2026-08-02, updated 2026-08-11)
+# In-app UI navigability audit (2026-08-02, updated 2026-08-12)
 
 > Originally: **97 of 173 backend `/api/` endpoints (56%) have NO ui-v2 caller** — reachable
 > only via the API/CLI, hidden from the desktop GUI. As of 2026-08-11, waves closing the
@@ -13,7 +13,9 @@
 > checks — `/api/cache/poison` has a distinct request shape outside its uniform
 > `/<type>/test` contract, and `/api/jwt/test` was deliberately pulled out of TEST_TYPES since
 > that endpoint needs a `token` field the uniform `{url,param?,method?}` contract has no place
-> for; both are wired elsewhere instead), leaving **20 of 173 (12%) still orphaned**. Verified
+> for; both are wired elsewhere instead), leaving 20 of 173 (12%) orphaned as of 2026-08-11.
+> The 2026-08-12 wave added a WS REPEATER overlay to the Proxy tab wiring `/api/ws/sessions`
+> and `/api/ws/send`, leaving **18 of 173 (10%) still orphaned**. Verified
 > per-bucket by grepping `ui-v2/*.jsx` and `ui-v2/real-data.js` for each path literal — with
 > one correction to the stated methodology: `NL.actions.runTest` builds its URL as
 > `"/api/" + type + "/test"`, one dynamic construction ui-v2 does use, so a pure
@@ -105,7 +107,7 @@ entry point at all yet.)
 `/api/findings/grouped`, `/api/triage/finding` wired via the ISSUES tab's Baseline bar,
 FLAT/GROUPED toggle, and per-finding Triage button.)
 
-## GraphQL / WS / session (10)
+## GraphQL / WS / session (8)
 - `/api/intruder/multi`
 - `/api/portscan/import-nmap`
 - `/api/portscan/to-findings`
@@ -114,13 +116,13 @@ FLAT/GROUPED toggle, and per-finding Triage button.)
 - `/api/session-rules/set`
 - `/api/template/list`
 - `/api/template/run`
-- `/api/ws/send`
-- `/api/ws/sessions`
 
 (`/api/intruder/generate`, `/api/intruder/generator-types` wired via Intruder's GENERATOR
 dialog; `/api/intruder/rule-ops` wired via Intruder's RULES bar. `/api/graphql/probe`,
 `/api/graphql/schema` wired via the PROBE tab. `/api/authz-test` wired via the AUTHZ TEST
-button in Proxy history / Site map's DetailPane.)
+button in Proxy history / Site map's DetailPane. `/api/ws/sessions`, `/api/ws/send` wired via
+the Proxy tab's WS REPEATER overlay (HTTP HISTORY pane-head) -- session dropdown, direction/
+opcode selectors, payload editor, resend-last.)
 
 ## Other (1)
 - `/api/extensions/install-builtins`
