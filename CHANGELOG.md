@@ -33,6 +33,12 @@ developer-facing record.
   confirms 0 broken links and every page reaches all five sections.
 
 ### Security
+- **Locked five previously-untested security-header checks.** The header auditor
+  emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
+  `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a
+  regression silently dropping any would have gone unnoticed. Added discriminating
+  positive/negative cases (mutation-proven: disabling the `xcto`/`hsts` emits now
+  fails the suite).
 - **Cookie jar no longer replays a Secure cookie over cleartext (or refuses it on
   a non-standard TLS port).** The session/cookie-jar auto-inject gate decided a
   Secure cookie's transport by a port heuristic (`port == 443`) instead of the

@@ -177,6 +177,23 @@ int main(int argc, char **argv) {
     chk("COOP present (HTML) -> NOT missing-coop",
         !has(keys(H({{"Content-Type", "text/html"}, {"Cross-Origin-Opener-Policy", "same-origin"}}), false),
              "missing-coop"));
+
+    // ===== coverage-lock: security-header checks that analyze() EMITS but no
+    // test asserted -- a mutation removing any of them would have passed. =====
+    chk("no X-Content-Type-Options -> xcto-missing", has(keys(H({}), false), "xcto-missing"));
+    chk("X-Content-Type-Options: nosniff -> NOT xcto-missing",
+        !has(keys(H({{"X-Content-Type-Options", "nosniff"}}), false), "xcto-missing"));
+    chk("no HSTS over https -> hsts-missing", has(keys(H({}), true), "hsts-missing"));
+    chk("HSTS present over https -> NOT hsts-missing",
+        !has(keys(H({{"Strict-Transport-Security", "max-age=31536000"}}), true), "hsts-missing"));
+    chk("no HSTS over http is TLS-gated -> NOT hsts-missing", !has(keys(H({}), false), "hsts-missing"));
+    chk("no CSP (and no report-only) -> csp-missing", has(keys(H({}), false), "csp-missing"));
+    chk("enforced CSP present -> NOT csp-missing", !has(csp("default-src 'self'"), "csp-missing"));
+    chk("CSP report-only only -> csp-report-only",
+        has(keys(H({{"Content-Security-Policy-Report-Only", "default-src 'self'"}}), false), "csp-report-only"));
+    chk("enforced CSP -> NOT csp-report-only", !has(csp("default-src 'self'"), "csp-report-only"));
+    chk("CSP allows 'unsafe-eval' -> csp-unsafe-eval", has(csp("script-src 'unsafe-eval'"), "csp-unsafe-eval"));
+    chk("CSP without 'unsafe-eval' -> NOT csp-unsafe-eval", !has(csp("script-src 'self'"), "csp-unsafe-eval"));
     chk("COEP present -> NOT missing-coep",
         !has(keys(H({{"Cross-Origin-Embedder-Policy", "require-corp"}}), false), "missing-coep"));
     chk("CORP present -> NOT missing-corp",
