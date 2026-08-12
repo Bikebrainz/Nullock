@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder "Modify case" processing rule gains the propername variants.** The
+  payload-processing chain had only `uppercase` / `lowercase`; it now also offers
+  `propername` (Titlecase — upper-case the first character, lower the rest) and
+  `propername-keep` (upper-case the first character, keep the rest), matching
+  Burp's Case-modification rule. Both are code-point-safe (a leading non-BMP
+  glyph is handled whole) and reuse the same proper-case semantics as the
+  `casemod` generator. Mutation-proven. Closes roadmap parity item "Processing
+  rule: Modify case".
 - **Intruder "Illegal Unicode" payload type.** Generates the overlong UTF-8
   encodings of a target character at each byte length from 2 to 6 — the classic
   WAF / path-traversal bypass, e.g. `/` → `%C0%AF`, `%E0%80%AF`,

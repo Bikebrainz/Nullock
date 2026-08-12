@@ -33,6 +33,20 @@ int main(int argc, char **argv) {
     chk("uppercase",         applyRule("aBc", rule("uppercase"))     == "ABC");
     chk("lowercase",         applyRule("aBc", rule("lowercase"))     == "abc");
     chk("reverse",           applyRule("abc", rule("reverse"))       == "cba");
+    // propername: upper-case first, LOWER the rest (Titlecase).
+    chk("propername Titlecases + lowers rest",
+        applyRule("hELLO wORLD", rule("propername")) == "Hello world");
+    chk("propername on lower input",  applyRule("hello", rule("propername")) == "Hello");
+    // propername-keep: upper-case first, KEEP the rest.
+    chk("propername-keep upper-firsts + keeps rest",
+        applyRule("hELLO wORLD", rule("propername-keep")) == "HELLO wORLD");
+    chk("propername-keep on lower input", applyRule("hELLO", rule("propername-keep")) == "HELLO");
+    {
+        // Code-point safe: a leading non-BMP glyph is upper-cased/copied WHOLE.
+        const QString smile = QString::fromUcs4(U"\U0001F600");
+        chk("propername keeps a leading non-BMP glyph intact (+ lowers rest)",
+            applyRule(smile + "ABC", rule("propername")) == smile + "abc");
+    }
     {
         // audit-6: reverse operates on CODE POINTS -- a non-BMP glyph must survive
         // (a naive std::reverse over QChars swaps the surrogate pair -> U+FFFD).
@@ -154,6 +168,8 @@ int main(int argc, char **argv) {
     chk("operations include the local + encode/hash ops",
         operations().contains("prefix") && operations().contains("match-replace")
         && operations().contains("base64-encode") && operations().contains("sha256"));
+    chk("operations advertise the propername case rules",
+        operations().contains("propername") && operations().contains("propername-keep"));
 
     std::fprintf(stderr, "intruder_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

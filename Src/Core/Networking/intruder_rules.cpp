@@ -7,6 +7,23 @@
 
 namespace Nullock::Core::IntruderRules {
 
+namespace {
+// "Propername" / "ProperName": upper-case the FIRST code point; the rest is
+// either lowered (lowerRest=true) or kept unchanged. Code-point safe (toUcs4) so
+// a leading non-BMP glyph is upper-cased/copied whole, never split into
+// surrogates. Matches the caseMod generator's proper-case semantics.
+QString properCaseRule(const QString &s, bool lowerRest) {
+    const QList<uint> cps = s.toUcs4();
+    if (cps.isEmpty()) return s;
+    const char32_t first = cps[0];
+    QString out = QString::fromUcs4(&first, 1).toUpper();
+    QString rest;
+    for (int i = 1; i < cps.size(); ++i) { const char32_t u = cps[i]; rest += QString::fromUcs4(&u, 1); }
+    out += lowerRest ? rest.toLower() : rest;
+    return out;
+}
+} // namespace
+
 QString applyRule(const QString &value, const Rule &rule) {
     const QString op = rule.op.trimmed().toLower();
     if (op.isEmpty()) return value;
@@ -15,6 +32,8 @@ QString applyRule(const QString &value, const Rule &rule) {
     if (op == QLatin1String("suffix"))    return value + rule.arg;
     if (op == QLatin1String("uppercase")) return value.toUpper();
     if (op == QLatin1String("lowercase")) return value.toLower();
+    if (op == QLatin1String("propername"))      return properCaseRule(value, /*lowerRest=*/true);
+    if (op == QLatin1String("propername-keep")) return properCaseRule(value, /*lowerRest=*/false);
     if (op == QLatin1String("reverse")) {
         // Reverse by CODE POINT, not UTF-16 unit -- a naive std::reverse over
         // QChars swaps a surrogate pair into two lone surrogates, corrupting any
@@ -134,6 +153,7 @@ QStringList operations() {
     return {
         QStringLiteral("prefix"), QStringLiteral("suffix"),
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
+        QStringLiteral("propername"), QStringLiteral("propername-keep"),
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
         QStringLiteral("substring"), QStringLiteral("reverse-substring"),
         QStringLiteral("url-encode-chars"),

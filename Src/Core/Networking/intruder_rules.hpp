@@ -28,6 +28,8 @@ struct Rule {
 //   prefix        -> arg + value
 //   suffix        -> value + arg
 //   uppercase / lowercase / reverse
+//   propername      -> upper-case the first char, LOWER the rest (Titlecase)
+//   propername-keep -> upper-case the first char, KEEP the rest as-is
 //   match-replace -> arg is "find\x1freplace" (US-delimited); replaces all
 //                    literal occurrences of find with replace.
 //   substring / reverse-substring -> arg is "offset" or "offset,length"; extracts
