@@ -30,6 +30,16 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
 
+// Burp "Character blocks": repeat `base` a multiplier of times, from minMult to
+// maxMult stepping by `step` -- one payload per multiplier (base x k). E.g.
+// charBlocks("A",1,3,1) -> {"A","AA","AAA"}; charBlocks("AB",1,3,1) ->
+// {"AB","ABAB","ABABAB"}. It multiplies (repeats) the WHOLE base, it does NOT
+// truncate to a length. base empty / step < 1 / maxMult < minMult -> empty;
+// minMult < 1 is clamped to 1. Bounded in count (kMaxCount) AND total emitted
+// chars, and refuses to build a block that would breach the char cap, so a huge
+// multiplier can't OOM.
+QStringList charBlocks(const QString &base, int minMult, int maxMult, int step);
+
 // Burp "Character frobber": walk the base one position at a time, emitting one
 // payload per position that is the whole base with exactly THAT position's
 // character incremented by +1 and every other character unchanged (output count

@@ -3200,6 +3200,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return IG::nullPayloads(g.value("count").toInt());
         if (t == QLatin1String("frobber"))
             return IG::frob(g.value("base").toString());
+        if (t == QLatin1String("blocks"))
+            return IG::charBlocks(g.value("base").toString(),
+                                  g.value("minMult").toInt(1), g.value("maxMult").toInt(),
+                                  g.value("step").toInt(1));
         return {};
     };
 

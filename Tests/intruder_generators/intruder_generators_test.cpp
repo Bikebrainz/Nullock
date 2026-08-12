@@ -102,6 +102,22 @@ int main(int argc, char **argv) {
     chk("null: over-cap request truncates to kMaxCount",
         nullPayloads(kMaxCount + 500).size() == kMaxCount);
 
+    // ----- charBlocks (Burp "Character blocks") -----
+    chk("blocks: A x1..3 -> A,AA,AAA", charBlocks("A", 1, 3, 1) == (QStringList{ "A", "AA", "AAA" }));
+    // THE key lock: multiply (whole-repeat) the base, NOT truncate to a length.
+    chk("blocks: AB x1..3 -> whole-repeat not truncate",
+        charBlocks("AB", 1, 3, 1) == (QStringList{ "AB", "ABAB", "ABABAB" }));
+    chk("blocks: step 2 (x2,x4,x6)", charBlocks("x", 2, 6, 2) == (QStringList{ "xx", "xxxx", "xxxxxx" }));
+    chk("blocks: empty base -> empty",     charBlocks(QString(), 1, 3, 1).isEmpty());
+    chk("blocks: maxMult<minMult -> empty", charBlocks("A", 3, 1, 1).isEmpty());
+    chk("blocks: step<1 -> empty",         charBlocks("A", 1, 3, 0).isEmpty());
+    chk("blocks: minMult<1 clamps to 1",   charBlocks("A", -5, 2, 1) == (QStringList{ "A", "AA" }));
+    // volume-capped: a huge multiplier range is bounded, and never builds a monster block.
+    {
+        const QStringList r = charBlocks(QString(1000, QChar('a')), 1, 1000000, 1);
+        chk("blocks: huge range is volume-capped", !r.isEmpty() && r.size() < 1000000 && r.size() <= kMaxCount);
+    }
+
     // ----- frob (Burp "Character frobber") -----
     chk("frob: abc -> per-position +1", frob("abc") == (QStringList{ "bbc", "acc", "abd" }));
     chk("frob: az -> z bumps to '{'",   frob("az")  == (QStringList{ "bz", "a{" }));
@@ -131,10 +147,10 @@ int main(int argc, char **argv) {
     }
 
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null+frobber",
+    chk("types lists numbers+brute+dates+null+frobber+blocks",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
-        && types().contains("frobber"));
+        && types().contains("frobber") && types().contains("blocks"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

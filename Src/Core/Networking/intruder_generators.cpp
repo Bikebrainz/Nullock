@@ -86,6 +86,22 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList charBlocks(const QString &base, int minMult, int maxMult, int step) {
+    QStringList out;
+    if (base.isEmpty() || step < 1) return out;
+    if (minMult < 1) minMult = 1;
+    if (maxMult < minMult) return out;
+    constexpr qint64 kMaxChars = static_cast<qint64>(kMaxCount) * 64;
+    qint64 emitted = 0;
+    for (int k = minMult; k <= maxMult && out.size() < kMaxCount; k += step) {
+        const qint64 blockLen = static_cast<qint64>(base.size()) * k;
+        if (emitted + blockLen > kMaxChars) break;   // would breach the volume cap -> stop BEFORE building
+        out.append(base.repeated(k));                // base multiplied k times (whole repeat, not truncate)
+        emitted += blockLen;
+    }
+    return out;
+}
+
 QStringList frob(const QString &base) {
     QStringList out;
     const QList<uint> cps = base.toUcs4();
@@ -122,7 +138,7 @@ QStringList nullPayloads(int count) {
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
-             QStringLiteral("frobber") };
+             QStringLiteral("frobber"), QStringLiteral("blocks") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

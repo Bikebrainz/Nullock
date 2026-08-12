@@ -51,6 +51,14 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Character blocks" generator (Burp parity).** A new `blocks` payload
+  type (`IntruderGenerators::charBlocks`) repeats a base string by a multiplier
+  from min to max stepping by a step — one payload per multiplier (`base × k`),
+  e.g. `"A"` × 1..3 → `A, AA, AAA` — for buffer-boundary / length-limit fuzzing.
+  It multiplies (whole-repeat) the base, not truncate-to-length (verified against
+  the PortSwigger docs). Bounded in count and total chars, and refuses to build a
+  block that would breach the cap, so a huge multiplier can't OOM. Wired into
+  `/api/intruder/generate` + `types()`. Unit- and mutation-tested. Closes #32.
 - **Intruder "Character frobber" generator (Burp parity).** A new `frobber`
   payload type (`IntruderGenerators::frob`) walks a base string one position at a
   time, emitting one payload per position that is the whole base with exactly that
