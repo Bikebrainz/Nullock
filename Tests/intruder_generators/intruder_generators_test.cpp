@@ -102,6 +102,36 @@ int main(int argc, char **argv) {
     chk("null: over-cap request truncates to kMaxCount",
         nullPayloads(kMaxCount + 500).size() == kMaxCount);
 
+    // ----- caseMod (Burp "Case modification") -----
+    // All FIVE options in canonical order, on an item where every option differs,
+    // locks each transform + order + count in one shot.
+    chk("casemod: 5 distinct variants, canonical order",
+        caseMod(QStringList{ "hELLO wORLD" },
+                CaseNoChange | CaseLower | CaseUpper | CaseProper | CaseProperKeep)
+        == (QStringList{ "hELLO wORLD", "hello world", "HELLO WORLD", "Hello world", "HELLO wORLD" }));
+    // The docs' "critical difference": Propername LOWERS the rest, ProperName does NOT.
+    chk("casemod: Propername lowers the rest (hELLO -> Hello)",
+        caseMod(QStringList{ "hELLO" }, CaseProper) == (QStringList{ "Hello" }));
+    chk("casemod: ProperName keeps the rest (hELLO -> HELLO)",
+        caseMod(QStringList{ "hELLO" }, CaseProperKeep) == (QStringList{ "HELLO" }));
+    // ITEM-MAJOR: all enabled modes of item[0] before item[1].
+    chk("casemod: item-major ordering",
+        caseMod(QStringList{ "Ab", "Cd" }, CaseLower | CaseUpper)
+        == (QStringList{ "ab", "AB", "cd", "CD" }));
+    // NO dedup: two options coinciding on an item still yield two payloads.
+    chk("casemod: no dedup (ADMIN via NoChange+Upper -> 2)",
+        caseMod(QStringList{ "ADMIN" }, CaseNoChange | CaseUpper).size() == 2);
+    chk("casemod: modes==0 -> empty",   caseMod(QStringList{ "x" }, 0).isEmpty());
+    chk("casemod: empty items -> empty", caseMod(QStringList{}, CaseLower | CaseUpper).isEmpty());
+    // code-point safe: a leading non-BMP glyph is upper-cased/copied whole.
+    {
+        const char32_t emoji = 0x1F600;
+        const QString it = QString::fromUcs4(&emoji, 1) + QStringLiteral("aB");
+        const QList<uint> c0 = caseMod(QStringList{ it }, CaseProper).at(0).toUcs4();
+        chk("casemod: non-BMP leading glyph not split (Proper)",
+            c0.size() == 3 && c0.at(0) == 0x1F600u && c0.at(1) == uint('a') && c0.at(2) == uint('b'));
+    }
+
     // ----- charBlocks (Burp "Character blocks") -----
     chk("blocks: A x1..3 -> A,AA,AAA", charBlocks("A", 1, 3, 1) == (QStringList{ "A", "AA", "AAA" }));
     // THE key lock: multiply (whole-repeat) the base, NOT truncate to a length.
@@ -147,10 +177,11 @@ int main(int argc, char **argv) {
     }
 
     // ----- types() -----
-    chk("types lists numbers+brute+dates+null+frobber+blocks",
+    chk("types lists numbers+brute+dates+null+frobber+blocks+casemod",
         types().contains("numbers") && types().contains("brute")
         && types().contains("dates") && types().contains("null")
-        && types().contains("frobber") && types().contains("blocks"));
+        && types().contains("frobber") && types().contains("blocks")
+        && types().contains("casemod"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

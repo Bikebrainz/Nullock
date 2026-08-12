@@ -18,6 +18,20 @@ QString fmtNumber(qint64 n, int width, bool hex) {
     }
     return s;
 }
+
+// "Propername"/"ProperName": uppercase the FIRST code point; the rest is either
+// lowered (lowerRest=true) or left unchanged. Code-point safe -- toUcs4 so a
+// leading non-BMP glyph is upper-cased/copied whole, never split into surrogates.
+QString properCase(const QString &s, bool lowerRest) {
+    const QList<uint> cps = s.toUcs4();
+    if (cps.isEmpty()) return s;
+    const char32_t first = cps[0];
+    QString out = QString::fromUcs4(&first, 1).toUpper();
+    QString rest;
+    for (int i = 1; i < cps.size(); ++i) { const char32_t u = cps[i]; rest += QString::fromUcs4(&u, 1); }
+    out += lowerRest ? rest.toLower() : rest;
+    return out;
+}
 } // namespace
 
 QStringList numbers(qint64 from, qint64 to, qint64 step, int width, bool hex) {
@@ -86,6 +100,21 @@ QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
     return out;
 }
 
+QStringList caseMod(const QStringList &items, unsigned modes) {
+    QStringList out;
+    if (modes == 0) return out;
+    auto add = [&](const QString &s) { if (out.size() < kMaxCount) out.append(s); };
+    for (const QString &item : items) {
+        if (out.size() >= kMaxCount) break;
+        if (modes & CaseNoChange)   add(item);
+        if (modes & CaseLower)      add(item.toLower());
+        if (modes & CaseUpper)      add(item.toUpper());
+        if (modes & CaseProper)     add(properCase(item, /*lowerRest=*/true));
+        if (modes & CaseProperKeep) add(properCase(item, /*lowerRest=*/false));
+    }
+    return out;
+}
+
 QStringList charBlocks(const QString &base, int minMult, int maxMult, int step) {
     QStringList out;
     if (base.isEmpty() || step < 1) return out;
@@ -138,7 +167,8 @@ QStringList nullPayloads(int count) {
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
-             QStringLiteral("frobber"), QStringLiteral("blocks") };
+             QStringLiteral("frobber"), QStringLiteral("blocks"),
+             QStringLiteral("casemod") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

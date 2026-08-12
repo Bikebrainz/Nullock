@@ -3204,6 +3204,30 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return IG::charBlocks(g.value("base").toString(),
                                   g.value("minMult").toInt(1), g.value("maxMult").toInt(),
                                   g.value("step").toInt(1));
+        if (t == QLatin1String("casemod")) {
+            QStringList items;
+            const QJsonValue iv = g.value("items");
+            if (iv.isArray())
+                for (const QJsonValue &e : iv.toArray()) items << e.toString();
+            else
+                items = iv.toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            unsigned modes = 0;
+            for (const QJsonValue &m : g.value("modes").toArray()) {
+                const QString tok = m.toString().toLower();
+                if (tok == "nochange" || tok == "none")        modes |= IG::CaseNoChange;
+                else if (tok == "lower" || tok == "lowercase") modes |= IG::CaseLower;
+                else if (tok == "upper" || tok == "uppercase") modes |= IG::CaseUpper;
+                else if (tok == "propername")                  modes |= IG::CaseProper;
+                else if (tok == "propername-keep" || tok == "propernamekeep"
+                      || tok == "proper-keep")                 modes |= IG::CaseProperKeep;
+            }
+            // No usable selection -> default to all five (usability; the pure fn
+            // itself returns empty for modes==0).
+            if (modes == 0)
+                modes = IG::CaseNoChange | IG::CaseLower | IG::CaseUpper
+                      | IG::CaseProper | IG::CaseProperKeep;
+            return IG::caseMod(items, modes);
+        }
         return {};
     };
 

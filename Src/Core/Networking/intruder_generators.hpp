@@ -30,6 +30,25 @@ QStringList brute(const QString &charset, int minLen, int maxLen);
 QStringList dates(const QString &fromIso, const QString &toIso, int stepDays,
                   const QString &format = QStringLiteral("yyyy-MM-dd"));
 
+// Burp "Case modification" options (bit flags -- combine with |). The bit order
+// below IS the canonical generation order.
+enum CaseMode : unsigned {
+    CaseNoChange   = 1u << 0,   // item verbatim
+    CaseLower      = 1u << 1,   // all letters -> lower
+    CaseUpper      = 1u << 2,   // all letters -> upper
+    CaseProper     = 1u << 3,   // "To Propername": first code point upper, rest LOWER
+    CaseProperKeep = 1u << 4,   // "To ProperName": first code point upper, rest UNCHANGED
+};
+
+// Burp "Case modification": for EACH item emit one payload per ENABLED CaseMode
+// in canonical order, ITEM-MAJOR (all enabled variants of item[0], then item[1],
+// ...). One payload per (item, enabled mode) -- NO dedup, so two options that
+// coincide on an item still yield two payloads (faithful to "one payload per
+// option"). The Proper/ProperKeep first character is uppercased by CODE POINT
+// (toUcs4), so a leading non-BMP glyph is never split into surrogates. modes == 0
+// or empty items -> empty. Capped at kMaxCount.
+QStringList caseMod(const QStringList &items, unsigned modes);
+
 // Burp "Character blocks": repeat `base` a multiplier of times, from minMult to
 // maxMult stepping by `step` -- one payload per multiplier (base x k). E.g.
 // charBlocks("A",1,3,1) -> {"A","AA","AAA"}; charBlocks("AB",1,3,1) ->

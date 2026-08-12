@@ -51,6 +51,15 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Intruder "Case modification" generator (Burp parity).** A new `casemod`
+  payload type (`IntruderGenerators::caseMod`) takes a list of items and, for each,
+  emits one payload per selected case option in canonical order — the five Burp
+  options: No change, lower, upper, `Propername` (first letter upper, rest lower),
+  and `ProperName` (first letter upper, rest unchanged) — for case-variant
+  username/wordlist fuzzing. The two Proper modes are distinct exactly as the
+  PortSwigger docs specify; the leading letter is upper-cased by code point
+  (non-BMP safe). Wired into `/api/intruder/generate` + `types()`. Unit- and
+  mutation-tested (the Propername-vs-ProperName distinction is locked). Closes #29.
 - **Intruder "Character blocks" generator (Burp parity).** A new `blocks` payload
   type (`IntruderGenerators::charBlocks`) repeats a base string by a multiplier
   from min to max stepping by a step — one payload per multiplier (`base × k`),
