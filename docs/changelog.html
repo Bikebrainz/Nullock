@@ -45,6 +45,22 @@
 
       <article class="rel">
         <div class="rel-meta">
+          <span class="rel-ver">Unreleased</span>
+          <span class="caption">Aug 12, 2026</span>
+          <span class="badge"><span class="dot"></span>in progress</span>
+        </div>
+        <div class="rel-body">
+          <p class="rel-note">A detector-hardening pass over the passive scanner: mutation-proven regression coverage locked around every finding kind it emits, then two false-negative bugs those tests surfaced were fixed. No behaviour was changed except the two fixes below.</p>
+          <ul>
+            <li><span class="tag fix">fix</span> <strong>Django DEBUG page exposure is detected again.</strong> The <code class="inline">stack-django</code> detector keyed on Django's URLconf error page but was gated to 5xx responses only &mdash; and that page renders on a <strong>404</strong>, so it never fired in the wild. The gate now admits a 404 for the Django needle only (other framework stack needles stay 5xx-only, so an ordinary not-found page can't false-positive).</li>
+            <li><span class="tag fix">fix</span> <strong>Outbound-PII check no longer skips public 172.x hosts.</strong> The data-exfiltration gate treated any <code class="inline">172.x</code> host as private, but RFC 1918 reserves only 172.16&ndash;31.x. SSN / card / phone / IBAN leaving to a public 172.x host (e.g. <code class="inline">172.200.1.1</code>) is now flagged; the genuine 172.16&ndash;31.x range stays private.</li>
+            <li><span class="tag fix">hardening</span> <strong>Regression coverage locked across the passive scanner + JWT analysis.</strong> Every emitted finding kind &mdash; leaked-secret patterns, subdomain-takeover fingerprints, framework stack traces, cloud-storage endpoints, DOM-XSS sinks, outbound-PII, and verbose-error leaks &mdash; now has a mutation-proven test, so a future regex/gate regression can't silently disable a detector.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="rel">
+        <div class="rel-meta">
           <span class="rel-ver">v3.7.0</span>
           <span class="caption">Jul 5, 2026</span>
           <span class="badge ok"><span class="dot"></span>latest</span>
