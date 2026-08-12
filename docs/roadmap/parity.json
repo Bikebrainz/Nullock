@@ -432,12 +432,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Illegal Unicode",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No overlong/illegal UTF-8 payload generator for WAF/normalization bypass.",
-      "why": "Re-checked payload_forge \u2014 it has ONE static unicode-CRLF bypass string, not a payload-type generator that emits overlong/illegal UTF-8. Confirmed absent.",
-      "evidence": "payload_forge.cpp:210 `{\"unicode-CRLF bypass\", \"%E5%98%8D%E5%98%8ASet-Cookie...\"}` is a single canned string; intruder_generators types() has no unicode type."
+      "gap": "None -- an overlong-UTF-8 payload generator emits the illegal 2..6-byte encodings of a target character (WAF / path-normalization bypass).",
+      "why": "Closed 2026-08-12: added IntruderGenerators::illegalUnicode (overlong UTF-8 of the target code point at each 2..6-byte length, hex/%-prefixed, semantics confirmed vs PortSwigger), advertised in types() + dispatched by control_server expandGen ('illegal-unicode'); pure + mutation-proven.",
+      "evidence": "intruder_generators.cpp illegalUnicode + types(); control_server.cpp expandGen illegal-unicode branch; Tests/intruder_generators (+7 cases incl. the exact '/' overlong ladder, mutation-proven lead prefix + continuation marker).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "9b2c43e",
+        "note": "Intruder wave: Illegal Unicode payload type -- overlong UTF-8 encodings (2..6 bytes) of a target char, %C0%AF-style (PortSwigger-verified); pure + mutation-proven, no engine wiring."
+      }
     },
     {
       "area": "intruder",
