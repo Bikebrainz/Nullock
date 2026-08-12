@@ -37,6 +37,15 @@ developer-facing record.
   pinned the old behaviour is corrected. Fixes finding #2 of the review.
 
 ### Added
+- **Sequencer sample-size + FIPS 140-2 guidance.** The token-analysis result now
+  carries a `sampleGuidance` block that makes two thresholds explicit and
+  machine-readable: a warning under the recommended ~100-token minimum (with a
+  harder "not even estimable" floor below the deep-test threshold), and whether
+  the decoded bit-stream reaches the 20,000-bit FIPS 140-2 power-up-test sample.
+  Previously the confidence was only an implicit qualitative label with no FIPS
+  dimension. Pure helper `Core::sampleSizeGuidance(tokens, decodedBits)`,
+  unit- and mutation-tested (the 100-token, deep-test, and 20,000-bit
+  boundaries each discriminate). Closes roadmap #186.
 - **XML issue report (`GET /api/report/xml`).** Serializes the engagement's
   findings — the same corpus as `report/json` — into a Burp-style XML issue
   report (`<nullockReport>` → `<issue severity/confidence/cvss/fixed>` with

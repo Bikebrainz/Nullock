@@ -355,6 +355,48 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ===== sampleSizeGuidance: sample-size + FIPS 140-2 threshold advice =====
+    // Locks the two documented thresholds (Burp's ~100-token warn floor and the
+    // 20,000-bit FIPS 140-2 power-up sample) and the deep-test floor (kDeepMinN).
+    {
+        const SampleSizeGuidance z = sampleSizeGuidance(0, 0);
+        chk("ssg: zero tokens -> tooFew + not estimable + no FIPS",
+            z.sampleCount == 0 && z.tooFew && !z.estimable && !z.fipsBitsMet);
+        chk("ssg: zero tokens -> 'No tokens captured.' note", z.note == "No tokens captured.");
+        chk("ssg: negative inputs clamp to zero",
+            sampleSizeGuidance(-5, -9).sampleCount == 0
+            && sampleSizeGuidance(-5, -9).decodedBits == 0);
+
+        chk("ssg: thresholds exposed (100 tokens / 20000 bits)",
+            z.recommendedMinTokens == 100 && z.fipsBitThreshold == 20000);
+
+        // estimable floor is kDeepMinN (20): 19 below, 20 at.
+        chk("ssg: 19 tokens -> not estimable", !sampleSizeGuidance(19, 0).estimable);
+        chk("ssg: 20 tokens -> estimable",      sampleSizeGuidance(20, 0).estimable);
+        chk("ssg: 10 tokens -> 'far below' note",
+            sampleSizeGuidance(10, 0).note.contains("far below"));
+        chk("ssg: 50 tokens -> estimable but tooFew (indicative)",
+            sampleSizeGuidance(50, 0).estimable && sampleSizeGuidance(50, 0).tooFew
+            && sampleSizeGuidance(50, 0).note.contains("indicative"));
+
+        // tooFew floor is 100 tokens: 99 below, 100 at.
+        chk("ssg: 99 tokens -> tooFew",  sampleSizeGuidance(99, 0).tooFew);
+        chk("ssg: 100 tokens -> not tooFew", !sampleSizeGuidance(100, 0).tooFew);
+
+        // FIPS bit threshold is 20000: 19999 under, 20000 met.
+        const SampleSizeGuidance under = sampleSizeGuidance(100, 19999);
+        const SampleSizeGuidance met   = sampleSizeGuidance(100, 20000);
+        chk("ssg: 19999 bits -> FIPS not met", !under.fipsBitsMet);
+        chk("ssg: 20000 bits -> FIPS met",      met.fipsBitsMet);
+        chk("ssg: adequate + under-FIPS note wording",
+            !under.tooFew && under.note.contains("under the 20,000-bit"));
+        chk("ssg: adequate + FIPS-met note wording",
+            met.note.contains("meet the 20,000-bit"));
+        // 0 decoded bits (corpus not bit-testable) never spuriously reports FIPS met.
+        chk("ssg: 500 tokens, 0 bits -> adequate tokens but FIPS not met",
+            !sampleSizeGuidance(500, 0).tooFew && !sampleSizeGuidance(500, 0).fipsBitsMet);
+    }
+
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -69,6 +69,27 @@ double compressionRatio(const QByteArray &bytes);
 //   Burp's Sequencer likewise gates confidence on sample count. Returns one of
 //   "insufficient" / "low" / "medium" / "high" / "very-high".
 QString reliabilityRating(int sampleCount);
+
+// Sample-size guidance for a Sequencer run: is the corpus large enough to trust
+// the estimate, and does the decoded bit-stream reach the FIPS 140-2 power-up
+// test sample size (a 20,000-bit stream)? Burp surfaces the same advice (it
+// warns under ~100 tokens and cites the FIPS sample requirement) but only
+// implicitly through the confidence label; this makes the two thresholds
+// explicit and machine-readable so a report/CI gate can act on them. Distinct
+// from reliabilityRating(), which is a single qualitative label with no FIPS
+// dimension. Pure: derived only from the two counts, so it is unit-tested.
+struct SampleSizeGuidance {
+    int  sampleCount          = 0;      // tokens captured
+    int  decodedBits          = 0;      // bits in the decoded byte-stream (0 if not bit-testable)
+    bool tooFew               = true;   // sampleCount < recommendedMinTokens
+    bool estimable            = false;  // sampleCount >= the deep-test floor (kDeepMinN)
+    bool fipsBitsMet          = false;  // decodedBits >= fipsBitThreshold
+    int  recommendedMinTokens = 100;    // Burp's ~100-token warn floor
+    int  fipsBitThreshold     = 20000;  // FIPS 140-2 power-up RNG test sample (bits)
+    QString note;                       // one-line human-readable guidance
+};
+SampleSizeGuidance sampleSizeGuidance(int sampleCount, int decodedBits);
+
 // maxPositionalTransitionV: the strongest per-position serial dependence across
 //   consecutive tokens, as Cramer's V (0 = the character at a position is
 //   independent of the same position in the previous token; 1 = fully

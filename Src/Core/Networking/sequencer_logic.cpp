@@ -503,6 +503,38 @@ QString reliabilityRating(int sampleCount) {
     return QStringLiteral("very-high");
 }
 
+SampleSizeGuidance sampleSizeGuidance(int sampleCount, int decodedBits) {
+    SampleSizeGuidance g;
+    g.sampleCount = qMax(0, sampleCount);
+    g.decodedBits = qMax(0, decodedBits);
+    // Order matters: estimable is the harder floor (below it not even the deep
+    // tests run), tooFew is the softer ~100-token reliability warning.
+    g.estimable   = g.sampleCount >= kDeepMinN;
+    g.tooFew      = g.sampleCount <  g.recommendedMinTokens;
+    g.fipsBitsMet = g.decodedBits >= g.fipsBitThreshold;
+
+    if (g.sampleCount == 0) {
+        g.note = QStringLiteral("No tokens captured.");
+        return g;
+    }
+    const QString n = QString::number(g.sampleCount);
+    if (!g.estimable) {
+        g.note = n + QStringLiteral(" token(s): far below the ~100-token minimum -- "
+                                    "collect more before trusting any estimate.");
+    } else if (g.tooFew) {
+        g.note = n + QStringLiteral(" tokens: below the recommended ~100-token minimum -- "
+                                    "treat the estimate as indicative only.");
+    } else {
+        g.note = n + QStringLiteral(" tokens: adequate for the character-level estimate. ");
+        const QString b = QString::number(g.decodedBits);
+        g.note += g.fipsBitsMet
+            ? b + QStringLiteral(" decoded bits meet the 20,000-bit FIPS 140-2 threshold.")
+            : b + QStringLiteral(" decoded bits are under the 20,000-bit FIPS 140-2 threshold "
+                                 "-- collect more tokens for full bit-level conformance.");
+    }
+    return g;
+}
+
 namespace {
 
 BitLevelResult bitLevelTests(const QStringList &tokens) {
@@ -784,6 +816,21 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         bitObj["anyFailed"] = bit.anyFail;
     }
     result["bitLevel"] = bitObj;
+
+    // Sample-size guidance: warn under ~100 tokens and flag whether the decoded
+    // stream reaches the 20,000-bit FIPS 140-2 sample size (bit.bits is 0 when
+    // the corpus isn't bit-testable, which correctly reports FIPS not met).
+    const SampleSizeGuidance ssg = sampleSizeGuidance(tokens.size(), int(bit.bits));
+    QJsonObject ssgObj;
+    ssgObj["sampleCount"]          = ssg.sampleCount;
+    ssgObj["decodedBits"]          = ssg.decodedBits;
+    ssgObj["tooFew"]               = ssg.tooFew;
+    ssgObj["estimable"]            = ssg.estimable;
+    ssgObj["fipsBitsMet"]          = ssg.fipsBitsMet;
+    ssgObj["recommendedMinTokens"] = ssg.recommendedMinTokens;
+    ssgObj["fipsBitThreshold"]     = ssg.fipsBitThreshold;
+    ssgObj["note"]                 = ssg.note;
+    result["sampleGuidance"] = ssgObj;
 
     // Final verdict. The PRIMARY axis is the effective keyspace (total entropy
     // per token), not per-byte alphabet flatness -- a short token is brute-
