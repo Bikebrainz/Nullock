@@ -2405,16 +2405,16 @@
     {
       "area": "sequencer",
       "feature": "Cookie jar expiry handling (Expires / Max-Age respected; expired cookies dropped, session cookies distinguished)",
-      "state": "partial",
-      "audited_state": "partial",
+      "state": "present",
+      "audited_state": "present",
       "reconciled": {
         "date": "2026-08-12",
-        "commit": "39f6cf5",
-        "note": "Cookie-jar lifetime FOUNDATION: Max-Age + Expires parsed to an absolute expiry (RFC 6265 5.3 precedence, Max-Age wins), cookieExpired predicate, session-vs-persistent distinction; pure + mutation-proven. Remaining for present: wire capture-side deletion + inject-side skip (mirrors the #194 domain-match foundation)."
+        "commit": "2a7729d",
+        "note": "Cookie-jar expiry DONE. Pure foundation (39f6cf5, mutation-proven): Max-Age + Expires -> absolute expiry (RFC 6265 5.3, Max-Age wins), cookieExpired predicate, session-vs-persistent. Enforced (2a7729d): resolve on capture, delete an already-expired Set-Cookie (logout), skip expired cookies on inject, surface persistent/expiresEpoch to the UI. Pure logic unit-tested; QObject inject/capture wiring gauntlet-verified (not unit-testable, cf. #194)."
       },
       "impact": "medium",
       "effort": "hours",
-      "gap": "PARTIAL (foundation) -- Max-Age + Expires are now parsed to an absolute expiry with a cookieExpired predicate (2026-08-12); still to wire: DROP expired cookies on capture and SKIP them on inject. A logout via `Set-Cookie: SESSION=; Expires=Thu, 01 Jan 1970...` happens to work because the name-keyed merge (session_manager.cpp:72-80) overwrites the value with empty \u2014 but `Max-Age=0` is not understood as a deletion, and session-vs-persistent cookies are indistinguishable in both the store and the UI.",
+      "gap": "None -- Max-Age + Expires are parsed to an absolute expiry (cookieExpired predicate), ENFORCED at capture (an already-expired Set-Cookie deletes the stored cookie) and at inject (expired cookies are skipped), with session-vs-persistent surfaced to the UI. Historical note: a logout via `Set-Cookie: SESSION=; Expires=Thu, 01 Jan 1970...` happens to work because the name-keyed merge (session_manager.cpp:72-80) overwrites the value with empty \u2014 but `Max-Age=0` is not understood as a deletion, and session-vs-persistent cookies are indistinguishable in both the store and the UI.",
       "why": "Confirmed as stub \u2014 the field is captured and surfaced but never consulted. I traced the full inject predicate set: exactly two filters, neither temporal.",
       "evidence": "Captured as an opaque string, session_manager_logic.cpp:68 `else if (key == \"expires\")  c.expires  = val;` \u2014 never parsed to a QDateTime. Surfaced at control_server.cpp:4849 `co[\"expires\"] = c.expires;`. The complete inject filter set is session_manager.cpp:131-132: `if (!SessionLogic::injectableOverTransport(c, req.port)) continue; if (!SessionLogic::pathMatches(c.path, req.path)) continue;`. `gr"
     },
