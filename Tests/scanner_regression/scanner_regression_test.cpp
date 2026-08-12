@@ -261,6 +261,61 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html",
                  "<html><script>el.innerHTML = 'hello world';</script></html>") });
 
+    // ---- Outbound PII to public hosts (were untested; email-mass covered)
+    // The pii-* block is OUTBOUND-only: it scans req.path + req.body and only
+    // when the destination host is PUBLIC (not 127./10./192.168./172. prefix,
+    // not .local/.internal/.corp suffix). Each token below is chosen to match
+    // exactly one kind.
+    {
+        // Build the test PAN from fragments so no 16-digit card-shaped literal
+        // sits in the source. 4111... is a classic NON-LIVE test Visa; the
+        // detector matches the card SHAPE, not a live/Luhn-valid number.
+        const QByteArray pan = QByteArray("card=") + "4" + QByteArray("1").repeated(15);
+
+        tc.append({ "outbound SSN to public host -> pii-ssn-outbound",
+                    "pii-ssn-outbound", false,
+            makeReq("POST", "analytics.public.test", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+
+        tc.append({ "outbound test-PAN to public host -> pii-cc-outbound",
+                    "pii-cc-outbound", false,
+            makeReq("POST", "analytics.public.test", "/collect", {}, pan),
+            makeResp(200, "application/json", "{}") });
+
+        tc.append({ "outbound US phone to public host -> pii-phone-us",
+                    "pii-phone-us", false,
+            makeReq("POST", "analytics.public.test", "/collect", {}, "phone=415-555-2671"),
+            makeResp(200, "application/json", "{}") });
+
+        tc.append({ "outbound IBAN to public host -> pii-iban",
+                    "pii-iban", false,
+            makeReq("POST", "analytics.public.test", "/collect", {},
+                    "iban=DE89370400440532013000"),
+            makeResp(200, "application/json", "{}") });
+
+        // Private-host gate (two arms): the SAME SSN to a private / internal
+        // destination must NOT fire -- the detector only flags exfiltration to
+        // PUBLIC hosts.
+        tc.append({ "SSN to a 10.x host must NOT fire pii-ssn-outbound",
+                    "pii-ssn-outbound", true,
+            makeReq("POST", "10.0.0.5", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+
+        tc.append({ "SSN to a .internal host must NOT fire pii-ssn-outbound",
+                    "pii-ssn-outbound", true,
+            makeReq("POST", "db.internal", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+
+        // Current-behaviour lock + KNOWN QUIRK: the gate uses startsWith("172.")
+        // which over-broadly suppresses PUBLIC 172.x too (only 172.16-31 are
+        // RFC-1918 private). Locked as-is so a future tightening is a deliberate
+        // change; flagged for follow-up.
+        tc.append({ "SSN to public 172.200.x host -> currently suppressed (quirk, locked)",
+                    "pii-ssn-outbound", true,
+            makeReq("POST", "172.200.1.1", "/collect", {}, "ssn=123-45-6789"),
+            makeResp(200, "application/json", "{}") });
+    }
+
     // ---- Subdomain-takeover cargo FP removed ---------------------------
     tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,
         makeReq("GET", "example.test", "/missing"),

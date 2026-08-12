@@ -79,6 +79,18 @@ developer-facing record.
   (only the `'*'` wildcard does), and `innerHTML` set to a static string must
   **not** fire (the sink keys on a tainted source). Mutation-proven (innerHTML +
   eval-of-fetch regexes).
+- **Locked the outbound-PII exfiltration detectors.** The defensive `pii-*`
+  checks (`pii-ssn-outbound`, `pii-cc-outbound`, `pii-phone-us`, `pii-iban`)
+  flag customer data leaving in a request to a *public* host, but only
+  `pii-email-mass` had a test — a broken regex would have silently stopped
+  flagging SSN/card/phone/IBAN exfiltration. Added a positive per class (the
+  test PAN built from fragments so no card-shaped literal sits in the repo) plus
+  three private-host-gate negatives: the same SSN to a `10.x` host, a
+  `.internal` host, and a `172.200.x` host must **not** fire. The last also
+  documents a known quirk — the gate uses `startsWith("172.")`, which
+  over-broadly suppresses *public* 172.x too (only 172.16–31 are RFC-1918); the
+  test locks current behaviour and flags it for a follow-up tightening.
+  Mutation-proven (ssn + iban regexes).
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a
