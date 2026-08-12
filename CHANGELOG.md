@@ -91,6 +91,18 @@ developer-facing record.
   over-broadly suppresses *public* 172.x too (only 172.16–31 are RFC-1918); the
   test locks current behaviour and flags it for a follow-up tightening.
   Mutation-proven (ssn + iban regexes).
+- **Locked every verbose-error-leak needle — passive scanner detectors now
+  fully covered.** The `verbose-sql-err` (6 needles), `verbose-php-err` (2), and
+  `verbose-debug-page` (3) rows had no test — a typo in any one needle would have
+  silently stopped flagging that leak. Added one 4xx-body positive per needle
+  (each carrying only its own needle, pinning the case-sensitive first-match-wins
+  table) plus two status-gate negatives: the same SQL error in a `200` body and
+  in a `500` body must **not** fire (`verbose-*` only scans 4xx; 5xx is the
+  stack-trace family's domain). Mutation-proven (ORA- + Werkzeug needles). With
+  this, every kind emitted by `passive_scanner.cpp` has regression coverage.
+  (Noted for follow-up: the 4xx-only gate misses the two most common cases — SQL
+  errors echoed in a `200` and framework debug pages rendered on a `500`; a
+  gate widening with FP analysis is tracked separately.)
 - **Locked five previously-untested security-header checks.** The header auditor
   emitted `xcto-missing` (X-Content-Type-Options), `hsts-missing`, `csp-missing`,
   `csp-report-only`, and `csp-unsafe-eval`, but no test asserted them — a

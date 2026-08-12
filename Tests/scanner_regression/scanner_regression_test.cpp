@@ -316,6 +316,80 @@ QList<TestCase> buildCorpus() {
             makeResp(200, "application/json", "{}") });
     }
 
+    // ---- Verbose 4xx error leaks (were untested) -----------------------
+    // Gate: 400 <= status < 500 AND body < 256KB. The needle table is scanned
+    // first-match-wins with a break and matched CASE-SENSITIVELY, so each body
+    // uses the exact needle case and carries no needle listed above it. One
+    // positive per needle (11) locks each row independently -- a typo in any one
+    // needle silently kills that leak detector.
+    // verbose-sql-err (6 needles):
+    tc.append({ "Oracle ORA- error 400 -> verbose-sql-err", "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain", "ORA-00933: SQL command not properly ended") });
+
+    tc.append({ "MySQL error 400 -> verbose-sql-err", "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain",
+                 "You have an error in your SQL syntax; check the manual that "
+                 "corresponds to your MySQL server version") });
+
+    tc.append({ "Postgres 'syntax error at or near' 400 -> verbose-sql-err",
+                "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain", "ERROR: syntax error at or near \"FROM\"") });
+
+    tc.append({ "MSSQL OLE DB error 400 -> verbose-sql-err", "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain",
+                 "Microsoft OLE DB Provider for SQL Server error '80040e14'") });
+
+    tc.append({ "MSSQL ODBC driver error 400 -> verbose-sql-err", "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain",
+                 "[ODBC SQL Server Driver][SQL Server]Unclosed quotation mark") });
+
+    tc.append({ "SQLite OperationalError 400 -> verbose-sql-err", "verbose-sql-err", false,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(400, "text/plain", "sqlite3.OperationalError: no such table: users") });
+
+    // verbose-php-err (2 needles -- note the trailing space in the needle):
+    tc.append({ "PHP Warning 400 -> verbose-php-err", "verbose-php-err", false,
+        makeReq("GET", "api.example.test", "/p"),
+        makeResp(400, "text/html",
+                 "Warning: mysqli_connect(): Access denied for user") });
+
+    tc.append({ "PHP Notice 400 -> verbose-php-err", "verbose-php-err", false,
+        makeReq("GET", "api.example.test", "/p"),
+        makeResp(400, "text/html",
+                 "Notice: Undefined variable: id in /var/www/app.php on line 12") });
+
+    // verbose-debug-page (3 needles):
+    tc.append({ "Werkzeug debug page 400 -> verbose-debug-page", "verbose-debug-page", false,
+        makeReq("GET", "api.example.test", "/x"),
+        makeResp(400, "text/html", "<title>Werkzeug Debugger</title>") });
+
+    tc.append({ "Whoops error page 404 -> verbose-debug-page", "verbose-debug-page", false,
+        makeReq("GET", "api.example.test", "/x"),
+        makeResp(404, "text/html", "<h1>Whoops! There was an error.</h1>") });
+
+    tc.append({ "Symfony exception page 404 -> verbose-debug-page", "verbose-debug-page", false,
+        makeReq("GET", "api.example.test", "/x"),
+        makeResp(404, "text/html", "<title>Symfony Exception</title>") });
+
+    // Status gate (lower bound): a SQL error echoed in a 200 body must NOT fire
+    // -- verbose-* only scans 4xx responses.
+    tc.append({ "ORA- error in a 200 body must NOT fire verbose-sql-err",
+                "verbose-sql-err", true,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(200, "text/plain", "ORA-00933: SQL command not properly ended") });
+
+    // Status gate (upper bound): the same error in a 5xx body must NOT fire
+    // verbose-* either -- 5xx server errors are the stack-trace family's domain.
+    tc.append({ "ORA- error in a 500 body must NOT fire verbose-sql-err",
+                "verbose-sql-err", true,
+        makeReq("GET", "api.example.test", "/q"),
+        makeResp(500, "text/plain", "ORA-00933: SQL command not properly ended") });
+
     // ---- Subdomain-takeover cargo FP removed ---------------------------
     tc.append({ "default 404 body must NOT fire takeover-cargo", "takeover-cargo", true,
         makeReq("GET", "example.test", "/missing"),
