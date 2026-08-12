@@ -205,10 +205,16 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Match/replace",
-      "state": "partial",
+      "state": "present",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-12",
+        "commit": "99e121b",
+        "note": "Added a `regex-replace` processing-rule op (arg 'pattern\\x1freplacement'): matches a QRegularExpression and replaces every occurrence, with Burp-style back-references $0/$1..$9/$$ expanded manually. The literal match-replace op stays for exact-string replaces. Pure + mutation-proven; fail-safe on invalid regex."
+      },
       "impact": "low",
       "effort": "hours",
-      "gap": "Literal replace only; Burp's rule matches a regex and supports capture-group back-references. No regex mode here, and no GUI to configure it.",
+      "gap": "None -- regex-replace matches a regex and replaces every occurrence with Burp-style back-references ($0/$1..$9/$$); the literal match-replace op remains for exact-string replaces.",
       "why": "Re-read intruder_rules.cpp:28-39. The op does a LITERAL QString::replace only. Burp's match/replace processing rule is regex-based; the defining capability (regex) is absent, so this is a lookalike, not the Burp rule. Downgraded present->partial.",
       "evidence": "intruder_rules.cpp:36-37 `QString s=value; s.replace(find, repl); return s;` \u2014 QString::replace(QString,QString) is a literal substring replace; there is no QRegularExpression path."
     },
