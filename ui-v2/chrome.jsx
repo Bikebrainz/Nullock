@@ -21,7 +21,7 @@ function NullockMark({ size = 26 }) {
   );
 }
 
-function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks }) {
+function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks, onOpenPalette }) {
   return (
     <div className="tb" data-no-drag>
       <div className="tb-brand">
@@ -53,6 +53,9 @@ function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks }) {
         }} title="Cycle theme">
           <span className="theme-swatch" />
           <span>{theme}</span>
+        </div>
+        <div className="tb-iconbtn" onClick={onOpenPalette} title="Command palette (Ctrl+K)">
+          ⌘K
         </div>
         <div className="tb-iconbtn" onClick={onToggleTweaks} title="Tweaks panel">
           ⌥ TWEAKS

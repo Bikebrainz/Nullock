@@ -144,6 +144,9 @@ Cookie jar         Full per-host cookie inventory (Path, resolved Expires/sessio
                   httpOnly/Secure/SameSite coverage percentages) -- SESSIONS tab, alongside the
                   existing inject-focused per-host list
 Update check       Dismissible in-app banner surfaces new-release availability + release notes
+Command palette    Ctrl/Cmd+K (or the title bar's ⌘K button) fuzzy-searches every tab plus
+                    intercept/tweaks/CA-path toggles; Ctrl/Cmd+1-9 jump straight to the first
+                    nine tabs
 ```
 
 ## 30 seconds to first capture

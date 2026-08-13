@@ -3081,12 +3081,18 @@
     {
       "area": "platform",
       "feature": "Hotkeys (configurable keyboard shortcuts) and the command palette",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "No Ctrl+R send-to-repeater, no Ctrl+Shift+R, no Ctrl+O, no configurable bindings, no command palette. Every action is a mouse click \u2014 a meaningful drag on an experienced tester.",
-      "why": "Confirmed by enumerating every keyboard handler in the UI rather than grepping for the word 'hotkey'. I searched onKeyDown, keydown, ctrlKey, metaKey, addEventListener('key' and Shortcut across all of ui-v2 and Src/App/app.qml. The complete set is: Enter-to-submit on four inputs, Escape-to-close on three overlays, and one search box. No modifier key is read anywhere \u2014 zero ctrlKey/metaKey referenc",
-      "evidence": "Complete keyboard surface: ui-v2/app.jsx:561 `onKeyDown={async (e) => {`, :1406 and :1844 `onKeyDown={e => { if (e.key === \"Enter\") run(); }}`; ui-v2/tabs.jsx:63/:91 Enter-to-add-scope; ui-v2/proxy.jsx:614/:773 `window.addEventListener(\"keydown\", onKey);` (Escape-to-close); ui-v2/ascii.jsx:158 Escape. `grep -ani \"ctrlKey|metaKey|hotkey\"` over ui-v2/*.jsx and Src/App/app.qml \u2192 no output."
+      "gap": "A command palette (Ctrl/Cmd+K, or the title bar's \u2318K button) now lists every tab plus a handful of cross-cutting toggles (intercept, intercept-responses, appearance/tweaks panel, copy CA cert path), fuzzy-filterable, arrow-key navigable, Enter to run. Ctrl/Cmd+1-9 jump directly to the first nine tabs (matching the \"0N\" index badge the tab strip already rendered but never wired to a key). Still missing: bindings are fixed, not user-configurable (no rebind UI, no persisted custom map); there is still no Ctrl+R send-to-repeater / Ctrl+Shift+R / Ctrl+O contextual shortcut set (the palette only reaches global navigation + a few app-level toggles, not per-row or per-tab contextual actions like \"send this history row to Repeater\").",
+      "why": "Added a CommandPalette component (ui-v2/app.jsx) and a global Ctrl/Cmd+K + Ctrl/Cmd+1-9 keydown listener in App(); TitleBar (ui-v2/chrome.jsx) gained a \u2318K button for discoverability. The palette's command set is deliberately scoped to what's genuinely reachable today (tab navigation + existing dispatch/action toggles) rather than inventing contextual actions the reducer doesn't support -- upgraded absent -> partial, not present, since configurability and per-row/contextual hotkeys are real remaining gaps, not just unclaimed ones.",
+      "evidence": "ui-v2/app.jsx CommandPalette component + App()'s paletteCommands useMemo (TABS.map + intercept-toggle/intercept-responses-toggle dispatch cases already defined at app.jsx:171-176, copyCa already defined for the CA-path action) and the Ctrl/Cmd+K / Ctrl/Cmd+1-9 keydown effect; ui-v2/chrome.jsx TitleBar's new onOpenPalette prop wired to a \u2318K button.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "PENDING",
+        "note": "Command palette + global tab-jump/palette hotkeys batch: Ctrl/Cmd+K command palette (tab navigation + intercept/tweaks/copy-CA toggles, fuzzy filter, arrow-key nav) and Ctrl/Cmd+1-9 direct tab hotkeys close the GUI-affordance half of this gap; configurable rebinding and contextual per-row shortcuts are the honest remainder, left absent."
+      }
     },
     {
       "area": "platform",

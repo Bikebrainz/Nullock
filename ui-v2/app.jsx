@@ -5613,10 +5613,90 @@ function UpdateBanner({ update, onDismiss }) {
   );
 }
 
+// Command palette (#247): fuzzy-searchable list of global commands --
+// jump to any tab, or fire one of a handful of cross-cutting toggles --
+// opened via Ctrl/Cmd+K or the ⌘K title-bar button. Substring match on
+// label + keywords, arrow-key nav, Enter to run, Escape to close (matching
+// the existing overlay convention in proxy.jsx).
+function CommandPalette({ commands, onClose }) {
+  const [query, setQuery] = React.useState("");
+  const [active, setActive] = React.useState(0);
+  const inputRef = React.useRef(null);
+
+  const results = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return commands;
+    return commands.filter(c =>
+      c.label.toLowerCase().includes(q) || (c.keywords || "").toLowerCase().includes(q));
+  }, [query, commands]);
+
+  React.useEffect(() => { setActive(0); }, [query]);
+  React.useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+
+  const run = (cmd) => { if (cmd) { onClose(); cmd.run(); } };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(a => Math.min(a + 1, results.length - 1)); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); return; }
+    if (e.key === "Enter") { e.preventDefault(); run(results[active]); return; }
+  };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "flex", justifyContent: "center", alignItems: "flex-start",
+           paddingTop: "12vh", zIndex: 80,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(90vw, 560px)", maxHeight: "60vh", overflow: "hidden",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Type a command or tab name…"
+          style={{
+            background: "var(--bg-deep)", color: "var(--text)", border: "none",
+            borderBottom: "1px solid var(--line)", padding: "10px 12px",
+            fontFamily: "var(--ff-mono)", fontSize: "13px", outline: "none",
+          }}
+        />
+        <div style={{ overflow: "auto" }}>
+          {results.length === 0 && (
+            <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px" }}>No matching commands</div>
+          )}
+          {results.map((c, i) => (
+            <div key={c.id}
+                 onMouseEnter={() => setActive(i)}
+                 onClick={() => run(c)}
+                 style={{
+                   padding: "7px 12px", fontSize: "12px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                   display: "flex", justifyContent: "space-between", gap: 8,
+                   background: i === active ? "var(--accent)" : "transparent",
+                   color: i === active ? "var(--bg-deep)" : "var(--text)",
+                 }}>
+              <span>{c.label}</span>
+              {c.hint && <span style={{ opacity: 0.7 }}>{c.hint}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [tab, setTab] = React.useState("proxy");
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [bootShown, setBootShown] = React.useState(() => tweaks.bootSplash !== false);
   const [updateDismissed, setUpdateDismissed] = React.useState(() => {
     try { return localStorage.getItem("nl-update-dismissed") || ""; } catch { return ""; }
@@ -5679,6 +5759,28 @@ function App() {
     return () => window.removeEventListener("nl-update", onUpdate);
   }, []);
 
+  // Global hotkeys (#247): Ctrl/Cmd+K opens the command palette from
+  // anywhere (including while an input is focused, matching the palette's
+  // own convention of always being reachable); Ctrl/Cmd+1..9 jumps straight
+  // to one of the first nine tabs, mirroring the "0N" index badge the tab
+  // strip already renders (chrome.jsx TitleBar) but never wired to a key
+  // until now. Deliberately fixed, not user-remappable -- see parity #247's
+  // gap text for the honest remainder.
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "k") { e.preventDefault(); setPaletteOpen(o => !o); return; }
+      if (/^[1-9]$/.test(e.key)) {
+        const t = TABS[Number(e.key) - 1];
+        if (t) { e.preventDefault(); setTab(t.id); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // intruder ticking (kept as no-op for real-data mode; the snapshot
   // brings in completed rows directly)
   React.useEffect(() => {
@@ -5730,6 +5832,44 @@ function App() {
 
   const copyCa = () => navigator.clipboard?.writeText(NL.bootInfo.caPath);
 
+  const paletteCommands = React.useMemo(() => ([
+    ...TABS.map((t, i) => ({
+      id: "tab-" + t.id,
+      label: "Go to " + t.label,
+      keywords: "tab navigate switch",
+      hint: i < 9 ? ("Ctrl+" + (i + 1)) : "tab",
+      run: () => setTab(t.id),
+    })),
+    {
+      id: "toggle-intercept",
+      label: state.intercept ? "Turn intercept OFF" : "Turn intercept ON",
+      keywords: "proxy intercept",
+      hint: "proxy",
+      run: () => dispatch({ type: "intercept-toggle" }),
+    },
+    {
+      id: "toggle-intercept-responses",
+      label: state.interceptResponses ? "Stop intercepting responses" : "Intercept responses too",
+      keywords: "proxy intercept response",
+      hint: "proxy",
+      run: () => dispatch({ type: "intercept-responses-toggle" }),
+    },
+    {
+      id: "toggle-tweaks",
+      label: "Open appearance / tweaks panel",
+      keywords: "theme density font accent settings appearance",
+      hint: "ui",
+      run: () => setTweaksOpen((o) => !o),
+    },
+    {
+      id: "copy-ca",
+      label: "Copy CA certificate path",
+      keywords: "cert tls mitm ca",
+      hint: "cert",
+      run: copyCa,
+    },
+  ]), [state.intercept, state.interceptResponses]);
+
   const update = (window.NL && NL.update) || { available: false };
   const showUpdateBanner = update.available && update.latestVersion && update.latestVersion !== updateDismissed;
   const dismissUpdate = () => {
@@ -5740,6 +5880,7 @@ function App() {
   return (
     <div className="nl-window" data-screen-label="Nullock">
       {showUpdateBanner && <UpdateBanner update={update} onDismiss={dismissUpdate} />}
+      {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
       <TitleBar
         tabs={tabsWithDots}
         current={tab}
@@ -5747,6 +5888,7 @@ function App() {
         theme={tweaks.theme}
         onTheme={(t) => setTweak("theme", t)}
         onToggleTweaks={() => setTweaksOpen(o => !o)}
+        onOpenPalette={() => setPaletteOpen(true)}
       />
       <Rail
         proxyOn={state.proxyOn}
