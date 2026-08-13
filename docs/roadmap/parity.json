@@ -3303,12 +3303,18 @@
     {
       "area": "proxy",
       "feature": "HTTP history persistence + search at engagement scale",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "/api/history/find (method/host/path/status/size/since filters at DB speed) has no UI. The in-UI search is capped at 500 rows. So at 200k requests the data is all there and individually openable, but there is no way from the interface to find a row you did not already have on screen.",
-      "why": "DOWNGRADED. The persistence half is genuinely present and user-reachable -- I confirmed the UI fetches evicted rows cold via /api/history/<id>/request|response (ui-v2/real-data.js:89,97), which falls back to the SQLite index. But the SEARCH half is not: no UI anywhere calls /api/history/find (grep across ui-v2 returns zero hits), so the DB-speed filtering the claim rests on is curl-only, and the s",
-      "evidence": "Persistence real: Src/Core/Storage/history_index.hpp:12-18 `* On every appendEntry() we INSERT a small row of metadata into\\n//     <project>/history-index.sqlite: id, ts, method, host, port,\\n//     path, status, size, tls, mime.` ; window cap Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp:81 `int m_maxRows = 10'000;        // window cap` ; cold read wired at ui-v2/real-data.js:89 `const t = syncF"
+      "gap": "None left that this cloud session can close. A DB SEARCH overlay on the Proxy tab (ui-v2/proxy.jsx) now wires /api/history/find directly: method/host/path (LIKE)/status/min-max size/since-minutes/limit filters, a results table, and an inline full-raw request/response view for the selected result via NL.requestRawById/responseRawById -- the same eviction-safe cold-fetch path DetailPane already used for the persistence half. A row that scrolled out of the bounded on-screen HTTP HISTORY window is now findable and openable from the GUI, closing the search-at-scale gap.",
+      "why": "Closed this session: added DbSearchOverlay + the pure buildHistoryFindFilters helper to ui-v2/proxy.jsx, a DB SEARCH button next to WS REPEATER/H2 FRAME LOG in the HTTP HISTORY pane-head, and NL.actions.historyFind() in ui-v2/real-data.js posting to the existing, previously-orphaned /api/history/find. No backend touched -- HistoryLogic::buildFindQuery's filter set (method/host/path/status/minSize/maxSize/sinceMs/limit) and HistoryIndex::find()'s row shape (id/ts/method/host/port/path/status/size/tls/mime) were read directly from source and matched field-for-field.",
+      "evidence": "ui-v2/proxy.jsx DbSearchOverlay + buildHistoryFindFilters, ProxyTab's DB SEARCH button; ui-v2/real-data.js NL.actions.historyFind; Src/BackEnd/Control/control_server.cpp:4072-4083 POST /api/history/find; Src/Core/Storage/history_logic.hpp/.cpp buildFindQuery (filter set); Src/Core/Storage/history_index.cpp:296-337 find() (returned row shape).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "bbc8c86",
+        "note": "DB Search wave: wired the previously-orphaned /api/history/find into a new Proxy-tab overlay (structured filters + results table + inline raw request/response view), closing the last real gap on this item."
+      }
     },
     {
       "area": "proxy",

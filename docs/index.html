@@ -120,7 +120,7 @@
       </div>
       <div class="card">
         <h3>Scoped history</h3>
-        <p>200k+ rows on a 16GB box. SQLite-backed, indexed and filterable by host, method, path, status, in-scope, parameterized, hide-404, MIME class, or file extension (show/hide). Search is case-sensitive-toggleable and a leading "-" negates a term. Add hosts to scope by pasting a URL, loading a list, or right-click on any row.</p>
+        <p>200k+ rows on a 16GB box. SQLite-backed, indexed and filterable by host, method, path, status, in-scope, parameterized, hide-404, MIME class, or file extension (show/hide). Search is case-sensitive-toggleable and a leading "-" negates a term. Add hosts to scope by pasting a URL, loading a list, or right-click on any row. A DB Search overlay queries the SQLite index directly by method/host/path/status/size/since, at engagement scale rather than the bounded on-screen window, and opens any matched row's full raw request/response even if it has since been evicted from view.</p>
       </div>
       <div class="card">
         <h3>Match &amp; replace</h3>

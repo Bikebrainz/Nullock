@@ -23,7 +23,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   HTTP/2 frame feed (type/flags/bytes) on either MITM leg -- a frame-level view
                   Burp doesn't have at all;
                   HTTP history/Site map filter bar -- scope/params/404 chips, MIME class, extension
-                  show/hide, case-sensitive toggle, and negative ("-term") search
+                  show/hide, case-sensitive toggle, and negative ("-term") search; a DB Search
+                  overlay queries the SQLite-backed history index directly (method/host/path/
+                  status/size/since filters) so a row can be found and its full raw request/
+                  response opened even after it has scrolled out of the bounded on-screen window
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing
