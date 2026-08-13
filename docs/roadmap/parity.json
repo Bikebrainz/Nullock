@@ -2938,11 +2938,17 @@
     {
       "area": "platform",
       "feature": "Project files: scan issues persisted in the project and restored on reopen",
-      "state": "absent",
+      "state": "present",
       "impact": "blocker",
       "effort": "days",
-      "gap": "Every finding is lost on restart; a week-long engagement's issue list evaporates. And the baseline workaround is worse than nothing \u2014 after a restart the diff reports all baselined issues as FIXED.",
-      "why": "Confirmed, and correctly rated blocker. I re-ran the greps: no findings.json/findings.ndjson/saveFindings/loadFindings/persistFindings anywhere in .cpp/.hpp, and 'findings' does not appear in project_store.cpp or .hpp at all. I also read saveMetadata() in full and confirmed findings are not among the seven serialised fields. Note the compounding damage I found elsewhere: because the live findings ",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "45c0a83",
+        "note": "Findings persist to <project>/findings.ndjson (append-on-report, deduped by the baseline identity key) and restore into the panel on reopen, preserving each finding's ts, enrichment and history rowId. New pure FindingSerial module (unit-tested + mutation-proven on ts/compliance), PassiveScanner findingAdded signal + ingestFinding restore, ProjectStore appendFinding/streamExistingFindings. Gauntlet ctest 93/93, probe_smoke 156/156."
+      },
+      "gap": "None -- findings persist to <project>/findings.ndjson at discovery time and are streamed back into the findings panel on reopen; the baseline diff no longer reports restored issues as FIXED because the live set is repopulated first.",
+      "why": "Closed 2026-08-13: added a pure FindingSerial JSON round-trip (finding_serial.cpp, its own unit test, mutation-proven on the ts + compliance fields); ProjectStore.appendFinding writes findings.ndjson (deduped by the baseline identity key) and streamExistingFindings/restoreFindings stream it back on open; PassiveScanner gained a findingAdded signal (append-on-discovery, crash-safe) + ingestFinding (verbatim restore, no re-enrich/re-persist); app.cpp wires both. Restore preserves ts/enrichment/rowId. Gauntlet 93/93 + 156/156.",
       "evidence": "`grep -rn \"findings.json|findings.ndjson|saveFindings|loadFindings|persistFindings\" --include=*.cpp --include=*.hpp Src` \u2192 no output. `grep -n \"findings\" Src/Core/Storage/project_store.cpp Src/Core/Storage/project_store.hpp` \u2192 no output. saveMetadata (project_store.cpp:283-315) serialises only v/name/notes/created/updated/inScope/outOfScope/rules. On open only traffic is replayed: Src/App/app.cpp:"
     },
     {
