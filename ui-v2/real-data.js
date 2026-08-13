@@ -302,8 +302,8 @@
     graphqlProbe(url, headers)   { return post("/api/graphql/probe", { url, headers: headers || undefined }).then(r => r.json()); },
     discoverContent(url, max)   { return post("/api/content/discover", { url, max: max || undefined }).then(r => r.json()); },
     scanRobots(url)             { return post("/api/robots/scan", { url }).then(r => r.json()); },
-    crawlerStart(seed, maxPages, maxDepth) {
-      return post("/api/crawler/start", { seed, maxPages: maxPages || undefined, maxDepth: maxDepth || undefined }).then(r => r.json());
+    crawlerStart(seed, maxPages, maxDepth, throttleMs) {
+      return post("/api/crawler/start", { seed, maxPages: maxPages || undefined, maxDepth: maxDepth || undefined, throttleMs: throttleMs || undefined }).then(r => r.json());
     },
     crawlerStop()                { return post("/api/crawler/stop").then(r => r.json()); },
     // Active vulnerability tests: one uniform {url, param?, method?} contract

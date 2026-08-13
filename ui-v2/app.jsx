@@ -3646,6 +3646,9 @@ function DiscoverTab() {
   const [busy, setBusy]       = React.useState(false);
   const [err, setErr]         = React.useState("");
   const [crawling, setCrawling] = React.useState(false);
+  const [maxPages, setMaxPages]     = React.useState(200);
+  const [maxDepth, setMaxDepth]     = React.useState(4);
+  const [throttleMs, setThrottleMs] = React.useState(200);
 
   const run = async (k, fn) => {
     if (!url) { setErr("enter a URL"); return; }
@@ -3662,7 +3665,7 @@ function DiscoverTab() {
     if (!url) { setErr("enter a seed URL"); return; }
     setKind("crawl"); setErr(""); setBusy(true); setRes(null);
     try {
-      const r = await NL.actions.crawlerStart(url);
+      const r = await NL.actions.crawlerStart(url, maxPages, maxDepth, throttleMs);
       if (r && r.ok === false) setErr(r.error || "crawler failed to start");
       else { setCrawling(true); setRes(r); }
     } catch (e) { setErr(String(e && e.message ? e.message : e)); }
@@ -3746,6 +3749,27 @@ function DiscoverTab() {
           ? <Btn label="start crawl" active={kind === "crawl"} onClick={startCrawl} />
           : <Btn label="stop crawl" active={true} onClick={stopCrawl} />}
         <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{busy ? "working…" : err || ""}</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: "var(--dim)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Crawl config</span>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          max pages
+          <input type="number" min={1} max={5000} value={maxPages} disabled={crawling}
+                 onChange={e => setMaxPages(Number(e.target.value) || 1)}
+                 style={{ width: 70, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          max depth
+          <input type="number" min={0} max={10} value={maxDepth} disabled={crawling}
+                 onChange={e => setMaxDepth(Number(e.target.value) || 0)}
+                 style={{ width: 60, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          throttle (ms)
+          <input type="number" min={0} max={60000} value={throttleMs} disabled={crawling}
+                 onChange={e => setThrottleMs(Number(e.target.value) || 0)}
+                 style={{ width: 70, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
       </div>
       <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
         {render()}
