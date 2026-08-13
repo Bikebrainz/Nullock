@@ -3090,7 +3090,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "70567af",
         "note": "Command palette + global tab-jump/palette hotkeys batch: Ctrl/Cmd+K command palette (tab navigation + intercept/tweaks/copy-CA toggles, fuzzy filter, arrow-key nav) and Ctrl/Cmd+1-9 direct tab hotkeys close the GUI-affordance half of this gap; configurable rebinding and contextual per-row shortcuts are the honest remainder, left absent."
       }
     },
