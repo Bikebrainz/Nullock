@@ -3611,7 +3611,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "6f7ac6a",
         "note": "Intercept Scan pivot batch: added Send to Scanner (parses the held request's raw request-line target via a parseRawRequest fallback, POSTs to /api/audit/run), and corrected the register for Send to Decoder (already shipped, never flipped) -- all five action-menu destinations now present."
       }
     },
