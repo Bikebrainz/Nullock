@@ -4395,7 +4395,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "4983339",
         "note": "Docked the Selection widget inside the Inspector panel itself (Repeater + Proxy/Site-map DetailPane), matching Burp's Selection Info section rather than a separate bottom strip that disappeared when Inspector was the active view. Closes #362 partial -> present; Intruder's template-editor Inspector toggle still lacks selection tracking, called out honestly as a narrower remainder."
       }
     },
