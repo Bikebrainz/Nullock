@@ -1,12 +1,14 @@
 #pragma once
 
 #include "history_index.hpp"
+#include "passive_scanner.hpp"   // Nullock::Core::Finding
 #include "proxy_server.hpp"
 
 #include <QDateTime>
 #include <QFile>
 #include <QMutex>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -35,6 +37,10 @@ public:
     Q_INVOKABLE bool open(const QString &projectDir);
     Q_INVOKABLE void close();
     Q_INVOKABLE bool saveMetadata();
+    // Re-stream <project>/findings.ndjson, emitting findingRestored per finding.
+    // open() already does this, but the very first project is opened before the
+    // scanner exists, so app.cpp calls this once after wiring to repopulate it.
+    Q_INVOKABLE void restoreFindings();
     Q_INVOKABLE QString defaultProjectDir() const;
 
     // Project management. Projects live as sibling dirs under
@@ -109,6 +115,12 @@ public slots:
     void appendEntry(const Nullock::Proxy::HttpRequest &request,
                      const Nullock::Proxy::HttpResponse &response);
 
+    // Append one scan finding to findings.ndjson so it survives app close /
+    // project reopen. Wire to PassiveScanner::findingAdded. Deduped by identity
+    // key (kind+host+url+summary, matching the baseline) so a re-discovered or
+    // restored finding is never written twice. No-op when no project is open.
+    void appendFinding(const Finding &f);
+
 signals:
     void openedChanged();
     void entryLoaded(const Nullock::Proxy::HttpRequest &request,
@@ -120,10 +132,15 @@ signals:
     // ProxyModel::clear and any other downstream caches that should
     // discard the previous project's state.
     void historyShouldClear();
+    // Emitted once per finding streamed back from findings.ndjson on open() /
+    // restoreFindings(). Wire to PassiveScanner::ingestFinding so a reopened
+    // project's findings panel repopulates.
+    void findingRestored(const Finding &f);
 
 private:
     bool ensureMetadata();
     void streamExistingHistory();
+    void streamExistingFindings();
 
     QString    m_dir;
     QFile      m_history;
@@ -145,6 +162,13 @@ private:
     // going without the index.
     HistoryIndex m_historyIndex;
     int          m_nextRowId = 1;
+    // findings.ndjson: per-project scan-finding persistence, mirroring the
+    // history stream above. m_findingsMutex guards BOTH the file and the dedup
+    // key set -- a worker-thread findingAdded can race a main-thread project
+    // switch (open/close) exactly as appendEntry races close().
+    QFile          m_findingsFile;
+    mutable QMutex m_findingsMutex;
+    QSet<QString>  m_findingKeys;   // identity keys already persisted this project
 
 public:
     HistoryIndex *historyIndex() { return &m_historyIndex; }

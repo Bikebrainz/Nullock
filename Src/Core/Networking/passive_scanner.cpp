@@ -54,7 +54,12 @@ bool is172RangePrivate(const QString &host) {
 
 } // namespace
 
-PassiveScanner::PassiveScanner(QObject *parent) : QObject(parent) {}
+PassiveScanner::PassiveScanner(QObject *parent) : QObject(parent) {
+    // findingAdded(const Finding&) fires from worker threads (active-scan probes
+    // call reportFinding off the main thread), so the queued connection to
+    // project persistence needs Finding registered. Idempotent.
+    qRegisterMetaType<Nullock::Core::Finding>("Nullock::Core::Finding");
+}
 
 int PassiveScanner::count() const {
     QMutexLocker lock(&m_mutex);
@@ -115,6 +120,21 @@ void PassiveScanner::reportFinding(int rowId,
         QMutexLocker lock(&m_mutex);
         m_findings.append(f);
         if (m_findings.size() > 1000) m_findings.removeFirst();
+    }
+    emit findingsChanged();
+    emit findingAdded(f);
+}
+
+// Restore a fully-formed finding from project persistence. See the header: no
+// enrich, no findingAdded (which would re-persist and duplicate on every reopen).
+void PassiveScanner::ingestFinding(const Finding &f) {
+    {
+        QMutexLocker lock(&m_mutex);
+        m_findings.append(f);
+        // Keep the id counter ahead of every restored id so a finding discovered
+        // after restore can't reuse a restored one's id.
+        if (f.id >= m_nextId) m_nextId = f.id + 1;
+        if (m_findings.size() > kCap) m_findings.removeFirst();
     }
     emit findingsChanged();
 }
@@ -185,6 +205,7 @@ void PassiveScanner::addFinding(int rowId,
         if (over) m_findings.removeFirst();
     }
     emit findingsChanged();
+    emit findingAdded(f);
 }
 
 void PassiveScanner::checkResponse(int rowId,

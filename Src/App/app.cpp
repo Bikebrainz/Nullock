@@ -762,6 +762,15 @@ int main(int argc, char *argv[]) {
     extensions.setScanner(&scanner);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
+    // Findings persistence: append every newly-discovered finding to the project's
+    // findings.ndjson, and stream persisted findings back into the panel when a
+    // project is (re)opened -- so a scan's findings survive app close / project
+    // switch instead of vanishing (they were in-memory only). Restore preserves
+    // the finding's rowId, keeping click-to-jump aligned with the restored history.
+    QObject::connect(&scanner, &Nullock::Core::PassiveScanner::findingAdded,
+                     &projectStore, &Nullock::Core::ProjectStore::appendFinding);
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::findingRestored,
+                     &scanner, &Nullock::Core::PassiveScanner::ingestFinding);
     // ProxyModel::clear() resets its own next-id to 1; mirror that on the
     // scanner so the next batch of findings still references real rows.
     QObject::connect(&model, &QAbstractItemModel::modelReset,
@@ -769,6 +778,9 @@ int main(int argc, char *argv[]) {
         scanner.setNextRowId(1);
         scanner.clear();
     });
+    // The default project was opened (above) before the scanner existed, so its
+    // persisted findings weren't streamed into the now-wired panel. Restore once.
+    projectStore.restoreFindings();
 
     // Startup banner goes to stdout via QTextStream with an explicit flush:
     // this is a GUI-subsystem exe, so qInfo() is routed to the debugger (invisible

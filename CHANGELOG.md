@@ -11,6 +11,22 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Scan findings now persist across app close and project reopen.** Passive-scan
+  findings were held in memory only — they vanished when the app closed and were
+  wiped on every project switch, so an engagement's findings evaporated. Each
+  finding is now appended to `<project>/findings.ndjson` at discovery time
+  (append-on-report, so a crash still preserves it; deduped by the same
+  kind+host+url+summary identity key the baseline uses, so a re-discovered or
+  restored finding is never written twice), and streamed back into the findings
+  panel when the project is (re)opened — preserving each finding's original
+  discovery timestamp, enrichment (CWE/OWASP/CVSS/compliance/fix), and history
+  rowId so click-to-jump still lands on the right request. Adds a pure
+  `FindingSerial` JSON round-trip module with its own unit test
+  (`ctest -R finding_serial`, mutation-proven on the `ts` and `compliance`
+  fields); restore replays through the scanner's public surface via a new
+  `ingestFinding` (no re-enrich, no re-persist), and discovery is captured via a
+  new `findingAdded(const Finding&)` signal. Closes the top launch blocker —
+  "scan issues are not persisted in the project file; findings vanish on reopen".
 - **Intruder "ECB block shuffler" payload type.** Splits a hex-encoded ciphertext
   into `blockSize`-byte blocks and emits the block-shuffled variants (rendered
   back to hex) — the classic attack against ECB-mode tokens, where permuting

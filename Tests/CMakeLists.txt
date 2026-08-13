@@ -392,6 +392,13 @@ add_subdirectory(cert_logic)
 # Run via: ctest -R project_logic -V
 add_subdirectory(project_logic)
 
+# Findings-persistence wire format: the Finding<->JSON round-trip that backs
+# <project>/findings.ndjson, so scan findings survive app close / project reopen.
+# Locks that every field (incl. the discovery ts + enrichment block) round-trips
+# losslessly and that the encoding is ndjson-safe + crash-free on partial input.
+# Run via: ctest -R finding_serial -V
+add_subdirectory(finding_serial)
+
 # Intercept outgoing-byte fidelity: the resolver that forwards an UNEDITED
 # intercepted request's bytes VERBATIM (preserving a binary body + Content-Length)
 # instead of the lossy QString fromUtf8/toUtf8 round-trip, while re-encoding when

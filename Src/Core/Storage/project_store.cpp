@@ -1,5 +1,6 @@
 #include "project_store.hpp"
 
+#include "finding_serial.hpp"
 #include "project_logic.hpp"
 
 #include <QDir>
@@ -172,6 +173,19 @@ bool ProjectStore::open(const QString &projectDir) {
         }
     }
 
+    // Restore this project's persisted scan findings (findingRestored -> scanner
+    // ingest), then open findings.ndjson for append. Read BEFORE we hold our own
+    // append handle. Non-fatal on open failure: a locked/unwritable findings file
+    // disables persistence this session but must not block using the project.
+    streamExistingFindings();
+    {
+        QMutexLocker lk(&m_findingsMutex);
+        m_findingsFile.setFileName(m_dir + "/findings.ndjson");
+        if (!m_findingsFile.open(QIODevice::WriteOnly | QIODevice::Append))
+            emit errorOccurred("could not open findings.ndjson for append: "
+                               + m_findingsFile.errorString());
+    }
+
     // Open the SQLite-backed metadata index next to the ndjson. Failures
     // here are non-fatal -- the rest of the project keeps working, just
     // without /api/history/find acceleration.
@@ -203,6 +217,13 @@ void ProjectStore::close() {
     {
         QMutexLocker lk(&m_historyMutex);
         if (m_history.isOpen()) m_history.close();
+    }
+    {
+        // Drop the findings handle + dedup set so the next project starts clean
+        // (and can't be written into the previous project's file).
+        QMutexLocker lk(&m_findingsMutex);
+        if (m_findingsFile.isOpen()) m_findingsFile.close();
+        m_findingKeys.clear();
     }
     if (!m_dir.isEmpty()) {
         m_dir.clear();
@@ -474,6 +495,67 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
     // outside the file mutex so the index write doesn't serialize the
     // hot ndjson append path. HistoryIndex carries its own mutex.
     m_historyIndex.append(rowId, request, response);
+}
+
+namespace {
+// Identity key for a finding: kind+host+url+summary, US-delimited. Deliberately
+// the SAME shape the baseline (control_server /api/baseline) keys on, so the two
+// durable finding artifacts dedup identically.
+QString findingKey(const Finding &f) {
+    const QChar sep(QChar(0x1f));
+    return f.kind + sep + f.host + sep + f.url + sep + f.summary;
+}
+} // namespace
+
+void ProjectStore::appendFinding(const Finding &f) {
+    // Encode outside the lock so the JSON work doesn't block a racing writer.
+    const QByteArray line =
+        QJsonDocument(FindingSerial::toJson(f)).toJson(QJsonDocument::Compact) + "\n";
+    const QString key = findingKey(f);
+
+    // Hold m_findingsMutex across the isOpen() check and the write+flush, exactly
+    // like appendEntry -- a main-thread project switch can drop the file between
+    // our check and our write (and on Windows recycle the FD).
+    QMutexLocker lk(&m_findingsMutex);
+    if (!m_findingsFile.isOpen()) return;      // no project open -> nothing to do
+    if (m_findingKeys.contains(key)) return;   // already persisted -> idempotent
+    m_findingKeys.insert(key);
+    m_findingsFile.write(line);
+    m_findingsFile.flush();
+}
+
+void ProjectStore::streamExistingFindings() {
+    const QString path = m_dir + "/findings.ndjson";
+    if (!QFileInfo::exists(path)) return;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+
+    QTextStream in(&f);
+    int line = 0;
+    while (!in.atEnd()) {
+        ++line;
+        const QByteArray rawLine = in.readLine().toUtf8();
+        if (rawLine.trimmed().isEmpty()) continue;
+
+        const QJsonDocument doc = QJsonDocument::fromJson(rawLine);
+        if (!doc.isObject()) {
+            emit errorOccurred(QString("findings.ndjson line %1: not a JSON object").arg(line));
+            continue;
+        }
+        const Finding fnd = FindingSerial::fromJson(doc.object());
+        {
+            // Seed the dedup set so a finding re-discovered after restore is not
+            // appended again. Guarded like appendFinding.
+            QMutexLocker lk(&m_findingsMutex);
+            m_findingKeys.insert(findingKey(fnd));
+        }
+        emit findingRestored(fnd);
+    }
+}
+
+void ProjectStore::restoreFindings() {
+    streamExistingFindings();
 }
 
 namespace {

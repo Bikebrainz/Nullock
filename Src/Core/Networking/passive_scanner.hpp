@@ -84,8 +84,21 @@ public slots:
                                    const QString &host,
                                    const QString &url) override;
 
+    // Restore a fully-formed finding streamed back from project persistence
+    // (<project>/findings.ndjson). Unlike reportFinding it preserves the
+    // finding's id/ts and existing enrichment verbatim (no re-enrich) and does
+    // NOT emit findingAdded -- re-persisting a restored finding would duplicate
+    // it in the ndjson on every reopen. Keeps the id counter ahead of restored
+    // ids so a post-restore discovery can't collide.
+    Q_INVOKABLE void ingestFinding(const Finding &f);
+
 signals:
     void findingsChanged();
+    // Emitted once per NEWLY DISCOVERED finding, carrying the fully-enriched
+    // Finding. Project persistence wires this to append the finding to
+    // <project>/findings.ndjson at discovery time (append-on-report, so a crash
+    // preserves it). NOT emitted by ingestFinding().
+    void findingAdded(const Finding &f);
 
 private:
     void   addFinding(int rowId,
@@ -114,3 +127,8 @@ private:
 };
 
 } // namespace Nullock::Core
+
+// Findings cross thread boundaries via the findingAdded() signal (the active
+// scanner reports from worker threads), so the queued connection needs Finding
+// registered as a metatype. Declared here; registered in the PassiveScanner ctor.
+Q_DECLARE_METATYPE(Nullock::Core::Finding)
