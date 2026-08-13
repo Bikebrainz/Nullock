@@ -3660,7 +3660,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "1df47e7",
         "note": "Intercept response-mods wave: RESP_MODS/applyEnabledRespMods + a persisted auto-apply toggle row closes the standing-setting gap (partial -> present)."
       }
     },
