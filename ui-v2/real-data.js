@@ -44,7 +44,7 @@
     NL.intercepted = snap.intercepted || [];
     NL.repeater    = snap.repeater    || { host: "", port: 443, tls: true,
                                             request: "", response: "",
-                                            statusLine: "" };
+                                            statusLine: "", autoContentLength: true };
     NL.intruder    = snap.intruder    || { host: "", port: 443, tls: true,
                                             template: "", payloads: [],
                                             results: [], running: false,

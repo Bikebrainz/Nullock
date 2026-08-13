@@ -29,7 +29,8 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   response opened even after it has scrolled out of the bounded on-screen window
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
-                  tab is testing
+                  tab is testing, AUTO-CL recomputes Content-Length from the edited body on
+                  send (on by default; toggle off from the GUI to hand-craft a CL/TE desync)
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/

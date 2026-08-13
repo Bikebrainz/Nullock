@@ -668,6 +668,16 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
           />
           TLS
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", cursor: "pointer" }}
+               title="Recompute Content-Length from the body before sending (Burp default). Turn off to send bytes verbatim for a hand-crafted CL/TE desync.">
+          <input
+            type="checkbox"
+            checked={rep.autoContentLength !== false}
+            onChange={e => dispatch({ type:"repeater-set", payload:{ autoContentLength: e.target.checked }})}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          AUTO-CL
+        </label>
         <span style={{ flex: 1 }} />
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           STATUS: <span style={{ color: "var(--accent)" }}>{rep.statusLine}</span>
