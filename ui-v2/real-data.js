@@ -162,6 +162,7 @@
     repeaterTabActivate(index)      { return post("/api/repeater/tab/activate", { index }); },
     repeaterTabRename(index, name)  { return post("/api/repeater/tab/rename",   { index, name }); },
     repeaterTabDuplicate(index)     { return post("/api/repeater/tab/duplicate",{ index }); },
+    repeaterTabNotes(index, notes)  { return post("/api/repeater/tab/notes",   { index, notes }); },
     // GET search; returns { hits: [{id, where, excerpts:[...]}], count }
     search(q, where = "both", limit = 200) {
       const url = "/api/search?q=" + encodeURIComponent(q || "")

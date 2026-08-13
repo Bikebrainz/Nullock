@@ -24,6 +24,9 @@ struct RepeaterTab {
     QString requestText;
     QString responseText;
     QString statusLine;
+    // Free-text engagement notes, e.g. "testing IDOR on order id" -- purely
+    // client-facing bookkeeping, never sent on the wire or read by send().
+    QString notes;
 };
 
 class Repeater : public QObject {
@@ -81,6 +84,7 @@ public:
     Q_INVOKABLE bool setActiveTab(int index);
     Q_INVOKABLE bool renameTab(int index, const QString &name);
     Q_INVOKABLE int  duplicateTab(int index);
+    Q_INVOKABLE bool setTabNotes(int index, const QString &notes);
 
 signals:
     void targetChanged();

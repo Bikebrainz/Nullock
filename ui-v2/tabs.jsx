@@ -474,6 +474,12 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
     if (next !== null && next !== cur) NL.actions.repeaterTabRename(i, next);
   };
 
+  const onNotes = (i) => {
+    const cur = tabs[i] ? (tabs[i].notes || "") : "";
+    const next = prompt("Notes for this tab (what are you testing?)", cur);
+    if (next !== null && next !== cur) NL.actions.repeaterTabNotes(i, next);
+  };
+
   // COPY AS: the request the tester just finished crafting, exported as a
   // command for another tool. Reuses renderRequestAs()/parseRawRequest() from
   // proxy.jsx (both are top-level function declarations, so they live in the
@@ -582,7 +588,8 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <div key={i}
                  onClick={() => NL.actions.repeaterTabActivate(i)}
                  onDoubleClick={() => onRename(i)}
-                 title={(t.host || "") + " · double-click to rename"}
+                 title={(t.host || "") + " · double-click to rename"
+                        + (t.notes ? ("\nnotes: " + t.notes) : "")}
                  style={{
                    display: "flex", alignItems: "center", gap: 6,
                    padding: "4px 8px", cursor: "pointer",
@@ -599,6 +606,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
                 {t.name || ("tab " + (i + 1))}
               </span>
+              {t.notes && (
+                <span style={{ color: "var(--accent-2)", fontSize: "10px" }} title={t.notes}>✎</span>
+              )}
               {t.statusLine && (
                 <span style={{ color: "var(--dim)", fontSize: "10px" }}>
                   ·{t.statusLine.split(" ").slice(0, 2).join(" ")}
@@ -626,6 +636,13 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                   border: "1px dashed var(--line)", padding: "0 8px",
                   fontFamily: "var(--ff-mono)", cursor: "pointer", fontSize: "11px",
                 }}>DUP</button>
+        <button onClick={() => onNotes(active)}
+                title="Edit notes for the current tab"
+                style={{
+                  background: "transparent", color: "var(--text-2)",
+                  border: "1px dashed var(--line)", padding: "0 8px",
+                  fontFamily: "var(--ff-mono)", cursor: "pointer", fontSize: "11px",
+                }}>NOTES</button>
       </div>
 
       <div className="target-row">

@@ -4066,12 +4066,18 @@
     {
       "area": "repeater",
       "feature": "Repeater: per-tab notes / annotations",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No place to record what a tab is testing. Burp explicitly supports notes per tab. Cheap to add \u2014 one QString on the struct plus a snapshot field.",
-      "why": "Confirmed. I widened the search to comment/annotate/note across the repeater struct, the control-server header and the UI: the only 'comment' field in the codebase belongs to match/replace rules.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:19-27 struct RepeaterTab \u2014 no notes/comment/annotation field. Snapshot emits only name/host/port/tls/statusLine (control_server.cpp:1487-1494). Unrelated hits only: Src/Core/Storage/project_store.cpp:260 `rule.comment = r.value(\"comment\").toString();`."
+      "gap": "None -- a NOTES button in the tab strip (prompt-based, matching the existing double-click rename affordance) sets free-text per-tab notes; tabs carrying notes show a small pencil (\u270e) indicator and the tab tooltip includes the note text.",
+      "why": "Closed 2026-08-13: RepeaterTab (repeater.hpp:19-29) gains a `notes` QString field; Repeater::setTabNotes(index, notes) (repeater.cpp:219-223) mirrors the existing renameTab pattern and is exposed as POST /api/repeater/tab/notes (control_server.cpp:3183-3187). The snapshot's tabs[] array now includes notes (control_server.cpp:1501). ui-v2/tabs.jsx's RepeaterTab component gets a NOTES button in the tab strip (prompt-based edit of the active tab), a pencil indicator span on any tab carrying notes, and the tab tooltip appends the note text.",
+      "evidence": "Src/Core/Networking/repeater.hpp:19-29 (notes field), :87 (setTabNotes); repeater.cpp:219-223 (setTabNotes impl); control_server.cpp:1501 (snapshot to[\"notes\"]), :3183-3187 (/api/repeater/tab/notes); ui-v2/real-data.js:165 (repeaterTabNotes action); ui-v2/tabs.jsx onNotes handler + NOTES button + indicator span.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "PENDING",
+        "note": "Repeater per-tab notes batch -- absent -> present. Backend adds a notes field to RepeaterTab plus setTabNotes()/the /api/repeater/tab/notes endpoint; frontend adds a NOTES button, a per-tab pencil indicator, and a tooltip note. This cloud session cannot build the C++ side; will confirm the next GitHub Actions ci run is green before calling this fully closed."
+      }
     },
     {
       "area": "repeater",

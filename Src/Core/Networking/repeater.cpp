@@ -216,6 +216,13 @@ bool Repeater::renameTab(int index, const QString &name) {
     return true;
 }
 
+bool Repeater::setTabNotes(int index, const QString &notes) {
+    if (index < 0 || index >= m_tabs.size()) return false;
+    m_tabs[index].notes = notes;
+    emit tabsChanged();
+    return true;
+}
+
 int Repeater::duplicateTab(int index) {
     if (index < 0 || index >= m_tabs.size()) return -1;
     RepeaterTab copy = m_tabs[index];

@@ -1498,6 +1498,7 @@ QByteArray ControlServer::buildSnapshot() const {
             to["port"]       = t.port;
             to["tls"]        = t.useTls;
             to["statusLine"] = t.statusLine;
+            to["notes"]      = t.notes;
             tabs.append(to);
         }
         repeater["tabs"] = tabs;
@@ -3178,6 +3179,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.repeater)
             idx = m_wiring.repeater->duplicateTab(bodyJson.value("index").toInt(-1));
         return okJson({{ "index", idx }});
+    }
+    if (path == "/api/repeater/tab/notes") {
+        bool ok = m_wiring.repeater
+               && m_wiring.repeater->setTabNotes(bodyJson.value("index").toInt(-1),
+                                                  bodyJson.value("notes").toString());
+        return okJson({{ "ok", ok }});
     }
 
     // Expand a generator spec {type, ...} into a payload list (server-side,
