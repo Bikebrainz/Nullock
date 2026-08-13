@@ -1,6 +1,7 @@
 #include "repeater.hpp"
 
 #include "Proxy/proxy_model.hpp"
+#include "chain_runner.hpp"
 #include "networking_logic.hpp"
 
 namespace Nullock::Core {
@@ -138,7 +139,13 @@ void Repeater::send() {
     // Make sure we end with a blank line before any body.
     if (!normalized.contains("\r\n\r\n"))
         normalized += "\r\n\r\n";
-    const QByteArray bytes = normalized.toUtf8();
+    QByteArray bytes = normalized.toUtf8();
+    // Recompute Content-Length from the actual body (Burp's default) unless the
+    // user turned it off to hand-craft a desync. The chain runner's audited helper
+    // also collapses a duplicate Content-Length and drops it under
+    // Transfer-Encoding: chunked -- both request-smuggling vectors.
+    if (m_autoContentLength)
+        bytes = ChainRunner::normalizeContentLength(bytes);
 
     const auto result = m_client.send(t.host,
                                       static_cast<quint16>(t.port),
@@ -160,6 +167,12 @@ void Repeater::send() {
     emit responseChanged();
     emit busyChanged();
     emit tabsChanged(); // status line for the strip
+}
+
+void Repeater::setAutoContentLength(bool on) {
+    if (m_autoContentLength == on) return;
+    m_autoContentLength = on;
+    emit autoContentLengthChanged();
 }
 
 int Repeater::addTab(const QString &name) {

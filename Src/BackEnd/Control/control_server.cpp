@@ -1490,6 +1490,7 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["statusLine"] = m_wiring.repeater->statusLine();
         repeater["busy"]       = m_wiring.repeater->busy();
         repeater["activeTab"]  = m_wiring.repeater->activeTab();
+        repeater["autoContentLength"] = m_wiring.repeater->autoContentLength();
         QJsonArray tabs;
         for (const auto &t : m_wiring.repeater->tabs()) {
             QJsonObject to;
@@ -3127,6 +3128,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (bodyJson.contains("port"))    m_wiring.repeater->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))     m_wiring.repeater->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("request")) m_wiring.repeater->setRequestText(bodyJson.value("request").toString());
+            // Burp's "Update Content-Length" toggle. On by default; set false to
+            // send bytes verbatim for a hand-crafted CL/TE smuggling desync.
+            if (bodyJson.contains("autoContentLength"))
+                m_wiring.repeater->setAutoContentLength(bodyJson.value("autoContentLength").toBool());
         }
         return okJson();
     }

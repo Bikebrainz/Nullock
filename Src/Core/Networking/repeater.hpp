@@ -42,6 +42,11 @@ class Repeater : public QObject {
     Q_PROPERTY(bool    busy         READ busy                               NOTIFY busyChanged)
     Q_PROPERTY(int     activeTab    READ activeTab    NOTIFY tabsChanged)
     Q_PROPERTY(int     tabCount     READ tabCount     NOTIFY tabsChanged)
+    // Recompute Content-Length from the actual body before each send (Burp's
+    // "Update Content-Length", on by default). Turn OFF to send the bytes
+    // verbatim -- e.g. a deliberately-malformed Content-Length for a CL/TE
+    // request-smuggling test.
+    Q_PROPERTY(bool autoContentLength READ autoContentLength WRITE setAutoContentLength NOTIFY autoContentLengthChanged)
 public:
     explicit Repeater(Nullock::FrontEnd::ProxyModel *historyModel,
                       QObject *parent = nullptr);
@@ -55,12 +60,14 @@ public:
     bool    busy() const         { return m_busy; }
     int     activeTab() const    { return m_active; }
     int     tabCount() const     { return m_tabs.size(); }
+    bool    autoContentLength() const { return m_autoContentLength; }
     const QList<RepeaterTab> &tabs() const { return m_tabs; }
 
     void setHost(const QString &h);
     void setPort(int p);
     void setUseTls(bool tls);
     void setRequestText(const QString &t);
+    Q_INVOKABLE void setAutoContentLength(bool on);
 
     Q_INVOKABLE void loadFromHistory(int row);
     Q_INVOKABLE void send();
@@ -92,6 +99,7 @@ signals:
     void responseChanged();
     void busyChanged();
     void tabsChanged();
+    void autoContentLengthChanged();
 
 private:
     RepeaterTab       &activeTab_();
@@ -105,6 +113,7 @@ private:
     QList<RepeaterTab> m_tabs;
     int                m_active = 0;
     bool               m_busy = false;
+    bool               m_autoContentLength = true;   // Burp-parity default
 };
 
 } // namespace Nullock::Core

@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater recomputes Content-Length automatically (Burp's "Update
+  Content-Length", on by default).** Editing a request body in Repeater left a
+  stale `Content-Length` on the wire — the length had to be hand-fixed on every
+  edit. Repeater now recomputes it from the actual body before each send, reusing
+  the chain runner's audited helper (which also collapses a duplicate
+  `Content-Length` and drops it under `Transfer-Encoding: chunked` — both
+  request-smuggling vectors). It's a toggle (`autoContentLength`, settable via
+  `/api/repeater/set`, surfaced in the state snapshot) that defaults **on**; turn
+  it **off** to send the bytes verbatim for a deliberately-malformed CL/TE
+  smuggling test, preserving the raw-send capability a security tool needs.
+  Closes the launch blocker "no Content-Length auto-update".
 - **Scan findings now persist across app close and project reopen.** Passive-scan
   findings were held in memory only — they vanished when the app closed and were
   wiped on every project switch, so an engagement's findings evaporated. Each
