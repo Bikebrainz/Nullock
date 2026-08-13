@@ -4162,11 +4162,17 @@
     {
       "area": "repeater",
       "feature": "Repeater: automatic \"Update Content-Length\" when the body is edited",
-      "state": "absent",
+      "state": "present",
       "impact": "blocker",
       "effort": "hours",
-      "gap": "Every body edit silently sends a wrong Content-Length: the server truncates the body or hangs waiting for bytes that never arrive, and the tester blames the target. Compounded by A3, where send-to-Repeater already hands you a body that does not match the captured Content-Length. Burp offers this as a toggle so you can deliberately desync \u2014 Nullock has neither the behaviour nor the toggle.",
-      "why": "Confirmed from both ends. Content-Length appears in networking.cpp only in RESPONSE parsing; nothing on the request side computes or fixes it.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "06088ba",
+        "note": "Repeater::send recomputes Content-Length from the body via the chain runner's audited normalizeContentLength (which also collapses a duplicate CL and drops CL under Transfer-Encoding: chunked). autoContentLength toggle (Q_PROPERTY + /api/repeater/set + state snapshot) defaults on; off sends bytes verbatim for a deliberate CL/TE desync. Gauntlet ctest 93/93, probe_smoke 156/156."
+      },
+      "gap": "None -- Repeater::send recomputes Content-Length from the actual body before sending (Burp's default). Kept as the autoContentLength toggle so a tester can still turn it off to deliberately desync, matching both Burp's behaviour and its escape hatch.",
+      "why": "Closed 2026-08-13: Repeater::send pipes the CRLF-normalized request through ChainRunner::normalizeContentLength when autoContentLength is on (default), recomputing CL from the body; that helper is unit-tested by the chain_runner suite (and collapses duplicate CL / drops CL under TE:chunked). Toggle wired through control_server (/api/repeater/set + snapshot). Verified by the full gauntlet.",
       "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:124-136 normalizes CRLF then `const auto result = m_client.send(t.host, static_cast<quint16>(t.port), t.useTls, bytes);` \u2014 `grep -i 'content-length' repeater.cpp` returns nothing. In networking.cpp every Content-Length hit (:277-327) is response framing: `// Every Content-Length field line, not just the first ... result.errorMessage = \"invalid or con"
     },
     {
