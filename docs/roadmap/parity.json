@@ -4075,7 +4075,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "8f5a1db",
         "note": "Repeater per-tab notes batch -- absent -> present. Backend adds a notes field to RepeaterTab plus setTabNotes()/the /api/repeater/tab/notes endpoint; frontend adds a NOTES button, a per-tab pencil indicator, and a tooltip note. This cloud session cannot build the C++ side; will confirm the next GitHub Actions ci run is green before calling this fully closed."
       }
     },
