@@ -3651,12 +3651,18 @@
     {
       "area": "proxy",
       "feature": "Response modification options (unhide hidden fields, enable disabled fields, remove length limits, remove JS validation, remove all JS, remove <object>, HTTPS->HTTP links, strip Secure flag)",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "All eight of Burp's one-click removals are now reachable per held response (unhide hidden fields, enable disabled fields, remove length limits, remove JS validation, remove all JavaScript, remove <object> tags, HTTPS->HTTP links, strip Secure cookie flag), but as manual per-message buttons in the Intercept response editor -- not a standing Proxy Options auto-apply toggle the way Burp's checkboxes are, so every future held response needs the buttons clicked again.",
-      "why": "Added 8 pure regex transforms (respUnhideHiddenFields, respEnableDisabledFields, respRemoveLengthLimits, respRemoveJsValidation, respRemoveAllJs, respRemoveObjectTags, respHttpsToHttp, respStripSecureCookie) to ui-v2/tabs.jsx, exposed as a response-mods toolbar shown only when the held Intercept item is a response (kind===1). Functionally tested against representative HTML/header fixtures for all 8. No backend response-body rewrite engine was touched -- this remains purely a manual client-side edit-before-forward, so upgraded absent -> partial rather than present.",
-      "evidence": "ui-v2/tabs.jsx:757-787 (8 resp* helper functions) and the \"response mods:\" toolbar in InterceptTab, gated on current.kind === 1 matching control_server.cpp:1461-1476's kind field (0=request,1=response)."
+      "gap": "None. All eight of Burp's one-click removals are reachable per held response, and a standing auto-apply toggle set (persisted to localStorage) now applies the enabled ones automatically to every future held response the instant it is captured -- matching Burp's Options-tab checkboxes, not just a manual per-message action.",
+      "why": "Added a RESP_MODS table + applyEnabledRespMods (ui-v2/tabs.jsx) driving a persisted settings row (\"response mods . auto-apply on hold:\") rendered unconditionally in InterceptTab, independent of whether a message is currently held. The held-item reset effect now runs applyEnabledRespMods against the settings captured at hold-time (via a ref, so toggling settings mid-edit of an already-held item does not clobber the user's in-progress edit) before the response text is shown for review, so every future held response gets the enabled transforms baked in without a click. The 8 manual per-message buttons stay for a one-off tweak of the currently-held item. No backend touched. present, not exceeds: this remains a client-side edit-before-forward, not a body-rewrite engine.",
+      "evidence": "ui-v2/tabs.jsx:856-905 (8 resp* helper functions, RESP_MODS table at :887, applyEnabledRespMods at :897, loadRespModSettings/saveRespModSettings persisting to localStorage key nl-intercept-respmods), the unconditional \"response mods . auto-apply on hold:\" checkbox row rendered under the icp-toggle bar, and the current.id-keyed reset effect that runs applyEnabledRespMods(current.text, respModSettingsRef.current) for kind===1 (response) matching control_server.cpp:1461-1476's kind field (0=request,1=response).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "PENDING",
+        "note": "Intercept response-mods wave: RESP_MODS/applyEnabledRespMods + a persisted auto-apply toggle row closes the standing-setting gap (partial -> present)."
+      }
     },
     {
       "area": "proxy",

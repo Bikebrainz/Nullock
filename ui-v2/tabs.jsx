@@ -848,11 +848,12 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
 // ===================== INTERCEPT =====================
 // Response modification helpers -- Burp's eight one-click client-side-control
 // removals (Proxy > Options > Response Modification), reproduced here as
-// manual per-message transforms applied to a held response's raw text
-// (status line + headers + body) before it's forwarded. Unlike Burp's
-// checkboxes these aren't a standing auto-apply setting -- each is a
-// one-shot edit on the currently-held item -- so the gap is closed as
-// "partial", not "present".
+// transforms applied to a held response's raw text (status line + headers +
+// body) before it's forwarded. RESP_MODS/applyEnabledRespMods below drive a
+// standing auto-apply toggle set (persisted to localStorage) that runs on
+// every future held response the moment it's captured, matching Burp's
+// Options checkboxes; the per-message buttons stay for a one-off tweak of
+// the currently-held item.
 function respUnhideHiddenFields(text) {
   return text.replace(/type\s*=\s*(["'])hidden\1/gi, "type=$1text$1");
 }
@@ -883,12 +884,53 @@ function respStripSecureCookie(text) {
   return text.replace(/^(Set-Cookie:.*?);\s*Secure(?=\s*(;|$))/gim, "$1");
 }
 
+const RESP_MODS = [
+  { key: "unhideHiddenFields", label: "UNHIDE FIELDS", fn: respUnhideHiddenFields },
+  { key: "enableDisabledFields", label: "ENABLE DISABLED", fn: respEnableDisabledFields },
+  { key: "removeLengthLimits", label: "REMOVE LENGTH LIMITS", fn: respRemoveLengthLimits },
+  { key: "removeJsValidation", label: "REMOVE JS VALIDATION", fn: respRemoveJsValidation },
+  { key: "removeAllJs", label: "REMOVE ALL JS", fn: respRemoveAllJs },
+  { key: "removeObjectTags", label: "REMOVE OBJECT TAGS", fn: respRemoveObjectTags },
+  { key: "httpsToHttp", label: "HTTPS -> HTTP LINKS", fn: respHttpsToHttp },
+  { key: "stripSecureCookie", label: "STRIP SECURE FLAG", fn: respStripSecureCookie },
+];
+function applyEnabledRespMods(text, enabled) {
+  if (!enabled) return text;
+  let out = text;
+  for (const m of RESP_MODS) {
+    if (enabled[m.key]) out = m.fn(out);
+  }
+  return out;
+}
+function loadRespModSettings() {
+  try {
+    const raw = localStorage.getItem("nl-intercept-respmods");
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch { return {}; }
+}
+function saveRespModSettings(settings) {
+  try { localStorage.setItem("nl-intercept-respmods", JSON.stringify(settings)); } catch {}
+}
+
 function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, onSwitchTab }) {
   const current = intercepted[0] || null;
   const more = Math.max(0, intercepted.length - 1);
 
   const [editedText, setEditedText] = React.useState(current ? current.text : "");
-  React.useEffect(() => { setEditedText(current ? current.text : ""); }, [current?.id]);
+  const [respModSettings, setRespModSettings] = React.useState(loadRespModSettings);
+  const respModSettingsRef = React.useRef(respModSettings);
+  respModSettingsRef.current = respModSettings;
+  const toggleRespMod = key => setRespModSettings(s => {
+    const next = { ...s, [key]: !s[key] };
+    saveRespModSettings(next);
+    return next;
+  });
+  React.useEffect(() => {
+    if (!current) { setEditedText(""); return; }
+    setEditedText(current.kind === 1 ? applyEnabledRespMods(current.text, respModSettingsRef.current) : current.text);
+  }, [current?.id]);
 
   const sendToRepeater = () => current && dispatch({ type: "send-to-repeater-raw", host: current.host, port: current.port, tls: current.tls, text: editedText });
   const sendToIntruder = () => current && dispatch({ type: "send-to-intruder-raw", host: current.host, port: current.port, tls: current.tls, text: editedText });
@@ -953,6 +995,18 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
         <button className="btn" onClick={() => dispatch({ type: "intercept-forward-all" })} disabled={(!intercept && !interceptResponses) || intercepted.length === 0}>
           FORWARD ALL
         </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, padding: "4px 12px", borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          response mods · auto-apply on hold:
+        </span>
+        {RESP_MODS.map(m => (
+          <label key={m.key} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--fz-xs)", color: "var(--text-2)", cursor: "pointer" }}>
+            <input type="checkbox" checked={!!respModSettings[m.key]} onChange={() => toggleRespMod(m.key)} />
+            {m.label}
+          </label>
+        ))}
       </div>
 
       {current ? (

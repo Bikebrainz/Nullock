@@ -16,7 +16,9 @@
 
 ```
 Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, intercept queue with
-                  pivot-to-Repeater/Intruder/Comparer and one-click response-modification presets;
+                  pivot-to-Repeater/Intruder/Comparer/Decoder/Scanner and eight response-modification
+                  presets as a standing auto-apply toggle set (persisted, applies to every future held
+                  response the moment it's captured, plus manual one-off buttons on the current item);
                   WS Repeater overlay injects text/binary/close/ping/pong frames into a live
                   WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
                   H2 Frame Log overlay shows a per-stream summary table and a live-tailing raw
