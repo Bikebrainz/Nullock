@@ -724,7 +724,7 @@
       "evidence": "crawler.cpp:67 `m_maxPages = qBound(1, maxPages, 5000); m_maxDepth = qBound(0, maxDepth, 10); m_throttleMs = qBound(0, throttleMs, 60'000);`",
       "reconciled": {
         "date": "2026-08-13",
-        "commit": "PENDING",
+        "commit": "3494297",
         "note": "Discover tab's crawler control row (ui-v2/app.jsx DiscoverTab) gains max pages / max depth / throttle (ms) number inputs, disabled while a crawl is running, passed through a new 4th throttleMs argument on NL.actions.crawlerStart (ui-v2/real-data.js) to the existing /api/crawler/start contract. Still partial: Burp's fuller crawl-configuration surface (max-unique-locations, per-directory limits, crawl-budget, coverage-strategy) has no Nullock equivalent at all, backend or frontend -- that remains a real gap, not just a GUI one."
       }
     },
