@@ -105,6 +105,8 @@ Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode;
                   panes, and the Intercept queue seed the Decoder tab's input directly
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
                   docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab.
+                  A Selection widget section shows highlighted-text character count and the first byte's
+                  decimal/hex value, labelling non-printing bytes (\n/\t/\r/space) instead of hiding them.
                   JWT TOOLKIT mode: offline decode/weakness-analyze/HS*-secret-brute-force, alg:none and
                   HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a
                   target -- active JWT auth-bypass testing Burp only offers via a paid extension

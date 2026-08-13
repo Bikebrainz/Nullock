@@ -344,7 +344,7 @@ function RepeaterInspectorSection({ title, children }) {
     </div>
   );
 }
-function RepeaterInspectorPanel({ raw, kind }) {
+function RepeaterInspectorPanel({ raw, kind, sel }) {
   const [view, setView] = React.useState(null);
   const [err, setErr] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -373,8 +373,28 @@ function RepeaterInspectorPanel({ raw, kind }) {
   const Section = RepeaterInspectorSection;
   const KV = repeaterInspectorKV;
 
+  // Burp's Inspector "Selection Info" widget (#362): length + first byte's
+  // decimal/hex value for whatever text was last highlighted in this pane's
+  // editor (raw/headers/body/hex), fed in by the caller and kept live even
+  // while this Inspector view itself is the active tab.
+  const selectionSection = (
+    <Section title="Selection">
+      {sel ? (
+        <KV rows={[
+          { name: "length", value: sel.length + " char" + (sel.length === 1 ? "" : "s") },
+          { name: "first char", value: repeaterDisplayChar(sel.firstChar) },
+          { name: "decimal", value: sel.firstCharDec },
+          { name: "hex", value: sel.firstCharHex },
+        ]} />
+      ) : (
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>nothing selected</span>
+      )}
+    </Section>
+  );
+
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "10px 12px", minHeight: 0 }}>
+      {selectionSection}
       {!raw || !raw.trim() ? (
         <span style={{ color: "var(--dim)", fontSize: "11.5px" }}>nothing to inspect yet</span>
       ) : err ? (
@@ -706,7 +726,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             onRegex={v => { setReqRegex(v); setReqMatchIdx(-1); }}
           />
           {reqView === "inspector" ? (
-            <RepeaterInspectorPanel raw={rep.request} kind="request" />
+            <RepeaterInspectorPanel raw={rep.request} kind="request" sel={reqSel} />
           ) : reqView === "raw" ? (
             <textarea
               ref={reqRef}
@@ -759,7 +779,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             onRegex={v => { setRespRegex(v); setRespMatchIdx(-1); }}
           />
           {respView === "inspector" ? (
-            <RepeaterInspectorPanel raw={rep.response} kind="response" />
+            <RepeaterInspectorPanel raw={rep.response} kind="response" sel={respSel} />
           ) : respView === "render" ? (
             <React.Fragment>
               <iframe

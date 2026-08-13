@@ -363,6 +363,8 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
   // boundary, unmount the entire app to a white screen.
   const reqRef  = React.useRef(null);
   const respRef = React.useRef(null);
+  const [reqSel, setReqSel] = React.useState(null);
+  const [respSel, setRespSel] = React.useState(null);
   const [overlay, setOverlay] = React.useState(null); // { title, body } | null
   const [copyMenuOpen, setCopyMenuOpen] = React.useState(false);
   const [cmpMenuOpen, setCmpMenuOpen] = React.useState(false);
@@ -394,6 +396,20 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
     if (!el) return "";
     const sel = el.value.substring(el.selectionStart, el.selectionEnd);
     return sel || el.value;
+  };
+
+  // Burp's Inspector "Selection" widget (#362): length + first byte's
+  // decimal/hex value, fed into the docked RepeaterInspectorPanel below.
+  // Reuses tabs.jsx's repeaterSelectionStats -- both files load into the
+  // same global scope, tabs.jsx after proxy.jsx, but this only runs from
+  // event handlers (never at module-eval time), so the load order is fine.
+  const onReqSelect = () => {
+    const el = reqRef.current;
+    if (el) setReqSel(repeaterSelectionStats(el.value, el.selectionStart, el.selectionEnd));
+  };
+  const onRespSelect = () => {
+    const el = respRef.current;
+    if (el) setRespSel(repeaterSelectionStats(el.value, el.selectionStart, el.selectionEnd));
   };
 
   return (
@@ -562,14 +578,16 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
             ))}
           </div>
           {reqTab === "inspector" ? (
-            <RepeaterInspectorPanel raw={req} kind="request" />
+            <RepeaterInspectorPanel raw={req} kind="request" sel={reqSel} />
           ) : (
             <React.Fragment>
               <CodecBar onRun={(name) => {
                 const input = grabFrom(reqRef);
                 setOverlay({ title: "REQ · " + name, body: runCodec(name, input) });
               }} />
-              <textarea ref={reqRef} className="txt readonly" value={renderView(req, reqTab)} readOnly />
+              <textarea ref={reqRef} className="txt readonly" value={renderView(req, reqTab)} readOnly
+                        onSelect={onReqSelect} onMouseUp={onReqSelect} onKeyUp={onReqSelect} />
+              <RepeaterSelectionReadout sel={reqSel} />
             </React.Fragment>
           )}
         </div>
@@ -582,14 +600,16 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
             ))}
           </div>
           {respTab === "inspector" ? (
-            <RepeaterInspectorPanel raw={resp} kind="response" />
+            <RepeaterInspectorPanel raw={resp} kind="response" sel={respSel} />
           ) : (
             <React.Fragment>
               <CodecBar onRun={(name) => {
                 const input = grabFrom(respRef);
                 setOverlay({ title: "RES · " + name, body: runCodec(name, input) });
               }} />
-              <textarea ref={respRef} className="txt readonly" value={renderView(resp, respTab)} readOnly />
+              <textarea ref={respRef} className="txt readonly" value={renderView(resp, respTab)} readOnly
+                        onSelect={onRespSelect} onMouseUp={onRespSelect} onKeyUp={onRespSelect} />
+              <RepeaterSelectionReadout sel={respSel} />
             </React.Fragment>
           )}
         </div>

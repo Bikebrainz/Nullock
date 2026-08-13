@@ -4386,17 +4386,17 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Selection\" widget \u2014 character count and ASCII decimal/hex values for highlighted text, including non-printing characters",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "No way to identify an invisible or non-printing byte in a value \u2014 a routine step when chasing header-injection and parser-differential bugs. toHexDump exists but is view-scoped, not selection-scoped.",
-      "why": "Confirmed. The only selection-aware code in the UI feeds the proxy codec bar and reports no counts or byte values.",
-      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx:244-248 `const grabFrom = (ref) => { const el = ref.current; if (!el) return \"\"; const sel = el.value.substring(el.selectionStart, el.selectionEnd); return sel || el.value; };` \u2014 the sole selectionStart use in ui-v2 \u2014 piped into `setOverlay({ title: \"REQ \u00b7 \" + name, body: runCodec(name, input) })`. It runs a transform and pops an overlay; no character count, no ASCII",
-      "audited_state": "absent",
+      "gap": "None functionally -- the docked Inspector panel (Repeater request/response panes and Proxy history/Site map DetailPane) now has a live Selection section: character count plus the first selected byte's decimal/hex value, with non-printing bytes labelled (\\n/\\t/\\r/space) instead of rendered invisibly. Honest remainder: Intruder's INSPECTOR/EDIT template-editor toggle does not yet track selection (no textarea selection listener wired there), so its Inspector panel always shows \"nothing selected\" -- a narrower surface than Repeater/Proxy, not a missing capability.",
+      "why": "Folded the existing per-pane selection readout (repeaterSelectionStats/repeaterDisplayChar, tabs.jsx) into RepeaterInspectorPanel itself as a permanent \"Selection\" section (rendered before the parsed-view content, so it shows even while parsing/erroring/empty) instead of a strip that vanished whenever the Inspector view-tab was active. Wired the same selection tracking into Proxy history/Site map's DetailPane (proxy.jsx), which previously had zero selection-aware code outside the codec bar's grab-whole-or-selected helper -- DetailPane gained reqSel/respSel state, onSelect/onMouseUp/onKeyUp handlers on both textareas, a bottom RepeaterSelectionReadout strip matching Repeater's UX, and sel passed into both RepeaterInspectorPanel calls.",
+      "evidence": "ui-v2/tabs.jsx RepeaterInspectorPanel (selectionSection, Section title=\"Selection\"); ui-v2/proxy.jsx DetailPane reqSel/respSel state + onReqSelect/onRespSelect + RepeaterInspectorPanel sel={reqSel|respSel} + RepeaterSelectionReadout in the non-inspector branches.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-08",
-        "commit": "cd03a95",
-        "note": "A selection readout (char count + first byte's decimal/hex, non-printing chars shown as \\n/\\t/\\r/space) now surfaces live under both Repeater editors on every selection change. Still partial: it lives in Repeater's own panes, not inside a unified docked Inspector side panel -- that panel itself remains absent (tracked separately as #359)."
+        "date": "2026-08-13",
+        "commit": "PENDING",
+        "note": "Docked the Selection widget inside the Inspector panel itself (Repeater + Proxy/Site-map DetailPane), matching Burp's Selection Info section rather than a separate bottom strip that disappeared when Inspector was the active view. Closes #362 partial -> present; Intruder's template-editor Inspector toggle still lacks selection tracking, called out honestly as a narrower remainder."
       }
     },
     {
