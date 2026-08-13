@@ -893,6 +893,24 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
     if (onSwitchTab) onSwitchTab("decoder");
   };
 
+  const [scanBusy, setScanBusy] = React.useState(false);
+  const [scanRes, setScanRes] = React.useState(null);
+  React.useEffect(() => { setScanRes(null); }, [current?.id]);
+  const sendToScanner = () => {
+    if (!current || current.kind === 1) return;
+    const parsed = parseRawRequest({ host: current.host, port: current.port, tls: current.tls }, editedText);
+    const headers = {};
+    for (const [k, v] of parsed.headers) headers[k] = v;
+    const opts = { method: parsed.method };
+    if (parsed.body) opts.body = parsed.body;
+    if (Object.keys(headers).length) opts.headers = headers;
+    setScanBusy(true); setScanRes(null);
+    NL.actions.auditRun(parsed.fullUrl, opts)
+      .then(r => setScanRes(r))
+      .catch(e => setScanRes({ ok: false, error: String(e && e.message ? e.message : e) }))
+      .finally(() => setScanBusy(false));
+  };
+
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto 1fr" }}>
       <div className="icp-toggle">
@@ -945,12 +963,33 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
             )}
             <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held message to Comparer" onClick={sendToComparer}>↦ CMP</button>
             <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="send this held message to Decoder" onClick={sendToDecoder}>↦ DEC</button>
+            {current.kind !== 1 && (
+              <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} title="run the active-test battery against this held request" disabled={scanBusy} onClick={sendToScanner}>
+                {scanBusy ? "SCANNING…" : "↦ SCAN"}
+              </button>
+            )}
             {more > 0 && (
               <span style={{ color: "var(--warn)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }} className="blink">
                 ▮ {more} more waiting
               </span>
             )}
           </div>
+          {scanRes && (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 12px", borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap" }}>
+              <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                scan:
+              </span>
+              {scanRes.ok === false ? (
+                <span style={{ color: "var(--err)", fontSize: "var(--fz-xs)" }}>{scanRes.error || "scan failed"}</span>
+              ) : (
+                <span style={{ color: "var(--text-2)", fontSize: "var(--fz-xs)" }}>
+                  {scanRes.totalFindings} finding{scanRes.totalFindings === 1 ? "" : "s"} across {(scanRes.testers || []).length} tester{(scanRes.testers || []).length === 1 ? "" : "s"} — see Issues
+                </span>
+              )}
+              <span style={{ flex: 1 }} />
+              <button className="btn" style={{ padding: "1px 6px", fontSize: "var(--fz-xs)" }} onClick={() => setScanRes(null)}>DISMISS</button>
+            </div>
+          )}
           {current.kind === 1 && (
             <div style={{ display: "flex", gap: 8, padding: "6px 12px", borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap" }}>
               <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", alignSelf: "center" }}>

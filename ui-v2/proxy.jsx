@@ -1131,10 +1131,9 @@ function parseRawRequest(row, raw) {
   const proto = row.tls ? "https" : "http";
   const defaultPort = row.tls ? 443 : 80;
   const portStr = (row.port && row.port !== defaultPort) ? ":" + row.port : "";
-  const path = row.url || "/";
-  out.fullUrl = proto + "://" + (row.host || "") + portStr + path;
+  let path = row.url || "/";
 
-  if (!raw) return out;
+  if (!raw) { out.fullUrl = proto + "://" + (row.host || "") + portStr + path; return out; }
   // Body is whatever follows a blank line.
   let headerBlock = raw;
   const idx = raw.indexOf("\r\n\r\n");
@@ -1150,6 +1149,11 @@ function parseRawRequest(row, raw) {
   const first = lines.shift() || "";
   const fp = first.split(" ");
   if (fp.length >= 2) out.method = fp[0];
+  // Callers that only have host/port/tls (no captured `row.url`, e.g. an
+  // Intercept-held message) fall back to the request line's own target so
+  // the URL isn't just the host root.
+  if (!row.url && fp.length >= 2 && fp[1]) path = fp[1];
+  out.fullUrl = proto + "://" + (row.host || "") + portStr + path;
   for (const ln of lines) {
     const c = ln.indexOf(":");
     if (c <= 0) continue;

@@ -3602,12 +3602,18 @@
     {
       "area": "proxy",
       "feature": "Intercept: Action menu (send held message to Repeater / Intruder / Comparer / Decoder / Scanner)",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Send to Repeater / Intruder / Comparer now available directly from the held message (Intercept action-menu buttons); Send to Decoder and Send to Scanner are still missing -- Decoder's editors aren't lifted into the app reducer the way Comparer's items were, and there is no ad-hoc \"scan this\" action anywhere in the app yet (audit/assess runners only take rows already in history).",
-      "why": "ui-v2/tabs.jsx InterceptTab gained REP/INT/CMP buttons wired to new send-to-repeater-raw / send-to-intruder-raw / comparer-add dispatch actions (ui-v2/app.jsx), reusing the existing repeater/tab/add + repeater/set and intruder/set endpoints so the held item doesn't need to be forwarded into history first. 3 of the 5 destinations named in the original gap text are covered -- upgraded absent -> partial, not present, since Decoder/Scanner are honestly still missing.",
-      "evidence": "ui-v2/tabs.jsx InterceptTab icp-meta row (REP/INT/CMP buttons); ui-v2/app.jsx reducer cases \"send-to-repeater-raw\", \"send-to-intruder-raw\" (repeaterTabAdd+repeaterSet / intruderSet against control_server.cpp:3120-3128,3201-3206 contract)."
+      "gap": "None -- all five pivots named in the original gap are wired: Repeater/Intruder/Comparer (send-to-repeater-raw/send-to-intruder-raw/comparer-add), Decoder (send-to-decoder, a prior wave that never flipped this item), and Scanner (a new SCAN button on a held request parses the raw request line for its target -- Intercept carries no captured `url` field, only host/port/tls/text -- and POSTs the reconstructed url/method/headers/body to the existing /api/audit/run, the same active-test battery the SCANS tab's Assess & audit section drives; findings file into Issues as usual, and an inline result strip reports the finding/tester counts or the error).",
+      "why": "This wave added the Scanner pivot: sendToScanner() in InterceptTab reuses proxy.jsx's parseRawRequest() -- extended with a fallback so it can derive the request-line target when no captured row.url is available (previously every caller had one) -- to turn the held request text into {method, fullUrl, headers, body}, then calls NL.actions.auditRun(url, opts) (already used by the SCANS tab's Audit form, unmodified). Also discovered while implementing this that Send to Decoder had already shipped in an earlier wave (df50bbc, 2026-08-12) but this item was never flipped -- the register was stale by two of its five gaps, not just one.",
+      "evidence": "ui-v2/tabs.jsx InterceptTab: sendToScanner()/SCAN button (kind!==1 only) + scanRes result strip; ui-v2/proxy.jsx parseRawRequest() row.url fallback; ui-v2/real-data.js NL.actions.auditRun (unchanged, already wired to POST /api/audit/run); control_server.cpp:6760-6797 /api/audit/run handler (url/method/body/headers/include request shape, {ok,target,totalFindings,testers} response shape) matches every field read/sent.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-13",
+        "commit": "PENDING",
+        "note": "Intercept Scan pivot batch: added Send to Scanner (parses the held request's raw request-line target via a parseRawRequest fallback, POSTs to /api/audit/run), and corrected the register for Send to Decoder (already shipped, never flipped) -- all five action-menu destinations now present."
+      }
     },
     {
       "area": "proxy",
