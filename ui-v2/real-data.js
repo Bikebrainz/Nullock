@@ -531,6 +531,17 @@
       const q = sinceMs ? ("?since=" + encodeURIComponent(sinceMs)) : "";
       return fetch("/api/h2/events" + q).then(r => r.json());
     },
+
+    // --- SQLite-backed history search (#268: the in-UI search is capped to
+    // NL.rows' in-memory window, so a row evicted from that window could
+    // never be found again -- this queries the on-disk index directly). ---
+    // filters: { method?, host?, path?, status?, minSize?, maxSize?, sinceMs?,
+    // limit? } -- every field optional, unreadable numeric filters are
+    // dropped server-side rather than guessed at. Response: { rows: [{id, ts,
+    // method, host, port, path, status, size, tls, mime}], count }.
+    historyFind(filters) {
+      return post("/api/history/find", filters || {}).then(r => r.json());
+    },
   };
 
   NL.statusText = function (s) {

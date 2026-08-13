@@ -1122,6 +1122,222 @@ function H2FrameLogOverlay({ onClose }) {
   );
 }
 
+// #268: SQLite-backed history search at engagement scale. The in-UI free-text
+// search (FilterBar) only ever sees NL.rows, the bounded in-memory window --
+// once a row is evicted from that window it becomes invisible to the box even
+// though the SQLite index (and /api/history/find) still has it. This overlay
+// is the missing "find a row you don't already have on screen" tool: it hits
+// the DB-indexed endpoint directly with structured filters, then opens the
+// found row's full raw request/response via the same eviction-safe cold-fetch
+// path (NL.requestRawById/responseRawById) DetailPane already relies on.
+//
+// Pure: turns the form's string fields into the /api/history/find JSON body.
+// Blank fields are omitted rather than sent as "" or NaN (the backend drops
+// unreadable numeric filters, but there is no reason to even send them).
+// `nowMs` is threaded in rather than read from Date.now() so this stays a
+// pure, unit-testable function.
+function buildHistoryFindFilters(f, nowMs) {
+  const filters = {};
+  if (f.method && f.method.trim()) filters.method = f.method.trim();
+  if (f.host   && f.host.trim())   filters.host   = f.host.trim();
+  if (f.path   && f.path.trim())   filters.path   = f.path.trim();
+  const num = (s) => {
+    if (s == null || String(s).trim() === "") return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+  const status  = num(f.status);  if (status  != null) filters.status  = status;
+  const minSize = num(f.minSize); if (minSize != null) filters.minSize = minSize;
+  const maxSize = num(f.maxSize); if (maxSize != null) filters.maxSize = maxSize;
+  const sinceMins = num(f.sinceMins);
+  if (sinceMins != null) filters.sinceMs = nowMs - sinceMins * 60000;
+  const limit = num(f.limit);
+  filters.limit = limit != null && limit > 0 ? limit : 200;
+  return filters;
+}
+
+function DbSearchOverlay({ onClose }) {
+  const [f, setF] = React.useState({ method: "", host: "", path: "", status: "", minSize: "", maxSize: "", sinceMins: "", limit: "200" });
+  const [rows, setRows] = React.useState(null); // null = not searched yet
+  const [count, setCount] = React.useState(0);
+  const [error, setError] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [openId, setOpenId] = React.useState(null);
+  const [view, setView] = React.useState("text"); // text | hex
+
+  const setField = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }));
+
+  const runSearch = async (e) => {
+    if (e) e.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      const filters = buildHistoryFindFilters(f, Date.now());
+      const res = await NL.actions.historyFind(filters);
+      setRows(res.rows || []);
+      setCount(res.count || 0);
+      setOpenId(null);
+    } catch (err) {
+      setError(String(err));
+      setRows([]);
+      setCount(0);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--accent)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+  const dimBtn = { ...btn, borderColor: "var(--line)", color: "var(--dim)" };
+  const cellStyle = { padding: "3px 6px", borderBottom: "1px solid var(--line-soft)" };
+  const inputStyle = {
+    background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)",
+    padding: "3px 6px", fontSize: "11px", fontFamily: "var(--ff-mono)", width: "100%",
+  };
+
+  const openRow = openId != null ? rows.find(r => r.id === openId) : null;
+  const reqText  = openRow ? NL.requestRawById(openRow.id)  : "";
+  const respText = openRow ? NL.responseRawById(openRow.id) : "";
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(94vw, 980px)", maxHeight: "88vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>⌕ DB SEARCH</span>
+          <button onClick={onClose} style={dimBtn}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Queries the SQLite-backed history index directly (/api/history/find), so it finds
+          rows the bounded HTTP HISTORY window and its free-text search can no longer see,
+          across every request captured this engagement. Host/Path accept SQL LIKE patterns
+          (% = any run of characters).
+        </div>
+        <form onSubmit={runSearch} style={{ padding: "10px 12px", borderBottom: "1px solid var(--line-soft)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>METHOD
+            <input style={inputStyle} placeholder="GET" value={f.method} onChange={setField("method")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>HOST
+            <input style={inputStyle} placeholder="%.example.com" value={f.host} onChange={setField("host")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>PATH
+            <input style={inputStyle} placeholder="/api/%" value={f.path} onChange={setField("path")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>STATUS
+            <input style={inputStyle} placeholder="200" value={f.status} onChange={setField("status")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>MIN SIZE (bytes)
+            <input style={inputStyle} value={f.minSize} onChange={setField("minSize")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>MAX SIZE (bytes)
+            <input style={inputStyle} value={f.maxSize} onChange={setField("maxSize")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>SINCE (minutes ago)
+            <input style={inputStyle} value={f.sinceMins} onChange={setField("sinceMins")} />
+          </label>
+          <label style={{ display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" }}>LIMIT (max 5000)
+            <input style={inputStyle} value={f.limit} onChange={setField("limit")} />
+          </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+            <button type="submit" style={btn} disabled={busy}>{busy ? "SEARCHING…" : "SEARCH"}</button>
+            <button type="button" style={dimBtn} onClick={() => { setF({ method: "", host: "", path: "", status: "", minSize: "", maxSize: "", sinceMins: "", limit: "200" }); setRows(null); setCount(0); setOpenId(null); }}>CLEAR</button>
+          </div>
+        </form>
+        {error && <div style={{ padding: "6px 12px", color: "var(--err, #e05555)", fontSize: "11px" }}>{error}</div>}
+        {rows != null && (
+          <div style={{ padding: "8px 12px 4px", color: "var(--dim)", fontSize: "10px" }}>
+            {rows.length} row{rows.length === 1 ? "" : "s"} returned{count > rows.length ? " (server reported " + count + ")" : ""}
+          </div>
+        )}
+        {rows != null && (
+          <div style={{ overflowX: "auto", padding: "0 12px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--ff-mono)", fontSize: "11px" }}>
+              <thead>
+                <tr style={{ color: "var(--dim)", textAlign: "left" }}>
+                  <th style={cellStyle}>#</th>
+                  <th style={cellStyle}>method</th>
+                  <th style={cellStyle}>status</th>
+                  <th style={cellStyle}>host</th>
+                  <th style={cellStyle}>path</th>
+                  <th style={cellStyle}>size</th>
+                  <th style={cellStyle}>mime</th>
+                  <th style={cellStyle}>captured</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr><td colSpan={8} style={{ ...cellStyle, color: "var(--dim)" }}>— no matching rows —</td></tr>
+                )}
+                {rows.map(r => (
+                  <tr key={r.id}
+                      className={openId === r.id ? "sel" : ""}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => { setOpenId(openId === r.id ? null : r.id); setView("text"); }}>
+                    <td style={cellStyle}>{r.id.toString().padStart(3, "0")}</td>
+                    <td style={cellStyle}><MethodCell m={r.method} /></td>
+                    <td style={cellStyle}><span className={"status " + statusKind(r.status)}>{r.status || "—"}</span></td>
+                    <td style={cellStyle}><span className={"tls-dot " + (r.tls ? "" : "off")} />{r.host}</td>
+                    <td style={{ ...cellStyle, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.path}</td>
+                    <td style={cellStyle}>{fmtSize(r.size)}</td>
+                    <td style={cellStyle}>{r.mime}</td>
+                    <td style={cellStyle}>{new Date(Number(r.ts)).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {openRow && (
+          <div style={{ padding: "10px 12px 12px", borderTop: "1px solid var(--line-soft)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ color: "var(--dim)", fontSize: "10px" }}>
+                #{openRow.id.toString().padStart(3, "0")} — full captured request/response (fetched from the history index, works even if this row scrolled out of the live table)
+              </span>
+              <span style={{ flex: 1 }} />
+              <button style={view === "text" ? btn : dimBtn} onClick={() => setView("text")}>TEXT</button>
+              <button style={view === "hex" ? btn : dimBtn} onClick={() => setView("hex")}>HEX</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 2 }}>REQUEST</div>
+                <textarea readOnly value={view === "hex" ? toHexDump(reqText) : reqText}
+                          style={{ width: "100%", height: 220, resize: "vertical", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: 6 }} />
+              </div>
+              <div>
+                <div style={{ color: "var(--dim)", fontSize: "10px", marginBottom: 2 }}>RESPONSE</div>
+                <textarea readOnly value={view === "hex" ? toHexDump(respText) : respText}
+                          style={{ width: "100%", height: 220, resize: "vertical", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: 6 }} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ===================== COPY AS (tool integration) ====================
 
 // Parse a captured raw HTTP request into { method, fullUrl, headers, body }.
@@ -1941,6 +2157,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   // #398: right-click add/remove scope, on any site-map or history row.
   const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
+  const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
 
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
   const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
@@ -2033,9 +2250,11 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <span className="ph-count">{shown} / {rows.length}</span>
           <button onClick={() => setWsRepeaterOpen(true)} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
+          <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
         </div>
         {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
         {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
+        {dbSearchOpen && <DbSearchOverlay onClose={() => setDbSearchOpen(false)} />}
         <FilterBar
           hostFilter={hostFilter}
           setHostFilter={v => dispatch({ type: "set", payload: { hostFilter: v }})}
