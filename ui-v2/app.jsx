@@ -5613,6 +5613,157 @@ function UpdateBanner({ update, onDismiss }) {
   );
 }
 
+// Rebindable hotkeys (#247): the global shortcut layer (palette-open,
+// tab-jump 1-9) now has a real user-configurable binding map, persisted to
+// localStorage the same way nl-update-dismissed/nl-intercept-respmods
+// already are. Pure helpers first (testable outside React), then the
+// overlay UI that records a new combo per action.
+const HOTKEYS_STORAGE_KEY = "nl-hotkeys";
+
+function defaultHotkeys() {
+  const map = { "open-palette": "mod+k" };
+  for (let i = 1; i <= 9; i++) map["jump-slot-" + i] = "mod+" + i;
+  return map;
+}
+
+// Only mod-chord combos (Ctrl/Cmd + optional Shift/Alt + a key) are
+// recordable/dispatchable -- bare letters would collide with every text
+// input on the page. Returns null for a bare modifier press or a
+// non-mod-chord key.
+function comboFromEvent(e) {
+  if (!e || !e.key) return null;
+  if (["Control", "Meta", "Shift", "Alt"].includes(e.key)) return null;
+  if (!(e.ctrlKey || e.metaKey)) return null;
+  const parts = ["mod"];
+  if (e.shiftKey) parts.push("shift");
+  if (e.altKey) parts.push("alt");
+  parts.push(e.key.toLowerCase());
+  return parts.join("+");
+}
+
+function comboLabel(combo) {
+  if (!combo) return "unbound";
+  const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform || "");
+  return combo.split("+").map((p) => {
+    if (p === "mod") return isMac ? "⌘" : "Ctrl";
+    if (p === "shift") return "Shift";
+    if (p === "alt") return "Alt";
+    return p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1);
+  }).join("+");
+}
+
+function loadHotkeys() {
+  const defaults = defaultHotkeys();
+  try {
+    const raw = localStorage.getItem(HOTKEYS_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return defaults;
+    const merged = { ...defaults };
+    for (const k of Object.keys(defaults)) {
+      if (typeof parsed[k] === "string" && parsed[k]) merged[k] = parsed[k];
+    }
+    return merged;
+  } catch { return defaults; }
+}
+
+function saveHotkeys(map) {
+  try { localStorage.setItem(HOTKEYS_STORAGE_KEY, JSON.stringify(map)); } catch {}
+}
+
+function matchHotkeyAction(hotkeys, combo) {
+  if (!combo) return null;
+  for (const [action, bound] of Object.entries(hotkeys)) {
+    if (bound === combo) return action;
+  }
+  return null;
+}
+
+// Lists every bindable action + lets the user record a new combo for one,
+// with a live conflict check against every other current binding (rather
+// than silently letting two actions share a combo, matching how a "record
+// a shortcut" UI conventionally behaves).
+function HotkeysOverlay({ hotkeys, actions, onChange, onReset, onClose }) {
+  const [recordingId, setRecordingId] = React.useState(null);
+  const [conflict, setConflict] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!recordingId) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); setRecordingId(null); return; }
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      e.preventDefault();
+      const existing = matchHotkeyAction(hotkeys, combo);
+      if (existing && existing !== recordingId) {
+        setConflict({ combo, action: existing });
+        return;
+      }
+      setConflict(null);
+      onChange(recordingId, combo);
+      setRecordingId(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recordingId, hotkeys, onChange]);
+
+  const defaults = defaultHotkeys();
+  const actionLabel = (id) => (actions.find((a) => a.id === id) || {}).label || id;
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "flex", justifyContent: "center", alignItems: "flex-start",
+           paddingTop: "10vh", zIndex: 80,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(90vw, 480px)", maxHeight: "70vh", overflow: "hidden",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          padding: "10px 12px", borderBottom: "1px solid var(--line)",
+          fontFamily: "var(--ff-mono)", fontSize: "13px", display: "flex",
+          justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span>Customize shortcuts</span>
+          <button className="btn" onClick={onClose}>CLOSE</button>
+        </div>
+        <div style={{ overflow: "auto", padding: "4px 0" }}>
+          {actions.map((a) => (
+            <div key={a.id} style={{
+              padding: "6px 12px", fontSize: "12px", fontFamily: "var(--ff-mono)",
+              display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
+            }}>
+              <span>{a.label}</span>
+              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button className="btn" onClick={() => { setConflict(null); setRecordingId(a.id); }}
+                        style={recordingId === a.id ? { borderColor: "var(--accent)" } : undefined}>
+                  {recordingId === a.id ? "Press keys… (Esc)" : comboLabel(hotkeys[a.id])}
+                </button>
+                {hotkeys[a.id] !== defaults[a.id] && (
+                  <button className="btn" title="Reset to default" onClick={() => onReset(a.id)}>↺</button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        {conflict && (
+          <div style={{
+            padding: "8px 12px", borderTop: "1px solid var(--line)",
+            fontSize: "11px", color: "var(--warn, #d9822b)",
+          }}>
+            "{comboLabel(conflict.combo)}" is already bound to "{actionLabel(conflict.action)}" — rebind that one first, or press a different combo.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Command palette (#247): fuzzy-searchable list of global commands --
 // jump to any tab, or fire one of a handful of cross-cutting toggles --
 // opened via Ctrl/Cmd+K or the ⌘K title-bar button. Substring match on
@@ -5697,6 +5848,8 @@ function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [hotkeys, setHotkeys] = React.useState(loadHotkeys);
+  const [hotkeysOpen, setHotkeysOpen] = React.useState(false);
   const [bootShown, setBootShown] = React.useState(() => tweaks.bootSplash !== false);
   const [updateDismissed, setUpdateDismissed] = React.useState(() => {
     try { return localStorage.getItem("nl-update-dismissed") || ""; } catch { return ""; }
@@ -5763,22 +5916,39 @@ function App() {
   // anywhere (including while an input is focused, matching the palette's
   // own convention of always being reachable); Ctrl/Cmd+1..9 jumps straight
   // to one of the first nine tabs, mirroring the "0N" index badge the tab
-  // strip already renders (chrome.jsx TitleBar) but never wired to a key
-  // until now. Deliberately fixed, not user-remappable -- see parity #247's
-  // gap text for the honest remainder.
+  // strip already renders (chrome.jsx TitleBar). Bindings are now
+  // user-remappable (HotkeysOverlay below, persisted to localStorage) --
+  // dispatch is a lookup against the current `hotkeys` map, not a hardcoded
+  // key check. Suspended while the rebind overlay itself is open so
+  // recording a new combo there can't also fire the old one here.
   React.useEffect(() => {
+    if (hotkeysOpen) return;
     const onKey = (e) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (k === "k") { e.preventDefault(); setPaletteOpen(o => !o); return; }
-      if (/^[1-9]$/.test(e.key)) {
-        const t = TABS[Number(e.key) - 1];
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      const action = matchHotkeyAction(hotkeys, combo);
+      if (!action) return;
+      if (action === "open-palette") { e.preventDefault(); setPaletteOpen(o => !o); return; }
+      const m = /^jump-slot-(\d)$/.exec(action);
+      if (m) {
+        const t = TABS[Number(m[1]) - 1];
         if (t) { e.preventDefault(); setTab(t.id); }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [hotkeys, hotkeysOpen]);
+
+  const hotkeyActions = React.useMemo(() => ([
+    { id: "open-palette", label: "Open command palette" },
+    ...TABS.slice(0, 9).map((t, i) => ({ id: "jump-slot-" + (i + 1), label: "Go to " + t.label })),
+  ]), []);
+
+  const updateHotkey = React.useCallback((id, combo) => {
+    setHotkeys((prev) => { const next = { ...prev, [id]: combo }; saveHotkeys(next); return next; });
+  }, []);
+  const resetHotkey = React.useCallback((id) => {
+    setHotkeys((prev) => { const next = { ...prev, [id]: defaultHotkeys()[id] }; saveHotkeys(next); return next; });
   }, []);
 
   // intruder ticking (kept as no-op for real-data mode; the snapshot
@@ -5837,7 +6007,7 @@ function App() {
       id: "tab-" + t.id,
       label: "Go to " + t.label,
       keywords: "tab navigate switch",
-      hint: i < 9 ? ("Ctrl+" + (i + 1)) : "tab",
+      hint: i < 9 ? comboLabel(hotkeys["jump-slot-" + (i + 1)]) : "tab",
       run: () => setTab(t.id),
     })),
     {
@@ -5868,7 +6038,14 @@ function App() {
       hint: "cert",
       run: copyCa,
     },
-  ]), [state.intercept, state.interceptResponses]);
+    {
+      id: "customize-shortcuts",
+      label: "Customize keyboard shortcuts…",
+      keywords: "hotkey hotkeys keybind rebind shortcut settings",
+      hint: "ui",
+      run: () => setHotkeysOpen(true),
+    },
+  ]), [state.intercept, state.interceptResponses, hotkeys]);
 
   const update = (window.NL && NL.update) || { available: false };
   const showUpdateBanner = update.available && update.latestVersion && update.latestVersion !== updateDismissed;
@@ -5881,6 +6058,15 @@ function App() {
     <div className="nl-window" data-screen-label="Nullock">
       {showUpdateBanner && <UpdateBanner update={update} onDismiss={dismissUpdate} />}
       {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
+      {hotkeysOpen && (
+        <HotkeysOverlay
+          hotkeys={hotkeys}
+          actions={hotkeyActions}
+          onChange={updateHotkey}
+          onReset={resetHotkey}
+          onClose={() => setHotkeysOpen(false)}
+        />
+      )}
       <TitleBar
         tabs={tabsWithDots}
         current={tab}

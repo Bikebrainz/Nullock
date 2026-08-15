@@ -148,7 +148,9 @@ Cookie jar         Full per-host cookie inventory (Path, resolved Expires/sessio
 Update check       Dismissible in-app banner surfaces new-release availability + release notes
 Command palette    Ctrl/Cmd+K (or the title bar's ⌘K button) fuzzy-searches every tab plus
                     intercept/tweaks/CA-path toggles; Ctrl/Cmd+1-9 jump straight to the first
-                    nine tabs
+                    nine tabs -- all 10 bindings are user-remappable (palette entry
+                    "Customize keyboard shortcuts…"), with live conflict detection and
+                    per-binding reset, persisted across restarts
 ```
 
 ## 30 seconds to first capture
