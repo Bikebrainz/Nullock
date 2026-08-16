@@ -2426,10 +2426,16 @@
     {
       "area": "sequencer",
       "feature": "Macros: record a macro by selecting requests from Proxy history, with a macro editor and \"Test macro\"",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "weeks",
-      "gap": "No way to select rows from history and turn them into a replayable sequence, no macro editor, no \"test macro\" with a response viewer. You hand-write raw HTTP/1.1 into a JSON file and run `nullock chain file.json` \u2014 and StepResult only returns `responsePreview` (chain_runner.hpp:51, first 2 KiB), so even reviewing the test run is truncated.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "b36c77d",
+        "note": "The RECORD half is closed: POST /api/chain/record { rowIds } selects Proxy-history rows and emits a replayable macro (the /api/chain/run step shape), via the pure ChainRunner::buildChainStep (unit-tested + mutation-proven on the name derivation). 'Test macro' = POST that macro to /api/chain/run, which already reports every step's status/timing/extracted vars. PARTIAL -- a visual macro editor + a full (untruncated) response viewer are the remaining UI pieces, and StepResult.responsePreview is still capped at 2 KiB."
+      },
+      "gap": "Recording is done -- POST /api/chain/record turns selected history rows into a replayable macro. Remaining: a visual macro editor and a full (untruncated) response viewer; StepResult.responsePreview is still capped at 2 KiB (chain_runner.hpp:51).",
       "why": "Confirmed. I checked the local vocabulary the instructions warn about \u2014 \"macro\" appears only in two prose comments, and the actual local name is \"chain\". The chain surface exists but is hand-authored JSON with no recorder and no editor, and I verified there is no send-to-chain in the UI.",
       "evidence": "Local naming: chain_runner.hpp:5-6 `// Burp's Repeater fires one request at a time; chaining auth -> action // means copy-pasting tokens by hand or wiring session-handling macros.` and session_rules.hpp:3 `// Session handling rules. The \"Burp macros / session handling rules\"`. Steps are raw HTTP typed into JSON: control_server.cpp:8960-8965 builds `Nullock::Core::ChainRunner::Step st;` from `so.va"
     },
