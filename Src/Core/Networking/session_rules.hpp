@@ -32,6 +32,7 @@
 #include "session_rules_logic.hpp"   // SessionTool enum for tool scoping
 
 #include <QHash>
+#include <QJsonArray>
 #include <QList>
 #include <QMutex>
 #include <QObject>
@@ -93,6 +94,13 @@ struct SessionMacro {
     QString loggedOutStatus;
     QString loggedOutBodyRegex;
 };
+
+// Serialize a macro list to/from JSON (name, sessionHost, loggedOut*, and the
+// ChainRunner steps with their extracts). Shared by the /api/session-macros
+// endpoint and project.json persistence so the two never drift. The step/extract
+// shape matches the /api/chain/run wire contract exactly.
+QJsonArray sessionMacrosToJson(const QList<SessionMacro> &macros);
+QList<SessionMacro> sessionMacrosFromJson(const QJsonArray &arr);
 
 class SessionRules : public QObject {
     Q_OBJECT

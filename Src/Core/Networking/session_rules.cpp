@@ -2,12 +2,75 @@
 #include "session_rules_logic.hpp"
 
 #include <QDateTime>
+#include <QJsonObject>
 #include <QMutexLocker>
 #include <QRegularExpression>
 #include <QtConcurrent>
 #include <QUrl>
 
 namespace Nullock::Core {
+
+// ---- Macro <-> JSON (shared by the API endpoint and project persistence) ----
+// The step/extract shape is the /api/chain/run wire contract; keep it here so a
+// macro stored in project.json round-trips through the same code the API uses.
+QJsonArray sessionMacrosToJson(const QList<SessionMacro> &macros) {
+    static const char *kFroms[] = { "header", "cookie", "json", "regex", "status" };
+    QJsonArray out;
+    for (const SessionMacro &m : macros) {
+        QJsonArray steps;
+        for (const ChainRunner::Step &st : m.steps) {
+            QJsonArray ex;
+            for (const ChainRunner::Extract &e : st.extracts)
+                ex.append(QJsonObject{ { "var", e.var }, { "key", e.key },
+                                       { "from", QString::fromLatin1(kFroms[int(e.from)]) } });
+            steps.append(QJsonObject{ { "name", st.name }, { "host", st.host },
+                { "port", st.port }, { "tls", st.tls },
+                { "request", QString::fromUtf8(st.request) }, { "extract", ex } });
+        }
+        out.append(QJsonObject{ { "name", m.name }, { "sessionHost", m.sessionHost },
+            { "loggedOutStatus", m.loggedOutStatus },
+            { "loggedOutBodyRegex", m.loggedOutBodyRegex },
+            { "steps", steps } });
+    }
+    return out;
+}
+
+QList<SessionMacro> sessionMacrosFromJson(const QJsonArray &arr) {
+    QList<SessionMacro> macros;
+    for (const QJsonValue &mv : arr) {
+        const QJsonObject mo = mv.toObject();
+        SessionMacro m;
+        m.name               = mo.value("name").toString();
+        m.sessionHost        = mo.value("sessionHost").toString();
+        m.loggedOutStatus    = mo.value("loggedOutStatus").toString();
+        m.loggedOutBodyRegex = mo.value("loggedOutBodyRegex").toString();
+        for (const QJsonValue &sv : mo.value("steps").toArray()) {
+            const QJsonObject so = sv.toObject();
+            ChainRunner::Step st;
+            st.name    = so.value("name").toString();
+            st.host    = so.value("host").toString();
+            st.tls     = so.value("tls").toBool(true);
+            st.port    = so.value("port").toInt(st.tls ? 443 : 80);
+            st.request = so.value("request").toString().toUtf8();
+            for (const QJsonValue &ev : so.value("extract").toArray()) {
+                const QJsonObject eo = ev.toObject();
+                ChainRunner::Extract ex;
+                ex.var = eo.value("var").toString();
+                ex.key = eo.value("key").toString();
+                const QString from = eo.value("from").toString("header").toLower();
+                if      (from == "cookie") ex.from = ChainRunner::Extract::Cookie;
+                else if (from == "json")   ex.from = ChainRunner::Extract::Json;
+                else if (from == "regex")  ex.from = ChainRunner::Extract::Regex;
+                else if (from == "status") ex.from = ChainRunner::Extract::Status;
+                else                       ex.from = ChainRunner::Extract::Header;
+                st.extracts.append(ex);
+            }
+            m.steps.append(st);
+        }
+        macros.append(m);
+    }
+    return macros;
+}
 
 // globToRx/findHeader/findCookieValue/jsonPathGet/substitute and the new
 // sanitizers are pure and live in session_rules_logic.cpp (Qt6::Core only) so

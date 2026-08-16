@@ -42,8 +42,16 @@ developer-facing record.
   macro's own requests use the chain runner's client (not the proxy) so they can't
   re-trigger — a permanently-failing login can't hammer the target. The logged-out
   predicate is unit-tested + mutation-proven. Closes "no check-session-is-valid"
-  and completes the session login-macro engine. (Macro persistence across restart
-  + the editor UI are the remaining follow-ons.)
+  and completes the session login-macro engine. (The visual macro editor UI is
+  the remaining follow-on.)
+- **Session login macros persist across restart.** A saved login macro (its
+  recorded steps and its logged-out re-auth condition) now serializes into the
+  project file under `sessionMacros` and is restored when the project reopens, so
+  the login sequence and its auto-re-auth survive a restart instead of being
+  re-entered every session. The macro &harr; JSON serializer is shared between the
+  `/api/session-macros` endpoint and the on-disk form, so the two can't drift.
+  (The cookie jar and the session rules themselves still don't persist — tracked
+  separately.)
 - **Turn a recorded login sequence into a live session (macro → session bridge).**
   A recorded chain (macro) can now feed the session variable bag: `POST
   /api/chain/run` with a `sessionHost` runs the macro and merges the values it

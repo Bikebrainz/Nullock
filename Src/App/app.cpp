@@ -1052,6 +1052,19 @@ int main(int argc, char *argv[]) {
     // when a matching Repeater-scoped rule exists; raw sends stay byte-for-byte.
     repeater.setSessionRules(&sessionRules);
     intruder.setSessionRules(&sessionRules);
+    // Session login macros persist in project.json: restore the incoming
+    // project's macros into the live engine whenever a project (re)opens (they're
+    // saved whenever set via /api/session-macros). Same pattern as intercept
+    // rules; the shared serializer keeps the on-disk shape and the API shape in
+    // lockstep.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::sessionMacrosChanged,
+                     &sessionRules, [&sessionRules](const QJsonArray &arr) {
+        sessionRules.setMacros(Nullock::Core::sessionMacrosFromJson(arr));
+    });
+    // The default project opened before SessionRules existed, so its persisted
+    // macros weren't streamed in. Restore them now that everything is wired.
+    sessionRules.setMacros(
+        Nullock::Core::sessionMacrosFromJson(projectStore.sessionMacros()));
 
     // OAST sink. HTTP-only Collaborator equivalent. Default to bind on
     // 18080 -- close to the standard proxy port, easy to remember. The

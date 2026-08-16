@@ -219,6 +219,7 @@ bool ProjectStore::open(const QString &projectDir) {
     // shows this project's staged requests and nothing from the previous engagement.
     emit repeaterStateChanged(m_meta.repeaterState);
     emit interceptRulesChanged(m_meta.interceptRules);
+    emit sessionMacrosChanged(m_meta.sessionMacros);
     return true;
 }
 
@@ -314,6 +315,7 @@ bool ProjectStore::ensureMetadata() {
         }
         m_meta.repeaterState = o.value("repeater").toObject();
         m_meta.interceptRules = o.value("interceptRules").toArray();
+        m_meta.sessionMacros = o.value("sessionMacros").toArray();
         return true;
     }
 
@@ -353,6 +355,7 @@ bool ProjectStore::saveMetadata() {
     o["rules"] = rulesArr;
     o["repeater"] = m_meta.repeaterState;
     o["interceptRules"] = m_meta.interceptRules;
+    o["sessionMacros"] = m_meta.sessionMacros;
 
     QFile f(m_dir + "/project.json");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -367,6 +370,11 @@ void ProjectStore::setRepeaterState(const QJsonObject &state) {
 
 void ProjectStore::setInterceptRules(const QJsonArray &rules) {
     m_meta.interceptRules = rules;
+    saveMetadata();
+}
+
+void ProjectStore::setSessionMacros(const QJsonArray &macros) {
+    m_meta.sessionMacros = macros;
     saveMetadata();
 }
 
