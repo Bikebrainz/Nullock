@@ -253,6 +253,22 @@ function repeaterGotoMatch(matches, curIdx, dir) {
   return { idx, range: matches[idx] };
 }
 
+// < > navigation through a Repeater tab's per-tab send history (newest last).
+// `pos` is either an index into history, or null meaning "at the live/newest
+// send" -- which is also what index count-1 holds, so there is nothing to load
+// when returning to null; the tab's request/response already show it. Both
+// helpers clamp at the boundaries instead of throwing on an empty/short history.
+function repeaterHistoryPrevIndex(pos, count) {
+  if (!count) return pos;
+  const target = pos === null ? count - 2 : pos - 1;
+  return Math.max(0, target);
+}
+function repeaterHistoryNextIndex(pos, count) {
+  if (pos === null || !count) return null;
+  const target = pos + 1;
+  return target >= count - 1 ? null : target;
+}
+
 function RepeaterEditorToolbar({
   views, active, onView, search, onSearch, matchCount, onNext, onPrev,
   caseSensitive, onCaseSensitive, regex, onRegex,
@@ -507,6 +523,28 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   const reqRef = React.useRef(null);
   const respRef = React.useRef(null);
 
+  // Per-tab send history navigation (#341-family follow-up: back/forward
+  // through prior sends). histPos is an index into the active tab's history,
+  // or null meaning "at the live/newest send" -- reset whenever the active
+  // tab changes so switching tabs never carries over a stale position.
+  const [histPos, setHistPos] = React.useState(null);
+  React.useEffect(() => { setHistPos(null); }, [active]);
+  const histCount = (tabs[active] && tabs[active].historyCount) || 0;
+  const histEntries = (tabs[active] && tabs[active].history) || [];
+  const onHistPrev = () => {
+    const next = repeaterHistoryPrevIndex(histPos, histCount);
+    if (next === histPos) return;
+    setHistPos(next);
+    NL.actions.repeaterHistoryLoad(next);
+  };
+  const onHistNext = () => {
+    const next = repeaterHistoryNextIndex(histPos, histCount);
+    setHistPos(next);
+    if (next !== null) NL.actions.repeaterHistoryLoad(next);
+  };
+  const histPrevDisabled = !histCount || histPos === 0;
+  const histNextDisabled = histPos === null;
+
   const reqText = reqView === "raw" ? rep.request : renderView(rep.request, reqView);
   const respBody = renderView(rep.response, "body");
   const respText = respView === "raw" ? rep.response : renderView(rep.response, respView);
@@ -679,6 +717,20 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
           AUTO-CL
         </label>
         <span style={{ flex: 1 }} />
+        {histCount > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+               title={histPos !== null && histEntries[histPos]
+                        ? (histEntries[histPos].statusLine || "") + " · " + (histEntries[histPos].sentAt || "")
+                        : "Navigate this tab's prior sends"}>
+            <button className="btn" disabled={histPrevDisabled} onClick={onHistPrev}
+                    style={{ padding: "0 6px", opacity: histPrevDisabled ? 0.4 : 1 }}>◀</button>
+            <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", fontFamily: "var(--ff-mono)", minWidth: 44, textAlign: "center" }}>
+              {histPos === null ? "live" : (histPos + 1) + "/" + histCount}
+            </span>
+            <button className="btn" disabled={histNextDisabled} onClick={onHistNext}
+                    style={{ padding: "0 6px", opacity: histNextDisabled ? 0.4 : 1 }}>▶</button>
+          </div>
+        )}
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           STATUS: <span style={{ color: "var(--accent)" }}>{rep.statusLine}</span>
         </span>

@@ -165,6 +165,9 @@
     repeaterTabRename(index, name)  { return post("/api/repeater/tab/rename",   { index, name }); },
     repeaterTabDuplicate(index)     { return post("/api/repeater/tab/duplicate",{ index }); },
     repeaterTabNotes(index, notes)  { return post("/api/repeater/tab/notes",   { index, notes }); },
+    // Load a prior send (index into the ACTIVE tab's history, newest last) back
+    // into that tab's request/response for review or re-send (< > navigation).
+    repeaterHistoryLoad(index)      { return post("/api/repeater/history/load", { index }); },
     // GET search; returns { hits: [{id, where, excerpts:[...]}], count }
     search(q, where = "both", limit = 200) {
       const url = "/api/search?q=" + encodeURIComponent(q || "")
