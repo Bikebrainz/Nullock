@@ -4279,10 +4279,16 @@
     {
       "area": "repeater",
       "feature": "Repeater: tab state persisted in the project file and restored on reopen",
-      "state": "absent",
+      "state": "present",
       "impact": "blocker",
       "effort": "days",
-      "gap": "Close the app and every crafted request is gone. Combined with B1 (no per-tab history) the Repeater has no memory at any timescale. Multi-day engagements are effectively impossible.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "bd47e80",
+        "note": "Repeater tabs are saved into project.json (under \"repeater\") on project switch (ProjectStore::projectClosing, before the historyShouldClear wipe) and on quit, and restored on reopen (repeaterStateChanged -> Repeater::importState). Engagement isolation preserved: the OUTGOING project's tabs save to its own file before the wipe, so no staged request or Authorization header crosses projects. Response bodies omitted to keep project.json small. Smoke section 13 (canary auth header: staged=1 leaked=0 restored=1); gauntlet ctest 93/93, probe_smoke 156/156."
+      },
+      "gap": "None -- Repeater tabs are saved into project.json and restored on reopen, per project. (Per-tab request HISTORY, item B1, is a separate capability and remains open.)",
       "why": "Confirmed. I re-ran `grep -rn -i repeater Src/Core/Storage/` myself \u2014 zero hits across project_store.cpp, project_logic.cpp and history_index.cpp \u2014 and confirmed a project switch actively wipes the tabs.",
       "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:101 `QList<RepeaterTab> m_tabs;` is the only store. Wipe on project switch: repeater.cpp:107-114 `void Repeater::clearAll() { m_tabs.clear(); m_tabs.append(makeBlankTab()); m_active = 0; emit tabsChanged(); ...}`, wired per repeater.hpp:65-71 to ProjectStore::historyShouldClear. No repeater serializer in Src/Core/Storage/ (files: history_index, histo"
     },
