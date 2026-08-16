@@ -3999,22 +3999,34 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Parameters\" \u2014 query string parameters",
-      "state": "stub",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "No UI and no add/remove/edit \u2014 even via curl it is a projection, never an editor.",
-      "why": "DOWNGRADED for the same reason as A27: the parser is right, the delivery surface is zero. Nothing in ui-v2 or bin/nullock calls /api/inspect.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:164-168 `const int q = target.indexOf('?'); out[\"path\"] = q < 0 ? target : target.left(q); const QString query = q < 0 ? QString() : target.mid(q + 1); out[\"query\"] = query; out[\"queryParams\"] = parsePairs(query);` over :30-43 `if (eq < 0) arr.append(nv(urlDecode(part, formDecode), QString())); else arr.append(nv(urlDecode(part.left(eq), formD"
+      "gap": "None -- surfaced read-only in the INSPECTOR tab's Query params section (ui-v2/app.jsx InspectorTab, view.queryParams), the same commit that shipped the sibling Cookies/JWT-decode/Request-attributes projections in the same panel. No add/remove/edit affordance -- same as those three items, and consistent with how this register already grades a read-only Inspector projection as full parity.",
+      "why": "Register-accuracy correction: this item's \u201cno UI, nothing calls /api/inspect\u201d verdict went stale the moment the INSPECTOR tab shipped (commit 86f094c, 2026-08-02) -- that same commit closed sibling items #327 (request attributes), #330 (cookies) and #332 (JWT decode) to present, but this one was never reconciled. Re-verified against live source: ui-v2/app.jsx:3045 `view.queryParams && view.queryParams.length ? <Section title={\"Query params \" ...` renders every pair /api/inspect returns via inspector_logic.cpp's parsePairs(query) (:168). Flipped stub -> present for consistency with the established grading of the other three Inspector projections in the same panel; no code change needed.",
+      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:164-168 `const int q = target.indexOf('?'); out[\"path\"] = q < 0 ? target : target.left(q); const QString query = q < 0 ? QString() : target.mid(q + 1); out[\"query\"] = query; out[\"queryParams\"] = parsePairs(query);` over :30-43 `if (eq < 0) arr.append(nv(urlDecode(part, formDecode), QString())); else arr.append(nv(urlDecode(part.left(eq), formD UI: ui-v2/app.jsx:3045 `{view.queryParams && view.queryParams.length ? <Section title={\"Query params (\" + view.queryParams.length + \")\"}><KV rows={view.queryParams} /></Section> : null}` inside InspectorTab, called via NL.actions.inspect(raw, kind) -> POST /api/inspect.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-16",
+        "commit": "PENDING",
+        "note": "Register-accuracy fix: the INSPECTOR tab (86f094c) already renders view.queryParams read-only, matching the same-panel grading precedent for Cookies/JWT/Request-attributes -- this item was simply never flipped when that shipped. No code change, docs/roadmap regenerated."
+      }
     },
     {
       "area": "repeater",
       "feature": "Inspector: \"Parameters\" \u2014 body parameters (form-urlencoded and JSON)",
-      "state": "stub",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Top-level JSON keys only \u2014 nested objects/arrays collapse to a placeholder, so a modern API request's real parameters are invisible. No multipart, no XML. And no UI: nothing calls /api/inspect.",
-      "why": "DOWNGRADED (unreachable). The parsing claims are all accurate, including the integer-preservation care and the top-level-only limitation; I also confirmed there is no multipart or XML branch at all.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:183-224 `if (ct.contains(\"application/x-www-form-urlencoded\", Qt::CaseInsensitive)) { bodyKind = \"form\"; bodyParams = parsePairs(QString::fromUtf8(p.body)); } else if (ct.contains(\"application/json\", Qt::CaseInsensitive) || p.body.trimmed().startsWith(\"{\")) {...}` with :196-202 `// Preserve exact integer text -- a bare QString::number(double) "
+      "gap": "Reachable now (INSPECTOR tab's Body params section) but the underlying parse is still shallow vs Burp's fuller params tab: top-level JSON keys only -- nested objects/arrays collapse to a bare \u2018{\u2026}\u2019/\u2018[\u2026]\u2019 placeholder (inspector_logic.cpp:203-204, no recursion), and there is still no multipart or XML branch -- only form-urlencoded and top-level-object JSON ever populate bodyParams (:182-221). A modern nested API body is still effectively invisible in the params view.",
+      "why": "Register-accuracy correction: half of this item's original gap (\u201cno UI, nothing calls /api/inspect\u201d) went stale when the INSPECTOR tab shipped (86f094c, 2026-08-02) -- ui-v2/app.jsx:3048 renders view.bodyParams read-only, same as the sibling projections. Re-verified the parsing claim directly against live inspector_logic.cpp: the JSON branch (:186-210) still stringifies isObject()/isArray() values to bare placeholders with no recursion, and the content-type switch (:182-221) still has no multipart or XML arm -- both real parsing gaps, confirmed still true, not UI gaps. Moved stub -> partial: reachability is closed, parsing depth is not.",
+      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:183-224 `if (ct.contains(\"application/x-www-form-urlencoded\", Qt::CaseInsensitive)) { bodyKind = \"form\"; bodyParams = parsePairs(QString::fromUtf8(p.body)); } else if (ct.contains(\"application/json\", Qt::CaseInsensitive) || p.body.trimmed().startsWith(\"{\")) {...}` with :196-202 `// Preserve exact integer text -- a bare QString::number(double)  UI: ui-v2/app.jsx:3048 `{view.bodyParams && view.bodyParams.length ? <Section title={\"Body params (\" + view.bodyParams.length + \")\"}><KV rows={view.bodyParams} /></Section> : null}` inside InspectorTab. Nested-collapse confirmed still true: inspector_logic.cpp:203-204 `else if (v.isObject()) sval = QStringLiteral(\"{\\u2026}\"); else if (v.isArray()) sval = QStringLiteral(\"[\\u2026]\");` -- one flat stringified placeholder, no recursion into nested keys.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-16",
+        "commit": "PENDING",
+        "note": "Register-accuracy fix: the INSPECTOR tab (86f094c) already renders view.bodyParams read-only -- reachability half of the gap closed, moved stub -> partial. The real parsing gap (nested JSON collapses to a placeholder, no multipart/XML) was re-verified against live inspector_logic.cpp and is still true, so this stays honestly partial, not present. No code change, docs/roadmap regenerated."
+      }
     },
     {
       "area": "repeater",
