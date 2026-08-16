@@ -2372,7 +2372,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "PENDING",
+        "commit": "37e32f0",
         "note": "Adds the per-tool editor checkboxes flagged as the ui-v2 remainder above: SessionsTab's rule editor (ui-v2/app.jsx) gets a Tools scope row -- Proxy/Repeater/Intruder/Scanner checkboxes bound to the rule's `tools` bitmask via a pure sessionRuleToggleToolBit(mask, bit) helper mirroring SessionRulesLogic::SessionTool exactly (1/2/4/8), plus a sessionRuleToolsLabel(mask) summary (\"all tools\" when unset, else a comma list) shown in the rule list's new tools column. No backend change -- `tools` already round-trips through /api/session-rules (control_server.cpp:1618, :3980). Honest remainder, confirmed by grep: the Scanner bit is offered and stored but NOT enforced -- no call site anywhere passes SessionRulesLogic::ToolScanner to applyToRequest/applyToRequestBytes (only ToolIntruder in intruder.cpp:498/628 and ToolRepeater in repeater.cpp:158 exist; proxy_server.cpp:1539 calls the default-tool overload); the chain-runner/sequencer/extender scopes also remain entirely unbuilt, both as UI and as enforcement. State stays partial -- this closes only the ui-v2 half of the previously-named gap."
       },
       "gap": "Configurable AND enforced for proxy, Repeater and Intruder, with a per-tool editor UI (Proxy/Repeater/Intruder/Scanner checkboxes in the SESSIONS tab rule editor, plus a tools-scope summary per rule row). Remaining: the Scanner checkbox is offered/stored but not enforced anywhere (no scanner call site passes ToolScanner to applyToRequest), and the chain-runner / sequencer / extender scopes are entirely unbuilt (no UI, no enforcement).",
