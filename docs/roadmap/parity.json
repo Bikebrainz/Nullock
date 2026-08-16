@@ -4569,7 +4569,7 @@
       "evidence": "ui-v2/proxy.jsx SiteMap() (leavesFor, .sm-twisty expand toggle, .sm-leaf rows) reads r.host/r.method/r.path/r.status/r.id off the rows prop -- the same row shape already read by HistoryTable/FilterBar elsewhere in this file (e.g. r.path at proxy.jsx:80/159/2225, r.status at :2212), so no field is invented. ui-v2/styles.css .sm-twisty/.sm-leaf/.sm-leaf-method/.sm-leaf-path/.sm-leaf-status rules. ProxyTab passes rows/selectedRowId/onSelectLeaf into <SiteMap>, dispatching {selectedHost, selectedRowId} on leaf click.",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "PENDING",
+        "commit": "793f075",
         "note": "Site map leaf-node wave: hosts in the Site Map tree now expand (twisty toggle) into a deduped per-URL leaf list derived client-side from the HTTP history rows already in state -- no backend change, since /api/snapshot sitemap stays host-only. Clicking a leaf selects that exact message the same way a history-table row click does. This was the sole remaining real gap on this item (map has no per-URL leaf nodes); state moves partial -> present. Verified via bundled-babel transform of ui-v2/proxy.jsx, a Node functional test of the leaf-dedupe logic (5 checks: method+path grouping, highest-id-wins on duplicate paths, distinct-method leaves, host filtering, empty-host fallback) plus a vm-sandboxed render smoke test of SiteMap in both collapsed and expanded states proving the new JSX branch does not throw, and confirmation ui-v2/tabs.jsx was untouched."
       }
     },
