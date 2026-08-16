@@ -130,7 +130,7 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
     emit variablesChanged();
 }
 
-void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
+void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) const {
     QList<SessionRule> rs;
     QHash<QString, QString> vars;
     {
@@ -144,6 +144,7 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req) const {
 
     for (const auto &r : rs) {
         if (!r.enabled) continue;
+        if (!SessionRulesLogic::ruleAppliesToTool(r.tools, tool)) continue;
         if (!matches(r, req.host, req.path)) continue;
         if (r.injectKey.isEmpty()) continue;
 

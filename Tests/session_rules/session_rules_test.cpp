@@ -151,6 +151,24 @@ int main(int argc, char **argv) {
         chk("find-header: a missing header -> empty", findHeader(hs, "X-Absent").isEmpty());
     }
 
+    // ===== tool scoping: ruleAppliesToTool ==============================
+    chk("tool: unset mask (0) applies to every tool",
+        ruleAppliesToTool(0, ToolProxy) && ruleAppliesToTool(0, ToolRepeater)
+        && ruleAppliesToTool(0, ToolIntruder) && ruleAppliesToTool(0, ToolScanner));
+    chk("tool: proxy-only mask applies to proxy", ruleAppliesToTool(ToolProxy, ToolProxy));
+    chk("tool: proxy-only mask does NOT apply to repeater",
+        !ruleAppliesToTool(ToolProxy, ToolRepeater));
+    chk("tool: repeater-only mask excludes proxy",
+        !ruleAppliesToTool(ToolRepeater, ToolProxy));
+    chk("tool: proxy|repeater mask applies to both",
+        ruleAppliesToTool(ToolProxy | ToolRepeater, ToolProxy)
+        && ruleAppliesToTool(ToolProxy | ToolRepeater, ToolRepeater));
+    chk("tool: proxy|repeater mask excludes intruder",
+        !ruleAppliesToTool(ToolProxy | ToolRepeater, ToolIntruder));
+    chk("tool: kAllSessionTools covers each tool",
+        ruleAppliesToTool(kAllSessionTools, ToolProxy)
+        && ruleAppliesToTool(kAllSessionTools, ToolScanner));
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

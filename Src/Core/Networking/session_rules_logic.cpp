@@ -125,4 +125,9 @@ QString stripQuery(const QString &path) {
     return q < 0 ? path : path.left(q);
 }
 
+bool ruleAppliesToTool(int toolsMask, int tool) {
+    if (toolsMask == 0) return true;         // unset == all tools (back-compatible)
+    return (toolsMask & tool) != 0;
+}
+
 } // namespace Nullock::Core::SessionRulesLogic

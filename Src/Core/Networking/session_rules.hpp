@@ -28,6 +28,7 @@
 // before the request hits the wire (substitutes {{vars}}).
 
 #include "proxy_server.hpp"
+#include "session_rules_logic.hpp"   // SessionTool enum for tool scoping
 
 #include <QHash>
 #include <QList>
@@ -68,6 +69,11 @@ struct SessionRule {
     // Template can reference any captured variable as {{name}}. If empty,
     // we just use the bare {{variable}} substitution.
     QString injectTemplate;
+
+    // Tools this rule applies to: a bitmask of SessionRulesLogic::SessionTool
+    // (Proxy|Repeater|Intruder|Scanner). 0 = ALL tools, so a rule authored before
+    // scoping existed keeps applying everywhere (backward-compatible).
+    int     tools = 0;
 };
 
 class SessionRules : public QObject {
@@ -81,8 +87,12 @@ public:
     // Read variable bag (for the UI / debug). Snapshot copy.
     QHash<QString, QString> variables() const;
 
-    // Pipeline hooks. Both safe to call from worker threads.
-    void applyToRequest(Nullock::Proxy::HttpRequest &req) const;
+    // Pipeline hooks. Both safe to call from worker threads. `tool` is the
+    // SessionTool doing the send; a rule applies only if its tools scope includes
+    // it (SessionRulesLogic::ruleAppliesToTool). Defaults to Proxy so existing
+    // proxy-pipeline callers stay unchanged.
+    void applyToRequest(Nullock::Proxy::HttpRequest &req,
+                        int tool = SessionRulesLogic::ToolProxy) const;
     void applyToResponse(const Nullock::Proxy::HttpRequest &req,
                          const Nullock::Proxy::HttpResponse &resp);
 

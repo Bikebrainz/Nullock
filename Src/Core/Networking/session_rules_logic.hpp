@@ -56,4 +56,21 @@ QString jsonEscapeInner(const QString &v);
 // the path, not the query (else an exact glob never matches a query-bearing req).
 QString stripQuery(const QString &path);
 
+// --- Tool scoping (Burp's "Tools scope" on a session-handling rule) ----------
+// Which Nullock tools a session rule applies to, as a bitmask on SessionRule.tools.
+// Historically rules ran only in the proxy pipeline; scoping lets a rule also (or
+// instead) run when Repeater / Intruder / the scanner send a request.
+enum SessionTool {
+    ToolProxy    = 1,
+    ToolRepeater = 2,
+    ToolIntruder = 4,
+    ToolScanner  = 8,
+};
+inline constexpr int kAllSessionTools = ToolProxy | ToolRepeater | ToolIntruder | ToolScanner;
+
+// Does a rule with this tools bitmask apply to `tool`? An UNSET (0) bitmask means
+// "all tools", so a rule authored before scoping existed still applies everywhere
+// (backward-compatible); otherwise the tool's bit must be set.
+bool ruleAppliesToTool(int toolsMask, int tool);
+
 } // namespace Nullock::Core::SessionRulesLogic

@@ -1615,6 +1615,7 @@ QByteArray ControlServer::buildSnapshot() const {
             o["injectInto"]     = r.injectInto;
             o["injectKey"]      = r.injectKey;
             o["injectTemplate"] = r.injectTemplate;
+            o["tools"]          = r.tools;   // 0 = all tools (proxy|repeater|intruder|scanner)
             rules.append(o);
         }
         sr["rules"] = rules;
@@ -3976,6 +3977,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             r.injectInto     = o.value("injectInto").toInt(0);
             r.injectKey      = o.value("injectKey").toString();
             r.injectTemplate = o.value("injectTemplate").toString();
+            r.tools          = o.value("tools").toInt(0);   // 0 = all tools
             rules.append(r);
         }
         m_wiring.sessionRules->setRules(rules);
