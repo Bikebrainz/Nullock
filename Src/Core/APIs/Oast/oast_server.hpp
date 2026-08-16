@@ -33,6 +33,8 @@
 
 class QTcpServer;
 class QTcpSocket;
+class QTimer;
+class QNetworkAccessManager;
 
 namespace Nullock::Core {
 
@@ -63,6 +65,17 @@ public:
     void    stop();
     bool    running() const;
 
+    // CLIENT MODE. Instead of running a local sink, point at a REMOTE nullock-oast
+    // admin API (base = "http://host:adminPort", key = its admin key). mintToken()
+    // then proxies to the remote's POST /mint (so callback URLs carry the remote's
+    // public host), and a poll timer pulls GET /poll and re-emits each hit via
+    // hitReceived exactly like the local sink -- so OastCorrelator and every
+    // /api/oast/* endpoint work unchanged against a hosted Collaborator. Does a
+    // synchronous GET /healthz first to learn the remote's baseHost/port; returns
+    // false (and stays in local-capable state) if the remote is unreachable.
+    bool    startRemote(const QString &base, const QString &key, int pollMs = 3000);
+    bool    remoteMode() const { return m_remoteMode; }
+
     // Mint a fresh 16-char hex token + the full base URL for embedding
     // into a payload. The token is what we'll look for in the inbound
     // Host header or first path segment.
@@ -79,10 +92,15 @@ signals:
 
 private slots:
     void onNewConnection();
+    void pollRemote();
 
 private:
     void   handleClient(QTcpSocket *socket);
     static QString extractToken(const QString &hostHeader, const QString &path);
+    // Blocking HTTP request to the remote admin API (nested event loop). Returns
+    // the parsed JSON object, or an object with ok=false on any failure.
+    QJsonObject remoteRequest(const QString &httpMethod, const QString &pathAndQuery,
+                              int timeoutMs = 6000);
 
     QTcpServer    *m_server    = nullptr;
     QString        m_baseHost;
@@ -90,6 +108,15 @@ private:
     QList<OastHit> m_hits;          // ring; we cap at kMaxHits
     qint64         m_nextHitId = 1;
     static constexpr int kMaxHits = 1000;
+
+    // Client mode: poll a remote nullock-oast instead of listening locally.
+    bool                   m_remoteMode  = false;
+    QString                m_remoteBase;         // e.g. "http://host:8889" (no trailing /)
+    QString                m_remoteKey;
+    quint16                m_remotePort  = 0;    // remote's callback port (from /healthz)
+    qint64                 m_remoteSince = 0;    // remote hit-id watermark for /poll?since=
+    QNetworkAccessManager *m_nam         = nullptr;
+    QTimer                *m_pollTimer   = nullptr;
 };
 
 } // namespace Nullock::Core

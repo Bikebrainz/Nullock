@@ -657,6 +657,12 @@ int main(int argc, char *argv[]) {
             << "                        (default 127.0.0.1; set to a LAN/public IP or a\n"
             << "                        wildcard DNS name reachable from your targets)\n"
             << "  --oast-port=N         OAST HTTP sink port (default 18080)\n"
+            << "  --oast-remote=URL     Client mode: use a HOSTED nullock-oast admin API\n"
+            << "                        (http://host:adminPort) instead of the local sink,\n"
+            << "                        so OOB detection works out of the box (also\n"
+            << "                        NULLOCK_OAST_REMOTE env). Falls back to local if\n"
+            << "                        the remote is unreachable.\n"
+            << "  --oast-remote-key=K   Admin key for --oast-remote (also NULLOCK_OAST_KEY).\n"
             << "  --dns-port=N          OAST DNS sink UDP port (default 8053; use 53 with a\n"
             << "                        wildcard NS delegation for real-internet targets)\n"
             << "  --h2-termination      EXPERIMENTAL: also terminate the browser's HTTP/2\n"
@@ -1053,9 +1059,24 @@ int main(int argc, char *argv[]) {
     quint16 oastBindPort = 18080;
     if (const uint v = flagValue(argc, argv, "--oast-port").toUInt()) oastBindPort = quint16(v);
     Nullock::Core::OastServer oast;
-    const quint16 oastPort = oast.start(oastBindPort, oastHost);
-    if (oastPort) {
-        banner("  oast      http://" + oastHost + ":" + QString::number(oastPort) + "/");
+    // Client mode: --oast-remote=<http://host:adminPort> + --oast-remote-key=<key>
+    // (or NULLOCK_OAST_REMOTE / NULLOCK_OAST_KEY) points at a HOSTED nullock-oast,
+    // so out-of-band detection works out of the box without self-deploying a sink.
+    // mint/poll proxy to the remote; hits flow through the same correlator. Falls
+    // back to the local sink if the remote is unreachable.
+    QString oastRemote = flagValue(argc, argv, "--oast-remote");
+    if (oastRemote.isEmpty()) oastRemote = qEnvironmentVariable("NULLOCK_OAST_REMOTE");
+    QString oastRemoteKey = flagValue(argc, argv, "--oast-remote-key");
+    if (oastRemoteKey.isEmpty()) oastRemoteKey = qEnvironmentVariable("NULLOCK_OAST_KEY");
+    if (!oastRemote.isEmpty() && oast.startRemote(oastRemote, oastRemoteKey)) {
+        banner("  oast      remote " + oastRemote + "  (hosted; callback host "
+               + oast.baseHost() + ")");
+    } else {
+        if (!oastRemote.isEmpty())
+            banner("  oast      remote " + oastRemote + " unreachable -- using local sink");
+        const quint16 oastPort = oast.start(oastBindPort, oastHost);
+        if (oastPort)
+            banner("  oast      http://" + oastHost + ":" + QString::number(oastPort) + "/");
     }
     wiring.oast = &oast;
 

@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Point the OAST / Collaborator at a hosted sink (client mode).** The out-of-band
+  interaction sink was in-process only, so OOB detection (blind SSRF, RCE, XXE,
+  log4shell) only worked against targets that could reach your own machine.
+  `--oast-remote=http://host:adminPort --oast-remote-key=KEY` (or the matching env
+  vars) now points the app at a hosted `nullock-oast`: mint proxies to its
+  `POST /mint` so callback URLs carry the sink's public host, and a poll loop pulls
+  its `GET /poll` and feeds hits through the same correlator — so every
+  `/api/oast/*` path and the auto-confirmation of findings work unchanged. Falls
+  back to the local sink if the remote is unreachable. Verified end-to-end (mint →
+  real callback on the remote → hit polled back into the app). Closes the launch
+  blocker "Collaborator is loopback-only / OOB doesn't work out of the box".
 - **Repeater keeps a per-tab send history.** Each Repeater tab now records every
   send (request, response, status, timestamp) in a capped per-tab list, exposed in
   the snapshot and re-loadable via `/api/repeater/history/load` — so you can

@@ -5,12 +5,21 @@
 #include <QByteArray>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QEventLoop>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QMutexLocker>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
+#include <QUrl>
 
 namespace Nullock::Core {
 
@@ -38,11 +47,107 @@ void OastServer::stop() {
         m_server->deleteLater();
         m_server = nullptr;
     }
+    if (m_pollTimer) m_pollTimer->stop();
+    m_remoteMode = false;
 }
 
-bool    OastServer::running() const   { return m_server && m_server->isListening(); }
-quint16 OastServer::port()    const   { return m_server ? m_server->serverPort() : 0; }
+bool OastServer::running() const {
+    return m_remoteMode ? (m_pollTimer && m_pollTimer->isActive())
+                        : (m_server && m_server->isListening());
+}
+quint16 OastServer::port() const {
+    return m_remoteMode ? m_remotePort : (m_server ? m_server->serverPort() : 0);
+}
 QString OastServer::baseHost() const  { return m_baseHost; }
+
+QJsonObject OastServer::remoteRequest(const QString &httpMethod,
+                                      const QString &pathAndQuery, int timeoutMs) {
+    if (!m_nam) m_nam = new QNetworkAccessManager(this);
+    QNetworkRequest req{ QUrl(m_remoteBase + pathAndQuery) };
+    req.setRawHeader("X-Oast-Key", m_remoteKey.toUtf8());
+    QNetworkReply *reply = (httpMethod == QLatin1String("POST"))
+        ? m_nam->post(req, QByteArray())
+        : m_nam->get(req);
+    // Block on a nested loop with a wall-clock timeout so a dead remote can't hang
+    // the mint call. Mint/healthz are infrequent + user-initiated, so this is fine.
+    QEventLoop loop;
+    QTimer to; to.setSingleShot(true);
+    connect(&to, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    to.start(timeoutMs);
+    loop.exec();
+    QJsonObject out;
+    if (reply->isFinished() && reply->error() == QNetworkReply::NoError) {
+        out = QJsonDocument::fromJson(reply->readAll()).object();
+    } else {
+        out["ok"]    = false;
+        out["error"] = reply->isFinished() ? reply->errorString() : QStringLiteral("timeout");
+        if (!reply->isFinished()) reply->abort();
+    }
+    reply->deleteLater();
+    return out;
+}
+
+bool OastServer::startRemote(const QString &base, const QString &key, int pollMs) {
+    stop();                       // no local listener in client mode
+    m_remoteMode  = true;
+    m_remoteBase  = base;
+    while (m_remoteBase.endsWith(QLatin1Char('/'))) m_remoteBase.chop(1);
+    m_remoteKey   = key;
+    m_remoteSince = 0;
+    if (!m_nam) m_nam = new QNetworkAccessManager(this);
+    // /healthz is unauthenticated and returns { ok, baseHost, callbackPort }; use it
+    // to learn the remote's identity AND prove reachability before we commit.
+    const QJsonObject hz = remoteRequest(QStringLiteral("GET"), QStringLiteral("/healthz"));
+    if (hz.value("ok").toBool() != true) {
+        m_remoteMode = false;     // unreachable -> caller can fall back to local
+        return false;
+    }
+    m_baseHost   = hz.value("baseHost").toString(m_baseHost);
+    m_remotePort = static_cast<quint16>(hz.value("callbackPort").toInt());
+    if (!m_pollTimer) {
+        m_pollTimer = new QTimer(this);
+        connect(m_pollTimer, &QTimer::timeout, this, &OastServer::pollRemote);
+    }
+    m_pollTimer->start(pollMs);
+    return true;
+}
+
+void OastServer::pollRemote() {
+    if (!m_remoteMode || !m_nam) return;
+    QNetworkRequest req{ QUrl(m_remoteBase + QStringLiteral("/poll?since=")
+                             + QString::number(m_remoteSince)) };
+    req.setRawHeader("X-Oast-Key", m_remoteKey.toUtf8());
+    QNetworkReply *reply = m_nam->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) return;   // transient; try next tick
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        for (const QJsonValue &v : o.value("hits").toArray()) {
+            const QJsonObject ho = v.toObject();
+            const qint64 remoteId = static_cast<qint64>(ho.value("id").toDouble());
+            if (remoteId > m_remoteSince) m_remoteSince = remoteId;
+            // Re-emit as a local hit (own id space so hitsSince() stays monotonic).
+            OastHit hit;
+            { QMutexLocker lk(&m_mutex); hit.id = m_nextHitId++; }
+            hit.atMs        = static_cast<qint64>(ho.value("atMs").toDouble());
+            hit.token       = ho.value("token").toString();
+            hit.sourceIp    = ho.value("sourceIp").toString();
+            hit.method      = ho.value("method").toString();
+            hit.hostHeader  = ho.value("hostHeader").toString();
+            hit.path        = ho.value("path").toString();
+            hit.bodyBytes   = ho.value("bodyBytes").toInt();
+            hit.userAgent   = ho.value("userAgent").toString();
+            hit.bodyPreview = ho.value("bodyPreview").toString();
+            {
+                QMutexLocker lk(&m_mutex);
+                m_hits.append(hit);
+                while (m_hits.size() > kMaxHits) m_hits.removeFirst();
+            }
+            emit hitReceived(hit);
+        }
+    });
+}
 
 int OastServer::hitCount() const {
     QMutexLocker lk(&m_mutex);
@@ -58,6 +163,11 @@ QList<OastHit> OastServer::hitsSince(qint64 sinceId) const {
 }
 
 QJsonObject OastServer::mintToken() {
+    if (m_remoteMode) {
+        // Proxy to the remote sink so the minted callback URL carries the remote's
+        // public host + port (what a target must actually reach), not ours.
+        return remoteRequest(QStringLiteral("POST"), QStringLiteral("/mint"));
+    }
     // 64 bits of randomness as 16 hex chars. Long enough that an attacker
     // can't realistically guess valid tokens to spam our log; short enough
     // to fit into a DNS subdomain (max 63 chars total per label).
