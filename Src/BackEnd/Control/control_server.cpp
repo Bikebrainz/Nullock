@@ -9230,6 +9230,14 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             r = future.result();
         }
 
+        // Session-acquisition bridge (#10): if the caller names a sessionHost, feed
+        // the macro's extracted vars into the session-rule bag for that host, so a
+        // recorded login sequence's token is then auto-injected into later requests
+        // by the matching rules. Opt-in -- a plain chain run doesn't touch sessions.
+        const QString sessionHost = bodyJson.value("sessionHost").toString();
+        if (!sessionHost.isEmpty() && m_wiring.sessionRules)
+            m_wiring.sessionRules->ingestVariables(sessionHost, r.vars);
+
         QJsonArray stepsOut;
         for (const auto &sr : r.steps) {
             QJsonObject eo;

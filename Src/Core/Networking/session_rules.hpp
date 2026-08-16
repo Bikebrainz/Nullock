@@ -87,6 +87,13 @@ public:
     // Read variable bag (for the UI / debug). Snapshot copy.
     QHash<QString, QString> variables() const;
 
+    // Session-acquisition bridge: merge externally-obtained variables (e.g. the
+    // vars a recorded login MACRO extracted via ChainRunner) into the per-host
+    // bag, so a token acquired by replaying a login sequence is then injected into
+    // subsequent requests by the matching rules. Host-keyed like every other
+    // captured value, so an acquired secret never rides cross-origin.
+    void ingestVariables(const QString &host, const QHash<QString, QString> &vars);
+
     // Pipeline hooks. Both safe to call from worker threads. `tool` is the
     // SessionTool doing the send; a rule applies only if its tools scope includes
     // it (SessionRulesLogic::ruleAppliesToTool). Defaults to Proxy so existing

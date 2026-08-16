@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Turn a recorded login sequence into a live session (macro → session bridge).**
+  A recorded chain (macro) can now feed the session variable bag: `POST
+  /api/chain/run` with a `sessionHost` runs the macro and merges the values it
+  extracts — a fresh CSRF token, a bearer token, a session cookie — into that
+  host's session-rule variables, so the matching session rules then inject the
+  acquired token into subsequent requests. That closes the loop from "record a
+  login sequence" (the new recorder) to "stay authenticated" without hand-copying
+  tokens. The auto-trigger that detects a logged-out response and re-runs the
+  macro on its own is the next step. Part of the launch blocker "no
+  session-acquisition macro".
 - **Session-handling rules can be scoped to tools (foundation).** A session rule
   (auto-inject a captured token/cookie into matching requests) now carries a
   `tools` scope — proxy / repeater / intruder / scanner — so it can be limited to,

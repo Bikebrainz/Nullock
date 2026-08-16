@@ -281,4 +281,16 @@ bool SessionRules::applyToRequestBytes(QByteArray &rawRequest, const QString &ho
     return true;
 }
 
+void SessionRules::ingestVariables(const QString &host,
+                                   const QHash<QString, QString> &vars) {
+    if (host.isEmpty() || vars.isEmpty()) return;
+    {
+        QMutexLocker lk(&m_mutex);
+        QHash<QString, QString> &bag = m_varsByHost[host];
+        for (auto it = vars.cbegin(); it != vars.cend(); ++it)
+            bag.insert(it.key(), it.value());
+    }
+    emit variablesChanged();
+}
+
 } // namespace Nullock::Core
