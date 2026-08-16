@@ -209,6 +209,21 @@ developer-facing record.
   'URL-encode these characters')".
 
 ### Fixed
+- **`scanner_regression_test` failed to link on every CI runner (Linux and
+  Windows) for four commits.** The session-rules Repeater-enforcement change
+  (`SessionRules::applyToRequestBytes`) added the test target's first call
+  path into `Proxy::serializeRequestForOrigin`, defined in `proxy_server.cpp`
+  — pulling that whole translation unit, including its
+  `ExtensionsApi::applyRequestMutation`/`applyResponseMutation` calls, into
+  the link. `Tests/scanner_regression/CMakeLists.txt` didn't link the `APIs`
+  library that defines them, so both linkers failed with two unresolved
+  externals. Not flaky and not "transitive-link staleness" as an earlier
+  commit message assumed — deterministic on a from-scratch CI build, which is
+  all this repo's CI ever does (no ccache). Fix: link `APIs`, the same library
+  `extensions_api_grant_test` already links standalone; safe here since `APIs`
+  no longer links `Networking` (see `Src/Core/APIs/CMakeLists.txt`) and this
+  target already links `FrontEndGUI` for the unrelated ProxyModel symbols
+  Networking's Repeater/Intruder need.
 - **Verbose-error detection no longer misses the two most common leaks.** The
   SQL/framework error detector was gated `400 <= status < 500`, so it missed a
   SQL error **echoed in a 200** (the app catches the DB exception and renders

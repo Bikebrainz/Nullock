@@ -2392,12 +2392,18 @@
     {
       "area": "sequencer",
       "feature": "Rule action: \"Run a macro\" (execute a recorded request sequence, optionally before every in-scope request)",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "days",
-      "gap": "The macro engine is written, tested and user-reachable via `nullock chain <file.json>` \u2014 but as an isolated tool. You cannot say \"before each request to /api/*, run the login chain\", and running the login chain manually does not even populate the cookie jar afterwards, so the manual workaround does not substitute.",
-      "why": "Confirmed. I re-checked the sole-caller claim myself: `ChainRunner::run` has exactly one call site and it is the manual endpoint. Line number corrected (8994, not 8853). I also confirmed the engine is doubly disconnected \u2014 its responses feed neither the cookie jar nor the variable bag.",
-      "evidence": "session_rules.hpp:60-65 `enum InjectInto { InjectIntoHeader = 0, InjectIntoCookie = 1, InjectIntoBody = 2, InjectIntoUrl = 3 };` \u2014 no action concept at all. Engine exists at chain_runner.hpp:65 `Result run(const QList<Step> &steps, bool continueOnError = false);`. Sole caller: control_server.cpp:8994 `return Nullock::Core::ChainRunner::run(steps, continueOnError);` inside `if (path == \"/api/chain/"
+      "gap": "The manual bridge is real (record -> chain/run with sessionHost -> session bag -> auto-injected into later requests). What's still missing is the rule-action concept itself: no way to configure a session rule to run a macro automatically before every in-scope request, and no automatic re-run on demand -- see #190 for the conditional/automatic trigger, which is fully absent.",
+      "why": "Re-verified after a11754e (2026-08-16): control_server.cpp:9233 reads `bodyJson.value(\"sessionHost\")` and calls `m_wiring.sessionRules->ingestVariables(sessionHost, r.vars)` when set -- a plain chain run (no sessionHost) is unchanged, so this is opt-in exactly as the commit describes. session_rules.cpp:284 `ingestVariables` merges host-keyed vars under the existing mutex and emits variablesChanged, the same signal the UI already listens to. I confirmed there is still no rule-action enum, no scheduler, and no logged-out detector anywhere in Src/Core/Networking/session_rules*.cpp or chain_runner*.cpp -- grep for reauth/sessionInvalid/loggedOut/relogin/checkSession/ruleAction still returns 0 hits.",
+      "evidence": "control_server.cpp:9233-9237 `const QString sessionHost = bodyJson.value(\"sessionHost\").toString(); if (!sessionHost.isEmpty() && m_wiring.sessionRules) m_wiring.sessionRules->ingestVariables(sessionHost, r.vars);`; session_rules.cpp:284-293 `void SessionRules::ingestVariables(...) { ... QHash<QString,QString> &bag = m_varsByHost[host]; for (...) bag.insert(it.key(), it.value()); } emit variablesChanged();`; session_rules.hpp:60-65 still only the four-member InjectInto enum -- no rule-action concept.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-16",
+        "commit": "a11754e",
+        "note": "Half of the \"doubly disconnected\" gap this item's evidence named is now closed: POST /api/chain/run gains an opt-in `sessionHost` (control_server.cpp:9233-9237) -- after the macro runs, SessionRules::ingestVariables(host, vars) (session_rules.cpp:284-293) merges its extracted vars into that host's session-rule variable bag, so a token a recorded login macro captures is then injected into later requests by the matching session rules. That closes record-a-macro -> stay-authenticated manually (POST the macro with sessionHost set). Still absent, honestly: there is no \"rule action\" concept in the session-rules engine itself (no way to say \"before each request to /api/*, run the login chain automatically\", still just an enum of inject targets per session_rules.hpp:60-65) and no automatic trigger -- a human or script must still call /api/chain/run themselves. That automatic half is item #190 (\"Check session is valid\" / conditional re-auth), which remains fully absent."
+      }
     },
     {
       "area": "sequencer",

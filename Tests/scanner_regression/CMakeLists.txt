@@ -9,6 +9,14 @@ target_link_libraries(scanner_regression_test PRIVATE
     Networking
     Proxy
     FrontEndGUI       # Networking's Repeater/Intruder pull ProxyModel symbols
+    APIs              # session_rules.cpp's applyToRequestBytes() calls
+                      # Proxy::serializeRequestForOrigin(), which pulls the whole
+                      # proxy_server.o (incl. its ExtensionsApi::applyRequest/
+                      # ResponseMutation calls) into this link; APIs supplies them.
+                      # Safe here (unlike the historical LNK2019 risk noted in
+                      # Src/Core/APIs/CMakeLists.txt): APIs no longer links
+                      # Networking, and FrontEndGUI above already resolves any
+                      # ProxyModel symbols Networking's Repeater/Intruder need.
 )
 
 target_include_directories(scanner_regression_test PRIVATE
