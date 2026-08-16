@@ -3018,7 +3018,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/proxy/toggle") {
         if (m_wiring.proxy) {
             if (m_wiring.proxy->isRunning()) m_wiring.proxy->stop();
-            else                             m_wiring.proxy->start();
+            // restart() re-listens on the last-used bind, so toggling the proxy
+            // preserves an off-loopback --proxy-bind + custom --proxy-port instead
+            // of silently reverting to 127.0.0.1:8080.
+            else                             m_wiring.proxy->restart();
         }
         return okJson({{ "isRunning", m_wiring.proxy && m_wiring.proxy->isRunning() }});
     }

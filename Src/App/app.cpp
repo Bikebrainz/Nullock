@@ -640,6 +640,12 @@ int main(int argc, char *argv[]) {
             << "                        JA3-exact shaping isn't possible via Qt's API; SChannel on\n"
             << "                        Windows ignores cipher order anyway.\n"
             << "  --proxy-port=N        Proxy listen port (default 8080)\n"
+            << "  --proxy-bind=ADDR     Bind the intercepting proxy to ADDR (default 127.0.0.1;\n"
+            << "                        also NULLOCK_PROXY_BIND env). Off-loopback (e.g. 0.0.0.0)\n"
+            << "                        exposes a cert-forging MITM to the LAN and REQUIRES\n"
+            << "                        --proxy-bind-insecure to acknowledge.\n"
+            << "  --proxy-bind-insecure Acknowledge an off-loopback --proxy-bind (for proxying a\n"
+            << "                        VM / phone / container). Required for any non-loopback bind.\n"
             << "  --control-port=N      Control server port (default 17777)\n"
             << "  --listen=ADDR         Bind the control API to ADDR (default 127.0.0.1).\n"
             << "                        Off-loopback (e.g. 0.0.0.0) REQUIRES a token and makes\n"
@@ -831,15 +837,52 @@ int main(int argc, char *argv[]) {
         std::fflush(stdout);   // block-buffered when redirected to a file/pipe
     };
 
+    // Proxy bind address. Default loopback. --proxy-bind=ADDR (or NULLOCK_PROXY_BIND)
+    // lets the proxy listen on a routable interface for VM / phone / container
+    // testing. Because an off-loopback intercepting proxy exposes a cert-forging
+    // MITM (and an open relay) to the whole LAN, a non-loopback bind additionally
+    // requires the explicit --proxy-bind-insecure acknowledgement -- there is no
+    // token to gate the proxy the way --listen gates the control API.
+    QHostAddress proxyAddr = QHostAddress::LocalHost;
+    QString proxyBindArg = flagValue(argc, argv, "--proxy-bind");
+    if (proxyBindArg.isEmpty()) proxyBindArg = qEnvironmentVariable("NULLOCK_PROXY_BIND");
+    if (!proxyBindArg.isEmpty()) {
+        if (proxyBindArg == "0.0.0.0" || proxyBindArg.compare("any", Qt::CaseInsensitive) == 0)
+            proxyAddr = QHostAddress::Any;
+        else if (proxyBindArg == "::")
+            proxyAddr = QHostAddress::AnyIPv6;
+        else if (proxyBindArg.compare("localhost", Qt::CaseInsensitive) == 0)
+            proxyAddr = QHostAddress::LocalHost;
+        else if (!proxyAddr.setAddress(proxyBindArg)) {
+            QTextStream(stderr) << "FATAL: --proxy-bind=" << proxyBindArg
+                                << " is not a valid IP address\n";
+            QTextStream(stderr).flush();
+            return 1;
+        }
+    }
+    const bool proxyLoopback = (proxyAddr == QHostAddress::LocalHost
+                             || proxyAddr == QHostAddress::LocalHostIPv6);
+    if (!proxyLoopback && !hasFlag(argc, argv, "--proxy-bind-insecure")) {
+        QTextStream(stderr)
+            << "FATAL: --proxy-bind=" << proxyBindArg << " binds the intercepting proxy "
+            << "off loopback, exposing a cert-forging MITM (and an open relay) to your "
+            << "whole network. If that is genuinely intended (proxying a VM, phone, or "
+            << "container), re-run with --proxy-bind-insecure to acknowledge. Refusing to start.\n";
+        QTextStream(stderr).flush();
+        return 1;
+    }
+    const QString proxyShown = proxyLoopback ? QStringLiteral("127.0.0.1")
+                                             : proxyAddr.toString();
+
     const bool proxyStarted = (wantedProxyPort > 0)
-        ? proxy.start(QHostAddress::LocalHost, wantedProxyPort)
-        : proxy.start();
+        ? proxy.start(proxyAddr, wantedProxyPort)
+        : proxy.start(proxyAddr);
     if (!proxyStarted || proxy.listeningPort() == 0) {
         // The proxy is the whole point -- if it can't bind, don't limp along
         // silently. Tell the user exactly why + how to fix it, and exit non-zero.
         QTextStream es(stderr);
         es << "FATAL: could not start the proxy listener"
-           << (wantedProxyPort ? QStringLiteral(" on 127.0.0.1:%1").arg(wantedProxyPort)
+           << (wantedProxyPort ? QStringLiteral(" on %1:%2").arg(proxyShown).arg(wantedProxyPort)
                                : QStringLiteral(" (auto-port)"))
            << " -- is that port already in use? Pick a free one with --proxy-port=N.\n";
         es.flush();
@@ -847,8 +890,11 @@ int main(int argc, char *argv[]) {
     }
     // Always surface where the proxy is listening -- it's what the user points
     // their browser at, and the auto-port fallback may have landed off 8080.
-    banner("  proxy     http://127.0.0.1:" + QString::number(proxy.listeningPort())
+    banner("  proxy     http://" + proxyShown + ":" + QString::number(proxy.listeningPort())
            + "/   <- set your browser's HTTP proxy here");
+    if (!proxyLoopback)
+        banner("  WARNING: the proxy is bound OFF LOOPBACK (" + proxyShown + ") -- it is "
+               "reachable by, and forges TLS certs for, anyone on your network.");
 
     Nullock::Core::Repeater repeater(&model);
     Nullock::Core::Intruder intruder(&model);

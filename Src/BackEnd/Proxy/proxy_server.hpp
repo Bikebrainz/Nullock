@@ -107,6 +107,12 @@ public:
     // length of a parked read. Use shutdownAndJoin() for teardown.
     Q_INVOKABLE void stop();
 
+    // Re-listen on the LAST address+port a successful start() used, so a stop/start
+    // toggle (the UI button / /api/proxy/toggle) preserves an off-loopback
+    // --proxy-bind (and a non-default --proxy-port) instead of silently reverting
+    // to 127.0.0.1:8080. Falls back to those defaults if start() never succeeded.
+    Q_INVOKABLE bool restart();
+
     // Stop accepting, wake every in-flight worker, and JOIN them.
     //
     // MUST be called while every object a Connection reaches through m_server
@@ -254,6 +260,10 @@ private:
     void persistBlocklist();
 
     QTcpServer *m_server;
+    // Last bind a successful start() used, so restart() (the UI/API toggle) can
+    // re-listen on the same interface+port instead of the LocalHost:8080 defaults.
+    QHostAddress m_bindAddress = QHostAddress::LocalHost;
+    quint16      m_bindPort    = 8080;
     CertAuthority *m_ca = nullptr;
     InterceptController *m_intercept = nullptr;
     Nullock::Core::ExtensionsApi *m_extensions = nullptr;

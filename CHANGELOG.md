@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Proxy can bind off-loopback for VM / phone / container testing.** The proxy
+  listener was hardwired to `127.0.0.1`, so another machine's browser couldn't be
+  pointed at it. `--proxy-bind=ADDR` (or `NULLOCK_PROXY_BIND`) now binds it to any
+  interface. Because an off-loopback intercepting proxy exposes a cert-forging
+  MITM (and an open relay) to the whole LAN, a non-loopback bind is refused unless
+  you also pass `--proxy-bind-insecure` to acknowledge, and it prints a loud
+  warning banner. The stop/start toggle now re-listens on the same bind
+  (`ProxyServer::restart()`) instead of silently reverting to `127.0.0.1:8080` —
+  which also fixes a pre-existing bug where toggling reset a custom `--proxy-port`.
+  Closes the launch blocker "the listener cannot bind to anything but loopback".
 - **Repeater tabs persist per project and restore on reopen.** Staged Repeater
   requests were wiped on every project switch and lost on close. They're now saved
   into the project file (`project.json` under `repeater`) and restored when the

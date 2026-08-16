@@ -1747,6 +1747,10 @@ bool ProxyServer::start(const QHostAddress &address, quint16 port) {
     QString lastError;
     for (quint16 p : tries) {
         if (m_server->listen(address, p)) {
+            // Remember the bind so restart() (stop/start toggle) re-listens on the
+            // same interface + actually-bound port, not the LocalHost:8080 defaults.
+            m_bindAddress = address;
+            m_bindPort    = m_server->serverPort();
             emit started(m_server->serverPort());
             emit runningChanged();
             return true;
@@ -1764,6 +1768,10 @@ void ProxyServer::stop() {
     m_server->close();
     emit stopped();
     emit runningChanged();
+}
+
+bool ProxyServer::restart() {
+    return start(m_bindAddress, m_bindPort);
 }
 
 bool ProxyServer::isRunning() const { return m_server->isListening(); }
