@@ -9113,6 +9113,38 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // ---- Repeater chains ---------------------------------------------
+    // POST /api/chain/record { rowIds: [int, ...] }
+    //   Records a replayable macro from captured history: reads each selected
+    //   history row's request and emits the /api/chain/run "steps" shape, ready to
+    //   POST straight back to /api/chain/run (or edit first to add {{var}}
+    //   extractions). This is the "record" half of Repeater chains -- ChainRunner
+    //   already replays; nothing captured a sequence from real traffic before.
+    if (path == "/api/chain/record") {
+        const QJsonArray idsArr = bodyJson.value("rowIds").toArray();
+        if (idsArr.isEmpty())
+            return okJson({{ "ok", false }, { "error", "rowIds[] required" }});
+        if (idsArr.size() > 50)
+            return okJson({{ "ok", false }, { "error", "max 50 steps" }});
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "no project store" }});
+        auto *idx = m_wiring.projectStore->historyIndex();
+        if (!idx || !idx->isOpen())
+            return okJson({{ "ok", false }, { "error", "history index not ready" }});
+        QJsonArray steps;
+        int skipped = 0;
+        for (const QJsonValue &v : idsArr) {
+            const auto fr = idx->loadFullRow(v.toInt());
+            if (!fr.ok) { ++skipped; continue; }   // full bytes not in the index
+            const QByteArray raw = Nullock::Proxy::serializeRequestForOrigin(fr.request);
+            steps.append(Nullock::Core::ChainRunner::buildChainStep(
+                raw, fr.request.host, fr.request.port, fr.response.wasTls));
+        }
+        // `skipped` counts requested rows whose full request bytes aren't in the
+        // history index (evicted, or an ndjson/index desync) -- surfaced so the UI
+        // can say "recorded N of M" rather than silently dropping them.
+        return okJson({{ "ok", true }, { "steps", steps }, { "skipped", skipped }});
+    }
+
     // POST /api/chain/run
     //   { continueOnError?: false,
     //     steps: [ { name, host, port, tls, request,

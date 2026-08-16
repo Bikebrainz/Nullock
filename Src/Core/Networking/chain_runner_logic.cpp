@@ -204,4 +204,29 @@ QByteArray normalizeContentLength(const QByteArray &req) {
     return rebuilt;
 }
 
+QJsonObject buildChainStep(const QByteArray &rawRequest, const QString &host,
+                           int port, bool tls) {
+    // Derive a readable step name from the request line: "METHOD path" (query
+    // stripped). Terminator-agnostic on the first line (CRLF or bare LF).
+    QString name = QStringLiteral("step");
+    int nl = rawRequest.indexOf('\n');
+    if (nl < 0) nl = rawRequest.size();
+    const QByteArray firstLine = rawRequest.left(nl).trimmed();
+    const QList<QByteArray> parts = firstLine.split(' ');
+    if (parts.size() >= 2 && !parts[0].isEmpty()) {
+        QString target = QString::fromLatin1(parts[1]);
+        const int q = target.indexOf(QLatin1Char('?'));
+        if (q >= 0) target = target.left(q);
+        name = QString::fromLatin1(parts[0]) + QLatin1Char(' ') + target;
+    }
+    return QJsonObject{
+        { "name",    name },
+        { "host",    host },
+        { "port",    port },
+        { "tls",     tls },
+        { "request", QString::fromUtf8(rawRequest) },
+        { "extract", QJsonArray() },
+    };
+}
+
 } // namespace Nullock::Core::ChainRunner

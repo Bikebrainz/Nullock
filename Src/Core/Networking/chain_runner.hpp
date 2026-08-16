@@ -17,6 +17,7 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QJsonObject>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -87,5 +88,15 @@ QString    sanitizeExtractedValue(const QString &v);
 QString    substituteStr(const QString &in, const QHash<QString, QString> &vars);
 QByteArray substituteBytes(const QByteArray &in, const QHash<QString, QString> &vars);
 QByteArray normalizeContentLength(const QByteArray &req);
+
+// --- Macro recorder ---------------------------------------------------------
+// Build one replayable chain STEP (the /api/chain/run JSON shape:
+// { name, host, port, tls, request, extract:[] }) from a captured raw request.
+// The step name is derived from the request line ("METHOD path", query stripped);
+// extract[] starts empty -- the operator wires value-passing after recording.
+// Pure: the control server reads the selected history rows, serializes each, and
+// calls this to assemble the macro that POSTs straight back to /api/chain/run.
+QJsonObject buildChainStep(const QByteArray &rawRequest, const QString &host,
+                           int port, bool tls);
 
 } // namespace Nullock::Core::ChainRunner

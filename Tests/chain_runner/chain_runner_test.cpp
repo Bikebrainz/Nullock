@@ -17,6 +17,8 @@
 #include "chain_runner.hpp"
 
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <cstdio>
 
@@ -280,6 +282,33 @@ int main(int argc, char **argv) {
         }
         chk("fuzz: sanitizeExtractedValue survived 8k random values (no crash)", true);
         chk("fuzz: output never carries a C0 control char except tab (no CR/LF)", invariant);
+    }
+
+    // ===== macro recorder: buildChainStep (record from history) =========
+    {
+        const QByteArray req = "POST /login?next=/home HTTP/1.1\r\nHost: app.test\r\n"
+                               "Content-Type: application/json\r\n\r\n{\"u\":\"a\"}";
+        const QJsonObject s = buildChainStep(req, "app.test", 443, true);
+        chk("record: name is METHOD + path, query stripped",
+            s.value("name").toString() == QStringLiteral("POST /login"));
+        chk("record: host set", s.value("host").toString() == QStringLiteral("app.test"));
+        chk("record: port set", s.value("port").toInt() == 443);
+        chk("record: tls set", s.value("tls").toBool() == true);
+        chk("record: request is the raw bytes verbatim",
+            s.value("request").toString() == QString::fromUtf8(req));
+        chk("record: extract starts empty", s.value("extract").toArray().isEmpty());
+    }
+    {
+        const QByteArray req = "GET /x HTTP/1.1\nHost: h\n\n";   // bare-LF first line
+        const QJsonObject s = buildChainStep(req, "h", 80, false);
+        chk("record: bare-LF request line parsed", s.value("name").toString() == QStringLiteral("GET /x"));
+        chk("record: tls false round-trips", s.value("tls").toBool() == false);
+    }
+    {
+        const QByteArray req = "garbage\r\n\r\n";   // malformed request line
+        const QJsonObject s = buildChainStep(req, "h", 443, true);
+        chk("record: malformed line -> 'step' default (no crash)",
+            s.value("name").toString() == QStringLiteral("step"));
     }
 
     std::fprintf(stderr, "chain_runner_test: %d passed, %d failed\n", pass, fail);

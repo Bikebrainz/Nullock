@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Record a Repeater chain from captured traffic.** `ChainRunner` could replay a
+  hand-defined request sequence, but nothing captured one from real traffic. New
+  `/api/chain/record` takes selected history row IDs and emits a replayable macro
+  (the `/api/chain/run` step shape — one step per request, name derived from the
+  request line), ready to POST straight back to run, or to edit in the `{{var}}`
+  extractions that thread a token from one response into the next request. The
+  step-builder is a pure function with unit tests, mutation-proven on the name
+  derivation. (Session-acquisition auto-wiring — pushing recorded values into the
+  cookie jar — is the noted follow-up.) Closes the launch blocker "no macro
+  recorder".
 - **Proxy intercept rules — hold only the requests/responses you care about.**
   Interception was global all-or-nothing: turn it on and every in-scope message
   parks, static assets included. It's now driven by a rule list (Burp's "Intercept
