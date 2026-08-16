@@ -4121,7 +4121,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "<pending>",
+        "commit": "c547c38",
         "note": "Closes the last remaining gap: a \u25c0 \u25b6 control in RepeaterTab's target row (ui-v2/tabs.jsx) navigates the active tab's send history via two pure helpers (repeaterHistoryPrevIndex/repeaterHistoryNextIndex, boundary-clamped) and NL.actions.repeaterHistoryLoad -> POST /api/repeater/history/load. histPos null means \"at the live/newest send\" (already what the tab shows, no wire call needed); a numeric index reloads that entry's full request/response via the existing endpoint. No backend touched -- reads only the historyCount/history[].statusLine/.sentAt fields already in the snapshot (control_server.cpp:1508-1514)."
       },
       "gap": "None -- each tab keeps a capped history of prior sends; \u25c0 \u25b6 buttons in the target row (ui-v2/tabs.jsx) step back/forward through it, showing a live n/count position label and a status/timestamp tooltip, and reload the selected entry into the tab via /api/repeater/history/load.",
