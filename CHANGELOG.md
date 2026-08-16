@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Proxy intercept rules — hold only the requests/responses you care about.**
+  Interception was global all-or-nothing: turn it on and every in-scope message
+  parks, static assets included. It's now driven by a rule list (Burp's "Intercept
+  Client/Server Requests"): each rule matches on method, URL regex, host glob, file
+  extension, content-type, status code, or a header name, combined with And/Or and
+  a per-rule negate — the message is held only if the rule fold says so (an empty
+  list still holds everything). Rules are settable via `/api/intercept/rules` and
+  persist in the project file (survive restart, verified). The decision engine is a
+  pure predicate with 63 unit cases, mutation-proven on the negate + And-fold. (A
+  rules-editor UI is the remaining piece.) Closes the launch blocker "there are no
+  intercept rules".
 - **Proxy can bind off-loopback for VM / phone / container testing.** The proxy
   listener was hardwired to `127.0.0.1`, so another machine's browser couldn't be
   pointed at it. `--proxy-bind=ADDR` (or `NULLOCK_PROXY_BIND`) now binds it to any

@@ -1,7 +1,10 @@
 #pragma once
 
 #include <QByteArray>
+#include <QJsonArray>
 #include <QString>
+#include <QStringList>
+#include <QVector>
 
 // Pure resolve-the-outgoing-bytes logic for the intercept controller, split out
 // of intercept.cpp so a unit test can link it against Qt6::Core alone (the rest
@@ -52,5 +55,66 @@ inline constexpr int kMaxPendingIntercepts = 256;
 // cap is reached, signalling the caller to auto-forward instead of enqueue.
 // Defensive against a negative count (treated as empty -> room available).
 bool interceptQueueHasRoom(int outstanding);
+
+// --- Intercept match rules (Burp's "Intercept Client/Server Requests" rules) ---
+// A rule list decides which in-scope messages are HELD for manual editing, in
+// place of the old global all-or-nothing toggle. The decision engine is a pure
+// fold so it unit-tests + mutation-proves without the proxy's worker threads.
+
+struct InterceptRule {
+    bool enabled = true;
+    // Combines with the running result of the rules above it, evaluated
+    // left-to-right with NO precedence -- exactly like Burp's rule table.
+    enum class BoolOp { Or, And };
+    BoolOp op = BoolOp::Or;
+    // Which field to test.
+    enum class Match {
+        Any,            // matches every message (a base "intercept all" rule)
+        FileExtension,  // condition = comma list, e.g. "css,png,gif,js"
+        Method,         // condition = comma list, e.g. "GET,HEAD"
+        UrlRegex,       // condition = a regular expression over the request target
+        HostGlob,       // condition = a wildcard host, e.g. "*.example.com"
+        ContentType,    // condition = comma list, substring-matched, e.g. "json,xml"
+        StatusCode,     // response: condition = comma list, e.g. "200,301,404"
+        HasHeader       // condition = a regex over header NAMES (lowercased)
+    };
+    Match match = Match::UrlRegex;
+    bool negate = false;         // "does NOT match"
+    QString condition;
+    // Which direction this rule applies to.
+    enum class Dir { Request, Response, Both };
+    Dir dir = Dir::Both;
+};
+
+// Fields extracted from a raw message: the sole input to the predicate, which
+// keeps it pure + trivially testable. Byte parsing lives in extract*Fields below.
+struct InterceptFields {
+    bool        isResponse = false;
+    QString     method;         // request only, upper-case
+    QString     url;            // request target (path or absolute-URI)
+    QString     host;
+    QString     fileExtension;  // lowercased, no dot, from the URL path's last seg
+    QString     contentType;    // Content-Type value, lowercased
+    int         statusCode = 0; // response only
+    QStringList headerNames;    // lowercased, for HasHeader
+};
+
+// Should this message be HELD for manual editing, given the rule list? Walks the
+// enabled rules that apply to the message's direction and folds their per-rule
+// match with And/Or, left to right (Burp semantics). With NO applicable rules the
+// message is held -- interception is already gated by the global toggle + scope
+// upstream, so an empty rule list means "hold everything", matching Burp.
+bool interceptRulesHold(const QVector<InterceptRule> &rules, const InterceptFields &f);
+
+// Parse the testable fields out of raw request / response bytes (pure). `host` is
+// the connection's host (used when the message carries no Host header).
+InterceptFields extractRequestFields(const QByteArray &requestBytes, const QString &host);
+InterceptFields extractResponseFields(const QByteArray &responseBytes, const QString &host);
+
+// JSON wire form of the rule list, shared by the control API (/api/intercept/rules)
+// and project persistence (project.json "interceptRules") so the two never diverge.
+// Enums serialize as stable lowercase strings. Unknown values default safely.
+QJsonArray interceptRulesToJson(const QVector<InterceptRule> &rules);
+QVector<InterceptRule> interceptRulesFromJson(const QJsonArray &arr);
 
 } // namespace Nullock::Proxy::InterceptLogic

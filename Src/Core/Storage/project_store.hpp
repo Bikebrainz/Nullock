@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QMutex>
 #include <QObject>
@@ -26,6 +27,10 @@ struct ProjectMeta {
     // Repeater multi-tab state (opaque JSON owned by the Repeater), so a reopened
     // project restores its staged requests. Serialized under "repeater".
     QJsonObject repeaterState;
+    // Proxy intercept match rules (opaque JSON owned by InterceptLogic), so a
+    // reopened project restores which messages it holds. Serialized under
+    // "interceptRules".
+    QJsonArray interceptRules;
 };
 
 class ProjectStore : public QObject {
@@ -121,6 +126,13 @@ public:
     void setRepeaterState(const QJsonObject &state);
     QJsonObject repeaterState() const { return m_meta.repeaterState; }
 
+    // Proxy intercept rules, persisted in project.json under "interceptRules".
+    // Opaque JSON (InterceptLogic owns the shape). setInterceptRules persists
+    // immediately; open() emits interceptRulesChanged so app.cpp can push them
+    // into the live InterceptController.
+    void setInterceptRules(const QJsonArray &rules);
+    QJsonArray interceptRules() const { return m_meta.interceptRules; }
+
 public slots:
     // Append one round-trip to history.ndjson. Wire this to
     // ProxyServer::responseReceived.
@@ -155,6 +167,10 @@ signals:
     // Emitted at the END of open() with the freshly-loaded project's Repeater
     // state. Wire to Repeater::importState to restore the incoming project's tabs.
     void repeaterStateChanged(const QJsonObject &state);
+    // Emitted at the END of open() with the freshly-loaded project's intercept
+    // rules. Wire (via InterceptLogic::interceptRulesFromJson) to
+    // InterceptController::setInterceptRules.
+    void interceptRulesChanged(const QJsonArray &rules);
 
 private:
     bool ensureMetadata();

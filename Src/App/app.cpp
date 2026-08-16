@@ -940,6 +940,14 @@ int main(int argc, char *argv[]) {
     });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::repeaterStateChanged,
                      &repeater, &Nullock::Core::Repeater::importState);
+    // Proxy intercept rules: restore the incoming project's rules into the live
+    // controller when a project (re)opens (they're persisted whenever set via
+    // /api/intercept/rules).
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::interceptRulesChanged,
+                     &intercept, [&intercept](const QJsonArray &arr) {
+        intercept.setInterceptRules(
+            Nullock::Proxy::InterceptLogic::interceptRulesFromJson(arr));
+    });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
@@ -962,6 +970,9 @@ int main(int argc, char *argv[]) {
     // The default project opened before the Repeater existed, so its persisted tabs
     // weren't streamed into it. Restore them once now that everything is wired.
     repeater.importState(projectStore.repeaterState());
+    // Same for intercept rules -- the controller didn't exist at the initial open.
+    intercept.setInterceptRules(
+        Nullock::Proxy::InterceptLogic::interceptRulesFromJson(projectStore.interceptRules()));
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run

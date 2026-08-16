@@ -191,13 +191,37 @@ InterceptResult InterceptController::pend(const QByteArray &requestBytes,
     // Worker-thread early-out: interception off -> pass the bytes straight
     // through without touching the main thread or allocating a pending.
     if (m_enabled.loadAcquire() == 0) return { false, requestBytes };
+    // Intercept match rules decide whether THIS request is held. Copy under the
+    // rules mutex (a cheap COW copy), evaluate lock-free. An empty list holds all.
+    QVector<InterceptLogic::InterceptRule> reqRules;
+    { QMutexLocker lk(&m_rulesMutex); reqRules = m_interceptRules; }
+    if (!reqRules.isEmpty()
+        && !InterceptLogic::interceptRulesHold(
+               reqRules, InterceptLogic::extractRequestFields(requestBytes, host)))
+        return { false, requestBytes };
     return pendImpl(requestBytes, host, port, tls, PendingRequest::Request);
 }
 
 InterceptResult InterceptController::pendResponse(const QByteArray &responseBytes,
                                                   const QString &host, int port, bool tls) {
     if (m_enabledResponses.loadAcquire() == 0) return { false, responseBytes };
+    QVector<InterceptLogic::InterceptRule> respRules;
+    { QMutexLocker lk(&m_rulesMutex); respRules = m_interceptRules; }
+    if (!respRules.isEmpty()
+        && !InterceptLogic::interceptRulesHold(
+               respRules, InterceptLogic::extractResponseFields(responseBytes, host)))
+        return { false, responseBytes };
     return pendImpl(responseBytes, host, port, tls, PendingRequest::Response);
+}
+
+void InterceptController::setInterceptRules(const QVector<InterceptLogic::InterceptRule> &rules) {
+    { QMutexLocker lk(&m_rulesMutex); m_interceptRules = rules; }
+    emit interceptRulesChanged();
+}
+
+QVector<InterceptLogic::InterceptRule> InterceptController::interceptRules() const {
+    QMutexLocker lk(&m_rulesMutex);
+    return m_interceptRules;
 }
 
 InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QString &host,

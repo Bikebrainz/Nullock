@@ -3053,6 +3053,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.intercept) m_wiring.intercept->forwardAll();
         return okJson();
     }
+    if (path == "/api/intercept/rules") {
+        if (!m_wiring.intercept) return okJson({{ "rules", QJsonArray() }});
+        // A body carrying "rules" sets them (and persists into the open project so
+        // they survive a restart); any request returns the current list.
+        if (bodyJson.contains("rules")) {
+            const QJsonArray arr = bodyJson.value("rules").toArray();
+            m_wiring.intercept->setInterceptRules(
+                Nullock::Proxy::InterceptLogic::interceptRulesFromJson(arr));
+            if (m_wiring.projectStore) m_wiring.projectStore->setInterceptRules(arr);
+        }
+        return okJson({{ "rules", Nullock::Proxy::InterceptLogic::interceptRulesToJson(
+                                      m_wiring.intercept->interceptRules()) }});
+    }
 
     if (path == "/api/scope/in/add") {
         if (m_wiring.projectStore)

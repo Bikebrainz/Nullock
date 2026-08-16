@@ -19,6 +19,8 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 #include <cstdio>
@@ -219,6 +221,150 @@ int main(int argc, char **argv) {
         // unedited single byte preserved
         const QByteArray req = "x";
         chk("unedited single byte preserved", resolveForwardBytes(req, QString::fromUtf8(req)) == req);
+    }
+
+    // ===== intercept match rules: field extraction ======================
+    {
+        const QByteArray req =
+            "POST /api/login.json?x=1 HTTP/1.1\r\n"
+            "Host: app.example.com\r\n"
+            "Content-Type: application/json; charset=utf-8\r\n"
+            "Authorization: Bearer t\r\n"
+            "\r\n{\"u\":\"a\"}";
+        const InterceptFields f = extractRequestFields(req, "conn.example");
+        chk("extract req: method POST", f.method == "POST");
+        chk("extract req: url has path+query", f.url == "/api/login.json?x=1");
+        chk("extract req: extension json (query stripped)", f.fileExtension == "json");
+        chk("extract req: content-type lowercased", f.contentType.startsWith("application/json"));
+        // The connection host (from the proxy, unspoofable) wins over the Host
+        // header -- a malicious Host: can't redirect a rule's host match.
+        chk("extract req: connection host wins over Host header", f.host == "conn.example");
+        chk("extract req: header names lowercased", f.headerNames.contains("authorization"));
+        chk("extract req: not a response", !f.isResponse);
+    }
+    {
+        // With no connection host, the Host header fills it.
+        const QByteArray req = "GET / HTTP/1.1\r\nHost: fromheader.example\r\n\r\n";
+        const InterceptFields f = extractRequestFields(req, QString());
+        chk("extract req: empty conn host -> Host header fills it", f.host == "fromheader.example");
+    }
+    {
+        const QByteArray resp = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n<html>";
+        const InterceptFields f = extractResponseFields(resp, "h");
+        chk("extract resp: status 404", f.statusCode == 404);
+        chk("extract resp: content-type text/html", f.contentType == "text/html");
+        chk("extract resp: is a response", f.isResponse);
+    }
+    {
+        const QByteArray req = "GET /x HTTP/1.1\r\n\r\n";
+        const InterceptFields f = extractRequestFields(req, "fallback.host");
+        chk("extract req: host falls back to the connection", f.host == "fallback.host");
+        chk("extract req: no extension on /x", f.fileExtension.isEmpty());
+    }
+
+    // ===== intercept match rules: the fold predicate ====================
+    auto reqF = [](const QString &method, const QString &url) {
+        InterceptFields f;
+        f.isResponse = false; f.method = method; f.url = url;
+        QString p = url; const int q = p.indexOf('?'); if (q >= 0) p = p.left(q);
+        const int s = p.lastIndexOf('/'); const QString seg = s >= 0 ? p.mid(s + 1) : p;
+        const int d = seg.lastIndexOf('.');
+        if (d >= 0 && d < seg.size() - 1) f.fileExtension = seg.mid(d + 1).toLower();
+        return f;
+    };
+    {
+        QVector<InterceptRule> none;
+        chk("rules: empty list holds everything", interceptRulesHold(none, reqF("GET", "/a")));
+    }
+    {
+        // Burp's classic default: hold unless it's a static-asset extension.
+        InterceptRule r;
+        r.match = InterceptRule::Match::FileExtension;
+        r.condition = "css,png,gif,jpg,js,woff2,ico";
+        r.negate = true;
+        const QVector<InterceptRule> rules { r };
+        chk("rules: dynamic .json held", interceptRulesHold(rules, reqF("GET", "/a.json")));
+        chk("rules: no-ext /login held", interceptRulesHold(rules, reqF("GET", "/login")));
+        chk("rules: static .png NOT held", !interceptRulesHold(rules, reqF("GET", "/logo.png")));
+        chk("rules: static .css NOT held", !interceptRulesHold(rules, reqF("GET", "/a.css")));
+    }
+    {
+        InterceptRule r; r.match = InterceptRule::Match::Method; r.condition = "POST";
+        const QVector<InterceptRule> rules { r };
+        chk("rules: POST held", interceptRulesHold(rules, reqF("POST", "/x")));
+        chk("rules: GET not held", !interceptRulesHold(rules, reqF("GET", "/x")));
+    }
+    {
+        // And fold: (method==POST) AND (url matches /api/).
+        InterceptRule a; a.match = InterceptRule::Match::Method; a.condition = "POST";
+        InterceptRule b; b.match = InterceptRule::Match::UrlRegex; b.condition = "/api/";
+        b.op = InterceptRule::BoolOp::And;
+        const QVector<InterceptRule> rules { a, b };
+        chk("rules: POST+/api/ held", interceptRulesHold(rules, reqF("POST", "/api/x")));
+        chk("rules: POST but not /api/ not held", !interceptRulesHold(rules, reqF("POST", "/other")));
+        chk("rules: /api/ but GET not held", !interceptRulesHold(rules, reqF("GET", "/api/x")));
+    }
+    {
+        // Or fold: method==POST OR method==PUT.
+        InterceptRule a; a.match = InterceptRule::Match::Method; a.condition = "POST";
+        InterceptRule b; b.match = InterceptRule::Match::Method; b.condition = "PUT";
+        b.op = InterceptRule::BoolOp::Or;
+        const QVector<InterceptRule> rules { a, b };
+        chk("rules: PUT held via Or", interceptRulesHold(rules, reqF("PUT", "/x")));
+        chk("rules: DELETE not held", !interceptRulesHold(rules, reqF("DELETE", "/x")));
+    }
+    {
+        // Direction filter: a Response-only rule never affects requests.
+        InterceptRule r; r.match = InterceptRule::Match::StatusCode; r.condition = "500";
+        r.dir = InterceptRule::Dir::Response;
+        const QVector<InterceptRule> rules { r };
+        chk("rules: response-only rule ignored for a request", interceptRulesHold(rules, reqF("GET", "/x")));
+        InterceptFields r500; r500.isResponse = true; r500.statusCode = 500;
+        InterceptFields r200; r200.isResponse = true; r200.statusCode = 200;
+        chk("rules: 500 response held", interceptRulesHold(rules, r500));
+        chk("rules: 200 response not held", !interceptRulesHold(rules, r200));
+    }
+    {
+        InterceptRule r; r.enabled = false; r.match = InterceptRule::Match::Method; r.condition = "POST";
+        const QVector<InterceptRule> rules { r };
+        chk("rules: disabled rule skipped -> hold everything", interceptRulesHold(rules, reqF("GET", "/x")));
+    }
+    {
+        InterceptRule r; r.match = InterceptRule::Match::HostGlob; r.condition = "*.example.com";
+        const QVector<InterceptRule> rules { r };
+        InterceptFields in;  in.host = "app.example.com";
+        InterceptFields out; out.host = "evil.test";
+        chk("rules: hostglob in-domain held", interceptRulesHold(rules, in));
+        chk("rules: hostglob out-domain not held", !interceptRulesHold(rules, out));
+    }
+
+    // ===== intercept rules: JSON round-trip (API + persistence share it) =
+    {
+        InterceptRule a;
+        a.enabled = true;  a.op = InterceptRule::BoolOp::And;
+        a.match = InterceptRule::Match::FileExtension; a.negate = true;
+        a.condition = "css,png"; a.dir = InterceptRule::Dir::Request;
+        InterceptRule b;
+        b.enabled = false; b.op = InterceptRule::BoolOp::Or;
+        b.match = InterceptRule::Match::StatusCode; b.condition = "500";
+        b.dir = InterceptRule::Dir::Response;
+        QVector<InterceptRule> rules; rules << a << b;
+        const QVector<InterceptRule> back =
+            interceptRulesFromJson(interceptRulesToJson(rules));
+        bool ok = (back.size() == 2);
+        if (ok) {
+            ok = back[0].enabled == a.enabled && back[0].op == a.op
+              && back[0].match == a.match && back[0].negate == a.negate
+              && back[0].condition == a.condition && back[0].dir == a.dir
+              && back[1].enabled == b.enabled && back[1].op == b.op
+              && back[1].match == b.match && back[1].negate == b.negate
+              && back[1].condition == b.condition && back[1].dir == b.dir;
+        }
+        chk("rules JSON round-trip preserves every field", ok);
+        const QJsonArray bad { QJsonObject{ { "match", "bogus" } } };
+        const QVector<InterceptRule> d = interceptRulesFromJson(bad);
+        chk("rules JSON: unknown match -> url-regex default, enabled default true",
+            d.size() == 1 && d[0].match == InterceptRule::Match::UrlRegex && d[0].enabled);
     }
 
     std::fprintf(stderr, "intercept_logic_test: %d passed, %d failed\n", pass, fail);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "intercept_logic.hpp"
+
 #include <QAtomicInt>
 #include <QByteArray>
 #include <QMutex>
@@ -7,6 +9,7 @@
 #include <QQueue>
 #include <QSemaphore>
 #include <QString>
+#include <QVector>
 
 namespace Nullock::Proxy {
 
@@ -95,6 +98,13 @@ public:
     Q_INVOKABLE void drop();
     Q_INVOKABLE void forwardAll();
 
+    // Intercept match rules -- decide which in-scope messages are HELD, in place
+    // of the global all-or-nothing toggle. Evaluated in pend()/pendResponse() on
+    // worker threads; guarded by m_rulesMutex. An empty list holds everything
+    // (interception is still gated by the enabled toggle + scope), matching Burp.
+    void setInterceptRules(const QVector<InterceptLogic::InterceptRule> &rules);
+    QVector<InterceptLogic::InterceptRule> interceptRules() const;
+
     // Worker-thread API. Blocks the calling per-connection worker until the
     // operator resolves the message (or until the matching intercept toggle
     // is turned off / the queue overflows, in which case it auto-forwards --
@@ -111,6 +121,7 @@ signals:
     void enabledChanged();
     void responsesEnabledChanged();
     void currentChanged();
+    void interceptRulesChanged();
 
 private slots:
     void addPendingOnMain(Nullock::Proxy::PendingRequest *p);
@@ -139,6 +150,11 @@ private:
     QQueue<PendingRequest *>      m_queue;
     int                           m_nextId  = 1;
     mutable QMutex                m_queueMutex;
+    // Intercept match rules. Copied out under this mutex on the worker thread
+    // (pend), evaluated lock-free; set on the main thread. Separate from
+    // m_queueMutex so rule eval never contends with the park/promote path.
+    QVector<InterceptLogic::InterceptRule> m_interceptRules;
+    mutable QMutex                m_rulesMutex;
 };
 
 } // namespace Nullock::Proxy
