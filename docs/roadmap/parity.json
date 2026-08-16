@@ -4008,7 +4008,7 @@
       "audited_state": "stub",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "PENDING",
+        "commit": "faa9193",
         "note": "Register-accuracy fix: the INSPECTOR tab (86f094c) already renders view.queryParams read-only, matching the same-panel grading precedent for Cookies/JWT/Request-attributes -- this item was simply never flipped when that shipped. No code change, docs/roadmap regenerated."
       }
     },
@@ -4024,7 +4024,7 @@
       "audited_state": "stub",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "PENDING",
+        "commit": "faa9193",
         "note": "Register-accuracy fix: the INSPECTOR tab (86f094c) already renders view.bodyParams read-only -- reachability half of the gap closed, moved stub -> partial. The real parsing gap (nested JSON collapses to a placeholder, no multipart/XML) was re-verified against live inspector_logic.cpp and is still true, so this stays honestly partial, not present. No code change, docs/roadmap regenerated."
       }
     },
