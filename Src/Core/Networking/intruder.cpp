@@ -1,5 +1,7 @@
 #include "intruder.hpp"
 
+#include "session_rules.hpp"
+
 #include "intruder_engine.hpp"
 #include "intruder_pool_logic.hpp"
 #include "Proxy/proxy_model.hpp"
@@ -490,8 +492,12 @@ void Intruder::runWorker(const QList<QStringList> &combos,
 
         QElapsedTimer t;
         t.start();
+        // Session rules scoped to Intruder (only rewrites when a rule fires).
+        QByteArray reqBytes = req.toUtf8();
+        if (m_sessionRules)
+            m_sessionRules->applyToRequestBytes(reqBytes, host, SessionRulesLogic::ToolIntruder);
         const auto result = client.send(host, static_cast<quint16>(port),
-                                        useTls, req.toUtf8());
+                                        useTls, reqBytes);
         const qint64 elapsedMs = t.elapsed();
 
         const int statusCode = result.ok ? result.parsed.statusCode : 0;
@@ -617,8 +623,11 @@ bool Intruder::resend(int row) {
         if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";
 
         QElapsedTimer t; t.start();
+        QByteArray reqBytes = req.toUtf8();
+        if (m_sessionRules)
+            m_sessionRules->applyToRequestBytes(reqBytes, hostCopy, SessionRulesLogic::ToolIntruder);
         const auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
-                                        tlsCopy, req.toUtf8());
+                                        tlsCopy, reqBytes);
         const qint64 elapsedMs = t.elapsed();
         const int statusCode = result.ok ? result.parsed.statusCode : 0;
         const int size       = result.parsed.body.size();

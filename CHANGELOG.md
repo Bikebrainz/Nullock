@@ -16,11 +16,11 @@ developer-facing record.
   `tools` scope — proxy / repeater / intruder / scanner — so it can be limited to,
   or excluded from, specific tools. The scoping predicate is pure, unit-tested and
   mutation-proven, and the scope round-trips through `/api/session-rules`. Existing
-  rules are unchanged (an unset scope means all tools). **Repeater now applies
-  scoped rules to its sends** — only rewriting the bytes when a rule actually
-  fires, so a raw send no rule touches goes on the wire byte-for-byte; wiring
-  Intruder the same way, plus the editor checkboxes, is the remaining follow-on.
-  Part of the launch blocker "no tools-scope on session rules".
+  rules are unchanged (an unset scope means all tools). **Repeater and Intruder
+  now apply scoped rules to their sends** — only rewriting the bytes when a rule
+  actually fires, so a raw send no rule touches goes on the wire byte-for-byte.
+  The per-tool editor checkboxes (ui-v2) are the remaining follow-on. Part of the
+  launch blocker "no tools-scope on session rules".
 - **Point the OAST / Collaborator at a hosted sink (client mode).** The out-of-band
   interaction sink was in-process only, so OOB detection (blind SSRF, RCE, XXE,
   log4shell) only worked against targets that could reach your own machine.

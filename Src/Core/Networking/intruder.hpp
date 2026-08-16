@@ -76,6 +76,8 @@ signals:
 //
 // The combination + substitution logic lives in IntruderEngine (pure,
 // unit-tested); this class owns the target/state and the firing loop.
+class SessionRules;
+
 class Intruder : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString     host             READ host             WRITE setHost             NOTIFY targetChanged)
@@ -154,6 +156,9 @@ public:
     // Empty = off. Kept separate from the saved rule chain so it can't be
     // double-applied on save/resume.
     void setGlobalEncodeChars(const QString &chars);
+    // Session-handling rules scoped to Intruder are applied to each fired request
+    // (only rewriting the bytes when a rule matches). Optional; nullptr = off.
+    void setSessionRules(SessionRules *sr) { m_sessionRules = sr; }
     // Result-grep config (Burp-parity): after each response lands it's scanned
     // for these match needles (any-hit -> matched=true) and this extract spec
     // (regex capture or start/end delimiters -> extracted). Both are bounded and
@@ -239,6 +244,7 @@ private:
     QStringList m_grepMatch;                              // grep-match needles
     bool    m_grepPayloadReflection = false;             // flag reflected payloads
     Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
+    SessionRules *m_sessionRules = nullptr;
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
     int     m_throttleMs = 0;                            // inter-dispatch delay
     int     m_attackType = Sniper;

@@ -1051,6 +1051,7 @@ int main(int argc, char *argv[]) {
     // can inject a captured token/cookie into a manually-sent request. Only fires
     // when a matching Repeater-scoped rule exists; raw sends stay byte-for-byte.
     repeater.setSessionRules(&sessionRules);
+    intruder.setSessionRules(&sessionRules);
 
     // OAST sink. HTTP-only Collaborator equivalent. Default to bind on
     // 18080 -- close to the standard proxy port, easy to remember. The
