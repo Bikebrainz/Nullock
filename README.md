@@ -19,6 +19,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   pivot-to-Repeater/Intruder/Comparer/Decoder/Scanner and eight response-modification
                   presets as a standing auto-apply toggle set (persisted, applies to every future held
                   response the moment it's captured, plus manual one-off buttons on the current item);
+                  a live RULES panel decides which messages actually get held -- And/Or match rules
+                  on file extension/method/URL regex/host glob/content-type/status code/header, per
+                  rule negate and request/response/both direction, editable and reorderable in place
+                  (an empty list holds everything, matching Burp);
                   WS Repeater overlay injects text/binary/close/ping/pong frames into a live
                   WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
                   H2 Frame Log overlay shows a per-stream summary table and a live-tailing raw

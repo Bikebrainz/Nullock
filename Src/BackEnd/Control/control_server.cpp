@@ -1478,6 +1478,9 @@ QByteArray ControlServer::buildSnapshot() const {
     root["intercepted"]               = intercepted;
     root["interceptEnabled"]          = m_wiring.intercept ? m_wiring.intercept->enabled() : false;
     root["interceptResponsesEnabled"] = m_wiring.intercept ? m_wiring.intercept->responsesEnabled() : false;
+    root["interceptRules"]            = m_wiring.intercept
+        ? Nullock::Proxy::InterceptLogic::interceptRulesToJson(m_wiring.intercept->interceptRules())
+        : QJsonArray();
 
     // repeater
     QJsonObject repeater;

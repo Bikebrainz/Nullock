@@ -54,6 +54,7 @@
     NL.currentTheme       = snap.currentTheme || "cyber";
     NL.interceptEnabled   = snap.interceptEnabled === true;
     NL.interceptResponsesEnabled = snap.interceptResponsesEnabled === true;
+    NL.interceptRules     = snap.interceptRules || [];
     NL.themeColors        = snap.themeColors || {};
     NL.themeIsBuiltin     = snap.themeIsBuiltin === true;
     NL.themesDir          = snap.themesDir || "";
@@ -148,6 +149,7 @@
     interceptForward(text)  { return post("/api/intercept/forward", { text }); },
     interceptDrop()         { return post("/api/intercept/drop"); },
     interceptForwardAll()   { return post("/api/intercept/forwardAll"); },
+    interceptRulesSet(rules) { return post("/api/intercept/rules", { rules }); },
     scopeAddIn(glob)        { return post("/api/scope/in/add",     { glob }); },
     scopeRemoveIn(glob)     { return post("/api/scope/in/remove",  { glob }); },
     scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob }); },

@@ -914,11 +914,126 @@ function saveRespModSettings(settings) {
   try { localStorage.setItem("nl-intercept-respmods", JSON.stringify(settings)); } catch {}
 }
 
+// ---- Intercept match rules (Burp's "Intercept Client/Server Requests"
+// rules) -- Src/BackEnd/Proxy/intercept_logic.hpp InterceptRule / the
+// /api/intercept/rules wire form via interceptRulesToJson/FromJson. The
+// backend replaces the WHOLE list on every set (same shape as session
+// handling rules) so these pure helpers build the next full array from the
+// current one; the editor POSTs the result back wholesale.
+const INTERCEPT_RULE_DEFAULT = {
+  enabled: true, op: "or", match: "url-regex", negate: false,
+  condition: "", dir: "both",
+};
+const INTERCEPT_MATCH_TYPES = [
+  ["any", "Any"], ["file-extension", "File extension"], ["method", "Method"],
+  ["url-regex", "URL (regex)"], ["host-glob", "Host (glob)"],
+  ["content-type", "Content-Type"], ["status-code", "Status code"],
+  ["has-header", "Has header (regex)"],
+];
+const INTERCEPT_DIR_TYPES = [["request", "Request"], ["response", "Response"], ["both", "Both"]];
+function interceptRuleUpsert(rules, index, rule) {
+  if (index < 0) return [...rules, rule];
+  return rules.map((r, i) => (i === index ? rule : r));
+}
+function interceptRuleRemoveAt(rules, index) {
+  return rules.filter((_, i) => i !== index);
+}
+function interceptRuleToggle(rules, index) {
+  return rules.map((r, i) => (i === index ? { ...r, enabled: !r.enabled } : r));
+}
+function interceptRuleMove(rules, index, delta) {
+  const to = index + delta;
+  if (to < 0 || to >= rules.length) return rules;
+  const next = rules.slice();
+  const [moved] = next.splice(index, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+function InterceptRulesPanel() {
+  const [, force] = React.useReducer(x => x + 1, 0);
+  React.useEffect(() => {
+    const onUpdate = () => force();
+    window.addEventListener("nl-update", onUpdate);
+    return () => window.removeEventListener("nl-update", onUpdate);
+  }, []);
+
+  const rules = (window.NL && NL.interceptRules) ? NL.interceptRules : [];
+  const [draft, setDraft] = React.useState(INTERCEPT_RULE_DEFAULT);
+  const [editingIndex, setEditingIndex] = React.useState(-1);
+  const setDraftK = (k, v) => setDraft(d => ({ ...d, [k]: v }));
+  const reset = () => { setDraft(INTERCEPT_RULE_DEFAULT); setEditingIndex(-1); };
+  const submit = () => {
+    if (draft.match !== "any" && !draft.condition) return;
+    NL.actions.interceptRulesSet(interceptRuleUpsert(rules, editingIndex, draft));
+    reset();
+  };
+  const startEdit = (i) => { setDraft({ ...INTERCEPT_RULE_DEFAULT, ...rules[i] }); setEditingIndex(i); };
+
+  const sel = { background: "var(--pane-2)", color: "var(--text)", border: "1px solid var(--line)", padding: "2px 4px", fontSize: "var(--fz-xs)", fontFamily: "var(--ff-mono)" };
+
+  return (
+    <div style={{ borderBottom: "1px solid var(--line)", background: "var(--pane-2)", padding: "8px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          intercept rules · {rules.length ? rules.length + " rule" + (rules.length === 1 ? "" : "s") : "none (holds everything)"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <select style={sel} value={draft.op} onChange={e => setDraftK("op", e.target.value)}>
+          <option value="or">OR</option><option value="and">AND</option>
+        </select>
+        <select style={sel} value={draft.dir} onChange={e => setDraftK("dir", e.target.value)}>
+          {INTERCEPT_DIR_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select style={sel} value={draft.match} onChange={e => setDraftK("match", e.target.value)}>
+          {INTERCEPT_MATCH_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--fz-xs)", color: "var(--text-2)" }}>
+          <input type="checkbox" checked={draft.negate} onChange={e => setDraftK("negate", e.target.checked)} /> does not match
+        </label>
+        <input style={{ ...sel, flex: 1, minWidth: 160 }} value={draft.condition}
+               placeholder={draft.match === "any" ? "(no condition needed)" : "e.g. css,png,gif,js"}
+               disabled={draft.match === "any"}
+               onChange={e => setDraftK("condition", e.target.value)} />
+        <button className="btn primary" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }}
+                disabled={draft.match !== "any" && !draft.condition} onClick={submit}>
+          {editingIndex >= 0 ? "UPDATE" : "+ ADD RULE"}
+        </button>
+        {editingIndex >= 0 && <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={reset}>CANCEL</button>}
+      </div>
+      {rules.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {rules.map((r, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "3px 4px",
+              fontSize: "var(--fz-xs)", fontFamily: "var(--ff-mono)",
+              opacity: r.enabled ? 1 : 0.45,
+              background: i === editingIndex ? "var(--pane)" : "transparent",
+            }}>
+              <span style={{ color: "var(--dim)", width: 16 }}>{i + 1}</span>
+              <input type="checkbox" checked={!!r.enabled} onChange={() => NL.actions.interceptRulesSet(interceptRuleToggle(rules, i))} />
+              <span style={{ color: "var(--accent)", width: 32 }}>{(r.op || "or").toUpperCase()}</span>
+              <span style={{ color: "var(--text-2)", width: 56 }}>{r.dir || "both"}</span>
+              <span style={{ color: "var(--text)", width: 90 }}>{r.negate ? "not " : ""}{r.match}</span>
+              <span style={{ color: "var(--text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.condition}>{r.condition || "—"}</span>
+              <button className="btn" style={{ padding: "0 5px", fontSize: "var(--fz-xs)" }} disabled={i === 0} onClick={() => NL.actions.interceptRulesSet(interceptRuleMove(rules, i, -1))}>↑</button>
+              <button className="btn" style={{ padding: "0 5px", fontSize: "var(--fz-xs)" }} disabled={i === rules.length - 1} onClick={() => NL.actions.interceptRulesSet(interceptRuleMove(rules, i, 1))}>↓</button>
+              <button className="btn" style={{ padding: "0 5px", fontSize: "var(--fz-xs)" }} onClick={() => startEdit(i)}>EDIT</button>
+              <button className="btn danger" style={{ padding: "0 5px", fontSize: "var(--fz-xs)" }} onClick={() => { NL.actions.interceptRulesSet(interceptRuleRemoveAt(rules, i)); if (i === editingIndex) reset(); }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, onSwitchTab }) {
   const current = intercepted[0] || null;
   const more = Math.max(0, intercepted.length - 1);
 
   const [editedText, setEditedText] = React.useState(current ? current.text : "");
+  const [showRules, setShowRules] = React.useState(false);
   const [respModSettings, setRespModSettings] = React.useState(loadRespModSettings);
   const respModSettingsRef = React.useRef(respModSettings);
   respModSettingsRef.current = respModSettings;
@@ -995,7 +1110,12 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
         <button className="btn" onClick={() => dispatch({ type: "intercept-forward-all" })} disabled={(!intercept && !interceptResponses) || intercepted.length === 0}>
           FORWARD ALL
         </button>
+        <button className={"btn" + (showRules ? " primary" : "")} onClick={() => setShowRules(s => !s)} title="rules deciding which messages are held (Burp's Intercept Client/Server Requests rules)">
+          RULES
+        </button>
       </div>
+
+      {showRules && <InterceptRulesPanel />}
 
       <div style={{ display: "flex", gap: 8, padding: "4px 12px", borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
