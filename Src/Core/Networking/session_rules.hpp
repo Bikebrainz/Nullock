@@ -90,9 +90,17 @@ public:
     // Pipeline hooks. Both safe to call from worker threads. `tool` is the
     // SessionTool doing the send; a rule applies only if its tools scope includes
     // it (SessionRulesLogic::ruleAppliesToTool). Defaults to Proxy so existing
-    // proxy-pipeline callers stay unchanged.
-    void applyToRequest(Nullock::Proxy::HttpRequest &req,
+    // proxy-pipeline callers stay unchanged. Returns true if any rule actually
+    // injected (modified `req`).
+    bool applyToRequest(Nullock::Proxy::HttpRequest &req,
                         int tool = SessionRulesLogic::ToolProxy) const;
+
+    // Bytes-level wrapper for tools that hold a RAW request (Repeater / Intruder):
+    // parse `rawRequest`, apply the rules scoped to `tool`, and reserialize INTO
+    // rawRequest ONLY if a rule fired -- so a request no rule touches goes on the
+    // wire byte-for-byte (raw fidelity preserved). Returns true if it changed.
+    bool applyToRequestBytes(QByteArray &rawRequest, const QString &host,
+                             int tool) const;
     void applyToResponse(const Nullock::Proxy::HttpRequest &req,
                          const Nullock::Proxy::HttpResponse &resp);
 

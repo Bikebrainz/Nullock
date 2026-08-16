@@ -14,6 +14,8 @@ class ProxyModel;
 
 namespace Nullock::Core {
 
+class SessionRules;
+
 // One past send in a Repeater tab: the request that went out and the response it
 // got, with a timestamp. The tab keeps a list so the operator can navigate prior
 // sends (Burp's per-tab history), compare them, and re-load one.
@@ -98,6 +100,9 @@ public:
     void setUseTls(bool tls);
     void setRequestText(const QString &t);
     Q_INVOKABLE void setAutoContentLength(bool on);
+    // Session-handling rules scoped to Repeater are applied to the request bytes
+    // before each send (see send()). Optional; nullptr = no session handling.
+    void setSessionRules(SessionRules *sr) { m_sessionRules = sr; }
 
     Q_INVOKABLE void loadFromHistory(int row);
     Q_INVOKABLE void send();
@@ -144,6 +149,7 @@ private:
     int                m_active = 0;
     bool               m_busy = false;
     bool               m_autoContentLength = true;   // Burp-parity default
+    SessionRules      *m_sessionRules = nullptr;
 };
 
 } // namespace Nullock::Core

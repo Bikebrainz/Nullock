@@ -3,6 +3,7 @@
 #include "Proxy/proxy_model.hpp"
 #include "chain_runner.hpp"
 #include "networking_logic.hpp"
+#include "session_rules.hpp"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -150,6 +151,11 @@ void Repeater::send() {
     // Transfer-Encoding: chunked -- both request-smuggling vectors.
     if (m_autoContentLength)
         bytes = ChainRunner::normalizeContentLength(bytes);
+    // Apply session-handling rules scoped to Repeater (inject a captured token /
+    // cookie). Only rewrites the bytes if a rule actually fires; otherwise the
+    // request goes on the wire byte-for-byte.
+    if (m_sessionRules)
+        m_sessionRules->applyToRequestBytes(bytes, t.host, SessionRulesLogic::ToolRepeater);
 
     const auto result = m_client.send(t.host,
                                       static_cast<quint16>(t.port),

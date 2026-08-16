@@ -130,7 +130,7 @@ void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
     emit variablesChanged();
 }
 
-void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) const {
+bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) const {
     QList<SessionRule> rs;
     QHash<QString, QString> vars;
     {
@@ -140,7 +140,8 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
         // from another host must never ride along cross-origin.
         vars = m_varsByHost.value(req.host);
     }
-    if (rs.isEmpty() || vars.isEmpty()) return;
+    if (rs.isEmpty() || vars.isEmpty()) return false;
+    bool modified = false;
 
     for (const auto &r : rs) {
         if (!r.enabled) continue;
@@ -153,6 +154,7 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
             : r.injectTemplate;
         const QString value = substitute(templ, vars);
         if (value.isEmpty()) continue;
+        modified = true;   // a rule matched + produced a value -> it injects below
 
         switch (r.injectInto) {
             case SessionRule::InjectIntoHeader: {
@@ -235,6 +237,48 @@ void SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
             }
         }
     }
+    return modified;
+}
+
+// Minimal HTTP/1.1 request parse for the bytes-level wrapper: request line
+// (method / target / version) + headers + body. Faithfulness of the UNMODIFIED
+// request doesn't matter -- applyToRequestBytes only reserializes when a rule
+// fired, and otherwise sends the original bytes untouched.
+static Nullock::Proxy::HttpRequest parseRawRequest(const QByteArray &raw,
+                                                   const QString &host) {
+    Nullock::Proxy::HttpRequest req;
+    req.host = host;
+    int sepLen = 4;
+    int sep = raw.indexOf("\r\n\r\n");
+    if (sep < 0) { sep = raw.indexOf("\n\n"); sepLen = 2; }
+    const QByteArray head = (sep < 0) ? raw : raw.left(sep);
+    req.body = (sep < 0) ? QByteArray() : raw.mid(sep + sepLen);
+    const QList<QByteArray> lines = head.split('\n');
+    if (!lines.isEmpty()) {
+        const QList<QByteArray> p = lines.first().trimmed().split(' ');
+        if (p.size() >= 2) {
+            req.method = QString::fromLatin1(p[0]);
+            req.path   = QString::fromLatin1(p[1]);
+            req.target = QString::fromLatin1(p[1]);
+        }
+        if (p.size() >= 3) req.httpVersion = QString::fromLatin1(p[2]);
+    }
+    for (int i = 1; i < lines.size(); ++i) {
+        QByteArray l = lines[i]; if (l.endsWith('\r')) l.chop(1);
+        const int c = l.indexOf(':');
+        if (c <= 0) continue;
+        req.headers.append({ QString::fromLatin1(l.left(c)).trimmed(),
+                             QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed()) });
+    }
+    return req;
+}
+
+bool SessionRules::applyToRequestBytes(QByteArray &rawRequest, const QString &host,
+                                       int tool) const {
+    Nullock::Proxy::HttpRequest req = parseRawRequest(rawRequest, host);
+    if (!applyToRequest(req, tool)) return false;   // no rule fired -> untouched
+    rawRequest = Nullock::Proxy::serializeRequestForOrigin(req);
+    return true;
 }
 
 } // namespace Nullock::Core

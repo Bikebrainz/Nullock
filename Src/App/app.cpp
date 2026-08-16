@@ -1047,6 +1047,10 @@ int main(int argc, char *argv[]) {
     // such signal exists; we instead embed the call inside the existing
     // applyRequestRules path.
     proxy.setSessionRules(&sessionRules);
+    // Repeater also applies session rules scoped to it (Repeater bit), so a rule
+    // can inject a captured token/cookie into a manually-sent request. Only fires
+    // when a matching Repeater-scoped rule exists; raw sends stay byte-for-byte.
+    repeater.setSessionRules(&sessionRules);
 
     // OAST sink. HTTP-only Collaborator equivalent. Default to bind on
     // 18080 -- close to the standard proxy port, easy to remember. The
