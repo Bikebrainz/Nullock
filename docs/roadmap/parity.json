@@ -3576,11 +3576,11 @@
       "effort": "days",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-15",
-        "commit": "c88e6bb",
-        "note": "InterceptLogic::interceptRulesHold() -- a pure left-to-right And/Or fold over InterceptRule{enabled, op, match (file-extension/method/url-regex/host-glob/content-type/status-code/has-header), negate (Matches/Does not match), dir}, evaluated in InterceptController::pend() on the worker thread (a message the rules don't hold auto-forwards). Rules via /api/intercept/rules, persisted in project.json. 63 unit cases, mutation-proven on negate + the And-fold. Empty list holds everything (Burp semantics). Rules-editor UI pending."
+        "date": "2026-08-16",
+        "commit": "bc8d12d",
+        "note": "GUI-reachability follow-up on c88e6bb: the rules engine/API/persistence shipped backend-only (\"Rules-editor UI pending\"). Added interceptRules to buildSnapshot() (control_server.cpp) so the poll loop carries the live rule list like sessionRules/rules already do, and a new InterceptRulesPanel component in ui-v2/tabs.jsx (RULES toggle button in InterceptTab's toolbar) lets an operator add/edit/reorder (up/down)/toggle/delete rules -- op (AND/OR), direction (request/response/both), match type (any/file-extension/method/url-regex/host-glob/content-type/status-code/has-header), negate, and condition -- against the exact InterceptLogic::interceptRulesToJson/FromJson wire contract, POSTing the whole array to /api/intercept/rules (NL.actions.interceptRulesSet) on every mutation, same whole-list-replace pattern as session handling rules. State stays present; this closes the GUI-reachability gap text only."
       },
-      "gap": "None -- an And/Or rule list (match type + Matches/Does-not-match + per-rule enable) decides which requests are held; e.g. 'file extension does not match css,png,js' skips static assets. Settable via /api/intercept/rules, persisted per project. Rules-editor UI pending.",
+      "gap": "None -- an And/Or rule list (match type + Matches/Does-not-match + per-rule enable) decides which requests are held; e.g. 'file extension does not match css,png,js' skips static assets. A RULES panel in the Intercept tab (ui-v2/tabs.jsx InterceptRulesPanel) now edits the list live -- add/edit/reorder/delete/toggle -- reading/writing the newly-added interceptRules snapshot field and POSTing the whole array to /api/intercept/rules, persisted per project.",
       "why": "Confirmed by reading intercept.hpp end to end: the class has two atomics and a queue, no rule structure of any kind, and pend() is gated only by the global toggle plus the caller's inScope check. Endpoint list confirmed as toggle/responses-toggle/forward/drop/forwardAll only. Absent confirmed; blocker rating is right -- this is what makes interception tolerable in daily use.",
       "evidence": "Src/BackEnd/Proxy/intercept.cpp:189-194 `InterceptResult InterceptController::pend(...) {\\n    // Worker-thread early-out: interception off -> pass the bytes straight\\n    // through ...\\n    if (m_enabled.loadAcquire() == 0) return { false, requestBytes };\\n    return pendImpl(requestBytes, host, port, tls, PendingRequest::Request);` ; entire member list intercept.hpp:136-141 (two QAtomicInt, m_c"
     },
@@ -3592,11 +3592,11 @@
       "effort": "days",
       "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-15",
-        "commit": "c88e6bb",
-        "note": "Response rules work: the same interceptRulesHold() engine evaluates dir=Response rules in InterceptController::pendResponse(), matching content-type, status-code, URL (url-regex), host-glob and header name, with And/Or + negate. PARTIAL -- the Burp-specific 'request was intercepted/modified' cross-reference match is not implemented (it needs per-message request/response correlation). Rules via /api/intercept/rules, persisted in project.json."
+        "date": "2026-08-16",
+        "commit": "bc8d12d",
+        "note": "Same InterceptRulesPanel wave as the request-side item above -- dir=response and dir=both rows in the same rule list gate response holds via InterceptController::pendResponse's existing interceptRulesHold() call. GUI-reachability gap closed; state stays partial (the request-was-intercepted cross-reference correlation is still unimplemented, unchanged from the prior audit)."
       },
-      "gap": "Response rules now decide which responses are held (content-type / status code / URL / host / header, And/Or + negate). Remaining: the 'only intercept responses to requests I intercepted/modified' cross-reference match, which needs request/response correlation.",
+      "gap": "Response rules now decide which responses are held (content-type / status code / URL / host / header, And/Or + negate), editable live from the same Intercept tab RULES panel via the dir=response/both rows. Remaining: the 'only intercept responses to requests I intercepted/modified' cross-reference match, which needs request/response correlation.",
       "why": "Same verification as the request side -- pendResponse is gated only by m_enabledResponses; no rule type exists in intercept.hpp. Absent confirmed. I re-rated user_impact blocker -> high: response interception is opt-in and off by default, so an operator hits this only after deliberately enabling it, unlike the request side which is the primary workflow.",
       "evidence": "Src/BackEnd/Proxy/intercept.cpp:197-201 `InterceptResult InterceptController::pendResponse(const QByteArray &responseBytes,\\n                                                  const QString &host, int port, bool tls) {\\n    if (m_enabledResponses.loadAcquire() == 0) return { false, responseBytes };\\n    return pendImpl(responseBytes, host, port, tls, PendingRequest::Response);` ; kinds are only Req"
     },

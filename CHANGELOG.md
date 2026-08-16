@@ -19,9 +19,10 @@ developer-facing record.
   a per-rule negate — the message is held only if the rule fold says so (an empty
   list still holds everything). Rules are settable via `/api/intercept/rules` and
   persist in the project file (survive restart, verified). The decision engine is a
-  pure predicate with 63 unit cases, mutation-proven on the negate + And-fold. (A
-  rules-editor UI is the remaining piece.) Closes the launch blocker "there are no
-  intercept rules".
+  pure predicate with 63 unit cases, mutation-proven on the negate + And-fold. A
+  RULES panel in the Intercept tab now edits the list live — add/edit/reorder/
+  toggle/delete, matching this exact wire contract. Closes the launch blocker
+  "there are no intercept rules".
 - **Proxy can bind off-loopback for VM / phone / container testing.** The proxy
   listener was hardwired to `127.0.0.1`, so another machine's browser couldn't be
   pointed at it. `--proxy-bind=ADDR` (or `NULLOCK_PROXY_BIND`) now binds it to any
