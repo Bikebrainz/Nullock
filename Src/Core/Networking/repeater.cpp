@@ -163,7 +163,20 @@ void Repeater::send() {
                                       bytes);
 
     if (result.ok) {
-        t.responseText = QString::fromUtf8(result.rawResponse);
+        // Unpack gzip/deflate for the response view: keep the original header
+        // block verbatim (including the Content-Encoding header itself, so the
+        // user can see the body WAS compressed) and swap in the decoded body
+        // in place of the compressed bytes that would otherwise render as
+        // binary mojibake. result.rawResponse (the wire bytes) is untouched --
+        // this only changes what's displayed. No-op (falls through to the
+        // fromUtf8 branch) when there was nothing to decode or decoding failed.
+        const int headerEnd = result.rawResponse.indexOf("\r\n\r\n");
+        if (headerEnd >= 0 && !result.parsed.decodedBody.isEmpty()) {
+            const QByteArray headBlock = result.rawResponse.left(headerEnd + 4);
+            t.responseText = QString::fromUtf8(headBlock) + QString::fromUtf8(result.parsed.decodedBody);
+        } else {
+            t.responseText = QString::fromUtf8(result.rawResponse);
+        }
         t.statusLine   = QString("%1 %2 %3")
                              .arg(result.parsed.httpVersion)
                              .arg(result.parsed.statusCode)

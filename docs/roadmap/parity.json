@@ -4271,12 +4271,18 @@
     {
       "area": "repeater",
       "feature": "Repeater: \"Unpack gzip / deflate\" in the response view",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
-      "gap": "Any target honouring Accept-Encoding: gzip returns binary mojibake in the Repeater response pane \u2014 and requests sent from history carry the browser's Accept-Encoding header, so this is the default experience. The decompressor is one include away. Note it does NOT handle brotli (content_decode.hpp:12-14 says br/zstd unsupported), so 'br' would still be mojibake after wiring.",
-      "why": "Confirmed from both ends: the Repeater stores the response verbatim, and decodeContentEncoding has exactly two callers, both in the proxy.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:139 `t.responseText = QString::fromUtf8(result.rawResponse);` \u2014 no Content-Encoding branch. Decoder exists at Src/BackEnd/Proxy/content_decode.hpp:8-9 `// Decode an HTTP body that was compressed with Content-Encoding \\`encoding\\` // (gzip / x-gzip / deflate) for INSPECTION only -- history search, passive`. Its only include site is Src/BackEnd/Proxy/p"
+      "gap": "HttpClient::send (networking.cpp) now decodes Content-Encoding gzip/x-gzip/deflate into result.parsed.decodedBody via the existing decodeContentEncoding() helper, and Repeater::send() swaps the decoded body into the response pane in place of the compressed bytes (header block shown verbatim, wire bytes untouched). Still partial, not present: brotli/zstd remain unsupported (content_decode.hpp's own documented limit, unchanged), and this cloud session cannot build/run ctest/probe_smoke to confirm the change compiles and behaves as intended -- resting on GitHub Actions CI going green, not a local build, per this repo's honest-partial convention for backend changes made from this environment.",
+      "why": "Wiring fix: decodeContentEncoding already existed and was already proven correct for the MITM proxy path (content_decode.cpp, its own dedicated test suite); this pins the second, previously-missing call site into HttpClient::send so both Repeater and the template engine's body matching benefit.",
+      "evidence": "Src/Core/Networking/networking.cpp: added #include \"content_decode.hpp\" + a Content-Encoding lookup and decodeContentEncoding() call right before result.ok = true, populating result.parsed.decodedBody without touching result.parsed.body or result.rawResponse. Src/Core/Networking/repeater.cpp send(): when result.parsed.decodedBody is non-empty, responseText is now the original header block (bytes up to and including the first \\r\\n\\r\\n in rawResponse) followed by the decoded body, instead of QString::fromUtf8(rawResponse) verbatim.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-16",
+        "commit": "PENDING",
+        "note": "Wave 3: Repeater gzip/deflate unpack wiring, absent -> partial. This cloud session cannot build the C++ side; will confirm the GitHub Actions ci run is green next wave before calling this fully closed, same honest-partial pattern as prior in-flight-CI notes in ROADMAP-EXECUTION-PLAN.md."
+      }
     },
     {
       "area": "repeater",

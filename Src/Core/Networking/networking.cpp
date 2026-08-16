@@ -1,5 +1,6 @@
 #include "networking.hpp"
 
+#include "content_decode.hpp"
 #include "networking_logic.hpp"
 
 #include <QAbstractSocket>
@@ -338,6 +339,14 @@ HttpClient::SendResult HttpClient::send(const QString &host,
         result.rawResponse.append(tail);
         result.parsed.body = rest + tail;
     }
+
+    // Content-Encoding-decoded copy of the body, for INSPECTION only (Repeater's
+    // response view, detection-template body matching) -- mirrors the MITM
+    // proxy path (Src/BackEnd/Proxy/proxy_server.cpp:917-919). Never touches
+    // result.parsed.body or result.rawResponse, the exact wire bytes.
+    const QString ce = NetworkingLogic::findHeader(result.parsed.headers, "Content-Encoding");
+    const QByteArray decoded = Nullock::Proxy::decodeContentEncoding(ce, result.parsed.body);
+    if (!decoded.isEmpty()) result.parsed.decodedBody = decoded;
 
     socket->disconnectFromHost();
     result.ok = true;

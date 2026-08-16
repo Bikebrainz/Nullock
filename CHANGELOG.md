@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater unpacks gzip/deflate response bodies.** `HttpClient::send` (the
+  transport Repeater and the detection-template engine both use) now decodes a
+  `Content-Encoding: gzip`/`x-gzip`/`deflate` response body the same way the
+  MITM proxy path already did, via the existing `decodeContentEncoding` helper.
+  Repeater's response pane swaps the decoded body in for what used to render as
+  binary mojibake (the header block, including the `Content-Encoding` header
+  itself, is shown verbatim; the wire bytes on disk/in history are untouched).
+  As a side effect, the detection-template engine's body-match evaluation
+  (`/api/template/run`), which reads the same `bodyForInspection()` accessor,
+  now also actually sees decoded bytes instead of silently matching against
+  compressed ones.
 - **Turn a recorded login sequence into a live session (macro → session bridge).**
   A recorded chain (macro) can now feed the session variable bag: `POST
   /api/chain/run` with a `sessionHost` runs the macro and merges the values it
