@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Session rules: per-tool scope checkboxes in the editor UI.** The Sessions
+  tab's rule editor gets a Proxy/Repeater/Intruder/Scanner checkbox row bound
+  to each rule's `tools` bitmask (Burp's "Tools scope"), plus a per-rule scope
+  summary in the rule list. No backend change — the `tools` field already
+  round-tripped through `/api/session-rules`; this closes the editor-UI half
+  of that gap. Enforcement stays as-is: Proxy, Repeater, and Intruder sends
+  already honor a rule's scope; the Scanner checkbox is offered and stored but
+  not yet enforced by any call site, and chain-runner/sequencer/extender
+  scopes remain unbuilt.
 - **Repeater unpacks gzip/deflate response bodies.** `HttpClient::send` (the
   transport Repeater and the detection-template engine both use) now decodes a
   `Content-Encoding: gzip`/`x-gzip`/`deflate` response body the same way the

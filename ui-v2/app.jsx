@@ -4816,6 +4816,28 @@ function ReconTab() {
 const EXTRACT_FROM_LABEL = ["Header", "Cookie", "JSON path", "Regex (body, 1st group)"];
 const INJECT_INTO_LABEL  = ["Header", "Cookie", "Body ({{var}})", "URL query"];
 
+// Tool-scope bitmask, mirroring SessionRulesLogic::SessionTool
+// (session_rules_logic.hpp) exactly -- a rule's `tools` field is 0 (unset)
+// for "applies everywhere" (back-compatible with rules authored before
+// scoping existed), else a bitwise-OR of the tools it's restricted to.
+// Only Proxy/Repeater/Intruder are enforced server-side today (Scanner's
+// bit is accepted and round-trips, but nothing yet calls applyToRequest
+// with ToolScanner) -- the checkbox is still offered since the backend
+// contract already reserves the bit and will honor it once wired.
+const SESSION_TOOL_BITS = [
+  { bit: 1, label: "Proxy" },
+  { bit: 2, label: "Repeater" },
+  { bit: 4, label: "Intruder" },
+  { bit: 8, label: "Scanner" },
+];
+function sessionRuleToggleToolBit(mask, bit) {
+  return (mask & bit) ? (mask & ~bit) : (mask | bit);
+}
+function sessionRuleToolsLabel(mask) {
+  if (!mask) return "all tools";
+  return SESSION_TOOL_BITS.filter(t => mask & t.bit).map(t => t.label).join(", ") || "all tools";
+}
+
 function sessionRuleUpsert(rules, index, rule) {
   if (index < 0) return [...rules, rule];
   return rules.map((r, i) => (i === index ? rule : r));
@@ -4856,6 +4878,7 @@ function SessionsTab() {
     name: "", enabled: true, hostGlob: "*", pathGlob: "*",
     extractFrom: 0, extractKey: "", variable: "",
     injectInto: 0, injectKey: "", injectTemplate: "",
+    tools: 0,
   };
   const [srDraft, setSrDraft] = React.useState(SR_DEFAULT);
   const [srEditingIndex, setSrEditingIndex] = React.useState(-1);
@@ -5146,6 +5169,23 @@ function SessionsTab() {
                    placeholder="{{csrf_token}} (blank = bare variable)"
                    onChange={e => setSrK("injectTemplate", e.target.value)} />
 
+            <label style={{ fontSize: "11px", color: "var(--dim)" }}>Tools scope</label>
+            <div style={{ gridColumn: "2 / span 3", display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {SESSION_TOOL_BITS.map(t => (
+                <label key={t.bit} style={{
+                  display: "flex", gap: 4, alignItems: "center",
+                  fontSize: "11px", color: "var(--text-2)",
+                }}>
+                  <input type="checkbox" checked={!!(srDraft.tools & t.bit)}
+                         onChange={() => setSrK("tools", sessionRuleToggleToolBit(srDraft.tools || 0, t.bit))} />
+                  {t.label}
+                </label>
+              ))}
+              <span style={{ color: "var(--dim)", fontSize: "10.5px" }}>
+                (none checked = all tools)
+              </span>
+            </div>
+
             <div style={{ gridColumn: "1 / span 4", display: "flex", gap: 6, marginTop: 4 }}>
               <Btn label={srEditingIndex >= 0 ? "Update rule" : "Add rule"}
                    primary onClick={srSubmit} disabled={!srDraft.variable} />
@@ -5173,7 +5213,7 @@ function SessionsTab() {
         {sessionRules.map((r, i) => (
           <div key={i} style={{
             display: "grid",
-            gridTemplateColumns: "40px 40px 140px 1fr 1fr 1fr 140px",
+            gridTemplateColumns: "40px 40px 140px 1fr 1fr 1fr 120px 140px",
             gap: 6, padding: "6px 10px", alignItems: "center",
             fontSize: "11.5px", fontFamily: "var(--ff-mono)",
             borderBottom: "1px solid var(--line-soft)",
@@ -5193,6 +5233,10 @@ function SessionsTab() {
             </span>
             <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               inject {INJECT_INTO_LABEL[r.injectInto] || "?"} &quot;{r.injectKey}&quot;
+            </span>
+            <span style={{ color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title="Tools this rule is scoped to">
+              {sessionRuleToolsLabel(r.tools || 0)}
             </span>
             <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
               <Btn label="Edit" size="sm" onClick={() => srStartEdit(i)} />

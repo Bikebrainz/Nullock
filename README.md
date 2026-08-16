@@ -104,7 +104,9 @@ Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + 
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent); a named,
                   individually enable/disable-able rules editor lives in the SESSIONS tab
                   (host/path glob, extract-from header/cookie/JSON-path/regex, inject-into
-                  header/cookie/body/URL) alongside the captured variable bag
+                  header/cookie/body/URL) alongside the captured variable bag, plus a
+                  Proxy/Repeater/Intruder/Scanner tools-scope checkbox row per rule
+                  (Burp's "Tools scope"; enforced for Proxy, Repeater, and Intruder)
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
                   in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
                   pre-analysis sample summary, full results (entropy, char class, hamming, LCS,
