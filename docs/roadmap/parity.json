@@ -4280,7 +4280,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-16",
-        "commit": "PENDING",
+        "commit": "12cb5db",
         "note": "Wave 3: Repeater gzip/deflate unpack wiring, absent -> partial. This cloud session cannot build the C++ side; will confirm the GitHub Actions ci run is green next wave before calling this fully closed, same honest-partial pattern as prior in-flight-CI notes in ROADMAP-EXECUTION-PLAN.md."
       }
     },
