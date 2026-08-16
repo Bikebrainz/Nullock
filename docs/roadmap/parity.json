@@ -4097,10 +4097,16 @@
     {
       "area": "repeater",
       "feature": "Repeater: per-tab request history with back/forward (< >) navigation through previously sent requests",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "days",
-      "gap": "Every send destroys the previous request/response for that tab. Mutate a working request, break it, and there is no way back to the version that worked \u2014 the single most-used affordance in Burp Repeater.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "df0c74a",
+        "note": "Backend done: RepeaterTab keeps a capped per-tab send history {request, response, statusLine, sentAt} appended in send(); Repeater::historyCount()/loadHistoryAt() navigate it; the snapshot exposes each tab's history list + count, and /api/repeater/history/load re-loads a prior send into the tab. PARTIAL -- the back/forward (< >) navigation UI in ui-v2 is the remaining piece (concurrent lane), built on this contract. Session-only (excluded from project.json to avoid response-body bloat)."
+      },
+      "gap": "Send no longer destroys the prior request/response: each tab keeps a capped history you can re-load (/api/repeater/history/load). Remaining: the back/forward (< >) navigation UI in ui-v2.",
       "why": "Confirmed. I re-read the struct and re-ran the synonym hunt myself (historyIndex, undoStack, prevRequest, goBack, goForward, requestHistory, versions[) across Src/Core/Networking and ui-v2 \u2014 zero hits. Send genuinely overwrites in place.",
       "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:19-27 `struct RepeaterTab { QString name; QString host; int port = 443; bool useTls = true; QString requestText; QString responseText; QString statusLine; };` \u2014 no history container. Overwrite at repeater.cpp:138-143 `if (result.ok) { t.responseText = QString::fromUtf8(result.rawResponse); t.statusLine = ...`. Snapshot per-tab object (control_server."
     },
