@@ -2576,10 +2576,16 @@
     {
       "area": "platform",
       "feature": "Collaborator: private server deployment",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Deployable server, no client. The desktop app cannot be pointed at a remote sink; to use a public sink you must run NullockApp itself on the public box.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "a387ba7",
+        "note": "The deployable standalone sink (nullock-oast: POST /mint, GET /poll, X-Oast-Key) already existed; client mode completes the loop. OastServer::startRemote(url, key) (--oast-remote / --oast-remote-key) points the DESKTOP app at a remote sink: mint proxies to POST /mint, a poll timer pulls GET /poll and re-emits hits through the same correlator. Verified end-to-end (mint on remote -> callback on remote -> hit polled back). Falls back to the local sink if unreachable."
+      },
+      "gap": "None -- the app now points at a remote nullock-oast via --oast-remote=URL --oast-remote-key=KEY (mint + poll proxied through the same correlator), completing the deploy-a-sink + use-it-from-the-desktop loop.",
       "why": "Re-ran the grep myself across Src, ui-v2 and browser-ext rather than trusting it. Confirmed: OAST_ADMIN_KEY and X-Oast-Key appear ONLY inside Src/Tools/oast_server_main.cpp. There is no client. I also confirmed the desktop app unconditionally constructs its own in-process sink with no remote branch, so the 'partial' is correct and the gap statement is accurate.",
       "evidence": "Src/Tools/oast_server_main.cpp:141 `if (QString::fromLatin1(l.left(c)).compare(\"X-Oast-Key\", Qt::CaseInsensitive) == 0)`; :144 `if (adminKey.isEmpty() || key != adminKey) { sendJson(s, 401, ...` ; :149 `if (method == \"GET\" && path == \"/poll\")`; :156 `if (method == \"POST\" && path == \"/mint\")`. Client side absent \u2014 Src/App/app.cpp:877 `Nullock::Core::OastServer oast;` is the only construction and ta"
     },
@@ -2872,10 +2878,16 @@
     {
       "area": "platform",
       "feature": "Collaborator: hosted public server (zero-config, works out of the box)",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "weeks",
-      "gap": "Every OOB payload defaults to 127.0.0.1 and can never fire against a real internet target. The user must self-host with a wildcard NS delegation before any blind-vuln class works. Burp Pro gives this free on install.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "a387ba7",
+        "note": "Client mode lands the app-side half: --oast-remote points the desktop app at a HOSTED nullock-oast so OOB fires against real targets. PARTIAL -- there is still no bundled zero-config public instance (the remaining piece is ops: run nullock-oast + wildcard DNS + TLS on a public box, all already supported by the standalone tool); until then the user supplies --oast-remote pointing at their own deployment."
+      },
+      "gap": "The app can now point at a hosted sink (--oast-remote), so OOB fires against real targets once you deploy nullock-oast. Remaining: a bundled zero-config public instance so it works with no setup -- ops, not code (the standalone sink already supports wildcard DNS + TLS).",
       "why": "Confirmed, and this is correctly flagged as the blocker in this area. Both defaults are loopback, and I independently verified there is no hosted-service client (the OAST_ADMIN_KEY/X-Oast-Key grep matches only the standalone server binary). So out of the box every minted callback URL points at 127.0.0.1 and no blind-vuln class can ever fire against a real target without the user first standing up ",
       "evidence": "Src/App/app.cpp:872-874 `const QString oastHost = flagValue(argc, argv, \"--oast-host\").isEmpty() ? QStringLiteral(\"127.0.0.1\") : flagValue(argc, argv, \"--oast-host\");`; oast_server.cpp:22 `m_baseHost = baseHost.isEmpty() ? QStringLiteral(\"127.0.0.1\") : baseHost;`; dns_sink.cpp:16-19 same loopback default for both baseHost and answerIp. No client: OAST_ADMIN_KEY / X-Oast-Key appear only in Src/Tool"
     },
