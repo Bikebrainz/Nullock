@@ -3475,10 +3475,16 @@
     {
       "area": "proxy",
       "feature": "Proxy listener: Bind to address (loopback only / all interfaces / specific local IP)",
-      "state": "absent",
+      "state": "present",
       "impact": "blocker",
       "effort": "hours",
-      "gap": "The proxy is reachable only from 127.0.0.1. No phone, tablet, IoT device, VM or second machine can ever be proxied. This is the single most-used listener setting for mobile and thick-client work.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "a6b57a0",
+        "note": "--proxy-bind=ADDR (or NULLOCK_PROXY_BIND) binds the proxy to loopback (default), all interfaces (0.0.0.0/::), or a specific IP. Because an off-loopback intercepting proxy is a LAN-exposed cert-forging MITM, a non-loopback bind is refused without the explicit --proxy-bind-insecure ack and prints a warning -- stricter than Burp's checkbox. ProxyServer::restart() remembers the bind so /api/proxy/toggle preserves it (also fixing a toggle that reset --proxy-port). Verified: netstat shows 0.0.0.0:PORT LISTENING with the ack, FATAL exit-1 without. Gauntlet 93/93 + 156/156."
+      },
+      "gap": "None -- --proxy-bind=ADDR binds the proxy to loopback, all interfaces, or a specific IP (a non-loopback bind requires the explicit --proxy-bind-insecure acknowledgement, since it exposes a cert-forging MITM to the LAN). Phones, tablets, VMs and second machines can now be proxied.",
       "why": "I re-grepped for every synonym I could think of (proxy-bind, proxy-listen, proxy-host, iface, interface, QHostAddress::Any, AnyIPv4, 0.0.0.0, allInterfaces) across Src, ui-v2, docs and README. The only Any-bind hits are the OAST/workspace standalone tools and the control server's --listen. The proxy is hardcoded to LocalHost at its single call site. Confirmed absent, and the blocker rating is righ",
       "evidence": "Src/App/app.cpp:749-751 `const bool proxyStarted = (wantedProxyPort > 0)\\n        ? proxy.start(QHostAddress::LocalHost, wantedProxyPort)\\n        : proxy.start();` ; default also loopback (proxy_server.hpp:102). --listen applies only to the control API: Src/App/app.cpp:990-993 `if (listenArg == \"0.0.0.0\" || listenArg.compare(\"any\", Qt::CaseInsensitive) == 0)\\n            ctlAddr = QHostAddress::A"
     },
