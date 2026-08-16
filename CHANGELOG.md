@@ -11,6 +11,12 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater keeps a per-tab send history.** Each Repeater tab now records every
+  send (request, response, status, timestamp) in a capped per-tab list, exposed in
+  the snapshot and re-loadable via `/api/repeater/history/load` — so you can
+  navigate back through what you sent in a tab, compare, and re-load a prior
+  request. Session-only (kept out of the project file to avoid bloating it with
+  response bodies). Closes the launch blocker "no per-tab request history".
 - **Record a Repeater chain from captured traffic.** `ChainRunner` could replay a
   hand-defined request sequence, but nothing captured one from real traffic. New
   `/api/chain/record` takes selected history row IDs and emits a replayable macro

@@ -1503,6 +1503,15 @@ QByteArray ControlServer::buildSnapshot() const {
             to["tls"]        = t.useTls;
             to["statusLine"] = t.statusLine;
             to["notes"]      = t.notes;
+            // Per-tab send history (compact: status + timestamp per prior send) so
+            // the UI can render a navigable list; a full entry is loaded back into
+            // the tab via /api/repeater/history/load.
+            QJsonArray hist;
+            for (const auto &h : t.history)
+                hist.append(QJsonObject{ { "statusLine", h.statusLine },
+                                         { "sentAt", h.sentAt } });
+            to["history"]      = hist;
+            to["historyCount"] = t.history.size();
             tabs.append(to);
         }
         repeater["tabs"] = tabs;
@@ -3208,6 +3217,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         bool ok = m_wiring.repeater
                && m_wiring.repeater->setTabNotes(bodyJson.value("index").toInt(-1),
                                                   bodyJson.value("notes").toString());
+        return okJson({{ "ok", ok }});
+    }
+    if (path == "/api/repeater/history/load") {
+        // Load a prior send (index into the ACTIVE tab's history, newest last)
+        // back into the tab's request/response for review or re-send.
+        const bool ok = m_wiring.repeater
+                     && m_wiring.repeater->loadHistoryAt(bodyJson.value("index").toInt(-1));
         return okJson({{ "ok", ok }});
     }
 

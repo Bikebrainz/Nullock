@@ -14,6 +14,16 @@ class ProxyModel;
 
 namespace Nullock::Core {
 
+// One past send in a Repeater tab: the request that went out and the response it
+// got, with a timestamp. The tab keeps a list so the operator can navigate prior
+// sends (Burp's per-tab history), compare them, and re-load one.
+struct RepeaterHistoryEntry {
+    QString request;
+    QString response;
+    QString statusLine;
+    QString sentAt;      // ISO-8601 UTC
+};
+
 // One repeater session. The Repeater owns a list of these so the user
 // can keep multiple in-flight reproductions side by side -- pin one
 // while editing another, compare two responses, etc.
@@ -28,6 +38,10 @@ struct RepeaterTab {
     // Free-text engagement notes, e.g. "testing IDOR on order id" -- purely
     // client-facing bookkeeping, never sent on the wire or read by send().
     QString notes;
+    // Prior sends in this tab (newest last), capped. Session-only: deliberately
+    // NOT part of exportState()/project.json, which it would bloat with response
+    // bodies -- re-sending reproduces them.
+    QList<RepeaterHistoryEntry> history;
 };
 
 class Repeater : public QObject {
@@ -72,6 +86,12 @@ public:
     // engagement's staged requests.
     QJsonObject exportState() const;
     Q_INVOKABLE void importState(const QJsonObject &state);
+
+    // Per-tab send history (newest last). historyCount() is the active tab's; each
+    // send appends {request, response, statusLine, sentAt}. loadHistoryAt() loads a
+    // past entry back into the active tab's request/response for review or re-send.
+    Q_INVOKABLE int  historyCount() const;
+    Q_INVOKABLE bool loadHistoryAt(int index);
 
     void setHost(const QString &h);
     void setPort(int p);

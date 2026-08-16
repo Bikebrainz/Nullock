@@ -4,6 +4,7 @@
 #include "chain_runner.hpp"
 #include "networking_logic.hpp"
 
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonValue>
 
@@ -166,10 +167,40 @@ void Repeater::send() {
         t.statusLine   = "error";
     }
 
+    // Record this send in the tab's history (newest last), capped so a long
+    // session can't grow it unbounded.
+    {
+        RepeaterHistoryEntry h;
+        h.request    = t.requestText;
+        h.response   = t.responseText;
+        h.statusLine = t.statusLine;
+        h.sentAt     = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        t.history.append(h);
+        constexpr int kMaxTabHistory = 100;
+        while (t.history.size() > kMaxTabHistory) t.history.removeFirst();
+    }
+
     m_busy = false;
     emit responseChanged();
     emit busyChanged();
     emit tabsChanged(); // status line for the strip
+}
+
+int Repeater::historyCount() const {
+    return activeTab_().history.size();
+}
+
+bool Repeater::loadHistoryAt(int index) {
+    auto &t = activeTab_();
+    if (index < 0 || index >= t.history.size()) return false;
+    const RepeaterHistoryEntry &h = t.history.at(index);
+    t.requestText  = h.request;
+    t.responseText = h.response;
+    t.statusLine   = h.statusLine;
+    emit requestTextChanged();
+    emit responseChanged();
+    emit tabsChanged();
+    return true;
 }
 
 void Repeater::setAutoContentLength(bool on) {
