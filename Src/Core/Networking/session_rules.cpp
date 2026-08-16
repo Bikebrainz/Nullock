@@ -5,7 +5,7 @@
 #include <QJsonObject>
 #include <QMutexLocker>
 #include <QRegularExpression>
-#include <QtConcurrent>
+#include <QtConcurrent/QtConcurrent>   // module-qualified: bare <QtConcurrent> won't resolve on Linux/GCC
 #include <QUrl>
 
 namespace Nullock::Core {
