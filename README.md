@@ -28,7 +28,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   show/hide, case-sensitive toggle, and negative ("-term") search; a DB Search
                   overlay queries the SQLite-backed history index directly (method/host/path/
                   status/size/since filters) so a row can be found and its full raw request/
-                  response opened even after it has scrolled out of the bounded on-screen window
+                  response opened even after it has scrolled out of the bounded on-screen window;
+                  Site map hosts expand into per-URL leaf nodes (deduped by method+path, most
+                  recent request wins) that jump straight to that message's editor, no detour
+                  through the history table below
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, AUTO-CL recomputes Content-Length from the edited body on

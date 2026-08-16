@@ -313,7 +313,34 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
   );
 }
 
-function SiteMap({ entries, selectedHost, onSelect, totalRows, onRowContextMenu }) {
+function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu }) {
+  // #370: Burp's tree lets you click a leaf node straight to its editor, but
+  // the backend's /api/snapshot sitemap block is host-only (no per-path
+  // field, control_server.cpp:1446-1459). Rather than a backend change, this
+  // derives per-host path leaves client-side from the HTTP history rows
+  // already in state -- when two rows share a host+method+path, the most
+  // recent (highest id) one is the leaf's target, mirroring how Burp's tree
+  // node opens the latest request/response pair for that URL.
+  const [expanded, setExpanded] = React.useState(() => new Set());
+  const toggleExpand = (host, e) => {
+    e.stopPropagation();
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(host)) next.delete(host); else next.add(host);
+      return next;
+    });
+  };
+  const leavesFor = (host) => {
+    const byKey = new Map();
+    for (const r of rows) {
+      if (r.host !== host) continue;
+      const key = r.method + " " + r.path;
+      const prev = byKey.get(key);
+      if (!prev || r.id > prev.id) byKey.set(key, r);
+    }
+    return Array.from(byKey.values()).sort((a, b) => a.path.localeCompare(b.path));
+  };
+
   return (
     <div className="pane" style={{ height: "100%" }}>
       <div className="pane-head">
@@ -330,18 +357,37 @@ function SiteMap({ entries, selectedHost, onSelect, totalRows, onRowContextMenu 
           <span className="sm-host">all hosts</span>
           <span className="sm-count">{totalRows}</span>
         </div>
-        {entries.map(e => (
-          <div
-            key={e.host}
-            className={"sm-row " + (selectedHost === e.host ? "sel" : "")}
-            onClick={() => onSelect(e.host)}
-            onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev); }) : undefined}
-          >
-            <span className={"sm-tls" + (e.tls ? "" : " off")}>◉</span>
-            <span className="sm-host" title={e.host}>{e.host}</span>
-            <span className="sm-count">{e.count}</span>
-          </div>
-        ))}
+        {entries.map(e => {
+          const isOpen = expanded.has(e.host);
+          return (
+            <React.Fragment key={e.host}>
+              <div
+                className={"sm-row " + (selectedHost === e.host ? "sel" : "")}
+                onClick={() => onSelect(e.host)}
+                onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev); }) : undefined}
+              >
+                <span className={"sm-tls" + (e.tls ? "" : " off")}>◉</span>
+                <span className="sm-host" title={e.host}>
+                  <span className="sm-twisty" onClick={ev => toggleExpand(e.host, ev)} title={isOpen ? "collapse" : "expand URLs"}>{isOpen ? "▾" : "▸"}</span>
+                  {e.host}
+                </span>
+                <span className="sm-count">{e.count}</span>
+              </div>
+              {isOpen && leavesFor(e.host).map(r => (
+                <div
+                  key={r.id}
+                  className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "")}
+                  title={r.method + " " + r.path}
+                  onClick={() => onSelectLeaf(e.host, r.id)}
+                >
+                  <span className="sm-leaf-method">{r.method}</span>
+                  <span className="sm-leaf-path">{r.path || "/"}</span>
+                  <span className="sm-leaf-status">{r.status}</span>
+                </div>
+              ))}
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );
@@ -2236,8 +2282,11 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
       {showSitemap && (
         <SiteMap
           entries={sitemapEntries}
+          rows={rows}
           selectedHost={selectedHost}
+          selectedRowId={selectedRowId}
           onSelect={h => dispatch({ type: "set", payload: { selectedHost: h }})}
+          onSelectLeaf={(h, id) => dispatch({ type: "set", payload: { selectedHost: h, selectedRowId: id }})}
           totalRows={rows.length}
           onRowContextMenu={openRowMenu}
         />

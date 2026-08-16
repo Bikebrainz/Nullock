@@ -735,6 +735,26 @@ textarea, input { user-select: text; }
 .sm-row .sm-count { color: var(--dim); font-size: var(--fz-xs); letter-spacing: 0.06em; }
 .sm-row .sm-tls { color: var(--accent); font-size: 9px; }
 .sm-row .sm-tls.off { color: var(--faint); }
+.sm-twisty { display: inline-block; width: 12px; cursor: pointer; color: var(--dim); }
+.sm-twisty:hover { color: var(--accent); }
+
+.sm-leaf {
+  display: grid;
+  grid-template-columns: 40px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 26px;
+  height: calc(var(--row-h) - 4px);
+  font-size: var(--fz-xs);
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sm-leaf:hover { background: var(--pane-2); color: var(--text); }
+.sm-leaf.sel { background: var(--row-sel); color: var(--text); }
+.sm-leaf .sm-leaf-method { color: var(--accent); letter-spacing: 0.04em; }
+.sm-leaf .sm-leaf-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-leaf .sm-leaf-status { color: var(--dim); text-align: right; }
 
 /* ---------- filter bar ---------- */
 .filterbar {
