@@ -23,6 +23,12 @@ add_executable(proxy_shutdown_test
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/session_manager_logic.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/session_rules.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/session_rules_logic.cpp
+    # session_rules.cpp's runMacro() replays a login sequence via
+    # ChainRunner::run, so the à-la-carte link now needs the chain-runner TUs too
+    # (they only pull HttpClient from networking.cpp, already listed above -- no
+    # new QObject/moc, ChainRunner is a free-function namespace).
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/chain_runner.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/chain_runner_logic.cpp
 )
 
 target_link_libraries(proxy_shutdown_test PRIVATE
