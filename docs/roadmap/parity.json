@@ -2366,10 +2366,16 @@
     {
       "area": "sequencer",
       "feature": "Rule scope \u2014 Tools scope (apply this rule to Proxy / Scanner / Intruder / Repeater / Sequencer / Extender, checkbox per tool)",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "days",
-      "gap": "Not configurable AND the effective coverage is wrong in three ways: (1) Repeater, (2) Intruder and (3) the chain runner each build their own HttpClient and never call applyRequestRules, so session rules and auto-injected cookies that work while proxying silently do not apply there; (4) even in the proxy, the scope gate at proxy_server.cpp:1447 returns before both hooks, so an out-of-scope host gets no session handling regardless of rule globs. This remains the single most surprising failure mode in the area.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-15",
+        "commit": "6484132",
+        "note": "Scoping MECHANISM landed: SessionRule gains a tools bitmask (proxy|repeater|intruder|scanner) + pure SessionRulesLogic::ruleAppliesToTool (unset=all, back-compatible), unit-tested + mutation-proven; applyToRequest(req, tool) skips rules the calling tool isn't scoped to; the scope round-trips through /api/session-rules. PARTIAL -- Repeater/Intruder/chain still build their own HttpClient and don't call applyToRequest, so scoping INTO them isn't wired yet (raw-fidelity-sensitive routing), and the per-tool editor checkboxes are pending (concurrent ui-v2 lane)."
+      },
+      "gap": "Now CONFIGURABLE -- a rule carries a tools scope (proxy|repeater|intruder|scanner) and the proxy pipeline respects it. Remaining: Repeater/Intruder/chain each build their own HttpClient and still never call applyToRequest, so a rule scoped to them does not yet inject there (the raw-fidelity-sensitive routing); plus the per-tool editor checkboxes.",
       "why": "Confirmed and STRENGTHENED. I verified the Repeater/Intruder bypass by grepping those two files for \"session\" (0 hits, so it is not a naming difference) and reading their send paths. I also found a third bypass and an additional silent gate the first pass missed.",
       "evidence": "SessionRule (session_rules.hpp:40-71, read in full) has no tool field. Both hooks live inside one function: proxy_server.cpp:1484 `if (m_sessionManager) m_sessionManager->injectInto(req);` and :1490 `if (m_sessionRules) m_sessionRules->applyToRequest(req);`, guarded upstream at :1447 `if (!isInScope(req.host)) return;`. Bypasses: repeater.cpp:133-136 `const auto result = m_client.send(t.host, stat"
     },

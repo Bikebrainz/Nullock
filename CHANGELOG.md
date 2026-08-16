@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Session-handling rules can be scoped to tools (foundation).** A session rule
+  (auto-inject a captured token/cookie into matching requests) now carries a
+  `tools` scope — proxy / repeater / intruder / scanner — so it can be limited to,
+  or excluded from, specific tools. The scoping predicate is pure, unit-tested and
+  mutation-proven, and the scope round-trips through `/api/session-rules`. Existing
+  rules are unchanged (an unset scope means all tools). Routing Repeater/Intruder
+  sends through the rule engine so a rule can inject *into* them, plus the editor
+  checkboxes, is the scoped follow-on. Part of the launch blocker "no tools-scope
+  on session rules".
 - **Point the OAST / Collaborator at a hosted sink (client mode).** The out-of-band
   interaction sink was in-process only, so OOB detection (blind SSRF, RCE, XXE,
   log4shell) only worked against targets that could reach your own machine.
