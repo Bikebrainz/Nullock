@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">19</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5019</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Cross-Site Request Forgery (CSRF)</h1>
@@ -46,6 +47,8 @@ python labs/19-csrf/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5019/*</code><code class="inline">http://127.0.0.1:5019/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a state-changing action (like changing an email or password) that&#x27;s a plain POST.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the request carry any per-session token, or just the ambient session cookie?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Use Nullock&#x27;s CSRF PoC generator on that request -- an auto-submitting form from another origin should still succeed.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5019/*</li><li>POST /login (any user), then use /change-email -- captured.</li><li>Note: no CSRF token in the request, and the session cookie has no SameSite attribute (the header audit flags the cookie).</li><li>A cross-site auto-submitting form to /change-email succeeds.</li></ol>

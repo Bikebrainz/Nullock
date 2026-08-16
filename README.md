@@ -144,7 +144,9 @@ Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR, XML is
 SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
-Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/)
+Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
+                  the docs/labs site rates each Easy/Medium/Hard and gives 3
+                  progressive hints before the full walkthrough
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
 Project templates  Start a new project pre-seeded with scope + notes from a bundled template

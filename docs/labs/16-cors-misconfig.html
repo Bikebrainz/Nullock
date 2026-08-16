@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">16</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5016</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">CORS misconfiguration (reflected origin + credentials)</h1>
@@ -46,6 +47,8 @@ python labs/16-cors-misconfig/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5016/*</code><code class="inline">http://127.0.0.1:5016/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send a cross-origin request with an Origin header and look at the CORS response headers.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does Access-Control-Allow-Origin echo back whatever Origin you send, combined with Allow-Credentials: true?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>That combination lets any origin read authenticated responses via a credentialed fetch() -- confirm with a crafted Origin.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5016/*</li><li>Send /api/me to Repeater with header:  Origin: https://evil.example</li><li>The response echoes ACAO: https://evil.example + ACAC: true.</li><li>Run the active probe (cors): it flags the reflected-credentialed origin (proving exploitability, not just &quot;a CORS header exists&quot;).</li></ol>

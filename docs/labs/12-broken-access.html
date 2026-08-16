@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">12</span>
     <span class="labs-cat mono">Access control</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5012</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Broken access control via missing auth check on admin endpoint</h1>
@@ -46,6 +47,8 @@ python labs/12-broken-access/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5012/*</code><code class="inline">http://127.0.0.1:5012/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Is there an admin area, and did you ever see a link to it as a normal user?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Guess or find the admin URL directly -- does the app check who&#x27;s asking?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Requesting the admin endpoint with no session or a low-privilege session should still work if there&#x27;s no server-side check.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>POST /login {&quot;user&quot;:&quot;alice&quot;,&quot;password&quot;:&quot;secret&quot;} -- get session cookie.</li><li>GET /users -- list, auth required.</li><li>POST /admin/delete-user?id=2 with NO cookie. Should require admin. Actual response: { &quot;deleted&quot;: &quot;bob&quot; }. Forbidden bug.</li><li>GET /users again -- bob is gone.</li><li>Real fix: every admin route uses a single decorator that checks BOTH &quot;logged in&quot; AND &quot;is_admin&quot;. Most often-missed: lateral admin endpoints under &quot;internal&quot; prefixes.</li></ol>

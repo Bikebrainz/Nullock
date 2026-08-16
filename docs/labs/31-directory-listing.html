@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">31</span>
     <span class="labs-cat mono">Info disclosure</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5031</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Directory listing / index disclosure</h1>
@@ -46,6 +47,8 @@ python labs/31-directory-listing/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5031/*</code><code class="inline">http://127.0.0.1:5031/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Try requesting a directory path instead of a specific file.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the server return a file listing instead of a 404?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Browse the listing and fetch a file it exposes that was never linked from the app itself.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5031/*</li><li>Browse /files -- the listing reveals secret-notes.txt and backup.zip.</li><li>Fetch /files/secret-notes.txt directly.</li></ol>

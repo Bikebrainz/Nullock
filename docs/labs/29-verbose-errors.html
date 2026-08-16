@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">29</span>
     <span class="labs-cat mono">Info disclosure</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5029</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Information disclosure via verbose errors</h1>
@@ -46,6 +47,8 @@ python labs/29-verbose-errors/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5029/*</code><code class="inline">http://127.0.0.1:5029/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send some deliberately malformed input somewhere and see what comes back.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the error response look like a generic message, or does it look like raw debug output?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A full stack trace on bad input leaks file paths, framework version, and internal logic -- confirm with a malformed request.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5029/*</li><li>/calc?n=21    -&gt; 42</li><li>/calc?n=oops  -&gt; a stack trace with absolute paths is returned.</li></ol>

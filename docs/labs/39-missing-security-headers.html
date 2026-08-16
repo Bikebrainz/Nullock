@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">39</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5039</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Missing security headers</h1>
@@ -46,6 +47,8 @@ python labs/39-missing-security-headers/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5039/*</code><code class="inline">http://127.0.0.1:5039/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the full set of response headers on the main page.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Compare them against the standard defensive header set (CSP, X-Content-Type-Options, X-Frame-Options, etc.).</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Nullock&#x27;s passive audit already flags every missing header -- open Findings/Probe and read the list.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5039/*</li><li>nullock headeraudit http://localhost:5039/ -- raises csp-missing, hsts-missing, xcto-missing (and more).</li></ol>

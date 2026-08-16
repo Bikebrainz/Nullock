@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">48</span>
     <span class="labs-cat mono">Info disclosure</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5048</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Sensitive file exposure (.env / .git / config backups)</h1>
@@ -46,6 +47,8 @@ python labs/48-sensitive-file-exposure/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5048/*</code><code class="inline">http://127.0.0.1:5048/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Try requesting a few well-known filenames directly from the web root.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Backup and version-control files often get left behind by deploy scripts.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>/.env, /.git/config, and *.bak files being directly fetchable all confirm this -- Nullock&#x27;s content-discovery brute-forces exactly this list.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5048/*</li><li>nullock exposure http://localhost:5048/ -- probes curated sensitive paths and confirms each by content signature (sensitive-file-exposure findings).</li></ol>

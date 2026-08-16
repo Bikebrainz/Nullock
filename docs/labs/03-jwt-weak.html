@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">03</span>
     <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5003</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Weak JWT signing</h1>
@@ -46,6 +47,8 @@ python labs/03-jwt-weak/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5003/*</code><code class="inline">http://127.0.0.1:5003/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Decode the JWT you receive after login -- Nullock&#x27;s Inspector JWT toolkit does this for you.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Check whether the signature actually depends on a secret you don&#x27;t know, or if there&#x27;s a shortcut around it.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Try alg:none (strip the signature) or brute-forcing a short HS256 secret with a small wordlist.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>Hit http://localhost:5003/login -- response includes a JWT.</li><li>Open the encoder panel (decoder dropdown -&gt; JWT) and paste the token. Notice the JWT decoder annotations: [i] HMAC algorithm -- brute-forceable [i] role=&quot;user&quot; -- try tampering [i] expires &lt;X&gt;</li><li>Send /admin to Repeater with the token -- get 403.</li><li>Decode token, change role to &quot;admin&quot;, re-sign with secret &quot;secret&quot; (run `python -c &#x27;import jwt; print(jwt.encode({...}, &quot;secret&quot;))&#x27;`), paste back into Authorization header, fire -- 200.</li><li>Alternatively, swap alg to &quot;none&quot; and strip the signature: header = base64({&quot;alg&quot;:&quot;none&quot;,&quot;typ&quot;:&quot;JWT&quot;}) payload = base64({&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;alice&quot;,&quot;exp&quot;:...}) token = header + &quot;.&quot; + payload + &quot;.&quot;</li></ol>

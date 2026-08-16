@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">02</span>
     <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5002</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Error-based SQL injection</h1>
@@ -46,6 +47,8 @@ python labs/02-sqli-basic/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5002/*</code><code class="inline">http://127.0.0.1:5002/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The login form probably builds a SQL query directly from your input.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>A single quote in the username field is a good first probe -- watch the response for a database error.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>&#x27; OR &#x27;1&#x27;=&#x27;1 in the username (with any password) should log you in without a valid password.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>Browse http://localhost:5002/user?id=1</li><li>Send to Repeater</li><li>Change id to: 1&#x27;</li><li>Fire -- response contains &quot;near \\&quot;&#x27;\\&quot;: syntax error&quot; -- SQLi error fragment. PassiveScanner should also raise a &quot;sqli-error&quot; finding for this row on its own.</li><li>Extract: change id to: 1 UNION SELECT name||&#x27;/&#x27;||password FROM users</li></ol>

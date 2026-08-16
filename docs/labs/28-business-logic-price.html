@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">28</span>
     <span class="labs-cat mono">Business logic</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5028</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Business-logic flaw: client-controlled price / negative quantity</h1>
@@ -46,6 +47,8 @@ python labs/28-business-logic-price/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5028/*</code><code class="inline">http://127.0.0.1:5028/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the checkout request -- what values does the client actually send for price and quantity?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the server recompute the total, or trust whatever the client posts?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Editing the price down (or sending a negative quantity to flip the total) in Repeater can change what you pay.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5028/*</li><li>POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit)</li><li>Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you.</li></ol>

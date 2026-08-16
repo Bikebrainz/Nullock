@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">11</span>
     <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
     <span class="labs-port mono">localhost:5011</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Prototype pollution via deep-merge</h1>
@@ -46,6 +47,8 @@ python labs/11-prototype-pollution/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5011/*</code><code class="inline">http://127.0.0.1:5011/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find the endpoint that deep-merges a JSON body into an existing object.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>What happens if your JSON keys target __class__ or a similarly special attribute instead of a normal field?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A nested key path through __class__/__init__/__globals__ in the merged JSON can reach and poison shared object state.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>GET /me -- response { name: &quot;alice&quot;, is_admin: false }.</li><li>POST /config with body {&quot;theme&quot;:&quot;dark&quot;} -- normal merge.</li><li>POST /config with body {&quot;__class__&quot;:{&quot;is_admin&quot;:true}} -- a naive walker writes to the User class&#x27;s attributes.</li><li>GET /me again -- is_admin now true for every user.</li><li>Real fix: validate keys against an allow-list before merge; refuse __proto__ / __class__ / constructor in keys.</li></ol>

@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">06</span>
     <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5006</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">GraphQL introspection + over-fetching</h1>
@@ -46,6 +47,8 @@ python labs/06-graphql/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5006/*</code><code class="inline">http://127.0.0.1:5006/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find the GraphQL endpoint and see what a basic introspection query returns.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Introspection usually reveals fields and types nobody meant to expose publicly.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Use Nullock&#x27;s GraphQL schema/probe buttons to dump the schema, then query a field beyond what the UI ever requests.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>POST to /graphql with body { &quot;query&quot;: &quot;{ __schema { types { name } } }&quot; } -- get the full schema via introspection.</li><li>From that, learn there&#x27;s a `user(id)` resolver returning email AND password_hash.</li><li>POST query { user(id: 1) { name email password_hash } } -- get alice&#x27;s password hash. Crackable with hashcat.</li><li>Walk every user with Intruder: payload set [1..100], substituting into the id field.</li><li>Real fix: disable introspection in prod, scope sensitive fields behind a `requires_admin` directive checked in the resolver.</li></ol>

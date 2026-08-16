@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">21</span>
     <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5021</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Session fixation</h1>
@@ -46,6 +47,8 @@ python labs/21-session-fixation/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5021/*</code><code class="inline">http://127.0.0.1:5021/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Note your session cookie&#x27;s value before logging in.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Log in, then check the cookie again -- did it change?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>If the pre-login session id is still valid post-login, an attacker who fixed that id on a victim inherits their session.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5021/*</li><li>GET / -- note the `sid` the server assigns.</li><li>In Repeater, POST /login carrying that same `sid` -- after login the SAME `sid` is authenticated (no rotation). GET /whoami with it.</li><li>So a pre-planted `sid` survives the privilege change.</li></ol>

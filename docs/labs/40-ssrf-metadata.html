@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">40</span>
     <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5040</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">SSRF to internal-only services (cloud-metadata pattern)</h1>
@@ -46,6 +47,8 @@ python labs/40-ssrf-metadata/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5040/*</code><code class="inline">http://127.0.0.1:5040/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This is another server-side fetch feature -- but try pointing it somewhere more specific than localhost.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Cloud providers expose an instance-metadata service at a well-known link-local address.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Point url= at http://169.254.169.254/ (the cloud metadata IP) and see what the server fetches back for you.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5040/*</li><li>/fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request.</li><li>On a real cloud host: url=http://169.254.169.254/latest/meta-data/.</li></ol>

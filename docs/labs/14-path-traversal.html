@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">14</span>
     <span class="labs-cat mono">Other</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5014</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Path traversal / LFI</h1>
@@ -46,6 +47,8 @@ python labs/14-path-traversal/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5014/*</code><code class="inline">http://127.0.0.1:5014/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find the file-download endpoint and look at how it takes a filename.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does it stop you from asking for a path outside its intended directory?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>../../../../etc/passwd-style traversal in the filename parameter should read files outside the base dir.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5014/*</li><li>Browse http://localhost:5014/download?file=note.txt   (normal)</li><li>Send to Repeater, set file to:  ../../../../etc/passwd</li><li>The response leaks the file outside the base dir.</li><li>Run the active probe (lfi): it confirms by the file&#x27;s content fingerprint (line-anchored /etc/passwd or win.ini signature).</li></ol>

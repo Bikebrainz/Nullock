@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">45</span>
     <span class="labs-cat mono">Access control</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5045</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Dangerous HTTP methods enabled</h1>
@@ -46,6 +47,8 @@ python labs/45-dangerous-http-methods/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5045/*</code><code class="inline">http://127.0.0.1:5045/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send an OPTIONS request to a resource and read the Allow header.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does it list methods beyond GET/POST that you haven&#x27;t tried yet?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Try calling the resource with one of those extra methods (PUT/DELETE/PATCH) directly and see if it&#x27;s actually wired up.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5045/*</li><li>nullock methods http://localhost:5045/ -- reads OPTIONS Allow and flags dangerous-http-methods.</li></ol>

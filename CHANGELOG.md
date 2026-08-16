@@ -218,6 +218,19 @@ developer-facing record.
   (the uppercase-hex formatting and the char-set membership each fail their
   cases when broken). Closes roadmap parity item "Payload encoding (global
   'URL-encode these characters')".
+- **Labs get difficulty ratings and progressive hints.** The 50 teaching labs
+  under `labs/` (docs/labs site) previously gave only a title, description, and
+  full numbered walkthrough — no signal on how hard a bug is before you start,
+  and no partial-credit path if you get stuck short of the full answer. Each lab
+  now carries a curated Easy/Medium/Hard difficulty (reflected XSS/IDOR/broken-
+  access-style bugs are Easy; JWT/SSRF/NoSQLi-style are Medium; SSTI/race-
+  condition/deserialization/prototype-pollution/XXE/OAuth-state are Hard) shown
+  as a badge on the catalog and detail pages, plus a difficulty filter alongside
+  the existing category filter. Each lab also gets 3 hand-written progressive
+  hints (a nudge, then a technique, then a near-payload) in a collapsible
+  section above the full walkthrough. First installment on the "Labs as
+  TryHackMe/HackTheBox scenarios" roadmap item — submit-flag/success-check,
+  XP/tracks, and in-app (desktop) wiring remain open.
 
 ### Fixed
 - **`scanner_regression_test` failed to link on every CI runner (Linux and

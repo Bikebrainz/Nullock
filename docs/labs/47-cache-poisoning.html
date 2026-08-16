@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">47</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5047</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Web cache poisoning via an unkeyed header</h1>
@@ -46,6 +47,8 @@ python labs/47-cache-poisoning/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5047/*</code><code class="inline">http://127.0.0.1:5047/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a response that reflects a header value back into the page, on a URL a cache would store.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Is that header part of the cache key, or is it &quot;unkeyed&quot; -- present in the response but invisible to the cache?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Sending a crafted X-Forwarded-Host and having the cache store that poisoned response for the next visitor is the confirm step.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5047/*</li><li>nullock cachepoison http://localhost:5047/ -- injects X-Forwarded-Host and confirms it reflects into a cacheable response (the poisoning primitive).</li></ol>

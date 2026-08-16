@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">15</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5015</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Open redirect</h1>
@@ -46,6 +47,8 @@ python labs/15-open-redirect/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5015/*</code><code class="inline">http://127.0.0.1:5015/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a redirect parameter -- something like next= or return=.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the app check that the target is on the same site, or does it redirect anywhere?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Point next= at an external URL (https://evil.example) and confirm the app sends you straight there.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5015/*</li><li>Browse http://localhost:5015/go?next=/welcome   (intended)</li><li>Send to Repeater, set next to:  https://evil.example/</li><li>The response is 302 Location: https://evil.example/ -- off origin.</li><li>Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil).</li></ol>

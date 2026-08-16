@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">37</span>
     <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5037</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Web cache deception</h1>
@@ -46,6 +47,8 @@ python labs/37-web-cache-deception/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5037/*</code><code class="inline">http://127.0.0.1:5037/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a page that shows sensitive per-user data, then append something that looks like a static file extension to its path.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does a shared cache treat that URL as static and cache the personalized response?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>If a URL like /account/.css or /account.js returns the real personalized page and gets cached, a second visitor can be served your data.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5037/*</li><li>nullock cachedeception http://localhost:5037/account -- it probes /account/&lt;rand&gt;.css, sees the same private content with a cacheable response, and flags web-cache-deception.</li></ol>

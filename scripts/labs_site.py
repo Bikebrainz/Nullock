@@ -12,6 +12,10 @@ Data sources, all already in the repo:
   labs/<slug>/app.py              module docstring -> title, description,
                                   walkthrough steps, the fix note
   labs/<slug>/.nullock-project.json  the pre-set scope
+  DIFFICULTY / HINTS (below)      curated per-lab in this script: an Easy/
+                                  Medium/Hard rating and three progressive
+                                  hints -- editorial judgement calls that
+                                  don't live in the docstring's fixed format
 
 Run:
     python scripts/labs_site.py           # regenerate
@@ -58,6 +62,331 @@ def category(slug):
         if any(k in slug for k in kws):
             return name
     return "Other"
+
+
+# Difficulty ratings, one editorial call per lab (not derivable from the slug):
+# Easy = the bug is visible in a single obvious request/response; Medium = it
+# takes a specific technique or a bit of probing to surface; Hard = it needs
+# chaining, timing, or genuine exploit construction. Unlisted labs default to
+# Medium. This is a curated judgement call, not a formula -- revisit by hand
+# if a lab's actual difficulty turns out to disagree with the label.
+DIFFICULTY = {
+    "01-xss-mirror": "Easy",
+    "02-sqli-basic": "Easy",
+    "03-jwt-weak": "Medium",
+    "04-idor": "Easy",
+    "05-ssrf": "Medium",
+    "06-graphql": "Medium",
+    "07-ssti": "Hard",
+    "08-oauth-state": "Hard",
+    "09-race-condition": "Hard",
+    "10-deserialization": "Hard",
+    "11-prototype-pollution": "Hard",
+    "12-broken-access": "Easy",
+    "13-command-injection": "Medium",
+    "14-path-traversal": "Medium",
+    "15-open-redirect": "Easy",
+    "16-cors-misconfig": "Medium",
+    "17-nosql-injection": "Medium",
+    "18-mass-assignment": "Medium",
+    "19-csrf": "Easy",
+    "20-user-enumeration": "Easy",
+    "21-session-fixation": "Medium",
+    "22-file-upload": "Medium",
+    "23-host-header-poisoning": "Medium",
+    "24-clickjacking": "Easy",
+    "25-secret-exposure": "Easy",
+    "26-blind-sqli": "Medium",
+    "27-stored-xss": "Medium",
+    "28-business-logic-price": "Medium",
+    "29-verbose-errors": "Easy",
+    "30-rate-limit-bypass": "Medium",
+    "31-directory-listing": "Easy",
+    "32-csv-injection": "Medium",
+    "33-weak-reset-token": "Medium",
+    "34-2fa-bypass": "Medium",
+    "35-reset-token-reuse": "Medium",
+    "36-http-param-pollution": "Medium",
+    "37-web-cache-deception": "Medium",
+    "38-insecure-cookie-flags": "Easy",
+    "39-missing-security-headers": "Easy",
+    "40-ssrf-metadata": "Medium",
+    "41-oauth-redirect-uri": "Medium",
+    "42-credentials-in-url": "Easy",
+    "43-xxe": "Hard",
+    "44-crlf-injection": "Medium",
+    "45-dangerous-http-methods": "Easy",
+    "46-verb-tampering": "Medium",
+    "47-cache-poisoning": "Medium",
+    "48-sensitive-file-exposure": "Easy",
+    "49-robots-disclosure": "Easy",
+    "50-predictable-session-token": "Medium",
+}
+
+
+def difficulty(slug):
+    return DIFFICULTY.get(slug, "Medium")
+
+
+# Three progressive hints per lab -- a nudge, a technique, then a concrete
+# payload/step -- so a learner can peel back exactly as much as they need
+# before falling through to the full Walkthrough below. Curated by hand
+# per lab (there's no way to derive "what a stuck learner needs to hear
+# next" from the slug or docstring), separate from the docstring-authored
+# title/description/steps/fix. A lab with no entry here just renders no
+# Hints section -- that's a real gap to close, not silently papered over.
+HINTS = {
+    "01-xss-mirror": [
+        "Look at what happens to characters you type into the search box when they come back in the response.",
+        "Try sending an HTML tag as the search term and see if it survives unescaped.",
+        "A payload like <img src=x onerror=alert(1)> in the q parameter executes when Nullock replays the request.",
+    ],
+    "02-sqli-basic": [
+        "The login form probably builds a SQL query directly from your input.",
+        "A single quote in the username field is a good first probe -- watch the response for a database error.",
+        "' OR '1'='1 in the username (with any password) should log you in without a valid password.",
+    ],
+    "03-jwt-weak": [
+        "Decode the JWT you receive after login -- Nullock's Inspector JWT toolkit does this for you.",
+        "Check whether the signature actually depends on a secret you don't know, or if there's a shortcut around it.",
+        "Try alg:none (strip the signature) or brute-forcing a short HS256 secret with a small wordlist.",
+    ],
+    "04-idor": [
+        "Log in and look at the URL your own profile page uses.",
+        "The ID in that URL is just a number -- what happens if you change it?",
+        "Incrementing or decrementing the id in /profile/<id> should show you someone else's data.",
+    ],
+    "05-ssrf": [
+        "Find the endpoint that fetches a URL on the server's behalf.",
+        "Does it check the URL at all, or just pass it straight to an HTTP client?",
+        "Point url= at http://127.0.0.1:<internal-port>, an address the server can reach but you can't browse to directly.",
+    ],
+    "06-graphql": [
+        "Find the GraphQL endpoint and see what a basic introspection query returns.",
+        "Introspection usually reveals fields and types nobody meant to expose publicly.",
+        "Use Nullock's GraphQL schema/probe buttons to dump the schema, then query a field beyond what the UI ever requests.",
+    ],
+    "07-ssti": [
+        "Somewhere your input is rendered as a template, not just interpolated into HTML.",
+        "Try a math expression like {{7*7}} -- if it evaluates server-side, that's SSTI.",
+        "Walk the class hierarchy from an object (__class__.__mro__) to reach a Python builtin you can use to run commands.",
+    ],
+    "08-oauth-state": [
+        "Watch the OAuth login flow in the proxy and look at the callback URL.",
+        "Does the callback check that the state value matches what it sent, or does it accept anything?",
+        "Start your own auth flow, capture the code, then replay the callback with a missing/mismatched state to hijack a login.",
+    ],
+    "09-race-condition": [
+        "Find an action that checks a balance, then spends it, in two separate steps.",
+        "What happens if you fire that action twice at almost the same instant?",
+        "Use Intruder in a parallel/battering-ram-style burst against the transfer endpoint to win the race between check and use.",
+    ],
+    "10-deserialization": [
+        "Find where the app deserializes data it received from the client.",
+        "Python's pickle format isn't just data -- it can encode instructions to execute.",
+        "Craft a pickle payload whose __reduce__ calls a command-execution function, then send it where the app unpickles input.",
+    ],
+    "11-prototype-pollution": [
+        "Find the endpoint that deep-merges a JSON body into an existing object.",
+        "What happens if your JSON keys target __class__ or a similarly special attribute instead of a normal field?",
+        "A nested key path through __class__/__init__/__globals__ in the merged JSON can reach and poison shared object state.",
+    ],
+    "12-broken-access": [
+        "Is there an admin area, and did you ever see a link to it as a normal user?",
+        "Guess or find the admin URL directly -- does the app check who's asking?",
+        "Requesting the admin endpoint with no session or a low-privilege session should still work if there's no server-side check.",
+    ],
+    "13-command-injection": [
+        "Find the diagnostics feature that shells out to run a system command like ping.",
+        "Does it sanitize the host you give it, or just splice it into a shell command?",
+        "A host value like `; whoami` or `$(whoami)` can chain an extra command onto the one the app runs.",
+    ],
+    "14-path-traversal": [
+        "Find the file-download endpoint and look at how it takes a filename.",
+        "Does it stop you from asking for a path outside its intended directory?",
+        "../../../../etc/passwd-style traversal in the filename parameter should read files outside the base dir.",
+    ],
+    "15-open-redirect": [
+        "Find a redirect parameter -- something like next= or return=.",
+        "Does the app check that the target is on the same site, or does it redirect anywhere?",
+        "Point next= at an external URL (https://evil.example) and confirm the app sends you straight there.",
+    ],
+    "16-cors-misconfig": [
+        "Send a cross-origin request with an Origin header and look at the CORS response headers.",
+        "Does Access-Control-Allow-Origin echo back whatever Origin you send, combined with Allow-Credentials: true?",
+        "That combination lets any origin read authenticated responses via a credentialed fetch() -- confirm with a crafted Origin.",
+    ],
+    "17-nosql-injection": [
+        "This backend uses a NoSQL-style query -- what happens if you send an operator instead of a plain string?",
+        "Try sending the password field as an object rather than a string.",
+        "password[$ne]= (or its JSON-body equivalent {\"$ne\": null}) can bypass an equality check that never expected an operator.",
+    ],
+    "18-mass-assignment": [
+        "Look at the fields the profile-update form actually submits.",
+        "The backend probably accepts a JSON/form body directly onto the model -- what fields does it NOT show you but might still accept?",
+        "Add an extra field like is_admin=true or role=admin to the update request body and see if it sticks.",
+    ],
+    "19-csrf": [
+        "Find a state-changing action (like changing an email or password) that's a plain POST.",
+        "Does the request carry any per-session token, or just the ambient session cookie?",
+        "Use Nullock's CSRF PoC generator on that request -- an auto-submitting form from another origin should still succeed.",
+    ],
+    "20-user-enumeration": [
+        "Try logging in with a username that definitely doesn't exist, then one that does (wrong password either way).",
+        "Compare the two error messages -- or the response time -- carefully.",
+        "A different message (or timing) for \"no such user\" vs \"wrong password\" lets you enumerate valid usernames.",
+    ],
+    "21-session-fixation": [
+        "Note your session cookie's value before logging in.",
+        "Log in, then check the cookie again -- did it change?",
+        "If the pre-login session id is still valid post-login, an attacker who fixed that id on a victim inherits their session.",
+    ],
+    "22-file-upload": [
+        "Find the file upload feature and see what file types it accepts.",
+        "Does it check content, extension, or just accept whatever you send?",
+        "Upload an HTML/SVG file containing a script payload and browse to the stored file directly.",
+    ],
+    "23-host-header-poisoning": [
+        "Trigger a password-reset email/flow and look at the link it generates.",
+        "Where does the domain in that link actually come from?",
+        "Send the reset request with a forged Host: header and see if the generated link uses your attacker-controlled host.",
+    ],
+    "24-clickjacking": [
+        "Check the response headers on a sensitive action page.",
+        "Is there an X-Frame-Options or frame-ancestors CSP directive stopping it from being framed?",
+        "With neither present, an invisible iframe over a decoy page can trick a click into hitting the real action.",
+    ],
+    "25-secret-exposure": [
+        "Look through the static JS the app serves for anything that looks like a credential.",
+        "Also try requesting well-known dotfiles directly -- does the server serve them?",
+        "An AWS key sits in app.js, and /.env is directly fetchable -- Nullock's secret-scan probe flags both.",
+    ],
+    "26-blind-sqli": [
+        "The obvious SQLi probes don't produce a visible error here -- but does the page's behavior change?",
+        "Try conditions that are always true vs always false in an injectable parameter and diff the responses.",
+        "' AND 1=1-- vs ' AND 1=2-- producing different page content/length confirms boolean-based blind SQLi.",
+    ],
+    "27-stored-xss": [
+        "Find a feature where your input is saved and shown back to other viewers, like comments.",
+        "Post something with an HTML tag in it and reload the feed -- does it render or get escaped?",
+        "A stored <img src=x onerror=alert(1)> comment fires every time anyone views the feed, not just you.",
+    ],
+    "28-business-logic-price": [
+        "Look at the checkout request -- what values does the client actually send for price and quantity?",
+        "Does the server recompute the total, or trust whatever the client posts?",
+        "Editing the price down (or sending a negative quantity to flip the total) in Repeater can change what you pay.",
+    ],
+    "29-verbose-errors": [
+        "Send some deliberately malformed input somewhere and see what comes back.",
+        "Does the error response look like a generic message, or does it look like raw debug output?",
+        "A full stack trace on bad input leaks file paths, framework version, and internal logic -- confirm with a malformed request.",
+    ],
+    "30-rate-limit-bypass": [
+        "Trip the login rate limiter deliberately with repeated bad attempts.",
+        "Does the limiter key off something the client can control, like an X-Forwarded-For header?",
+        "Sending a different X-Forwarded-For value on each attempt should reset your budget with the limiter.",
+    ],
+    "31-directory-listing": [
+        "Try requesting a directory path instead of a specific file.",
+        "Does the server return a file listing instead of a 404?",
+        "Browse the listing and fetch a file it exposes that was never linked from the app itself.",
+    ],
+    "32-csv-injection": [
+        "Find a feature that exports user-supplied data as a CSV/spreadsheet download.",
+        "What happens if one of your saved fields starts with =, +, -, or @?",
+        "A field like =cmd|'/c calc'!A1 surviving unescaped into the export can trigger formula execution when the victim opens it.",
+    ],
+    "33-weak-reset-token": [
+        "Trigger a password reset and look closely at the token in the link.",
+        "Is that token random, or could it be derived from something public, like the username?",
+        "The token is md5(username) -- compute it yourself for any known username to forge a valid reset link.",
+    ],
+    "34-2fa-bypass": [
+        "Log in with a 2FA-enabled account and watch what happens right after the password step.",
+        "Once you have a session, does the dashboard actually verify 2FA was completed, or just that you're logged in?",
+        "Request the dashboard URL directly after the password step, skipping the 2FA prompt entirely.",
+    ],
+    "35-reset-token-reuse": [
+        "Use a password-reset token once, successfully.",
+        "Now try using that exact same token again.",
+        "If the token still works a second time, it was never invalidated -- replay it via Repeater to reset the password again.",
+    ],
+    "36-http-param-pollution": [
+        "Find a parameter that appears once in a request, and try sending it twice with different values.",
+        "Which duplicate value does the validation step use, and which one does the actual action use?",
+        "If the check reads the first occurrence and the action reads the last (or vice versa), pass validation with one value and act with another.",
+    ],
+    "37-web-cache-deception": [
+        "Find a page that shows sensitive per-user data, then append something that looks like a static file extension to its path.",
+        "Does a shared cache treat that URL as static and cache the personalized response?",
+        "If a URL like /account/.css or /account.js returns the real personalized page and gets cached, a second visitor can be served your data.",
+    ],
+    "38-insecure-cookie-flags": [
+        "Inspect the Set-Cookie header on login.",
+        "Which of Secure, HttpOnly, and SameSite are actually present?",
+        "Missing HttpOnly means client-side script can read the session cookie; missing Secure/SameSite widens how it can leak or be forged.",
+    ],
+    "39-missing-security-headers": [
+        "Look at the full set of response headers on the main page.",
+        "Compare them against the standard defensive header set (CSP, X-Content-Type-Options, X-Frame-Options, etc.).",
+        "Nullock's passive audit already flags every missing header -- open Findings/Probe and read the list.",
+    ],
+    "40-ssrf-metadata": [
+        "This is another server-side fetch feature -- but try pointing it somewhere more specific than localhost.",
+        "Cloud providers expose an instance-metadata service at a well-known link-local address.",
+        "Point url= at http://169.254.169.254/ (the cloud metadata IP) and see what the server fetches back for you.",
+    ],
+    "41-oauth-redirect-uri": [
+        "Look at the OAuth authorize request and find the redirect_uri parameter.",
+        "Does the authorization server check that value against a registered list, or accept whatever you send?",
+        "Swap redirect_uri for a host you control and see if the auth code gets delivered there instead.",
+    ],
+    "42-credentials-in-url": [
+        "Watch the login request in the proxy -- where do the credentials actually go?",
+        "Query strings end up in server logs, browser history, and the Referer header sent to other sites.",
+        "If the password rides in the URL instead of the body, that's the leak -- confirm by checking where it's visible.",
+    ],
+    "43-xxe": [
+        "Find an endpoint that accepts XML input.",
+        "Does the XML parser resolve external entities defined in a DOCTYPE?",
+        "A <!DOCTYPE ... <!ENTITY xxe SYSTEM \"file:///etc/passwd\"> payload referenced in the body can pull a local file into the response.",
+    ],
+    "44-crlf-injection": [
+        "Find a redirect parameter that gets dropped straight into a Location header.",
+        "What happens if your input contains a raw CR/LF sequence?",
+        "%0d%0a in the redirect target can split the header and inject an extra header (or even a body) of your choosing.",
+    ],
+    "45-dangerous-http-methods": [
+        "Send an OPTIONS request to a resource and read the Allow header.",
+        "Does it list methods beyond GET/POST that you haven't tried yet?",
+        "Try calling the resource with one of those extra methods (PUT/DELETE/PATCH) directly and see if it's actually wired up.",
+    ],
+    "46-verb-tampering": [
+        "The admin check might only be looking at one specific HTTP method.",
+        "If GET /admin is blocked, what happens with other verbs on the same path?",
+        "POST or HEAD to the same /admin URL can skip a check that was only ever written for GET.",
+    ],
+    "47-cache-poisoning": [
+        "Find a response that reflects a header value back into the page, on a URL a cache would store.",
+        "Is that header part of the cache key, or is it \"unkeyed\" -- present in the response but invisible to the cache?",
+        "Sending a crafted X-Forwarded-Host and having the cache store that poisoned response for the next visitor is the confirm step.",
+    ],
+    "48-sensitive-file-exposure": [
+        "Try requesting a few well-known filenames directly from the web root.",
+        "Backup and version-control files often get left behind by deploy scripts.",
+        "/.env, /.git/config, and *.bak files being directly fetchable all confirm this -- Nullock's content-discovery brute-forces exactly this list.",
+    ],
+    "49-robots-disclosure": [
+        "Check /robots.txt before you look anywhere else.",
+        "Disallow entries are instructions to crawlers, not access controls -- what do they point at?",
+        "Visit the paths robots.txt tells search engines NOT to index; nothing stops you from just requesting them.",
+    ],
+    "50-predictable-session-token": [
+        "Log in a couple of times and collect a few session ids.",
+        "Do they look random, or is there an obvious pattern between them?",
+        "Feed a batch of captured session ids into Nullock's Sequencer -- a low-entropy, sequential verdict confirms they're guessable.",
+    ],
+}
 
 
 # --------------------------------------------------------------------------- data
@@ -159,6 +488,8 @@ def load():
         d = dict(readme[slug])
         d["num"] = slug.split("-", 1)[0]
         d["category"] = category(slug)
+        d["difficulty"] = difficulty(slug)
+        d["hints"] = HINTS.get(slug, [])
         d.update({k: v for k, v in parse_docstring(slug).items()})
         d["scope"] = read_scope(slug)
         labs.append(d)
@@ -223,7 +554,7 @@ def page(title, desc, active, body):
 def build_index(labs):
     slim = [{"slug": l["slug"], "num": l["num"], "title": l.get("title", "") or l["slug"],
              "vuln": l.get("vuln", ""), "port": l["port"], "cat": l["category"],
-             "steps": len(l.get("steps", []))} for l in labs]
+             "diff": l["difficulty"], "steps": len(l.get("steps", []))} for l in labs]
     payload = json.dumps(slim, ensure_ascii=False).replace("</", "<\\/")
     cats = sorted({l["category"] for l in labs})
 
@@ -245,6 +576,7 @@ def build_index(labs):
     </div>
   </div>
   <div class="labs-chips" id="labs-chips"></div>
+  <div class="labs-chips" id="labs-diff-chips"></div>
   <div id="labs-grid" class="labs-grid"></div>
   <div id="labs-empty" class="labs-empty" hidden><p class="mono muted">No labs match that filter.</p></div>"""
 
@@ -253,7 +585,8 @@ def build_index(labs):
 (function () {
   "use strict";
   var LABS = JSON.parse(document.getElementById("labs-data").textContent);
-  var state = { q: "", cat: "all" };
+  var DIFFS = ["all", "Easy", "Medium", "Hard"];
+  var state = { q: "", cat: "all", diff: "all" };
   function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = String(x); return n; }
   function cats() {
     var s = []; LABS.forEach(function (l) { if (s.indexOf(l.cat) < 0) s.push(l.cat); });
@@ -263,6 +596,7 @@ def build_index(labs):
     var q = state.q.trim().toLowerCase();
     return LABS.filter(function (l) {
       if (state.cat !== "all" && l.cat !== state.cat) return false;
+      if (state.diff !== "all" && l.diff !== state.diff) return false;
       if (!q) return true;
       return (l.title + " " + l.vuln + " " + l.port + " " + l.cat).toLowerCase().indexOf(q) >= 0;
     });
@@ -273,6 +607,7 @@ def build_index(labs):
     var top = el("div", "labs-card-top");
     top.appendChild(el("span", "labs-num mono", l.num));
     top.appendChild(el("span", "labs-cat mono", l.cat));
+    top.appendChild(el("span", "labs-diff labs-diff-" + l.diff.toLowerCase(), l.diff));
     top.appendChild(el("span", "labs-port mono", ":" + l.port));
     a.appendChild(top);
     a.appendChild(el("h3", "labs-title", l.title));
@@ -291,7 +626,14 @@ def build_index(labs):
       b.addEventListener("click", function () { state.cat = c; render(); });
       host.appendChild(b);
     });
-    var count = el("span", "mono dim labs-count"); host.appendChild(count); return count;
+    var dhost = document.getElementById("labs-diff-chips"); dhost.textContent = "";
+    DIFFS.forEach(function (d) {
+      var b = el("button", "labs-chip" + (state.diff === d ? " is-active" : ""), d === "all" ? "all difficulty" : d);
+      b.type = "button";
+      b.addEventListener("click", function () { state.diff = d; render(); });
+      dhost.appendChild(b);
+    });
+    var count = el("span", "mono dim labs-count"); dhost.appendChild(count); return count;
   }
   function render() {
     var count = renderChips();
@@ -332,6 +674,21 @@ def build_detail(l):
     fix = ('<div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>%s</p></div>'
            % E(l["fix"])) if l.get("fix") else ""
 
+    hints = l.get("hints", [])
+    hints_html = ""
+    if hints:
+        hints_html = (
+            '<h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2>'
+            '<p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p>'
+            '<div class="labs-hints">'
+            + "".join(
+                '<details class="labs-hint"><summary>Hint %d</summary><p>%s</p></details>'
+                % (i + 1, E(h))
+                for i, h in enumerate(hints)
+            )
+            + "</div>"
+        )
+
     run = ("python labs/%s/app.py" % l["slug"])
 
     body = """<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
@@ -339,6 +696,7 @@ def build_detail(l):
   <div class="labs-detail-head">
     <span class="labs-num mono">%s</span>
     <span class="labs-cat mono">%s</span>
+    <span class="labs-diff labs-diff-%s">%s</span>
     <span class="labs-port mono">localhost:%s</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">%s</h1>
@@ -353,6 +711,8 @@ def build_detail(l):
 
   %s
 
+  %s
+
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   %s
 
@@ -363,11 +723,12 @@ def build_detail(l):
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>""" % (
-        E(l["num"]), E(l["category"]), E(l["port"]),
+        E(l["num"]), E(l["category"]), E(l["difficulty"].lower()), E(l["difficulty"]), E(l["port"]),
         E(l.get("title", "") or l["slug"]),
         E(l.get("desc", "") or l.get("vuln", "")),
         E(run), E(l["port"]),
         scope_html,
+        hints_html,
         steps_html,
         fix,
     )

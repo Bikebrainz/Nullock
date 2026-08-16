@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">34</span>
     <span class="labs-cat mono">Access control</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5034</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">2FA bypass (protected page never checks the 2FA flag)</h1>
@@ -46,6 +47,8 @@ python labs/34-2fa-bypass/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5034/*</code><code class="inline">http://127.0.0.1:5034/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Log in with a 2FA-enabled account and watch what happens right after the password step.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Once you have a session, does the dashboard actually verify 2FA was completed, or just that you&#x27;re logged in?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Request the dashboard URL directly after the password step, skipping the 2FA prompt entirely.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5034/*</li><li>POST /login user=alice (you now have a session, mfa=false).</li><li>GET /dashboard directly -- it loads WITHOUT completing 2FA.</li></ol>

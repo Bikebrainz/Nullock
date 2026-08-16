@@ -33,6 +33,7 @@
   <div class="labs-detail-head">
     <span class="labs-num mono">33</span>
     <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5033</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Weak / predictable password-reset tokens</h1>
@@ -46,6 +47,8 @@ python labs/33-weak-reset-token/app.py
   </div>
 
   <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5033/*</code><code class="inline">http://127.0.0.1:5033/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Trigger a password reset and look closely at the token in the link.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Is that token random, or could it be derived from something public, like the username?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>The token is md5(username) -- compute it yourself for any known username to forge a valid reset link.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
   <ol class="labs-steps"><li>nullock scope add http://localhost:5033/*</li><li>POST /forgot user=victim -- note the token.</li><li>The token == md5(&quot;reset-victim&quot;); GET /reset?user=victim&amp;token=&lt;that&gt; succeeds for anyone who knows the username.</li></ol>
