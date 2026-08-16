@@ -3987,6 +3987,85 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.sessionRules) m_wiring.sessionRules->clearAll();
         return okJson();
     }
+    // Named session-acquisition macros (#10/#11). POST { macros: [...] } replaces
+    // the set; any request returns the current set. A macro = a recorded login
+    // sequence (ChainRunner steps) + sessionHost + optional loggedOut* condition
+    // that auto-re-runs it. Steps share the /api/chain/run shape.
+    if (path == "/api/session-macros") {
+        if (!m_wiring.sessionRules)
+            return okJson({{ "ok", false }, { "error", "session rules not wired" }});
+        auto stepsFromJson = [](const QJsonArray &arr) {
+            QList<Nullock::Core::ChainRunner::Step> steps;
+            for (const QJsonValue &sv : arr) {
+                const QJsonObject so = sv.toObject();
+                Nullock::Core::ChainRunner::Step st;
+                st.name = so.value("name").toString();
+                st.host = so.value("host").toString();
+                st.tls  = so.value("tls").toBool(true);
+                st.port = so.value("port").toInt(st.tls ? 443 : 80);
+                st.request = so.value("request").toString().toUtf8();
+                for (const QJsonValue &ev : so.value("extract").toArray()) {
+                    const QJsonObject eo = ev.toObject();
+                    Nullock::Core::ChainRunner::Extract ex;
+                    ex.var = eo.value("var").toString();
+                    ex.key = eo.value("key").toString();
+                    const QString from = eo.value("from").toString("header").toLower();
+                    if      (from == "cookie") ex.from = Nullock::Core::ChainRunner::Extract::Cookie;
+                    else if (from == "json")   ex.from = Nullock::Core::ChainRunner::Extract::Json;
+                    else if (from == "regex")  ex.from = Nullock::Core::ChainRunner::Extract::Regex;
+                    else if (from == "status") ex.from = Nullock::Core::ChainRunner::Extract::Status;
+                    else                       ex.from = Nullock::Core::ChainRunner::Extract::Header;
+                    st.extracts.append(ex);
+                }
+                steps.append(st);
+            }
+            return steps;
+        };
+        auto stepsToJson = [](const QList<Nullock::Core::ChainRunner::Step> &steps) {
+            static const char *kFroms[] = { "header", "cookie", "json", "regex", "status" };
+            QJsonArray arr;
+            for (const auto &st : steps) {
+                QJsonArray ex;
+                for (const auto &e : st.extracts)
+                    ex.append(QJsonObject{ { "var", e.var }, { "key", e.key },
+                                           { "from", QString::fromLatin1(kFroms[int(e.from)]) } });
+                arr.append(QJsonObject{ { "name", st.name }, { "host", st.host },
+                    { "port", st.port }, { "tls", st.tls },
+                    { "request", QString::fromUtf8(st.request) }, { "extract", ex } });
+            }
+            return arr;
+        };
+        if (bodyJson.contains("macros")) {
+            QList<Nullock::Core::SessionMacro> macros;
+            for (const QJsonValue &mv : bodyJson.value("macros").toArray()) {
+                const QJsonObject mo = mv.toObject();
+                Nullock::Core::SessionMacro m;
+                m.name               = mo.value("name").toString();
+                m.sessionHost        = mo.value("sessionHost").toString();
+                m.loggedOutStatus    = mo.value("loggedOutStatus").toString();
+                m.loggedOutBodyRegex = mo.value("loggedOutBodyRegex").toString();
+                m.steps              = stepsFromJson(mo.value("steps").toArray());
+                macros.append(m);
+            }
+            m_wiring.sessionRules->setMacros(macros);
+        }
+        QJsonArray out;
+        for (const auto &m : m_wiring.sessionRules->macros())
+            out.append(QJsonObject{ { "name", m.name }, { "sessionHost", m.sessionHost },
+                { "loggedOutStatus", m.loggedOutStatus },
+                { "loggedOutBodyRegex", m.loggedOutBodyRegex },
+                { "steps", stepsToJson(m.steps) } });
+        return okJson({{ "ok", true }, { "macros", out }});
+    }
+    if (path == "/api/session-macros/run") {
+        if (!m_wiring.sessionRules)
+            return okJson({{ "ok", false }, { "error", "session rules not wired" }});
+        const QString name = bodyJson.value("name").toString();
+        // Dispatch off the control thread -- runMacro does blocking login I/O.
+        auto *sr = m_wiring.sessionRules;
+        (void)QtConcurrent::run([sr, name]() { sr->runMacro(name); });
+        return okJson({{ "ok", true }, { "dispatched", name }});
+    }
 
     // ---- Full row fetch by id (cold-storage path) --------------------
     // GET /api/history/full/<id> -- reads the full HttpRequest +

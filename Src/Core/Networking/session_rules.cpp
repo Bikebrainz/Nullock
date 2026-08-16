@@ -1,8 +1,10 @@
 #include "session_rules.hpp"
 #include "session_rules_logic.hpp"
 
+#include <QDateTime>
 #include <QMutexLocker>
 #include <QRegularExpression>
+#include <QtConcurrent>
 #include <QUrl>
 
 namespace Nullock::Core {
@@ -73,6 +75,11 @@ QString SessionRules::substitute(const QString &templ,
 
 void SessionRules::applyToResponse(const Nullock::Proxy::HttpRequest &req,
                                    const Nullock::Proxy::HttpResponse &resp) {
+    // Session validity: a logged-out response for a macro's host triggers an async
+    // re-auth. Runs first + independent of extraction, so it fires even when no
+    // extraction rule matches this response.
+    maybeReauth(req.host, resp);
+
     QList<SessionRule> rs;
     {
         QMutexLocker lk(&m_mutex);
@@ -291,6 +298,70 @@ void SessionRules::ingestVariables(const QString &host,
             bag.insert(it.key(), it.value());
     }
     emit variablesChanged();
+}
+
+void SessionRules::setMacros(const QList<SessionMacro> &macros) {
+    { QMutexLocker lk(&m_mutex); m_macros = macros; }
+    emit macrosChanged();
+}
+
+QList<SessionMacro> SessionRules::macros() const {
+    QMutexLocker lk(&m_mutex);
+    return m_macros;
+}
+
+bool SessionRules::runMacro(const QString &name) {
+    SessionMacro macro;
+    bool found = false;
+    {
+        QMutexLocker lk(&m_mutex);
+        for (const auto &m : m_macros)
+            if (m.name == name) { macro = m; found = true; break; }
+    }
+    if (!found || macro.steps.isEmpty()) return false;
+    // Replay the recorded login sequence (synchronous network I/O). Callers run
+    // this off the proxy worker: the API dispatches it, the auto path via
+    // maybeReauth's QtConcurrent task.
+    const auto result = Nullock::Core::ChainRunner::run(macro.steps, /*continueOnError*/ false);
+    if (result.vars.isEmpty()) return false;
+    ingestVariables(macro.sessionHost, result.vars);
+    emit sessionReauthed(macro.sessionHost, name);
+    return true;
+}
+
+void SessionRules::maybeReauth(const QString &host,
+                               const Nullock::Proxy::HttpResponse &resp) {
+    constexpr qint64 kCooldownMs = 5000;   // never re-auth a host more than ~1x/5s
+    QString macroName;
+    {
+        QMutexLocker lk(&m_mutex);
+        if (m_macros.isEmpty()) return;
+        const QString bodyText = QString::fromUtf8(resp.body.left(64 * 1024));
+        for (const auto &m : m_macros) {
+            if (m.sessionHost.isEmpty() || m.sessionHost != host) continue;
+            if (m.loggedOutStatus.isEmpty() && m.loggedOutBodyRegex.isEmpty()) continue;
+            if (!SessionRulesLogic::responseIsLoggedOut(resp.statusCode, bodyText,
+                     m.loggedOutStatus, m.loggedOutBodyRegex))
+                continue;
+            if (m_reauthInFlight.contains(host)) return;    // already re-authing
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (now - m_lastReauthMs.value(host, 0) < kCooldownMs) return;   // cooldown
+            macroName = m.name;
+            m_reauthInFlight.insert(host);
+            m_lastReauthMs[host] = now;
+            break;
+        }
+    }
+    if (macroName.isEmpty()) return;
+    // Async so we never block the proxy worker on login I/O. The macro's OWN
+    // requests use ChainRunner's client (not the proxy), so they never re-enter
+    // applyToResponse -- no re-auth loop from the macro itself.
+    const QString hostCopy = host;
+    (void)QtConcurrent::run([this, macroName, hostCopy]() {
+        runMacro(macroName);
+        QMutexLocker lk(&m_mutex);
+        m_reauthInFlight.remove(hostCopy);
+    });
 }
 
 } // namespace Nullock::Core

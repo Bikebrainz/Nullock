@@ -169,6 +169,21 @@ int main(int argc, char **argv) {
         ruleAppliesToTool(kAllSessionTools, ToolProxy)
         && ruleAppliesToTool(kAllSessionTools, ToolScanner));
 
+    // ===== session validity: responseIsLoggedOut ========================
+    chk("loggedout: 401 in status list", responseIsLoggedOut(401, "", "401,403", ""));
+    chk("loggedout: 403 in status list", responseIsLoggedOut(403, "", "401,403", ""));
+    chk("loggedout: 200 not in status list", !responseIsLoggedOut(200, "", "401,403", ""));
+    chk("loggedout: body regex match", responseIsLoggedOut(200, "please log in again", "", "log in again"));
+    chk("loggedout: body regex no match", !responseIsLoggedOut(200, "welcome home", "", "log in again"));
+    chk("loggedout: status OR body (body hits on 200)",
+        responseIsLoggedOut(200, "session expired", "401", "session expired"));
+    chk("loggedout: BOTH conditions empty -> never re-auths",
+        !responseIsLoggedOut(401, "session expired", "", ""));
+    chk("loggedout: status 0 (no response) never matches a status code",
+        !responseIsLoggedOut(0, "", "0,401", ""));
+    chk("loggedout: invalid regex is safe (no match, no crash)",
+        !responseIsLoggedOut(200, "x", "", "("));
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

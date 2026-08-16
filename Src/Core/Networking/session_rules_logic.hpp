@@ -73,4 +73,13 @@ inline constexpr int kAllSessionTools = ToolProxy | ToolRepeater | ToolIntruder 
 // (backward-compatible); otherwise the tool's bit must be set.
 bool ruleAppliesToTool(int toolsMask, int tool);
 
+// --- Session validity check (#11) -------------------------------------------
+// Is this response a "logged out / session expired" signal, i.e. should the
+// session macro be re-run? True if `status` is in `statusList` (comma list, e.g.
+// "401,403") OR `bodyRegex` (non-empty + valid) matches `bodyText`. BOTH empty ->
+// never (a macro with no logged-out condition never auto-re-auths). status 0
+// (no response) never matches a status.
+bool responseIsLoggedOut(int status, const QString &bodyText,
+                         const QString &statusList, const QString &bodyRegex);
+
 } // namespace Nullock::Core::SessionRulesLogic

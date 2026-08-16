@@ -27,6 +27,7 @@
 // captured response (host-keyed bag updates), applyToRequest() runs
 // before the request hits the wire (substitutes {{vars}}).
 
+#include "chain_runner.hpp"          // ChainRunner::Step for recorded login macros
 #include "proxy_server.hpp"
 #include "session_rules_logic.hpp"   // SessionTool enum for tool scoping
 
@@ -34,6 +35,7 @@
 #include <QList>
 #include <QMutex>
 #include <QObject>
+#include <QSet>
 #include <QString>
 
 namespace Nullock::Core {
@@ -76,6 +78,22 @@ struct SessionRule {
     int     tools = 0;
 };
 
+// A named session-acquisition MACRO (#10/#11): a recorded login sequence
+// (ChainRunner steps) plus, optionally, a logged-out condition that auto-re-runs
+// it. Running the macro replays the steps and merges the values it extracts into
+// sessionHost's variable bag, so the matching session rules then inject the fresh
+// token into subsequent requests.
+struct SessionMacro {
+    QString name;
+    QString sessionHost;                            // host this macro authenticates
+    QList<Nullock::Core::ChainRunner::Step> steps;  // the recorded login sequence
+    // Auto re-auth trigger: a response to sessionHost whose status is in
+    // loggedOutStatus (comma list) OR whose body matches loggedOutBodyRegex means
+    // "session expired" -> re-run this macro. BOTH empty = manual-run only.
+    QString loggedOutStatus;
+    QString loggedOutBodyRegex;
+};
+
 class SessionRules : public QObject {
     Q_OBJECT
 public:
@@ -93,6 +111,14 @@ public:
     // subsequent requests by the matching rules. Host-keyed like every other
     // captured value, so an acquired secret never rides cross-origin.
     void ingestVariables(const QString &host, const QHash<QString, QString> &vars);
+
+    // Named session macros (recorded login sequences). setMacros replaces the set;
+    // runMacro replays a macro by name (synchronous network I/O) and ingests its
+    // vars into sessionHost's bag. The macros are also consulted on every response
+    // for the auto re-auth trigger.
+    void setMacros(const QList<SessionMacro> &macros);
+    QList<SessionMacro> macros() const;
+    Q_INVOKABLE bool runMacro(const QString &name);
 
     // Pipeline hooks. Both safe to call from worker threads. `tool` is the
     // SessionTool doing the send; a rule applies only if its tools scope includes
@@ -118,15 +144,27 @@ public slots:
 signals:
     void rulesChanged();
     void variablesChanged();
+    void macrosChanged();
+    // Emitted after a macro re-auth successfully ingested fresh session vars.
+    void sessionReauthed(const QString &host, const QString &macro);
 
 private:
     bool   matches(const SessionRule &r,
                    const QString &host, const QString &path) const;
     QString substitute(const QString &templ,
                        const QHash<QString, QString> &vars) const;
+    // Auto re-auth: if a macro for `host` declares a logged-out condition this
+    // response matches, launch an async re-run (loop-guarded). Called from
+    // applyToResponse.
+    void   maybeReauth(const QString &host, const Nullock::Proxy::HttpResponse &resp);
 
     mutable QMutex                m_mutex;
     QList<SessionRule>            m_rules;
+    QList<SessionMacro>           m_macros;
+    // Loop guard for auto re-auth: hosts whose macro is currently re-running, and
+    // a per-host cooldown so a permanently-failing login can't hammer the target.
+    QSet<QString>                 m_reauthInFlight;
+    QHash<QString, qint64>        m_lastReauthMs;
     // host -> (variable name -> value). Keyed by the HOST a value was extracted
     // from, so a secret captured from host A is never injected into a request to
     // host B (a wildcard hostGlob otherwise carries credentials cross-origin).

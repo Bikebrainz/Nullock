@@ -31,6 +31,19 @@ developer-facing record.
   (`/api/template/run`), which reads the same `bodyForInspection()` accessor,
   now also actually sees decoded bytes instead of silently matching against
   compressed ones.
+- **Session macros: store, run, and auto-re-authenticate (login-macro engine +
+  validity check).** Session handling now has named login macros: save a recorded
+  login sequence via `/api/session-macros`, run one on demand with
+  `/api/session-macros/run`, and — the validity check — attach a logged-out
+  condition (a status list and/or a response-body regex) so that when a response
+  to the macro's host matches it, the macro **re-runs automatically** and
+  re-acquires the session. The re-auth is async (never blocks the proxy worker on
+  login I/O) and loop-guarded: an in-flight lock plus a per-host cooldown, and the
+  macro's own requests use the chain runner's client (not the proxy) so they can't
+  re-trigger — a permanently-failing login can't hammer the target. The logged-out
+  predicate is unit-tested + mutation-proven. Closes "no check-session-is-valid"
+  and completes the session login-macro engine. (Macro persistence across restart
+  + the editor UI are the remaining follow-ons.)
 - **Turn a recorded login sequence into a live session (macro → session bridge).**
   A recorded chain (macro) can now feed the session variable bag: `POST
   /api/chain/run` with a `sessionHost` runs the macro and merges the values it

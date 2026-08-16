@@ -130,4 +130,20 @@ bool ruleAppliesToTool(int toolsMask, int tool) {
     return (toolsMask & tool) != 0;
 }
 
+bool responseIsLoggedOut(int status, const QString &bodyText,
+                         const QString &statusList, const QString &bodyRegex) {
+    if (status != 0) {
+        const QStringList codes = statusList.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &c : codes) {
+            bool ok = false;
+            if (c.trimmed().toInt(&ok) == status && ok) return true;
+        }
+    }
+    if (!bodyRegex.isEmpty()) {
+        const QRegularExpression re(bodyRegex);
+        if (re.isValid() && re.match(bodyText).hasMatch()) return true;
+    }
+    return false;
+}
+
 } // namespace Nullock::Core::SessionRulesLogic
