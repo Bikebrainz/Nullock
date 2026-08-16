@@ -3,6 +3,7 @@
 #include "networking.hpp"
 #include "proxy_server.hpp"
 
+#include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -62,6 +63,15 @@ public:
     int     tabCount() const     { return m_tabs.size(); }
     bool    autoContentLength() const { return m_autoContentLength; }
     const QList<RepeaterTab> &tabs() const { return m_tabs; }
+
+    // Full multi-tab state as JSON, for project-file persistence. exportState
+    // captures the request side (name/host/port/tls/request/notes/statusLine) +
+    // the active index; the response BODY is omitted so project.json stays small
+    // (re-sending reproduces it). importState REPLACES all tabs; an empty array
+    // resets to a single blank tab so a reopened project never shows the previous
+    // engagement's staged requests.
+    QJsonObject exportState() const;
+    Q_INVOKABLE void importState(const QJsonObject &state);
 
     void setHost(const QString &h);
     void setPort(int p);

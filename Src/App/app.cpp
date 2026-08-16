@@ -521,6 +521,45 @@ int runSmokeTest(Nullock::Proxy::ProxyServer        &proxy,
                      .arg(created).arg(midName).arg(back).arg(endName).arg(prev));
     }
 
+    // -- 13. Repeater tab persistence + engagement isolation ----------------
+    //  The safety-critical property: a staged request (carrying an auth header)
+    //  must (a) NOT leak into another project on switch, and (b) be restored when
+    //  its own project is reopened. Exercises the real projectClosing/save +
+    //  repeaterStateChanged/restore wiring set up above.
+    {
+        const QString home   = projectStore.metadata().name;   // default project
+        const QString canary = QStringLiteral("Authorization: Bearer SMOKE-ISOLATION-CANARY");
+        // Stage a request carrying the canary in a fresh tab of THIS project.
+        repeater.addTab("engagement-A");
+        repeater.setRequestText(QStringLiteral("GET /secret HTTP/1.1\r\nHost: victim.example\r\n")
+                                + canary + QStringLiteral("\r\n\r\n"));
+        const bool stagedHere = repeater.requestText().contains(canary);
+
+        // Switch to a fresh project -- tabs must be wiped, the canary gone.
+        const QString otherName = QString("smoke-iso-%1")
+                                      .arg(QDateTime::currentMSecsSinceEpoch());
+        projectStore.createProject(otherName);
+        bool leaked = false;
+        for (const auto &t : repeater.tabs())
+            if (t.requestText.contains(canary)) leaked = true;
+
+        // Switch back -- the staged request must be restored from project.json.
+        projectStore.openByName(home);
+        bool restored = false;
+        for (const auto &t : repeater.tabs())
+            if (t.requestText.contains(canary)) restored = true;
+
+        if (stagedHere && !leaked && restored)
+            pass("Repeater tab persistence: restored on reopen, no cross-project leak");
+        else
+            fail(QString("Repeater tab persistence: staged=%1 leaked=%2 restored=%3 (want 1/0/1)")
+                     .arg(stagedHere).arg(leaked).arg(restored));
+
+        // Cleanup: don't leave the canary in the default project's file on disk.
+        repeater.clearAll();
+        projectStore.setRepeaterState(repeater.exportState());
+    }
+
     out << Qt::endl << "smoke test: " << passed << " passed, "
         << failed << " failed" << Qt::endl;
     return failed == 0 ? 0 : 1;
@@ -843,6 +882,18 @@ int main(int argc, char *argv[]) {
     // payloads and the intercept queue.
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &repeater, &Nullock::Core::Repeater::clearAll);
+    // Repeater tab persistence. Save the OUTGOING project's tabs before the wipe
+    // (projectClosing fires ahead of historyShouldClear inside open()), and restore
+    // the INCOMING project's tabs after it loads (repeaterStateChanged fires at the
+    // end of open()). clearAll above still runs in between as defense-in-depth, so
+    // a project switch never carries one engagement's staged requests -- and their
+    // Authorization headers -- into another.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::projectClosing,
+                     &repeater, [&projectStore, &repeater]() {
+        projectStore.setRepeaterState(repeater.exportState());
+    });
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::repeaterStateChanged,
+                     &repeater, &Nullock::Core::Repeater::importState);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
@@ -855,6 +906,16 @@ int main(int argc, char *argv[]) {
         intercept.setEnabled(false);
         intercept.setResponsesEnabled(false);
     });
+    // Persist Repeater tabs on a clean quit too -- exiting isn't a project switch,
+    // so projectClosing never fires. Saves to the currently-open project.
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, &repeater,
+                     [&projectStore, &repeater]() {
+        if (projectStore.isOpen())
+            projectStore.setRepeaterState(repeater.exportState());
+    });
+    // The default project opened before the Repeater existed, so its persisted tabs
+    // weren't streamed into it. Restore them once now that everything is wired.
+    repeater.importState(projectStore.repeaterState());
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run

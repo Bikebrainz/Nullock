@@ -6,6 +6,7 @@
 
 #include <QDateTime>
 #include <QFile>
+#include <QJsonObject>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
@@ -22,6 +23,9 @@ struct ProjectMeta {
     QDateTime created;
     QDateTime updated;
     QList<Nullock::Proxy::MatchReplaceRule> rules;
+    // Repeater multi-tab state (opaque JSON owned by the Repeater), so a reopened
+    // project restores its staged requests. Serialized under "repeater".
+    QJsonObject repeaterState;
 };
 
 class ProjectStore : public QObject {
@@ -109,6 +113,14 @@ public:
 
     void setMetadata(const ProjectMeta &meta);
 
+    // Repeater multi-tab state, persisted in project.json under "repeater" so a
+    // reopened project restores its staged requests. Opaque JSON (the Repeater
+    // owns the shape) so Storage needn't depend on repeater.hpp. setRepeaterState
+    // persists immediately; app.cpp saves the OUTGOING project's state on
+    // projectClosing() (before the switch wipe) and on app quit.
+    void setRepeaterState(const QJsonObject &state);
+    QJsonObject repeaterState() const { return m_meta.repeaterState; }
+
 public slots:
     // Append one round-trip to history.ndjson. Wire this to
     // ProxyServer::responseReceived.
@@ -136,6 +148,13 @@ signals:
     // restoreFindings(). Wire to PassiveScanner::ingestFinding so a reopened
     // project's findings panel repopulates.
     void findingRestored(const Finding &f);
+    // Emitted at the TOP of open() (before historyShouldClear) when a project is
+    // already open, so app.cpp can save the OUTGOING project's Repeater tabs to
+    // its own file before the switch wipes them -- no cross-engagement leak.
+    void projectClosing();
+    // Emitted at the END of open() with the freshly-loaded project's Repeater
+    // state. Wire to Repeater::importState to restore the incoming project's tabs.
+    void repeaterStateChanged(const QJsonObject &state);
 
 private:
     bool ensureMetadata();

@@ -142,6 +142,11 @@ bool ProjectStore::createProject(const QString &name) {
 }
 
 bool ProjectStore::open(const QString &projectDir) {
+    // Save the OUTGOING project's Repeater tabs (app.cpp handles projectClosing)
+    // BEFORE historyShouldClear wipes them -- only when a project is already open,
+    // so a switch neither loses staged requests nor leaks them into the next one.
+    if (!m_dir.isEmpty())
+        emit projectClosing();
     // Tell downstream consumers (ProxyModel, scanner, etc.) to drop their
     // copy of the previous project's state BEFORE close() wipes m_dir.
     emit historyShouldClear();
@@ -209,6 +214,10 @@ bool ProjectStore::open(const QString &projectDir) {
     emit openedChanged();
     emit scopeChanged(m_meta.inScope, m_meta.outOfScope);
     emit rulesChanged(m_meta.rules);
+    // Restore the incoming project's Repeater tabs (app.cpp -> Repeater::importState).
+    // Fires AFTER historyShouldClear->clearAll wiped the outgoing tabs, so the panel
+    // shows this project's staged requests and nothing from the previous engagement.
+    emit repeaterStateChanged(m_meta.repeaterState);
     return true;
 }
 
@@ -302,6 +311,7 @@ bool ProjectStore::ensureMetadata() {
             }
             m_meta.rules.append(rule);
         }
+        m_meta.repeaterState = o.value("repeater").toObject();
         return true;
     }
 
@@ -339,11 +349,17 @@ bool ProjectStore::saveMetadata() {
         rulesArr.append(ro);
     }
     o["rules"] = rulesArr;
+    o["repeater"] = m_meta.repeaterState;
 
     QFile f(m_dir + "/project.json");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
     return true;
+}
+
+void ProjectStore::setRepeaterState(const QJsonObject &state) {
+    m_meta.repeaterState = state;
+    saveMetadata();
 }
 
 void ProjectStore::setMetadata(const ProjectMeta &meta) {

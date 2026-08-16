@@ -4,6 +4,9 @@
 #include "chain_runner.hpp"
 #include "networking_logic.hpp"
 
+#include <QJsonArray>
+#include <QJsonValue>
+
 namespace Nullock::Core {
 
 namespace {
@@ -173,6 +176,49 @@ void Repeater::setAutoContentLength(bool on) {
     if (m_autoContentLength == on) return;
     m_autoContentLength = on;
     emit autoContentLengthChanged();
+}
+
+QJsonObject Repeater::exportState() const {
+    QJsonArray arr;
+    for (const RepeaterTab &t : m_tabs) {
+        arr.append(QJsonObject{
+            { "name",       t.name },
+            { "host",       t.host },
+            { "port",       t.port },
+            { "tls",        t.useTls },
+            { "request",    t.requestText },
+            { "notes",      t.notes },
+            { "statusLine", t.statusLine },
+        });
+    }
+    // responseText is deliberately omitted -- a response body can be megabytes and
+    // project.json is a small metadata file rewritten on every change; the request
+    // side is what a reopen needs, and re-sending reproduces the response.
+    return QJsonObject{ { "activeTab", m_active }, { "tabs", arr } };
+}
+
+void Repeater::importState(const QJsonObject &state) {
+    QList<RepeaterTab> restored;
+    for (const QJsonValue &v : state.value("tabs").toArray()) {
+        const QJsonObject o = v.toObject();
+        RepeaterTab t;
+        t.name        = o.value("name").toString();
+        t.host        = o.value("host").toString();
+        t.port        = o.value("port").toInt(443);
+        t.useTls      = o.value("tls").toBool(true);
+        t.requestText = o.value("request").toString();
+        t.notes       = o.value("notes").toString();
+        t.statusLine  = o.value("statusLine").toString();
+        restored.append(t);
+    }
+    // Never leave zero tabs: a project with no saved Repeater state (or a cleared
+    // one) shows a single blank tab, not the previous engagement's requests.
+    if (restored.isEmpty())
+        restored.append(makeBlankTab());
+    m_tabs   = restored;
+    m_active = qBound(0, state.value("activeTab").toInt(), m_tabs.size() - 1);
+    emit tabsChanged();
+    emitAllSlots();
 }
 
 int Repeater::addTab(const QString &name) {

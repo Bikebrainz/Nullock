@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater tabs persist per project and restore on reopen.** Staged Repeater
+  requests were wiped on every project switch and lost on close. They're now saved
+  into the project file (`project.json` under `repeater`) and restored when the
+  project reopens — while preserving strict engagement isolation: the outgoing
+  project's tabs are saved to *its own* file *before* the switch wipes them, and
+  the incoming project's are loaded after, so one client's staged request (and its
+  `Authorization` header) never surfaces in another's project. Response bodies are
+  omitted from the saved state to keep the project file small (re-sending
+  reproduces them). Verified by a smoke test that stages a canary auth header,
+  switches projects (asserts no leak), then switches back (asserts restored).
+  Closes the launch blocker "a project switch wipes your tabs".
 - **Repeater recomputes Content-Length automatically (Burp's "Update
   Content-Length", on by default).** Editing a request body in Repeater left a
   stale `Content-Length` on the wire — the length had to be hand-fixed on every
