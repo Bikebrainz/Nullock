@@ -3391,7 +3391,7 @@
       "evidence": "ui-v2/app.jsx WebSocketsTab (new component) + TABS entry `{id:\"websockets\", label:\"WEBSOCKETS\"}` + tab-render switch; WS_PATH_RE parses Src/BackEnd/Proxy/proxy_server.cpp:1086-1090 `req.path = QString(\"(%1%2, %3 B%4)\").arg(label).arg(deflate).arg(payload.size()).arg(continued)`; row.size already carries `resp->body.size()` per control_server.cpp:1440; DetailPane reused verbatim from ui-v2/proxy.jsx (same component ProxyTab mounts); capture-scope gap confirmed at the sole runWebSocketRelay call site, proxy_server.cpp's h1 MITM 101-Upgrade branch.",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "dc4aee9",
         "note": "WEBSOCKETS tab (ui-v2/app.jsx) closes the tab/direction/length/comment/filtering half of this item -- reused proxy.jsx's DetailPane for message detail + every Send-to- pivot, no backend touched. Left honestly partial: plaintext ws:// is never captured (TLS-MITM-only relay, a backend gap) and concurrent same-host:port tunnels interleave in one connection bucket (history rows carry no per-tunnel session id)."
       }
     },
