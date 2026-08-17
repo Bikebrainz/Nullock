@@ -2,11 +2,14 @@
 
 #include "networking.hpp"
 #include "proxy_server.hpp"
+#include "redirect_logic.hpp"
 
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QString>
+
+#include <functional>
 
 namespace Nullock::FrontEnd {
 class ProxyModel;
@@ -64,7 +67,14 @@ class Repeater : public QObject {
     // verbatim -- e.g. a deliberately-malformed Content-Length for a CL/TE
     // request-smuggling test.
     Q_PROPERTY(bool autoContentLength READ autoContentLength WRITE setAutoContentLength NOTIFY autoContentLengthChanged)
+    // Follow 3xx responses after a send (Burp's "Follow redirections"): the policy
+    // is a RedirectLogic::FollowPolicy (0=never .. 3=always); processCookies
+    // threads Set-Cookie values through the chain ("Process cookies in redirections").
+    Q_PROPERTY(int  followRedirects READ followRedirects WRITE setFollowRedirects NOTIFY followRedirectsChanged)
+    Q_PROPERTY(bool processCookies  READ processCookies  WRITE setProcessCookies  NOTIFY followRedirectsChanged)
 public:
+    // Cap on redirect hops per send -- a self-referential 3xx loop must terminate.
+    static constexpr int kMaxRedirectHops = 10;
     explicit Repeater(Nullock::FrontEnd::ProxyModel *historyModel,
                       QObject *parent = nullptr);
 
@@ -78,6 +88,8 @@ public:
     int     activeTab() const    { return m_active; }
     int     tabCount() const     { return m_tabs.size(); }
     bool    autoContentLength() const { return m_autoContentLength; }
+    int     followRedirects() const { return m_followPolicy; }
+    bool    processCookies() const  { return m_followCookies; }
     const QList<RepeaterTab> &tabs() const { return m_tabs; }
 
     // Full multi-tab state as JSON, for project-file persistence. exportState
@@ -100,9 +112,15 @@ public:
     void setUseTls(bool tls);
     void setRequestText(const QString &t);
     Q_INVOKABLE void setAutoContentLength(bool on);
+    Q_INVOKABLE void setFollowRedirects(int policy);
+    Q_INVOKABLE void setProcessCookies(bool on);
     // Session-handling rules scoped to Repeater are applied to the request bytes
     // before each send (see send()). Optional; nullptr = no session handling.
     void setSessionRules(SessionRules *sr) { m_sessionRules = sr; }
+    // Scope predicate for the "in-scope" follow policy (Repeater holds no proxy
+    // pointer). app.cpp wires this to ProxyServer::isInScope. Unset -> in-scope
+    // policy follows nothing (fail-closed).
+    void setScopeChecker(std::function<bool(const QString &)> fn) { m_inScope = std::move(fn); }
 
     Q_INVOKABLE void loadFromHistory(int row);
     Q_INVOKABLE void send();
@@ -135,6 +153,7 @@ signals:
     void busyChanged();
     void tabsChanged();
     void autoContentLengthChanged();
+    void followRedirectsChanged();
 
 private:
     RepeaterTab       &activeTab_();
@@ -149,7 +168,10 @@ private:
     int                m_active = 0;
     bool               m_busy = false;
     bool               m_autoContentLength = true;   // Burp-parity default
+    int                m_followPolicy  = 0;           // RedirectLogic::FollowNever (Burp default: off)
+    bool               m_followCookies = true;        // "Process cookies in redirections"
     SessionRules      *m_sessionRules = nullptr;
+    std::function<bool(const QString &)> m_inScope;
 };
 
 } // namespace Nullock::Core

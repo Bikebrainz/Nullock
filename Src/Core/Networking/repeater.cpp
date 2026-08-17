@@ -157,10 +157,73 @@ void Repeater::send() {
     if (m_sessionRules)
         m_sessionRules->applyToRequestBytes(bytes, t.host, SessionRulesLogic::ToolRepeater);
 
-    const auto result = m_client.send(t.host,
-                                      static_cast<quint16>(t.port),
-                                      t.useTls,
-                                      bytes);
+    auto result = m_client.send(t.host,
+                                static_cast<quint16>(t.port),
+                                t.useTls,
+                                bytes);
+
+    // Follow 3xx redirects when configured (Burp's "Follow redirections"). Each
+    // hop is resolved + built by the pure redirect logic and sent to the resolved
+    // target; the response pane shows the FINAL hop, with a note of how many were
+    // followed. Cookie threading ("Process cookies in redirections") carries the
+    // original request's cookies plus every Set-Cookie along the chain.
+    int redirectHops = 0;
+    if (m_followPolicy != RedirectLogic::FollowNever && result.ok) {
+        namespace RL = Nullock::Core::RedirectLogic;
+        QUrl current    = RL::requestUrl(t.useTls, t.host, t.port, bytes);
+        QString method  = RL::requestMethod(bytes);
+        QByteArray body;
+        {
+            const int hb = bytes.indexOf("\r\n\r\n");
+            if (hb >= 0) body = bytes.mid(hb + 4);
+        }
+        QHash<QString, QString> jar;
+        // Seed the jar with the original request's own Cookie header so a pre-set
+        // session cookie survives the follow (buildFollowRequest emits only jar
+        // cookies).
+        if (m_followCookies) {
+            const int hb = bytes.indexOf("\r\n\r\n");
+            const QByteArray head = hb >= 0 ? bytes.left(hb) : bytes;
+            for (const QByteArray &line : head.split('\n')) {
+                QByteArray l = line.endsWith('\r') ? line.left(line.size() - 1) : line;
+                const int c = l.indexOf(':');
+                if (c < 0) continue;
+                if (QString::fromUtf8(l.left(c)).trimmed().compare("Cookie", Qt::CaseInsensitive) != 0) continue;
+                for (const QByteArray &pair : l.mid(c + 1).split(';')) {
+                    const int eq = pair.indexOf('=');
+                    if (eq <= 0) continue;
+                    jar.insert(QString::fromUtf8(pair.left(eq)).trimmed(),
+                               QString::fromUtf8(pair.mid(eq + 1)).trimmed());
+                }
+            }
+        }
+        while (redirectHops < kMaxRedirectHops && result.ok
+               && RL::isRedirectStatus(result.parsed.statusCode)) {
+            QString loc;
+            for (const auto &h : result.parsed.headers)
+                if (h.first.compare("Location", Qt::CaseInsensitive) == 0) { loc = h.second; break; }
+            const QUrl next = RL::resolveRedirect(current, loc);
+            if (next.isEmpty()) break;
+            const QString nextHost = next.host();
+            const bool nextInScope = m_inScope ? m_inScope(nextHost) : false;
+            if (!RL::followAllowed(RL::FollowPolicy(m_followPolicy),
+                                   current.host(), nextHost, nextInScope))
+                break;
+            if (m_followCookies) RL::mergeSetCookies(jar, result.parsed.headers);
+            const int status = result.parsed.statusCode;
+            const QString nextMethod  = RL::methodAfterRedirect(status, method);
+            const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
+            const QString cookieHdr   = m_followCookies ? RL::renderCookieHeader(jar) : QString();
+            const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+            const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
+            const int  nextPort = next.port(nextTls ? 443 : 80);
+            result  = m_client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+            current = next;
+            method  = nextMethod;
+            body    = nextBody;
+            ++redirectHops;
+        }
+    }
 
     if (result.ok) {
         // Unpack gzip/deflate for the response view: keep the original header
@@ -185,6 +248,9 @@ void Repeater::send() {
         t.responseText = "[error] " + result.errorMessage;
         t.statusLine   = "error";
     }
+    if (redirectHops > 0)
+        t.statusLine += QString("  [followed %1 redirect%2]")
+                            .arg(redirectHops).arg(redirectHops == 1 ? "" : "s");
 
     // Record this send in the tab's history (newest last), capped so a long
     // session can't grow it unbounded.
@@ -226,6 +292,21 @@ void Repeater::setAutoContentLength(bool on) {
     if (m_autoContentLength == on) return;
     m_autoContentLength = on;
     emit autoContentLengthChanged();
+}
+
+void Repeater::setFollowRedirects(int policy) {
+    // Clamp to the valid FollowPolicy range (never..always); anything else = never.
+    if (policy < RedirectLogic::FollowNever || policy > RedirectLogic::FollowAlways)
+        policy = RedirectLogic::FollowNever;
+    if (m_followPolicy == policy) return;
+    m_followPolicy = policy;
+    emit followRedirectsChanged();
+}
+
+void Repeater::setProcessCookies(bool on) {
+    if (m_followCookies == on) return;
+    m_followCookies = on;
+    emit followRedirectsChanged();
 }
 
 QJsonObject Repeater::exportState() const {

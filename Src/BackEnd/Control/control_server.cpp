@@ -3173,6 +3173,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             // send bytes verbatim for a hand-crafted CL/TE smuggling desync.
             if (bodyJson.contains("autoContentLength"))
                 m_wiring.repeater->setAutoContentLength(bodyJson.value("autoContentLength").toBool());
+            // Burp's "Follow redirections" (never/on-site/in-scope/always as
+            // 0..3) + "Process cookies in redirections".
+            if (bodyJson.contains("followRedirects"))
+                m_wiring.repeater->setFollowRedirects(bodyJson.value("followRedirects").toInt());
+            if (bodyJson.contains("processCookies"))
+                m_wiring.repeater->setProcessCookies(bodyJson.value("processCookies").toBool());
         }
         return okJson();
     }

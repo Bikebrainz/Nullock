@@ -1056,6 +1056,8 @@ int main(int argc, char *argv[]) {
     // can inject a captured token/cookie into a manually-sent request. Only fires
     // when a matching Repeater-scoped rule exists; raw sends stay byte-for-byte.
     repeater.setSessionRules(&sessionRules);
+    // Scope predicate for Repeater's "in-scope" redirect-follow policy.
+    repeater.setScopeChecker([&proxy](const QString &h) { return proxy.isInScope(h); });
     intruder.setSessionRules(&sessionRules);
     // Session login macros persist in project.json: restore the incoming
     // project's macros into the live engine whenever a project (re)opens (they're

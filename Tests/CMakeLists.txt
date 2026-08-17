@@ -294,6 +294,11 @@ add_subdirectory(sequencer)
 # Run via: ctest -R sequencer_capture -V
 add_subdirectory(sequencer_capture)
 
+# Redirect-following pure logic: status detection, QUrl resolution, post-redirect
+# method/body semantics, follow policy, and cookie threading.
+# Run via: ctest -R redirect -V
+add_subdirectory(redirect)
+
 # Port scanner banner classifier -- an OS mention isn't a service (no
 # winrm/smb from "Microsoft Windows"), an HTML body mentioning a DB is HTTP
 # (HTTP/1. status line wins before the DB substring matches), IMAP "* OK" is

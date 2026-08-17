@@ -11,6 +11,22 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater can follow redirects.** A 3xx used to leave you copying the
+  `Location` into a new tab and rebuilding the cookie jar by hand &mdash; on every
+  login and OAuth flow. Repeater now optionally follows redirects after a send,
+  with Burp's four modes (never / on-site only / in-scope only / always) and
+  "Process cookies in redirections": it resolves each `Location` (relative or
+  absolute), picks the right method (a `POST` becomes `GET` on a 301/302/303,
+  stays `POST` on a 307/308), threads the original request's cookies plus every
+  `Set-Cookie` along the chain, and shows the final response with a note of how
+  many hops it followed (capped so a redirect loop terminates). Configurable via
+  `/api/repeater/set` (`followRedirects` 0&ndash;3, `processCookies`). The whole
+  decision core &mdash; status detection, URL resolution, method/body semantics,
+  the follow policy, cookie threading &mdash; is pure, unit-tested and
+  mutation-proven, and it's verified end-to-end (a `/a`&rarr;`/b`&rarr;`/c` 302
+  chain is followed to the final page with the session cookie carried through).
+  Shared logic, so Intruder can reuse it next. (The Repeater UI toggle is the
+  remaining follow-on.)
 - **Sequencer live capture: harvest a token corpus automatically.** The Sequencer
   could only score a corpus you assembled yourself. A new background engine now
   fires the *same* request N times and pulls one token out of each response
