@@ -45,11 +45,15 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through
                   prior sends, AUTO-CL recomputes Content-Length from the edited body on
-                  send (on by default; toggle off from the GUI to hand-craft a CL/TE desync)
+                  send (on by default; toggle off from the GUI to hand-craft a CL/TE desync),
+                  a FOLLOW selector (never / on-site / in-scope / always) chases 3xx chains to
+                  the final page with a COOKIES toggle to thread Set-Cookie through every hop
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/
-                  match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware
+                  match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware,
+                  same FOLLOW/COOKIES redirect-chasing controls as Repeater so a bruteforce behind
+                  a login/redirect grades against the real final page instead of a wall of 302s
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
 Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count, max CVSS, CWE/
                   OWASP rollup); a Baseline bar saves/diffs/clears a findings snapshot for

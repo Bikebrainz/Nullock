@@ -1,5 +1,10 @@
 // Scope, Repeater, Intercept, Intruder tabs.
 
+// Shared with Repeater's and Intruder's follow-redirect selector: mirrors
+// RedirectLogic::FollowPolicy (redirect_logic.hpp) exactly -- 0=never,
+// 1=on-site (same host only), 2=in-scope (Target scope), 3=always.
+const FOLLOW_REDIRECT_LABELS = ["NEVER", "ON-SITE", "IN-SCOPE", "ALWAYS"];
+
 // ===================== SCOPE =====================
 // Turn a pasted URL (or bare host) into a host glob. Returns null if the
 // text doesn't parse as a URL/host at all.
@@ -724,6 +729,25 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             style={{ accentColor: "var(--accent)" }}
           />
           AUTO-CL
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)" }}
+               title="Follow 3xx responses after a send. On-site: same host only. In-scope: Target scope. Always: any host.">
+          FOLLOW
+          <select value={rep.followRedirects || 0}
+                  onChange={e => dispatch({ type: "repeater-set", payload: { followRedirects: parseInt(e.target.value, 10) } })}
+                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "var(--fz-xs)" }}>
+            {FOLLOW_REDIRECT_LABELS.map((label, i) => <option key={i} value={i}>{label}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", cursor: "pointer" }}
+               title="Thread cookies (original + every Set-Cookie along the chain) into each followed redirect hop.">
+          <input
+            type="checkbox"
+            checked={!!rep.processCookies}
+            onChange={e => dispatch({ type: "repeater-set", payload: { processCookies: e.target.checked } })}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          COOKIES
         </label>
         <span style={{ flex: 1 }} />
         {histCount > 0 && (
@@ -1715,6 +1739,25 @@ function IntruderTab({ intruder, dispatch }) {
             title="Inter-dispatch delay in milliseconds (0 = as fast as concurrency allows)"
           />
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)" }}
+               title="Follow 3xx responses after each fired request, so the graded row (status/length/grep) reflects the FINAL page. On-site: same host only. In-scope: Target scope. Always: any host.">
+          FOLLOW
+          <select value={intruder.followRedirects || 0}
+                  onChange={e => dispatch({ type: "intruder-set", payload: { followRedirects: parseInt(e.target.value, 10) } })}
+                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "var(--fz-xs)" }}>
+            {FOLLOW_REDIRECT_LABELS.map((label, i) => <option key={i} value={i}>{label}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", cursor: "pointer" }}
+               title="Thread cookies (original + every Set-Cookie along the chain) into each followed redirect hop.">
+          <input
+            type="checkbox"
+            checked={!!intruder.processCookies}
+            onChange={e => dispatch({ type: "intruder-set", payload: { processCookies: e.target.checked } })}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          COOKIES
+        </label>
         <button className="btn" onClick={doExport} title="Save this attack (config + results) to a JSON file">⭳ SAVE</button>
         <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} title="Load a saved attack from JSON (refused while running)">⭱ LOAD</button>
         <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }}

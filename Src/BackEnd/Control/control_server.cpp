@@ -1506,6 +1506,8 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["busy"]       = m_wiring.repeater->busy();
         repeater["activeTab"]  = m_wiring.repeater->activeTab();
         repeater["autoContentLength"] = m_wiring.repeater->autoContentLength();
+        repeater["followRedirects"] = m_wiring.repeater->followRedirects();
+        repeater["processCookies"] = m_wiring.repeater->processCookies();
         QJsonArray tabs;
         for (const auto &t : m_wiring.repeater->tabs()) {
             QJsonObject to;
@@ -1550,6 +1552,8 @@ QByteArray ControlServer::buildSnapshot() const {
         intruder["running"]     = m_wiring.intruder->running();
         intruder["concurrency"] = m_wiring.intruder->maxConcurrency();
         intruder["throttleMs"]  = m_wiring.intruder->throttleMs();
+        intruder["followRedirects"] = m_wiring.intruder->followRedirects();
+        intruder["processCookies"]  = m_wiring.intruder->processCookies();
         QJsonArray results;
         const int n = m_wiring.intruder->rowCount();
         for (int i = 0; i < n; ++i) {

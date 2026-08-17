@@ -33,8 +33,16 @@ developer-facing record.
   the follow policy, cookie threading &mdash; is pure, unit-tested and
   mutation-proven, and it's verified end-to-end (a `/a`&rarr;`/b`&rarr;`/c` 302
   chain is followed to the final page with the session cookie carried through).
-  Shared logic, so Intruder can reuse it next. (The Repeater UI toggle is the
-  remaining follow-on.)
+  Shared logic, so Intruder can reuse it next.
+- **Redirect-following is now a GUI control, not just an API call.** Both
+  Repeater and Intruder gain a FOLLOW selector (never / on-site / in-scope /
+  always) and a COOKIES checkbox right in their target/settings row, wired to
+  the `followRedirects`/`processCookies` settings above via the existing
+  `repeater-set`/`intruder-set` actions &mdash; no more driving the follow-redirect
+  engine by hand-crafted `POST` calls. The backend snapshot now serializes both
+  fields back to the GUI so the controls reflect live state after a reload.
+  Intruder's single-row Resend still doesn't follow redirects &mdash; an honest
+  remaining gap, tracked separately from the main attack path above.
 - **Sequencer live capture: harvest a token corpus automatically.** The Sequencer
   could only score a corpus you assembled yourself. A new background engine now
   fires the *same* request N times and pulls one token out of each response
