@@ -237,6 +237,16 @@ void Intruder::setThrottleMs(int ms) {
     m_throttleMs = IntruderPool::clampThrottleMs(ms);
 }
 
+void Intruder::setFollowRedirects(int policy) {
+    if (policy < RedirectLogic::FollowNever || policy > RedirectLogic::FollowAlways)
+        policy = RedirectLogic::FollowNever;
+    m_followPolicy = policy;
+}
+
+void Intruder::setProcessCookies(bool on) {
+    m_followCookies = on;
+}
+
 int Intruder::positionCount() const {
     return IE::countMarkers(m_template);
 }
@@ -445,14 +455,19 @@ void Intruder::start() {
     const bool grepReflectionCopy = m_grepPayloadReflection;
     const int concurrencyCopy = m_maxConcurrency;
     const int throttleCopy = m_throttleMs;
+    const int followPolicyCopy = m_followPolicy;
+    const bool followCookiesCopy = m_followCookies;
+    const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
-                                  concurrencyCopy, throttleCopy]() {
+                                  concurrencyCopy, throttleCopy,
+                                  followPolicyCopy, followCookiesCopy, inScopeCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
-                  concurrencyCopy, throttleCopy);
+                  concurrencyCopy, throttleCopy,
+                  followPolicyCopy, followCookiesCopy, inScopeCopy);
     });
 }
 
@@ -463,7 +478,9 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const QStringList &grepMatch,
                          bool grepReflection,
                          const IntruderGrep::ExtractSpec &grepExtract,
-                         int concurrency, int throttleMs) {
+                         int concurrency, int throttleMs,
+                         int followPolicy, bool followCookies,
+                         std::function<bool(const QString &)> inScope) {
     // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
     // size the owned pool. `concurrency` is the max number of requests in flight
     // at once; `throttleMs` an optional pause between dispatches (rate limit).
@@ -481,7 +498,8 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // one instance across tasks. Grep runs here (bounded, off the GUI thread);
     // the queued callback only assigns the finished values.
     auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
-                    grepMatch, grepReflection, grepExtract](int row, const QStringList &combo) {
+                    grepMatch, grepReflection, grepExtract,
+                    followPolicy, followCookies, inScope](int row, const QStringList &combo) {
         HttpClient client;
 
         QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
@@ -496,8 +514,48 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         QByteArray reqBytes = req.toUtf8();
         if (m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, host, SessionRulesLogic::ToolIntruder);
-        const auto result = client.send(host, static_cast<quint16>(port),
-                                        useTls, reqBytes);
+        auto result = client.send(host, static_cast<quint16>(port),
+                                  useTls, reqBytes);
+
+        // Follow 3xx redirects if configured -- the recorded result (status /
+        // length / grep) becomes the FINAL hop's, so grep matches the page the
+        // request actually lands on. Same pure logic as Repeater; one HttpClient
+        // per pool thread, reused across hops.
+        if (followPolicy != RedirectLogic::FollowNever && result.ok) {
+            namespace RL = Nullock::Core::RedirectLogic;
+            QUrl current   = RL::requestUrl(useTls, host, port, reqBytes);
+            QString method = RL::requestMethod(reqBytes);
+            QByteArray body;
+            { const int hb = reqBytes.indexOf("\r\n\r\n"); if (hb >= 0) body = reqBytes.mid(hb + 4); }
+            QHash<QString, QString> jar;
+            int hops = 0;
+            while (hops < kMaxRedirectHops && result.ok
+                   && RL::isRedirectStatus(result.parsed.statusCode)) {
+                QString loc;
+                for (const auto &h : result.parsed.headers)
+                    if (h.first.compare("Location", Qt::CaseInsensitive) == 0) { loc = h.second; break; }
+                const QUrl next = RL::resolveRedirect(current, loc);
+                if (next.isEmpty()) break;
+                const QString nextHost = next.host();
+                const bool nextInScope = inScope ? inScope(nextHost) : false;
+                if (!RL::followAllowed(RL::FollowPolicy(followPolicy),
+                                       current.host(), nextHost, nextInScope))
+                    break;
+                if (followCookies) RL::mergeSetCookies(jar, result.parsed.headers);
+                const int status = result.parsed.statusCode;
+                const QString nextMethod  = RL::methodAfterRedirect(status, method);
+                const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
+                const QString cookieHdr   = followCookies ? RL::renderCookieHeader(jar) : QString();
+                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+                const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
+                const int  nextPort = next.port(nextTls ? 443 : 80);
+                result  = client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+                current = next;
+                method  = nextMethod;
+                body    = nextBody;
+                ++hops;
+            }
+        }
         const qint64 elapsedMs = t.elapsed();
 
         const int statusCode = result.ok ? result.parsed.statusCode : 0;

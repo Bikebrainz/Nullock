@@ -5,6 +5,7 @@
 #include "intruder_grep.hpp"
 #include "intruder_pool_logic.hpp"
 #include "intruder_persist_logic.hpp"
+#include "redirect_logic.hpp"
 
 #include <QAbstractListModel>
 #include <QFuture>
@@ -15,6 +16,7 @@
 #include <QThreadPool>
 
 #include <atomic>
+#include <functional>
 
 namespace Nullock::FrontEnd {
 class ProxyModel;
@@ -178,6 +180,19 @@ public:
     void setThrottleMs(int ms);
     int  maxConcurrency() const { return m_maxConcurrency; }
     int  throttleMs() const { return m_throttleMs; }
+    // Follow 3xx after each fired request (Burp's "Follow redirections"): the
+    // recorded result (status / length / grep) becomes the FINAL hop's. Policy is
+    // a RedirectLogic::FollowPolicy (0=never..3=always); processCookies threads
+    // Set-Cookie through the chain. Cap: kMaxRedirectHops per request.
+    static constexpr int kMaxRedirectHops = 10;
+    void setFollowRedirects(int policy);
+    void setProcessCookies(bool on);
+    int  followRedirects() const { return m_followPolicy; }
+    bool processCookies() const  { return m_followCookies; }
+    // Scope predicate for the "in-scope" follow policy (Intruder holds no proxy
+    // pointer). app.cpp wires it to ProxyServer::isInScope. Unset -> in-scope
+    // follows nothing (fail-closed).
+    void setScopeChecker(std::function<bool(const QString &)> fn) { m_inScope = std::move(fn); }
 
     // Per-set helpers for QML multi-position editing. Indices past the end
     // grow the list; reads past the end return an empty string.
@@ -228,7 +243,9 @@ private:
                    const QStringList &grepMatch,
                    bool grepReflection,
                    const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
-                   int concurrency, int throttleMs);
+                   int concurrency, int throttleMs,
+                   int followPolicy, bool followCookies,
+                   std::function<bool(const QString &)> inScope);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 
@@ -247,6 +264,9 @@ private:
     SessionRules *m_sessionRules = nullptr;
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
     int     m_throttleMs = 0;                            // inter-dispatch delay
+    int     m_followPolicy  = 0;                         // RedirectLogic::FollowNever (off, Burp default)
+    bool    m_followCookies = true;                      // "Process cookies in redirections"
+    std::function<bool(const QString &)> m_inScope;
     int     m_attackType = Sniper;
 
     QList<IntruderAttack *> m_attacks;

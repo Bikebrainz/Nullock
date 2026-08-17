@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder can follow redirects too.** The same follow-redirect engine now runs
+  in Intruder: with `followRedirects` set (never / on-site / in-scope / always,
+  plus `processCookies`), each fired payload's request follows its 3xx chain and
+  the recorded row &mdash; status, length, and every Grep column &mdash; reflects
+  the *final* page it lands on, so a bruteforce behind a login/redirect grades
+  against real content instead of a wall of 302s. Set via `/api/intruder/set`.
+  Reuses the shared, mutation-proven `redirect_logic`; verified e2e (an attack
+  payload that 302-chains is graded on the final `200`).
 - **Repeater can follow redirects.** A 3xx used to leave you copying the
   `Location` into a new tab and rebuilding the cookie jar by hand &mdash; on every
   login and OAuth flow. Repeater now optionally follows redirects after a send,

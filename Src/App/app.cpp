@@ -1059,6 +1059,8 @@ int main(int argc, char *argv[]) {
     // Scope predicate for Repeater's "in-scope" redirect-follow policy.
     repeater.setScopeChecker([&proxy](const QString &h) { return proxy.isInScope(h); });
     intruder.setSessionRules(&sessionRules);
+    // Scope predicate for Intruder's "in-scope" redirect-follow policy.
+    intruder.setScopeChecker([&proxy](const QString &h) { return proxy.isInScope(h); });
     // Session login macros persist in project.json: restore the incoming
     // project's macros into the live engine whenever a project (re)opens (they're
     // saved whenever set via /api/session-macros). Same pattern as intercept

@@ -3442,6 +3442,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             else if (bodyJson.contains("rps"))
                 m_wiring.intruder->setThrottleMs(
                     Nullock::Core::IntruderPool::rpsToDelayMs(bodyJson.value("rps").toInt()));
+            // Burp's "Follow redirections" (0..3) + "Process cookies in redirections".
+            if (bodyJson.contains("followRedirects"))
+                m_wiring.intruder->setFollowRedirects(bodyJson.value("followRedirects").toInt());
+            if (bodyJson.contains("processCookies"))
+                m_wiring.intruder->setProcessCookies(bodyJson.value("processCookies").toBool());
         }
         return okJson();
     }
