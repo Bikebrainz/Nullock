@@ -304,6 +304,13 @@ developer-facing record.
   XP/tracks, and in-app (desktop) wiring remain open.
 
 ### Fixed
+- **Comparer's proxy-history diff overlay could hang/OOM on a large response.**
+  The DIFF-vs overlay's client-side line diff (`diffLines`, `ui-v2/proxy.jsx`)
+  built an uncapped n×m LCS table — the same unbounded-input risk the backend
+  Comparer engine (`compare.cpp`) already guards against with a 2000-token cap,
+  but the JS engine had no equivalent limit. Now clips each side to 2000 lines
+  (mirroring the backend's cap) and shows a TRUNCATED badge in the overlay
+  header when either side is clipped.
 - **`scanner_regression_test` failed to link on every CI runner (Linux and
   Windows) for four commits.** The session-rules Repeater-enforcement change
   (`SessionRules::applyToRequestBytes`) added the test target's first call

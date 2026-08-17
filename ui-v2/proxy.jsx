@@ -1585,9 +1585,16 @@ function renderRequestAs(kind, row, raw) {
 // Naive line-level LCS diff. Returns an array of { tag, a, b } rows where
 // tag is "eq" / "del" / "add". Quadratic in line count; fine for the
 // few-hundred-line HTTP messages we're comparing.
+// Line-count cap mirroring the backend Comparer's kMaxTokens (compare.cpp) --
+// an uncapped n*m Int32Array table on a large response would hang/OOM the tab.
+const DIFF_MAX_LINES = 2000;
+
 function diffLines(aText, bText) {
-  const A = aText.split("\n");
-  const B = bText.split("\n");
+  let A = aText.split("\n");
+  let B = bText.split("\n");
+  let truncated = false;
+  if (A.length > DIFF_MAX_LINES) { A = A.slice(0, DIFF_MAX_LINES); truncated = true; }
+  if (B.length > DIFF_MAX_LINES) { B = B.slice(0, DIFF_MAX_LINES); truncated = true; }
   const n = A.length, m = B.length;
   // LCS length table
   const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
@@ -1606,6 +1613,7 @@ function diffLines(aText, bText) {
   }
   while (i < n) { out.push({ tag: "del", a: A[i++], b: "" }); }
   while (j < m) { out.push({ tag: "add", a: "",    b: B[j++] }); }
+  out.truncated = truncated;
   return out;
 }
 
@@ -1705,6 +1713,13 @@ function DiffOverlay({ idA, idB, onClose, onClearMark }) {
             -<span style={{ color: "var(--err,#f88)" }}>{stats.dels}</span>{" "}
             <span style={{ color: "var(--dim)" }}>={stats.same}</span>
           </span>
+          {rows.truncated &&
+            <span title={"Diff clipped to the first " + DIFF_MAX_LINES + " lines per side"}
+                  style={{
+                    color: "var(--warn, #e0a030)", border: "1px solid var(--warn, #e0a030)",
+                    padding: "1px 6px", fontSize: "10px", marginLeft: 8,
+                    textTransform: "uppercase", letterSpacing: "0.04em",
+                  }}>truncated</span>}
           <button onClick={onClearMark} title="Clear mark"
                   style={{
                     background: "transparent", color: "var(--dim)",

@@ -3942,9 +3942,15 @@
       "state": "exceeds",
       "impact": "low",
       "effort": "days",
-      "gap": "Second, divergent diff engine (client-side diffLines) with different tokenization and no truncation cap \u2014 two engines to maintain. After 10 000 captured rows it diffs the wrong pair (id passed where an index is wanted). An unbounded n*m Int32Array on a large response will hang or OOM the tab.",
-      "why": "The mark-then-diff flow is real and is a genuine workflow win over Burp's two Send-to-Comparer trips, so exceeds stands. I found two additional defects the auditor did not: the overlay inherits the id-as-index bug, and the JS diff is uncapped and un-virtualized.",
-      "evidence": "D:/dev/Nullock/ui-v2/proxy.jsx MARK/DIFF buttons: `<button onClick={() => setDiffMark(row.id)}> \u229f MARK` / `<button onClick={() => setDiffOpen({ idA: diffMark, idB: row.id })}> \u229f DIFF vs #...`. Overlay at proxy.jsx:611 `function DiffOverlay({ idA, idB, onClose, onClearMark })` with REQUEST/RESPONSE toggle and +/-/= stats. NEW: proxy.jsx:622-625 `const reqA = idA != null ? (NL.requestRawAt(idA - 1) "
+      "gap": "Still a divergent diff engine (client-side diffLines) from the backend Comparer's C++ engine, with different tokenization — two engines to maintain, a low-value cosmetic gap. The prior audit's other two claims are now stale: the id-as-index bug is gone (proxy.jsx reads NL.requestRawById/responseRawById, not an index), and the unbounded n*m Int32Array table is now capped at DIFF_MAX_LINES=2000 lines per side (mirroring the backend's compare.cpp kMaxTokens), surfaced via a TRUNCATED badge in the overlay header when either side is clipped.",
+      "why": "The mark-then-diff flow is real and is a genuine workflow win over Burp's two Send-to-Comparer trips, so exceeds stands. Re-verified against live source: the id-as-index bug the prior audit found was already fixed in an earlier wave (this item's own evidence field still quoted the dead NL.requestRawAt(idA - 1) code); the unbounded-diff hang/OOM risk was real and unfixed until this pass, which added the same line cap the backend Comparer already enforces.",
+      "evidence": "ui-v2/proxy.jsx MARK/DIFF buttons: `<button onClick={() => setDiffMark(row.id)}> ⊟ MARK` / `<button onClick={() => setDiffOpen({ idA: diffMark, idB: row.id })}> ⊟ DIFF vs #...`. Overlay at proxy.jsx:1623 `function DiffOverlay({ idA, idB, onClose, onClearMark })` reads proxy.jsx:1634-1637 `NL.requestRawById(idA)`/`NL.responseRawById(idA)` (not an index). diffLines (proxy.jsx:1588-1615) now clips each side to `DIFF_MAX_LINES = 2000` lines (mirroring Src/Core/Networking/compare.cpp:14 `kMaxTokens = 2000`) and sets `rows.truncated`, rendered as a TRUNCATED badge in the overlay header (proxy.jsx:1712-1718) when either side was clipped.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Backlog #315: capped diffLines at DIFF_MAX_LINES=2000 lines/side (was unbounded n*m, could hang/OOM on a large response) + added a TRUNCATED badge; corrected the gap/evidence text's stale id-as-index claim (already fixed in an earlier wave). State stays exceeds — the mark-then-diff workflow win is unchanged — but the gap text is now accurate and the real remaining defect (uncapped diff) is fixed."
+      }
     },
     {
       "area": "repeater",
