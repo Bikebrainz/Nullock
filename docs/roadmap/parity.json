@@ -660,12 +660,18 @@
     {
       "area": "intruder",
       "feature": "Follow redirections (never/on-site/in-scope/always)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "3xx responses are recorded as-is; cannot follow to the final page \u2014 a common Intruder option.",
       "why": "Re-read fireOne and resend, and grepped networking.cpp for redirect/Location/30x \u2014 HttpClient::send does not auto-follow. 3xx is recorded as-is. Confirmed absent.",
-      "evidence": "intruder.cpp:457-459 single `client.send(...)`, records result.parsed.statusCode; networking.cpp has no 301/302/Location-follow logic (only 204/304 body handling at :285-293)."
+      "evidence": "intruder.cpp:457-459 single `client.send(...)`, records result.parsed.statusCode; networking.cpp has no 301/302/Location-follow logic (only 204/304 body handling at :285-293).",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "1c45581",
+        "note": "Intruder now follows 3xx after each fired request (backend + API): the worker follows the redirect chain (up to kMaxRedirectHops) via the shared pure redirect_logic Repeater uses, so the recorded row -- status, length, and every Grep column -- reflects the FINAL page the request lands on. All four modes (never/on-site/in-scope/always) + processCookies, set via /api/intruder/set; the in-scope policy uses a scope checker app.cpp wires to ProxyServer::isInScope. Verified e2e (an Intruder payload whose request 302-chains /a->/b->/c is graded on the final 200; never-mode stops at the 302). PARTIAL: the UI toggle (ui-v2) + the single-row resend path are the follow-ons."
+      }
     },
     {
       "area": "intruder",
@@ -4251,7 +4257,7 @@
       "reconciled": {
         "date": "2026-08-17",
         "commit": "a6987bb",
-        "note": "Repeater now follows 3xx after a send (backend + API): Repeater::send loops on a redirect when followRedirects != never (the four modes never/on-site/in-scope/always), up to kMaxRedirectHops, driven by the pure redirect_logic (isRedirectStatus, QUrl-based Location resolution, POST->GET on 301/302/303 + body/method preservation on 307/308, the follow policy, and Set-Cookie threading). 'Process cookies in redirections' threads the original request's cookies plus every Set-Cookie along the chain. Settable via /api/repeater/set (followRedirects 0-3, processCookies). Unit-tested + mutation-proven; verified e2e (a /a->/b->/c 302 chain is followed to the final page with the session cookie carried; never-mode stops at the first 302). PARTIAL: the Repeater UI toggle (ui-v2) is the remaining piece; drive it via the API today. The sibling Intruder 'follow redirections' item stays absent -- the shared logic is ready for it but Intruder::send isn't wired yet."
+        "note": "Repeater now follows 3xx after a send (backend + API): Repeater::send loops on a redirect when followRedirects != never (the four modes never/on-site/in-scope/always), up to kMaxRedirectHops, driven by the pure redirect_logic (isRedirectStatus, QUrl-based Location resolution, POST->GET on 301/302/303 + body/method preservation on 307/308, the follow policy, and Set-Cookie threading). 'Process cookies in redirections' threads the original request's cookies plus every Set-Cookie along the chain. Settable via /api/repeater/set (followRedirects 0-3, processCookies). Unit-tested + mutation-proven; verified e2e (a /a->/b->/c 302 chain is followed to the final page with the session cookie carried; never-mode stops at the first 302). PARTIAL: the Repeater UI toggle (ui-v2) is the remaining piece; drive it via the API today. The shared redirect_logic is now also wired into Intruder (1c45581)."
       }
     },
     {
