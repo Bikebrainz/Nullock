@@ -2133,7 +2133,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "6be90f4",
         "note": "Send-to-Sequencer wired from Proxy history's DetailPane and Repeater's request/response panes: select a token substring, click SEQUENCER/SEQ, it's appended to a shared client-side inbox and the app switches to the Sequencer tab where it folds into the existing manual-load textarea (repeatable, builds a corpus across several captures). No backend change -- purely a new client-side inbox plus two reducer cases. Honest remainder: this is a toolbar button, not the literal right-click context-menu entry the feature title names, and Target/scope has no send path (no per-request view to select from there). Live Capture (issue a request repeatedly and auto-harvest a token) remains a separate, larger absent item (#168-171) needing a backend request-issuing engine this batch did not build."
       }
     },
