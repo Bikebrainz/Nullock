@@ -113,7 +113,11 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   sequential-counter detection incl. wrapped counters (sess_1001, user-42) with
                   the recovered step, per-position + FIPS 140-2 bit-level tests where
                   applicable), plus sample-size guidance -- warns under ~100 tokens and flags the
-                  20,000-bit FIPS conformance threshold
+                  20,000-bit FIPS conformance threshold; a SEQUENCER/SEQ button in Proxy
+                  history's DetailPane and Repeater's request/response panes sends the currently
+                  selected text (a token) straight into the manual-load corpus, switching tabs
+                  automatically -- builds up a sample set across several captures without
+                  copy-paste
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
                   bundled" button in Settings copies the extensions shipped with the repo into
                   the user's extensions dir in one click

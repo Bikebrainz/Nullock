@@ -476,6 +476,15 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
     dispatch({ type: "send-to-decoder", label, text });
     if (onSwitchTab) onSwitchTab("decoder");
   };
+  // #167 "Send to Sequencer": a token corpus, not a whole request/response,
+  // so this only fires on an actual selection (grabbed straight from the
+  // ref at click time, same pattern as the existing selection-readout).
+  const sendSelectionToSequencer = (ref) => {
+    const el = ref.current;
+    if (!el) return;
+    const t = el.value.substring(el.selectionStart, el.selectionEnd);
+    if (t) { dispatch({ type: "sequencer-add-token", text: t }); if (onSwitchTab) onSwitchTab("sequencer"); }
+  };
 
   // Live tab strip pulled from the snapshot. Fall back to a single fake
   // entry if the backend hasn't reported tabs yet (older builds).
@@ -789,6 +798,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                     onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Decoder"
                     onClick={() => sendToDecoder("repeater request", rep.request)}>↦ DEC</button>
+            <button className="btn" style={{ marginLeft: 6 }} disabled={!reqSel}
+                    title="Send the selected text (a token) to Sequencer"
+                    onClick={() => sendSelectionToSequencer(reqRef)}>↦ SEQ</button>
           </div>
           <RepeaterEditorToolbar
             views={["raw", "headers", "body", "preview", "hex", "inspector"]}
@@ -842,6 +854,9 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                     onClick={() => sendToComparer("repeater response", rep.response)}>↦ CMP</button>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Decoder"
                     onClick={() => sendToDecoder("repeater response", rep.response)}>↦ DEC</button>
+            <button className="btn" style={{ marginLeft: 6 }} disabled={!respSel}
+                    title="Send the selected text (a token) to Sequencer"
+                    onClick={() => sendSelectionToSequencer(respRef)}>↦ SEQ</button>
           </div>
           <RepeaterEditorToolbar
             views={["raw", "headers", "body", "preview", "hex", "render", "inspector"]}

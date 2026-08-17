@@ -393,7 +393,7 @@ function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelec
   );
 }
 
-function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSendDecoder }) {
+function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSendDecoder, onSendSequencer }) {
   const [view, setView] = React.useState("split"); // split | req | resp
   const [reqTab, setReqTab] = React.useState("raw"); // raw|headers|body
   const [respTab, setRespTab] = React.useState("raw");
@@ -458,6 +458,18 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
     if (el) setRespSel(repeaterSelectionStats(el.value, el.selectionStart, el.selectionEnd));
   };
 
+  // #167 "Send to Sequencer": unlike Comparer/Decoder (whole request/
+  // response), Sequencer analyzes a small token corpus, so this requires an
+  // actual selection -- prefers the response since that's where session/
+  // CSRF/reset tokens usually live, falls back to the request selection.
+  const sendSelectionToSequencer = () => {
+    const ref = respSel ? respRef : reqSel ? reqRef : null;
+    if (!ref || !ref.current) return;
+    const el = ref.current;
+    const t = el.value.substring(el.selectionStart, el.selectionEnd);
+    if (t && onSendSequencer) onSendSequencer(t);
+  };
+
   return (
     <div className="pane" style={{ height: "100%" }}>
       <div className="pane-head">
@@ -473,6 +485,8 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        <button onClick={sendSelectionToSequencer} disabled={!reqSel && !respSel}
+                title="Send the selected text (a token) to Sequencer -- select a value in the request or response first">↦ SEQUENCER</button>
         <div style={{ position: "relative", display: "inline-block" }}>
           <button onClick={() => setCmpMenuOpen(o => !o)} title="Send to Comparer">↦ COMPARER ▾</button>
           {cmpMenuOpen && (
@@ -2371,6 +2385,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           onSendDecoder={(label, text) => {
             dispatch({ type: "send-to-decoder", label, text });
             if (onSwitchTab) onSwitchTab("decoder");
+          }}
+          onSendSequencer={(text) => {
+            dispatch({ type: "sequencer-add-token", text });
+            if (onSwitchTab) onSwitchTab("sequencer");
           }}
         />
       </div>

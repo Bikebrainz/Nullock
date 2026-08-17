@@ -93,6 +93,16 @@ function reducer(state, action) {
     }
     case "comparer-clear":
       return { ...state, comparer: { items: [], selA: null, selB: null } };
+    // Sequencer: append one captured token (#167 "Send to Sequencer" from
+    // Proxy history / Repeater). Blank/whitespace-only selections are
+    // dropped rather than polluting the corpus with empty samples.
+    case "sequencer-add-token": {
+      const text = (action.text || "").trim();
+      if (!text) return state;
+      return { ...state, sequencer: { tokens: [...state.sequencer.tokens, text] } };
+    }
+    case "sequencer-clear-tokens":
+      return { ...state, sequencer: { tokens: [] } };
     case "comparer-select": {
       const key = action.slot === "B" ? "selB" : "selA";
       return { ...state, comparer: { ...state.comparer, [key]: action.id } };
@@ -3423,7 +3433,7 @@ function sequencerSampleSummary(tokens) {
   };
 }
 
-function SequencerTab() {
+function SequencerTab({ sequencer, dispatch }) {
   // Token randomness analyzer (Burp's Sequencer). Backend
   // (/api/sequencer/analyze, Src/Core/Networking/sequencer_logic.cpp) was
   // complete and API-only -- no tab, no manual-load box, nothing. This is
@@ -3435,6 +3445,22 @@ function SequencerTab() {
   const [busy, setBusy]   = React.useState(false);
   const [err, setErr]     = React.useState("");
   const fileRef = React.useRef(null);
+
+  // #167 "Send to Sequencer": Proxy history / Repeater dispatch
+  // sequencer-add-token, appending into the app-level sequencer.tokens
+  // inbox (persists across this tab unmounting). Anything not yet folded
+  // into the local textarea gets appended here -- on first mount that's
+  // the whole inbox; while mounted, only genuinely new arrivals.
+  const seenTokenCountRef = React.useRef(0);
+  React.useEffect(() => {
+    const incoming = sequencer.tokens;
+    const already = seenTokenCountRef.current;
+    if (incoming.length > already) {
+      const added = incoming.slice(already);
+      setText(prev => (prev ? prev.replace(/\n?$/, "\n") + added.join("\n") : added.join("\n")));
+    }
+    seenTokenCountRef.current = incoming.length;
+  }, [sequencer.tokens]);
 
   const tokens = React.useMemo(
     () => text.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
@@ -3604,7 +3630,11 @@ function SequencerTab() {
           <button className="btn" onClick={() => fileRef.current && fileRef.current.click()}>LOAD FILE</button>
           <input ref={fileRef} type="file" accept=".txt,.csv,.log" style={{ display: "none" }} onChange={loadFile} />
           <button className="btn" onClick={pasteFromClipboard}>PASTE FROM CLIPBOARD</button>
-          <button className="btn" onClick={() => { setText(""); setResult(null); setErr(""); }}>CLEAR</button>
+          <button className="btn" onClick={() => {
+            setText(""); setResult(null); setErr("");
+            seenTokenCountRef.current = sequencer.tokens.length; // don't resurrect cleared tokens on remount
+            dispatch({ type: "sequencer-clear-tokens" });
+          }}>CLEAR</button>
           <button
             onClick={analyze}
             disabled={busy || tokens.length < 2}
@@ -5914,6 +5944,11 @@ function App() {
     scope: NL.scope,
     repeater: NL.repeater,
     comparer: { items: [], selA: null, selB: null },
+    // Sequencer: append-only inbox for tokens sent from Proxy history /
+    // Repeater (#167 "Send to Sequencer"). SequencerTab keeps its own local
+    // textarea state for smooth typing/pasting and just watches this array
+    // grow, appending anything new on mount/update -- see SequencerTab.
+    sequencer: { tokens: [] },
     // Decoder: client-only seed slot (#323). The Decoder tab keeps its own
     // local input/output useState (nothing to persist across polls), so
     // this is just a hand-off: "Send to Decoder" bumps seedNonce, and
@@ -6192,7 +6227,7 @@ function App() {
           <ProbeTab />
         )}
         {tab === "sequencer" && (
-          <SequencerTab />
+          <SequencerTab sequencer={state.sequencer} dispatch={dispatch} />
         )}
         {tab === "tests" && (
           <TestsTab />

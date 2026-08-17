@@ -11,6 +11,13 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Send to Sequencer.** Proxy history's detail pane and Repeater's request/
+  response panes gain a SEQUENCER/SEQ button: select a token substring (a
+  session cookie, a CSRF token, a reset-URL token) and send it straight into
+  Sequencer's manual-load corpus, switching tabs automatically. Repeatable
+  across several captures to build up a real sample set without hand
+  copy-pasting into the Sequencer tab. No backend change — a new client-side
+  token inbox feeding the existing manual-load textarea.
 - **Session rules: per-tool scope checkboxes in the editor UI.** The Sessions
   tab's rule editor gets a Proxy/Repeater/Intruder/Scanner checkbox row bound
   to each rule's `tools` bitmask (Burp's "Tools scope"), plus a per-rule scope

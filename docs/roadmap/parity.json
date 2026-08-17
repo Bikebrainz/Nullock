@@ -2124,12 +2124,18 @@
     {
       "area": "sequencer",
       "feature": "Send to Sequencer (context-menu handoff from Proxy history / Repeater / Target)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "No path from a captured request to token analysis. Tokens must be extracted by hand and shell-quoted into `nullock sequencer tok1 tok2 ...`.",
-      "why": "Confirmed by reading the send-to menu and the reducer cases directly, not just grepping for the phrase.",
-      "evidence": "ui-v2/proxy.jsx:264-265 is the complete menu: `<button onClick={onSendRepeater} title=\"Send to Repeater\">\u21a6 REPEATER</button>` / `<button onClick={onSendIntruder} title=\"Send to Intruder\">\u21a6 INTRUDER</button>`, wired at :1225-1226. The reducer has exactly two handoff cases: ui-v2/app.jsx:49 `case \"send-to-repeater\": {` and :71 `case \"send-to-intruder\": {`. ui-v2/real-data.js action list contains no "
+      "gap": "Proxy history's DetailPane and Repeater's request/response panes now have a SEQUENCER button (Send to Comparer/Decoder's exact pattern) that appends the currently selected text as one token into a shared sequencer.tokens inbox, switching to the Sequencer tab where it folds into the manual-load textarea. Remaining gap: no context-menu entry (right-click) as named in the feature title -- it's a toolbar button, not a menu item -- and Target/scope has no send-to-Sequencer path at all (there's no per-request view there to select a token from). The button requires an actual text selection (grabbed from the textarea at click time) rather than offering whole request/response like Comparer/Decoder, since sending a whole HTTP message as a single 'token' would be meaningless for entropy analysis -- an intentional, narrower affordance than the item's literal wording.",
+      "why": "Re-verified against live ui-v2 source before closing: grep for 'send-to-' across app.jsx/proxy.jsx/tabs.jsx confirmed exactly two dispatchable handoffs (repeater, intruder) plus comparer-add/send-to-decoder as separate action types -- no sequencer path existed. Closed by adding a sequencer.tokens array to the app reducer's initial state and two new cases (sequencer-add-token, sequencer-clear-tokens), a SEQUENCER button in proxy.jsx's DetailPane (gated on reqSel/respSel, same selection-tracking state the docked Inspector panel already populates) and matching SEQ buttons in tabs.jsx's Repeater request/response pane-heads. SequencerTab keeps its existing local textarea state (fast typing/pasting, unchanged) and a new effect folds newly-arrived tokens from the shared inbox into it, so existing manual-load/analyze behavior is untouched.",
+      "evidence": "ui-v2/app.jsx reducer cases 'sequencer-add-token'/'sequencer-clear-tokens'; initialState.sequencer={tokens:[]}; SequencerTab({sequencer,dispatch}) useEffect folding sequencer.tokens into local text. ui-v2/proxy.jsx DetailPane's sendSelectionToSequencer (grabs el.value.substring(selectionStart,selectionEnd) from respRef/reqRef) wired to a new '\u21a6 SEQUENCER' button next to REPEATER/INTRUDER. ui-v2/tabs.jsx RepeaterTab's sendSelectionToSequencer(ref) wired to '\u21a6 SEQ' buttons in both the REQUEST and RESPONSE pane-heads, disabled without reqSel/respSel.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Send-to-Sequencer wired from Proxy history's DetailPane and Repeater's request/response panes: select a token substring, click SEQUENCER/SEQ, it's appended to a shared client-side inbox and the app switches to the Sequencer tab where it folds into the existing manual-load textarea (repeatable, builds a corpus across several captures). No backend change -- purely a new client-side inbox plus two reducer cases. Honest remainder: this is a toolbar button, not the literal right-click context-menu entry the feature title names, and Target/scope has no send path (no per-request view to select from there). Live Capture (issue a request repeatedly and auto-harvest a token) remains a separate, larger absent item (#168-171) needing a backend request-issuing engine this batch did not build."
+      }
     },
     {
       "area": "sequencer",
