@@ -47,7 +47,10 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
                   prior sends, AUTO-CL recomputes Content-Length from the edited body on
                   send (on by default; toggle off from the GUI to hand-craft a CL/TE desync),
                   a FOLLOW selector (never / on-site / in-scope / always) chases 3xx chains to
-                  the final page with a COOKIES toggle to thread Set-Cookie through every hop
+                  the final page with a COOKIES toggle to thread Set-Cookie through every hop,
+                  ⇄ METHOD toggles GET/POST (moving params between the query string and an
+                  urlencoded body) and ⇄ ENCODING converts urlencoded <-> multipart/form-data
+                  bodies, both recomputing Content-Type/Content-Length
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/

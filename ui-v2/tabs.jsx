@@ -274,6 +274,141 @@ function repeaterHistoryNextIndex(pos, count) {
   return target >= count - 1 ? null : target;
 }
 
+// #339/#340: request-line/body transforms for the Repeater editor's CHANGE
+// METHOD / CHANGE ENCODING buttons. Pure text in, text out -- the caller
+// dispatches the result through the same "repeater-set" path a hand edit
+// uses. Unlike proxy.jsx's parseRawRequest (built for one-way copy-export),
+// this round-trips every header verbatim including Host/Content-Length, and
+// preserves header order/casing for anything the transform doesn't touch.
+function repeaterByteLength(s) { return new TextEncoder().encode(s || "").length; }
+
+function repeaterSplitRaw(raw) {
+  const text = raw || "";
+  const idxCRLF = text.indexOf("\r\n\r\n");
+  const idxLF = text.indexOf("\n\n");
+  let split = -1, sepLen = 0;
+  if (idxCRLF >= 0 && (idxLF < 0 || idxCRLF < idxLF)) { split = idxCRLF; sepLen = 4; }
+  else if (idxLF >= 0) { split = idxLF; sepLen = 2; }
+  const headerBlock = split >= 0 ? text.slice(0, split) : text;
+  const body = split >= 0 ? text.slice(split + sepLen) : "";
+  const eol = headerBlock.indexOf("\r\n") >= 0 ? "\r\n" : "\n";
+  const lines = headerBlock.split(/\r?\n/);
+  const requestLine = lines[0] || "";
+  const headerLines = lines.slice(1);
+  const parts = requestLine.split(" ");
+  return {
+    method: parts[0] || "GET",
+    target: parts[1] || "/",
+    version: parts.slice(2).join(" ") || "HTTP/1.1",
+    headerLines,
+    body,
+    eol,
+  };
+}
+function repeaterBuildRaw(p) {
+  const requestLine = p.method + " " + p.target + " " + p.version;
+  return [requestLine, ...p.headerLines, "", p.body].join(p.eol);
+}
+function repeaterHeaderIdx(headerLines, name) {
+  const lc = name.toLowerCase();
+  return headerLines.findIndex(l => {
+    const c = l.indexOf(":");
+    return c > 0 && l.slice(0, c).trim().toLowerCase() === lc;
+  });
+}
+function repeaterGetHeader(headerLines, name) {
+  const i = repeaterHeaderIdx(headerLines, name);
+  if (i < 0) return null;
+  return headerLines[i].slice(headerLines[i].indexOf(":") + 1).trim();
+}
+function repeaterSetHeader(headerLines, name, value) {
+  const i = repeaterHeaderIdx(headerLines, name);
+  const line = name + ": " + value;
+  if (i < 0) headerLines.push(line); else headerLines[i] = line;
+}
+function repeaterRemoveHeader(headerLines, name) {
+  const i = repeaterHeaderIdx(headerLines, name);
+  if (i >= 0) headerLines.splice(i, 1);
+}
+
+// GET <-> POST, moving params between the query string and an
+// x-www-form-urlencoded body (Burp's "Change request method").
+function repeaterChangeMethod(raw) {
+  const p = repeaterSplitRaw(raw);
+  const qIdx = p.target.indexOf("?");
+  const path = qIdx >= 0 ? p.target.slice(0, qIdx) : p.target;
+  const query = qIdx >= 0 ? p.target.slice(qIdx + 1) : "";
+  if (p.method.toUpperCase() === "GET") {
+    p.method = "POST";
+    if (query) {
+      p.target = path;
+      p.body = query;
+      repeaterSetHeader(p.headerLines, "Content-Type", "application/x-www-form-urlencoded");
+    }
+  } else {
+    p.method = "GET";
+    const body = p.body || "";
+    if (body) {
+      p.target = path + "?" + (query ? query + "&" + body : body);
+    }
+    p.body = "";
+    repeaterRemoveHeader(p.headerLines, "Content-Type");
+  }
+  repeaterSetHeader(p.headerLines, "Content-Length", String(repeaterByteLength(p.body)));
+  return repeaterBuildRaw(p);
+}
+
+function repeaterUrlDecode(s) {
+  try { return decodeURIComponent(s.replace(/\+/g, " ")); } catch (e) { return s; }
+}
+
+// application/x-www-form-urlencoded <-> multipart/form-data body re-encode
+// (Burp's "Change body encoding"), rewriting Content-Type/Content-Length.
+function repeaterChangeBodyEncoding(raw, boundary) {
+  const p = repeaterSplitRaw(raw);
+  const ctRaw = repeaterGetHeader(p.headerLines, "Content-Type") || "";
+  const ct = ctRaw.toLowerCase();
+  if (ct.includes("multipart/form-data")) {
+    // Boundary values are case-sensitive and must be pulled from the
+    // ORIGINAL header text, not the lowercased `ct` used for the type check.
+    const m = /boundary=("?)([^;"]+)\1/i.exec(ctRaw);
+    if (!m) return raw; // no boundary advertised -- can't parse, no-op
+    const b = m[2].trim();
+    const rawParts = p.body.split("--" + b);
+    const pairs = [];
+    for (const part of rawParts.slice(1, -1)) {
+      const chunk = part.replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+      const sepCRLF = chunk.indexOf("\r\n\r\n");
+      const sepLF = chunk.indexOf("\n\n");
+      let hEnd = -1, hLen = 0;
+      if (sepCRLF >= 0 && (sepLF < 0 || sepCRLF < sepLF)) { hEnd = sepCRLF; hLen = 4; }
+      else if (sepLF >= 0) { hEnd = sepLF; hLen = 2; }
+      if (hEnd < 0) continue;
+      const headerBlock = chunk.slice(0, hEnd);
+      const value = chunk.slice(hEnd + hLen);
+      const nameMatch = /name="([^"]*)"/i.exec(headerBlock);
+      if (!nameMatch) continue;
+      pairs.push(encodeURIComponent(nameMatch[1]) + "=" + encodeURIComponent(value));
+    }
+    p.body = pairs.join("&");
+    repeaterSetHeader(p.headerLines, "Content-Type", "application/x-www-form-urlencoded");
+  } else {
+    const b = boundary || ("----NullockBoundary" + Math.random().toString(16).slice(2, 10));
+    const pairs = (p.body || "").split("&").filter(Boolean).map(kv => {
+      const eq = kv.indexOf("=");
+      const k = eq >= 0 ? kv.slice(0, eq) : kv;
+      const v = eq >= 0 ? kv.slice(eq + 1) : "";
+      return [repeaterUrlDecode(k), repeaterUrlDecode(v)];
+    });
+    const segs = pairs.map(([k, v]) =>
+      "--" + b + "\r\nContent-Disposition: form-data; name=\"" + k + "\"\r\n\r\n" + v);
+    p.body = segs.join("\r\n") + "\r\n--" + b + "--\r\n";
+    repeaterSetHeader(p.headerLines, "Content-Type", "multipart/form-data; boundary=" + b);
+  }
+  repeaterSetHeader(p.headerLines, "Content-Length", String(repeaterByteLength(p.body)));
+  return repeaterBuildRaw(p);
+}
+
 function RepeaterEditorToolbar({
   views, active, onView, search, onSearch, matchCount, onNext, onPrev,
   caseSensitive, onCaseSensitive, regex, onRegex,
@@ -825,6 +960,16 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <button className="btn" style={{ marginLeft: 6 }} disabled={!reqSel}
                     title="Send the selected text (a token) to Sequencer"
                     onClick={() => sendSelectionToSequencer(reqRef)}>↦ SEQ</button>
+            <button className="btn" style={{ marginLeft: 6 }}
+                    title="Toggle GET/POST, moving params between the query string and an urlencoded body"
+                    onClick={() => dispatch({ type: "repeater-set", payload: { request: repeaterChangeMethod(rep.request) }})}>
+              ⇄ METHOD
+            </button>
+            <button className="btn" style={{ marginLeft: 6 }}
+                    title="Convert the body between application/x-www-form-urlencoded and multipart/form-data"
+                    onClick={() => dispatch({ type: "repeater-set", payload: { request: repeaterChangeBodyEncoding(rep.request) }})}>
+              ⇄ ENCODING
+            </button>
           </div>
           <RepeaterEditorToolbar
             views={["raw", "headers", "body", "preview", "hex", "inspector"]}

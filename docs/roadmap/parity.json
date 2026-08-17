@@ -4263,22 +4263,32 @@
     {
       "area": "repeater",
       "feature": "Repeater: \"Change request method\" (GET ↔ POST, moving parameters between query string and body)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Method/param-location swapping — a first-move test for HPP, CSRF and framework parameter-binding bugs — means hand-editing raw bytes including recomputing Content-Length, which the tool also won't do (B11).",
-      "why": "Confirmed. My grep for changeMethod/toggleMethod/methodSwap across Src/ and ui-v2 returned nothing, and the request pane really is one unstructured textarea with no context menu.",
-      "evidence": "D:/dev/Nullock/ui-v2/tabs.jsx Repeater request pane: `<textarea className=\"txt\" value={rep.request} onChange={e => dispatch({ type: \"repeater-set\", payload: { request: e.target.value }})} spellCheck={false} />` — no onContextMenu, no toolbar. Backend has no method-rewrite helper (the Inspector can only READ out[\"method\"], inspector_logic.cpp:159)."
+      "gap": "None -- a ⇄ METHOD button in the Repeater request pane-head (ui-v2/tabs.jsx) toggles GET <-> POST on the raw request text via the pure repeaterChangeMethod() helper: GET moves its query string into an x-www-form-urlencoded body (setting Content-Type) and POST moves an urlencoded body back into the query string (merging with any existing query params), recomputing Content-Length either way. Dispatched through the same repeater-set path a hand edit uses, so it round-trips through /api/repeater/set like any other edit.",
+      "why": "Closed 2026-08-17: added repeaterChangeMethod() (ui-v2/tabs.jsx) -- a pure request-line/body transform with its own small parser/serializer (repeaterSplitRaw/repeaterBuildRaw/repeaterSetHeader family), since proxy.jsx's parseRawRequest is one-way and drops Host/Content-Length, unsuitable for an edit-in-place button. Wired to a new ⇄ METHOD button next to the existing CMP/DEC/SEQ pane-head buttons.",
+      "evidence": "ui-v2/tabs.jsx repeaterChangeMethod() + repeaterSplitRaw/repeaterBuildRaw/repeaterSetHeader/repeaterRemoveHeader helpers; the ⇄ METHOD button in RepeaterTab's REQUEST pane-head dispatches {type:\"repeater-set\", payload:{request: repeaterChangeMethod(rep.request)}}, the identical mutation path the request textarea's own onChange uses (app.jsx:148-150 -> NL.actions.repeaterSet -> POST /api/repeater/set).",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Repeater request-transform batch: pure client-side GET<->POST param-location swap button, no backend change needed (the raw text just flows through the existing repeater-set/repeater/set mutation path)."
+      }
     },
     {
       "area": "repeater",
       "feature": "Repeater: \"Change body encoding\" (application/x-www-form-urlencoded ↔ multipart/form-data)",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Converting a form post to multipart (standard WAF/filter-bypass and upload-parser test) means hand-writing boundaries and lengths. Worse here than in Burp because send-to-Repeater already destroys multipart bodies (see A3), so you cannot even start from a captured one.",
-      "why": "Confirmed. Send does CRLF normalization and nothing else; there is no multipart writer anywhere in the repeater path.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:124-131 `QString normalized = t.requestText; normalized.replace(\"\\r\\n\", \"\\n\"); normalized.replace(\"\\n\", \"\\r\\n\"); // Make sure we end with a blank line before any body. if (!normalized.contains(\"\\r\\n\\r\\n\")) normalized += \"\\r\\n\\r\\n\"; const QByteArray bytes = normalized.toUtf8();` — Content-Type and body are never touched."
+      "gap": "None for hand-built or freshly-generated bodies -- a ⇄ ENCODING button in the Repeater request pane-head converts application/x-www-form-urlencoded <-> multipart/form-data via the pure repeaterChangeBodyEncoding() helper (generates a random boundary, wraps each param as a form-data part, or parses an existing multipart body's boundary/parts back into urlencoded pairs), recomputing Content-Type/Content-Length either way. One real limit remains, tracked separately and not claimed fixed here: item #303's send-to-Repeater path still replaces a captured multipart body with a `[binary N bytes, ...]` placeholder before it ever reaches this editor, so this button cannot yet round-trip a multipart body that arrived via Send to Repeater -- only ones typed/generated directly in the editor.",
+      "why": "Closed 2026-08-17: added repeaterChangeBodyEncoding() (ui-v2/tabs.jsx), reusing the same repeaterSplitRaw/repeaterBuildRaw/repeaterSetHeader parser family as #339's method-swap button. Wired to a new ⇄ ENCODING button next to it. The #303 capture-time multipart-destruction defect is a separate, already-tracked gap this frontend-only change does not touch.",
+      "evidence": "ui-v2/tabs.jsx repeaterChangeBodyEncoding() (boundary-aware multipart part parser + builder) and repeaterUrlDecode(); the ⇄ ENCODING button in RepeaterTab's REQUEST pane-head dispatches {type:\"repeater-set\", payload:{request: repeaterChangeBodyEncoding(rep.request)}}. #303's placeholder-body defect (control_server.cpp send-to-Repeater path) is the named remaining limit, unchanged by this wave.",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Repeater request-transform batch: pure client-side urlencoded<->multipart body re-encode button, no backend change needed."
+      }
     },
     {
       "area": "repeater",

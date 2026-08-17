@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater: Change request method / Change body encoding.** Two new buttons
+  in the Repeater request pane &mdash; ⇄ METHOD toggles GET/POST, moving params
+  between the query string and an `application/x-www-form-urlencoded` body;
+  ⇄ ENCODING converts that body to `multipart/form-data` and back. Both
+  recompute `Content-Type`/`Content-Length` so the edited request stays
+  well-formed &mdash; a first-move test for HPP, CSRF, and upload-parser/WAF
+  bypass bugs that previously meant hand-editing raw bytes. Pure client-side
+  text transform, dispatched through the same edit path a hand edit uses.
 - **Intruder can follow redirects too.** The same follow-redirect engine now runs
   in Intruder: with `followRedirects` set (never / on-site / in-scope / always,
   plus `processCookies`), each fired payload's request follows its 3xx chain and
