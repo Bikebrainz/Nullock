@@ -669,7 +669,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "fcbe737",
         "note": "The ui-v2 Intruder tab now exposes both settings inline in its GREP/CONC settings row: the same FOLLOW select and COOKIES checkbox pattern as Repeater, dispatched via intruder-set to POST /api/intruder/set -- closing the UI-toggle half of this item's PARTIAL note. The backend snapshot was extended to serialize followRedirects/processCookies so the controls reflect live state after a reload. Still PARTIAL, not present: re-read Intruder::resend (intruder.cpp:640-721, the single-row re-fire path off a completed attack) and confirmed it builds its own HttpClient and calls client.send() directly with no RedirectLogic involvement at all -- a resent row's grade does not follow 3xx, unlike a first-pass fired request. That's the one remaining gap, honestly named rather than claimed closed."
       }
     },
@@ -4256,7 +4256,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "fcbe737",
         "note": "The ui-v2 Repeater tab now exposes both settings inline in the target-row: a FOLLOW select (mirroring RedirectLogic::FollowPolicy 0-3, never/on-site/in-scope/always) and a COOKIES checkbox, both dispatched via the existing repeater-set action to POST /api/repeater/set -- the same backend + API from the a6987bb wave, now reachable from a click rather than only from a raw API call. The backend snapshot (control_server.cpp) was extended to serialize followRedirects/processCookies back to the GUI so the controls reflect live state after a reload. No remaining gap for this item's own ask (button + 4-mode setting + cookie-processing setting)."
       }
     },
