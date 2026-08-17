@@ -2145,22 +2145,34 @@
     {
       "area": "sequencer",
       "feature": "Live capture \u2014 repeatedly issue the selected request and harvest the token from each response",
-      "state": "absent",
+      "state": "partial",
       "impact": "blocker",
       "effort": "weeks",
       "gap": "No token-harvesting engine of any kind, under any local name. The user must collect the corpus themselves with an external script before Nullock can say anything about it.",
       "why": "Confirmed by reading the entire handler and the entire public header rather than trusting a grep. There is no capture engine under any synonym.",
-      "evidence": "control_server.cpp:4655-4661 is the complete handler: `if (path == \"/api/sequencer/analyze\") { QStringList tokens; for (const QJsonValue &v : bodyJson.value(\"tokens\").toArray()) tokens.append(v.toString()); Nullock::Core::Sequencer seq; return httpJson(200, seq.analyze(tokens)); }` \u2014 it reads a caller-supplied array and never issues a request. sequencer.hpp (75 lines, read in full) declares exactl"
+      "evidence": "control_server.cpp:4655-4661 is the complete handler: `if (path == \"/api/sequencer/analyze\") { QStringList tokens; for (const QJsonValue &v : bodyJson.value(\"tokens\").toArray()) tokens.append(v.toString()); Nullock::Core::Sequencer seq; return httpJson(200, seq.analyze(tokens)); }` \u2014 it reads a caller-supplied array and never issues a request. sequencer.hpp (75 lines, read in full) declares exactl",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "f910a9e",
+        "note": "The token-harvest engine now exists (SequencerCapture, Src/Core/Networking): POST /api/sequencer/capture/start fires the SAME request N times on a background worker and pulls one token from each response, and /api/sequencer/capture/tokens feeds the harvested corpus into the existing Sequencer::analyze. Extraction reuses the chain/session vocabulary (cookie/header/json-path/regex) over the DECODED body (a gzip response no longer silently yields nothing), raw + unsanitized so the entropy measured is the token's real bytes. Verified end-to-end: rotating token -> 30 distinct -> 'looks-random'; scope refusal; stop mid-capture. Safety-gated because it AUTO-GENERATES traffic: refuses an empty/out-of-scope target, hard-caps the shot count, paces (429 Retry-After bounded+interruptible), trips a circuit breaker, and reports a constant/too-small corpus as exactly that instead of a false RNG verdict. PARTIAL, honestly: backend + API only -- the Live Capture UI sub-panel (request template, extract picker, Start/progress) is the remaining piece (ui-v2, concurrent-agent lane); drive it today via the API."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Live capture token location: Cookie (dropdown of cookies seen in the response)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Follows from live capture being absent. The extraction primitive exists twice over in the codebase and is simply not wired to token capture.",
       "why": "Confirmed. I checked the obvious synonym risk \u2014 the codebase DOES have cookie-extraction machinery (SessionRule::ExtractFromCookie, ChainRunner::Extract::Cookie) \u2014 but neither is reachable from the sequencer path, which takes a raw string array.",
-      "evidence": "sequencer.hpp read in full: no location/extraction concept exists. The cookie extractors that DO exist are session_rules.cpp:94-103 (`case SessionRule::ExtractFromCookie:` walking Set-Cookie headers) and chain_runner.cpp:25-31 (`case Extract::Cookie:`). Neither is referenced from control_server.cpp:4655-4661, which accepts only `bodyJson.value(\"tokens\").toArray()`."
+      "evidence": "sequencer.hpp read in full: no location/extraction concept exists. The cookie extractors that DO exist are session_rules.cpp:94-103 (`case SessionRule::ExtractFromCookie:` walking Set-Cookie headers) and chain_runner.cpp:25-31 (`case Extract::Cookie:`). Neither is referenced from control_server.cpp:4655-4661, which accepts only `bodyJson.value(\"tokens\").toArray()`.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "f910a9e",
+        "note": "The cookie token-location is now wired to live capture: capture with extract:{from:'cookie',key:'SESSIONID'} walks the response's Set-Cookie headers (SequencerCaptureLogic::extractToken, unit-tested + mutation-proven) and harvests that cookie each shot -- the audit's 'the extraction primitive exists but is simply not wired to token capture' gap is closed. Remaining: the 'dropdown of cookies seen in the response' auto-listing is a UI convenience, still pending."
+      }
     },
     {
       "area": "sequencer",
@@ -2175,32 +2187,50 @@
     {
       "area": "sequencer",
       "feature": "Live capture token location: Custom location (define start/end delimiters or a regex extraction rule on the response)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Absent. No start/end delimiter mode anywhere (both existing extractors are capture-group regex only, no delimiter form).",
       "why": "Confirmed. The regex extractors exist and I read both; neither is reachable from the sequencer endpoint.",
-      "evidence": "session_rules.cpp:107-117 `case SessionRule::ExtractFromRegex: { QRegularExpression rx(r.extractKey, QRegularExpression::DotMatchesEverythingOption); if (!rx.isValid()) break; const QByteArray buf = resp.body.left(1 * 1024 * 1024); auto m = rx.match(QString::fromUtf8(buf)); if (m.hasMatch()) val = firstCapture(m); break; }` and chain_runner.cpp:33-42 `case Extract::Regex:`. control_server.cpp:4656"
+      "evidence": "session_rules.cpp:107-117 `case SessionRule::ExtractFromRegex: { QRegularExpression rx(r.extractKey, QRegularExpression::DotMatchesEverythingOption); if (!rx.isValid()) break; const QByteArray buf = resp.body.left(1 * 1024 * 1024); auto m = rx.match(QString::fromUtf8(buf)); if (m.hasMatch()) val = firstCapture(m); break; }` and chain_runner.cpp:33-42 `case Extract::Regex:`. control_server.cpp:4656",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "f910a9e",
+        "note": "The regex half of the custom token-location is wired: capture with extract:{from:'regex',key:'<pattern>'} harvests the first capture group (or whole match) from each response body (bounded at 1 MiB, DotMatchesEverythingOption). Remaining: the start/end-delimiter variant and its UI."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Live capture controls: Start / Pause / Stop, running token count, capture progress panel",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Absent.",
       "why": "Confirmed \u2014 follows necessarily from the absence of any capture loop, which I verified by reading the full handler and header.",
-      "evidence": "There is no capture state machine to control: sequencer.hpp (full read) exposes one pure function, and control_server.cpp:4655-4661 is stateless. Compare the tools that DO have run control \u2014 intruder has a pool and stop path (intruder.cpp:447 onward, intruder_pool_logic.cpp) \u2014 no analogue exists for token capture."
+      "evidence": "There is no capture state machine to control: sequencer.hpp (full read) exposes one pure function, and control_server.cpp:4655-4661 is stateless. Compare the tools that DO have run control \u2014 intruder has a pool and stop path (intruder.cpp:447 onward, intruder_pool_logic.cpp) \u2014 no analogue exists for token capture.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "f910a9e",
+        "note": "Start/Stop + a running token count + capture progress now exist at the engine/API level: /api/sequencer/capture/start and /stop, with the snapshot's sequencerCapture slice reporting running/done/total/harvested (+ emptyExtract/httpErrors/transportErrors/lastStatus). PARTIAL: Pause is not built (only Stop), and the control-panel UI is pending."
+      }
     },
     {
       "area": "sequencer",
       "feature": "Live capture request engine settings: number of threads, throttle between requests, retry on failure",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Absent, because no capture engine exists to configure.",
       "why": "Confirmed. Intruder's engine (which does have concurrency, throttling and 429 back-off) is the nearest thing and is entirely unconnected.",
-      "evidence": "intruder.cpp:445-447 `auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules, grepMatch, grepExtract](int row, const QStringList &combo) { HttpClient client;` with 429 back-off at :461 onward (`if (statusCode == 429) { int waitMs = 1000; for (const auto &h : result.parsed.headers) { if (h.first.compare(\"Retry-After\", ...)`). Nothing in sequencer*.cpp/hpp references HttpClient at "
+      "evidence": "intruder.cpp:445-447 `auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules, grepMatch, grepExtract](int row, const QStringList &combo) { HttpClient client;` with 429 back-off at :461 onward (`if (statusCode == 429) { int waitMs = 1000; for (const auto &h : result.parsed.headers) { if (h.first.compare(\"Retry-After\", ...)`). Nothing in sequencer*.cpp/hpp references HttpClient at ",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "f910a9e",
+        "note": "Pacing settings are partly built: a per-shot throttleMs (clamped [0,60000]) and automatic 429 Retry-After backoff (bounded + interruptible) pace the loop. The thread-count knob is intentionally NOT offered -- capture fires sequentially on one worker by design (rapid parallel identical requests trip rate-limits / account lockout on the very session being sampled). Remaining: the settings UI."
+      }
     },
     {
       "area": "sequencer",
