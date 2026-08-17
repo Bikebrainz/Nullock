@@ -41,8 +41,13 @@ developer-facing record.
   `repeater-set`/`intruder-set` actions &mdash; no more driving the follow-redirect
   engine by hand-crafted `POST` calls. The backend snapshot now serializes both
   fields back to the GUI so the controls reflect live state after a reload.
-  Intruder's single-row Resend still doesn't follow redirects &mdash; an honest
-  remaining gap, tracked separately from the main attack path above.
+- **Intruder's Resend now follows redirects too.** Resend (re-firing a single
+  completed attack row) used to build its own request/response path with no
+  `redirect_logic` involvement, so a resent row's grade could disagree with the
+  original attack pass. Resend now runs the same chain-follow block as the
+  attack-fire path, off the same `followRedirects`/`processCookies` setting
+  &mdash; a resent row grades against the same final page a first-pass fired
+  row does.
 - **Sequencer live capture: harvest a token corpus automatically.** The Sequencer
   could only score a corpus you assembled yourself. A new background engine now
   fires the *same* request N times and pulls one token out of each response

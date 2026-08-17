@@ -670,10 +670,14 @@ bool Intruder::resend(int row) {
     const QStringList grepMatchCopy = m_grepMatch;                 // read on GUI thread, scanned off-thread
     const bool grepReflectionCopy = m_grepPayloadReflection;
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
+    const int followPolicyCopy = m_followPolicy;
+    const bool followCookiesCopy = m_followCookies;
+    const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
 
     m_resendWorker = QtConcurrent::run([this, row, combo, templateCopy, hostCopy,
                              portCopy, tlsCopy, grepMatchCopy, grepReflectionCopy,
-                             grepExtractCopy]() {
+                             grepExtractCopy, followPolicyCopy, followCookiesCopy,
+                             inScopeCopy]() {
         HttpClient client;
         QString req = IE::applyPayloads(templateCopy, combo);
         req.replace("\r\n", "\n");
@@ -684,8 +688,46 @@ bool Intruder::resend(int row) {
         QByteArray reqBytes = req.toUtf8();
         if (m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, hostCopy, SessionRulesLogic::ToolIntruder);
-        const auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
-                                        tlsCopy, reqBytes);
+        auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
+                                  tlsCopy, reqBytes);
+
+        // Follow 3xx redirects if configured, mirroring fireOne()'s block above
+        // exactly -- a resent row's grade must match a first-pass fired row's.
+        if (followPolicyCopy != RedirectLogic::FollowNever && result.ok) {
+            namespace RL = Nullock::Core::RedirectLogic;
+            QUrl current   = RL::requestUrl(tlsCopy, hostCopy, portCopy, reqBytes);
+            QString method = RL::requestMethod(reqBytes);
+            QByteArray body;
+            { const int hb = reqBytes.indexOf("\r\n\r\n"); if (hb >= 0) body = reqBytes.mid(hb + 4); }
+            QHash<QString, QString> jar;
+            int hops = 0;
+            while (hops < kMaxRedirectHops && result.ok
+                   && RL::isRedirectStatus(result.parsed.statusCode)) {
+                QString loc;
+                for (const auto &h : result.parsed.headers)
+                    if (h.first.compare("Location", Qt::CaseInsensitive) == 0) { loc = h.second; break; }
+                const QUrl next = RL::resolveRedirect(current, loc);
+                if (next.isEmpty()) break;
+                const QString nextHost = next.host();
+                const bool nextInScope = inScopeCopy ? inScopeCopy(nextHost) : false;
+                if (!RL::followAllowed(RL::FollowPolicy(followPolicyCopy),
+                                       current.host(), nextHost, nextInScope))
+                    break;
+                if (followCookiesCopy) RL::mergeSetCookies(jar, result.parsed.headers);
+                const int status = result.parsed.statusCode;
+                const QString nextMethod  = RL::methodAfterRedirect(status, method);
+                const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
+                const QString cookieHdr   = followCookiesCopy ? RL::renderCookieHeader(jar) : QString();
+                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+                const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
+                const int  nextPort = next.port(nextTls ? 443 : 80);
+                result  = client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+                current = next;
+                method  = nextMethod;
+                body    = nextBody;
+                ++hops;
+            }
+        }
         const qint64 elapsedMs = t.elapsed();
         const int statusCode = result.ok ? result.parsed.statusCode : 0;
         const int size       = result.parsed.body.size();
