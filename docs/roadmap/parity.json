@@ -699,9 +699,14 @@
       "state": "partial",
       "impact": "medium",
       "effort": "weeks",
-      "gap": "Static HTML only (crawler.cpp:154 'Doesn't run JS'); no navigation-graph diffing, no volatile-content handling. Also API-only: no crawl button/tab in the shipped UI, so a GUI user cannot start a crawl.",
-      "why": "Re-read crawler.cpp:84-100 (off-thread BFS bounded by m_maxPages/m_maxDepth) and crawler_logic.cpp:43-116 (extractRawLinks/Srcset/MetaRefresh/FormGets). The static BFS is real and correct; scope is fail-closed (crawler.cpp:13-19). Claim holds. Added caveat: the crawler has NO GUI trigger -- grep of ui-v2/ for 'crawl' is empty; only /api/crawler/start (control_server.cpp:3959) reaches it.",
-      "evidence": "crawler.cpp:84 `m_worker = QtConcurrent::run([this]() { while (... m_visited < m_maxPages && !m_queue.isEmpty()) { ... crawlOne(u); ...}});`  crawler.cpp:163-166 refs += extractSrcset/extractMetaRefresh/extractFormGets"
+      "gap": "Static HTML only (crawler.cpp:154 'Doesn't run JS'); no navigation-graph diffing, no volatile-content handling. The GUI-reachability half of this gap is closed: the DISCOVER tab (ui-v2/app.jsx DiscoverTab) has a start/stop crawl control (seed URL + max-pages/max-depth/throttle-ms) wired to /api/crawler/start,stop, with crawled pages feeding straight into Proxy history. Remaining gap is the JS-rendering/diffing engine work itself, not GUI wiring.",
+      "why": "Register-accuracy fix: this item's gap text still said \"Also API-only: no crawl button/tab in the shipped UI\", stale since a prior Wave 2 batch (3494297, 2026-08-13) added the DISCOVER tab's crawl-config UI on top of an already-existing crawl start/stop control -- confirmed live by grep of ui-v2/app.jsx (DiscoverTab startCrawl/stopCrawl calling NL.actions.crawlerStart/crawlerStop) and TABS (discover entry, chrome.jsx render switch). State stays partial: the crawler is still static-HTML-only with no JS execution or diffing (crawler.cpp:154), the real remaining gap; only the previously-stale GUI-reachability clause is corrected.",
+      "evidence": "crawler.cpp:84 `m_worker = QtConcurrent::run([this]() { while (... m_visited < m_maxPages && !m_queue.isEmpty()) { ... crawlOne(u); ...}});`  crawler.cpp:163-166 refs += extractSrcset/extractMetaRefresh/extractFormGets",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Register-accuracy fix: corrected stale \"no crawl button/tab in the shipped UI\" gap text -- the DISCOVER tab has shipped a full crawl start/stop + config UI since 3494297 (2026-08-13). State unchanged (partial); only gap/why corrected to reflect the true remaining gap (no JS rendering/diffing)."
+      }
     },
     {
       "area": "scanner",
