@@ -198,7 +198,10 @@
     setTheme(name)          { return post("/api/theme", { name }); },
     saveTheme(name, colors) { return post("/api/theme/save-as", { name, colors }).then(r => r.json()); },
     reloadThemes()          { return post("/api/theme/reload"); },
-    exportHar()             { return post("/api/har/export").then(r => r.json()); },
+    // opts may carry { redact: false } to include auth material the
+    // backend redacts by default -- see the "include unredacted" checkbox
+    // next to Settings' Export HAR button.
+    exportHar(opts)          { return post("/api/har/export", opts || {}).then(r => r.json()); },
     importHarPath(path)     { return post("/api/har/import", { path }).then(r => r.json()); },
     importHar(harObject)    { return post("/api/har/import", { har: harObject }).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },

@@ -605,6 +605,11 @@ function SettingsTab() {
   // + notes on a freshly-created project from templates/projects/*.json.
   const [templates, setTemplates]   = React.useState([]);
   const [templateId, setTemplateId] = React.useState("");
+
+  // Export HAR defaults to redacting auth material (Authorization/Cookie/
+  // etc) server-side; this lets a user opt into a full, unredacted export
+  // when handing a HAR to a colleague who needs to reproduce the bug.
+  const [harUnredacted, setHarUnredacted] = React.useState(false);
   const refreshTemplates = React.useCallback(async () => {
     try {
       const r = await NL.actions.projectTemplates();
@@ -855,7 +860,15 @@ function SettingsTab() {
         <Row label="Themes dir" value={b.themesDir || (window.NL ? NL.themesDir : "")} copyable />
         <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="edit in Scope tab" />
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-          <Btn label="Export HAR" onClick={() => NL.actions.exportHar()} />
+          <Btn label="Export HAR" onClick={() => NL.actions.exportHar(harUnredacted ? { redact: false } : {})} />
+          <label style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            fontSize: "10.5px", color: "var(--dim)", cursor: "pointer",
+          }}>
+            <input type="checkbox" checked={harUnredacted}
+              onChange={e => setHarUnredacted(e.target.checked)} />
+            include unredacted auth material
+          </label>
           <Btn label="Export Postman" onClick={() => {
             const a = document.createElement("a");
             a.href = "/api/export/postman";

@@ -981,14 +981,14 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "The per-row live probe already fires an http-smuggling-clte-suspect heuristic. The full opt-in Smuggling::test battery remains reachable only via a direct POST to /api/audit/all with include:['smuggle'] (the new 'Deep audit all rows' GUI button runs the default sweep, which does not include the opt-in smuggling check, by design -- it is slow/noisy). Exposing an opt-in checkbox for it in the GUI is a small follow-up.",
-      "why": "Re-read control_server.cpp:634-642 (Smuggling::test -> request-smuggling critical), gated behind explicit opt-in (line 632-634, never in default sweep). Present but opt-in AND API-only.",
-      "evidence": "control_server.cpp:634 `if (!include.isEmpty() && (include.contains(\"smuggle\") || include.contains(\"smuggling\")))`",
+      "gap": "The per-row live probe already fires an http-smuggling-clte-suspect heuristic. The full opt-in Smuggling::test battery IS GUI-reachable: the Scans tab's 'Audit run' section has a per-tester include checkbox list with a 'smuggle (opt-in, not in default sweep)' entry that posts include:['smuggle'] to /api/audit/run. Prior gap text calling this API-only via a direct POST to /api/audit/all was stale/incorrect.",
+      "why": "Register-accuracy correction, no code change: re-verified against live source rather than trusting the prior gap text. ui-v2/app.jsx's AUDIT_INCLUDES array (Scans tab, 'Audit run' section) includes \"smuggle\", rendered as a checkbox labeled '(opt-in, not in default sweep)', wired through doAuditRun -> NL.actions.auditRun(url, {include}) -> POST /api/audit/run, which calls the identical runDeepAudit(...) helper (and its smuggle-gated branch) that /api/audit/all uses. The prior note said this was reachable 'only via a direct POST to /api/audit/all' -- that was already false by the time it was written and stayed uncorrected across several later waves.",
+      "evidence": "ui-v2/app.jsx:1943 AUDIT_INCLUDES array contains \"smuggle\"; :2382-2387 renders one checkbox per include name in the Audit run Section, with the smuggle checkbox specially labeled; :1945-1952 doAuditRun() builds opts.include from the checked set and calls NL.actions.auditRun; ui-v2/real-data.js:371 auditRun(url,opts) posts to /api/audit/run; Src/BackEnd/Control/control_server.cpp:6953,6991 /api/audit/run reads bodyJson.value(\"include\") and calls runDeepAudit(m_wiring.scanner, t, include, testerReports); control_server.cpp:634-642 runDeepAudit's smuggling branch is gated on include.contains(\"smuggle\").",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-09",
-        "commit": "52cf31e",
-        "note": "'Deep audit all rows' closes the GUI-reachability gap for the always-on default-sweep checks (LDAP/XPath/host-header/cache-poison/deser/nosql/mass-assign/CORS); smuggling stays opt-in-only via API since it is deliberately excluded from the default sweep for traffic-cost reasons -- left an honest partial for the opt-in surface, not claimed as fully closed."
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy fix: corrected stale gap text claiming the opt-in smuggling battery was reachable only via a direct POST to /api/audit/all. Live source shows it has been GUI-reachable via the Scans tab's Audit run section's smuggle checkbox (POST /api/audit/run, same runDeepAudit include-gated branch) since that section landed -- no code change, state stays present, only the gap/why/evidence text corrected."
       }
     },
     {
@@ -3556,9 +3556,15 @@
       "state": "exceeds",
       "impact": "low",
       "effort": "hours",
-      "gap": "Exports are redacted unless the caller passes redact:false, which the UI button does not expose -- so a HAR handed to a colleague may be missing the auth material that reproduces the bug. No Burp-XML format for interop.",
-      "why": "Verified both endpoints and, crucially, that they are UI-reachable (ui-v2/real-data.js:160-162 exposes exportHar/importHarPath/importHar). Import accepts either a path or an inline HAR object. Native round-trip HAR that Burp only gets from an extension -- exceeds confirmed. Noted one behavioural surprise: export redacts by default.",
-      "evidence": "Src/BackEnd/Control/control_server.cpp:5693-5705 `if (path == \"/api/har/export\") { ... out = m_wiring.projectStore->exportHar(QString());` with `const bool wasRedact = m_wiring.projectStore->exportRedact();` defaulting redaction ON; import at :5706-5722 `} else if (bodyJson.contains(\"har\")) { // Caller posted the raw HAR object instead of a path.` ; UI wiring ui-v2/real-data.js:160-162 `exportHar("
+      "gap": "No Burp-XML 'Save items' format for interop (HAR-only). The prior redact-only-via-API gap is now closed: the Export HAR button in Settings' Project card has an 'include unredacted auth material' checkbox that posts {redact:false}.",
+      "why": "Closed the redact-toggle gap this pass: real-data.js's exportHar() took no arguments, so the UI could never reach control_server.cpp's existing bodyJson.value(\"redact\") override -- confirmed by grep showing zero call sites passing an options object before this change. Now exportHar(opts) forwards opts to POST /api/har/export and Settings gained a bound checkbox. HAR round-trip import/export beyond Burp's extension-only HAR support remains exceeds; only the gap text changed to describe the still-real Burp-XML-format absence.",
+      "evidence": "Src/BackEnd/Control/control_server.cpp:6045-6053 /api/har/export honors bodyJson.value(\"redact\") to override the default-on ProjectStore::exportRedact; ui-v2/real-data.js:204 exportHar(opts) now forwards opts (was exportHar() with no params); ui-v2/app.jsx new harUnredacted state + checkbox next to the Export HAR button in SettingsTab's Project card wires it end to end.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "PENDING",
+        "note": "Wave 2: Export HAR redact toggle -- Settings' Export HAR button gains an 'include unredacted auth material' checkbox (harUnredacted state) that posts {redact:false} through a new exportHar(opts) parameter, closing the previously-named gap that the backend's existing redact override was UI-unreachable. State stays exceeds (native HAR round-trip already beat Burp's extension-only HAR support); only the gap text changed. No backend touched -- control_server.cpp already read bodyJson.value(\"redact\")."
+      }
     },
     {
       "area": "proxy",

@@ -11,6 +11,12 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Export HAR: include unredacted auth material.** The Export HAR button
+  (Settings' Project card) redacted `Authorization`/`Cookie`/etc by default
+  with no way to opt out from the GUI, even though the backend already
+  accepted a `redact:false` override on `/api/har/export`. A new checkbox
+  next to the button lets you export the full, unredacted HAR when you need
+  to hand a colleague something that reproduces the bug end to end.
 - **Repeater: Change request method / Change body encoding.** Two new buttons
   in the Repeater request pane &mdash; ⇄ METHOD toggles GET/POST, moving params
   between the query string and an `application/x-www-form-urlencoded` body;
