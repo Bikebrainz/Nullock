@@ -987,7 +987,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "4d3464b",
         "note": "Wave 0 register-accuracy fix: corrected stale gap text claiming the opt-in smuggling battery was reachable only via a direct POST to /api/audit/all. Live source shows it has been GUI-reachable via the Scans tab's Audit run section's smuggle checkbox (POST /api/audit/run, same runDeepAudit include-gated branch) since that section landed -- no code change, state stays present, only the gap/why/evidence text corrected."
       }
     },
@@ -3562,7 +3562,7 @@
       "audited_state": "exceeds",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "4d3464b",
         "note": "Wave 2: Export HAR redact toggle -- Settings' Export HAR button gains an 'include unredacted auth material' checkbox (harUnredacted state) that posts {redact:false} through a new exportHar(opts) parameter, closing the previously-named gap that the backend's existing redact override was UI-unreachable. State stays exceeds (native HAR round-trip already beat Burp's extension-only HAR support); only the gap text changed. No backend touched -- control_server.cpp already read bodyJson.value(\"redact\")."
       }
     },
