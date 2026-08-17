@@ -4271,7 +4271,7 @@
       "evidence": "ui-v2/tabs.jsx repeaterChangeMethod() + repeaterSplitRaw/repeaterBuildRaw/repeaterSetHeader/repeaterRemoveHeader helpers; the ⇄ METHOD button in RepeaterTab's REQUEST pane-head dispatches {type:\"repeater-set\", payload:{request: repeaterChangeMethod(rep.request)}}, the identical mutation path the request textarea's own onChange uses (app.jsx:148-150 -> NL.actions.repeaterSet -> POST /api/repeater/set).",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "7e7ec54",
         "note": "Repeater request-transform batch: pure client-side GET<->POST param-location swap button, no backend change needed (the raw text just flows through the existing repeater-set/repeater/set mutation path)."
       }
     },
@@ -4286,7 +4286,7 @@
       "evidence": "ui-v2/tabs.jsx repeaterChangeBodyEncoding() (boundary-aware multipart part parser + builder) and repeaterUrlDecode(); the ⇄ ENCODING button in RepeaterTab's REQUEST pane-head dispatches {type:\"repeater-set\", payload:{request: repeaterChangeBodyEncoding(rep.request)}}. #303's placeholder-body defect (control_server.cpp send-to-Repeater path) is the named remaining limit, unchanged by this wave.",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "7e7ec54",
         "note": "Repeater request-transform batch: pure client-side urlencoded<->multipart body re-encode button, no backend change needed."
       }
     },
