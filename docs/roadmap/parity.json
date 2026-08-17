@@ -3948,7 +3948,7 @@
       "audited_state": "exceeds",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "43f8c08",
         "note": "Backlog #315: capped diffLines at DIFF_MAX_LINES=2000 lines/side (was unbounded n*m, could hang/OOM on a large response) + added a TRUNCATED badge; corrected the gap/evidence text's stale id-as-index claim (already fixed in an earlier wave). State stays exceeds — the mark-then-diff workflow win is unchanged — but the gap text is now accurate and the real remaining defect (uncapped diff) is fixed."
       }
     },
