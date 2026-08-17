@@ -14,6 +14,7 @@
 #include "update_check.hpp"
 #include "marketplace.hpp"
 #include "sequencer.hpp"
+#include "sequencer_capture.hpp"
 #include "intruder.hpp"
 #include "intruder_generators.hpp"
 #include "ci_gate_logic.hpp"
@@ -925,6 +926,12 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.sessions, &Nullock::Core::SessionManager::sessionsChanged,
                 this, bump);
     }
+    if (m_wiring.sequencerCapture) {
+        connect(m_wiring.sequencerCapture, &Nullock::Core::SequencerCapture::progressChanged,
+                this, bump);
+        connect(m_wiring.sequencerCapture, &Nullock::Core::SequencerCapture::runningChanged,
+                this, bump);
+    }
 }
 
 void ControlServer::bumpSeq() { ++m_seq; }
@@ -1354,6 +1361,11 @@ QByteArray ControlServer::buildSnapshot() const {
         ps["results"] = rows;
         root["portScan"] = ps;
     }
+
+    // sequencer live-capture: counters only (the corpus is fetched separately via
+    // /api/sequencer/capture/tokens so a large capture doesn't bloat every poll).
+    if (m_wiring.sequencerCapture)
+        root["sequencerCapture"] = m_wiring.sequencerCapture->snapshot();
 
     // recon engine: DNS records + discovered subdomains
     if (m_wiring.recon) {
@@ -4859,6 +4871,98 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             tokens.append(v.toString());
         Nullock::Core::Sequencer seq;
         return httpJson(200, seq.analyze(tokens));
+    }
+
+    // ---- Sequencer LIVE CAPTURE (long-running job) -------------------
+    // Fire the same request N times, harvest one token per response, then run the
+    // existing randomness analysis over the corpus. Async on the PortScanner
+    // model: /start returns immediately and launches a worker; progress polls via
+    // the snapshot's `sequencerCapture` slice; the corpus + analysis are fetched
+    // via /tokens. Scope-gated because it AUTO-GENERATES traffic (unlike the
+    // passive proxy), so the target must be explicitly in a non-empty scope.
+    if (path == "/api/sequencer/capture/start") {
+        if (!m_wiring.sequencerCapture)
+            return okJson({{ "ok", false }, { "error", "capture engine not wired" }});
+        const QString host = bodyJson.value("host").toString().trimmed();
+        const int     port = bodyJson.value("port").toInt(443);
+        const bool    tls  = bodyJson.value("tls").toBool(true);
+        const QByteArray request = bodyJson.value("request").toString().toUtf8();
+        const QJsonObject ex = bodyJson.value("extract").toObject();
+        const int from = Nullock::Core::SequencerCaptureLogic::parseExtractFrom(
+            ex.value("from").toString());
+        const QString key   = ex.value("key").toString();
+        const int count     = bodyJson.value("count").toInt(200);
+        const int throttleMs = bodyJson.value("throttleMs").toInt(0);
+
+        // Scope gate: an automated loop must NOT run against an empty scope (which
+        // isInScope treats as "allow everything"). Require the host to be
+        // explicitly inside a non-empty engagement scope.
+        const bool listEmpty   = !m_wiring.projectStore
+                                 || m_wiring.projectStore->inScope().isEmpty();
+        const bool hostInScope = m_wiring.proxy && m_wiring.proxy->isInScope(host);
+        if (!Nullock::Core::SequencerCaptureLogic::scopeAllows(listEmpty, hostInScope))
+            return okJson({{ "ok", false }, { "error",
+                "target is not in a non-empty engagement scope -- add the host under "
+                "Scope before live-capturing" }});
+
+        // Self-loop guard: never fire at the control server's own port.
+        if ((host == QLatin1String("127.0.0.1")
+             || host.compare("localhost", Qt::CaseInsensitive) == 0)
+            && port == static_cast<int>(listeningPort()))
+            return okJson({{ "ok", false }, { "error",
+                "refusing to capture against the control server's own port" }});
+
+        Nullock::Core::SequencerCapture::Request req;
+        req.request     = request;
+        req.host        = host;
+        req.port        = port;
+        req.tls         = tls;
+        req.extractFrom = from;
+        req.extractKey  = key;
+        req.count       = count;
+        req.throttleMs  = throttleMs;
+        QString err;
+        if (!m_wiring.sequencerCapture->start(req, &err))
+            return okJson({{ "ok", false }, { "error", err }});
+        return okJson({{ "ok", true }});
+    }
+    if (path == "/api/sequencer/capture/stop") {
+        if (!m_wiring.sequencerCapture)
+            return okJson({{ "ok", false }, { "error", "capture engine not wired" }});
+        m_wiring.sequencerCapture->stop();
+        return okJson({{ "ok", true }});
+    }
+    if (path == "/api/sequencer/capture/clear") {
+        if (!m_wiring.sequencerCapture)
+            return okJson({{ "ok", false }, { "error", "capture engine not wired" }});
+        m_wiring.sequencerCapture->clear();
+        return okJson({{ "ok", true }});
+    }
+    if (path == "/api/sequencer/capture/tokens") {
+        if (!m_wiring.sequencerCapture)
+            return okJson({{ "ok", false }, { "error", "capture engine not wired" }});
+        const QStringList toks = m_wiring.sequencerCapture->tokens();
+        QJsonObject out = m_wiring.sequencerCapture->snapshot();
+        out["ok"] = true;
+        QJsonArray tarr;
+        for (const QString &t : toks) tarr.append(t);
+        out["tokens"] = tarr;
+        // Corpus guard: a constant / too-small corpus must NOT be reported as a
+        // randomness verdict (an all-identical corpus scores "maximally
+        // predictable" but really means the extractor grabbed a constant).
+        const int distinct = QSet<QString>(toks.begin(), toks.end()).size();
+        const auto verdict =
+            Nullock::Core::SequencerCaptureLogic::corpusGuard(toks.size(), distinct);
+        out["distinct"] = distinct;
+        if (verdict == Nullock::Core::SequencerCaptureLogic::CorpusOk) {
+            Nullock::Core::Sequencer seq;
+            out["analysis"] = seq.analyze(toks);
+        } else {
+            out["analysis"]   = QJsonValue::Null;
+            out["corpusNote"] = Nullock::Core::SequencerCaptureLogic::corpusVerdictMessage(
+                verdict, toks.size(), distinct);
+        }
+        return httpJson(200, out);
     }
 
     // ---- Reverse OpenAPI ---------------------------------------------

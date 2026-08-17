@@ -81,6 +81,10 @@ add_library(Networking STATIC
     sequencer.cpp
     sequencer_logic.cpp
     sequencer.hpp
+    sequencer_capture.cpp
+    sequencer_capture_logic.cpp
+    sequencer_capture.hpp
+    sequencer_capture_logic.hpp
     finding_enricher.cpp
     finding_enricher.hpp
     cve_database.cpp

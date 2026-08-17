@@ -12,6 +12,7 @@
 #include "intruder.hpp"
 #include "passive_scanner.hpp"
 #include "port_scanner.hpp"
+#include "sequencer_capture.hpp"
 #include "project_store.hpp"
 #include "recon_engine.hpp"
 #include "session_manager.hpp"
@@ -1029,6 +1030,10 @@ int main(int argc, char *argv[]) {
     // #1 day-driver delta against Burp before this landed.
     Nullock::Core::SessionRules sessionRules;
     wiring.sessionRules = &sessionRules;
+    // Sequencer live-capture engine (background token-harvest loop). Stateless
+    // w.r.t. other engines -- the control endpoint feeds it the scope gate.
+    Nullock::Core::SequencerCapture sequencerCapture;
+    wiring.sequencerCapture = &sequencerCapture;
     // Wire into the proxy pipeline. Run AFTER M&R rules so the variable
     // bag has the latest extracted values when the request goes out,
     // but BEFORE session-manager cookie injection so the bag values

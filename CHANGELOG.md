@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Sequencer live capture: harvest a token corpus automatically.** The Sequencer
+  could only score a corpus you assembled yourself. A new background engine now
+  fires the *same* request N times and pulls one token out of each response
+  (`/api/sequencer/capture/start` + `/stop` + `/clear` + `/tokens`), then runs the
+  existing randomness analysis over what it collected. Token extraction reuses the
+  chain/session vocabulary — cookie / header / json-path / regex — over the
+  **decoded** body (a gzip response no longer silently yields nothing), and never
+  sanitizes the value so the entropy it measures is the token's real bytes. Because
+  it *generates* traffic (unlike the passive proxy) it is safety-gated: it refuses
+  to run unless the target is in a **non-empty engagement scope**, hard-caps the
+  shot count, paces between shots (honoring a 429 `Retry-After`, bounded +
+  interruptible), and trips a circuit breaker after a run of failures. A constant
+  or too-small corpus is reported as exactly that — "captured value is constant …
+  not a rotating token" — instead of being mis-scored as a guessable RNG. All the
+  decision logic (extraction, clamps, shot classification, backoff parse, corpus
+  verdict, scope predicate) is pure, unit-tested, and mutation-proven; the engine
+  is verified end-to-end (rotating token → 30 distinct → "looks-random"; constant
+  token → verdict guard; scope refusal; stop mid-capture). Closes the launch
+  blocker "Sequencer has no live capture." (The Live Capture UI panel — request
+  template, extract dropdown, progress bar — is the remaining follow-on; drive it
+  today via the API.)
 - **WebSockets tab.** A dedicated WEBSOCKETS tab groups captured WS traffic
   into a per-connection (host:port) list, with real per-message columns —
   direction, type (text/binary/close/ping/pong, deflate/continued flags

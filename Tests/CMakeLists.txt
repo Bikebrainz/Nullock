@@ -289,6 +289,11 @@ add_subdirectory(header_audit)
 # Run via: ctest -R sequencer -V
 add_subdirectory(sequencer)
 
+# Sequencer live-capture pure logic: token extraction (mirrors ChainRunner's
+# extractOne) + the count-clamp DoS guard for the auto-firing capture loop.
+# Run via: ctest -R sequencer_capture -V
+add_subdirectory(sequencer_capture)
+
 # Port scanner banner classifier -- an OS mention isn't a service (no
 # winrm/smb from "Microsoft Windows"), an HTML body mentioning a DB is HTTP
 # (HTTP/1. status line wins before the DB substring matches), IMAP "* OK" is

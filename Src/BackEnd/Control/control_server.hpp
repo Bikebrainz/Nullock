@@ -31,6 +31,7 @@ class OastServer;
 class OastCorrelator;
 class DnsSink;
 class SessionRules;
+class SequencerCapture;
 class Crawler;
 class UpdateChecker;
 }
@@ -59,6 +60,7 @@ struct Wiring {
     Nullock::Core::OastCorrelator      *oastCorrelator = nullptr;
     Nullock::Core::DnsSink             *dnsSink      = nullptr;
     Nullock::Core::SessionRules        *sessionRules = nullptr;
+    Nullock::Core::SequencerCapture    *sequencerCapture = nullptr;
     Nullock::Core::Crawler             *crawler      = nullptr;
     Nullock::Core::UpdateChecker       *updates      = nullptr;
     QString                              uiDir;       // path to ui-v2/
