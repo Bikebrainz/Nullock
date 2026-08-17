@@ -9,7 +9,7 @@
 #include "session_rules_logic.hpp"   // findHeader (Retry-After)
 
 #include <QThread>
-#include <QtConcurrent>
+#include <QtConcurrent/QtConcurrent>   // module-qualified: bare <QtConcurrent> won't resolve on Linux/GCC
 
 #include <algorithm>
 
