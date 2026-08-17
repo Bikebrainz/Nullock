@@ -20,6 +20,7 @@ const TABS = [
   { id: "processor", label: "PROCESSOR" },
   { id: "stats",     label: "STATS" },
   { id: "sessions",  label: "SESSIONS" },
+  { id: "websockets", label: "WEBSOCKETS" },
   { id: "repeater",  label: "REPEATER" },
   { id: "intercept", label: "INTERCEPT" },
   { id: "intruder",  label: "INTRUDER" },
@@ -3982,6 +3983,216 @@ function ReportingTab() {
   );
 }
 
+// #269: dedicated WebSockets history tab. WS frames already flow through
+// the ordinary HTTP-history rows -- proxy_server.cpp's runWebSocketRelay
+// emits a synthetic WS↑/WS↓ entry per reassembled message, with
+// req.path holding "(<opcode>[ deflate], <n> B[, continued])" (the only
+// place the opcode/deflate/continued flags are carried) and req.body/
+// resp.body holding the real payload bytes -- but only as pseudo-HTTP rows
+// mixed into the Proxy tab's HTTP HISTORY table, where Status/Mime/Size are
+// cosmetic (always 101 / text-or-octet-stream / payload size) and there is
+// no per-connection grouping, no direction/type-only filter, and no
+// per-message comment. This tab reuses those same NL.rows entries (no new
+// backend call), groups them by host:port "connection" (the only grouping
+// key a history row carries -- concurrent tunnels to the same host:port
+// interleave in one bucket, a real remaining limitation since the row
+// shape has no per-tunnel session id), decodes the opcode/deflate/
+// continued flags out of path, and adds a client-side per-message comment
+// (localStorage-persisted, matching the Comparer/Decoder client-only-state
+// pattern -- there is no backend field for a WS message comment). The
+// detail view reuses proxy.jsx's DetailPane, the exact component the Proxy
+// tab already renders these rows through, so Raw/Headers/Body/Hex/
+// Inspector and every Send-to- pivot behave identically here.
+//
+// Real remaining gap, unchanged by this tab and not claimed fixed here:
+// runWebSocketRelay is only invoked from the TLS-MITM h1 keep-alive loop's
+// 101 Upgrade branch, so a plaintext ws:// (non-TLS) tunnel is never
+// captured -- a genuine backend capability gap vs Burp, not a frontend one.
+const WS_PATH_RE = /^\((\w+)( deflate)?, (\d+) B(, continued)?\)$/;
+
+function WebSocketsTab({ rows, dispatch, onSwitchTab }) {
+  const [connKey, setConnKey] = React.useState(null);
+  const [dir, setDir] = React.useState("all"); // all | up | down
+  const [kindFilter, setKindFilter] = React.useState("all"); // all | text | binary | close | ping | pong | ...
+  const [selectedId, setSelectedId] = React.useState(null);
+  const [comments, setComments] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("nl-ws-comments") || "{}") || {}; }
+    catch (e) { return {}; }
+  });
+
+  const wsRows = React.useMemo(() => {
+    return (rows || [])
+      .filter(r => r.method === "WS↑" || r.method === "WS↓")
+      .map(r => {
+        const m = WS_PATH_RE.exec(r.path || "");
+        return {
+          ...r,
+          wsDir: r.method === "WS↑" ? "up" : "down",
+          wsKind: m ? m[1] : "?",
+          wsDeflate: !!(m && m[2]),
+          wsContinued: !!(m && m[4]),
+        };
+      });
+  }, [rows]);
+
+  const connections = React.useMemo(() => {
+    const map = new Map();
+    for (const r of wsRows) {
+      const key = r.host + ":" + r.port;
+      let c = map.get(key);
+      if (!c) { c = { key, host: r.host, port: r.port, tls: r.tls, count: 0, up: 0, down: 0, lastId: 0, lastTs: r.ts }; map.set(key, c); }
+      c.count++;
+      if (r.wsDir === "up") c.up++; else c.down++;
+      if (r.id > c.lastId) { c.lastId = r.id; c.lastTs = r.ts; }
+    }
+    return Array.from(map.values()).sort((a, b) => b.lastId - a.lastId);
+  }, [wsRows]);
+
+  React.useEffect(() => {
+    if (connKey != null && connections.some(c => c.key === connKey)) return;
+    setConnKey(connections.length ? connections[0].key : null);
+  }, [connections, connKey]);
+
+  const messages = React.useMemo(() => {
+    return wsRows
+      .filter(r => connKey == null || (r.host + ":" + r.port) === connKey)
+      .filter(r => dir === "all" || r.wsDir === dir)
+      .filter(r => kindFilter === "all" || r.wsKind === kindFilter)
+      .sort((a, b) => a.id - b.id);
+  }, [wsRows, connKey, dir, kindFilter]);
+
+  React.useEffect(() => {
+    if (selectedId != null && messages.some(m => m.id === selectedId)) return;
+    setSelectedId(messages.length ? messages[messages.length - 1].id : null);
+  }, [messages, selectedId]);
+
+  const selectedRow = messages.find(m => m.id === selectedId) || null;
+
+  const setComment = (id, text) => {
+    setComments(prev => {
+      const next = { ...prev, [id]: text };
+      try { localStorage.setItem("nl-ws-comments", JSON.stringify(next)); } catch (e) { /* storage unavailable/full -- comment stays in-memory only */ }
+      return next;
+    });
+  };
+
+  const Btn = ({ label, onClick, active }) => (
+    <button onClick={onClick} style={{
+      background: active ? "var(--accent)" : "transparent",
+      color: active ? "var(--bg-deep)" : "var(--accent)",
+      border: "1px solid var(--accent)", padding: "2px 8px",
+      fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      <div className="pane" style={{ width: 260, flex: "0 0 260px", display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line)" }}>
+        <div className="pane-head">
+          <span className="ph-corner">▸</span>
+          <span>CONNECTIONS</span>
+          <span className="ph-count">{connections.length}</span>
+        </div>
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {connections.length === 0 && (
+            <div style={{ padding: 12, color: "var(--dim)", fontSize: "11px" }}>
+              no WebSocket traffic captured yet — open a wss:// connection through
+              the intercepting proxy (plaintext ws:// tunnels aren't relayed, only
+              the TLS-MITM leg is).
+            </div>
+          )}
+          {connections.map(c => (
+            <div key={c.key} onClick={() => setConnKey(c.key)}
+                 style={{
+                   padding: "6px 10px", cursor: "pointer", fontSize: "11px",
+                   background: connKey === c.key ? "var(--row-sel)" : "transparent",
+                   borderBottom: "1px solid var(--line-soft)",
+                 }}>
+              <div style={{ color: "var(--text)" }}>
+                <span className={"tls-dot " + (c.tls ? "" : "off")} />{c.host}:{c.port}
+              </div>
+              <div style={{ color: "var(--dim)" }}>{c.count} msgs · ↑{c.up} ↓{c.down}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="pane" style={{ flex: 1, display: "grid", gridTemplateRows: "auto auto 1fr 1fr", minHeight: 0 }}>
+        <div className="pane-head">
+          <span className="ph-corner">▸</span>
+          <span>WEBSOCKETS</span>
+          <span className="ph-count">{messages.length} / {wsRows.length}</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+          <span style={{ color: "var(--dim)", fontSize: "10px" }}>DIRECTION</span>
+          <Btn label="ALL" active={dir === "all"} onClick={() => setDir("all")} />
+          <Btn label="↑ UP" active={dir === "up"} onClick={() => setDir("up")} />
+          <Btn label="↓ DOWN" active={dir === "down"} onClick={() => setDir("down")} />
+          <span style={{ color: "var(--dim)", fontSize: "10px", marginLeft: 10 }}>TYPE</span>
+          {["all", "text", "binary", "close", "ping", "pong"].map(k => (
+            <Btn key={k} label={k.toUpperCase()} active={kindFilter === k} onClick={() => setKindFilter(k)} />
+          ))}
+        </div>
+        <div style={{ minHeight: 0, overflow: "auto", borderBottom: "1px solid var(--line)" }}>
+          <table className="tbl">
+            <colgroup>
+              <col style={{ width: 44 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 90 }} />
+              <col />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>#</th><th>Dir</th><th>Type</th><th>Len</th><th>Time</th><th>Comment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map(m => (
+                <tr key={m.id} className={selectedId === m.id ? "sel" : ""} onClick={() => setSelectedId(m.id)}>
+                  <td className="num">{m.id.toString().padStart(3, "0")}</td>
+                  <td>{m.wsDir === "up" ? "↑ up" : "↓ down"}</td>
+                  <td>{m.wsKind}{m.wsDeflate ? " (deflate)" : ""}{m.wsContinued ? " …" : ""}</td>
+                  <td className="num">{fmtSize(m.size)}</td>
+                  <td className="num">{m.ts}</td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <input value={comments[m.id] || ""} onChange={e => setComment(m.id, e.target.value)}
+                           placeholder="…" style={{
+                             background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
+                             padding: "2px 4px", fontSize: "11px", fontFamily: "var(--ff-mono)", width: "100%", boxSizing: "border-box",
+                           }} />
+                  </td>
+                </tr>
+              ))}
+              {messages.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--dim)", height: 80 }}>
+                  ╌╌  no messages match filters  ╌╌
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <DetailPane
+          row={selectedRow}
+          onSendRepeater={() => selectedRow && dispatch({ type: "send-to-repeater", row: selectedRow })}
+          onSendIntruder={() => selectedRow && dispatch({ type: "send-to-intruder", row: selectedRow })}
+          onSendComparer={(kind, label, text) => {
+            dispatch({ type: "comparer-add", label, text });
+            if (onSwitchTab) onSwitchTab("comparer");
+          }}
+          onSendDecoder={(label, text) => {
+            dispatch({ type: "send-to-decoder", label, text });
+            if (onSwitchTab) onSwitchTab("decoder");
+          }}
+          onSendSequencer={(text) => {
+            dispatch({ type: "sequencer-add-token", text });
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function CollaboratorTab() {
   // Self-hosted Collaborator client: mint out-of-band callback URLs, hand
   // them to the target by any route (paste into a param, a header, an XXE
@@ -6249,6 +6460,9 @@ function App() {
         )}
         {tab === "sessions" && (
           <SessionsTab />
+        )}
+        {tab === "websockets" && (
+          <WebSocketsTab rows={state.rows} dispatch={dispatch} onSwitchTab={setTab} />
         )}
         {tab === "settings" && (
           <SettingsTab />

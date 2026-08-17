@@ -61,9 +61,16 @@
 > remaining feature. Closing an item = add a tab/menu/button that invokes the endpoint and
 > renders its result, then flip the matching parity.json item and regenerate.
 
-App exposes 23 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
+App exposes 24 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
 decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
-processor, stats, sessions, repeater, intercept, intruder, settings. The SCANS tab now drives
+processor, stats, sessions, websockets, repeater, intercept, intruder, settings. A dedicated
+WEBSOCKETS tab groups the same NL.rows entries the Proxy tab already surfaced as pseudo-HTTP
+WS↑/WS↓ rows into a per-host:port connection list, with real direction/type/length columns
+(decoded out of the synthetic path string), direction/type filters, a per-message client-side
+comment, and the shared DetailPane (Raw/Headers/Body/Hex/Inspector + every Send-to- pivot) --
+closing parity item #269's tab/direction/length/comment/filtering ask; captured on the
+TLS-MITM leg only (a real backend gap, not addressed here) and connections are grouped by
+host:port only since a history row carries no per-tunnel session id. The SCANS tab now drives
 port-scan (with an Import nmap XML file-picker alongside Export) + recon plus an Assess &
 audit section (assess/audit-run/param-miner/chain-run/pipeline-run, posture/inventory/
 compliance/gate rollups, exposure-scan/service-CVE-correlation/JS-recon/TLS-certificate-

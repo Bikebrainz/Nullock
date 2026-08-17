@@ -11,6 +11,19 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **WebSockets tab.** A dedicated WEBSOCKETS tab groups captured WS traffic
+  into a per-connection (host:port) list, with real per-message columns —
+  direction, type (text/binary/close/ping/pong, deflate/continued flags
+  decoded out of the synthetic history-row path), and length — plus
+  direction/type filters and a per-message free-text comment
+  (localStorage-persisted). Selecting a message reuses the Proxy tab's
+  DetailPane, so Raw/Headers/Body/Hex/Inspector and every Send-to-* pivot
+  work the same as HTTP history. No backend change — reads the same
+  NL.rows entries the Proxy tab already showed as pseudo-HTTP WS↑/WS↓ rows.
+  Left honestly partial: capture is still TLS-MITM-leg-only (a plaintext
+  ws:// tunnel is never relayed), and two concurrent tunnels to the same
+  host:port share one connection bucket since a history row carries no
+  per-tunnel session id.
 - **Send to Sequencer.** Proxy history's detail pane and Repeater's request/
   response panes gain a SEQUENCER/SEQ button: select a token substring (a
   session cookie, a CSRF token, a reset-URL token) and send it straight into

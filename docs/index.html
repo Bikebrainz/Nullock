@@ -175,6 +175,10 @@
         <p>Inject a frame straight onto a live WebSocket tunnel — pick the session, direction (client→server / server→client), and opcode (text, binary, close, ping, pong), edit the payload, send, and one-click resend the last frame. One panel over the tunnels the intercepting proxy is currently relaying, no separate client required.</p>
       </div>
       <div class="card">
+        <h3>WebSockets</h3>
+        <p>A dedicated tab for captured WS traffic, grouped into a connection list by host:port. Each message gets real columns instead of the pseudo-HTTP placeholders the Proxy tab's history table used to show for it — direction, type (text/binary/close/ping/pong, deflate/continued flags decoded), and length — plus direction and type filters and a per-message free-text comment. Selecting a message opens the same Raw/Headers/Body/Hex/Inspector detail pane and Send-to-Repeater/Intruder/Comparer/Decoder/Sequencer pivots as Proxy history. Captured on the TLS-MITM leg only — a plaintext <code>ws://</code> tunnel isn't relayed yet — and two concurrent tunnels to the same host:port share one connection bucket, since a history row carries no per-tunnel session id.</p>
+      </div>
+      <div class="card">
         <h3>H2 Frame Log</h3>
         <p>A frame-level view of HTTP/2 that Burp doesn't have at all: a per-stream summary table (method/path/status/bytes in-out/frame counts/open-closed) and a live-tailing raw frame feed (type — DATA/HEADERS/PRIORITY/RST_STREAM/SETTINGS/PUSH_PROMISE/PING/GOAWAY/WINDOW_UPDATE/CONTINUATION — flags/stream/bytes/error code) captured on either MITM leg of any HTTP/2 connection the proxy negotiated via ALPN, one button away from the Proxy tab's HTTP HISTORY pane.</p>
       </div>
@@ -196,7 +200,7 @@
       </div>
       <div class="card">
         <h3>Command palette</h3>
-        <p>Ctrl/Cmd+K — or the title bar's ⌘K button — opens a fuzzy-searchable command palette: jump to any of the 23 tabs, or fire a handful of cross-cutting toggles (intercept, intercept-responses, the appearance/tweaks panel, copy CA cert path). Ctrl/Cmd+1-9 jump straight to the first nine tabs. All 10 bindings are user-remappable from a "Customize keyboard shortcuts…" palette entry — click a binding, press a new combo, with live conflict detection against every other current binding and a per-binding reset, persisted across restarts. The palette still doesn't reach per-row contextual actions (like "send this row to Repeater") — an honest remaining slice of a fuller hotkey system.</p>
+        <p>Ctrl/Cmd+K — or the title bar's ⌘K button — opens a fuzzy-searchable command palette: jump to any of the 24 tabs, or fire a handful of cross-cutting toggles (intercept, intercept-responses, the appearance/tweaks panel, copy CA cert path). Ctrl/Cmd+1-9 jump straight to the first nine tabs. All 10 bindings are user-remappable from a "Customize keyboard shortcuts…" palette entry — click a binding, press a new combo, with live conflict detection against every other current binding and a per-binding reset, persisted across restarts. The palette still doesn't reach per-row contextual actions (like "send this row to Repeater") — an honest remaining slice of a fuller hotkey system.</p>
       </div>
       <div class="card">
         <h3>Local first</h3>

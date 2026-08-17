@@ -25,6 +25,11 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   (an empty list holds everything, matching Burp);
                   WS Repeater overlay injects text/binary/close/ping/pong frames into a live
                   WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
+                  a dedicated WEBSOCKETS tab groups captured WS traffic by connection with real
+                  direction/type/length columns (not the pseudo-HTTP Status/Mime placeholders),
+                  direction and message-type filtering, a per-message comment, and the same
+                  Raw/Headers/Body/Hex/Inspector detail pane and Send-to-* pivots as HTTP history
+                  (TLS-MITM leg only -- plaintext ws:// isn't relayed yet);
                   H2 Frame Log overlay shows a per-stream summary table and a live-tailing raw
                   HTTP/2 frame feed (type/flags/bytes) on either MITM leg -- a frame-level view
                   Burp doesn't have at all;
@@ -272,15 +277,15 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  23 tabs:     │
+   │  ActiveProbe    20+ vuln classes               │         │  24 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│
    │  Intruder       4 modes + rate-limit-aware     │         │  stats / repr │
    │  OastServer     in-process callback sink       │         │  intercept    │
    │  Crawler        BFS link-follower              │         │  intruder     │
-   │  SessionRules   extract/inject variables       │         │  settings     │
-   │  HistoryIndex   SQLite metadata + full rows    │         │               │
+   │  SessionRules   extract/inject variables       │         │  websockets   │
+   │  HistoryIndex   SQLite metadata + full rows    │         │  settings     │
    │  Extensions     JS in QJSEngine                │         │               │
    │  UpdateChecker  GitHub Releases poll           │         │               │
    │  CrashReporter  local-only crash logs          │         │               │
