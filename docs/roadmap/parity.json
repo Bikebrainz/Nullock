@@ -704,7 +704,7 @@
       "evidence": "crawler.cpp:84 `m_worker = QtConcurrent::run([this]() { while (... m_visited < m_maxPages && !m_queue.isEmpty()) { ... crawlOne(u); ...}});`  crawler.cpp:163-166 refs += extractSrcset/extractMetaRefresh/extractFormGets",
       "reconciled": {
         "date": "2026-08-17",
-        "commit": "PENDING",
+        "commit": "5076cb5",
         "note": "Register-accuracy fix: corrected stale \"no crawl button/tab in the shipped UI\" gap text -- the DISCOVER tab has shipped a full crawl start/stop + config UI since 3494297 (2026-08-13). State unchanged (partial); only gap/why corrected to reflect the true remaining gap (no JS rendering/diffing)."
       }
     },
