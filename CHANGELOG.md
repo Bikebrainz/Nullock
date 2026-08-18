@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Repeater now shows response time and size.** Every Repeater send records how
+  long the round-trip took (in milliseconds) and how many bytes came back, so the
+  signal that matters for blind SQL injection, blind command injection and race
+  work &mdash; *how long did it take* &mdash; is right there instead of invisible.
+  The timer is measured around the actual network round-trip (before the response
+  is decoded or formatted, so it reflects the wire, not local work) and follows a
+  redirect chain if you have that on; the values are kept per tab, saved with each
+  prior send in the tab's history, and cleared when you clear the tab. (Exposed on
+  the backend + snapshot now; the render in the Repeater pane is the remaining UI
+  bit.)
 - **Proxy: auto-update Content-Length when you edit an intercepted request.**
   Editing an intercepted request's body used to leave a stale `Content-Length`,
   so the forwarded request was truncated or the origin hung with no hint why.

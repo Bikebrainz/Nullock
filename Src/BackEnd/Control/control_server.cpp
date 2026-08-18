@@ -1529,6 +1529,9 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["request"]    = m_wiring.repeater->requestText();
         repeater["response"]   = m_wiring.repeater->responseText();
         repeater["statusLine"] = m_wiring.repeater->statusLine();
+        // Response metadata (Burp shows both next to the status): -1 before a send.
+        repeater["elapsedMs"]     = m_wiring.repeater->elapsedMs();
+        repeater["responseBytes"] = m_wiring.repeater->responseBytes();
         repeater["busy"]       = m_wiring.repeater->busy();
         repeater["activeTab"]  = m_wiring.repeater->activeTab();
         repeater["autoContentLength"] = m_wiring.repeater->autoContentLength();
@@ -1542,14 +1545,18 @@ QByteArray ControlServer::buildSnapshot() const {
             to["port"]       = t.port;
             to["tls"]        = t.useTls;
             to["statusLine"] = t.statusLine;
+            to["elapsedMs"]     = t.elapsedMs;
+            to["responseBytes"] = t.responseBytes;
             to["notes"]      = t.notes;
-            // Per-tab send history (compact: status + timestamp per prior send) so
-            // the UI can render a navigable list; a full entry is loaded back into
-            // the tab via /api/repeater/history/load.
+            // Per-tab send history (compact: status + timestamp + metadata per prior
+            // send) so the UI can render a navigable list; a full entry is loaded
+            // back into the tab via /api/repeater/history/load.
             QJsonArray hist;
             for (const auto &h : t.history)
                 hist.append(QJsonObject{ { "statusLine", h.statusLine },
-                                         { "sentAt", h.sentAt } });
+                                         { "sentAt", h.sentAt },
+                                         { "elapsedMs", h.elapsedMs },
+                                         { "responseBytes", h.responseBytes } });
             to["history"]      = hist;
             to["historyCount"] = t.history.size();
             tabs.append(to);

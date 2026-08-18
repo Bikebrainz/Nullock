@@ -6,6 +6,7 @@
 #include "session_rules.hpp"
 
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonValue>
 
@@ -116,6 +117,8 @@ void Repeater::clear() {
     t.requestText.clear();
     t.responseText.clear();
     t.statusLine.clear();
+    t.elapsedMs     = -1;
+    t.responseBytes = -1;
     emit requestTextChanged();
     emit responseChanged();
 }
@@ -157,6 +160,11 @@ void Repeater::send() {
     if (m_sessionRules)
         m_sessionRules->applyToRequestBytes(bytes, t.host, SessionRulesLogic::ToolRepeater);
 
+    // Time the whole network round-trip (including any followed redirects below).
+    // This is the signal for blind SQLi / blind command injection / race work, so
+    // it is measured around the blocking send(s) and surfaced with the response.
+    QElapsedTimer roundTrip;
+    roundTrip.start();
     auto result = m_client.send(t.host,
                                 static_cast<quint16>(t.port),
                                 t.useTls,
@@ -225,6 +233,12 @@ void Repeater::send() {
         }
     }
 
+    // Capture the round-trip time BEFORE response processing (gzip decode / status
+    // formatting) so the number reflects the network, not local work. Byte length
+    // is the final raw response as received (0 on a total transport failure).
+    t.elapsedMs     = roundTrip.elapsed();
+    t.responseBytes = result.rawResponse.size();
+
     if (result.ok) {
         // Unpack gzip/deflate for the response view: keep the original header
         // block verbatim (including the Content-Encoding header itself, so the
@@ -256,10 +270,12 @@ void Repeater::send() {
     // session can't grow it unbounded.
     {
         RepeaterHistoryEntry h;
-        h.request    = t.requestText;
-        h.response   = t.responseText;
-        h.statusLine = t.statusLine;
-        h.sentAt     = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        h.request       = t.requestText;
+        h.response      = t.responseText;
+        h.statusLine    = t.statusLine;
+        h.sentAt        = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        h.elapsedMs     = t.elapsedMs;
+        h.responseBytes = t.responseBytes;
         t.history.append(h);
         constexpr int kMaxTabHistory = 100;
         while (t.history.size() > kMaxTabHistory) t.history.removeFirst();
@@ -279,9 +295,11 @@ bool Repeater::loadHistoryAt(int index) {
     auto &t = activeTab_();
     if (index < 0 || index >= t.history.size()) return false;
     const RepeaterHistoryEntry &h = t.history.at(index);
-    t.requestText  = h.request;
-    t.responseText = h.response;
-    t.statusLine   = h.statusLine;
+    t.requestText   = h.request;
+    t.responseText  = h.response;
+    t.statusLine    = h.statusLine;
+    t.elapsedMs     = h.elapsedMs;
+    t.responseBytes = h.responseBytes;
     emit requestTextChanged();
     emit responseChanged();
     emit tabsChanged();

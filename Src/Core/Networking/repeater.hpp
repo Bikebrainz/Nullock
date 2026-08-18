@@ -27,6 +27,11 @@ struct RepeaterHistoryEntry {
     QString response;
     QString statusLine;
     QString sentAt;      // ISO-8601 UTC
+    // Response metadata for this send. elapsedMs is the network round-trip time
+    // (whole send incl. any followed redirects); responseBytes is the size of the
+    // final raw response. -1 = not measured (e.g. a pre-metadata history entry).
+    qint64  elapsedMs     = -1;
+    int     responseBytes = -1;
 };
 
 // One repeater session. The Repeater owns a list of these so the user
@@ -40,6 +45,12 @@ struct RepeaterTab {
     QString requestText;
     QString responseText;
     QString statusLine;
+    // Response metadata from the last send in this tab: round-trip time in ms and
+    // the final raw response's byte length. -1 until the first send. Timing is the
+    // whole signal for blind SQLi / blind command injection / race work, so it is
+    // surfaced next to the status line the way Burp's Repeater does.
+    qint64  elapsedMs     = -1;
+    int     responseBytes = -1;
     // Free-text engagement notes, e.g. "testing IDOR on order id" -- purely
     // client-facing bookkeeping, never sent on the wire or read by send().
     QString notes;
@@ -59,6 +70,10 @@ class Repeater : public QObject {
     Q_PROPERTY(QString requestText  READ requestText  WRITE setRequestText  NOTIFY requestTextChanged)
     Q_PROPERTY(QString responseText READ responseText                       NOTIFY responseChanged)
     Q_PROPERTY(QString statusLine   READ statusLine                         NOTIFY responseChanged)
+    // Response metadata (Burp shows both next to the status): round-trip time and
+    // response byte length of the active tab's last send. -1 before any send.
+    Q_PROPERTY(qint64  elapsedMs    READ elapsedMs                          NOTIFY responseChanged)
+    Q_PROPERTY(int     responseBytes READ responseBytes                     NOTIFY responseChanged)
     Q_PROPERTY(bool    busy         READ busy                               NOTIFY busyChanged)
     Q_PROPERTY(int     activeTab    READ activeTab    NOTIFY tabsChanged)
     Q_PROPERTY(int     tabCount     READ tabCount     NOTIFY tabsChanged)
@@ -84,6 +99,8 @@ public:
     QString requestText() const  { return activeTab_().requestText; }
     QString responseText() const { return activeTab_().responseText; }
     QString statusLine() const   { return activeTab_().statusLine; }
+    qint64  elapsedMs() const    { return activeTab_().elapsedMs; }
+    int     responseBytes() const{ return activeTab_().responseBytes; }
     bool    busy() const         { return m_busy; }
     int     activeTab() const    { return m_active; }
     int     tabCount() const     { return m_tabs.size(); }
