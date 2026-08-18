@@ -26,15 +26,19 @@ In Nullock:
        header = base64({"alg":"none","typ":"JWT"})
        payload = base64({"role":"admin","sub":"alice","exp":...})
        token = header + "." + payload + "."
+    6. Confirm success: GET /flag with the same forged Authorization
+       header -- it re-checks the token exactly like /admin and hands
+       back the flag once role=="admin" verifies.
 """
 
-import time
+import hashlib, time
 from flask import Flask, request, jsonify
 import jwt
 
 app = Flask(__name__)
 
 SECRET = "secret"  # VULN: trivial secret
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-03-jwt-weak").hexdigest()[:16]
 
 @app.route("/login")
 def login():
@@ -57,6 +61,21 @@ def admin():
     if payload.get("role") != "admin":
         return "forbidden", 403
     return "welcome, admin"
+
+@app.route("/flag")
+def flag():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return jsonify(solved=False), 401
+    token = auth.removeprefix("Bearer ")
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256", "none"],
+                             options={"verify_signature": False if token.endswith(".") else True})
+    except Exception:
+        return jsonify(solved=False), 401
+    if payload.get("role") != "admin":
+        return jsonify(solved=False), 403
+    return jsonify(solved=True, flag=FLAG)
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5003, debug=False)

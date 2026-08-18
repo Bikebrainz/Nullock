@@ -22,12 +22,19 @@ In Nullock:
        a real cloud IMDS.
     4. The active probe on this row should raise the "ssrf-cloud-metadata"
        finding automatically.
+    5. Confirm success: GET /flag?url=http://127.0.0.1:5005/internal/secret
+       -- a stand-in for a cloud metadata/internal-only service that a
+       real attacker could never reach directly. Same /fetch vuln,
+       proxied through the SAME code path and checked for the flag.
 """
 
+import hashlib
 import requests
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 
 app = Flask(__name__)
+
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-05-ssrf").hexdigest()[:16]
 
 @app.route("/")
 def index():
@@ -45,6 +52,26 @@ def fetch():
                         content_type=r.headers.get("content-type", "text/plain"))
     except Exception as e:
         return f"fetch error: {e}", 500
+
+@app.route("/internal/secret")
+def internal_secret():
+    # Stand-in for a cloud-metadata/internal-only service -- only
+    # reachable server-side, never routable from outside this process.
+    return FLAG, 200, {"Content-Type": "text/plain"}
+
+@app.route("/flag")
+def flag():
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify(solved=False), 400
+    try:
+        # Same VULN as /fetch: no allow-listing on host.
+        r = requests.get(url, timeout=5)
+        if FLAG in r.text:
+            return jsonify(solved=True, flag=FLAG)
+    except Exception:
+        pass
+    return jsonify(solved=False), 403
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5005, debug=False)

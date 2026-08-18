@@ -20,14 +20,18 @@ In Nullock:
     4. Fire. All 5 deduct succeed -- balance now -300 instead of -300.
        Real apps lose real money this way (BTC exchanges, gift card
        redemption, etc).
-    5. Real fix: SELECT ... FOR UPDATE in a single transaction, or
+    5. Confirm success: GET /flag -- returns the flag once the balance
+       has actually gone negative, which single-shot requests can
+       never do (the check always blocks them); only the race wins it.
+    6. Real fix: SELECT ... FOR UPDATE in a single transaction, or
        atomic decrement + check, or a queue.
 """
 
-import threading
+import hashlib, threading
 from flask import Flask, jsonify
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-09-race-condition").hexdigest()[:16]
 
 class State:
     balance = 100
@@ -56,6 +60,12 @@ def transfer():
 def reset():
     S.balance = 100
     return jsonify(balance=S.balance)
+
+@app.route("/flag")
+def flag():
+    if S.balance < 0:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False, balance=S.balance), 403
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5009, threaded=True, debug=False)

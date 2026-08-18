@@ -17,12 +17,19 @@ In Nullock:
        fragment. PassiveScanner should also raise a "sqli-error"
        finding for this row on its own.
     5. Extract: change id to: 1 UNION SELECT name||'/'||password FROM users
+    6. Confirm success: GET /flag?id=<injection> -- the flag lives in the
+       password column of a hidden admin row (id=99) that /user never
+       serves through a legitimate numeric id. Pull it out with
+       ?id=0 UNION SELECT password FROM users WHERE id=99 and the
+       endpoint verifies it and hands back the flag.
 """
 
-import os, sqlite3, tempfile
-from flask import Flask, request
+import hashlib, os, sqlite3, tempfile
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-02-sqli-basic").hexdigest()[:16]
 
 DB = os.path.join(tempfile.gettempdir(), "nullock-lab-02.db")
 
@@ -36,6 +43,8 @@ def init_db():
         (1, "alice", "wonderland"),
         (2, "bob",   "builder"),
         (3, "carol", "singer42"),
+        # VULN target: never linked/listed, only reachable via SQLi.
+        (99, "admin", FLAG),
     ])
     con.commit()
     con.close()
@@ -57,6 +66,25 @@ def user():
     if row is None:
         return "no user found", 404
     return f"<p>user: {row[0]}</p>"
+
+@app.route("/flag")
+def flag():
+    init_db()
+    uid = request.args.get("id", "1")
+    # Same vulnerable concatenation as /user -- reused deliberately so
+    # solving this route IS solving the lab, not a separate puzzle.
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    try:
+        cur.execute(f"SELECT name FROM users WHERE id = {uid}")
+        rows = cur.fetchall()
+    except sqlite3.Error:
+        rows = []
+    con.close()
+    leaked = {str(v) for row in rows for v in row}
+    if FLAG in leaked:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5002, debug=False)

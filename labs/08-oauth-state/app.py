@@ -16,14 +16,21 @@ In Nullock:
     3. Repeater: change the `code` to a known attacker code, fire to
        /oauth/callback. The session gets bound to the attacker's code
        without consent.
-    4. Real fix: generate a state value at /oauth/start, store in
+    4. Confirm success: GET /flag?code=attacker-chosen-code directly,
+       with a fresh cookie jar that never visited /oauth/start -- the
+       callback still binds the session, proving an attacker can send
+       a victim a bare callback link and hijack it without any consent
+       step in the way.
+    5. Real fix: generate a state value at /oauth/start, store in
        session, verify on callback. If missing or mismatched, abort.
 """
 
+import hashlib
 from flask import Flask, request, redirect, session, jsonify
 
 app = Flask(__name__)
 app.secret_key = "lab-08-secret"
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-08-oauth-state").hexdigest()[:16]
 
 # Mock IdP. In reality this is google/github/okta.
 @app.route("/oauth/start")
@@ -32,6 +39,7 @@ def start():
     #   import secrets; state = secrets.token_urlsafe(16)
     #   session["oauth_state"] = state
     #   return redirect(f"...?state={state}&...")
+    session["visited_start"] = True  # bookkeeping for /flag only, not a fix
     return redirect("/mock-idp/authorize?client_id=lab&redirect_uri=/oauth/callback")
 
 @app.route("/mock-idp/authorize")
@@ -53,6 +61,22 @@ def callback():
 @app.route("/")
 def index():
     return jsonify(session=dict(session))
+
+@app.route("/flag")
+def flag():
+    code = request.args.get("code", "")
+    if not code:
+        return jsonify(solved=False), 400
+    if session.get("visited_start"):
+        # Went through the legitimate flow -- doesn't demonstrate the
+        # missing-state CSRF gap this lab is about.
+        return jsonify(solved=False,
+                        reason="hit /flag directly, skipping /oauth/start"), 400
+    # VULN: same as /oauth/callback -- no state to verify, so an
+    # attacker-forged callback link is honored with no prior consent.
+    session["oauth_code"] = code
+    session["logged_in"] = True
+    return jsonify(solved=True, flag=FLAG)
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5008, debug=False)

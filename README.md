@@ -164,7 +164,9 @@ AI payloads       Local Ollama expands a seed payload set into new candidates (o
 Scriptable CLI    Drive every panel from your shell
 Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
                   the docs/labs site rates each Easy/Medium/Hard and gives 3
-                  progressive hints before the full walkthrough
+                  progressive hints before the full walkthrough; 10 labs (01-10)
+                  add a real /flag success-check endpoint you solve by
+                  exploiting the bug server-side, not just reading the walkthrough
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
 Project templates  Start a new project pre-seeded with scope + notes from a bundled template
