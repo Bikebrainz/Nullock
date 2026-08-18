@@ -13,15 +13,22 @@ In Nullock:
     5. Fire. The response contains 42 -- the shell evaluated it.
     6. Run the active probe (cmdi): it confirms RCE with an arithmetic
        canary it never sees reflected, only evaluated.
+    7. Confirm success: GET /flag?host=localhost;echo $((6*7)) -- same
+       shell=True concatenation /ping uses; hands back the flag once the
+       shell actually evaluated the arithmetic (not just echoed digits
+       you typed).
 
 Fix: never pass user input to a shell. Use subprocess with an argument
 list (shell=False) and validate the host against a strict pattern.
 """
 
-from flask import Flask, request
+import hashlib
+from flask import Flask, request, jsonify
 import subprocess
 
 app = Flask(__name__)
+
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-13-command-injection").hexdigest()[:16]
 
 
 @app.route("/")
@@ -37,6 +44,19 @@ def ping():
     out = subprocess.run("echo pinging " + host, shell=True,
                          capture_output=True, text=True, timeout=5).stdout
     return "<pre>" + out + "</pre>"
+
+
+@app.route("/flag")
+def flag():
+    host = request.args.get("host", "localhost")
+    # Same shell=True concatenation as /ping.
+    out = subprocess.run("echo pinging " + host, shell=True,
+                         capture_output=True, text=True, timeout=5).stdout
+    # Solved only when "42" came from shell evaluation ($((6*7))), not
+    # from typing the literal digits into host -- proves execution.
+    if "42" in out and "42" not in host:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

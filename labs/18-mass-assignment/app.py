@@ -12,14 +12,19 @@ In Nullock:
     4. The response shows is_admin: true -- privilege escalated.
     5. Run the active probe (mass-assignment): it tries a battery of
        privileged field names and flags any that stick.
+    6. Confirm success: GET /flag -- returns the flag once is_admin AND
+       role have actually flipped to admin, which no allow-listed field
+       could ever do.
 
 Fix: bind only an explicit allow-list of fields; never merge the raw
 request body into your model/object.
 """
 
+import hashlib
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-18-mass-assignment").hexdigest()[:16]
 profile = {"name": "alice", "email": "alice@corp.example",
            "role": "user", "is_admin": False}
 
@@ -37,6 +42,15 @@ def update():
         for k, v in data.items():
             profile[k] = v
     return jsonify(profile)
+
+
+@app.route("/flag")
+def flag():
+    # Solved only when BOTH privileged fields have flipped -- name/email
+    # alone (the allow-listed, legitimate fields) can never do this.
+    if profile.get("is_admin") is True and profile.get("role") == "admin":
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False, profile=profile), 403
 
 
 if __name__ == "__main__":

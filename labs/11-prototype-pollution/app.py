@@ -18,13 +18,19 @@ In Nullock:
     3. POST /config with body {"__class__":{"is_admin":true}} -- a
        naive walker writes to the User class's attributes.
     4. GET /me again -- is_admin now true for every user.
-    5. Real fix: validate keys against an allow-list before merge;
+    5. Confirm success: GET /flag -- returns the flag once is_admin has
+       actually flipped true, which no legitimate endpoint here can do;
+       only the class-attribute pollution reaches it.
+    6. Real fix: validate keys against an allow-list before merge;
        refuse __proto__ / __class__ / constructor in keys.
 """
 
+import hashlib
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-11-prototype-pollution").hexdigest()[:16]
 
 class User:
     name = "alice"
@@ -55,6 +61,14 @@ def config():
     src = request.get_json(silent=True) or {}
     deep_merge(USER, src)
     return jsonify(ok=True)
+
+@app.route("/flag")
+def flag():
+    # Same class-attribute-pollution vuln -- no endpoint here can set
+    # is_admin true except a successful __class__ deep-merge injection.
+    if USER.is_admin:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5011, debug=False)

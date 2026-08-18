@@ -14,14 +14,19 @@ In Nullock:
     4. You're authenticated -- the $ne operator matched any password.
     5. Run the active probe (nosqli): the literal vs $ne vs $eq
        differential (gated on a stability baseline) confirms it.
+    6. Confirm success: POST /flag with username=admin&password[$ne]=x
+       -- same operator-reconstruction /login uses, hands back the flag
+       only for an operator-object bypass, never for the real password.
 
 Fix: cast user inputs to strings before querying; reject operator
 objects (dict-shaped values) in user-supplied auth fields.
 """
 
-from flask import Flask, request
+import hashlib
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-17-nosql-injection").hexdigest()[:16]
 USERS = {"admin": "S3cr3t!"}
 
 
@@ -60,6 +65,24 @@ def login():
     if stored is not None and matches(stored, pw):
         return "Welcome %s! (authenticated)" % username
     return "Invalid credentials", 401
+
+
+@app.route("/flag", methods=["GET", "POST"])
+def flag():
+    values = request.values
+    username = values.get("username", "")
+    pw = None
+    for k in values:
+        if k == "password":
+            pw = values[k]
+        elif k.startswith("password[") and k.endswith("]"):
+            pw = {k[len("password["):-1]: values[k]}
+    stored = USERS.get(username)
+    # Solved only via an operator-object bypass ($ne/$gt) -- the real
+    # password is a plain string and never takes this branch.
+    if stored is not None and isinstance(pw, dict) and matches(stored, pw):
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

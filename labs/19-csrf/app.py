@@ -11,15 +11,22 @@ In Nullock:
     3. Note: no CSRF token in the request, and the session cookie has no
        SameSite attribute (the header audit flags the cookie).
     4. A cross-site auto-submitting form to /change-email succeeds.
+    5. Confirm success: POST /flag (logged in first) with an Origin/
+       Referer header for a different site, e.g. https://evil.example --
+       simulating the forged cross-site form. Same no-token state change
+       as /change-email; hands back the flag once it succeeds anyway.
 
 Fix: require a per-session CSRF token on state-changing requests, and set
 SameSite=Lax/Strict on the session cookie.
 """
 
-from flask import Flask, request, session, redirect
+import hashlib
+from urllib.parse import urlparse
+from flask import Flask, request, session, redirect, jsonify
 
 app = Flask(__name__)
 app.secret_key = "lab19-not-secret"
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-19-csrf").hexdigest()[:16]
 EMAIL = {"value": "alice@corp.example"}
 
 
@@ -47,6 +54,21 @@ def change_email():
     # VULN: state change with no CSRF token.
     EMAIL["value"] = request.form.get("email", "")
     return "email changed to " + EMAIL["value"]
+
+
+@app.route("/flag", methods=["POST"])
+def flag():
+    if "user" not in session:
+        return jsonify(solved=False, reason="login first via /login"), 401
+    origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
+    own = urlparse(request.host_url).netloc
+    forged = bool(urlparse(origin).netloc) and urlparse(origin).netloc != own
+    if not forged:
+        return jsonify(solved=False, reason="simulate a cross-site Origin/Referer header"), 403
+    # Same no-token state change as /change-email -- proves the forged
+    # cross-site request succeeds purely on the ambient session cookie.
+    EMAIL["value"] = request.form.get("email", "pwned@evil.example")
+    return jsonify(solved=True, flag=FLAG, email=EMAIL["value"])
 
 
 if __name__ == "__main__":
