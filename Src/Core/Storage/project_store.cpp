@@ -220,6 +220,7 @@ bool ProjectStore::open(const QString &projectDir) {
     emit repeaterStateChanged(m_meta.repeaterState);
     emit interceptRulesChanged(m_meta.interceptRules);
     emit sessionMacrosChanged(m_meta.sessionMacros);
+    emit sessionRulesJsonChanged(m_meta.sessionRulesJson);
     emit advancedScopeChanged(m_meta.advancedScope);
     return true;
 }
@@ -318,6 +319,7 @@ bool ProjectStore::ensureMetadata() {
         m_meta.interceptRules = o.value("interceptRules").toArray();
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
         m_meta.advancedScope = o.value("advancedScope").toArray();
+        m_meta.sessionRulesJson = o.value("sessionRules").toArray();
         m_meta.suppressedKinds.clear();
         for (const QJsonValue &v : o.value("suppressedKinds").toArray())
             m_meta.suppressedKinds.append(v.toString());
@@ -369,6 +371,7 @@ bool ProjectStore::saveMetadata() {
     o["interceptRules"] = m_meta.interceptRules;
     o["sessionMacros"] = m_meta.sessionMacros;
     o["advancedScope"] = m_meta.advancedScope;
+    o["sessionRules"]  = m_meta.sessionRulesJson;
     o["suppressedKinds"]   = QJsonArray::fromStringList(m_meta.suppressedKinds);
     o["falsePositiveKeys"] = QJsonArray::fromStringList(m_meta.falsePositiveKeys);
     o["severityOverrides"] = m_meta.severityOverrides;
@@ -399,6 +402,11 @@ void ProjectStore::setAdvancedScope(const QJsonArray &rules) {
     m_meta.advancedScope = rules;
     saveMetadata();
     emit advancedScopeChanged(m_meta.advancedScope);
+}
+
+void ProjectStore::setSessionRulesJson(const QJsonArray &rules) {
+    m_meta.sessionRulesJson = rules;
+    saveMetadata();   // persist only; the API handler already updated the live engine
 }
 
 void ProjectStore::setKindSuppressed(const QString &kind, bool suppressed) {

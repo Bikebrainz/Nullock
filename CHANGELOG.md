@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Session-handling rules survive a restart.** Your session rules (grab a value
+  from a response, inject it as `{{var}}` into later requests &mdash; CSRF-token
+  refresh, JWT re-injection) were rebuilt from scratch every session. They now
+  save into the project file and restore when the project reopens, per project so
+  one engagement's rules never bleed into another's. The rule &harr; JSON
+  serializer is shared between `/api/session-rules`, the snapshot, and the on-disk
+  form, so the three can't drift. (The captured cookie **jar** still doesn't
+  persist &mdash; it re-populates as you browse; tracked separately.)
 - **Issue triage: override severity + soft-delete a finding.** Building on the
   false-positive marking, you can now also **override a finding's severity** (talk
   a scary "high" down to "low" when you've judged it, via `/api/findings/set-severity`)

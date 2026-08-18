@@ -1079,6 +1079,14 @@ int main(int argc, char *argv[]) {
     // macros weren't streamed in. Restore them now that everything is wired.
     sessionRules.setMacros(
         Nullock::Core::sessionMacrosFromJson(projectStore.sessionMacros()));
+    // Same for the session-handling RULES: restore on project (re)open, and the
+    // initial default-project restore below.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::sessionRulesJsonChanged,
+                     &sessionRules, [&sessionRules](const QJsonArray &arr) {
+        sessionRules.setRules(Nullock::Core::sessionRulesFromJson(arr));
+    });
+    sessionRules.setRules(
+        Nullock::Core::sessionRulesFromJson(projectStore.sessionRulesJson()));
 
     // OAST sink. HTTP-only Collaborator equivalent. Default to bind on
     // 18080 -- close to the standard proxy port, easy to remember. The

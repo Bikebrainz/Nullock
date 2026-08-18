@@ -102,6 +102,13 @@ struct SessionMacro {
 QJsonArray sessionMacrosToJson(const QList<SessionMacro> &macros);
 QList<SessionMacro> sessionMacrosFromJson(const QJsonArray &arr);
 
+// Serialize a SessionRule list to/from JSON (the /api/session-rules wire shape:
+// name/enabled/hostGlob/pathGlob/extractFrom/extractKey/variable/injectInto/
+// injectKey/injectTemplate/tools). Shared by the API endpoint, the snapshot, and
+// project.json persistence so the three shapes can never drift.
+QJsonArray sessionRulesToJson(const QList<SessionRule> &rules);
+QList<SessionRule> sessionRulesFromJson(const QJsonArray &arr);
+
 class SessionRules : public QObject {
     Q_OBJECT
 public:

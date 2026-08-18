@@ -72,6 +72,40 @@ QList<SessionMacro> sessionMacrosFromJson(const QJsonArray &arr) {
     return macros;
 }
 
+QJsonArray sessionRulesToJson(const QList<SessionRule> &rules) {
+    QJsonArray arr;
+    for (const SessionRule &r : rules)
+        arr.append(QJsonObject{
+            { "name", r.name }, { "enabled", r.enabled },
+            { "hostGlob", r.hostGlob }, { "pathGlob", r.pathGlob },
+            { "extractFrom", r.extractFrom }, { "extractKey", r.extractKey },
+            { "variable", r.variable },
+            { "injectInto", r.injectInto }, { "injectKey", r.injectKey },
+            { "injectTemplate", r.injectTemplate }, { "tools", r.tools } });
+    return arr;
+}
+
+QList<SessionRule> sessionRulesFromJson(const QJsonArray &arr) {
+    QList<SessionRule> rules;
+    for (const QJsonValue &v : arr) {
+        const QJsonObject o = v.toObject();
+        SessionRule r;
+        r.name           = o.value("name").toString();
+        r.enabled        = o.value("enabled").toBool(true);
+        r.hostGlob       = o.value("hostGlob").toString("*");
+        r.pathGlob       = o.value("pathGlob").toString("*");
+        r.extractFrom    = o.value("extractFrom").toInt(0);
+        r.extractKey     = o.value("extractKey").toString();
+        r.variable       = o.value("variable").toString();
+        r.injectInto     = o.value("injectInto").toInt(0);
+        r.injectKey      = o.value("injectKey").toString();
+        r.injectTemplate = o.value("injectTemplate").toString();
+        r.tools          = o.value("tools").toInt(0);   // 0 = all tools
+        rules.append(r);
+    }
+    return rules;
+}
+
 // globToRx/findHeader/findCookieValue/jsonPathGet/substitute and the new
 // sanitizers are pure and live in session_rules_logic.cpp (Qt6::Core only) so
 // they can be unit-tested. This TU keeps the QObject + the proxy-typed pipeline.

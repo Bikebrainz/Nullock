@@ -39,6 +39,9 @@ struct ProjectMeta {
     // project restores its include/exclude scope rules. Serialized under
     // "advancedScope".
     QJsonArray advancedScope;
+    // Session-handling RULES (extract-a-value / inject-a-{{var}}), opaque JSON
+    // owned by SessionRules (sessionRulesToJson). Serialized under "sessionRules".
+    QJsonArray sessionRulesJson;
     // Scanner triage that must outlive the append-only findings.ndjson: issue
     // KINDS the operator suppressed (never shown again) and the identity KEYS of
     // individual findings marked false-positive. Applied at display time, so
@@ -168,6 +171,13 @@ public:
     void setAdvancedScope(const QJsonArray &rules);
     QJsonArray advancedScope() const { return m_meta.advancedScope; }
 
+    // Session-handling rules, persisted in project.json under "sessionRules".
+    // setSessionRulesJson persists immediately (the live SessionRules is updated
+    // separately by the API handler); open() emits sessionRulesJsonChanged so a
+    // reopen restores them into the live engine.
+    void setSessionRulesJson(const QJsonArray &rules);
+    QJsonArray sessionRulesJson() const { return m_meta.sessionRulesJson; }
+
     // Scanner triage, persisted in project.json. setKindSuppressed adds/removes an
     // issue kind from the never-show set; setFindingFalsePositive adds/removes a
     // finding identity key (FindingTriageLogic::findingKey) from the FP set. Both
@@ -225,6 +235,9 @@ signals:
     // login macros. Wire (via Nullock::Core::sessionMacrosFromJson) to
     // SessionRules::setMacros so a reopened project restores them.
     void sessionMacrosChanged(const QJsonArray &macros);
+    // Emitted at the END of open() with the freshly-loaded project's session
+    // rules. Wire (via Nullock::Core::sessionRulesFromJson) to SessionRules::setRules.
+    void sessionRulesJsonChanged(const QJsonArray &rules);
     // Emitted when the finding-triage sets (suppressed kinds / false-positive
     // keys) change, so the control server can bump its snapshot fingerprint.
     void triageChanged();

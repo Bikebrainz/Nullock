@@ -1643,23 +1643,7 @@ QByteArray ControlServer::buildSnapshot() const {
     // variable bag.
     if (m_wiring.sessionRules) {
         QJsonObject sr;
-        QJsonArray rules;
-        for (const auto &r : m_wiring.sessionRules->rules()) {
-            QJsonObject o;
-            o["name"]           = r.name;
-            o["enabled"]        = r.enabled;
-            o["hostGlob"]       = r.hostGlob;
-            o["pathGlob"]       = r.pathGlob;
-            o["extractFrom"]    = r.extractFrom;
-            o["extractKey"]     = r.extractKey;
-            o["variable"]       = r.variable;
-            o["injectInto"]     = r.injectInto;
-            o["injectKey"]      = r.injectKey;
-            o["injectTemplate"] = r.injectTemplate;
-            o["tools"]          = r.tools;   // 0 = all tools (proxy|repeater|intruder|scanner)
-            rules.append(o);
-        }
-        sr["rules"] = rules;
+        sr["rules"] = Nullock::Core::sessionRulesToJson(m_wiring.sessionRules->rules());
         QJsonObject vars;
         const auto bag = m_wiring.sessionRules->variables();
         for (auto it = bag.cbegin(); it != bag.cend(); ++it)
@@ -4026,24 +4010,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/session-rules/set") {
         if (!m_wiring.sessionRules)
             return okJson({{ "ok", false }, { "error", "session rules not wired" }});
-        QList<Nullock::Core::SessionRule> rules;
-        for (const QJsonValue &v : bodyJson.value("rules").toArray()) {
-            const QJsonObject o = v.toObject();
-            Nullock::Core::SessionRule r;
-            r.name           = o.value("name").toString();
-            r.enabled        = o.value("enabled").toBool(true);
-            r.hostGlob       = o.value("hostGlob").toString("*");
-            r.pathGlob       = o.value("pathGlob").toString("*");
-            r.extractFrom    = o.value("extractFrom").toInt(0);
-            r.extractKey     = o.value("extractKey").toString();
-            r.variable       = o.value("variable").toString();
-            r.injectInto     = o.value("injectInto").toInt(0);
-            r.injectKey      = o.value("injectKey").toString();
-            r.injectTemplate = o.value("injectTemplate").toString();
-            r.tools          = o.value("tools").toInt(0);   // 0 = all tools
-            rules.append(r);
-        }
-        m_wiring.sessionRules->setRules(rules);
+        const QJsonArray rulesJson = bodyJson.value("rules").toArray();
+        m_wiring.sessionRules->setRules(Nullock::Core::sessionRulesFromJson(rulesJson));
+        // Persist so the session-handling rules survive a restart (same
+        // persist-at-the-API-call-site pattern as session macros / intercept
+        // rules); the project's open() re-pushes them via sessionRulesJsonChanged.
+        if (m_wiring.projectStore)
+            m_wiring.projectStore->setSessionRulesJson(rulesJson);
         return okJson();
     }
     if (path == "/api/session-rules/clear-vars") {
