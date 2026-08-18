@@ -134,8 +134,9 @@ Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog
                   bundled" button in Settings copies the extensions shipped with the repo into
                   the user's extensions dir in one click
 Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode, rot13, unicode escape,
-                  and protocol decoders (GraphQL pretty-print, gRPC framing, CBOR, SAML) all reachable
-                  from the Decoder tab's own op-button row, not just the Proxy/Repeater codec bar;
+                  gzip (client-side Compression Streams API, base64 in/out), and protocol decoders
+                  (GraphQL pretty-print, gRPC framing, CBOR, SAML) all reachable from the Decoder tab's
+                  own op-button row, not just the Proxy/Repeater codec bar;
                   "Send to Decoder" pivots from Proxy history/Site map (request/response), Repeater's
                   request/response panes, and the Intercept queue seed the Decoder tab's input directly
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;

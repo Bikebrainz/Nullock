@@ -4592,6 +4592,62 @@ function TestsTab() {
   );
 }
 
+// #357: Decoder gzip encode/decode. Pure client-side via the browser's
+// Compression Streams API -- no backend call, since transcode.cpp has no
+// gzip operation (only content_decode.hpp's proxy-only auto-unpack does,
+// see #345). Binary in/out is represented as base64 text, matching the
+// existing b64-decode convention of falling back to a hex dump when the
+// decoded bytes aren't valid UTF-8.
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+function base64ToBytes(b64) {
+  const bin = atob(b64.replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function gzipEncodeText(text) {
+  if (typeof CompressionStream === "undefined") {
+    throw new Error("gzip compression needs a browser with the Compression Streams API (Chrome 80+, Firefox 113+, Safari 16.4+)");
+  }
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  // Swallow write/close rejections here -- the same underlying error
+  // surfaces (and is handled) via the arrayBuffer() read below; leaving
+  // these unhandled would otherwise log/throw an unhandled-rejection.
+  writer.write(new TextEncoder().encode(text)).catch(() => {});
+  writer.close().catch(() => {});
+  const buf = await new Response(cs.readable).arrayBuffer();
+  return bytesToBase64(new Uint8Array(buf));
+}
+async function gzipDecodeText(b64) {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("gzip decompression needs a browser with the Compression Streams API (Chrome 80+, Firefox 113+, Safari 16.4+)");
+  }
+  let bytes;
+  try { bytes = base64ToBytes(b64.trim()); }
+  catch (e) { throw new Error("input isn't valid base64 gzip data"); }
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  writer.write(bytes).catch(() => {});
+  writer.close().catch(() => {});
+  const buf = await new Response(ds.readable).arrayBuffer();
+  const outBytes = new Uint8Array(buf);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(outBytes);
+  } catch (e) {
+    let bin = "";
+    for (let i = 0; i < outBytes.length; i++) bin += String.fromCharCode(outBytes[i]);
+    return toHexDump(bin);
+  }
+}
+
 function DecoderTab({ decoder }) {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
@@ -4626,6 +4682,7 @@ function DecoderTab({ decoder }) {
     "binary-encode", "binary-decode",
     "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512", "sha3-256",
     "graphql-parse", "grpc-frame", "cbor-decode", "saml-decode",
+    "gzip-encode", "gzip-decode",
   ];
 
   // #326: the four protocol decoders (graphql-parse/grpc-frame/cbor-decode/
@@ -4634,11 +4691,20 @@ function DecoderTab({ decoder }) {
   // op names to runCodec directly instead of the backend round-trip every
   // other op uses.
   const CLIENT_ONLY_OPS = { "graphql-parse": 1, "grpc-frame": 1, "cbor-decode": 1, "saml-decode": 1 };
+  // #357: gzip encode/decode, likewise never hits /api/transcode (no
+  // backend op exists for it), but the Compression Streams API is async
+  // unlike runCodec, so it gets its own dispatch table.
+  const ASYNC_CLIENT_OPS = { "gzip-encode": gzipEncodeText, "gzip-decode": gzipDecodeText };
 
   const run = async (operation) => {
     setOp(operation); setErr(""); setChain([]);
     if (CLIENT_ONLY_OPS[operation]) {
       try { setOutput(runCodec(operation, input)); }
+      catch (e) { setErr(String(e && e.message ? e.message : e)); }
+      return;
+    }
+    if (ASYNC_CLIENT_OPS[operation]) {
+      try { setOutput(await ASYNC_CLIENT_OPS[operation](input)); }
       catch (e) { setErr(String(e && e.message ? e.message : e)); }
       return;
     }

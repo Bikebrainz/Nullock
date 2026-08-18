@@ -4589,12 +4589,18 @@
     {
       "area": "repeater",
       "feature": "Decoder: Gzip encode / decode",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Wiring job, not a build-out \u2014 the gzip/deflate implementation is already in the tree (linked against Qt6's bundled z_-prefixed zlib). Note it does NOT cover brotli (content_decode.hpp:12-14 'br (brotli) / zstd -- not yet supported'), which is now the common Accept-Encoding on the wire.",
-      "why": "Confirmed from both directions: not in the registry, and decodeContentEncoding's only include site is the proxy.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:228-238 operations() has no gzip; transcode.cpp includes only QByteArray/QCryptographicHash/QJson*/QRegularExpression. The working decoder is Src/BackEnd/Proxy/content_decode.hpp, included only by Src/BackEnd/Proxy/proxy_server.cpp:4 and called once at :877."
+      "gap": "Closed client-side, not via the backend gzip zlib path this item originally scoped -- the browser's own Compression Streams API (CompressionStream/DecompressionStream, 'gzip' format) does the encode/decode entirely in ui-v2, no /api/transcode round-trip, matching the Decoder tab's existing client-only-op pattern (graphql-parse/grpc-frame/cbor-decode/saml-decode). Binary output is shown as base64 text on encode; decode accepts base64 gzip input and falls back to a hex dump if the decompressed bytes aren't valid UTF-8, same convention as the existing base64-decode op. Requires a browser with the Compression Streams API (Chrome 80+, Firefox 113+, Safari 16.4+) -- older browsers get a caught, readable error instead of a silent failure. Does not cover brotli/zstd (no browser stream codec for either), an honest remainder shared with the original gap text.",
+      "why": "Confirmed no backend gzip transcode op exists (transcode.cpp's operations() still has none) and did not add one -- instead wired the operation entirely client-side, since gzip/gunzip needs no server round-trip and the Web platform already ships a stream-based codec for it. Verified via a real gzip round-trip functional test (ascii, unicode, empty input, magic-byte check on the compressed output) and negative cases (invalid base64, valid-base64-but-not-gzip, non-UTF8 decompressed payload) run against the actual babel-transformed module in a vm sandbox with Node's native CompressionStream/DecompressionStream.",
+      "evidence": "ui-v2/app.jsx: gzipEncodeText/gzipDecodeText (CompressionStream/DecompressionStream 'gzip', bytesToBase64/base64ToBytes helpers) added just above DecoderTab; DecoderTab's OPS array gains \"gzip-encode\"/\"gzip-decode\"; a new ASYNC_CLIENT_OPS dispatch table in run() (parallel to the existing sync CLIENT_ONLY_OPS/runCodec table, since Compression Streams are async) routes both ops away from NL.actions.transcode.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "PENDING",
+        "note": "Wave 2: Decoder gzip encode/decode wired purely client-side via the browser Compression Streams API (no backend transcode op needed); absent -> present. Brotli/zstd remain unsupported (no browser stream codec), an honest remainder shared with the original gap."
+      }
     },
     {
       "area": "repeater",
