@@ -56,7 +56,14 @@ def build(doc):
     done = counts["present"] + counts["exceeds"]
     total = len(items)
     pct = round(done * 100.0 / total)
-    reconciled = [i for i in items if "reconciled" in i]
+    # Newest first: a just-closed gap must land at the TOP of "Recently closed",
+    # not wherever it happens to sit in parity.json's array order. Dates are ISO
+    # (YYYY-MM-DD) so a string sort is chronological; a missing/blank date sorts
+    # last. Python's sort is stable, so same-day closes keep their array order.
+    reconciled = sorted(
+        (i for i in items if "reconciled" in i),
+        key=lambda i: (i.get("reconciled") or {}).get("date", ""),
+        reverse=True)
 
     # Areas ordered worst-first: this is a roadmap, so the top of the list is
     # where the work is, not an alphabetical index.
@@ -90,21 +97,30 @@ def build(doc):
 
     recent = ""
     if reconciled:
+        RECENT_CAP = 24  # a genuine "recent" window, not the full 180+ backlog
+        shown = reconciled[:RECENT_CAP]
         rows = "".join(
-            '<li><span class="mono rm-commit">%s</span> <strong>%s</strong>'
+            '<li><span class="mono rm-commit">%s</span> '
+            '<span class="mono rm-date">%s</span> <strong>%s</strong>'
             '%s<br><span class="muted">%s</span></li>' % (
                 E(i["reconciled"].get("commit", "")),
+                E(i["reconciled"].get("date", "")),
                 E(i["feature"][:90]),
                 (' <span class="rm-move mono">%s &rarr; %s</span>'
                  % (E(i.get("audited_state", "")), E(i["state"])))
                 if i.get("audited_state") else "",
                 E(i["reconciled"].get("note", "")))
-            for i in reconciled)
+            for i in shown)
+        # Honest cap: say how many are shown of the total, and point at the full
+        # list rather than silently truncating.
+        cap_note = ("" if len(reconciled) <= RECENT_CAP else
+                    " Showing the %d most recent of %d reconciled since the audit; "
+                    "the full set is in the capability table below." % (RECENT_CAP, len(reconciled)))
         recent = ("""<section class="panel">
     <h2>Recently closed</h2>
-    <p class="muted" style="font-size:13.5px;">Gaps reconciled since the audit, each with the commit that made it true.</p>
+    <p class="muted" style="font-size:13.5px;">Gaps reconciled since the audit, newest first, each with the date and the commit that made it true.%s</p>
     <ul class="rm-recent">%s</ul>
-  </section>""" % rows)
+  </section>""" % (cap_note, rows))
 
     payload = json.dumps(
         [{"a": i["area"], "f": i["feature"], "s": i["state"],
