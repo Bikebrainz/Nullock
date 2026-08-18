@@ -4598,7 +4598,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-18",
-        "commit": "PENDING",
+        "commit": "8283e6d",
         "note": "Wave 2: Decoder gzip encode/decode wired purely client-side via the browser Compression Streams API (no backend transcode op needed); absent -> present. Brotli/zstd remain unsupported (no browser stream codec), an honest remainder shared with the original gap."
       }
     },
