@@ -3536,6 +3536,34 @@ function SequencerTab({ sequencer, dispatch }) {
     }
   }
 
+  async function copyTokens() {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        setErr("clipboard access unavailable in this context");
+        return;
+      }
+      await navigator.clipboard.writeText(tokens.join("\n"));
+    } catch (e) {
+      setErr("clipboard write failed: " + String(e && e.message ? e.message : e));
+    }
+  }
+
+  function saveTokens() {
+    try {
+      const blob = new Blob([tokens.join("\n") + (tokens.length ? "\n" : "")], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nullock-sequencer-tokens.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr("save failed: " + String(e && e.message ? e.message : e));
+    }
+  }
+
   async function analyze() {
     if (tokens.length < 2) { setErr("need at least 2 tokens"); return; }
     setBusy(true); setErr(""); setResult(null);
@@ -3676,6 +3704,8 @@ function SequencerTab({ sequencer, dispatch }) {
           <button className="btn" onClick={() => fileRef.current && fileRef.current.click()}>LOAD FILE</button>
           <input ref={fileRef} type="file" accept=".txt,.csv,.log" style={{ display: "none" }} onChange={loadFile} />
           <button className="btn" onClick={pasteFromClipboard}>PASTE FROM CLIPBOARD</button>
+          <button className="btn" disabled={!tokens.length} onClick={copyTokens}>COPY TOKENS</button>
+          <button className="btn" disabled={!tokens.length} onClick={saveTokens}>SAVE TOKENS</button>
           <button className="btn" onClick={() => {
             setText(""); setResult(null); setErr("");
             seenTokenCountRef.current = sequencer.tokens.length; // don't resurrect cleared tokens on remount

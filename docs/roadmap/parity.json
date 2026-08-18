@@ -2257,12 +2257,13 @@
     {
       "area": "sequencer",
       "feature": "Copy tokens / Save tokens to file from a capture",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "Absent. There is no capture store to copy or save from.",
-      "why": "Confirmed \u2014 the endpoint retains nothing.",
-      "evidence": "control_server.cpp:4656-4660: `QStringList tokens;` is a stack local, passed to `seq.analyze(tokens)` and destroyed on return. `result[\"n\"]` (sequencer_logic.cpp:435) is the only trace of the corpus in the response; the tokens themselves are never echoed or stored."
+      "gap": "Covers the Manual Load corpus only: the Sequencer tab's client-side token list (paste/load-file/clipboard-paste/Send-to-Sequencer) can now be copied to the clipboard or saved to a .txt file. Burp's Live Capture -- a growing token list harvested by repeatedly issuing a request -- has no Nullock equivalent at all (tracked separately, blocked on a request-issuing engine Nullock doesn't have), so there is no capture-store analogue for THAT half of the feature. Still partial for that reason, not present.",
+      "why": "The client already held the full manually-loaded/appended token corpus in SequencerTab's local `text`/`tokens` React state (ui-v2/app.jsx) -- the earlier 'no capture store' gap only ever applied to the backend's stateless /api/sequencer/analyze endpoint, not to the corpus itself. Added COPY TOKENS (navigator.clipboard.writeText(tokens.join(\"\\n\"))) and SAVE TOKENS (client-side Blob(text/plain) + object-URL <a download>, matching the CodecOverlay download pattern in ui-v2/proxy.jsx) buttons next to the existing LOAD FILE / PASTE FROM CLIPBOARD / CLEAR row, both disabled when the parsed token list is empty. No backend change -- purely client-side, reusing state that already existed.",
+      "evidence": "ui-v2/app.jsx SequencerTab: copyTokens()/saveTokens() functions + COPY TOKENS/SAVE TOKENS buttons in the manual-load control row; control_server.cpp:4656-4660 confirms the backend analyze endpoint itself still retains nothing (the honest remainder is Live Capture, not this corpus).",
+      "reconciled": {"date": "2026-08-18", "commit": "PENDING", "note": "SequencerTab (ui-v2/app.jsx) gains COPY TOKENS (clipboard) and SAVE TOKENS (Blob download, nullock-sequencer-tokens.txt) buttons for the manual-load token corpus. Closes the Manual Load half of #175 (absent -> partial); Live Capture has no capture store at all in Nullock and remains the honest, separately-tracked remainder."}
     },
     {
       "area": "sequencer",
