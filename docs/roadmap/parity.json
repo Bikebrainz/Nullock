@@ -3725,12 +3725,18 @@
     {
       "area": "proxy",
       "feature": "'Automatically update Content-Length header when the request / response is edited' (on by default in Burp)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
       "gap": "Editing an intercepted body leaves a stale Content-Length, so the forwarded request is truncated or the origin hangs -- with no indication why. Burp fixes it silently and lets you turn that off; Nullock hardcodes 'off' with no toggle.",
       "why": "Confirmed: the whole edit resolver is a compare-and-reencode with no header handling, and fixContentLength is called only from applyRequestRules/applyResponseRules, never from the intercept path. Note this is a DELIBERATE, documented choice (the header comment argues an operator must be able to emit a desynced request), not an oversight. I re-rated blocker -> high: the editor is raw text, so the o",
-      "evidence": "Src/BackEnd/Proxy/intercept_logic.cpp:5-18 `QByteArray resolveForwardBytes(const QByteArray &originalBytes, const QString &currentText) {\\n    if (currentText == QString::fromUtf8(originalBytes))\\n        return originalBytes;\\n    ...\\n    return currentText.toUtf8();\\n}` ; rationale at intercept_logic.hpp:33-36 `an EDITED forward whose Content-Length no longer matches the new body\\n// is left as"
+      "evidence": "Src/BackEnd/Proxy/intercept_logic.cpp:5-18 `QByteArray resolveForwardBytes(const QByteArray &originalBytes, const QString &currentText) {\\n    if (currentText == QString::fromUtf8(originalBytes))\\n        return originalBytes;\\n    ...\\n    return currentText.toUtf8();\\n}` ; rationale at intercept_logic.hpp:33-36 `an EDITED forward whose Content-Length no longer matches the new body\\n// is left as",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "4369973",
+        "note": "REQUEST side done (the dominant case the gap describes); response side is the documented remainder. When the operator EDITS an intercepted REQUEST, its Content-Length is now brought in line with the new body before forwarding, via a new pure InterceptLogic::recomputeContentLength + a 'Update Content-Length' toggle (Burp default ON, persisted in project.json under interceptAutoContentLength so a posture the operator turned OFF isn't silently re-armed on reopen). CRUCIAL security nuance (caught by a 4-agent adversarial design review): this is NOT ChainRunner::normalizeContentLength -- that helper HARDENS against smuggling (drops CL under Transfer-Encoding: chunked, collapses duplicate CL, rewrites terminators to CRLF), which would silently NEUTRALISE the exact CL.TE / dup-CL / bare-LF probes an operator intercepts a request to send. Instead recomputeContentLength forwards chunked / duplicate-CL requests VERBATIM (deliberate desync preserved even with auto-CL ON) and otherwise replaces ONLY the single CL value, preserving the header name and every line terminator. resolveForward now returns {bytes, edited} as the single source of truth for the gate (shouldRecomputeContentLength), and the gate is a pure mutation-tested predicate. Verified: intercept_logic_test 80/80 + 2 mutations (teChunked-verbatim guard; request-only guard); e2e through the live proxy + control-API text round-trip (edited POST -> CL recomputed to the new body length; unedited -> body+CL forwarded untouched; auto-CL OFF -> operator's stale CL forwarded verbatim; toggle persists immediately + is restored on restart). REMAINDER: the RESPONSE side is intentionally excluded -- a HEAD/204/304 response legitimately carries a Content-Length with an empty body, and the intercept layer processing response bytes cannot see the paired request method to tell a HEAD-200 apart, so recomputing would rewrite that CL to 0 and truncate the client; deferred rather than shipped unsafe."
+      }
     },
     {
       "area": "proxy",
