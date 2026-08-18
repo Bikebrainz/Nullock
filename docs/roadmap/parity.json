@@ -4879,12 +4879,18 @@
     {
       "area": "target",
       "feature": "Content discovery: thread count / concurrency and request throttling controls",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "A 2000-word run is 2000 serial round-trips blocking the control server, and there is no way to slow down for a rate-limited or WAF'd target. Burp exposes both dials.",
       "why": "Downgraded partial->absent. Neither of the two controls this item names exists in any form. The first pass credited it as partial on the strength of maxRequests, but a total-request CAP is a different control -- it bounds how much you send, not how fast or how parallel. There is no concurrency parameter and no delay parameter anywhere in the Request struct or the loop.",
-      "evidence": "Strictly serial, one blocking round-trip per word: content_discovery.cpp:99-104 `HttpClient client; ... auto get = [&](const QString &fullPath) { ++result.requestsSent; return client.send(req.host, port, req.tls, buildGet(req, fullPath)); };` driving cpp:154-160 `for (const QString &w : words) { if (result.requestsSent >= maxReq + 2) break; ... const auto r = get(full);`. The complete Request surf"
+      "evidence": "Strictly serial, one blocking round-trip per word: content_discovery.cpp:99-104 `HttpClient client; ... auto get = [&](const QString &fullPath) { ++result.requestsSent; return client.send(req.host, port, req.tls, buildGet(req, fullPath)); };` driving cpp:154-160 `for (const QString &w : words) { if (result.requestsSent >= maxReq + 2) break; ... const auto r = get(full);`. The complete Request surf",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "631088c",
+        "note": "Built (backend + API): ContentDiscovery::Request gains concurrency (1-64, default 10) + throttleMs (0-60000), and discover() fans its probe loop across a bounded QThreadPool + QSemaphore (one HttpClient per task -- HttpClient isn't thread-safe), guarding hits with a mutex and counters with atomics. Calibration stays serial and the per-path detection (classify against the read-only soft-404 CalibProfile) is untouched + order-independent, so results are IDENTICAL to the old serial run -- verified e2e (same hit set serial vs concurrent, ~4x faster wall-clock at concurrency 10). Set via /api/content/discover. PARTIAL: the concurrency/throttle knobs in the content-discovery UI (ui-v2) are the remaining follow-on."
+      }
     },
     {
       "area": "target",
