@@ -11,6 +11,7 @@
 // findings back with no re-scan. The identity key here MUST match project_store's
 // dedup key byte-for-byte or a mark would never line up with its finding.
 
+#include <QJsonArray>
 #include <QString>
 #include <QStringList>
 
@@ -25,7 +26,15 @@ QString findingKey(const QString &kind, const QString &host,
 // stable kind slug (e.g. "missing-csp").
 bool kindSuppressed(const QString &kind, const QStringList &suppressedKinds);
 
-// Is this finding's identity key in the false-positive set?
+// Is this finding's identity key in the false-positive set? (Also reused for the
+// soft-DELETED set -- both are plain "is this key in this list" membership.)
 bool keyIsFalsePositive(const QString &key, const QStringList &falsePositiveKeys);
+
+// The severity to SHOW for this finding: the operator's per-finding override if
+// one exists in `overrides` (a JSON array of { "key": <identityKey>,
+// "severity": <"info"|"low"|"medium"|"high"|"critical"> } objects), else the
+// scanner's original `original`. A blank/absent override never masks the original.
+QString effectiveSeverity(const QString &key, const QString &original,
+                          const QJsonArray &overrides);
 
 } // namespace Nullock::Core::FindingTriageLogic

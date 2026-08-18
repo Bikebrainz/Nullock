@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Issue triage: override severity + soft-delete a finding.** Building on the
+  false-positive marking, you can now also **override a finding's severity** (talk
+  a scary "high" down to "low" when you've judged it, via `/api/findings/set-severity`)
+  and **soft-delete** a finding to get it out of the list (`/api/findings/delete`).
+  Both persist with the project and are reversible with no re-scan &mdash; the marks
+  live in the project file keyed by finding identity and are applied at display time,
+  so clearing an override or un-deleting brings the finding back exactly as the
+  scanner found it. The snapshot carries the effective (possibly-overridden) severity
+  plus a `deleted` flag per finding. Pure logic, unit-tested + mutation-proven.
+  Completes the issue-lifecycle triage (false-positive / severity / delete).
 - **Advanced scope control (protocol / host / port / file rules).** Scope was a
   host-glob include/exclude list only. You can now add precise include/exclude
   **rules** &mdash; per rule: protocol (any/http/https), a host regex, a port

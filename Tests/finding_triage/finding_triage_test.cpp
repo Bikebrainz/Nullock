@@ -8,6 +8,7 @@
 #include "finding_triage_logic.hpp"
 
 #include <QCoreApplication>
+#include <QJsonObject>
 
 #include <cstdio>
 
@@ -65,6 +66,21 @@ int main(int argc, char **argv) {
         chk("fp: a marked key matches", keyIsFalsePositive(k1, fp));
         chk("fp: an unmarked key does not", !keyIsFalsePositive(k2, fp));
         chk("fp: empty set marks nothing", !keyIsFalsePositive(k1, {}));
+    }
+
+    // ===== effectiveSeverity (per-finding override) =====================
+    {
+        const QString k1 = findingKey("missing-csp", "a.test", "https://a.test/", "No CSP");
+        const QString k2 = findingKey("leaked-key",  "a.test", "https://a.test/x", "Key");
+        QJsonArray ov;
+        ov.append(QJsonObject{ { "key", k1 }, { "severity", "low" } });
+        chk("severity: override replaces the original", effectiveSeverity(k1, "high", ov) == "low");
+        chk("severity: no override -> original kept", effectiveSeverity(k2, "high", ov) == "high");
+        chk("severity: empty overrides -> original", effectiveSeverity(k1, "medium", {}) == "medium");
+        QJsonArray blank;
+        blank.append(QJsonObject{ { "key", k1 }, { "severity", "" } });
+        chk("severity: a blank override never masks the original",
+            effectiveSeverity(k1, "high", blank) == "high");
     }
 
     std::fprintf(stderr, "finding_triage_test: %d passed, %d failed\n", pass, fail);

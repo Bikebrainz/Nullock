@@ -324,6 +324,10 @@ bool ProjectStore::ensureMetadata() {
         m_meta.falsePositiveKeys.clear();
         for (const QJsonValue &v : o.value("falsePositiveKeys").toArray())
             m_meta.falsePositiveKeys.append(v.toString());
+        m_meta.severityOverrides = o.value("severityOverrides").toArray();
+        m_meta.deletedKeys.clear();
+        for (const QJsonValue &v : o.value("deletedKeys").toArray())
+            m_meta.deletedKeys.append(v.toString());
         return true;
     }
 
@@ -367,6 +371,8 @@ bool ProjectStore::saveMetadata() {
     o["advancedScope"] = m_meta.advancedScope;
     o["suppressedKinds"]   = QJsonArray::fromStringList(m_meta.suppressedKinds);
     o["falsePositiveKeys"] = QJsonArray::fromStringList(m_meta.falsePositiveKeys);
+    o["severityOverrides"] = m_meta.severityOverrides;
+    o["deletedKeys"]       = QJsonArray::fromStringList(m_meta.deletedKeys);
 
     QFile f(m_dir + "/project.json");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -410,6 +416,36 @@ void ProjectStore::setFindingFalsePositive(const QString &key, bool falsePositiv
     const bool present = m_meta.falsePositiveKeys.contains(key);
     if (falsePositive && !present)       m_meta.falsePositiveKeys.append(key);
     else if (!falsePositive && present)  m_meta.falsePositiveKeys.removeAll(key);
+    else return;
+    saveMetadata();
+    emit triageChanged();
+}
+
+void ProjectStore::setFindingSeverity(const QString &key, const QString &severity) {
+    if (key.isEmpty()) return;
+    // Rebuild the array without this key, then re-add if a non-empty severity was
+    // given (an empty severity clears the override).
+    QJsonArray next;
+    bool changed = false;
+    for (const QJsonValue &v : m_meta.severityOverrides) {
+        if (v.toObject().value("key").toString() == key) { changed = true; continue; }
+        next.append(v);
+    }
+    if (!severity.isEmpty()) {
+        next.append(QJsonObject{ { "key", key }, { "severity", severity } });
+        changed = true;
+    }
+    if (!changed) return;
+    m_meta.severityOverrides = next;
+    saveMetadata();
+    emit triageChanged();
+}
+
+void ProjectStore::setFindingDeleted(const QString &key, bool deleted) {
+    if (key.isEmpty()) return;
+    const bool present = m_meta.deletedKeys.contains(key);
+    if (deleted && !present)       m_meta.deletedKeys.append(key);
+    else if (!deleted && present)  m_meta.deletedKeys.removeAll(key);
     else return;
     saveMetadata();
     emit triageChanged();

@@ -1322,19 +1322,26 @@ QByteArray ControlServer::buildSnapshot() const {
         m_wiring.projectStore ? m_wiring.projectStore->suppressedKinds() : QStringList();
     const QStringList falsePositiveKeys =
         m_wiring.projectStore ? m_wiring.projectStore->falsePositiveKeys() : QStringList();
+    const QStringList deletedKeys =
+        m_wiring.projectStore ? m_wiring.projectStore->deletedKeys() : QStringList();
+    const QJsonArray severityOverrides =
+        m_wiring.projectStore ? m_wiring.projectStore->severityOverrides() : QJsonArray();
     QJsonArray findingsArr;
     if (m_wiring.scanner) {
+        namespace FT = Nullock::Core::FindingTriageLogic;
         for (const auto &f : m_wiring.scanner->findings(200)) {
+            const QString fkey = FT::findingKey(f.kind, f.host, f.url, f.summary);
             QJsonObject fo;
-            fo["falsePositive"] = Nullock::Core::FindingTriageLogic::keyIsFalsePositive(
-                Nullock::Core::FindingTriageLogic::findingKey(f.kind, f.host, f.url, f.summary),
-                falsePositiveKeys);
-            fo["suppressed"] = Nullock::Core::FindingTriageLogic::kindSuppressed(
-                f.kind, suppressedKinds);
+            fo["falsePositive"] = FT::keyIsFalsePositive(fkey, falsePositiveKeys);
+            fo["suppressed"]    = FT::kindSuppressed(f.kind, suppressedKinds);
+            // Soft-delete: kept in the list with a flag (like falsePositive) so the
+            // UI can hide + restore, rather than destroying it.
+            fo["deleted"]       = FT::keyIsFalsePositive(fkey, deletedKeys);
             fo["id"]       = f.id;
             fo["rowId"]    = f.rowId;
             fo["ts"]       = f.ts.toString(Qt::ISODate);
-            fo["severity"] = f.severity;
+            // Show the operator's severity override if one exists, else the scanner's.
+            fo["severity"] = FT::effectiveSeverity(fkey, f.severity, severityOverrides);
             fo["kind"]     = f.kind;
             fo["summary"]  = f.summary;
             fo["evidence"] = f.evidence;
@@ -6157,6 +6164,30 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return okJson({{ "ok", false }, { "error", "empty kind" }});
         m_wiring.projectStore->setKindSuppressed(kind, suppressed);
         return okJson({{ "ok", true }, { "kind", kind }, { "suppressed", suppressed }});
+    }
+    // POST /api/findings/set-severity { id, severity }  (empty severity clears the override)
+    // POST /api/findings/delete       { id, deleted: bool }
+    if (path == "/api/findings/set-severity" || path == "/api/findings/delete") {
+        if (!m_wiring.scanner || !m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "scanner or project store not wired" }});
+        const int id = bodyJson.value("id").toInt(-1);
+        QString key;
+        for (const auto &f : m_wiring.scanner->findings(1000000)) {
+            if (f.id == id) {
+                key = Nullock::Core::FindingTriageLogic::findingKey(f.kind, f.host, f.url, f.summary);
+                break;
+            }
+        }
+        if (key.isEmpty())
+            return okJson({{ "ok", false }, { "error", "no finding with that id" }});
+        if (path == "/api/findings/set-severity") {
+            const QString sev = bodyJson.value("severity").toString();
+            m_wiring.projectStore->setFindingSeverity(key, sev);
+            return okJson({{ "ok", true }, { "severity", sev }});
+        }
+        const bool del = bodyJson.value("deleted").toBool(true);
+        m_wiring.projectStore->setFindingDeleted(key, del);
+        return okJson({{ "ok", true }, { "deleted", del }});
     }
 
     // ---- tool-integration exports ------------------------------------

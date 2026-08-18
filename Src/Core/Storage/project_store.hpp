@@ -46,6 +46,11 @@ struct ProjectMeta {
     // / "falsePositiveKeys".
     QStringList suppressedKinds;
     QStringList falsePositiveKeys;
+    // Per-finding severity overrides ({ "key":<identityKey>, "severity":<level> }
+    // objects) and the identity keys of soft-DELETED findings (hidden from the
+    // list, restorable). Both applied at display time, like the sets above.
+    QJsonArray  severityOverrides;
+    QStringList deletedKeys;
 };
 
 class ProjectStore : public QObject {
@@ -169,8 +174,14 @@ public:
     // persist immediately and are idempotent. Accessors return snapshot copies.
     void setKindSuppressed(const QString &kind, bool suppressed);
     void setFindingFalsePositive(const QString &key, bool falsePositive);
-    QStringList suppressedKinds() const   { return m_meta.suppressedKinds; }
-    QStringList falsePositiveKeys() const { return m_meta.falsePositiveKeys; }
+    // Per-finding severity override (empty severity clears it) + soft-delete.
+    // Both persist immediately + emit triageChanged.
+    void setFindingSeverity(const QString &key, const QString &severity);
+    void setFindingDeleted(const QString &key, bool deleted);
+    QStringList suppressedKinds() const    { return m_meta.suppressedKinds; }
+    QStringList falsePositiveKeys() const  { return m_meta.falsePositiveKeys; }
+    QJsonArray  severityOverrides() const  { return m_meta.severityOverrides; }
+    QStringList deletedKeys() const        { return m_meta.deletedKeys; }
 
 public slots:
     // Append one round-trip to history.ndjson. Wire this to
