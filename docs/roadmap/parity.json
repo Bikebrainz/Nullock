@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-08-17",
+  "reconciled_through": "2026-08-18",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -3120,12 +3120,18 @@
     {
       "area": "platform",
       "feature": "Issue lifecycle: mark false positive, set issue status/severity override, delete issue",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "A tester cannot dismiss a false positive; it stays in every report forever. No triage state machine at all \u2014 and with no findings persistence, no place to store a verdict either.",
       "why": "Confirmed after hunting the synonyms this codebase would plausibly use: falsePositive, false_positive, dismiss, suppress, ignoreFinding, muteFinding, issueStatus, setSeverity, removeFinding, deleteFinding. Every 'suppress' hit is detector-internal false-positive logic inside scanners (cache_deception, content_discovery, exposure_scan) \u2014 algorithmic suppression at detection time, not operator triag",
-      "evidence": "`grep -rani \"falsePositive|dismiss|suppress|ignoreFinding|muteFinding|issueStatus|setSeverity|removeFinding|deleteFinding\" Src ui-v2` \u2192 all hits are detector internals, e.g. Src/Core/Networking/cache_deception.cpp:41 `\"hit\" would be route-everything-to-index, not path confusion. Suppress.` and Src/Core/Networking/content_discovery.hpp:90-93. Only wholesale mutation: control_server.cpp `if (path =="
+      "evidence": "`grep -rani \"falsePositive|dismiss|suppress|ignoreFinding|muteFinding|issueStatus|setSeverity|removeFinding|deleteFinding\" Src ui-v2` \u2192 all hits are detector internals, e.g. Src/Core/Networking/cache_deception.cpp:41 `\"hit\" would be route-everything-to-index, not path confusion. Suppress.` and Src/Core/Networking/content_discovery.hpp:90-93. Only wholesale mutation: control_server.cpp `if (path ==",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "536f2b7",
+        "note": "Backend + API now covers the whole triage lifecycle. False-positive marking landed earlier (64441d6); this adds per-finding SEVERITY OVERRIDE (/api/findings/set-severity {id,severity}; empty clears it) and SOFT-DELETE (/api/findings/delete {id,deleted}). All three persist in the project file keyed by finding identity (suppressedKinds/falsePositiveKeys/severityOverrides/deletedKeys) and apply at DISPLAY time -- reversible with no re-scan. The snapshot serves each finding's EFFECTIVE severity (FindingTriageLogic::effectiveSeverity, unit-tested + mutation-proven) plus falsePositive/suppressed/deleted flags. Verified e2e (override critical->low persists across restart; soft-delete flag; cleanup restores). PARTIAL: the triage buttons in the Issues UI (ui-v2) are the remaining follow-on."
+      }
     },
     {
       "area": "platform",
