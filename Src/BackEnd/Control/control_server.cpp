@@ -1515,6 +1515,7 @@ QByteArray ControlServer::buildSnapshot() const {
     root["intercepted"]               = intercepted;
     root["interceptEnabled"]          = m_wiring.intercept ? m_wiring.intercept->enabled() : false;
     root["interceptResponsesEnabled"] = m_wiring.intercept ? m_wiring.intercept->responsesEnabled() : false;
+    root["interceptAutoContentLength"]= m_wiring.intercept ? m_wiring.intercept->autoContentLength() : true;
     root["interceptRules"]            = m_wiring.intercept
         ? Nullock::Proxy::InterceptLogic::interceptRulesToJson(m_wiring.intercept->interceptRules())
         : QJsonArray();
@@ -3075,6 +3076,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             m_wiring.intercept->setResponsesEnabled(!m_wiring.intercept->responsesEnabled());
         return okJson({{ "responsesEnabled",
                          m_wiring.intercept && m_wiring.intercept->responsesEnabled() }});
+    }
+    if (path == "/api/intercept/autocl") {
+        // "Update Content-Length on edit" (Burp default ON). A body carrying
+        // "autoContentLength" sets it (and persists into the open project so it
+        // survives a restart -- a security-posture toggle that silently re-armed
+        // to ON on reload would produce invisible false negatives); any request
+        // returns the current value.
+        if (!m_wiring.intercept) return okJson({{ "autoContentLength", true }});
+        if (bodyJson.contains("autoContentLength")) {
+            const bool v = bodyJson.value("autoContentLength").toBool();
+            m_wiring.intercept->setAutoContentLength(v);
+            if (m_wiring.projectStore) m_wiring.projectStore->setInterceptAutoContentLength(v);
+        }
+        return okJson({{ "autoContentLength", m_wiring.intercept->autoContentLength() }});
     }
     if (path == "/api/intercept/forward") {
         if (m_wiring.intercept) {

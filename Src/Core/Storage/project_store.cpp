@@ -219,6 +219,7 @@ bool ProjectStore::open(const QString &projectDir) {
     // shows this project's staged requests and nothing from the previous engagement.
     emit repeaterStateChanged(m_meta.repeaterState);
     emit interceptRulesChanged(m_meta.interceptRules);
+    emit interceptAutoContentLengthChanged(m_meta.interceptAutoContentLength);
     emit sessionMacrosChanged(m_meta.sessionMacros);
     emit sessionRulesJsonChanged(m_meta.sessionRulesJson);
     emit cookieJarChanged(m_meta.cookieJar);
@@ -318,6 +319,10 @@ bool ProjectStore::ensureMetadata() {
         }
         m_meta.repeaterState = o.value("repeater").toObject();
         m_meta.interceptRules = o.value("interceptRules").toArray();
+        // Default ON when the key is absent (older projects predate the toggle);
+        // an explicit false persists and is honored.
+        m_meta.interceptAutoContentLength =
+            o.value("interceptAutoContentLength").toBool(true);
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
         m_meta.advancedScope = o.value("advancedScope").toArray();
         m_meta.sessionRulesJson = o.value("sessionRules").toArray();
@@ -371,6 +376,7 @@ bool ProjectStore::saveMetadata() {
     o["rules"] = rulesArr;
     o["repeater"] = m_meta.repeaterState;
     o["interceptRules"] = m_meta.interceptRules;
+    o["interceptAutoContentLength"] = m_meta.interceptAutoContentLength;
     o["sessionMacros"] = m_meta.sessionMacros;
     o["advancedScope"] = m_meta.advancedScope;
     o["sessionRules"]  = m_meta.sessionRulesJson;
@@ -393,6 +399,12 @@ void ProjectStore::setRepeaterState(const QJsonObject &state) {
 
 void ProjectStore::setInterceptRules(const QJsonArray &rules) {
     m_meta.interceptRules = rules;
+    saveMetadata();
+}
+
+void ProjectStore::setInterceptAutoContentLength(bool on) {
+    if (m_meta.interceptAutoContentLength == on) return;
+    m_meta.interceptAutoContentLength = on;
     saveMetadata();
 }
 

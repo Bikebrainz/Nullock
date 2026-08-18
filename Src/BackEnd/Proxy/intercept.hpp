@@ -77,6 +77,7 @@ class InterceptController : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool   enabled          READ enabled          WRITE setEnabled          NOTIFY enabledChanged)
     Q_PROPERTY(bool   responsesEnabled READ responsesEnabled WRITE setResponsesEnabled NOTIFY responsesEnabledChanged)
+    Q_PROPERTY(bool   autoContentLength READ autoContentLength WRITE setAutoContentLength NOTIFY autoContentLengthChanged)
     Q_PROPERTY(QObject* current   READ current     NOTIFY currentChanged)
     Q_PROPERTY(int    queueDepth  READ queueDepth  NOTIFY currentChanged)
 public:
@@ -90,6 +91,15 @@ public:
     // the operator can hold requests, responses, both, or neither.
     bool responsesEnabled() const { return m_enabledResponses.loadAcquire() != 0; }
     Q_INVOKABLE void setResponsesEnabled(bool e);
+
+    // "Update Content-Length" -- when an operator EDITS an intercepted REQUEST,
+    // recompute its Content-Length to match the new body before forwarding (Burp
+    // default ON). Surgical: chunked / duplicate-CL requests are still forwarded
+    // verbatim so a deliberate desync probe survives (see recomputeContentLength).
+    // Read on the per-connection worker in pendImpl, written on the main thread;
+    // the QAtomicInt matches the file's m_enabled idiom.
+    bool autoContentLength() const { return m_autoContentLength.loadAcquire() != 0; }
+    Q_INVOKABLE void setAutoContentLength(bool e);
 
     QObject *current() const { return m_current; }
     int queueDepth() const;
@@ -120,6 +130,7 @@ public:
 signals:
     void enabledChanged();
     void responsesEnabledChanged();
+    void autoContentLengthChanged();
     void currentChanged();
     void interceptRulesChanged();
 
@@ -146,6 +157,9 @@ private:
     // under-mutex re-check in addPendingOnMain.
     QAtomicInt                    m_enabled {0};
     QAtomicInt                    m_enabledResponses {0};
+    // "Update Content-Length on edit" -- Burp-parity default ON. Main writes
+    // (setAutoContentLength), worker reads once in pendImpl after done.acquire().
+    QAtomicInt                    m_autoContentLength {1};
     PendingRequest               *m_current = nullptr;
     QQueue<PendingRequest *>      m_queue;
     int                           m_nextId  = 1;

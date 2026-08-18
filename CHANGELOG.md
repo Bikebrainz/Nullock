@@ -11,6 +11,24 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Proxy: auto-update Content-Length when you edit an intercepted request.**
+  Editing an intercepted request's body used to leave a stale `Content-Length`,
+  so the forwarded request was truncated or the origin hung with no hint why.
+  Now, when you edit a **request** in the intercept editor, its `Content-Length`
+  is recomputed to match the new body before it goes upstream (Burp's on-by-
+  default behaviour), with an **Update Content-Length** toggle to turn it off;
+  the toggle is saved per project so a posture you turned off isn't silently
+  re-armed on reopen. It's deliberately **surgical**, not the request-hardening
+  `normalizeContentLength` the chain runner uses: a `Transfer-Encoding: chunked`
+  or duplicate-`Content-Length` request is forwarded **verbatim** even with the
+  toggle on, so a smuggling probe you're intentionally sending survives; only a
+  single, unambiguous `Content-Length` value is rewritten, and the header name
+  and every line terminator are preserved. Design hardened by a 4-agent
+  adversarial review; verified with mutation-tested unit cases plus an
+  end-to-end pass through the live proxy. (Response-side editing is unchanged for
+  now &mdash; a HEAD/204/304 response legitimately carries a `Content-Length`
+  with an empty body, so recomputing it there needs the paired request method the
+  intercept layer can't yet see; tracked as the remainder.)
 - **The captured cookie jar persists across restart.** With the session rules
   already persisting, the session **cookie jar** now saves too &mdash; the
   per-host cookies the proxy captured are written into the project file when you

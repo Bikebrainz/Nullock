@@ -971,6 +971,10 @@ int main(int argc, char *argv[]) {
         intercept.setInterceptRules(
             Nullock::Proxy::InterceptLogic::interceptRulesFromJson(arr));
     });
+    // Same for the "Update Content-Length on edit" toggle: restore the reopened
+    // project's persisted value into the live controller.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::interceptAutoContentLengthChanged,
+                     &intercept, [&intercept](bool on) { intercept.setAutoContentLength(on); });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
@@ -1004,6 +1008,7 @@ int main(int argc, char *argv[]) {
     // Same for intercept rules -- the controller didn't exist at the initial open.
     intercept.setInterceptRules(
         Nullock::Proxy::InterceptLogic::interceptRulesFromJson(projectStore.interceptRules()));
+    intercept.setAutoContentLength(projectStore.interceptAutoContentLength());
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run

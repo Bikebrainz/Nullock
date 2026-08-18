@@ -39,6 +39,57 @@ namespace Nullock::Proxy::InterceptLogic {
 // only refuse to introduce a mismatch the operator never asked for.)
 QByteArray resolveForwardBytes(const QByteArray &originalBytes, const QString &currentText);
 
+// Same resolution as resolveForwardBytes, but also reports whether the operator
+// actually EDITED the message (currentText != decode(originalBytes)). The
+// `edited` bit is the SINGLE source of truth for "was this touched": the
+// Content-Length auto-update gate below consumes exactly this bit, so the
+// verbatim-passthrough decision and the recompute decision can never drift (a
+// drift would recompute CL over bytes we promised to forward untouched). The
+// one-argument resolveForwardBytes() above is a thin wrapper over this that
+// returns only .bytes, kept for callers/tests that don't need the flag.
+struct ForwardResult {
+    QByteArray bytes;
+    bool       edited = false;
+};
+ForwardResult resolveForward(const QByteArray &originalBytes, const QString &currentText);
+
+// Should the intercept path recompute Content-Length before forwarding?
+//   dropped   - the operator dropped the message (never touch a dropped message)
+//   isRequest - only REQUESTS are auto-updated. A RESPONSE's Content-Length
+//               cannot be safely recomputed at this layer: a HEAD response, or a
+//               204/304/1xx, legitimately carries a Content-Length with an EMPTY
+//               body, and the intercept layer processing response bytes cannot
+//               see the paired request method to tell a HEAD-200 apart -- so
+//               recomputing would rewrite that CL to 0 and truncate the client.
+//   autoCL    - the operator's "Update Content-Length" toggle (Burp default ON)
+//   edited    - ForwardResult::edited; an unedited message forwards verbatim
+// A pure predicate so EVERY guard is unit-testable + mutation-provable, rather
+// than living as impure glue in the controller where a flipped guard passes
+// every test.
+bool shouldRecomputeContentLength(bool dropped, bool isRequest, bool autoCL, bool edited);
+
+// Bring an edited request's Content-Length into line with its ACTUAL body --
+// surgically, WITHOUT destroying the deliberate-desync structures a pentester
+// intercepts a request to test. This is deliberately NOT
+// ChainRunner::normalizeContentLength: that helper HARDENS a request against
+// smuggling -- it drops Content-Length under Transfer-Encoding: chunked,
+// collapses duplicate Content-Length headers, and rewrites every line terminator
+// to CRLF -- which are the exact CL.TE / TE.CL / dup-CL / bare-LF probes an
+// operator edits an intercepted request in order to send. Reusing it on the
+// default-ON forward path would silently neutralise those probes with no signal.
+// Contract instead:
+//   * Transfer-Encoding: chunked present in the head, OR more than one
+//     Content-Length header  -> return the bytes VERBATIM (preserve the probe).
+//   * exactly one Content-Length -> replace ONLY its numeric value with the real
+//     body byte length, preserving that line's terminator and the header name.
+//   * no Content-Length and a non-empty body -> add ONE Content-Length header
+//     (Burp-parity convenience), using the head's own line terminator.
+//   * no Content-Length and an empty body -> unchanged.
+// Never rewrites an unrelated line's terminator; never canonicalises a header
+// name. Pure (QByteArray only) -- no dependency on the Networking library, so the
+// Proxy layer stays free of a cross-library link edge.
+QByteArray recomputeContentLength(const QByteArray &req);
+
 // Hard cap on simultaneously-parked intercepted requests. Intercept blocks one
 // worker thread (~1MB stack on Windows) and pins the full request bytes (auth
 // headers, cookies, body) per parked request, resolvable only one-at-a-time at

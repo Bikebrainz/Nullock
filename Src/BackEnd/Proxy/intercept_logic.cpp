@@ -7,19 +7,115 @@
 
 namespace Nullock::Proxy::InterceptLogic {
 
-QByteArray resolveForwardBytes(const QByteArray &originalBytes, const QString &currentText) {
+ForwardResult resolveForward(const QByteArray &originalBytes, const QString &currentText) {
+    ForwardResult r;
     // Unedited? Forward the captured bytes verbatim -- no lossy round-trip.
     // QString::fromUtf8 is deterministic, so an unedited GUI buffer compares
     // equal to the decode of the original bytes even when that decode contains
     // U+FFFD replacement characters: both sides hold the identical replacements,
     // so equality still holds and we take the verbatim path.
-    if (currentText == QString::fromUtf8(originalBytes))
-        return originalBytes;
-
-    // Operator edited the text. Re-encode: lossless for an all-UTF-8 request;
+    r.edited = (currentText != QString::fromUtf8(originalBytes));
+    // Operator edited the text -> re-encode: lossless for an all-UTF-8 request;
     // for an edited binary body some fidelity is unavoidably lost, but that is
     // the operator's explicit action in the editor, not a silent passive defect.
-    return currentText.toUtf8();
+    r.bytes  = r.edited ? currentText.toUtf8() : originalBytes;
+    return r;
+}
+
+QByteArray resolveForwardBytes(const QByteArray &originalBytes, const QString &currentText) {
+    return resolveForward(originalBytes, currentText).bytes;
+}
+
+bool shouldRecomputeContentLength(bool dropped, bool isRequest, bool autoCL, bool edited) {
+    return !dropped && isRequest && autoCL && edited;
+}
+
+namespace {
+// Length of the line terminator at position i (0 if none): CRLF, bare CR, bare LF.
+int termLenAt(const QByteArray &b, int i) {
+    if (i >= b.size()) return 0;
+    const char c = b[i];
+    if (c == '\r') return (i + 1 < b.size() && b[i + 1] == '\n') ? 2 : 1;
+    if (c == '\n') return 1;
+    return 0;
+}
+} // namespace
+
+QByteArray recomputeContentLength(const QByteArray &req) {
+    // Locate the head/body boundary: the earliest blank line (two adjacent
+    // terminators), terminator-agnostic so a bare-LF or mixed-terminator request
+    // isn't mis-split. `sep` is the START of the last header line's terminator.
+    int sep = -1;
+    for (int i = 0; i < req.size();) {
+        const int t1 = termLenAt(req, i);
+        if (t1 == 0) { ++i; continue; }
+        if (termLenAt(req, i + t1) > 0) { sep = i; break; }
+        i += t1;
+    }
+    if (sep < 0) return req;                         // no header/body split -> untouched
+
+    // Parse header lines keeping each line's EXACT terminator bytes, up to and
+    // including the last header line (whose terminator starts at `sep`). `i` ends
+    // pointing at the blank-line terminator; everything from there is the
+    // boundary + body, forwarded verbatim.
+    struct Line { QByteArray content; QByteArray term; };
+    QList<Line> lines;
+    int i = 0;
+    while (true) {
+        const int lineStart = i;
+        while (i < req.size() && termLenAt(req, i) == 0) ++i;
+        const int termStart = i;
+        const int tl = termLenAt(req, termStart);
+        lines.append({ req.mid(lineStart, termStart - lineStart), req.mid(termStart, tl) });
+        i = termStart + tl;
+        if (termStart >= sep) break;                 // consumed the last header line
+    }
+    const QByteArray tail = req.mid(i);              // blank-line terminator + body
+    const int bodyLen = tail.size() - termLenAt(tail, 0);  // body excludes the blank line
+
+    // Classify the head. A duplicate Content-Length or a Transfer-Encoding:
+    // chunked is a DELIBERATE desync structure -> forward the whole message
+    // verbatim so an intercepted smuggling probe survives auto-CL being on.
+    int clCount = 0, clLineIdx = -1;
+    bool teChunked = false, hasRealHeader = false;
+    for (int k = 0; k < lines.size(); ++k) {
+        const QByteArray &c = lines[k].content;
+        if (!c.trimmed().isEmpty()) hasRealHeader = true;
+        const int colon = c.indexOf(':');
+        if (colon <= 0) continue;
+        const QByteArray name = c.left(colon).trimmed().toLower();
+        if (name == "content-length") { ++clCount; clLineIdx = k; }
+        else if (name == "transfer-encoding"
+                 && c.mid(colon + 1).toLower().contains("chunked"))
+            teChunked = true;
+    }
+    if (teChunked || clCount > 1) return req;         // preserve deliberate desync
+
+    QByteArray out;
+    for (int k = 0; k < lines.size(); ++k) {
+        if (k == clLineIdx) {
+            // Replace ONLY the value; keep the operator's header name + terminator.
+            const QByteArray &c = lines[k].content;
+            const int colon = c.indexOf(':');
+            out += c.left(colon);
+            out += ": ";
+            out += QByteArray::number(bodyLen);
+            out += lines[k].term;
+        } else {
+            out += lines[k].content;
+            out += lines[k].term;
+        }
+    }
+    // No Content-Length but there IS a body -> add one (Burp-parity convenience),
+    // matching the head's own terminator so we don't introduce a mixed form.
+    if (clLineIdx < 0 && bodyLen > 0 && hasRealHeader) {
+        const QByteArray term = lines.isEmpty() ? QByteArray("\r\n") : lines.last().term;
+        out += "Content-Length: ";
+        out += QByteArray::number(bodyLen);
+        out += term;
+    }
+    out += tail;
+    return out;
 }
 
 bool interceptQueueHasRoom(int outstanding) {

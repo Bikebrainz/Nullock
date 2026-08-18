@@ -31,6 +31,10 @@ struct ProjectMeta {
     // reopened project restores which messages it holds. Serialized under
     // "interceptRules".
     QJsonArray interceptRules;
+    // "Update Content-Length on edit" toggle for the intercept editor (Burp
+    // default ON). Persisted under "interceptAutoContentLength" so a security
+    // posture the operator turned OFF isn't silently re-armed to ON on reopen.
+    bool interceptAutoContentLength = true;
     // Named session login macros (opaque JSON owned by SessionRules; see
     // sessionMacrosToJson), so a reopened project restores its recorded login
     // sequences + their auto-re-auth conditions. Serialized under "sessionMacros".
@@ -160,6 +164,13 @@ public:
     void setInterceptRules(const QJsonArray &rules);
     QJsonArray interceptRules() const { return m_meta.interceptRules; }
 
+    // Intercept "Update Content-Length on edit" toggle, persisted under
+    // "interceptAutoContentLength". setInterceptAutoContentLength persists
+    // immediately; open() emits interceptAutoContentLengthChanged so app.cpp can
+    // push it into the live InterceptController.
+    void setInterceptAutoContentLength(bool on);
+    bool interceptAutoContentLength() const { return m_meta.interceptAutoContentLength; }
+
     // Session login macros, persisted in project.json under "sessionMacros".
     // Opaque JSON (SessionRules::sessionMacrosToJson owns the shape).
     // setSessionMacros persists immediately; open() emits sessionMacrosChanged so
@@ -241,6 +252,9 @@ signals:
     // rules. Wire (via InterceptLogic::interceptRulesFromJson) to
     // InterceptController::setInterceptRules.
     void interceptRulesChanged(const QJsonArray &rules);
+    // Emitted at the END of open() with the freshly-loaded project's intercept
+    // "Update Content-Length" toggle. Wire to InterceptController::setAutoContentLength.
+    void interceptAutoContentLengthChanged(bool on);
     // Emitted at the END of open() with the freshly-loaded project's session
     // login macros. Wire (via Nullock::Core::sessionMacrosFromJson) to
     // SessionRules::setMacros so a reopened project restores them.

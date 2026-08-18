@@ -367,6 +367,85 @@ int main(int argc, char **argv) {
             d.size() == 1 && d[0].match == InterceptRule::Match::UrlRegex && d[0].enabled);
     }
 
+    // ===== auto-update Content-Length on an EDITED intercepted request =====
+    // resolveForward reports the `edited` bit -- the single source of truth the
+    // recompute gate consumes, so verbatim-passthrough and recompute can't drift.
+    {
+        const QByteArray orig = binaryRequest("hello");
+        const ForwardResult unedited = resolveForward(orig, QString::fromUtf8(orig));
+        chk("resolveForward: unedited -> edited=false + verbatim bytes",
+            !unedited.edited && unedited.bytes == orig);
+        QString t = QString::fromUtf8(orig); t.replace("hello", "hello world");
+        const ForwardResult edited = resolveForward(orig, t);
+        chk("resolveForward: edited -> edited=true + re-encoded bytes",
+            edited.edited && edited.bytes == t.toUtf8());
+        // The one-arg wrapper still returns only the bytes (existing callers).
+        chk("resolveForwardBytes wrapper matches resolveForward().bytes",
+            resolveForwardBytes(orig, t) == edited.bytes);
+    }
+
+    // The gate: only a non-dropped, EDITED, REQUEST with auto-CL on recomputes.
+    {
+        chk("gate: all conditions -> recompute",
+            shouldRecomputeContentLength(false, true, true, true));
+        chk("gate: dropped -> no",   !shouldRecomputeContentLength(true,  true,  true,  true));
+        chk("gate: response -> no",  !shouldRecomputeContentLength(false, false, true,  true));
+        chk("gate: autoCL off -> no",!shouldRecomputeContentLength(false, true,  false, true));
+        chk("gate: unedited -> no",  !shouldRecomputeContentLength(false, true,  true,  false));
+    }
+
+    // recomputeContentLength: CL follows the ACTUAL body after an edit.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nHost: h\r\nContent-Length: 3\r\n\r\nHELLO";
+        const QByteArray out = recomputeContentLength(req);
+        chk("recompute: grown body -> CL == new body length",
+            declaredContentLength(out) == 5 && actualBodyLength(out) == 5);
+        chk("recompute: surrounding header block + body left intact",
+            out.startsWith("POST /x HTTP/1.1\r\nHost: h\r\n") && out.endsWith("\r\n\r\nHELLO"));
+    }
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nContent-Length: 99\r\n\r\nab";
+        chk("recompute: shrunk body -> CL == 2",
+            declaredContentLength(recomputeContentLength(req)) == 2);
+    }
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nHost: h\r\n\r\nbody!";
+        const QByteArray out = recomputeContentLength(req);
+        chk("recompute: absent CL + non-empty body -> exactly one CL added",
+            declaredContentLength(out) == 5 && out.count("Content-Length:") == 1);
+    }
+    {
+        QByteArray req = "GET /x HTTP/1.1\r\nHost: h\r\n\r\n";
+        chk("recompute: absent CL + empty body -> unchanged",
+            recomputeContentLength(req) == req);
+    }
+    // Deliberate-desync PRESERVATION: chunked + duplicate-CL forward VERBATIM,
+    // so an intercepted smuggling probe survives even with auto-CL ON.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n"
+                         "Content-Length: 3\r\n\r\n5\r\nHELLO\r\n0\r\n\r\n";
+        chk("recompute: Transfer-Encoding chunked -> verbatim (CL not dropped, not changed)",
+            recomputeContentLength(req) == req);
+    }
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nContent-Length: 3\r\nContent-Length: 99\r\n\r\nHELLO";
+        chk("recompute: duplicate Content-Length -> verbatim (not collapsed)",
+            recomputeContentLength(req) == req);
+    }
+    // Terminator fidelity: a bare-LF single-CL head stays bare-LF; only the value moves.
+    {
+        QByteArray req = "POST /x HTTP/1.1\nContent-Length: 2\n\nHELLO";
+        chk("recompute: bare-LF head -> CL value updated, terminators preserved",
+            recomputeContentLength(req) == QByteArray("POST /x HTTP/1.1\nContent-Length: 5\n\nHELLO"));
+    }
+    // The operator's header-NAME bytes are preserved; only the value is normalized.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\ncontent-length:0\r\n\r\nHELLO";
+        const QByteArray out = recomputeContentLength(req);
+        chk("recompute: original header name kept, value normalized",
+            out.contains("content-length: 5\r\n") && actualBodyLength(out) == 5);
+    }
+
     std::fprintf(stderr, "intercept_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -41,6 +41,16 @@ void InterceptController::setResponsesEnabled(bool e) {
     emit currentChanged();
 }
 
+void InterceptController::setAutoContentLength(bool e) {
+    const int want = e ? 1 : 0;
+    if (want == m_autoContentLength.loadAcquire()) return;
+    // storeRelease so a worker sampling m_autoContentLength in pendImpl after
+    // this call sees the new value; no drain needed (this only affects how a
+    // future edited request's Content-Length is resolved, not parked messages).
+    m_autoContentLength.storeRelease(want);
+    emit autoContentLengthChanged();
+}
+
 void InterceptController::forward(const QString &editedText) {
     PendingRequest *p = nullptr;
     {
@@ -249,8 +259,21 @@ InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QSt
     // Unedited -> forward the captured bytes verbatim (preserves a binary body
     // byte-for-byte and keeps Content-Length honest); edited -> re-encode.
     // Identical resolver for requests and responses.
-    if (!r.dropped)
-        r.bytes = InterceptLogic::resolveForwardBytes(p->m_originalBytes, p->m_text);
+    if (!r.dropped) {
+        const InterceptLogic::ForwardResult fr =
+            InterceptLogic::resolveForward(p->m_originalBytes, p->m_text);
+        r.bytes = fr.bytes;
+        // "Update Content-Length" (Burp default ON): when the operator EDITED a
+        // REQUEST, bring its Content-Length in line with the new body. Surgical
+        // (recomputeContentLength) so a chunked / duplicate-CL smuggling probe is
+        // still forwarded verbatim. Response side is intentionally excluded (a
+        // HEAD/204/304 carries a CL with an empty body this layer can't tell from
+        // a real one). fr.edited is the single source of truth for "was edited".
+        if (InterceptLogic::shouldRecomputeContentLength(
+                r.dropped, p->m_kind == PendingRequest::Request,
+                m_autoContentLength.loadAcquire() != 0, fr.edited))
+            r.bytes = InterceptLogic::recomputeContentLength(r.bytes);
+    }
 
     QMetaObject::invokeMethod(this, "deleteLaterOnMain", Qt::QueuedConnection,
                               Q_ARG(Nullock::Proxy::PendingRequest *, p));
