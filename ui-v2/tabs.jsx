@@ -950,6 +950,7 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}
                title={histPos !== null && histEntries[histPos]
                         ? (histEntries[histPos].statusLine || "") + " · " + (histEntries[histPos].sentAt || "")
+                          + " · " + fmtSize(histEntries[histPos].responseBytes) + " · " + fmtMs(histEntries[histPos].elapsedMs)
                         : "Navigate this tab's prior sends"}>
             <button className="btn" disabled={histPrevDisabled} onClick={onHistPrev}
                     style={{ padding: "0 6px", opacity: histPrevDisabled ? 0.4 : 1 }}>◀</button>
@@ -963,6 +964,12 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
         <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           STATUS: <span style={{ color: "var(--accent)" }}>{rep.statusLine}</span>
         </span>
+        {typeof rep.elapsedMs === "number" && rep.elapsedMs > -1 && (
+          <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}
+                title="Byte length of the raw response · network round-trip time">
+            {fmtSize(rep.responseBytes)} · {fmtMs(rep.elapsedMs)}
+          </span>
+        )}
         <div style={{ position: "relative", display: "inline-block" }}>
           <button className="btn" onClick={() => setCopyOpen(o => !o)}
                   title="Copy this request as a command for another tool">
