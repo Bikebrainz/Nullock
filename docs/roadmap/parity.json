@@ -2545,12 +2545,18 @@
     {
       "area": "sequencer",
       "feature": "Cookie jar and session rules persist in the project file / user settings across restarts",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Every captured cookie and every session rule is lost on restart. The one partial mitigation is `nullock session-rules set <file.json>` (bin/nullock:560-565), which lets rules be re-applied from a file the user maintains themselves \u2014 but there is no export of the current rule set beyond scraping `.sessionRules` out of the snapshot, and no cookie import/export at all.",
       "why": "Confirmed on all three axes: no serializer on either class, both are stack locals in app.cpp, and the project store's only cookie references are redaction lists and deliberately-emptied HAR fields.",
-      "evidence": "session_manager.hpp:65 `QHash<QString, HostSession> m_byHost;` and session_rules.hpp:104 `QList<SessionRule> m_rules;` \u2014 neither header (both read in full) declares save/load. Stack locals: app.cpp:777 `Nullock::Core::SessionManager sessions;` and :846 `Nullock::Core::SessionRules sessionRules;`. Project store: the only cookie/session hits are the redaction header lists at project_store.cpp:234 / "
+      "evidence": "session_manager.hpp:65 `QHash<QString, HostSession> m_byHost;` and session_rules.hpp:104 `QList<SessionRule> m_rules;` \u2014 neither header (both read in full) declares save/load. Stack locals: app.cpp:777 `Nullock::Core::SessionManager sessions;` and :846 `Nullock::Core::SessionRules sessionRules;`. Project store: the only cookie/session hits are the redaction header lists at project_store.cpp:234 / ",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "a204e79",
+        "note": "The session-RULES half is done: session-handling rules (extract-a-value / inject-a-{{var}}) now persist in project.json under 'sessionRules' + restore on reopen, via a shared sessionRulesToJson/FromJson serializer (single source for /api/session-rules, the snapshot, and the on-disk form) + ProjectStore setSessionRulesJson/sessionRulesJsonChanged + app.cpp wiring. Verified e2e (a rule round-trips in the snapshot + survives restart, per project). PARTIAL: the captured COOKIE JAR still doesn't persist (SessionManager m_byHost serialization) -- it re-populates as you browse, so lower value; that's the remaining follow-on."
+      }
     },
     {
       "area": "sequencer",
