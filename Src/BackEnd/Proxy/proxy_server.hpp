@@ -1,6 +1,9 @@
 #pragma once
 
+#include "scope_logic.hpp"
+
 #include <QAtomicInt>
+#include <QJsonArray>
 #include <QByteArray>
 #include <QDateTime>
 #include <QHostAddress>
@@ -217,6 +220,18 @@ public:
     void setScope(const QStringList &inScope, const QStringList &outOfScope);
     bool isInScope(const QString &host) const;
 
+    // Advanced scope control (Burp-parity): include/exclude rules over protocol /
+    // host-regex / port-range / file-regex, COMPOSED on top of the host-glob scope
+    // above -- never replacing it, so with no enabled advanced rule the decision is
+    // byte-identical to today. Rules arrive as JSON (persisted in the project file
+    // under "advancedScope"). isUrlInScope() is the full-URL decision the proxy hot
+    // path uses; isInScope(host) gains a fail-closed host-only advanced path for
+    // callers that lack the port/path. User regex is validated + capped at set
+    // time, and matched OUTSIDE m_scopeMutex (a copy is taken under the lock) so a
+    // catastrophic pattern can't serialize every connection.
+    void setAdvancedScope(const QJsonArray &rulesJson);
+    bool isUrlInScope(bool tls, const QString &host, int port, const QString &path) const;
+
     // Match & replace rules: applied after extensions, before bytes go on
     // the wire. Set() replaces the whole list atomically; project store
     // owns the persisted copy and re-fires this on every edit.
@@ -281,6 +296,7 @@ private:
     mutable QMutex m_scopeMutex;
     QList<QRegularExpression> m_inScope;
     QList<QRegularExpression> m_outOfScope;
+    QList<ScopeLogic::CompiledRule> m_advancedScope;   // guarded by m_scopeMutex
     QAtomicInt m_filteredCount {0};
     QAtomicInt m_h2UpstreamCount {0};
     mutable QMutex m_rulesMutex;

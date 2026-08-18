@@ -11,6 +11,25 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Advanced scope control (protocol / host / port / file rules).** Scope was a
+  host-glob include/exclude list only. You can now add precise include/exclude
+  **rules** &mdash; per rule: protocol (any/http/https), a host regex, a port
+  (exact or range), and a file/path regex &mdash; via `/api/scope/advanced`, so
+  "everything under `app.example.com` **except** `/admin`" or "only port 8443" is
+  finally expressible. The design was hardened against the ways a scope feature
+  goes wrong in a security tool: it **composes** with the existing host-glob scope
+  rather than replacing it (with no advanced rule the decision is byte-identical to
+  before, and a lone exclude rule can never silently widen scope to everything);
+  deny always wins across both layers; the proxy matches the **full URL** (so a
+  path/port exclude actually filters), while tool gates that only know the host
+  **fail closed** (an exclude for a host blocks it rather than firing an attack the
+  rule forbade); user regex is validated + size-capped at set time and matched
+  **outside** the scope lock so a catastrophic pattern can't stall every connection;
+  and port is a numeric range, not a regex (so `443` can't match `8443`). Rules
+  persist in the project file. The whole decision core is pure, unit-tested (42
+  cases across the full adversarial matrix) and mutation-proven; verified e2e (an
+  exclude on `/admin` filters it in the proxy while `/home` passes, and it survives
+  restart). (The advanced-scope editor UI is the remaining follow-on.)
 - **Content discovery runs concurrently (thread + throttle controls).** The
   wordlist brute-force fired one request at a time, so a real wordlist crawled.
   It now fans the probes across a bounded pool &mdash; `concurrency` (1&ndash;64,

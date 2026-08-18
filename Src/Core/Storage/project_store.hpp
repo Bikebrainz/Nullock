@@ -35,6 +35,10 @@ struct ProjectMeta {
     // sessionMacrosToJson), so a reopened project restores its recorded login
     // sequences + their auto-re-auth conditions. Serialized under "sessionMacros".
     QJsonArray sessionMacros;
+    // Advanced scope rules (opaque JSON owned by ScopeLogic), so a reopened
+    // project restores its include/exclude scope rules. Serialized under
+    // "advancedScope".
+    QJsonArray advancedScope;
     // Scanner triage that must outlive the append-only findings.ndjson: issue
     // KINDS the operator suppressed (never shown again) and the identity KEYS of
     // individual findings marked false-positive. Applied at display time, so
@@ -151,6 +155,14 @@ public:
     void setSessionMacros(const QJsonArray &macros);
     QJsonArray sessionMacros() const { return m_meta.sessionMacros; }
 
+    // Advanced scope rules, persisted in project.json under "advancedScope".
+    // Opaque JSON (ScopeLogic owns the shape). setAdvancedScope persists
+    // immediately + emits advancedScopeChanged (the live proxy re-applies every
+    // edit, like the simple glob scope does); open() emits it too so a reopen
+    // restores the rules.
+    void setAdvancedScope(const QJsonArray &rules);
+    QJsonArray advancedScope() const { return m_meta.advancedScope; }
+
     // Scanner triage, persisted in project.json. setKindSuppressed adds/removes an
     // issue kind from the never-show set; setFindingFalsePositive adds/removes a
     // finding identity key (FindingTriageLogic::findingKey) from the FP set. Both
@@ -205,6 +217,9 @@ signals:
     // Emitted when the finding-triage sets (suppressed kinds / false-positive
     // keys) change, so the control server can bump its snapshot fingerprint.
     void triageChanged();
+    // Emitted whenever the advanced scope rules change (setter + open()), so
+    // app.cpp re-applies them to the live proxy and the snapshot bumps.
+    void advancedScopeChanged(const QJsonArray &rules);
 
 private:
     bool ensureMetadata();

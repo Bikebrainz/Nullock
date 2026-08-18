@@ -891,6 +891,7 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::scopeChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::rulesChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::triageChanged, this, bump);
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::advancedScopeChanged, this, bump);
     }
     if (m_wiring.themes) {
         connect(m_wiring.themes, &Nullock::FrontEnd::ThemesManager::themeChanged,  this, bump);
@@ -1286,6 +1287,8 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     scope["in"]  = inArr;
     scope["out"] = outArr;
+    if (m_wiring.projectStore)
+        scope["advanced"] = m_wiring.projectStore->advancedScope();
     root["scope"] = scope;
 
     // match & replace rules
@@ -3135,6 +3138,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.projectStore)
             m_wiring.projectStore->setNotes(bodyJson.value("notes").toString());
         return okJson();
+    }
+    // Advanced scope rules (Burp-parity): whole-list replace of the include/exclude
+    // rules. Persists to project.json + re-applies to the live proxy via
+    // advancedScopeChanged. The proxy validates/caps the regex on set; an invalid
+    // or blank-exclude rule is silently dropped there.
+    if (path == "/api/scope/advanced") {
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "project store not wired" }});
+        if (bodyJson.contains("rules"))
+            m_wiring.projectStore->setAdvancedScope(bodyJson.value("rules").toArray());
+        return okJson({{ "ok", true }, { "rules", m_wiring.projectStore->advancedScope() }});
     }
 
     // Match & replace rules. Body shape mirrors the snapshot:

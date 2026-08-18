@@ -220,6 +220,7 @@ bool ProjectStore::open(const QString &projectDir) {
     emit repeaterStateChanged(m_meta.repeaterState);
     emit interceptRulesChanged(m_meta.interceptRules);
     emit sessionMacrosChanged(m_meta.sessionMacros);
+    emit advancedScopeChanged(m_meta.advancedScope);
     return true;
 }
 
@@ -316,6 +317,7 @@ bool ProjectStore::ensureMetadata() {
         m_meta.repeaterState = o.value("repeater").toObject();
         m_meta.interceptRules = o.value("interceptRules").toArray();
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
+        m_meta.advancedScope = o.value("advancedScope").toArray();
         m_meta.suppressedKinds.clear();
         for (const QJsonValue &v : o.value("suppressedKinds").toArray())
             m_meta.suppressedKinds.append(v.toString());
@@ -362,6 +364,7 @@ bool ProjectStore::saveMetadata() {
     o["repeater"] = m_meta.repeaterState;
     o["interceptRules"] = m_meta.interceptRules;
     o["sessionMacros"] = m_meta.sessionMacros;
+    o["advancedScope"] = m_meta.advancedScope;
     o["suppressedKinds"]   = QJsonArray::fromStringList(m_meta.suppressedKinds);
     o["falsePositiveKeys"] = QJsonArray::fromStringList(m_meta.falsePositiveKeys);
 
@@ -384,6 +387,12 @@ void ProjectStore::setInterceptRules(const QJsonArray &rules) {
 void ProjectStore::setSessionMacros(const QJsonArray &macros) {
     m_meta.sessionMacros = macros;
     saveMetadata();
+}
+
+void ProjectStore::setAdvancedScope(const QJsonArray &rules) {
+    m_meta.advancedScope = rules;
+    saveMetadata();
+    emit advancedScopeChanged(m_meta.advancedScope);
 }
 
 void ProjectStore::setKindSuppressed(const QString &kind, bool suppressed) {

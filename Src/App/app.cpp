@@ -768,6 +768,11 @@ int main(int argc, char *argv[]) {
                    projectStore.metadata().outOfScope);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::scopeChanged,
                      &proxy, &Nullock::Proxy::ProxyServer::setScope);
+    // Advanced scope rules: restore the default project's rules now (it opened
+    // before this wiring) and re-apply on every edit / project switch.
+    proxy.setAdvancedScope(projectStore.advancedScope());
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::advancedScopeChanged,
+                     &proxy, &Nullock::Proxy::ProxyServer::setAdvancedScope);
 
     // Match & replace rules: load from project, push live updates.
     proxy.setRules(projectStore.rules());

@@ -421,6 +421,12 @@ add_subdirectory(finding_serial)
 # Run via: ctest -R intercept_logic -V
 add_subdirectory(intercept_logic)
 
+# Advanced scope-control pure logic: the composed include/exclude decision over
+# protocol/host/port/file, off-parity with the glob layer, host-only fail-closed,
+# and the ReDoS/blackout validation caps.
+# Run via: ctest -R scope_logic -V
+add_subdirectory(scope_logic)
+
 # History-index find() query builder: the SQL-INJECTION regression lock -- proves
 # the produced SQL depends only on which filter keys are present (never their
 # values, so every operator value is a bound ? parameter) and that `limit` is

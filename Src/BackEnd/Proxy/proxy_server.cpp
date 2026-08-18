@@ -282,7 +282,7 @@ public:
         }
 
         rewriteHostPort(req);
-        const bool inScope = m_server->isInScope(req.host);
+        const bool inScope = m_server->isUrlInScope(req.tls, req.host, req.port, req.path);
         if (inScope) emit m_server->requestReceived(req);
         else         m_server->noteFiltered();
 
@@ -1366,15 +1366,55 @@ void ProxyServer::setScope(const QStringList &inScope, const QStringList &outOfS
     m_outOfScope = compile(outOfScope);
 }
 
-bool ProxyServer::isInScope(const QString &host) const {
+void ProxyServer::setAdvancedScope(const QJsonArray &rulesJson) {
+    // Validate + compile (drops oversized/invalid/blank-exclude rules) OFF the
+    // lock, then swap in under the lock. Called from the GUI/main thread only.
+    auto compiled = ScopeLogic::compile(ScopeLogic::rulesFromJson(rulesJson));
     QMutexLocker lock(&m_scopeMutex);
-    // Out-of-scope wins.
-    for (const auto &rx : m_outOfScope)
-        if (rx.match(host).hasMatch()) return false;
-    if (m_inScope.isEmpty()) return true;
-    for (const auto &rx : m_inScope)
-        if (rx.match(host).hasMatch()) return true;
-    return false;
+    m_advancedScope = std::move(compiled);
+}
+
+// Evaluate the simple host-glob layer for `host`, returning its (out, in)
+// booleans. Called with m_scopeMutex HELD. The globs are anchored literals, so
+// this stays safe under the lock; the advanced user-regex matching is deliberately
+// done by the caller AFTER releasing the lock.
+static void globVerdict(const QList<QRegularExpression> &inScope,
+                        const QList<QRegularExpression> &outOfScope,
+                        const QString &host, bool &globOut, bool &globIn) {
+    globOut = false;
+    for (const auto &rx : outOfScope)
+        if (rx.match(host).hasMatch()) { globOut = true; break; }
+    globIn = inScope.isEmpty();
+    if (!globIn)
+        for (const auto &rx : inScope)
+            if (rx.match(host).hasMatch()) { globIn = true; break; }
+}
+
+bool ProxyServer::isInScope(const QString &host) const {
+    bool globOut, globIn;
+    QList<ScopeLogic::CompiledRule> adv;
+    {
+        QMutexLocker lock(&m_scopeMutex);
+        globVerdict(m_inScope, m_outOfScope, host, globOut, globIn);
+        adv = m_advancedScope;   // implicitly-shared copy; regex matched outside the lock
+    }
+    // No enabled advanced rule -> byte-identical to the legacy host-glob decision.
+    if (!ScopeLogic::configured(adv)) return !globOut && globIn;
+    // Advanced configured but this caller only has the host: fail-closed host-only.
+    return ScopeLogic::hostInScope(adv, globOut, globIn, host);
+}
+
+bool ProxyServer::isUrlInScope(bool tls, const QString &host, int port,
+                               const QString &path) const {
+    bool globOut, globIn;
+    QList<ScopeLogic::CompiledRule> adv;
+    {
+        QMutexLocker lock(&m_scopeMutex);
+        globVerdict(m_inScope, m_outOfScope, host, globOut, globIn);
+        adv = m_advancedScope;
+    }
+    if (!ScopeLogic::configured(adv)) return !globOut && globIn;
+    return ScopeLogic::urlInScope(adv, globOut, globIn, tls, host, port, path);
 }
 
 void ProxyServer::noteFiltered() {
@@ -1493,7 +1533,7 @@ void ProxyServer::applyRequestRules(HttpRequest &req) const {
     // Apply rules only to in-scope hosts (when scope is configured); the
     // per-rule host regex still narrows from there. When in-scope is
     // unset, fall through to the previous behaviour.
-    if (!isInScope(req.host)) return;
+    if (!isUrlInScope(req.tls, req.host, req.port, req.path)) return;
 
     bool bodyChanged = false;
     for (int i = 0; i < rs.size() && i < cs.size(); ++i) {
@@ -1552,7 +1592,7 @@ void ProxyServer::applyResponseRules(const HttpRequest &req, HttpResponse &resp)
     // (.*) -> Set-Cookie: $1; Domain=.attacker.example" rule would let
     // a wildcard-import rule rewrite cookies on unrelated browsing
     // traffic and re-scope them to an attacker domain.
-    if (!isInScope(req.host)) return;
+    if (!isUrlInScope(req.tls, req.host, req.port, req.path)) return;
 
     bool bodyChanged = false;
     for (int i = 0; i < rs.size() && i < cs.size(); ++i) {
