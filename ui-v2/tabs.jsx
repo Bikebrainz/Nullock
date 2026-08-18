@@ -602,6 +602,9 @@ function RepeaterInspectorPanel({ raw, kind, sel }) {
   );
 }
 
+// #302: fixed palette for the client-only Repeater tab color label.
+const TAB_COLOR_PALETTE = ["#e06c75", "#e5c07b", "#98c379", "#61afef", "#c678dd", "#56b6c2"];
+
 function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   // Real backend handles the send. We only show a spinner-y label while
   // the snapshot reports busy=true, then flip back to the response.
@@ -633,10 +636,45 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
   const active = (window.NL && NL.repeater && typeof NL.repeater.activeTab === "number")
                   ? NL.repeater.activeTab : 0;
 
-  const onRename = (i) => {
+  // #302: inline double-click rename (was a prompt() dialog) plus a
+  // client-only per-tab color label. There is no `color` field in the
+  // repeater-tab wire contract (rename/notes/activate/close/duplicate are
+  // all index-addressed with no stable id), so the swatch lives entirely
+  // in this component's state -- a cosmetic label, not a persisted one.
+  const [renameIdx, setRenameIdx] = React.useState(-1);
+  const [renameVal, setRenameVal] = React.useState("");
+  const [tabColors, setTabColors] = React.useState({});
+  const renameInputRef = React.useRef(null);
+
+  const startRename = (i) => {
+    setRenameIdx(i);
+    setRenameVal(tabs[i] ? tabs[i].name : "");
+  };
+  const commitRename = () => {
+    const i = renameIdx;
+    setRenameIdx(-1);
+    if (i < 0) return;
     const cur = tabs[i] ? tabs[i].name : "";
-    const next = prompt("Rename tab", cur);
-    if (next !== null && next !== cur) NL.actions.repeaterTabRename(i, next);
+    const next = renameVal;
+    if (next !== cur && next.trim() !== "") NL.actions.repeaterTabRename(i, next);
+  };
+  const onRenameKeyDown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+    else if (e.key === "Escape") { e.preventDefault(); setRenameIdx(-1); }
+  };
+  React.useEffect(() => {
+    if (renameIdx >= 0 && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renameIdx]);
+
+  const cycleTabColor = (i, e) => {
+    e.stopPropagation();
+    setTabColors((prev) => {
+      const cur = typeof prev[i] === "number" ? prev[i] : -1;
+      return { ...prev, [i]: (cur + 1) % TAB_COLOR_PALETTE.length };
+    });
   };
 
   const onNotes = (i) => {
@@ -771,11 +809,14 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
       }}>
         {tabs.map((t, i) => {
           const isActive = i === active;
+          const colorIdx = tabColors[i];
+          const dotColor = typeof colorIdx === "number" ? TAB_COLOR_PALETTE[colorIdx] : null;
+          const isRenaming = renameIdx === i;
           return (
             <div key={i}
                  onClick={() => NL.actions.repeaterTabActivate(i)}
-                 onDoubleClick={() => onRename(i)}
-                 title={(t.host || "") + " · double-click to rename"
+                 onDoubleClick={() => startRename(i)}
+                 title={(t.host || "") + " · double-click to rename · click the dot to color-label"
                         + (t.notes ? ("\nnotes: " + t.notes) : "")}
                  style={{
                    display: "flex", alignItems: "center", gap: 6,
@@ -790,9 +831,29 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
                    whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden",
                    textOverflow: "ellipsis", marginBottom: -1,
                  }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                {t.name || ("tab " + (i + 1))}
-              </span>
+              <span onClick={(e) => cycleTabColor(i, e)}
+                    title="click to cycle color label"
+                    style={{
+                      width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                      background: dotColor || "transparent",
+                      border: "1px solid " + (dotColor || "var(--dim)"),
+                    }} />
+              {isRenaming ? (
+                <input ref={renameInputRef} value={renameVal}
+                       onClick={(e) => e.stopPropagation()}
+                       onChange={(e) => setRenameVal(e.target.value)}
+                       onBlur={commitRename}
+                       onKeyDown={onRenameKeyDown}
+                       style={{
+                         width: 120, background: "var(--bg)", color: "inherit",
+                         border: "1px solid var(--accent)", font: "inherit",
+                         padding: "0 2px",
+                       }} />
+              ) : (
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {t.name || ("tab " + (i + 1))}
+                </span>
+              )}
               {t.notes && (
                 <span style={{ color: "var(--accent-2)", fontSize: "10px" }} title={t.notes}>✎</span>
               )}

@@ -3812,9 +3812,15 @@
       "state": "present",
       "impact": "cosmetic",
       "effort": "hours",
-      "gap": "Rename is a browser prompt() rather than inline edit; no per-tab colour/highlight labels. Auto-naming from the request line beats Burp's numeric default. Note autoTabName is applied only on addTabFromHistory/loadFromHistory — a plain addTab still gets 'tab N'.",
-      "why": "Verified verbatim; nothing to downgrade. Both halves exist and are reachable from the UI.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:202-207 `bool Repeater::renameTab(int index, const QString &name) { if (index < 0 || index >= m_tabs.size()) return false; m_tabs[index].name = name; emit tabsChanged(); return true; }`. Endpoint control_server.cpp:3125-3130 `/api/repeater/tab/rename`. UI ui-v2/tabs.jsx onRename: `const next = prompt(\"Rename tab\", cur); if (next !== null && next !== "
+      "gap": "Rename is now inline (double-click the tab, edit in place, Enter/blur to commit, Escape to cancel) instead of a prompt() dialog, and each tab gets a click-to-cycle colour dot from a fixed 6-colour palette. The colour label is client-only cosmetic state (no `color` field exists in the repeater-tab wire contract, which is index-addressed with no stable id) -- it does not persist across a page reload or travel with project save/load, unlike name/notes. Auto-naming from the request line still applies only on addTabFromHistory/loadFromHistory, unchanged by this batch -- a plain addTab still gets 'tab N'.",
+      "why": "Closed 2026-08-09 (attack-type wiring, unrelated) then hardened 2026-08-18: RepeaterTab's onDoubleClick now opens an inline <input> (renameIdx/renameVal state, commit on blur/Enter, cancel on Escape) instead of prompt(), and a small colour dot next to each tab name cycles through TAB_COLOR_PALETTE on click (tabColors state, index-keyed).",
+      "evidence": "ui-v2/tabs.jsx TAB_COLOR_PALETTE + RepeaterTab's startRename/commitRename/onRenameKeyDown/cycleTabColor (tab strip render, double-click -> inline <input>; dot span -> cycleTabColor); repeaterTabRename POST still the only backend call, unchanged (control_server.cpp's /api/repeater/tab/rename).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "PENDING",
+        "note": "Repeater-area polish batch: inline tab rename (was prompt()) + client-only colour labels, closing the two named gaps; auto-naming quirk left untouched, honestly."
+      }
     },
     {
       "area": "repeater",
@@ -3934,9 +3940,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Only three classes (eq/ins/del); Burp additionally distinguishes 'modified' from a delete+add pair, which reads better on in-place value changes.",
-      "why": "Verified both halves; the segment classes and the CSS are exactly as claimed.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:114-120 `if (ai[i] == bi[j]) { push(\"eq\", a[i]); ++i; ++j; } else if (cell(i + 1, j) >= cell(i, j + 1)) { push(\"del\", a[i]); ++i; ++res.removed; } else { push(\"ins\", b[j]); ++j; ++res.added; }`, coalesced by push (:106-111). UI ComparerTab segStyle: `background: op === \"ins\" ? \"rgba(70,200,120,0.22)\" : op === \"del\" ? \"rgba(220,80,80,0.22)\" : \"transpar"
+      "gap": "A greedy left-to-right scan (comparerMarkModified()) now pairs an adjacent del+ins (or ins+del) run into a distinct amber 'modified' style instead of showing them as an unrelated delete next to an unrelated insert -- matches Burp's visual treatment for straightforward in-place value changes. It is a positional heuristic, not an LCS-based rename/move detector: a modified run separated from its counterpart by an intervening common/other-op segment is not paired, and a run of multiple consecutive dels followed by multiple consecutive ins only pairs adjacent members one-to-one (extra dels/ins at either end stay plain delete/insert).",
+      "why": "Closed 2026-08-18: comparerMarkModified() (ui-v2/app.jsx, pure function) post-processes the backend's merged diff segment array before the existing streamA/streamB split, flagging paired del+ins segments `modified: true`; segStyle() renders those with a distinct amber background/colour instead of the plain red/green del/ins styling.",
+      "evidence": "ui-v2/app.jsx comparerMarkModified() + segStyle(op, modified) + ComparerTab's `const segs = comparerMarkModified(...)`; /api/compare's segment contract ({op,text}) unchanged, no backend touched.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "PENDING",
+        "note": "Repeater-area polish batch: adjacent del+ins runs in the Comparer diff now render as a distinct 'modified' colour instead of separate delete/insert, closing the named gap."
+      }
     },
     {
       "area": "repeater",
@@ -4094,9 +4106,15 @@
       "state": "exceeds",
       "impact": "low",
       "effort": "days",
-      "gap": "CBOR is self-declared partial (no tag handling). All four protocol decoders live only in the proxy pane, not the Decoder tab, so you cannot paste a gRPC frame or COSE blob into the workbench.",
-      "why": "Verified: rot13 + unicode escaping in the core registry, four protocol decoders in the proxy codec bar, each really implemented.",
-      "evidence": "Core: D:/dev/Nullock/Src/Core/Networking/transcode.cpp:109-143 (unicodeEscape/unicodeUnescape/rot13) registered at :234-235. Proxy: ui-v2/proxy.jsx:751 `\"graphql-parse\", \"grpc-frame\", \"cbor-decode\", \"saml-decode\"`, implemented at :933 (GraphQL, flags __schema introspection), :963 (gRPC 5-byte length-prefix frame walk), :1003-1005 `// RFC 8949 CBOR decoder, partial. Handles major types 0/1/2/3/4/5 "
+      "gap": "CBOR is still self-declared partial (no tag handling) -- unchanged by this batch. All four protocol decoders (graphql-parse/grpc-frame/cbor-decode/saml-decode) are now also reachable from the dedicated Decoder tab's op-button row, not just the Proxy/Repeater CodecBar -- both surfaces call the same pure client-side runCodec(), so behaviour is identical either way.",
+      "why": "Closed 2026-08-18: DecoderTab's OPS array (ui-v2/app.jsx) gains graphql-parse/grpc-frame/cbor-decode/saml-decode; run() special-cases those four names (CLIENT_ONLY_OPS) to call runCodec() directly (proxy.jsx, synchronous, already used by CodecBar) instead of round-tripping through the backend /api/transcode endpoint those decoders were never wired into.",
+      "evidence": "ui-v2/app.jsx DecoderTab OPS + CLIENT_ONLY_OPS + run(); ui-v2/proxy.jsx runCodec() cases graphql-parse/grpc-frame/cbor-decode/saml-decode (unchanged implementation, only the caller is new).",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "PENDING",
+        "note": "Repeater-area polish batch: the Decoder tab's op-button row now includes the four protocol decoders that previously lived only in the Proxy/Repeater CodecBar, routed to the same pure runCodec() implementation."
+      }
     },
     {
       "area": "repeater",

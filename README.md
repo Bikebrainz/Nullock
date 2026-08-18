@@ -133,9 +133,11 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
                   bundled" button in Settings copies the extensions shipped with the repo into
                   the user's extensions dir in one click
-Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode; "Send to Decoder"
-                  pivots from Proxy history/Site map (request/response), Repeater's request/response
-                  panes, and the Intercept queue seed the Decoder tab's input directly
+Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode, rot13, unicode escape,
+                  and protocol decoders (GraphQL pretty-print, gRPC framing, CBOR, SAML) all reachable
+                  from the Decoder tab's own op-button row, not just the Proxy/Repeater codec bar;
+                  "Send to Decoder" pivots from Proxy history/Site map (request/response), Repeater's
+                  request/response panes, and the Intercept queue seed the Decoder tab's input directly
 Inspector         Structured view of any request/response -- headers, cookies, query/body params, decoded JWTs;
                   docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab.
                   A Selection widget section shows highlighted-text character count and the first byte's

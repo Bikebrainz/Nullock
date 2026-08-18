@@ -2749,6 +2749,24 @@ function textToHexPairs(text) {
   return out;
 }
 
+// #313: pair up an adjacent del+ins (or ins+del) run in the backend's
+// merged diff segment list into a "modified" replacement -- greedy
+// left-to-right, one pair consumed at a time. A lone del or ins next to
+// unrelated ops (not immediately followed/preceded by its opposite) stays
+// a plain delete/insert. Pure function, no DOM/React dependency.
+function comparerMarkModified(segs) {
+  const out = segs.map((s) => ({ ...s }));
+  for (let i = 0; i < out.length - 1; i++) {
+    const a = out[i], b = out[i + 1];
+    if ((a.op === "del" && b.op === "ins") || (a.op === "ins" && b.op === "del")) {
+      a.modified = true;
+      b.modified = true;
+      i++;
+    }
+  }
+  return out;
+}
+
 function ComparerTab({ comparer, dispatch }) {
   const items = comparer.items;
   const selA = comparer.selA;
@@ -2825,7 +2843,11 @@ function ComparerTab({ comparer, dispatch }) {
     padding: 8, fontSize: "12px", fontFamily: "var(--ff-mono)",
     flex: 1, minHeight: 0, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
   };
-  const segStyle = (op) => ({
+  const segStyle = (op, modified) => modified ? {
+    background: "rgba(208,160,58,0.25)",
+    color: "var(--warn, #d0a03a)",
+    textDecoration: "none",
+  } : ({
     background: op === "ins" ? "rgba(70,200,120,0.22)"
               : op === "del" ? "rgba(220,80,80,0.22)" : "transparent",
     color: op === "ins" ? "var(--ok, #6c8)" : op === "del" ? "var(--err)" : "var(--text)",
@@ -2835,11 +2857,15 @@ function ComparerTab({ comparer, dispatch }) {
   // Split the backend's single merged diff into two synced streams: the
   // left pane reconstructs A (common + deleted), the right reconstructs B
   // (common + inserted) -- same shape as Burp's two-pane Comparer result.
-  const segs = (result && result.segments) || [];
+  // #313: an adjacent del+ins pair reads as one replacement, not an
+  // unrelated delete next to an unrelated insert -- comparerMarkModified()
+  // (pure helper, see below) flags both halves of such a pair so they can
+  // render as a distinct "modified" color instead of plain red/green.
+  const segs = comparerMarkModified((result && result.segments) || []);
   const streamA = segs.filter(s => s.op !== "ins");
   const streamB = segs.filter(s => s.op !== "del");
   const renderSeg = (s, i) => (
-    <span key={i} style={segStyle(s.op)}>
+    <span key={i} style={segStyle(s.op, s.modified)}>
       {view === "hex" ? textToHexPairs(s.text) + "  " : s.text}
     </span>
   );
@@ -4593,10 +4619,23 @@ function DecoderTab({ decoder }) {
     "rot13", "jwt-decode", "octal-encode", "octal-decode",
     "binary-encode", "binary-decode",
     "md4", "md5", "sha1", "sha224", "sha256", "sha384", "sha512", "sha3-256",
+    "graphql-parse", "grpc-frame", "cbor-decode", "saml-decode",
   ];
+
+  // #326: the four protocol decoders (graphql-parse/grpc-frame/cbor-decode/
+  // saml-decode) already exist as pure client-side codecs in proxy.jsx's
+  // CodecBar (runCodec()) and never hit /api/transcode -- route those
+  // op names to runCodec directly instead of the backend round-trip every
+  // other op uses.
+  const CLIENT_ONLY_OPS = { "graphql-parse": 1, "grpc-frame": 1, "cbor-decode": 1, "saml-decode": 1 };
 
   const run = async (operation) => {
     setOp(operation); setErr(""); setChain([]);
+    if (CLIENT_ONLY_OPS[operation]) {
+      try { setOutput(runCodec(operation, input)); }
+      catch (e) { setErr(String(e && e.message ? e.message : e)); }
+      return;
+    }
     try {
       const r = await NL.actions.transcode(operation, input);
       setOutput(r.output || "");
