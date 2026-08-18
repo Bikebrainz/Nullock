@@ -316,6 +316,12 @@ bool ProjectStore::ensureMetadata() {
         m_meta.repeaterState = o.value("repeater").toObject();
         m_meta.interceptRules = o.value("interceptRules").toArray();
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
+        m_meta.suppressedKinds.clear();
+        for (const QJsonValue &v : o.value("suppressedKinds").toArray())
+            m_meta.suppressedKinds.append(v.toString());
+        m_meta.falsePositiveKeys.clear();
+        for (const QJsonValue &v : o.value("falsePositiveKeys").toArray())
+            m_meta.falsePositiveKeys.append(v.toString());
         return true;
     }
 
@@ -356,6 +362,8 @@ bool ProjectStore::saveMetadata() {
     o["repeater"] = m_meta.repeaterState;
     o["interceptRules"] = m_meta.interceptRules;
     o["sessionMacros"] = m_meta.sessionMacros;
+    o["suppressedKinds"]   = QJsonArray::fromStringList(m_meta.suppressedKinds);
+    o["falsePositiveKeys"] = QJsonArray::fromStringList(m_meta.falsePositiveKeys);
 
     QFile f(m_dir + "/project.json");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -376,6 +384,26 @@ void ProjectStore::setInterceptRules(const QJsonArray &rules) {
 void ProjectStore::setSessionMacros(const QJsonArray &macros) {
     m_meta.sessionMacros = macros;
     saveMetadata();
+}
+
+void ProjectStore::setKindSuppressed(const QString &kind, bool suppressed) {
+    if (kind.isEmpty()) return;
+    const bool present = m_meta.suppressedKinds.contains(kind);
+    if (suppressed && !present)       m_meta.suppressedKinds.append(kind);
+    else if (!suppressed && present)  m_meta.suppressedKinds.removeAll(kind);
+    else return;                                   // no change -> no rewrite
+    saveMetadata();
+    emit triageChanged();
+}
+
+void ProjectStore::setFindingFalsePositive(const QString &key, bool falsePositive) {
+    if (key.isEmpty()) return;
+    const bool present = m_meta.falsePositiveKeys.contains(key);
+    if (falsePositive && !present)       m_meta.falsePositiveKeys.append(key);
+    else if (!falsePositive && present)  m_meta.falsePositiveKeys.removeAll(key);
+    else return;
+    saveMetadata();
+    emit triageChanged();
 }
 
 void ProjectStore::setMetadata(const ProjectMeta &meta) {

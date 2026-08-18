@@ -35,6 +35,13 @@ struct ProjectMeta {
     // sessionMacrosToJson), so a reopened project restores its recorded login
     // sequences + their auto-re-auth conditions. Serialized under "sessionMacros".
     QJsonArray sessionMacros;
+    // Scanner triage that must outlive the append-only findings.ndjson: issue
+    // KINDS the operator suppressed (never shown again) and the identity KEYS of
+    // individual findings marked false-positive. Applied at display time, so
+    // clearing either brings findings back with no re-scan. Under "suppressedKinds"
+    // / "falsePositiveKeys".
+    QStringList suppressedKinds;
+    QStringList falsePositiveKeys;
 };
 
 class ProjectStore : public QObject {
@@ -144,6 +151,15 @@ public:
     void setSessionMacros(const QJsonArray &macros);
     QJsonArray sessionMacros() const { return m_meta.sessionMacros; }
 
+    // Scanner triage, persisted in project.json. setKindSuppressed adds/removes an
+    // issue kind from the never-show set; setFindingFalsePositive adds/removes a
+    // finding identity key (FindingTriageLogic::findingKey) from the FP set. Both
+    // persist immediately and are idempotent. Accessors return snapshot copies.
+    void setKindSuppressed(const QString &kind, bool suppressed);
+    void setFindingFalsePositive(const QString &key, bool falsePositive);
+    QStringList suppressedKinds() const   { return m_meta.suppressedKinds; }
+    QStringList falsePositiveKeys() const { return m_meta.falsePositiveKeys; }
+
 public slots:
     // Append one round-trip to history.ndjson. Wire this to
     // ProxyServer::responseReceived.
@@ -186,6 +202,9 @@ signals:
     // login macros. Wire (via Nullock::Core::sessionMacrosFromJson) to
     // SessionRules::setMacros so a reopened project restores them.
     void sessionMacrosChanged(const QJsonArray &macros);
+    // Emitted when the finding-triage sets (suppressed kinds / false-positive
+    // keys) change, so the control server can bump its snapshot fingerprint.
+    void triageChanged();
 
 private:
     bool ensureMetadata();

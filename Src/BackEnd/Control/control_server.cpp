@@ -15,6 +15,7 @@
 #include "marketplace.hpp"
 #include "sequencer.hpp"
 #include "sequencer_capture.hpp"
+#include "finding_triage_logic.hpp"
 #include "intruder.hpp"
 #include "intruder_generators.hpp"
 #include "ci_gate_logic.hpp"
@@ -889,6 +890,7 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
     if (m_wiring.projectStore) {
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::scopeChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::rulesChanged, this, bump);
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::triageChanged, this, bump);
     }
     if (m_wiring.themes) {
         connect(m_wiring.themes, &Nullock::FrontEnd::ThemesManager::themeChanged,  this, bump);
@@ -1310,10 +1312,22 @@ QByteArray ControlServer::buildSnapshot() const {
     // via /api/report/json, or deduplicated into groups via
     // /api/findings/grouped. (There is no /api/findings -- this pointed at it
     // for a while and a GET simply 404s.)
+    // Triage sets (persisted per project): kinds the operator suppressed and the
+    // identity keys of findings marked false-positive. Read once; each finding is
+    // flagged so the UI can dim/hide + offer un-suppress / un-mark.
+    const QStringList suppressedKinds =
+        m_wiring.projectStore ? m_wiring.projectStore->suppressedKinds() : QStringList();
+    const QStringList falsePositiveKeys =
+        m_wiring.projectStore ? m_wiring.projectStore->falsePositiveKeys() : QStringList();
     QJsonArray findingsArr;
     if (m_wiring.scanner) {
         for (const auto &f : m_wiring.scanner->findings(200)) {
             QJsonObject fo;
+            fo["falsePositive"] = Nullock::Core::FindingTriageLogic::keyIsFalsePositive(
+                Nullock::Core::FindingTriageLogic::findingKey(f.kind, f.host, f.url, f.summary),
+                falsePositiveKeys);
+            fo["suppressed"] = Nullock::Core::FindingTriageLogic::kindSuppressed(
+                f.kind, suppressedKinds);
             fo["id"]       = f.id;
             fo["rowId"]    = f.rowId;
             fo["ts"]       = f.ts.toString(Qt::ISODate);
@@ -1338,6 +1352,7 @@ QByteArray ControlServer::buildSnapshot() const {
         root["findingsCount"] = m_wiring.scanner->count();
     }
     root["findings"] = findingsArr;
+    root["suppressedKinds"] = QJsonArray::fromStringList(suppressedKinds);
 
     // port scanner
     if (m_wiring.portScanner) {
@@ -6093,6 +6108,41 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/findings/clear") {
         if (m_wiring.scanner) m_wiring.scanner->clear();
         return okJson();
+    }
+
+    // ---- issue triage: false-positive marking + issue-kind suppression ----
+    // The marks persist in the project (keyed by finding identity / kind), not in
+    // the append-only findings.ndjson, and are applied at display time -- so
+    // clearing a mark brings the finding back with no re-scan.
+    // POST /api/findings/mark { id, falsePositive: bool }
+    if (path == "/api/findings/mark") {
+        if (!m_wiring.scanner || !m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "scanner or project store not wired" }});
+        const int id = bodyJson.value("id").toInt(-1);
+        const bool fp = bodyJson.value("falsePositive").toBool(true);
+        // Resolve the finding id -> its identity key (findings() returns a copy).
+        QString key;
+        for (const auto &f : m_wiring.scanner->findings(1000000)) {
+            if (f.id == id) {
+                key = Nullock::Core::FindingTriageLogic::findingKey(f.kind, f.host, f.url, f.summary);
+                break;
+            }
+        }
+        if (key.isEmpty())
+            return okJson({{ "ok", false }, { "error", "no finding with that id" }});
+        m_wiring.projectStore->setFindingFalsePositive(key, fp);
+        return okJson({{ "ok", true }, { "falsePositive", fp }});
+    }
+    // POST /api/findings/suppress-kind { kind, suppressed: bool }
+    if (path == "/api/findings/suppress-kind") {
+        if (!m_wiring.projectStore)
+            return okJson({{ "ok", false }, { "error", "project store not wired" }});
+        const QString kind = bodyJson.value("kind").toString();
+        const bool suppressed = bodyJson.value("suppressed").toBool(true);
+        if (kind.isEmpty())
+            return okJson({{ "ok", false }, { "error", "empty kind" }});
+        m_wiring.projectStore->setKindSuppressed(kind, suppressed);
+        return okJson({{ "ok", true }, { "kind", kind }, { "suppressed", suppressed }});
     }
 
     // ---- tool-integration exports ------------------------------------

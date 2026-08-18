@@ -299,6 +299,11 @@ add_subdirectory(sequencer_capture)
 # Run via: ctest -R redirect -V
 add_subdirectory(redirect)
 
+# Finding-triage pure logic: the identity key (matches project_store's dedup key)
+# + the suppress-kind / false-positive membership predicates.
+# Run via: ctest -R finding_triage -V
+add_subdirectory(finding_triage)
+
 # Port scanner banner classifier -- an OS mention isn't a service (no
 # winrm/smb from "Microsoft Windows"), an HTML body mentioning a DB is HTTP
 # (HTTP/1. status line wins before the DB substring matches), IMAP "* OK" is

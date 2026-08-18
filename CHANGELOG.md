@@ -25,6 +25,18 @@ developer-facing record.
   well-formed &mdash; a first-move test for HPP, CSRF, and upload-parser/WAF
   bypass bugs that previously meant hand-editing raw bytes. Pure client-side
   text transform, dispatched through the same edit path a hand edit uses.
+- **Triage scanner findings: mark false positives + suppress issue kinds.** Issue
+  triage was all-or-nothing (clear everything). You can now mark an individual
+  finding as a **false positive** (`/api/findings/mark`) and **suppress an entire
+  issue kind** so it stops cluttering the list (`/api/findings/suppress-kind`).
+  Both survive restart and are reversible with no re-scan: because findings persist
+  append-only, the marks live in the project file keyed by finding identity / kind
+  and are applied at *display* time, so un-marking a finding or un-suppressing a
+  kind brings it right back. The snapshot now carries a `falsePositive` and
+  `suppressed` flag per finding plus the `suppressedKinds` list, so the UI can dim
+  or hide them and offer an undo. The identity key matches the scanner's dedup key
+  exactly (unit-tested + mutation-proven). (The triage buttons in the Issues UI are
+  the remaining follow-on.)
 - **Intruder can follow redirects too.** The same follow-redirect engine now runs
   in Intruder: with `followRedirects` set (never / on-site / in-scope / always,
   plus `processCookies`), each fired payload's request follows its 3xx chain and
