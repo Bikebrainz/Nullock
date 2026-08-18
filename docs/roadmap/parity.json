@@ -3818,7 +3818,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-18",
-        "commit": "PENDING",
+        "commit": "42d243d",
         "note": "Repeater-area polish batch: inline tab rename (was prompt()) + client-only colour labels, closing the two named gaps; auto-naming quirk left untouched, honestly."
       }
     },
@@ -3946,7 +3946,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-18",
-        "commit": "PENDING",
+        "commit": "42d243d",
         "note": "Repeater-area polish batch: adjacent del+ins runs in the Comparer diff now render as a distinct 'modified' colour instead of separate delete/insert, closing the named gap."
       }
     },
@@ -4112,7 +4112,7 @@
       "audited_state": "exceeds",
       "reconciled": {
         "date": "2026-08-18",
-        "commit": "PENDING",
+        "commit": "42d243d",
         "note": "Repeater-area polish batch: the Decoder tab's op-button row now includes the four protocol decoders that previously lived only in the Proxy/Repeater CodecBar, routed to the same pure runCodec() implementation."
       }
     },
