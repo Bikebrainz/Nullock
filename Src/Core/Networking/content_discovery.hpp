@@ -38,6 +38,12 @@ struct Request {
     QList<QPair<QString, QString>> headers;     // carried headers (cookies, auth)
     QStringList wordlist;                        // relative paths; empty => default
     int     maxRequests = 300;                   // cap on wordlist entries probed
+    // Resource-pool controls (Burp-parity): how many wordlist probes run
+    // concurrently, and an optional pause between dispatches (rate limit).
+    // Calibration is always serial; only the main probe loop parallelizes.
+    // Detection is order-independent, so results are identical to the serial run.
+    int     concurrency = 10;                    // clamped to [1, 64]
+    int     throttleMs  = 0;                     // clamped to [0, 60000]
 };
 
 struct Result {

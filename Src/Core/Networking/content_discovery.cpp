@@ -1,7 +1,13 @@
 #include "content_discovery.hpp"
 #include "networking.hpp"
 
+#include <QAtomicInt>
+#include <QMutex>
 #include <QRandomGenerator>
+#include <QSemaphore>
+#include <QThread>
+#include <QThreadPool>
+#include <QtConcurrent/QtConcurrent>
 
 #include <algorithm>
 #include <climits>
@@ -151,29 +157,70 @@ Result discover(const Request &reqIn) {
     result.softNotFoundSize    = cal.softLen;
     result.softNotFoundIs200   = cal.reliable && cal.softStatuses.contains(200);
 
+    // The probe list: non-empty, leading-slash-stripped words (already capped to
+    // maxReq above). Detection is per-path and order-independent, so we fan these
+    // out across a bounded pool. Calibration above stayed serial.
+    QStringList probes;
+    probes.reserve(words.size());
     for (const QString &w : words) {
-        if (result.requestsSent >= maxReq + 2) break;  // +2 calibration
-        QString rel = w; while (rel.startsWith('/')) rel.remove(0, 1);
-        if (rel.isEmpty()) continue;
-        ++result.wordsTried;
-        const QString full = base + "/" + rel;
-        const auto r = get(full);
-        if (!r.ok) continue;
-        quint64 candHash = 0;
-        const bool candHasHash = cal.haveBodyHash;
-        if (candHasHash)
-            candHash = bodyFingerprint(canonicalizeBody(QString::fromLatin1(r.parsed.body), full));
-        const QString note = classify(r.parsed.statusCode, bodyLen(r.parsed),
-                                      headerValue(r.parsed, "Location"), cal, candHash, candHasHash);
-        if (note.isEmpty()) continue;
-        Hit hit;
-        hit.path = full;
-        hit.status = r.parsed.statusCode;
-        hit.size = bodyLen(r.parsed);
-        hit.location = headerValue(r.parsed, "Location");
-        hit.note = note;
-        result.hits.append(hit);
+        QString rel = w;
+        while (rel.startsWith('/')) rel.remove(0, 1);
+        if (!rel.isEmpty()) probes.append(rel);
     }
+
+    int concurrency = req.concurrency;
+    if (concurrency < 1)  concurrency = 1;
+    if (concurrency > 64) concurrency = 64;
+    int throttleMs = req.throttleMs;
+    if (throttleMs < 0)     throttleMs = 0;
+    if (throttleMs > 60000) throttleMs = 60000;
+
+    QMutex     hitsMutex;                 // guards result.hits
+    QAtomicInt triedCount{0};
+    QAtomicInt sentCount{0};
+    QThreadPool pool;
+    pool.setMaxThreadCount(concurrency);
+    QSemaphore inFlight(concurrency);     // bounds queued+running work to `concurrency`
+
+    // One probe. Its OWN HttpClient (HttpClient is not thread-safe across threads).
+    // classify / canonicalizeBody / bodyFingerprint / headerValue / buildGet are
+    // pure, so the only shared writes are the mutex-guarded hits + atomic counters.
+    auto probeOne = [&](const QString &rel) {
+        HttpClient taskClient;
+        const QString full = base + "/" + rel;
+        const auto r = taskClient.send(req.host, port, req.tls, buildGet(req, full));
+        sentCount.fetchAndAddRelaxed(1);
+        triedCount.fetchAndAddRelaxed(1);
+        if (r.ok) {
+            quint64 candHash = 0;
+            const bool candHasHash = cal.haveBodyHash;
+            if (candHasHash)
+                candHash = bodyFingerprint(canonicalizeBody(QString::fromLatin1(r.parsed.body), full));
+            const QString note = classify(r.parsed.statusCode, bodyLen(r.parsed),
+                                          headerValue(r.parsed, "Location"), cal, candHash, candHasHash);
+            if (!note.isEmpty()) {
+                Hit hit;
+                hit.path = full;
+                hit.status = r.parsed.statusCode;
+                hit.size = bodyLen(r.parsed);
+                hit.location = headerValue(r.parsed, "Location");
+                hit.note = note;
+                QMutexLocker lk(&hitsMutex);
+                result.hits.append(hit);
+            }
+        }
+        inFlight.release();
+    };
+
+    for (const QString &rel : probes) {
+        inFlight.acquire();                          // block until a slot frees
+        QtConcurrent::run(&pool, [&probeOne, rel]() { probeOne(rel); });
+        if (throttleMs > 0) QThread::msleep(static_cast<unsigned long>(throttleMs));
+    }
+    pool.waitForDone();
+
+    result.wordsTried   += triedCount.loadAcquire();
+    result.requestsSent += sentCount.loadAcquire();
 
     // 2) WAF-saturation: a pattern-blocking WAF that passes the benign "nl404"
     //    calibration tokens yet 401/403s every attack-shaped wordlist path would

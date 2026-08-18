@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Content discovery runs concurrently (thread + throttle controls).** The
+  wordlist brute-force fired one request at a time, so a real wordlist crawled.
+  It now fans the probes across a bounded pool &mdash; `concurrency` (1&ndash;64,
+  default 10) and an optional inter-dispatch `throttleMs` on `/api/content/discover`.
+  Calibration stays serial and the detection logic is untouched, so results are
+  **identical** to the old serial run (each path is classified against the same
+  soft-404 profile, order-independent) &mdash; just far faster. Verified e2e: the
+  same hit set serial vs. concurrent, and ~4&times; faster wall-clock at
+  concurrency 10.
 - **Export HAR: include unredacted auth material.** The Export HAR button
   (Settings' Project card) redacted `Authorization`/`Cookie`/etc by default
   with no way to opt out from the GUI, even though the backend already

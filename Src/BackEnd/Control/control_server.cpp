@@ -8860,6 +8860,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                       ? QStringLiteral("/") : u.path(QUrl::FullyEncoded);
         const int mx = bodyJson.value("max").toInt(300);
         cr.maxRequests = qBound(1, mx, 2000);
+        // Resource-pool controls (Burp-parity): probe concurrency + inter-dispatch
+        // throttle. Both re-clamped in discover() too.
+        if (bodyJson.contains("concurrency"))
+            cr.concurrency = qBound(1, bodyJson.value("concurrency").toInt(10), 64);
+        if (bodyJson.contains("throttleMs"))
+            cr.throttleMs = qBound(0, bodyJson.value("throttleMs").toInt(0), 60000);
         for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
             if (!v.toString().isEmpty()) cr.wordlist.append(v.toString());
         const QJsonObject chdrs = bodyJson.value("headers").toObject();
