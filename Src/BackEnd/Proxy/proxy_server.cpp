@@ -10,16 +10,20 @@
 #include "proxy_logic.hpp"
 #include "session_manager.hpp"
 #include "session_rules.hpp"
+#include "tls_accept_logic.hpp"
 #include "networking.hpp"
 #include "websocket.hpp"
 #include "ws_repeater.hpp"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <QSslCertificate>
 #include <QSslConfiguration>
@@ -482,11 +486,25 @@ public:
         // ignoreSslErrors(), which causes Qt to abort the handshake.
         // This is what turns a self-signed/expired/wrong-host upstream
         // cert into a connection failure instead of a silent MITM.
+        // Per-host "accept invalid cert" exception, read once at handshake time.
+        const QString hostPort = host + QLatin1Char(':') + QString::number(port);
+        const bool acceptInvalid = m_server->isAcceptInvalidHost(hostPort);
         QStringList tlsErrors;
+        QStringList ignoredCertErrors;   // names of errors we waved through (empty = none)
         connect(upstream, &QSslSocket::sslErrors, this,
-                [&tlsErrors, host](const QList<QSslError> &errs) {
-            for (const auto &e : errs) {
+                [&tlsErrors, &ignoredCertErrors, upstream, host, acceptInvalid](const QList<QSslError> &errs) {
+            for (const auto &e : errs)
                 tlsErrors << (host + ": " + e.errorString());
+            if (!acceptInvalid) return;   // default: verify the origin chain normally
+            // Ignore ONLY when EVERY presented error is a benign validation error.
+            // A blacklisted/revoked/no-peer-cert (or any non-cert) error leaves the
+            // filtered list SMALLER, so we ignore NOTHING and the handshake fails
+            // CLOSED -- "accept my staging cert" never means "accept a forged one".
+            const QList<QSslError> ignorable =
+                Nullock::Proxy::TlsAcceptLogic::filterIgnorableErrors(errs);
+            if (ignorable.size() == errs.size() && !ignorable.isEmpty()) {
+                upstream->ignoreSslErrors(ignorable);
+                for (const auto &e : ignorable) ignoredCertErrors << e.errorString();
             }
         });
 
@@ -497,16 +515,15 @@ public:
             // or the 3 s budget expired. (This is also reached when the proxy
             // is shutting down, since waitEncrypted is shutdown-aware.)
             //
-            // NOT "h2-only origins", which is what this said until the ALPN list
-            // above gained h2 in 9a60b84 -- those negotiate fine now and take the
-            // upstreamIsH2 branch below. A reader trusting the old comment would
-            // conclude MITM cannot work against an h2 origin, the opposite of
-            // how this is built.
-            //
-            // Mark blocked so future CONNECTs skip the MITM dance and pass
-            // through opaquely. Short timeout means the user sees ~3s on first
-            // hit, not 15s.
-            m_server->markMitmBlocked(host);
+            // Root-cause fix for "one bad-cert attempt permanently blocklists the
+            // host": a CERT-level failure means the sslErrors handler fired, so
+            // tlsErrors is non-empty. Those fail FAST (the origin answered, its cert
+            // was rejected) and are re-evaluable -- so we do NOT markMitmBlocked
+            // them; adding the host to the accept-invalid list and retrying then
+            // Just Works. Only a genuine unreachable/timeout (tlsErrors EMPTY) keeps
+            // blocklisting, to spare the ~3 s handshake wait on every future hit.
+            if (tlsErrors.isEmpty())
+                m_server->markMitmBlocked(host);
             QString reason = upstream->errorString();
             if (!tlsErrors.isEmpty()) {
                 // Show the cert-level errors first -- "Hostname doesn't
@@ -516,6 +533,24 @@ public:
             }
             fail("mitm: upstream TLS handshake failed: " + reason);
             return;
+        }
+        // Handshake succeeded. If we waved an invalid cert through for an
+        // allow-listed host, record EXACTLY what we accepted -- leaf SHA-256 +
+        // which errors -- so the operator can see the relaxed leg (and can spot an
+        // unexpected cert), and warn loudly on the console (fwrite+fflush: this is
+        // a WIN32-GUI-subsystem app, qInfo is invisible and stdout is buffered).
+        if (!ignoredCertErrors.isEmpty()) {
+            const QByteArray fp = upstream->peerCertificate()
+                                      .digest(QCryptographicHash::Sha256).toHex(':');
+            const QString errs = ignoredCertErrors.join(", ");
+            m_server->recordAcceptedInvalidCert(
+                hostPort, QString::fromLatin1(fp), errs,
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+            const QByteArray warn =
+                "[nullock] WARNING: accepted INVALID upstream TLS cert for " + hostPort.toUtf8()
+                + " (" + errs.toUtf8() + "); leaf SHA-256 " + fp + "\n";
+            std::fwrite(warn.constData(), 1, warn.size(), stderr);
+            std::fflush(stderr);
         }
         const QByteArray negotiated = upstream->sslConfiguration().nextNegotiatedProtocol();
         const bool upstreamIsH2 = (negotiated == "h2");
@@ -1331,6 +1366,79 @@ void ProxyServer::clearMitmBlocked() {
     }
     if (!pathToRemove.isEmpty())
         QFile::remove(pathToRemove);
+}
+
+void ProxyServer::clearMitmBlocked(const QString &host) {
+    // Per-host unblock: drop ONE host and rewrite the file from the reduced set.
+    // Holds the file lock across the mutate+rewrite (same ordering as everywhere),
+    // and rewrites inline rather than calling persistBlocklist() -- the file mutex
+    // is non-recursive, so re-entering it would self-deadlock.
+    QMutexLocker fileLock(&m_blocklistFileMutex);
+    QString path;
+    QStringList snapshot;
+    bool removed = false;
+    {
+        QMutexLocker lock(&m_blockMutex);
+        removed = (m_mitmBlocked.remove(host) > 0);
+        path = m_blocklistPath;
+        snapshot = QStringList(m_mitmBlocked.constBegin(), m_mitmBlocked.constEnd());
+    }
+    if (!removed || path.isEmpty()) return;
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
+    snapshot.sort();
+    f.write(snapshot.join('\n').toUtf8());
+    f.write("\n");
+}
+
+bool ProxyServer::isAcceptInvalidHost(const QString &hostPort) const {
+    QMutexLocker lock(&m_acceptMutex);
+    return m_acceptInvalidUpstreamHosts.contains(hostPort);
+}
+QStringList ProxyServer::acceptInvalidUpstreamHosts() const {
+    QMutexLocker lock(&m_acceptMutex);
+    QStringList out(m_acceptInvalidUpstreamHosts.constBegin(), m_acceptInvalidUpstreamHosts.constEnd());
+    out.sort();
+    return out;
+}
+void ProxyServer::setAcceptInvalidUpstreamHosts(const QStringList &hosts) {
+    {
+        QMutexLocker lock(&m_acceptMutex);
+        m_acceptInvalidUpstreamHosts = QSet<QString>(hosts.constBegin(), hosts.constEnd());
+    }
+    emit acceptInvalidStateChanged();
+}
+void ProxyServer::addAcceptInvalidHost(const QString &hostPort) {
+    {
+        QMutexLocker lock(&m_acceptMutex);
+        if (m_acceptInvalidUpstreamHosts.contains(hostPort)) return;
+        m_acceptInvalidUpstreamHosts.insert(hostPort);
+    }
+    emit acceptInvalidStateChanged();
+}
+void ProxyServer::removeAcceptInvalidHost(const QString &hostPort) {
+    bool changed = false;
+    {
+        QMutexLocker lock(&m_acceptMutex);
+        changed = (m_acceptInvalidUpstreamHosts.remove(hostPort) > 0);
+        m_acceptedCerts.remove(hostPort);   // forget what we accepted for it too
+    }
+    if (changed) emit acceptInvalidStateChanged();
+}
+void ProxyServer::recordAcceptedInvalidCert(const QString &hostPort, const QString &sha256,
+                                            const QString &ignoredErrors, const QString &acceptedAt) {
+    {
+        QMutexLocker lock(&m_acceptMutex);
+        m_acceptedCerts.insert(hostPort, AcceptedCert{ sha256, ignoredErrors, acceptedAt });
+    }
+    emit acceptInvalidStateChanged();
+}
+QList<QPair<QString, ProxyServer::AcceptedCert>> ProxyServer::acceptedInvalidCerts() const {
+    QMutexLocker lock(&m_acceptMutex);
+    QList<QPair<QString, AcceptedCert>> out;
+    for (auto it = m_acceptedCerts.constBegin(); it != m_acceptedCerts.constEnd(); ++it)
+        out.append({ it.key(), it.value() });
+    return out;
 }
 
 void ProxyServer::setBlocklistPath(const QString &path) {

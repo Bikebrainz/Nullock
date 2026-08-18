@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QByteArray>
 #include <QDateTime>
+#include <QHash>
 #include <QHostAddress>
 #include <QList>
 #include <QMutex>
@@ -182,6 +183,37 @@ public:
     void markMitmBlocked(const QString &host);
     Q_INVOKABLE QStringList blockedHosts() const;
     Q_INVOKABLE void clearMitmBlocked();
+    // Per-host unblock. The blocklist file is GLOBAL across projects, so clear-all
+    // re-arms MITM against every pinned/dead host everywhere; this drops exactly
+    // one host -- the surgical escape hatch for a host blocked by ALPN /
+    // connection-death (a bad-cert host no longer needs it: see the root-cause fix
+    // in the upstream-handshake path).
+    void clearMitmBlocked(const QString &host);
+
+    // --- Accept an invalid UPSTREAM TLS certificate, per allow-listed host -------
+    // A self-signed / expired / wrong-host origin cert fails VerifyPeer and aborts
+    // the handshake. For a host the operator EXPLICITLY adds here (a lab/staging
+    // box, keyed "host:port"), the benign validation errors are ignored so it stays
+    // interceptable -- the way Burp accepts invalid upstream certs. A cert Qt flags
+    // as blacklisted/revoked, or no-peer-cert, still fails CLOSED
+    // (TlsAcceptLogic::filterIgnorableErrors). DEFAULT: empty (verify everything).
+    // Mutex-guarded (m_acceptMutex): written from the control thread, read in the
+    // upstream sslErrors handler on per-connection worker threads.
+    bool isAcceptInvalidHost(const QString &hostPort) const;
+    QStringList acceptInvalidUpstreamHosts() const;               // sorted; for snapshot/API
+    void setAcceptInvalidUpstreamHosts(const QStringList &hosts); // replace whole set (project restore)
+    void addAcceptInvalidHost(const QString &hostPort);
+    void removeAcceptInvalidHost(const QString &hostPort);
+
+    // Visibility: what invalid cert was actually waved through, per host -- the leaf
+    // SHA-256 fingerprint, which error(s) were ignored, and when. This is the loud
+    // "verification was relaxed here and THIS is the cert we saw" record the
+    // operator needs so an attacker's cert can't hide behind the exception. The
+    // snapshot surfaces it. Recorded on the worker after a successful ignore.
+    struct AcceptedCert { QString sha256; QString ignoredErrors; QString acceptedAt; };
+    void recordAcceptedInvalidCert(const QString &hostPort, const QString &sha256,
+                                   const QString &ignoredErrors, const QString &acceptedAt);
+    QList<QPair<QString, AcceptedCert>> acceptedInvalidCerts() const;
 
     // How many round-trips the scope filter has dropped from the history
     // since startup. Exposed so the status bar can surface "you're not
@@ -250,6 +282,9 @@ signals:
                           const Nullock::Proxy::HttpResponse &response);
     void errorOccurred(const QString &message);
     void filteredCountChanged();
+    // The accept-invalid-cert allow-list or the accepted-cert record changed, so a
+    // ?since=-gated snapshot must refresh (wired to the control server's seq bump).
+    void acceptInvalidStateChanged();
     // Emitted by shutdownAndJoin(). The nested relay QEventLoops in
     // runRawRelay/runWebSocketRelay connect it to quit(); the connection is
     // queued into the worker thread and that loop IS the worker's event loop,
@@ -288,6 +323,14 @@ private:
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;
+    // Per-host "accept invalid upstream cert" allow-list ("host:port") + the record
+    // of what was actually accepted (host -> leaf fingerprint / ignored errors /
+    // when). Guarded by m_acceptMutex; written on the control thread, read in the
+    // upstream sslErrors handler on per-connection workers. NOT persisted here --
+    // the project store owns persistence and restores it via setAcceptInvalidUpstreamHosts.
+    mutable QMutex m_acceptMutex;
+    QSet<QString> m_acceptInvalidUpstreamHosts;
+    QHash<QString, AcceptedCert> m_acceptedCerts;
     // Serializes the blocklist FILE, separately from the set above. Two locks
     // rather than one because the set is read on the CONNECT hot path
     // (isMitmBlocked) and must never wait behind a disk write. Lock order is

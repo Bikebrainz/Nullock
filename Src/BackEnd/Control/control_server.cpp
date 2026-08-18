@@ -882,6 +882,10 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
     if (m_wiring.proxy) {
         connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::runningChanged,       this, bump);
         connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::filteredCountChanged, this, bump);
+        // The accept-invalid-cert allow-list or accepted-cert record changed (incl.
+        // a cert accepted on a worker mid-proxying) -> the ?since=-gated snapshot
+        // must refresh so the UI reflects the relaxed leg promptly.
+        connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::acceptInvalidStateChanged, this, bump);
     }
     if (m_wiring.intercept) {
         connect(m_wiring.intercept, &Nullock::Proxy::InterceptController::currentChanged, this, bump);
@@ -1230,6 +1234,20 @@ QByteArray ControlServer::buildSnapshot() const {
         for (const QString &h : m_wiring.proxy->blockedHosts()) blocked.append(h);
         bootInfo["mitmBlocked"]     = blocked;
         bootInfo["controlPort"]     = static_cast<int>(this->listeningPort());
+        // The loud "verification is RELAXED on these hosts" indicator + the record
+        // of exactly which invalid cert was accepted per host (leaf SHA-256 + the
+        // errors waived + when), so an operator can spot an unexpected cert.
+        bootInfo["acceptInvalidUpstreamHosts"] =
+            QJsonArray::fromStringList(m_wiring.proxy->acceptInvalidUpstreamHosts());
+        QJsonArray acceptedCerts;
+        for (const auto &pair : m_wiring.proxy->acceptedInvalidCerts()) {
+            acceptedCerts.append(QJsonObject{
+                { "host",          pair.first },
+                { "sha256",        pair.second.sha256 },
+                { "ignoredErrors", pair.second.ignoredErrors },
+                { "acceptedAt",    pair.second.acceptedAt } });
+        }
+        bootInfo["acceptedInvalidCerts"] = acceptedCerts;
     }
     if (m_wiring.extensions) {
         QJsonArray extLog;
@@ -6114,6 +6132,37 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/mitm/clear-blocked") {
         if (m_wiring.proxy) m_wiring.proxy->clearMitmBlocked();
         return okJson();
+    }
+    if (path == "/api/mitm/unblock") {
+        // Per-host unblock -- surgical alternative to clear-blocked (which is
+        // global across projects). For a host blocked by ALPN / connection-death.
+        const QString host = bodyJson.value("host").toString();
+        if (m_wiring.proxy && !host.isEmpty()) m_wiring.proxy->clearMitmBlocked(host);
+        return okJson({{ "blocked", m_wiring.proxy ? QJsonArray::fromStringList(
+                                        m_wiring.proxy->blockedHosts()) : QJsonArray() }});
+    }
+    if (path == "/api/proxy/accept-invalid-hosts/add"
+        || path == "/api/proxy/accept-invalid-hosts/remove") {
+        // Add/remove a "host:port" from the accept-invalid-upstream-cert allow-list.
+        // Mutating through the project store persists it AND emits the change, which
+        // app.cpp has wired to push the new list into the live proxy -- so this is
+        // set-live + persist in one call. Echo the resulting list.
+        if (!m_wiring.projectStore)
+            return okJson({{ "acceptInvalidUpstreamHosts", QJsonArray() }});
+        const QString host = bodyJson.value("host").toString().trimmed();
+        QJsonArray cur = m_wiring.projectStore->acceptInvalidUpstreamHosts();
+        if (!host.isEmpty()) {
+            QStringList list;
+            for (const QJsonValue &v : cur) {
+                const QString s = v.toString();
+                if (!s.isEmpty() && s != host) list << s;   // drop any existing copy of host
+            }
+            if (path.endsWith("/add")) list << host;        // ...then re-add for /add only
+            list.sort();
+            m_wiring.projectStore->setAcceptInvalidUpstreamHosts(QJsonArray::fromStringList(list));
+            cur = QJsonArray::fromStringList(list);
+        }
+        return okJson({{ "acceptInvalidUpstreamHosts", cur }});
     }
 
     if (path == "/api/extensions/reload") {

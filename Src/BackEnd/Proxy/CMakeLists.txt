@@ -14,6 +14,8 @@ add_library(Proxy STATIC
     intercept_logic.hpp
     scope_logic.cpp
     scope_logic.hpp
+    tls_accept_logic.cpp
+    tls_accept_logic.hpp
     http2_client.cpp
     http2_client.hpp
     h2_client_logic.cpp

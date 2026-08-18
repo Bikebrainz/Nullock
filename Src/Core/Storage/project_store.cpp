@@ -224,6 +224,7 @@ bool ProjectStore::open(const QString &projectDir) {
     emit sessionRulesJsonChanged(m_meta.sessionRulesJson);
     emit cookieJarChanged(m_meta.cookieJar);
     emit advancedScopeChanged(m_meta.advancedScope);
+    emit acceptInvalidHostsChanged(m_meta.acceptInvalidUpstreamHosts);
     return true;
 }
 
@@ -325,6 +326,9 @@ bool ProjectStore::ensureMetadata() {
             o.value("interceptAutoContentLength").toBool(true);
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
         m_meta.advancedScope = o.value("advancedScope").toArray();
+        // Missing key -> empty array = FAIL CLOSED (verify every upstream). Never a
+        // truthy default: a keyless/older project must not silently accept bad certs.
+        m_meta.acceptInvalidUpstreamHosts = o.value("acceptInvalidUpstreamHosts").toArray();
         m_meta.sessionRulesJson = o.value("sessionRules").toArray();
         m_meta.cookieJar = o.value("cookieJar").toArray();
         m_meta.suppressedKinds.clear();
@@ -379,6 +383,7 @@ bool ProjectStore::saveMetadata() {
     o["interceptAutoContentLength"] = m_meta.interceptAutoContentLength;
     o["sessionMacros"] = m_meta.sessionMacros;
     o["advancedScope"] = m_meta.advancedScope;
+    o["acceptInvalidUpstreamHosts"] = m_meta.acceptInvalidUpstreamHosts;
     o["sessionRules"]  = m_meta.sessionRulesJson;
     o["cookieJar"]     = m_meta.cookieJar;
     o["suppressedKinds"]   = QJsonArray::fromStringList(m_meta.suppressedKinds);
@@ -417,6 +422,12 @@ void ProjectStore::setAdvancedScope(const QJsonArray &rules) {
     m_meta.advancedScope = rules;
     saveMetadata();
     emit advancedScopeChanged(m_meta.advancedScope);
+}
+
+void ProjectStore::setAcceptInvalidUpstreamHosts(const QJsonArray &hosts) {
+    m_meta.acceptInvalidUpstreamHosts = hosts;
+    saveMetadata();
+    emit acceptInvalidHostsChanged(m_meta.acceptInvalidUpstreamHosts);
 }
 
 void ProjectStore::setSessionRulesJson(const QJsonArray &rules) {

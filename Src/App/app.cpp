@@ -774,6 +774,22 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::advancedScopeChanged,
                      &proxy, &Nullock::Proxy::ProxyServer::setAdvancedScope);
 
+    // Accept-invalid-upstream-cert host allow-list: restore the default project's
+    // list now (it opened before this wiring) and re-apply on every edit / project
+    // switch. The proxy stores a QStringList of "host:port"; the store persists a
+    // QJsonArray, so convert. Empty list = verify every upstream (fail closed).
+    auto applyAcceptHosts = [&proxy](const QJsonArray &arr) {
+        QStringList hosts;
+        for (const QJsonValue &v : arr) {
+            const QString s = v.toString();
+            if (!s.isEmpty()) hosts << s;
+        }
+        proxy.setAcceptInvalidUpstreamHosts(hosts);
+    };
+    applyAcceptHosts(projectStore.acceptInvalidUpstreamHosts());
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::acceptInvalidHostsChanged,
+                     &proxy, applyAcceptHosts);
+
     // Match & replace rules: load from project, push live updates.
     proxy.setRules(projectStore.rules());
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::rulesChanged,

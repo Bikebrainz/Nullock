@@ -43,6 +43,12 @@ struct ProjectMeta {
     // project restores its include/exclude scope rules. Serialized under
     // "advancedScope".
     QJsonArray advancedScope;
+    // Hosts ("host:port") the operator allow-listed to accept an INVALID upstream
+    // TLS cert on (a self-signed / expired staging box). Serialized under
+    // "acceptInvalidUpstreamHosts". Default (missing key) = EMPTY = verify every
+    // upstream: this is a security posture, so it must FAIL CLOSED, never inherit a
+    // relaxed default. Restored into the live proxy on open().
+    QJsonArray acceptInvalidUpstreamHosts;
     // Session-handling RULES (extract-a-value / inject-a-{{var}}), opaque JSON
     // owned by SessionRules (sessionRulesToJson). Serialized under "sessionRules".
     QJsonArray sessionRulesJson;
@@ -186,6 +192,15 @@ public:
     void setAdvancedScope(const QJsonArray &rules);
     QJsonArray advancedScope() const { return m_meta.advancedScope; }
 
+    // Accept-invalid-upstream-cert host allow-list, persisted under
+    // "acceptInvalidUpstreamHosts". setAcceptInvalidUpstreamHosts persists
+    // immediately + emits acceptInvalidHostsChanged (the live proxy re-applies);
+    // open() emits it unconditionally (incl. empty) so switching to a project that
+    // never set it RESETS the live proxy to empty rather than bleeding the prior
+    // engagement's relaxed posture forward.
+    void setAcceptInvalidUpstreamHosts(const QJsonArray &hosts);
+    QJsonArray acceptInvalidUpstreamHosts() const { return m_meta.acceptInvalidUpstreamHosts; }
+
     // Session-handling rules, persisted in project.json under "sessionRules".
     // setSessionRulesJson persists immediately (the live SessionRules is updated
     // separately by the API handler); open() emits sessionRulesJsonChanged so a
@@ -271,6 +286,10 @@ signals:
     // Emitted whenever the advanced scope rules change (setter + open()), so
     // app.cpp re-applies them to the live proxy and the snapshot bumps.
     void advancedScopeChanged(const QJsonArray &rules);
+    // Emitted whenever the accept-invalid-upstream-cert host list changes (setter +
+    // open(), unconditionally incl. empty), so app.cpp re-applies it to the live
+    // proxy and the snapshot bumps.
+    void acceptInvalidHostsChanged(const QJsonArray &hosts);
 
 private:
     bool ensureMetadata();

@@ -11,6 +11,26 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intercept a target with an invalid TLS certificate (per-host opt-in).** A
+  staging box with a self-signed or expired cert used to be un-interceptable
+  &mdash; the upstream handshake failed and, worse, one attempt permanently
+  blocklisted the host. You can now add a specific `host:port` to an
+  accept-invalid-cert list and Nullock will proceed against that origin's bad
+  cert, the way Burp does &mdash; but scoped to hosts you name, not a blanket
+  "trust every bad cert" switch that would let an attacker's cert ride through
+  for a host you never meant to relax. It stays safe in the ways that matter:
+  only benign validation errors (self-signed, expired, name-mismatch, unknown
+  issuer) are waived; a certificate the TLS stack flags as **blacklisted or
+  revoked still fails closed**; the list defaults to empty and is saved per
+  project (a relaxed posture never silently follows you into the next
+  engagement); and every accepted cert is recorded with its **SHA-256
+  fingerprint** and a console warning so you can spot an unexpected one. Fixing
+  this also fixed the root-cause blocklist bug: a cert failure no longer
+  permanently blocklists a host, and there's a new per-host **unblock** for hosts
+  blocked for other reasons. Design hardened by a 4-agent adversarial review;
+  verified with mutation-tested unit cases and an end-to-end test against a real
+  self-signed origin. (Per-history-row cert annotations and fingerprint pinning
+  are still to come.)
 - **Repeater now shows response time and size.** Every Repeater send records how
   long the round-trip took (in milliseconds) and how many bytes came back, so the
   signal that matters for blind SQL injection, blind command injection and race

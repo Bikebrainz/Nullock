@@ -427,6 +427,11 @@ add_subdirectory(intercept_logic)
 # Run via: ctest -R scope_logic -V
 add_subdirectory(scope_logic)
 
+# Upstream-cert accept filter: the security boundary for "accept an invalid
+# certificate for an operator-allow-listed host" -- proves benign validation
+# errors are ignorable while a blacklisted/revoked/no-peer-cert error fails closed.
+add_subdirectory(tls_accept_logic)
+
 # History-index find() query builder: the SQL-INJECTION regression lock -- proves
 # the produced SQL depends only on which filter keys are present (never their
 # values, so every operator value is a bound ? parameter) and that `limit` is
