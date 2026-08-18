@@ -5029,12 +5029,18 @@
     {
       "area": "target",
       "feature": "Advanced scope control: per-rule Protocol (HTTP/HTTPS/Any) + Host-or-IP-range (regex) + Port (regex) + File (regex, query ignored), toggled by the \"Use advanced scope control\" checkbox",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Cannot scope by protocol, port, IP range, or path. On a shared host, an app behind a path prefix, or a URL-subtree engagement, scope is unusable -- and because it gates every active tool (item 15), you either over-permit the whole host or block it entirely.",
       "why": "Confirmed, and the strongest single piece of evidence is one the first pass found and I re-verified: the one caller that HAS scheme and port explicitly discards them, with a comment saying why.",
-      "evidence": "There is no rule struct -- project_store.hpp:17-18 `QStringList inScope; QStringList outOfScope;`. The matcher's signature is the proof: proxy_server.cpp:1329 `bool ProxyServer::isInScope(const QString &host) const {` -- scheme and port are not parameters. Src/App/app.cpp:935-940 `crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) { // The project scope"
+      "evidence": "There is no rule struct -- project_store.hpp:17-18 `QStringList inScope; QStringList outOfScope;`. The matcher's signature is the proof: proxy_server.cpp:1329 `bool ProxyServer::isInScope(const QString &host) const {` -- scheme and port are not parameters. Src/App/app.cpp:935-940 `crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) { // The project scope",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-17",
+        "commit": "9ebecdb",
+        "note": "Built (backend + API): advanced include/exclude scope RULES over protocol / host-regex / port-range / file-regex, COMPOSED on top of the existing host-glob scope (never replacing it -- with no enabled advanced rule the decision is byte-identical, and a lone exclude can't widen scope to allow-all; deny wins across both layers). The proxy hot path matches the FULL URL (ProxyServer::isUrlInScope at the request/M&R/cookie sites), so a path/port exclude actually filters; host-only callers fail closed. ReDoS-safe (user regex validated + size-capped + matched outside m_scopeMutex; port is a numeric range not a regex). Pure scope_logic unit-tested (42 cases) + mutation-proven (deny-wins, compose-not-replace). Rules persist in project.json (advancedScope) + /api/scope/advanced + snapshot scope.advanced. Verified e2e (an exclude on /admin filters it in the proxy while /home passes; persists across restart; OFF unchanged). PARTIAL: the advanced-scope editor UI (ui-v2) + upgrading the ~10 tool gates from host-only to full-URL blocksUrl (safe fail-closed today) are the follow-ons."
+      }
     },
     {
       "area": "target",
