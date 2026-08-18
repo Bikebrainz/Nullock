@@ -208,6 +208,27 @@ int main(int argc, char **argv) {
             !resolve("s=1; Expires=not a date").persistent);
     }
 
+    // ===== cookieToJson / cookieFromJson round-trip (jar persistence) ====
+    {
+        CapturedCookie c = parseSetCookie("sid=abc123; Path=/app; Secure; HttpOnly; Max-Age=3600");
+        resolveCookieExpiry(c, 1000000);
+        const CapturedCookie rt = cookieFromJson(cookieToJson(c));
+        chk("cookie-json: name/value survive", rt.name == c.name && rt.value == c.value);
+        chk("cookie-json: raw survives", rt.raw == c.raw);
+        chk("cookie-json: path + flags survive",
+            rt.path == c.path && rt.secure == c.secure && rt.httpOnly == c.httpOnly);
+        chk("cookie-json: persistent + expiresEpoch survive",
+            rt.persistent == c.persistent && rt.expiresEpoch == c.expiresEpoch);
+        // A large 64-bit epoch round-trips exactly (stored as a JSON string, not a
+        // double) -- an expiry past 2038 must not lose precision.
+        CapturedCookie big; big.persistent = true; big.expiresEpoch = 9999999999LL;
+        chk("cookie-json: 10-digit epoch exact",
+            cookieFromJson(cookieToJson(big)).expiresEpoch == 9999999999LL);
+        // A restored cookie is still expiry-checkable, so import can drop stale ones.
+        chk("cookie-json: restored cookie stays expiry-checkable",
+            cookieExpired(rt, c.expiresEpoch + 1) && !cookieExpired(rt, c.expiresEpoch - 1));
+    }
+
     std::fprintf(stderr, "session_manager_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -1,6 +1,8 @@
 #include "session_manager.hpp"
 
 #include <QDateTime>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QMutexLocker>
 
 namespace Nullock::Core {
@@ -187,6 +189,43 @@ void SessionManager::clearAll() {
     {
         QMutexLocker lk(&m_mutex);
         m_byHost.clear();
+    }
+    emit sessionsChanged();
+}
+
+QJsonArray SessionManager::exportJson() const {
+    QMutexLocker lk(&m_mutex);
+    QJsonArray arr;
+    for (auto it = m_byHost.cbegin(); it != m_byHost.cend(); ++it) {
+        const HostSession &hs = it.value();
+        QJsonArray cookies;
+        for (const CapturedCookie &c : hs.cookies)
+            cookies.append(SessionLogic::cookieToJson(c));
+        arr.append(QJsonObject{
+            { "host", hs.host }, { "autoInject", hs.autoInject },
+            { "lastSeen", QString::number(hs.lastSeen) }, { "cookies", cookies } });
+    }
+    return arr;
+}
+
+void SessionManager::importJson(const QJsonArray &arr, long long nowEpoch) {
+    {
+        QMutexLocker lk(&m_mutex);
+        m_byHost.clear();
+        for (const QJsonValue &v : arr) {
+            const QJsonObject o = v.toObject();
+            HostSession hs;
+            hs.host = o.value("host").toString();
+            if (hs.host.isEmpty()) continue;
+            hs.autoInject = o.value("autoInject").toBool(false);
+            hs.lastSeen   = o.value("lastSeen").toString().toLongLong();
+            for (const QJsonValue &cv : o.value("cookies").toArray()) {
+                CapturedCookie c = SessionLogic::cookieFromJson(cv.toObject());
+                if (SessionLogic::cookieExpired(c, nowEpoch)) continue;   // drop stale/logged-out
+                hs.cookies.append(c);
+            }
+            m_byHost.insert(hs.host, hs);
+        }
     }
     emit sessionsChanged();
 }

@@ -11,14 +11,24 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **The captured cookie jar persists across restart.** With the session rules
+  already persisting, the session **cookie jar** now saves too &mdash; the
+  per-host cookies the proxy captured are written into the project file when you
+  close or switch projects and restored when you reopen, so an authenticated
+  session survives a restart instead of re-logging-in. Crucially, an **expired**
+  cookie (a logged-out or timed-out token) is dropped on restore rather than
+  replayed, so a stale session is never resurrected. The cookie&harr;JSON
+  serializer round-trips the resolved lifetime exactly (a post-2038 expiry keeps
+  full precision) and is unit-tested + mutation-proven; verified end-to-end
+  (capture &rarr; save on project switch &rarr; restore with the expired cookie
+  dropped). Completes "cookie jar + session rules persist across restarts".
 - **Session-handling rules survive a restart.** Your session rules (grab a value
   from a response, inject it as `{{var}}` into later requests &mdash; CSRF-token
   refresh, JWT re-injection) were rebuilt from scratch every session. They now
   save into the project file and restore when the project reopens, per project so
   one engagement's rules never bleed into another's. The rule &harr; JSON
   serializer is shared between `/api/session-rules`, the snapshot, and the on-disk
-  form, so the three can't drift. (The captured cookie **jar** still doesn't
-  persist &mdash; it re-populates as you browse; tracked separately.)
+  form, so the three can't drift.
 - **Issue triage: override severity + soft-delete a finding.** Building on the
   false-positive marking, you can now also **override a finding's severity** (talk
   a scary "high" down to "low" when you've judged it, via `/api/findings/set-severity`)

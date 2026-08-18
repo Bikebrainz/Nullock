@@ -5,6 +5,7 @@
 // session_manager.hpp includes this for CapturedCookie; the I/O class
 // (onResponseReceived/injectInto + the QObject/mutex) stays in session_manager.*.
 
+#include <QJsonObject>
 #include <QString>
 
 namespace Nullock::Core {
@@ -90,6 +91,13 @@ void resolveCookieExpiry(CapturedCookie &c, long long capturedAtEpoch);
 // the cookie jar (roadmap: cookie expiry handling); wiring it into capture-side
 // deletion and inject-side skipping is a separate step.
 bool cookieExpired(const CapturedCookie &c, long long nowEpoch);
+
+// Serialize a captured cookie to/from JSON, for persisting the cookie jar in the
+// project file. Full round-trip of the resolved lifetime (persistent +
+// expiresEpoch) so a restored jar can drop already-expired cookies without
+// re-parsing. Pure, so it is unit-tested against Qt6::Core alone.
+QJsonObject    cookieToJson(const CapturedCookie &c);
+CapturedCookie cookieFromJson(const QJsonObject &o);
 
 } // namespace SessionLogic
 } // namespace Nullock::Core

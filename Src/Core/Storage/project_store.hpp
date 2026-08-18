@@ -42,6 +42,10 @@ struct ProjectMeta {
     // Session-handling RULES (extract-a-value / inject-a-{{var}}), opaque JSON
     // owned by SessionRules (sessionRulesToJson). Serialized under "sessionRules".
     QJsonArray sessionRulesJson;
+    // Captured cookie jar (opaque JSON owned by SessionManager). Serialized under
+    // "cookieJar"; saved at project-close / quit (not every response) like the
+    // Repeater tabs, and restored (expired cookies dropped) on reopen.
+    QJsonArray cookieJar;
     // Scanner triage that must outlive the append-only findings.ndjson: issue
     // KINDS the operator suppressed (never shown again) and the identity KEYS of
     // individual findings marked false-positive. Applied at display time, so
@@ -178,6 +182,12 @@ public:
     void setSessionRulesJson(const QJsonArray &rules);
     QJsonArray sessionRulesJson() const { return m_meta.sessionRulesJson; }
 
+    // Cookie jar, persisted in project.json under "cookieJar". setCookieJar
+    // persists only (called at project-close / quit); open() emits cookieJarChanged
+    // so a reopen restores it into the live SessionManager.
+    void setCookieJar(const QJsonArray &jar);
+    QJsonArray cookieJar() const { return m_meta.cookieJar; }
+
     // Scanner triage, persisted in project.json. setKindSuppressed adds/removes an
     // issue kind from the never-show set; setFindingFalsePositive adds/removes a
     // finding identity key (FindingTriageLogic::findingKey) from the FP set. Both
@@ -238,6 +248,9 @@ signals:
     // Emitted at the END of open() with the freshly-loaded project's session
     // rules. Wire (via Nullock::Core::sessionRulesFromJson) to SessionRules::setRules.
     void sessionRulesJsonChanged(const QJsonArray &rules);
+    // Emitted at the END of open() with the freshly-loaded project's cookie jar.
+    // Wire to SessionManager::importJson so a reopen restores it.
+    void cookieJarChanged(const QJsonArray &jar);
     // Emitted when the finding-triage sets (suppressed kinds / false-positive
     // keys) change, so the control server can bump its snapshot fingerprint.
     void triageChanged();

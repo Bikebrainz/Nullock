@@ -206,4 +206,32 @@ bool cookieExpired(const CapturedCookie &c, long long nowEpoch) {
     return c.persistent && nowEpoch >= c.expiresEpoch;
 }
 
+QJsonObject cookieToJson(const CapturedCookie &c) {
+    return QJsonObject{
+        { "name", c.name }, { "value", c.value }, { "raw", c.raw },
+        { "path", c.path }, { "expires", c.expires },
+        { "httpOnly", c.httpOnly }, { "secure", c.secure },
+        { "sameSite", c.sameSite }, { "domain", c.domain },
+        { "persistent", c.persistent },
+        // expiresEpoch is a unix-seconds count that can exceed 2^31; store it as a
+        // JSON string so a large value round-trips without double-precision loss.
+        { "expiresEpoch", QString::number(c.expiresEpoch) } };
+}
+
+CapturedCookie cookieFromJson(const QJsonObject &o) {
+    CapturedCookie c;
+    c.name       = o.value("name").toString();
+    c.value      = o.value("value").toString();
+    c.raw        = o.value("raw").toString();
+    c.path       = o.value("path").toString();
+    c.expires    = o.value("expires").toString();
+    c.httpOnly   = o.value("httpOnly").toBool(false);
+    c.secure     = o.value("secure").toBool(false);
+    c.sameSite   = o.value("sameSite").toString();
+    c.domain     = o.value("domain").toString();
+    c.persistent = o.value("persistent").toBool(false);
+    c.expiresEpoch = o.value("expiresEpoch").toString().toLongLong();
+    return c;
+}
+
 } // namespace Nullock::Core::SessionLogic

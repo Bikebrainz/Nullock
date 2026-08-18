@@ -952,6 +952,17 @@ int main(int argc, char *argv[]) {
     });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::repeaterStateChanged,
                      &repeater, &Nullock::Core::Repeater::importState);
+    // Cookie jar: saved at project-close (before the switch wipes it) and restored
+    // when the incoming project loads (expired cookies dropped). Same pattern as
+    // the Repeater tabs -- not persisted on every response, only at close/quit.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::projectClosing,
+                     &sessions, [&projectStore, &sessions]() {
+        projectStore.setCookieJar(sessions.exportJson());
+    });
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::cookieJarChanged,
+                     &sessions, [&sessions](const QJsonArray &arr) {
+        sessions.importJson(arr, QDateTime::currentSecsSinceEpoch());
+    });
     // Proxy intercept rules: restore the incoming project's rules into the live
     // controller when a project (re)opens (they're persisted whenever set via
     // /api/intercept/rules).
@@ -979,9 +990,17 @@ int main(int argc, char *argv[]) {
         if (projectStore.isOpen())
             projectStore.setRepeaterState(repeater.exportState());
     });
+    // Same for the cookie jar on a clean quit.
+    QObject::connect(qApp, &QCoreApplication::aboutToQuit, &sessions,
+                     [&projectStore, &sessions]() {
+        if (projectStore.isOpen())
+            projectStore.setCookieJar(sessions.exportJson());
+    });
     // The default project opened before the Repeater existed, so its persisted tabs
     // weren't streamed into it. Restore them once now that everything is wired.
     repeater.importState(projectStore.repeaterState());
+    // Same for the cookie jar (default project opened before SessionManager wiring).
+    sessions.importJson(projectStore.cookieJar(), QDateTime::currentSecsSinceEpoch());
     // Same for intercept rules -- the controller didn't exist at the initial open.
     intercept.setInterceptRules(
         Nullock::Proxy::InterceptLogic::interceptRulesFromJson(projectStore.interceptRules()));

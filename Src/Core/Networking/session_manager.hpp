@@ -4,6 +4,7 @@
 #include "session_manager_logic.hpp"   // CapturedCookie + pure cookie-jar helpers
 
 #include <QHash>
+#include <QJsonArray>
 #include <QList>
 #include <QMutex>
 #include <QObject>
@@ -40,6 +41,13 @@ public:
     // Copy session from one host to another -- subdomain coverage when
     // the user knows the wildcard should apply.
     Q_INVOKABLE bool copyTo(const QString &fromHost, const QString &toHost);
+
+    // Persist / restore the whole jar (project.json). exportJson serializes every
+    // host's cookies + autoInject + lastSeen. importJson REPLACES the jar, dropping
+    // any cookie already expired as of `nowEpoch` -- a stale / logged-out token must
+    // never be replayed after a restore.
+    QJsonArray exportJson() const;
+    void       importJson(const QJsonArray &arr, long long nowEpoch);
 
 public slots:
     // Wired to ProxyServer::responseReceived. Walks `Set-Cookie` headers,
