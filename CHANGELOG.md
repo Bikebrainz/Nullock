@@ -46,9 +46,9 @@ developer-facing record.
   so the forwarded request was truncated or the origin hung with no hint why.
   Now, when you edit a **request** in the intercept editor, its `Content-Length`
   is recomputed to match the new body before it goes upstream (Burp's on-by-
-  default behaviour), with an **Update Content-Length** toggle to turn it off;
-  the toggle is saved per project so a posture you turned off isn't silently
-  re-armed on reopen. It's deliberately **surgical**, not the request-hardening
+  default behaviour), with an **Update Content-Length** checkbox right there in
+  the Intercept tab's toggle bar to turn it off; the toggle is saved per project
+  so a posture you turned off isn't silently re-armed on reopen. It's deliberately **surgical**, not the request-hardening
   `normalizeContentLength` the chain runner uses: a `Transfer-Encoding: chunked`
   or duplicate-`Content-Length` request is forwarded **verbatim** even with the
   toggle on, so a smuggling probe you're intentionally sending survives; only a

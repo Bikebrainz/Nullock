@@ -48,6 +48,7 @@ function reducer(state, action) {
         intercepted: NL.intercepted || state.intercepted,
         intercept: NL.interceptEnabled !== undefined ? NL.interceptEnabled : state.intercept,
         interceptResponses: NL.interceptResponsesEnabled !== undefined ? NL.interceptResponsesEnabled : state.interceptResponses,
+        interceptAutoContentLength: NL.interceptAutoContentLength !== undefined ? NL.interceptAutoContentLength : state.interceptAutoContentLength,
         repeater: NL.repeater ? { ...state.repeater, ...NL.repeater } : state.repeater,
         intruder: NL.intruder ? { ...state.intruder, ...NL.intruder } : state.intruder,
         proxyOn: NL.bootInfo && NL.bootInfo.proxyOn !== undefined ? NL.bootInfo.proxyOn : state.proxyOn,
@@ -185,6 +186,11 @@ function reducer(state, action) {
     case "intercept-responses-toggle":
       act("toggleInterceptResponses");
       return { ...state, interceptResponses: !state.interceptResponses };
+    case "intercept-autocl-toggle": {
+      const next = !state.interceptAutoContentLength;
+      act("interceptSetAutoContentLength", next);
+      return { ...state, interceptAutoContentLength: next };
+    }
     case "intercept-forward": {
       const current = state.intercepted[0];
       act("interceptForward", current ? current.text : "");
@@ -6203,6 +6209,7 @@ function App() {
     proxyOn: true,
     intercept: false,
     interceptResponses: false,
+    interceptAutoContentLength: NL.interceptAutoContentLength,
     intercepted: NL.intercepted,
     scope: NL.scope,
     repeater: NL.repeater,
@@ -6454,6 +6461,7 @@ function App() {
           <InterceptTab
             intercept={state.intercept}
             interceptResponses={state.interceptResponses}
+            interceptAutoContentLength={state.interceptAutoContentLength}
             intercepted={state.intercepted}
             dispatch={dispatch}
             onSwitchTab={setTab}

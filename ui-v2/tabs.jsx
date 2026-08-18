@@ -1332,7 +1332,7 @@ function InterceptRulesPanel() {
   );
 }
 
-function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, onSwitchTab }) {
+function InterceptTab({ intercept, interceptResponses, interceptAutoContentLength, intercepted, dispatch, onSwitchTab }) {
   const current = intercepted[0] || null;
   const more = Math.max(0, intercepted.length - 1);
 
@@ -1408,6 +1408,10 @@ function InterceptTab({ intercept, interceptResponses, intercepted, dispatch, on
           </div>
         </div>
         <span style={{ flex: 1 }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--fz-xs)", color: "var(--text-2)", cursor: "pointer" }} title="Recompute the request's Content-Length before forwarding when the body was edited (default on, matches Burp). Chunked/duplicate Content-Length requests are always forwarded verbatim so a deliberate smuggling probe isn't neutered.">
+          <input type="checkbox" checked={!!interceptAutoContentLength} onChange={() => dispatch({ type: "intercept-autocl-toggle" })} />
+          UPDATE CONTENT-LENGTH
+        </label>
         <div className="chip">
           QUEUE <span style={{ color: "var(--accent)", marginLeft: 8, fontSize: "var(--fz-md)" }}>{intercepted.length}</span>
         </div>
