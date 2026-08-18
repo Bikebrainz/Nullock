@@ -3880,7 +3880,12 @@
       "effort": "hours",
       "gap": "No byte count and no response time in Repeater. Timing is the whole signal for blind SQLi, blind command injection and race work; the clock is already running and the proxy pane already renders both fields.",
       "why": "Confirmed, and I found the capability already exists one file over \u2014 the proxy detail pane renders both size and elapsed \u2014 which makes this pure wiring rather than a build-out.",
-      "evidence": "Only the status line is stored: D:/dev/Nullock/Src/Core/Networking/repeater.cpp:140-143 `t.statusLine = QString(\"%1 %2 %3\").arg(result.parsed.httpVersion).arg(result.parsed.statusCode).arg(result.parsed.reasonPhrase);`. SendResult carries no timing/size field: Src/Core/Networking/networking.hpp:23-35 (ok, outcome, errorMessage, rawResponse, parsed \u2014 nothing else). The read clock is started but nev"
+      "evidence": "Only the status line is stored: D:/dev/Nullock/Src/Core/Networking/repeater.cpp:140-143 `t.statusLine = QString(\"%1 %2 %3\").arg(result.parsed.httpVersion).arg(result.parsed.statusCode).arg(result.parsed.reasonPhrase);`. SendResult carries no timing/size field: Src/Core/Networking/networking.hpp:23-35 (ok, outcome, errorMessage, rawResponse, parsed \u2014 nothing else). The read clock is started but nev",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "8bb4d7d",
+        "note": "BACKEND + snapshot half done; only the ui-v2 render binding remains (concurrent-agent lane). Repeater::send now times the network round-trip with a QElapsedTimer around the blocking send(s) -- captured BEFORE gzip-decode/status-formatting so it reflects the wire, not local work -- and records the final raw response's byte length; both are stored per tab (RepeaterTab.elapsedMs/responseBytes, -1 before a send), carried into each history entry, restored by loadHistoryAt, reset by clear(), and exposed on the snapshot (repeater.elapsedMs / repeater.responseBytes, plus per-tab + per-history-entry). Status was already shown; the missing byte count + response time are the ones that matter for blind SQLi / blind command injection / race timing. Verified e2e over the live control API against a delay-controlled mock: a 600ms-delayed response reported elapsedMs=615 while a no-delay send reported 16 (proves the timer measures the real round-trip, not a constant), responseBytes matched the exact raw size, and the metadata threaded through the active tab, history, and clear-reset. Gauntlet ctest 97/97 + probe_smoke 156/156. Remainder: bind these two fields into the Repeater response pane in ui-v2."
+      }
     },
     {
       "area": "repeater",
