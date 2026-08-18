@@ -3740,7 +3740,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-18",
-        "commit": "PENDING",
+        "commit": "75c419d",
         "note": "ui-v2/tabs.jsx's InterceptTab toggle bar gains an UPDATE CONTENT-LENGTH checkbox (next to the existing REQUESTS/RESPONSES power toggles), bound to a new interceptAutoContentLength state slice (app.jsx: initial state, nl-snapshot merge from NL.interceptAutoContentLength, a new intercept-autocl-toggle reducer case) and a new NL.actions.interceptSetAutoContentLength (real-data.js) posting to the already-existing /api/intercept/autocl endpoint (control_server.cpp:3105, added by the 4369973 backend wave but never wired to any GUI control until now). Closes the GUI-reachability half of this item's own remaining ask for the REQUEST side; the response-side gap is unchanged and named honestly above, so state stays partial rather than claimed present. No backend touched."
       }
     },
