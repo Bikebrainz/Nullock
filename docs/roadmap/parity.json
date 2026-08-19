@@ -3848,12 +3848,18 @@
     {
       "area": "proxy",
       "feature": "Proxying plaintext ws:// WebSocket connections",
-      "state": "absent",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "A ws:// handshake over plain HTTP is answered with a re-framed 101 and the socket is then closed. Plaintext WebSocket traffic is not relayed, not logged and not repeatable -- broken, not merely unsupported.",
       "why": "Confirmed by tracing the plaintext leg end to end. The 101 branch exists only inside the MITM keep-alive loop. On the cleartext path a 101 is read (readResponse special-cases it and hands back the post-header bytes as the body), then passed to resolveResponseForClient -> serializeResponse, which strips Transfer-Encoding and appends a Content-Length -- and then the socket is closed. The handshake i",
-      "evidence": "Only 101 handler: Src/BackEnd/Proxy/proxy_server.cpp:719-727 `if (resp.statusCode == 101) {\\n                sslClient->write(serializeUpgradeResponse(resp));` (inside runMitmTunnel). Plaintext path: readResponse's 101 early-return at proxy_server.cpp:833-836, then run() at :310-315 goes through `serializeResponse` (which at :890-895 skips Transfer-Encoding and adds `Content-Length`) and ends with"
+      "evidence": "Only 101 handler: Src/BackEnd/Proxy/proxy_server.cpp:719-727 `if (resp.statusCode == 101) {\\n                sslClient->write(serializeUpgradeResponse(resp));` (inside runMitmTunnel). Plaintext path: readResponse's 101 early-return at proxy_server.cpp:833-836, then run() at :310-315 goes through `serializeResponse` (which at :890-895 skips Transfer-Encoding and adds `Content-Length`) and ends with",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "d600050",
+        "note": "CLOSED. The plain-HTTP response path now mirrors the MITM path's 101 handling: on a 101 Switching Protocols carrying Upgrade: websocket it writes serializeUpgradeResponse(resp) -- which already appends the buffered post-101 frame tail (so a server-that-sends-first frame is not dropped) -- and hands the socket pair to runWebSocketRelay instead of the normal serializeResponse -> close path. runWebSocketRelay is transport-agnostic (plain QTcpSocket*), and it registers the session with WsRepeater + notes every frame exactly as the wss:// path does, so plaintext ws:// is now RELAYED, LOGGED (WebSocket history) and REPEATABLE -- all three things the audit found broken. A non-websocket 101 still takes the normal response path. VERIFIED e2e with a raw WS echo server + a raw client connecting THROUGH the proxy (real RFC 6455 handshake): the proxy relays the 101, Sec-WebSocket-Accept passes through intact, and a masked text frame round-trips via the echo (3/3). Gauntlet ctest 99/99 + probe 156. This reaches PARITY with the (present) wss:// path through the same relay; note WS-message INTERCEPTION (hold/edit/drop) is a separate roadmap item still in progress for both transports."
+      }
     },
     {
       "area": "repeater",
