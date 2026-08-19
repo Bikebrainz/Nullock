@@ -172,6 +172,20 @@ public:
     // automatic reflection column, no hand-built per-payload match needle needed.
     void setGrepPayloadReflection(bool on);
     void setGrepExtract(const Nullock::Core::IntruderGrep::ExtractSpec &spec);
+
+    // Burp "Recursive grep" payload type: instead of a fixed wordlist, each
+    // request's payload is the value the grep-EXTRACT spec pulls out of the
+    // PREVIOUS response -- so a CSRF token / one-time nonce / sequential id can be
+    // walked forward across a chain of requests (the classic anti-CSRF-bruteforce
+    // and state-machine-walking attack). The FIRST request uses `seed` (Burp's
+    // "initial payload for first request", may be empty); the run is inherently
+    // SERIAL (each request depends on the prior response) and bounded to `count`
+    // requests, stopping early if a response yields no extract (the chain ended).
+    // Reuses the grep-extract spec set via setGrepExtract as the payload source.
+    void setRecursiveGrep(bool on);
+    void setRecursiveGrepSeed(const QString &seed);
+    void setRecursiveGrepCount(int count);
+    bool recursiveGrep() const { return m_recursiveGrep; }
     // Request-pool config (Burp-parity "resource pool"): how many requests may be
     // in flight at once, and an optional inter-dispatch delay (rate limit). Both
     // are clamped (see IntruderPool) so a caller can't spawn unbounded threads or
@@ -236,6 +250,9 @@ signals:
 
 private:
     void attackFinished(int row);
+    // Recursive-grep run parameters, copied off the GUI thread like every other
+    // config value. enabled=false -> ordinary combos run.
+    struct RecursiveSpec { bool enabled = false; QString seed; int count = 0; };
     void runWorker(const QList<QStringList> &combos,
                    const QString &templateCopy,
                    const QString &host, int port, bool useTls,
@@ -245,7 +262,8 @@ private:
                    const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
                    int concurrency, int throttleMs,
                    int followPolicy, bool followCookies,
-                   std::function<bool(const QString &)> inScope);
+                   std::function<bool(const QString &)> inScope,
+                   const RecursiveSpec &recursive);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 
@@ -261,6 +279,9 @@ private:
     QStringList m_grepMatch;                              // grep-match needles
     bool    m_grepPayloadReflection = false;             // flag reflected payloads
     Nullock::Core::IntruderGrep::ExtractSpec m_grepExtract; // grep-extract spec
+    bool    m_recursiveGrep = false;                     // recursive-grep payload mode
+    QString m_recursiveGrepSeed;                         // first request's payload
+    int     m_recursiveGrepCount = 10;                   // number of chained requests
     SessionRules *m_sessionRules = nullptr;
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
     int     m_throttleMs = 0;                            // inter-dispatch delay

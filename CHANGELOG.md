@@ -11,6 +11,19 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder: "Recursive grep" payload type &mdash; walk a token across requests.**
+  Instead of a fixed wordlist, each request's payload is now the value pulled out
+  of the *previous* response by the grep-extract rule &mdash; so an anti-CSRF
+  token, a one-time nonce, or a sequential id that changes on every response can
+  be chained forward across a run. You set an initial payload for the first
+  request and how many requests to send; the run is serial (each depends on the
+  one before) and stops early if a response has nothing to extract. This is the
+  classic way to brute-force a form protected by a per-request token, or to walk a
+  server-side state machine. Configured through the API for now
+  (`recursiveGrep` / `recursiveGrepSeed` / `recursiveGrepCount` on
+  `/api/intruder/set`, reusing the grep-extract rule as the payload source);
+  verified end-to-end against a chaining server. (The payload-type selector in the
+  Intruder UI and save/resume of a recursive attack are still to come.)
 - **Intercept a target with an invalid TLS certificate (per-host opt-in).** A
   staging box with a self-signed or expired cert used to be un-interceptable
   &mdash; the upstream handshake failed and, worse, one attempt permanently

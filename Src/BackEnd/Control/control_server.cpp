@@ -1605,6 +1605,7 @@ QByteArray ControlServer::buildSnapshot() const {
         intruder["throttleMs"]  = m_wiring.intruder->throttleMs();
         intruder["followRedirects"] = m_wiring.intruder->followRedirects();
         intruder["processCookies"]  = m_wiring.intruder->processCookies();
+        intruder["recursiveGrep"]   = m_wiring.intruder->recursiveGrep();
         QJsonArray results;
         const int n = m_wiring.intruder->rowCount();
         for (int i = 0; i < n; ++i) {
@@ -3495,6 +3496,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 spec.end   = g.value("end").toString();
                 m_wiring.intruder->setGrepExtract(spec);
             }
+            // Recursive grep payload type: each request's payload is the value the
+            // grep-EXTRACT spec (above) pulls from the PREVIOUS response, walked
+            // forward for `recursiveGrepCount` requests starting from
+            // `recursiveGrepSeed`. Reuses grepExtract as the source; runs serial.
+            if (bodyJson.contains("recursiveGrep"))
+                m_wiring.intruder->setRecursiveGrep(bodyJson.value("recursiveGrep").toBool());
+            if (bodyJson.contains("recursiveGrepSeed"))
+                m_wiring.intruder->setRecursiveGrepSeed(bodyJson.value("recursiveGrepSeed").toString());
+            if (bodyJson.contains("recursiveGrepCount"))
+                m_wiring.intruder->setRecursiveGrepCount(bodyJson.value("recursiveGrepCount").toInt());
             // Request-pool config. "concurrency" = max in-flight requests
             // (clamped 1..64). "throttleMs" = inter-dispatch delay; "rps" is an
             // alternative rate expressed as requests/second (converted to a

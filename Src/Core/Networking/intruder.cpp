@@ -229,6 +229,18 @@ void Intruder::setGrepExtract(const IntruderGrep::ExtractSpec &spec) {
     m_grepExtract = spec;
 }
 
+void Intruder::setRecursiveGrep(bool on) {
+    m_recursiveGrep = on;
+}
+void Intruder::setRecursiveGrepSeed(const QString &seed) {
+    m_recursiveGrepSeed = seed;
+}
+void Intruder::setRecursiveGrepCount(int count) {
+    // Bound like the payload generators: at least 1, capped so a runaway chain
+    // can't fire forever (it's serial, so the cap also bounds wall-clock).
+    m_recursiveGrepCount = qBound(1, count, 10000);
+}
+
 void Intruder::setMaxConcurrency(int n) {
     m_maxConcurrency = IntruderPool::clampConcurrency(n);
 }
@@ -410,12 +422,28 @@ void Intruder::start() {
     const int positions = IE::countMarkers(m_template);
     if (positions == 0) return;
 
-    QList<QStringList> sets;
-    sets.reserve(m_payloadSets.size());
-    for (const QString &block : m_payloadSets) sets.append(parseSet(block));
+    const RecursiveSpec recursive{ m_recursiveGrep, m_recursiveGrepSeed, m_recursiveGrepCount };
 
-    const QList<QStringList> combos = IE::generateCombinations(
-        static_cast<IE::AttackType>(m_attackType), positions, sets);
+    QList<QStringList> combos;
+    if (recursive.enabled) {
+        // Recursive grep: payloads are discovered at RUNTIME from each response
+        // (via the grep-extract spec), so they can't be pre-generated. Require an
+        // extract source, then reserve `count` placeholder rows -- fireOne fills
+        // each row's real payload as it walks the chain. One payload position
+        // (position 0) carries the recursive value; any others stay default.
+        const bool haveExtract = !m_grepExtract.regex.isEmpty()
+            || !m_grepExtract.start.isEmpty() || !m_grepExtract.end.isEmpty();
+        if (!haveExtract) return;   // nothing to extract -> nothing to chain
+        QStringList placeholder;
+        for (int p = 0; p < positions; ++p) placeholder.append(QString());  // all default until filled
+        for (int i = 0; i < recursive.count; ++i) combos.append(placeholder);
+    } else {
+        QList<QStringList> sets;
+        sets.reserve(m_payloadSets.size());
+        for (const QString &block : m_payloadSets) sets.append(parseSet(block));
+        combos = IE::generateCombinations(
+            static_cast<IE::AttackType>(m_attackType), positions, sets);
+    }
     if (combos.isEmpty()) return;
 
     // Build the result rows up front so the table populates immediately and
@@ -453,21 +481,25 @@ void Intruder::start() {
     const QStringList grepMatchCopy = m_grepMatch;                 // copy: scanned off-thread
     const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
     const bool grepReflectionCopy = m_grepPayloadReflection;
-    const int concurrencyCopy = m_maxConcurrency;
+    // Recursive grep is inherently SERIAL (each request needs the prior response),
+    // so force concurrency 1 for it regardless of the pool setting.
+    const int concurrencyCopy = recursive.enabled ? 1 : m_maxConcurrency;
     const int throttleCopy = m_throttleMs;
     const int followPolicyCopy = m_followPolicy;
     const bool followCookiesCopy = m_followCookies;
     const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
+    const RecursiveSpec recursiveCopy = recursive;
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                                   concurrencyCopy, throttleCopy,
-                                  followPolicyCopy, followCookiesCopy, inScopeCopy]() {
+                                  followPolicyCopy, followCookiesCopy, inScopeCopy,
+                                  recursiveCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                   concurrencyCopy, throttleCopy,
-                  followPolicyCopy, followCookiesCopy, inScopeCopy);
+                  followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy);
     });
 }
 
@@ -480,7 +512,8 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const IntruderGrep::ExtractSpec &grepExtract,
                          int concurrency, int throttleMs,
                          int followPolicy, bool followCookies,
-                         std::function<bool(const QString &)> inScope) {
+                         std::function<bool(const QString &)> inScope,
+                         const RecursiveSpec &recursive) {
     // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
     // size the owned pool. `concurrency` is the max number of requests in flight
     // at once; `throttleMs` an optional pause between dispatches (rate limit).
@@ -499,7 +532,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // the queued callback only assigns the finished values.
     auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
                     grepMatch, grepReflection, grepExtract,
-                    followPolicy, followCookies, inScope](int row, const QStringList &combo) {
+                    followPolicy, followCookies, inScope](int row, const QStringList &combo) -> QString {
         HttpClient client;
 
         QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
@@ -588,10 +621,18 @@ void Intruder::runWorker(const QList<QStringList> &combos,
             computeGrep(result.parsed, grepMatch, combo, grepReflection, grepExtract,
                         matched, reflected, extracted);
 
+        // The submitted payload display: recursive-grep rows don't know their
+        // payload until now (it came from the prior response), so carry it into
+        // the record. For ordinary runs this equals what start() already set.
+        const QStringList payloadDisplay = displayValues(combo);
+        const QString payloadJoined = payloadDisplay.join(QStringLiteral(" / "));
         QMetaObject::invokeMethod(this, [this, row, statusCode, size, elapsedMs,
-                                         errMsg, matched, reflected, extracted]() {
+                                         errMsg, matched, reflected, extracted,
+                                         payloadDisplay, payloadJoined]() {
             if (row < 0 || row >= m_attacks.size()) return;
             auto *a = m_attacks[row];
+            a->m_payloadValues = payloadDisplay;
+            a->m_payload = payloadJoined;
             a->m_statusCode = statusCode;
             a->m_responseSize = size;
             a->m_elapsedMs = static_cast<int>(elapsedMs);
@@ -607,7 +648,36 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         }, Qt::QueuedConnection);
 
         inFlight.release();
+        return extracted;
     };
+
+    // Recursive grep: walk the chain SERIALLY, feeding each response's grep-extract
+    // value into the next request's payload. Request 0 uses the seed; the run stops
+    // at `count` rows OR early when a response yields no extract (the chain ended).
+    // fireOne is invoked directly (not via the pool) so each fire completes -- and
+    // its extracted value is known -- before the next request is built.
+    if (recursive.enabled) {
+        QString cur = recursive.seed;
+        for (int i = 0; i < combos.size(); ++i) {
+            if (m_stopRequested) break;
+            inFlight.acquire();                       // balance fireOne's release (serial)
+            if (m_stopRequested) { inFlight.release(); break; }
+            QStringList combo = combos[i];            // placeholder: all positions default
+            if (combo.isEmpty()) combo = QStringList{ cur };
+            else combo[0] = cur;                      // position 0 carries the recursive value
+            const QString extracted = fireOne(i, combo);
+            if (throttleMs > 0) interruptibleSleep(throttleMs, m_stopRequested);
+            if (extracted.isEmpty()) break;           // no value to feed the next request
+            cur = extracted;
+        }
+        m_pool.waitForDone();
+        QMetaObject::invokeMethod(this, [this]() {
+            m_running = false;
+            m_stopRequested = false;
+            emit runningChanged();
+        }, Qt::QueuedConnection);
+        return;
+    }
 
     // Dispatch loop. Stop is checked before AND after the (possibly blocking)
     // acquire so a stop() request lands promptly even when the pool is saturated.
