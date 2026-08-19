@@ -3602,12 +3602,18 @@
     {
       "area": "proxy",
       "feature": "Proxy on/off toggle preserving the configured listener port",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "Toggling off/on from either UI silently rebinds to 8080 (or the next free port in the fallback list), which is not necessarily where the browser/PAC/extension is pointed. No UI for choosing the port at all -- launch flag only.",
       "why": "Verified: the toggle endpoint calls the zero-argument start(), whose defaults are LocalHost:8080 -- the operator's --proxy-port is only applied at app.cpp:749-751 and is not remembered anywhere. Confirmed real, and confirmed the fallback port walk. Partial stands.",
-      "evidence": "Src/BackEnd/Control/control_server.cpp:2971-2975 `if (path == \"/api/proxy/toggle\") {\\n        if (m_wiring.proxy) {\\n            if (m_wiring.proxy->isRunning()) m_wiring.proxy->stop();\\n            else                             m_wiring.proxy->start();` against Src/BackEnd/Proxy/proxy_server.hpp:102-103 `Q_INVOKABLE bool start(const QHostAddress &address = QHostAddress::LocalHost,\\n           "
+      "evidence": "Src/BackEnd/Control/control_server.cpp:2971-2975 `if (path == \"/api/proxy/toggle\") {\\n        if (m_wiring.proxy) {\\n            if (m_wiring.proxy->isRunning()) m_wiring.proxy->stop();\\n            else                             m_wiring.proxy->start();` against Src/BackEnd/Proxy/proxy_server.hpp:102-103 `Q_INVOKABLE bool start(const QHostAddress &address = QHostAddress::LocalHost,\\n           ",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "a6b57a0",
+        "note": "partial -> present. The audit evidence is STALE: /api/proxy/toggle no longer calls the zero-arg start() -- it calls restart() (control_server.cpp:3139-3147), which re-listens on the remembered m_bindAddress + m_bindPort (proxy_server.cpp:1899-1943 stores the actually-bound port on every successful listen; restart() replays it). So a toggle preserves BOTH the off-loopback --proxy-bind and the custom --proxy-port instead of reverting to 127.0.0.1:8080; shipped in a6b57a0 ('toggle-safe'). VERIFIED e2e vs the live app: started on a distinctive custom --proxy-port (34759, outside the 8080/8081/8888/... fallback walk), toggled off (proxy stops), toggled on -> came back on the SAME 34759, never 8080 (5/5). The gap's second clause ('no UI for choosing the port') is a distinct capability tracked by the separate absent item 'Proxy listeners: multiple simultaneous listeners (add/edit/remove, per-listener ...)', not this toggle-behavior item; the port is configured today via --proxy-port. No code change this reconcile -- verification of already-shipped behavior."
+      }
     },
     {
       "area": "proxy",
