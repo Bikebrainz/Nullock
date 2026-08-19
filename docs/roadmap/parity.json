@@ -3311,7 +3311,13 @@
       "effort": "hours",
       "gap": "Auto-populate + clear-all only. No pre-add, no per-entry delete, no host:port or IP-range entries (matching is a plain QSet exact-string contains, so no wildcards either), no 'apply to out-of-scope items'. A pinned app must fail once before it is bypassed, and un-bypassing one host means clearing every host.",
       "why": "Verified by grepping markMitmBlocked/clearMitmBlocked/blockedHosts across Src and ui-v2 myself: the ONLY callers of markMitmBlocked are inside proxy_server.cpp; the control server and UI expose read (snapshot bootInfo.mitmBlocked) and clear-all only. Confirmed partial.",
-      "evidence": "Read/clear only -- Src/BackEnd/Control/control_server.cpp:1219-1221 `for (const QString &h : m_wiring.proxy->blockedHosts()) blocked.append(h);\\n        bootInfo[\"mitmBlocked\"] = blocked;` and control_server.cpp:5731-5732 `if (path == \"/api/mitm/clear-blocked\") {\\n        if (m_wiring.proxy) m_wiring.proxy->clearMitmBlocked();`, surfaced as ui-v2/app.jsx:483 `<Btn label=\"Clear blocklist\" onClick={"
+      "evidence": "Read/clear only -- Src/BackEnd/Control/control_server.cpp:1219-1221 `for (const QString &h : m_wiring.proxy->blockedHosts()) blocked.append(h);\\n        bootInfo[\"mitmBlocked\"] = blocked;` and control_server.cpp:5731-5732 `if (path == \"/api/mitm/clear-blocked\") {\\n        if (m_wiring.proxy) m_wiring.proxy->clearMitmBlocked();`, surfaced as ui-v2/app.jsx:483 `<Btn label=\"Clear blocklist\" onClick={",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "7c28cc9",
+        "note": "The audit's two headline gaps -- 'no pre-add' and 'un-bypassing one host means clearing every host' -- are both closed, so the pass-through list is now fully hand-manageable. Per-host DELETE landed with the accept-invalid-cert work (POST /api/mitm/unblock + ProxyServer::clearMitmBlocked(host)); this commit adds PRE-ADD (POST /api/mitm/block {host} -> the existing persistent markMitmBlocked), so a cert-pinned app is tunnelled opaquely from the FIRST CONNECT instead of having to fail a handshake once. With read (snapshot bootInfo.mitmBlocked) + clear-all already present, the operator can now add / delete / clear / view. VERIFIED e2e: pre-add -> the host appears in mitmBlocked; a CONNECT to a pre-added self-signed origin is BLIND-TUNNELLED (the client sees the origin's REAL cert, not Nullock's forged one -- proof it is not MITM'd); persists across restart; unblock removes it (5/5). Gauntlet ctest 99/99 + probe 156. STAYS PARTIAL: matching is still a plain exact-string set -- no host:port, IP-range, or wildcard entries -- and there is no 'apply to out-of-scope items' knob."
+      }
     },
     {
       "area": "proxy",
