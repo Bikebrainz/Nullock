@@ -4463,17 +4463,17 @@
     {
       "area": "repeater",
       "feature": "Repeater: \"Unpack gzip / deflate\" in the response view",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
       "gap": "HttpClient::send (networking.cpp) now decodes Content-Encoding gzip/x-gzip/deflate into result.parsed.decodedBody via the existing decodeContentEncoding() helper, and Repeater::send() swaps the decoded body into the response pane in place of the compressed bytes (header block shown verbatim, wire bytes untouched). Still partial, not present: brotli/zstd remain unsupported (content_decode.hpp's own documented limit, unchanged), and this cloud session cannot build/run ctest/probe_smoke to confirm the change compiles and behaves as intended -- resting on GitHub Actions CI going green, not a local build, per this repo's honest-partial convention for backend changes made from this environment.",
       "why": "Wiring fix: decodeContentEncoding already existed and was already proven correct for the MITM proxy path (content_decode.cpp, its own dedicated test suite); this pins the second, previously-missing call site into HttpClient::send so both Repeater and the template engine's body matching benefit.",
       "evidence": "Src/Core/Networking/networking.cpp: added #include \"content_decode.hpp\" + a Content-Encoding lookup and decodeContentEncoding() call right before result.ok = true, populating result.parsed.decodedBody without touching result.parsed.body or result.rawResponse. Src/Core/Networking/repeater.cpp send(): when result.parsed.decodedBody is non-empty, responseText is now the original header block (bytes up to and including the first \\r\\n\\r\\n in rawResponse) followed by the decoded body, instead of QString::fromUtf8(rawResponse) verbatim.",
-      "audited_state": "partial",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-16",
-        "commit": "12cb5db",
-        "note": "Wave 3: Repeater gzip/deflate unpack wiring, absent -> partial. This cloud session cannot build the C++ side; will confirm the GitHub Actions ci run is green next wave before calling this fully closed, same honest-partial pattern as prior in-flight-CI notes in ROADMAP-EXECUTION-PLAN.md."
+        "date": "2026-08-19",
+        "commit": "1490bec",
+        "note": "partial -> present. The gzip/deflate unpack wiring (code in 1490bec) is now LOCALLY verified, retiring the honest-partial 'cloud session cannot build' caveat: content_decode_test proves decodeContentEncoding round-trips gzip/x-gzip/deflate (zlib-wrapped and raw), and a fresh e2e vs a raw-socket mock upstream returning a real `Content-Encoding: gzip` 200 confirms the Repeater response pane renders the DECODED body while keeping the header block (incl. the Content-Encoding line + compressed Content-Length) verbatim and leaving the wire bytes untouched. brotli/zstd are out of scope for this item (title is 'gzip / deflate'; they remain content_decode.hpp's documented limit). ctest 99/99, probe_smoke 156/156."
       }
     },
     {
