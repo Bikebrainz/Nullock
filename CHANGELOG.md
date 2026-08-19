@@ -11,6 +11,21 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Out-of-band DNS interactions are now recorded and listable, and answered by
+  record type.** A whole class of findings only ever trigger a DNS lookup &mdash;
+  Log4Shell whose LDAP egress is firewalled, blind SSRF/SQLi/XXE where only name
+  resolution escapes the target. Those callbacks were being counted and used to
+  auto-confirm findings, but the raw interaction was thrown away: there was no way
+  to inspect a DNS callback's queried name, source IP, or timing after the fact.
+  The DNS sink now keeps each interaction in a ring buffer (like the HTTP sink) and
+  exposes them at <code class="inline">/api/oast/dns/poll?since=&lt;id&gt;</code>,
+  with its own cursor so you can page through new hits. Each record shows the full
+  queried name, the resolver's source IP, the timing, and the record type that was
+  asked for. And the responder now answers the type it was asked: an <code class="inline">A</code>
+  query gets an A record, an <code class="inline">AAAA</code> query gets an AAAA
+  record, and any other type gets a correct empty (NODATA) answer instead of the
+  old always-an-A-record reply &mdash; while the interaction is logged regardless of
+  type, so detection is unaffected.
 - **Extensions can register a teardown callback that runs when they're unloaded.**
   A JavaScript extension can now call <code class="inline">nullock.onUnload(fn)</code>
   (or the Burp-compatible name <code class="inline">nullock.registerUnloadingHandler(fn)</code>)

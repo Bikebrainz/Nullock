@@ -38,37 +38,61 @@ void DnsSink::stop() {
 bool    DnsSink::running() const { return m_socket && m_socket->state() != QAbstractSocket::UnconnectedState; }
 quint16 DnsSink::port()    const { return m_socket ? m_socket->localPort() : 0; }
 
-// Build a minimal valid response (single A record echoing the question) for a
-// DNS query datagram. okOut is false if the packet isn't a parseable
-// single-question query. The QNAME parsing lives in the pure, unit-tested
-// DnsLogic::parseDnsQuery so this path and onDatagram() agree byte-for-byte.
+// Build a minimal valid response for a DNS query datagram, answering the RECORD
+// TYPE that was asked: an A answer for A/ANY, an AAAA answer for AAAA, and a
+// protocol-correct NODATA (NOERROR, ANCOUNT=0) for any other QTYPE -- rather than
+// the old behaviour of handing back a mistyped A record for every question.
+// Either way the query is logged as a callback (the token lives in the QNAME,
+// independent of QTYPE), so OOB detection is unaffected by the answer type.
+// okOut is false if the packet isn't a parseable single-question query. The QNAME
+// parse lives in the pure, unit-tested DnsLogic::parseDnsQuery so this path and
+// onDatagram() agree byte-for-byte.
 QByteArray DnsSink::buildResponse(const QByteArray &query, bool &okOut) const {
     okOut = false;
     const DnsLogic::ParsedQuery pq = DnsLogic::parseDnsQuery(query);
     if (!pq.valid) return {};
     const int questionEnd = pq.questionEnd;
 
-    // Response = header (ID copied, QR=1, AA=1, RD copied, RA=0, RCODE=0)
-    // + original question + one A answer pointing at m_answerIp.
+    // Frame the answer RDATA for the queried type. answer.isEmpty() -> NODATA.
+    QByteArray answer;
+    const quint16 qt = pq.qtype;
+    if (qt == 1 || qt == 255) {                 // A (or ANY -> answer with A)
+        answer.append(char(0x00)).append(char(0x01)); // TYPE A
+        answer.append(char(0x00)).append(char(0x01)); // CLASS IN
+        answer.append(char(0x00)).append(char(0x00))
+              .append(char(0x00)).append(char(0x1E)); // TTL = 30
+        answer.append(char(0x00)).append(char(0x04)); // RDLENGTH = 4
+        const quint32 ip = m_answerIp.toIPv4Address();
+        answer.append(char((ip >> 24) & 0xFF)).append(char((ip >> 16) & 0xFF))
+              .append(char((ip >> 8) & 0xFF)).append(char(ip & 0xFF));
+    } else if (qt == 28) {                       // AAAA
+        answer.append(char(0x00)).append(char(0x1C)); // TYPE AAAA
+        answer.append(char(0x00)).append(char(0x01)); // CLASS IN
+        answer.append(char(0x00)).append(char(0x00))
+              .append(char(0x00)).append(char(0x1E)); // TTL = 30
+        answer.append(char(0x00)).append(char(0x10)); // RDLENGTH = 16
+        // m_answerIp as a 16-byte v6 address (an IPv4 answerIp becomes its
+        // v4-mapped ::ffff:a.b.c.d form) so the record points back at this box.
+        const Q_IPV6ADDR v6 = m_answerIp.toIPv6Address();
+        for (int i = 0; i < 16; ++i) answer.append(char(v6[i]));
+    }
+    // else: unsupported QTYPE -> NODATA (empty answer, ANCOUNT stays 0).
+
+    const bool haveAnswer = !answer.isEmpty();
+
     QByteArray resp;
     resp.append(query[0]).append(query[1]);     // ID
-    resp.append(char(0x84)).append(char(0x00)); // flags: QR=1, AA=1
+    resp.append(char(0x84)).append(char(0x00)); // flags: QR=1, AA=1, RCODE=0
     resp.append(char(0x00)).append(char(0x01)); // QDCOUNT = 1
-    resp.append(char(0x00)).append(char(0x01)); // ANCOUNT = 1
+    resp.append(char(0x00)).append(char(haveAnswer ? 0x01 : 0x00)); // ANCOUNT
     resp.append(char(0x00)).append(char(0x00)); // NSCOUNT = 0
     resp.append(char(0x00)).append(char(0x00)); // ARCOUNT = 0
     resp.append(query.mid(12, questionEnd - 12)); // original question
 
-    // Answer: name pointer to offset 12, type A, class IN, TTL 30, RDLEN 4.
-    resp.append(char(0xC0)).append(char(0x0C));
-    resp.append(char(0x00)).append(char(0x01)); // TYPE A
-    resp.append(char(0x00)).append(char(0x01)); // CLASS IN
-    resp.append(char(0x00)).append(char(0x00))
-        .append(char(0x00)).append(char(0x1E)); // TTL = 30
-    resp.append(char(0x00)).append(char(0x04)); // RDLENGTH = 4
-    const quint32 ip = m_answerIp.toIPv4Address();
-    resp.append(char((ip >> 24) & 0xFF)).append(char((ip >> 16) & 0xFF))
-        .append(char((ip >> 8) & 0xFF)).append(char(ip & 0xFF));
+    if (haveAnswer) {
+        resp.append(char(0xC0)).append(char(0x0C)); // name pointer to offset 12
+        resp.append(answer);
+    }
 
     okOut = true;
     return resp;
@@ -109,11 +133,24 @@ void DnsSink::onDatagram() {
         hit.sourceIp   = sender.toString();
         hit.method     = QStringLiteral("DNS");
         hit.hostHeader = pq.qname;   // sanitized + length-capped
-        hit.path       = QString();
+        hit.path       = DnsLogic::qtypeName(pq.qtype);   // record type queried (A/AAAA/TXT/...)
         hit.userAgent  = QStringLiteral("(dns-resolver)");
-        ++m_hitCount;
+        {
+            QMutexLocker lk(&m_mutex);
+            ++m_hitCount;
+            m_hits.append(hit);                 // retain so it's listable, not just counted
+            while (m_hits.size() > kMaxHits) m_hits.removeFirst();
+        }
         emit hitReceived(hit);
     }
+}
+
+QList<OastHit> DnsSink::hitsSince(qint64 sinceId) const {
+    QMutexLocker lk(&m_mutex);
+    QList<OastHit> out;
+    for (const auto &h : m_hits)
+        if (h.id > sinceId) out.append(h);      // strictly after the cursor
+    return out;
 }
 
 } // namespace Nullock::Core

@@ -33,7 +33,8 @@ void chk(const char *label, bool ok) {
 // QTYPE/QCLASS. Each label byte uses size & 0xFF so a caller can craft an
 // over-long-length-byte by passing a short body with a forced length (see raw()).
 QByteArray dnsQuery(const QList<QByteArray> &labels, bool terminate = true,
-                    bool withQtypeClass = true, quint16 qdcount = 1) {
+                    bool withQtypeClass = true, quint16 qdcount = 1,
+                    quint16 qtype = 1) {
     QByteArray q;
     q.append(char(0x12)).append(char(0x34));                           // ID
     q.append(char(0x01)).append(char(0x00));                           // flags (RD)
@@ -46,7 +47,8 @@ QByteArray dnsQuery(const QList<QByteArray> &labels, bool terminate = true,
         q.append(l);
     }
     if (terminate)     q.append(char(0));                              // root label
-    if (withQtypeClass) q.append(char(0)).append(char(1)).append(char(0)).append(char(1)); // A IN
+    if (withQtypeClass) q.append(char((qtype >> 8) & 0xFF)).append(char(qtype & 0xFF))
+                         .append(char(0)).append(char(1));             // QTYPE, CLASS IN
     return q;
 }
 const QByteArray kTok = "0123456789abcdef";   // a valid 16-hex token
@@ -104,6 +106,30 @@ int main(int argc, char **argv) {
         chk("no-qtype: terminated but truncated question -> invalid", !p.valid);
         chk("no-qtype: qname still recovered", p.qname == "0123456789abcdef");
     }
+
+    // ===== QTYPE parse + name mapping ===================================
+    {
+        // Default query is an A (qtype 1).
+        const ParsedQuery pA = parseDnsQuery(dnsQuery({ kTok, "oast" }));
+        chk("qtype: default query parses qtype A (1)", pA.valid && pA.qtype == 1);
+        // AAAA (28) -- high byte 0, low byte 0x1C.
+        const ParsedQuery pAAAA = parseDnsQuery(dnsQuery({ kTok, "oast" }, true, true, 1, 28));
+        chk("qtype: AAAA query parses qtype 28", pAAAA.valid && pAAAA.qtype == 28);
+        // TXT (16).
+        const ParsedQuery pTxt = parseDnsQuery(dnsQuery({ kTok, "oast" }, true, true, 1, 16));
+        chk("qtype: TXT query parses qtype 16", pTxt.valid && pTxt.qtype == 16);
+        // A qtype whose HIGH byte is non-zero (0x0101 = 257): proves both bytes are
+        // read (a mutation reading only the low byte, or reading QCLASS, fails here).
+        const ParsedQuery pHi = parseDnsQuery(dnsQuery({ kTok, "oast" }, true, true, 1, 257));
+        chk("qtype: high-byte-significant qtype 257 parses fully", pHi.valid && pHi.qtype == 257);
+    }
+    chk("qtypeName: 1 -> A",        qtypeName(1)   == "A");
+    chk("qtypeName: 28 -> AAAA",    qtypeName(28)  == "AAAA");
+    chk("qtypeName: 16 -> TXT",     qtypeName(16)  == "TXT");
+    chk("qtypeName: 5 -> CNAME",    qtypeName(5)   == "CNAME");
+    chk("qtypeName: 2 -> NS",       qtypeName(2)   == "NS");
+    chk("qtypeName: 255 -> ANY",    qtypeName(255) == "ANY");
+    chk("qtypeName: unknown -> TYPE<n>", qtypeName(999) == "TYPE999");
 
     // ===== label length runs past the datagram ==========================
     {

@@ -37,6 +37,11 @@ struct ParsedQuery {
     // length of the original question section measured from offset 12 + 12.
     int     questionEnd = 0;
     quint16 qdcount     = 0;
+    // The 16-bit QTYPE of the question (A=1, NS=2, CNAME=5, TXT=16, AAAA=28,
+    // ...), read only when valid. Lets the responder answer the RECORD TYPE that
+    // was asked (an AAAA lookup gets an AAAA answer, not a mistyped A) and lets
+    // the hit log record which record type the callback used.
+    quint16 qtype       = 0;
 };
 
 // Parse the question section of a DNS query datagram. Memory-safe on any bytes:
@@ -47,5 +52,10 @@ ParsedQuery parseDnsQuery(const QByteArray &dgram);
 // First label of a dotted name, lowercased, iff it is EXACTLY 16 hex chars --
 // the OAST token shape. Empty otherwise.
 QString extractToken(const QString &qname);
+
+// Human-readable DNS QTYPE name for the hit log ("A", "AAAA", "CNAME", "TXT",
+// "NS", "MX", "SOA", "PTR", "SRV", "ANY"), or "TYPE<n>" for anything else. Pure
+// mapping, no allocation beyond the returned string.
+QString qtypeName(quint16 qtype);
 
 } // namespace Nullock::Core::DnsLogic

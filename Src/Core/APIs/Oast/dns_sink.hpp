@@ -25,6 +25,8 @@
 #include "oast_server.hpp"   // reuse OastHit
 
 #include <QHostAddress>
+#include <QList>
+#include <QMutex>
 #include <QObject>
 #include <QString>
 
@@ -50,6 +52,14 @@ public:
     QString baseHost() const { return m_baseHost; }
     int     hitCount() const { return m_hitCount; }
 
+    // Every DNS interaction for a registered token, newest last, with id >
+    // sinceId (0 = all). Mirrors OastServer::hitsSince so the DNS sink is as
+    // inspectable as the HTTP one: a Log4Shell/blind-SSRF callback that only ever
+    // did a DNS lookup can now be listed with its qname, resolver source IP, and
+    // timing -- not just bump a counter. Own monotonic id space (separate from
+    // the HTTP sink), capped at kMaxHits like the HTTP ring.
+    QList<OastHit> hitsSince(qint64 sinceId) const;
+
 signals:
     // Same shape the HTTP sink emits, so one correlator slot serves both.
     void hitReceived(const OastHit &hit);
@@ -65,6 +75,11 @@ private:
     QHostAddress m_answerIp;
     qint64      m_nextHitId = 1;
     int         m_hitCount  = 0;
+    // Guards m_hits + m_nextHitId: onDatagram appends on the socket thread while
+    // hitsSince() reads on the control-server thread. Mirrors OastServer.
+    mutable QMutex m_mutex;
+    QList<OastHit> m_hits;                     // ring; capped at kMaxHits
+    static constexpr int kMaxHits = 1000;
 };
 
 } // namespace Nullock::Core

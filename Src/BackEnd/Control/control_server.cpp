@@ -1738,6 +1738,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/h2/streams"
             || p == "/api/h2/events"
             || p == "/api/oast/poll"
+            || p == "/api/oast/dns/poll"
             || p == "/api/payloads"
             || p == "/api/openapi/export"
             || p == "/api/cookies"
@@ -2077,6 +2078,38 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         root["port"]    = m_wiring.oast->port();
         root["baseHost"] = m_wiring.oast->baseHost();
         root["hits"]    = arr;
+        return httpJson(200, root);
+    }
+
+    // GET /api/oast/dns/poll?since=<id> -- list new DNS interactions since <id>.
+    // The DNS sink has its OWN monotonic id space (separate from the HTTP sink),
+    // so a client tracks a separate `since` cursor for it. A DNS-only callback
+    // (Log4Shell whose LDAP egress is firewalled, blind SSRF/XXE where only name
+    // resolution escapes) shows up here with its qname / resolver IP / timing.
+    if (path == "/api/oast/dns/poll") {
+        if (!m_wiring.dnsSink) return httpJson(200, QJsonObject{{ "running", false }});
+        qint64 sinceId = 0;
+        if (!query.isEmpty()) {
+            const QUrlQuery q(query);
+            sinceId = q.queryItemValue("since").toLongLong();
+        }
+        QJsonArray arr;
+        for (const auto &h : m_wiring.dnsSink->hitsSince(sinceId)) {
+            QJsonObject o;
+            o["id"]       = static_cast<double>(h.id);
+            o["atMs"]     = static_cast<double>(h.atMs);
+            o["token"]    = h.token;
+            o["sourceIp"] = h.sourceIp;
+            o["qname"]    = h.hostHeader;   // the queried name (DnsSink puts qname here)
+            o["type"]     = h.method;       // "DNS"
+            o["qtype"]    = h.path;         // record type queried (A/AAAA/TXT/...)
+            arr.append(o);
+        }
+        QJsonObject root;
+        root["running"]  = m_wiring.dnsSink->running();
+        root["port"]     = m_wiring.dnsSink->port();
+        root["baseHost"] = m_wiring.dnsSink->baseHost();
+        root["hits"]     = arr;
         return httpJson(200, root);
     }
 

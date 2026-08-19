@@ -64,6 +64,8 @@ ParsedQuery parseDnsQuery(const QByteArray &d) {
     const int questionEnd = pos + 4;                // + QTYPE(2) + QCLASS(2)
     if (questionEnd > d.size()) return r;           // truncated question: not answerable
 
+    // QTYPE sits at [pos, pos+2) -- in bounds since questionEnd == pos+4 <= size.
+    r.qtype       = quint16((quint8(d[pos]) << 8) | quint8(d[pos + 1]));
     r.questionEnd = questionEnd;
     r.valid       = true;
     return r;
@@ -78,6 +80,22 @@ QString extractToken(const QString &qname) {
     // correlation token (and a CR/LF sink downstream).
     static const QRegularExpression hex16(QStringLiteral("\\A[0-9a-f]{16}\\z"));
     return hex16.match(head).hasMatch() ? head : QString();
+}
+
+QString qtypeName(quint16 qtype) {
+    switch (qtype) {
+        case 1:   return QStringLiteral("A");
+        case 2:   return QStringLiteral("NS");
+        case 5:   return QStringLiteral("CNAME");
+        case 6:   return QStringLiteral("SOA");
+        case 12:  return QStringLiteral("PTR");
+        case 15:  return QStringLiteral("MX");
+        case 16:  return QStringLiteral("TXT");
+        case 28:  return QStringLiteral("AAAA");
+        case 33:  return QStringLiteral("SRV");
+        case 255: return QStringLiteral("ANY");
+        default:  return QStringLiteral("TYPE%1").arg(qtype);
+    }
 }
 
 } // namespace Nullock::Core::DnsLogic
