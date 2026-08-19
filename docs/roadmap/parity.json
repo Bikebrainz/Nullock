@@ -4989,14 +4989,14 @@
       "state": "partial",
       "impact": "high",
       "effort": "hours",
-      "gap": "The critical silent-truncation defect is FIXED (see reconciled). Remaining vs Burp: cannot scope to a site-map branch (branches don't exist yet), no case-sensitivity toggle, no negative-match operator.",
+      "gap": "The critical silent-truncation defect is FIXED, and the case-sensitivity toggle + negative-match operator are now DONE (see reconciled). Remaining vs Burp: cannot scope to a site-map branch (branches don't exist yet).",
       "why": "Upgraded within partial. The fail-silent bug -- the scan examined only the OLDEST 500 rows and reported a complete result, and the DEEP filter then hid the matching recent rows -- is resolved. The scan is now newest-first, uncapped (bounded by the 1s wall-clock budget), and reports scanned/total/truncated honestly. Still partial on the UI-scope features Burp has: branch-scoped search, case toggle, negative match.",
       "evidence": "control_server.cpp /api/search now iterates ControlLogic::searchRowForIteration(n,i) newest-first with NO fixed row cap; truncated = ControlLogic::searchTruncated(scanned,n); the response carries scanned/total/scannedMinId. proxy.jsx HistoryTable keeps rows with id < deepMinId (unscanned) visible. Locks in Tests/control_logic: newest-first mapping + truncated-iff-incomplete, mutation-proven.",
       "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-01",
-        "commit": "07e43be",
-        "note": "Fixed the fail-silent oldest-500 row cap: the body search now scans newest-first, is bounded only by the 1s wall-clock budget, and reports scanned/total/truncated so it never answers a confident 0 for traffic it did not examine. Still partial: no site-map-branch scoping, case toggle, or negative match."
+        "date": "2026-08-18",
+        "commit": "8f29b73",
+        "note": "Two reconciliations. (1) 07e43be (2026-08-01): fixed the fail-silent oldest-500 row cap -- the body search scans newest-first, bounded only by the 1s wall-clock budget, and reports scanned/total/truncated so it never answers a confident 0 for traffic it didn't examine. (2) 8f29b73 (2026-08-18): the two missing Burp search MODIFIERS are now done. /api/search takes case=sensitive (drops the default CaseInsensitiveOption -> a case-sensitive regex) and negate=1 (inverts the match to the items that do NOT contain the pattern -- 'which requests are MISSING this token?'). Negate is a uniform per-item modifier in the shared addHits (emit iff no match, no excerpts), so it applies across every search source (proxy/repeater/issues) under the same regex-safety limits + budget. Verified e2e: case=sensitive rejects a wrong-case query + matches exact case while the default matches either; negate excludes the matching row + returns the non-matching rows with empty excerpts (7/7). Gauntlet ctest 99/99 + probe 156. STILL PARTIAL on the one remaining Burp feature: scoping a search to a single SITE-MAP BRANCH (the site map has no branch/tree structure to scope to yet)."
       }
     },
     {
