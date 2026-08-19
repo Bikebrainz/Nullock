@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Match &amp; replace rules can match a literal string, not just a regex.** Each
+  proxy match/replace rule now has a "literal" option: turn it on and the text you
+  type in the *find* box is matched exactly, with characters like <code class="inline">.</code>,
+  <code class="inline">*</code>, <code class="inline">?</code> and brackets treated
+  as themselves instead of regex operators &mdash; so you no longer have to
+  hand-escape a URL, a JSON snippet, or a version number. Regex is still the
+  default. The setting saves with the rule. (Dedicated request-parameter-name and
+  -value sections are still to come.)
 - **Plaintext WebSocket (`ws://`) connections are now proxied properly.** An
   unencrypted WebSocket handshake used to be answered and then the connection was
   just dropped &mdash; the actual `ws://` messages never flowed, weren't logged,

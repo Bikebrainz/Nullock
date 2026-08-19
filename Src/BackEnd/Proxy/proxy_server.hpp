@@ -89,9 +89,13 @@ struct MatchReplaceRule {
     QString     name;        // user-facing label
     QString     hostGlob;    // empty = all hosts; "*.example.com" style
     Section     section     = ReqHeader;
-    QString     find;        // regex
+    QString     find;        // regex (or a literal string when `literal` is set)
     QString     replace;     // replacement (supports backrefs \1 etc)
     bool        caseInsensitive = true;
+    // Treat `find` as a LITERAL string rather than a regex (Burp's "Literal"
+    // match type): metacharacters (. * ? ( ) [ ] etc.) match themselves, so a
+    // tester needn't hand-escape them. Compiled via QRegularExpression::escape.
+    bool        literal    = false;
     QString     comment;
 };
 

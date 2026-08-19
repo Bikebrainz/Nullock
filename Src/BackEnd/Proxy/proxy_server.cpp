@@ -1571,7 +1571,10 @@ void ProxyServer::setRules(const QList<MatchReplaceRule> &rules) {
             QRegularExpression::NoPatternOption
           | QRegularExpression::DontCaptureOption;
         if (r.caseInsensitive) opts |= QRegularExpression::CaseInsensitiveOption;
-        QRegularExpression findRx(r.find, opts);
+        // Literal match: escape the pattern so metacharacters match themselves,
+        // reusing the whole regex match/replace pipeline unchanged.
+        const QString findPat = r.literal ? QRegularExpression::escape(r.find) : r.find;
+        QRegularExpression findRx(findPat, opts);
         if (!findRx.isValid()) continue;     // refuse malformed at edit time
         findRx.optimize();
 

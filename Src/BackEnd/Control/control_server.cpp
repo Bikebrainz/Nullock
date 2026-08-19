@@ -1322,6 +1322,7 @@ QByteArray ControlServer::buildSnapshot() const {
             ro["find"]            = r.find;
             ro["replace"]         = r.replace;
             ro["caseInsensitive"] = r.caseInsensitive;
+            ro["literal"]         = r.literal;
             ro["comment"]         = r.comment;
             rulesArr.append(ro);
         }
@@ -3261,6 +3262,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         r.find            = o.value("find").toString();
         r.replace         = o.value("replace").toString();
         r.caseInsensitive = o.value("caseInsensitive").toBool(true);
+        r.literal         = o.value("literal").toBool(false);
         r.comment         = o.value("comment").toString();
         return r;
     };

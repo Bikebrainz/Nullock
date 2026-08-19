@@ -305,6 +305,7 @@ bool ProjectStore::ensureMetadata() {
             rule.find            = r.value("find").toString();
             rule.replace         = r.value("replace").toString();
             rule.caseInsensitive = r.value("caseInsensitive").toBool(true);
+            rule.literal         = r.value("literal").toBool(false);
             rule.comment         = r.value("comment").toString();
             if (rule.enabled
                 && isWildcardHost(rule.hostGlob)
@@ -374,6 +375,7 @@ bool ProjectStore::saveMetadata() {
         ro["find"]            = r.find;
         ro["replace"]         = r.replace;
         ro["caseInsensitive"] = r.caseInsensitive;
+        ro["literal"]         = r.literal;
         ro["comment"]         = r.comment;
         rulesArr.append(ro);
     }
