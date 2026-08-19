@@ -3399,7 +3399,13 @@
       "effort": "hours",
       "gap": "No 'request param name' / 'request param value' sections, and no literal match type (metacharacters must be hand-escaped). fixContentLength only rewrites an EXISTING header (proxy_server.cpp:1418-1425), so a body-rewriting rule on a chunked response leaves the framing wrong -- documented but unfixed.",
       "why": "Verified the enum, both apply functions, the CRUD+move endpoints and the UI form (which is at ui-v2/app.jsx:722-900, not 533-700 as claimed -- the first pass's line numbers are shifted throughout). All stated gaps confirmed: no param-name/param-value sections, and `applyOne` always compiles the find string as a QRegularExpression, so there is no literal mode.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:75-82 `enum Section { ReqUrl = 0, ReqHeader = 1, ReqBody = 2, RespHeader = 3, RespBody = 4, RespStatus = 5, };` ; regex-only at proxy_server.cpp:1406-1412 `bool applyOne(QString &s, const MatchReplaceRule &r, const QRegularExpression &compiledFind) { ... s.replace(compiledFind, r.replace);` ; endpoints control_server.cpp:3050-3076; UI ui-v2/app.jsx:817-819 `<sele"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:75-82 `enum Section { ReqUrl = 0, ReqHeader = 1, ReqBody = 2, RespHeader = 3, RespBody = 4, RespStatus = 5, };` ; regex-only at proxy_server.cpp:1406-1412 `bool applyOne(QString &s, const MatchReplaceRule &r, const QRegularExpression &compiledFind) { ... s.replace(compiledFind, r.replace);` ; endpoints control_server.cpp:3050-3076; UI ui-v2/app.jsx:817-819 `<sele",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "8101bad",
+        "note": "The LITERAL match type is done (one of the audit's three gap points). MatchReplaceRule gains a `literal` bool; when set the compile step (applyRules) builds the find pattern via QRegularExpression::escape instead of raw, so metacharacters (. * ? ( ) [ ]) match themselves and a URL / JSON snippet / version number no longer has to be hand-escaped -- the whole existing match/replace pipeline (backrefs, case-insensitivity, sections) is reused unchanged, and regex stays the default. Threaded end to end: the flag on the struct, the escape at compile, the /api/rules add/update parse, the snapshot, and project.json persistence (load + save). VERIFIED e2e over the live proxy: a literal find '1.99' on a response body rewrites the exact '1.99' to 'FLAT' but leaves '1x99' untouched (a REGEX '1.99' would rewrite both -- the discriminator that proves literal mode); the snapshot carries literal:true; the rule persists + cleans up (4/4). Gauntlet ctest 99/99 + probe 156. STAYS PARTIAL on the other two gap points: no dedicated request-param-NAME / request-param-VALUE sections (only URL/header/body/status), and the fixContentLength body-rewrite framing issue on a chunked response is documented-but-unfixed."
+      }
     },
     {
       "area": "proxy",
