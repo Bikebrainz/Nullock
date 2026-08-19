@@ -4007,7 +4007,12 @@
       "effort": "days",
       "gap": "2000 tokens is ~10-15 KB of words, and only 2000 CHARACTERS in chars mode \u2014 most real HTML responses truncate immediately. The cap exists because Compare::diff runs synchronously on the control/GUI thread; the fix is to move it off-thread, not to raise the number.",
       "why": "Verified, including the honest truncation handling. The cap is real and small.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:14 `constexpr int kMaxTokens = 2000;` with the rationale at :11-13 `// The control handler runs on the GUI thread, so bound the LCS table`. Clipping at :74-75 `if (a.size() > kMaxTokens) { a = a.mid(0, kMaxTokens); res.truncated = true; }`. Honesty guard at :122-125 `// A TRUNCATED diff compared only the clipped prefix, so it must NEVER assert identit"
+      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:14 `constexpr int kMaxTokens = 2000;` with the rationale at :11-13 `// The control handler runs on the GUI thread, so bound the LCS table`. Clipping at :74-75 `if (a.size() > kMaxTokens) { a = a.mid(0, kMaxTokens); res.truncated = true; }`. Honesty guard at :122-125 `// A TRUNCATED diff compared only the clipped prefix, so it must NEVER assert identit",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "ca75a63",
+        "note": "PROGRESS (stays partial). The flat 2000-token/side cap is replaced by an adaptive AREA budget (pure, mutation-proven Compare::budgetedSizes; kMaxCells = 16M = the same ~64 MB / ~100 ms the old 2000x2000 table cost). A side that already fits is kept WHOLE and only an oversized side is clipped, so the common short-vs-long case -- a one-line injected value vs a 30 KB response -- now diffs the long side in FULL instead of clipping it to 2000; two moderately large messages compare at up to ~4000 tokens each (2x the old linear ceiling). The tokeniser's per-side stop rose 2000 -> 20000. The proven O(n*m) LCS + exact backtrack are UNCHANGED (identical output for existing inputs; compare_test green). Verified: compare_test 38/38 incl. new budget cases + 2 mutations (preserve-short-side; both-large sqrt-of-budget); an asymmetric short-vs-3000-token compare is now NOT truncated and diffs all 3000. Gauntlet ctest 98/98 + probe 156. REMAINDER (why still partial, matching the gap's own point): a truly huge SYMMETRIC compare still clips at ~4000/side because the diff runs synchronously on the request thread -- lifting that ceiling needs it moved OFF-thread plus a linear-space LCS (Hirschberg) to raise the memory bound. This narrows the gap for the asymmetric + moderately-large cases without that larger refactor."
+      }
     },
     {
       "area": "repeater",
