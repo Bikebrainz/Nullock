@@ -4780,7 +4780,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-19",
-        "commit": "PENDING",
+        "commit": "6dcc404",
         "note": "Wave 0 register-accuracy fix: \"Site map filter -- by MIME type/status/extension/search/annotation\" flipped present -> partial. MIME-class, status-family, extension show/hide, and search-term (regex/case/negative) filters are all genuinely present (ui-v2/proxy.jsx FilterBar/HistoryTable, shared by Site map and HTTP history); the annotation filter (commented/highlighted) is not -- there is no comment/highlight field anywhere in the backend history schema or the wire JSON, confirmed by grep across Src/BackEnd, Src/Core, and ui-v2/*.jsx. No code touched this wave; this corrects a register that contradicted its own gap text."
       }
     },
