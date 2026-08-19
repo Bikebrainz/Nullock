@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5023</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Host header injection -&gt; password-reset poisoning</h1>
-  <p class="lead" style="margin-top:12px;">POST /forgot builds the password-reset link from the incoming Host header. Spoof Host: and the reset link points at the attacker&#x27;s server -- when the victim clicks it, their reset token lands in the attacker&#x27;s logs. In Nullock: 1. nullock scope add http://localhost:5023/* 2. Send /forgot to Repeater with body user=alice and header Host: evil.example 3. The returned &#x27;reset link&#x27; uses evil.example -- poisoned. Fix: never build absolute URLs from the Host header; use a configured canonical base URL and validate Host against an allow-list.</p>
+  <p class="lead" style="margin-top:12px;">POST /forgot builds the password-reset link from the incoming Host header. Spoof Host: and the reset link points at the attacker&#x27;s server -- when the victim clicks it, their reset token lands in the attacker&#x27;s logs. In Nullock: 1. nullock scope add http://localhost:5023/* 2. Send /forgot to Repeater with body user=alice and header Host: evil.example 3. The returned &#x27;reset link&#x27; uses evil.example -- poisoned. 4. Confirm success: GET /flag?host=evil.example -- solved only if that is the exact Host the server just poisoned the link with, and it differs from this app&#x27;s real canonical host. Fix: never build absolute URLs from the Host header; use a configured canonical base URL and validate Host against an allow-list.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/23-host-header-poisoning/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Trigger a password-reset email/flow and look at the link it generates.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Where does the domain in that link actually come from?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Send the reset request with a forged Host: header and see if the generated link uses your attacker-controlled host.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5023/*</li><li>Send /forgot to Repeater with body user=alice and header Host: evil.example</li><li>The returned &#x27;reset link&#x27; uses evil.example -- poisoned.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5023/*</li><li>Send /forgot to Repeater with body user=alice and header Host: evil.example</li><li>The returned &#x27;reset link&#x27; uses evil.example -- poisoned.</li><li>Confirm success: GET /flag?host=evil.example -- solved only if that is the exact Host the server just poisoned the link with, and it differs from this app&#x27;s real canonical host.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never build absolute URLs from the Host header; use a configured canonical base URL and validate Host against an allow-list.</p></div>
 

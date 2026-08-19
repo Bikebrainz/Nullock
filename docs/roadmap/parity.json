@@ -4771,16 +4771,17 @@
     {
       "area": "target",
       "feature": "Site map filter \u2014 by MIME type (HTML/Script/XML/CSS/Other text/Images/Flash/Other binary), by status code family, by file extension (show only / hide), by search term (regex, case-sensitive, negative), by annotation (commented / highlighted)",
-      "state": "present",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Annotation filter (commented/highlighted) remains missing -- blocked on the same missing annotation store as #267, tracked separately. Case-sensitivity now applies to the local column/free-text match; the server regex body-search path is still forced case-insensitive.",
-      "why": "Closed 2026-08-10: the Site map and HTTP history share the exact same FilterBar/HistoryTable component in ui-v2/proxy.jsx (Proxy tab: sitemap left, history top-right), so the MIME-class select, extension show/hide, negative search, and case-sensitivity toggle added for #267 apply identically here -- clicking a Site map host still routes into the same filtered HistoryTable. Status-family and method filtering were already present.",
+      "why": "Register correction (2026-08-19): this entry's own gap text already admitted the annotation criterion enumerated in the feature name -- \"by annotation (commented/highlighted)\" -- was missing, blocked on the same absent comment/highlight store as the sibling item \"Site map / history annotations: per-item Comment and Highlight\" (itself state=absent). A compound feature whose name lists five criteria cannot be 'present' when one of those five is confirmed absent by its own text; downgraded to partial, matching how this file grades every other feature with one missing enumerated criterion out of several met ones. No code change -- register-only.",
       "evidence": "ui-v2/proxy.jsx ProxyTab renders <SiteMap> beside the same <FilterBar>/<HistoryTable> pair used for HTTP history; mimeCategory()/pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() are the same pure helpers exercised by both surfaces.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-10",
-        "commit": "5c0c4b4",
-        "note": "Proxy/Target filter-bar batch: same component change as #267, since Nullock's Site map and HTTP history share one FilterBar/HistoryTable."
+        "date": "2026-08-19",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy fix: \"Site map filter -- by MIME type/status/extension/search/annotation\" flipped present -> partial. MIME-class, status-family, extension show/hide, and search-term (regex/case/negative) filters are all genuinely present (ui-v2/proxy.jsx FilterBar/HistoryTable, shared by Site map and HTTP history); the annotation filter (commented/highlighted) is not -- there is no comment/highlight field anywhere in the backend history schema or the wire JSON, confirmed by grep across Src/BackEnd, Src/Core, and ui-v2/*.jsx. No code touched this wave; this corrects a register that contradicted its own gap text."
       }
     },
     {

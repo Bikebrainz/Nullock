@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5028</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Business-logic flaw: client-controlled price / negative quantity</h1>
-  <p class="lead" style="margin-top:12px;">POST /checkout trusts the `price` and `qty` fields from the request, so a buyer can set their own price (price=0.01) or a negative quantity to invert the charge. The server never re-derives the total from a trusted catalog. In Nullock: 1. nullock scope add http://localhost:5028/* 2. POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit) 3. Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you. Fix: look up the price server-side from a trusted catalog by item id; validate qty &gt; 0; never trust client-supplied prices or totals.</p>
+  <p class="lead" style="margin-top:12px;">POST /checkout trusts the `price` and `qty` fields from the request, so a buyer can set their own price (price=0.01) or a negative quantity to invert the charge. The server never re-derives the total from a trusted catalog. In Nullock: 1. nullock scope add http://localhost:5028/* 2. POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit) 3. Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you. 4. Confirm success: GET /flag -- solved only once a checkout actually cleared for a total far below the real catalog price (99.00), proof the tampered price/qty was accepted, not just submitted. Fix: look up the price server-side from a trusted catalog by item id; validate qty &gt; 0; never trust client-supplied prices or totals.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/28-business-logic-price/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the checkout request -- what values does the client actually send for price and quantity?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the server recompute the total, or trust whatever the client posts?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Editing the price down (or sending a negative quantity to flip the total) in Repeater can change what you pay.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5028/*</li><li>POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit)</li><li>Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5028/*</li><li>POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit)</li><li>Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you.</li><li>Confirm success: GET /flag -- solved only once a checkout actually cleared for a total far below the real catalog price (99.00), proof the tampered price/qty was accepted, not just submitted.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: look up the price server-side from a trusted catalog by item id; validate qty &gt; 0; never trust client-supplied prices or totals.</p></div>
 

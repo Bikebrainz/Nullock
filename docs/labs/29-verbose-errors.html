@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5029</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Information disclosure via verbose errors</h1>
-  <p class="lead" style="margin-top:12px;">/calc?n=... parses input and, on failure, returns the full Python exception traceback -- leaking file paths, the framework version, and internal types an attacker can use to tailor the next step. In Nullock: 1. nullock scope add http://localhost:5029/* 2. /calc?n=21    -&gt; 42 3. /calc?n=oops  -&gt; a stack trace with absolute paths is returned. Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p>
+  <p class="lead" style="margin-top:12px;">/calc?n=... parses input and, on failure, returns the full Python exception traceback -- leaking file paths, the framework version, and internal types an attacker can use to tailor the next step. In Nullock: 1. nullock scope add http://localhost:5029/* 2. /calc?n=21    -&gt; 42 3. /calc?n=oops  -&gt; a stack trace with absolute paths is returned. 4. Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path. Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/29-verbose-errors/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send some deliberately malformed input somewhere and see what comes back.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the error response look like a generic message, or does it look like raw debug output?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A full stack trace on bad input leaks file paths, framework version, and internal logic -- confirm with a malformed request.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5029/*</li><li>/calc?n=21    -&gt; 42</li><li>/calc?n=oops  -&gt; a stack trace with absolute paths is returned.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5029/*</li><li>/calc?n=21    -&gt; 42</li><li>/calc?n=oops  -&gt; a stack trace with absolute paths is returned.</li><li>Confirm success: GET /flag?path=&lt;a fragment of the leaked absolute path&gt; -- solved only by submitting a piece of the real path the traceback exposed, never shown on the happy path.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: log details server-side, return a generic error to the client, and never run debug mode / ship stack traces in production.</p></div>
 

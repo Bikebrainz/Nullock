@@ -11,14 +11,20 @@ In Nullock:
     3. id=1 AND 1=1  -> shown;  id=1 AND 1=2 -> not shown (boolean oracle).
     4. Automate with Intruder, e.g.
          id=1 AND substr((SELECT password FROM users LIMIT 1),1,1)='s'
+    5. Confirm success: GET /flag?password=<extracted password> -- solved
+       only by submitting the actual admin password extracted bit by bit,
+       never visible through the legitimate /product?id= path.
 
 Fix: use parameterized queries; never string-concatenate SQL.
 """
 
-from flask import Flask, request
+from flask import Flask, request, jsonify
+import hashlib
 import sqlite3
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-26-blind-sqli").hexdigest()[:16]
+ADMIN_PASSWORD = "s3cr3t"
 
 
 def db():
@@ -45,6 +51,13 @@ def product():
     except sqlite3.Error:
         rows = []   # blind: errors swallowed -- only the boolean leaks
     return ("in stock: " + rows[0][0]) if rows else "no such product"
+
+
+@app.route("/flag")
+def flag_route():
+    if request.args.get("password", "") == ADMIN_PASSWORD:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":
