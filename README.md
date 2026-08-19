@@ -166,10 +166,13 @@ SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
 Teaching labs     50 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
-                  the docs/labs site rates each Easy/Medium/Hard and gives 3
-                  progressive hints before the full walkthrough; all 50 labs
-                  add a real /flag success-check endpoint you solve by
-                  exploiting the bug server-side, not just reading the walkthrough
+                  a LABS tab in the app itself (and the docs/labs site) rates each
+                  Easy/Medium/Hard, gives 3 progressive hints before the full
+                  walkthrough, and one click sends a GET /flag check straight to
+                  Repeater; all 50 labs add a real /flag success-check endpoint
+                  you solve by exploiting the bug server-side, not just reading
+                  the walkthrough; solved labs and per-category XP/tracks are
+                  tracked locally in the app
 Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
 Project templates  Start a new project pre-seeded with scope + notes from a bundled template
@@ -289,7 +292,7 @@ baseline diff as everything else.
    │  Intercept      pause / forward / drop         │         │  Babel        │
    │  MatchReplace   regex per section              │ <─────> │  in-browser   │
    │  PassiveScanner 10 finding kinds               │  HTTP   │               │
-   │  ActiveProbe    20+ vuln classes               │         │  24 tabs:     │
+   │  ActiveProbe    20+ vuln classes               │         │  25 tabs:     │
    │  PortScanner    CIDR + banner grab             │         │  proxy / scope│
    │  ReconEngine    DNS / crt.sh / wordlist        │         │  rules / find │
    │  Repeater       multi-tab                      │         │  scans / recon│

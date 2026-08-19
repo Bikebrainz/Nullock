@@ -15,6 +15,7 @@ const TABS = [
   { id: "sequencer", label: "SEQUENCER" },
   { id: "tests",     label: "TESTS" },
   { id: "discover",  label: "DISCOVER" },
+  { id: "labs",      label: "LABS" },
   { id: "collaborator", label: "COLLABORATOR" },
   { id: "reporting", label: "REPORTING" },
   { id: "processor", label: "PROCESSOR" },
@@ -3739,6 +3740,245 @@ function SequencerTab({ sequencer, dispatch }) {
   );
 }
 
+// Pure helpers for the Labs tab (task #122) -- kept outside the component so
+// they're independently testable, same pattern as sequencerSampleSummary above.
+
+function labsVisible(labs, { category, difficulty, query }) {
+  const q = (query || "").trim().toLowerCase();
+  return labs.filter(l => {
+    if (category && category !== "all" && l.category !== category) return false;
+    if (difficulty && difficulty !== "all" && l.difficulty !== difficulty) return false;
+    if (!q) return true;
+    return (l.title + " " + l.vuln + " " + l.slug + " " + l.port + " " + l.category)
+      .toLowerCase().indexOf(q) >= 0;
+  });
+}
+
+function labsXpSummary(labs, completedSlugs, xpTable) {
+  const table = xpTable || {};
+  const completed = new Set(completedSlugs || []);
+  let earned = 0, possible = 0;
+  const byCategory = {};
+  for (const l of labs) {
+    const xp = table[l.difficulty] || 0;
+    possible += xp;
+    const done = completed.has(l.slug);
+    if (done) earned += xp;
+    if (!byCategory[l.category]) byCategory[l.category] = { total: 0, done: 0 };
+    byCategory[l.category].total += 1;
+    if (done) byCategory[l.category].done += 1;
+  }
+  const tracks = Object.keys(byCategory).sort().map(name => ({
+    name, done: byCategory[name].done, total: byCategory[name].total,
+  }));
+  return { earned, possible, solvedCount: completed.size, total: labs.length, tracks };
+}
+
+function LabsTab({ dispatch }) {
+  // In-app surfacing of the 50 Nullock Labs (task #122's "wire into ... in-app"
+  // leg -- the docs/labs static site already had the catalog/hints/walkthrough,
+  // but nothing in the desktop GUI itself). Catalog is generated straight from
+  // labs/README.md + each lab's app.py docstring by scripts/labs_site.py into
+  // ui-v2/labs-data.js (window.NULLOCK_LABS / window.NULLOCK_LABS_XP) -- the
+  // same source of truth as the static site, so the two can never drift.
+  // "Solved" tracking + XP/tracks gamification is client-side only (localStorage):
+  // there is no backend concept of lab progress, and these apps run as separate
+  // throwaway localhost processes outside Nullock's own project state.
+  const labs = React.useMemo(() => (window.NULLOCK_LABS || []), []);
+  const xpTable = window.NULLOCK_LABS_XP || {};
+
+  const [completed, setCompleted] = React.useState(() => {
+    try {
+      const raw = window.localStorage && window.localStorage.getItem("nullock:labs:completed");
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(s => typeof s === "string") : [];
+    } catch (e) { return []; }
+  });
+  React.useEffect(() => {
+    try {
+      window.localStorage && window.localStorage.setItem("nullock:labs:completed", JSON.stringify(completed));
+    } catch (e) { /* storage unavailable/full -- progress just won't persist */ }
+  }, [completed]);
+
+  const [category, setCategory] = React.useState("all");
+  const [difficulty, setDifficulty] = React.useState("all");
+  const [query, setQuery] = React.useState("");
+  const [selectedSlug, setSelectedSlug] = React.useState(null);
+  const [hintsOpen, setHintsOpen] = React.useState(0);
+  const [fixOpen, setFixOpen] = React.useState(false);
+
+  const categories = React.useMemo(() => ["all", ...Array.from(new Set(labs.map(l => l.category))).sort()], [labs]);
+  const visible = React.useMemo(() => labsVisible(labs, { category, difficulty, query }), [labs, category, difficulty, query]);
+  const xp = React.useMemo(() => labsXpSummary(labs, completed, xpTable), [labs, completed, xpTable]);
+  const selected = labs.find(l => l.slug === selectedSlug) || null;
+
+  function selectLab(slug) {
+    setSelectedSlug(slug);
+    setHintsOpen(0);
+    setFixOpen(false);
+  }
+
+  function toggleSolved(slug) {
+    setCompleted(prev => prev.includes(slug) ? prev.filter(s => s !== slug) : [...prev, slug]);
+  }
+
+  function sendFlagCheckToRepeater(l) {
+    const port = l.port;
+    const text = "GET /flag HTTP/1.1\r\nHost: localhost:" + port + "\r\nConnection: close\r\n\r\n";
+    dispatch({ type: "send-to-repeater-raw", host: "localhost", port: Number(port), tls: false, text });
+  }
+
+  const chip = (active) => ({
+    background: active ? "var(--accent)" : "var(--pane)",
+    color: active ? "var(--bg-deep)" : "var(--text-2)",
+    border: "1px solid " + (active ? "var(--accent)" : "var(--line)"),
+    borderRadius: 999, padding: "3px 10px", fontSize: "11px", cursor: "pointer",
+  });
+  const diffColor = (d) => ({ Easy: "#3f8f29", Medium: "#d97706", Hard: "var(--err)" }[d] || "var(--text-2)");
+
+  if (!labs.length) {
+    return (
+      <div style={{ padding: 14, color: "var(--dim)", fontSize: "12px" }}>
+        no lab catalog loaded (ui-v2/labs-data.js missing or failed to load)
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Labs</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>50 intentionally-vulnerable practice targets, run on localhost -- objective, hints, walkthrough and a live flag check, without leaving the app</span>
+        <span style={{ marginLeft: "auto", fontSize: "12px" }}>
+          <span style={{ color: "var(--accent)", fontWeight: 700 }}>{xp.earned}</span>
+          <span style={{ color: "var(--dim)" }}> / {xp.possible} XP</span>
+          <span style={{ color: "var(--dim)", marginLeft: 8 }}>{xp.solvedCount} / {xp.total} solved</span>
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {xp.tracks.map(t => (
+          <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--text-2)" }}>
+            <span>{t.name}</span>
+            <div style={{ background: "var(--bg-deep)", borderRadius: 2, height: 6, width: 50, overflow: "hidden" }}>
+              <div style={{ background: "var(--accent)", height: "100%", width: (t.total ? (t.done / t.total) * 100 : 0) + "%" }} />
+            </div>
+            <span style={{ color: "var(--dim)" }}>{t.done}/{t.total}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="filter by name, bug class, port..."
+          spellCheck={false}
+          style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", minWidth: 220 }}
+        />
+        {categories.map(c => (
+          <span key={c} style={chip(category === c)} onClick={() => setCategory(c)}>{c}</span>
+        ))}
+        {["all", "Easy", "Medium", "Hard"].map(d => (
+          <span key={d} style={chip(difficulty === d)} onClick={() => setDifficulty(d)}>{d === "all" ? "all difficulty" : d}</span>
+        ))}
+        <span style={{ marginLeft: "auto", color: "var(--dim)", fontSize: "11px" }}>{visible.length} of {labs.length}</span>
+      </div>
+
+      <div style={{ flex: 1, display: "flex", gap: 10, minHeight: 0 }}>
+        <div style={{ width: "40%", overflow: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {visible.map(l => {
+            const done = completed.includes(l.slug);
+            return (
+              <div
+                key={l.slug}
+                onClick={() => selectLab(l.slug)}
+                style={{
+                  background: selectedSlug === l.slug ? "var(--pane-hover, var(--pane))" : "var(--pane)",
+                  border: "1px solid " + (selectedSlug === l.slug ? "var(--accent)" : "var(--line)"),
+                  borderRadius: 4, padding: "8px 10px", cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "10px" }}>
+                  <span style={{ color: "var(--dim)" }}>{l.num}</span>
+                  <span style={{ color: "var(--text-2)" }}>{l.category}</span>
+                  <span style={{ color: diffColor(l.difficulty) }}>{l.difficulty}</span>
+                  <span style={{ color: "var(--dim)" }}>:{l.port}</span>
+                  {done && <span style={{ color: "#3f8f29", marginLeft: "auto" }}>{"✓ solved"}</span>}
+                </div>
+                <div style={{ fontSize: "13px", marginTop: 2 }}>{l.title}</div>
+                <div style={{ fontSize: "11px", color: "var(--dim)" }}>{l.vuln}</div>
+              </div>
+            );
+          })}
+          {!visible.length && <div style={{ color: "var(--dim)", fontSize: "12px" }}>no labs match that filter</div>}
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, minHeight: 0 }}>
+          {!selected ? (
+            <span style={{ color: "var(--dim)", fontSize: "12px" }}>select a lab on the left</span>
+          ) : (
+            <div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: "15px", fontWeight: 600 }}>{selected.title}</span>
+                <span style={{ color: diffColor(selected.difficulty), fontSize: "11px" }}>{selected.difficulty}</span>
+                <span style={{ color: "var(--dim)", fontSize: "11px" }}>{selected.category} · +{xpTable[selected.difficulty] || 0} XP</span>
+              </div>
+              <p style={{ fontSize: "12.5px", color: "var(--text-2)", marginTop: 6 }}>{selected.desc || selected.vuln}</p>
+              <div style={{ fontFamily: "var(--ff-mono)", fontSize: "11.5px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginTop: 6 }}>
+                python labs/{selected.slug}/app.py{"\n"}# then open http://localhost:{selected.port}/
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                <button className="btn" onClick={() => sendFlagCheckToRepeater(selected)}>SEND GET /flag TO REPEATER</button>
+                <button className="btn" onClick={() => toggleSolved(selected.slug)}>
+                  {completed.includes(selected.slug) ? "MARK UNSOLVED" : "MARK SOLVED"}
+                </button>
+              </div>
+
+              {!!(selected.hints && selected.hints.length) && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Hints</div>
+                  {selected.hints.slice(0, hintsOpen).map((h, i) => (
+                    <div key={i} style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: 4 }}>{i + 1}. {h}</div>
+                  ))}
+                  {hintsOpen < selected.hints.length && (
+                    <button className="btn" onClick={() => setHintsOpen(n => n + 1)}>
+                      REVEAL HINT {hintsOpen + 1} OF {selected.hints.length}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!!(selected.steps && selected.steps.length) && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Walkthrough</div>
+                  <ol style={{ margin: 0, paddingLeft: 18, fontSize: "12px", color: "var(--text-2)" }}>
+                    {selected.steps.map((s, i) => <li key={i} style={{ marginBottom: 3 }}>{s}</li>)}
+                  </ol>
+                </div>
+              )}
+
+              {!!selected.fix && (
+                <div style={{ marginTop: 14 }}>
+                  {!fixOpen ? (
+                    <button className="btn" onClick={() => setFixOpen(true)}>SHOW FIX</button>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>The fix</div>
+                      <p style={{ fontSize: "12px", color: "var(--text-2)" }}>{selected.fix}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DiscoverTab() {
   // Recon/discovery backends that existed with no UI: wordlist-based content
   // (directory/file) discovery, robots.txt + sitemap recon, and the BFS link
@@ -6601,6 +6841,9 @@ function App() {
         )}
         {tab === "discover" && (
           <DiscoverTab />
+        )}
+        {tab === "labs" && (
+          <LabsTab dispatch={dispatch} />
         )}
         {tab === "collaborator" && (
           <CollaboratorTab />
