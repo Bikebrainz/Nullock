@@ -8,6 +8,7 @@ set(CMAKE_AUTOMOC ON)
 add_executable(ws_repeater_test
     ws_repeater_test.cpp
     ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy/ws_repeater.cpp
+    ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy/ws_encode.cpp  # buildFrame now delegates here
 )
 
 # Core + Network only. Qt6::Test would have been the obvious home for QSignalSpy,

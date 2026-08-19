@@ -43,6 +43,24 @@ private:
 // Best-effort label for a frame opcode, useful for the GUI URL column.
 const char *wsOpcodeLabel(quint8 opcode);
 
+// --- Frame (re)encoder + hold-eligibility (pure; ws_encode.cpp, Qt6::Core only) --
+// The single serializer for every frame the proxy puts on the wire: WsRepeater
+// injection today, and the forward path of WebSocket INTERCEPTION next. Emits an
+// RFC 6455 frame: FIN + RSV1 + opcode, a minimal-form length (7 / 16 / 64 bit), and
+// -- for a client->server frame (mask=true) -- a FRESH CSPRNG 4-byte mask key with
+// the payload XOR-masked after it (server->client frames are never masked). rsv1 is
+// the permessage-deflate "compressed" bit; pass false for a plain frame.
+QByteArray wsEncodeFrame(quint8 opcode, bool fin, bool rsv1,
+                         const QByteArray &payload, bool mask);
+
+// May a message with this opening frame be HELD for edit/drop by the intercept
+// path? Only an uncompressed text/binary DATA message qualifies: a control frame
+// (opcode & 0x08) must pass through so ping/pong/close framing stays valid, and any
+// RSV bit set means an extension (permessage-deflate via rsv1, or another) owns the
+// bytes -- editing them would desync that extension's stateful stream. Everything
+// this rejects is forwarded verbatim. Pure + flip-provable.
+bool wsHoldEligible(quint8 opcode, bool rsv1, bool rsv2, bool rsv3);
+
 // Stateful permessage-deflate (RFC 7692) inflater for ONE direction of a
 // WebSocket stream. Maintains the zlib sliding window across messages so it
 // decodes correctly under context-takeover (the negotiated default). This is

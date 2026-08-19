@@ -432,6 +432,11 @@ add_subdirectory(scope_logic)
 # errors are ignorable while a blacklisted/revoked/no-peer-cert error fails closed.
 add_subdirectory(tls_accept_logic)
 
+# WebSocket frame serializer + hold-eligibility: the single encoder for injected
+# and intercept-forwarded frames -- proves the framing/length-boundary/masking bytes
+# and that only an uncompressed text/binary message is hold-eligible.
+add_subdirectory(ws_encode)
+
 # History-index find() query builder: the SQL-INJECTION regression lock -- proves
 # the produced SQL depends only on which filter keys are present (never their
 # values, so every operator value is a bound ? parameter) and that `limit` is

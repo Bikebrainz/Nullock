@@ -1,4 +1,5 @@
 #include "ws_repeater.hpp"
+#include "websocket.hpp"   // wsEncodeFrame (shared frame serializer)
 
 #include <QDateTime>
 #include <QMutexLocker>
@@ -64,35 +65,9 @@ QList<WsSessionInfo> WsRepeater::sessions() const {
 // abort the conn if they see unmasked client frames. For server
 // direction we MUST NOT mask.
 QByteArray WsRepeater::buildFrame(quint8 opcode, const QByteArray &payload, bool mask) {
-    QByteArray out;
-    out.reserve(payload.size() + 14);
-    // FIN=1, RSV=0, opcode.
-    out.append(static_cast<char>(0x80 | (opcode & 0x0F)));
-    const qint64 len = payload.size();
-    quint8 maskBit = mask ? 0x80 : 0x00;
-    if (len < 126) {
-        out.append(static_cast<char>(maskBit | static_cast<quint8>(len)));
-    } else if (len <= 0xFFFF) {
-        out.append(static_cast<char>(maskBit | 126));
-        out.append(static_cast<char>((len >> 8) & 0xFF));
-        out.append(static_cast<char>(len & 0xFF));
-    } else {
-        out.append(static_cast<char>(maskBit | 127));
-        // 8-byte length, network order. Top bit must be 0 per RFC.
-        for (int shift = 56; shift >= 0; shift -= 8)
-            out.append(static_cast<char>((len >> shift) & 0xFF));
-    }
-    if (mask) {
-        quint8 m[4];
-        for (int i = 0; i < 4; ++i)
-            m[i] = static_cast<quint8>(QRandomGenerator::global()->bounded(256));
-        for (int i = 0; i < 4; ++i) out.append(static_cast<char>(m[i]));
-        for (qint64 i = 0; i < len; ++i)
-            out.append(static_cast<char>(static_cast<quint8>(payload.at(i)) ^ m[i & 3]));
-    } else {
-        out.append(payload);
-    }
-    return out;
+    // One serializer for injection and for the intercept forward path: an injected
+    // frame is always a complete, uncompressed message (FIN=1, RSV1=0).
+    return wsEncodeFrame(opcode, /*fin=*/true, /*rsv1=*/false, payload, mask);
 }
 
 bool WsRepeater::sendFrame(qint64 id, const QString &direction,
