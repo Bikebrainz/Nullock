@@ -95,6 +95,9 @@ Result discover(const Request &reqIn) {
     Request req = reqIn;
     const QString base = normBase(req.basePath);
     QStringList words = req.wordlist.isEmpty() ? defaultWordlist() : req.wordlist;
+    // File-extension bruteforce: expand each word with the configured suffixes
+    // BEFORE the cap, so maxRequests bounds the total candidate set (bare + variants).
+    words = expandWithExtensions(words, req.extensions);
     result.wordsTotal = words.size();
     // maxRequests <= 0 means "no cap" -- normalise so the cap AND the loop budget
     // agree on it (previously 0 skipped the cap but made the loop break fire

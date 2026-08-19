@@ -29,6 +29,20 @@ QString normBase(const QString &p) {
     return b;
 }
 
+QStringList expandWithExtensions(const QStringList &wordlist, const QStringList &extensions) {
+    if (extensions.isEmpty()) return wordlist;
+    QStringList out;
+    out.reserve(wordlist.size() * (1 + extensions.size()));
+    for (const QString &w : wordlist) {
+        out.append(w);                              // the bare word first
+        for (const QString &ext : extensions) {
+            if (ext.isEmpty()) continue;            // a blank suffix would just re-probe the word
+            out.append(w + ext);                    // word + suffix (suffix carries its own dot)
+        }
+    }
+    return out;
+}
+
 // Canonicalise a response body so a REFLECTIVE / templated soft-404 -- one that
 // echoes the requested path ("The page /nl404abc was not found") and/or carries
 // per-request noise (timestamps, hit counters, request ids) -- collapses to a

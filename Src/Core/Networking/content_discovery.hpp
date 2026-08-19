@@ -37,7 +37,13 @@ struct Request {
     QString basePath;                           // dir to discover under (default "/")
     QList<QPair<QString, QString>> headers;     // carried headers (cookies, auth)
     QStringList wordlist;                        // relative paths; empty => default
-    int     maxRequests = 300;                   // cap on wordlist entries probed
+    // File-extension bruteforce (Burp-parity): each wordlist entry is probed AS-IS
+    // AND with each of these suffixes appended (".php", ".bak", ".old", ".zip" ...)
+    // -- the classic backup sweep -- so N words x M extensions expands server-side
+    // instead of pre-multiplying the wordlist client-side. Each suffix carries its
+    // own leading dot (or none, for a plain suffix). Empty => words probed as-is.
+    QStringList extensions;
+    int     maxRequests = 300;                   // cap on TOTAL candidates probed (post-expansion)
     // Resource-pool controls (Burp-parity): how many wordlist probes run
     // concurrently, and an optional pause between dispatches (rate limit).
     // Calibration is always serial; only the main probe loop parallelizes.
@@ -110,6 +116,13 @@ QStringList defaultWordlist();
 //   bodyFingerprint    -- a deterministic FNV-1a 64-bit hash of a canonicalised
 //                         body (NOT qHash, which Qt6 seeds randomly per process).
 QString normBase(const QString &p);
+
+// Expand a wordlist for file-extension bruteforce: for each word emit the word
+// itself, then the word with each non-empty extension appended (word + ext). The
+// bare word always comes first, then its variants, in the given extension order.
+// Empty extensions -> the wordlist unchanged. Pure; the cap in discover() is
+// applied AFTER this so it bounds the total candidate count.
+QStringList expandWithExtensions(const QStringList &wordlist, const QStringList &extensions);
 QString canonicalizeBody(const QString &body, const QString &probePath);
 quint64 bodyFingerprint(const QString &canonicalBody);
 // classify(): candBodyHash/candHasHash carry the candidate's path-masked body

@@ -9032,6 +9032,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             cr.throttleMs = qBound(0, bodyJson.value("throttleMs").toInt(0), 60000);
         for (const QJsonValue &v : bodyJson.value("wordlist").toArray())
             if (!v.toString().isEmpty()) cr.wordlist.append(v.toString());
+        // File-extension bruteforce (".php", ".bak", ...): each word is probed
+        // as-is and with each extension appended (bounded by max, post-expansion).
+        for (const QJsonValue &v : bodyJson.value("extensions").toArray())
+            if (!v.toString().isEmpty()) cr.extensions.append(v.toString());
         const QJsonObject chdrs = bodyJson.value("headers").toObject();
         for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
             cr.headers.append({ it.key(), it.value().toString() });

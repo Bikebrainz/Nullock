@@ -179,6 +179,27 @@ int main(int argc, char **argv) {
     chk("saturated: 10/100 forbidden -> false (10%)", !forbiddenSaturated(10, 100));
     chk("saturated: zero probed -> false", !forbiddenSaturated(0, 0));
 
+    // ===== expandWithExtensions: word + each suffix, bare word first ==========
+    {
+        const QStringList w = { "admin", "login" };
+        chk("expand: no extensions -> unchanged",
+            expandWithExtensions(w, {}) == w);
+        const QStringList e1 = expandWithExtensions({ "admin" }, { ".php", ".bak" });
+        chk("expand: one word, two exts -> [word, word+ext1, word+ext2] in order",
+            e1 == QStringList({ "admin", "admin.php", "admin.bak" }));
+        const QStringList e2 = expandWithExtensions({ "a", "b" }, { ".x" });
+        chk("expand: multiple words interleaved (a, a.x, b, b.x)",
+            e2 == QStringList({ "a", "a.x", "b", "b.x" }));
+        // blank extension is skipped (would just re-probe the bare word)
+        const QStringList e3 = expandWithExtensions({ "a" }, { "", ".y" });
+        chk("expand: blank extension skipped", e3 == QStringList({ "a", "a.y" }));
+        // count == N * (1 + non-blank exts)
+        const QStringList e4 = expandWithExtensions({ "a", "b", "c" }, { ".1", ".2", ".3" });
+        chk("expand: count == N*(1+M)", e4.size() == 3 * (1 + 3));
+        // the bare word is always present
+        chk("expand: bare word retained", e4.contains("a") && e4.contains("b"));
+    }
+
     std::fprintf(stderr, "content_discovery_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

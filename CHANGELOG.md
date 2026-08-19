@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Content discovery can sweep file extensions.** Point it at a wordlist and a
+  set of extensions (`.php`, `.bak`, `.old`, `.zip`&hellip;) and each word is now
+  probed both as-is and with every extension appended &mdash; the classic
+  backup-file sweep (`config` &rarr; `config.php`, `config.bak`, &hellip;). Before,
+  every combination had to be pre-expanded into the wordlist by hand, which blew
+  through the request cap; now the expansion happens server-side and the cap
+  applies to the real total. (The extensions field in the discovery UI is the
+  remaining step; drive it via the API for now.)
 - **Optionally log out-of-scope traffic (the "browse, then scope, then review"
   loop).** Nullock filters out-of-scope traffic out of history, which is great for
   privacy but means anything you browsed *before* narrowing your scope was gone
