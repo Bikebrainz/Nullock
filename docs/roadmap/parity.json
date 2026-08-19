@@ -1621,13 +1621,18 @@
     {
       "area": "extender",
       "feature": "[B21] Extension unloading handler (registerUnloadingHandler) \u2014 clean teardown",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
       "gap": "STALE PRIOR EVIDENCE \u2014 reclassify absent->partial. The gap's core claim ('the QJSEngine is never recreated, so an uninstalled script's globals persist in shared scope until restart') is NO LONGER TRUE: reload() now calls rebuildEngine(), which destroys the engine and constructs a fresh one, re-publishing `nullock` (extensions_api.cpp:93-107, 121-146). So the clean-slate half is DONE. What remains ",
       "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
       "evidence": "extensions_api.cpp:93-107 rebuildEngine() destroys+recreates the engine; reload() 121-146 calls it \u2014 the 'globals persist' concern is resolved; no onUnload/registerUnloadingHandler invokable exists (hpp:191-212)",
-      "audited_state": "absent"
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "4e445a5",
+        "note": "partial -> present. The clean-slate half (rebuildEngine on reload) was already done; this adds the missing teardown-callback half the gap called out. New bridge invokables nullock.onUnload(fn) + the Burp-name alias nullock.registerUnloadingHandler(fn) register an ungated teardown callback (a cleanup hook touches only the script's own state, never the wire -- so it registers like onResponse observation). runUnloadHandlers() fires each once on the owner thread while the engine is still alive, at the START of reload() (before rebuildEngine destroys the engine) and from the destructor (app exit); handlers are isolated (one throwing can't skip the rest) and rebuildEngine() now clears m_onUnloadHandlers too, so none leaks across a reload (QJSValue-lifetime). VERIFIED e2e vs the live app: onUnload does NOT fire on mere load, DOES fire on the next reload (teardown), the alias behaves identically, and the user's real extensions were left untouched. ctest 99/99, probe_smoke 156/156."
+      }
     },
     {
       "area": "extender",
