@@ -3088,12 +3088,18 @@
     {
       "area": "platform",
       "feature": "Project files: Repeater tabs, Intruder attack config and Sequencer state saved in the project",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Close the app and every staged Repeater tab is gone. Burp restores them verbatim. Only Intruder has a manual export/load.",
       "why": "Confirmed by reading repeater.cpp's constructor and the project-switch wiring. Tabs are constructed blank in RAM and explicitly wiped on project switch; saveMetadata serialises no tool state. The one manual escape hatch (Intruder export/load) is real and IS wired into the UI, which is worth crediting \u2014 but it is an explicit user action, not project persistence.",
-      "evidence": "Src/Core/Networking/repeater.cpp:15-19 `Repeater::Repeater(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent) : QObject(parent), m_model(historyModel) { ... m_tabs.append(makeBlankTab()); }`. Wiped on switch: Src/App/app.cpp:798-803 `QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear, &repeater, &Nullock::Core::Repeater::clearAll);` and the same for `&intru"
+      "evidence": "Src/Core/Networking/repeater.cpp:15-19 `Repeater::Repeater(Nullock::FrontEnd::ProxyModel *historyModel, QObject *parent) : QObject(parent), m_model(historyModel) { ... m_tabs.append(makeBlankTab()); }`. Wiped on switch: Src/App/app.cpp:798-803 `QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear, &repeater, &Nullock::Core::Repeater::clearAll);` and the same for `&intru",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "bd47e80",
+        "note": "absent -> partial. The gap/why/evidence are STALE: the 'staged Repeater tab is gone on close' claim was closed by bd47e80 ('Repeater: persist tabs per project, restore on reopen, no cross-project leak'). Repeater now serializes its full multi-tab state to project.json under \"repeater\" -- Repeater::exportState()/importState() (repeater.hpp:112-119), wired via ProjectStore::setRepeaterState + repeaterStateChanged, saved on projectClosing (app.cpp:965-970) and restored at open(). The old evidence anchors (repeater.cpp:15-19 blank-tab ctor, app.cpp clearAll-on-switch) still exist but no longer prove absence -- clearAll runs on switch AFTER the outgoing project's tabs were saved. Found by a parallel stale-audit workflow + adversarially re-verified against source, then confirmed with a fresh round-trip e2e (4/4): staged a distinctive request + named tab in throwaway project A, switched to B (fresh, no marker), reopened A -> the request AND tab name were restored. REMAINDER (why still partial): Intruder attack config + Sequencer state are NOT project-persisted yet (only Intruder's manual export/load exists); response bodies are deliberately omitted from the saved tab state (re-send reproduces them)."
+      }
     },
     {
       "area": "platform",
