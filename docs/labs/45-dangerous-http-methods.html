@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5045</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Dangerous HTTP methods enabled</h1>
-  <p class="lead" style="margin-top:12px;">The server advertises write methods (PUT/DELETE/PATCH) in its OPTIONS Allow header -- surface for unauthenticated file upload/deletion if those handlers aren&#x27;t separately access-controlled. In Nullock: 1. nullock scope add http://localhost:5045/* 2. nullock methods http://localhost:5045/ -- reads OPTIONS Allow and flags dangerous-http-methods. Fix: disable methods you don&#x27;t serve at the server/router; allow only the verbs each route actually needs.</p>
+  <p class="lead" style="margin-top:12px;">The server advertises write methods (PUT/DELETE/PATCH) in its OPTIONS Allow header -- and, worse, actually implements them with no authentication: an unauthenticated PUT overwrites the file store&#x27;s content. In Nullock: 1. nullock scope add http://localhost:5045/* 2. nullock methods http://localhost:5045/ -- reads OPTIONS Allow and flags dangerous-http-methods. 3. PUT a body to / -- it overwrites the file store&#x27;s content with no auth check. 4. Confirm success: GET /flag -- solved only once an unauthenticated PUT actually changed the stored content, proving the advertised method is not just listed but genuinely exploitable. Fix: disable methods you don&#x27;t serve at the server/router; allow only the verbs each route actually needs; require authentication + authorization on every state-changing method.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,9 +51,9 @@ python labs/45-dangerous-http-methods/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send an OPTIONS request to a resource and read the Allow header.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does it list methods beyond GET/POST that you haven&#x27;t tried yet?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Try calling the resource with one of those extra methods (PUT/DELETE/PATCH) directly and see if it&#x27;s actually wired up.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5045/*</li><li>nullock methods http://localhost:5045/ -- reads OPTIONS Allow and flags dangerous-http-methods.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5045/*</li><li>nullock methods http://localhost:5045/ -- reads OPTIONS Allow and flags dangerous-http-methods.</li><li>PUT a body to / -- it overwrites the file store&#x27;s content with no auth check.</li><li>Confirm success: GET /flag -- solved only once an unauthenticated PUT actually changed the stored content, proving the advertised method is not just listed but genuinely exploitable.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: disable methods you don&#x27;t serve at the server/router; allow only the verbs each route actually needs.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: disable methods you don&#x27;t serve at the server/router; allow only the verbs each route actually needs; require authentication + authorization on every state-changing method.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>

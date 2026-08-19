@@ -11,6 +11,20 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **All 50 teaching labs now have a real submit-flag success-check.** Labs
+  41-50 (OAuth redirect_uri theft, credentials-in-URL/Referer leakage, XXE,
+  CRLF injection/response splitting, dangerous HTTP methods, verb tampering,
+  cache poisoning, sensitive file exposure, robots/sitemap disclosure,
+  predictable session tokens) each gain a `/flag` endpoint that only returns
+  the flag once the underlying bug was genuinely exploited server-side —
+  e.g. lab 41 requires an auth code actually issued to a redirect_uri outside
+  the client's registered origin, lab 44 requires the injected CRLF payload
+  to land as a real second response header, lab 50 requires a session id
+  that was predicted, not one the solver ever logged in for — matching the
+  same "prove the exploit worked, don't just visit the page" bar as labs
+  1-40's earlier flag rollout. Completes flag coverage for all 50 labs on
+  the "Labs as TryHackMe/HackTheBox scenarios" roadmap item; XP/tracks and
+  in-app (desktop) wiring remain open.
 - **Comparer handles bigger, lopsided inputs.** The diff was capped at a flat
   2000 tokens per side, so comparing a short blob against a full-page response
   clipped the long side immediately even though the short side was tiny. The cap
@@ -498,8 +512,9 @@ developer-facing record.
   the existing category filter. Each lab also gets 3 hand-written progressive
   hints (a nudge, then a technique, then a near-payload) in a collapsible
   section above the full walkthrough. First installment on the "Labs as
-  TryHackMe/HackTheBox scenarios" roadmap item — submit-flag/success-check,
-  XP/tracks, and in-app (desktop) wiring remain open.
+  TryHackMe/HackTheBox scenarios" roadmap item — submit-flag/success-check
+  landed separately (see above); XP/tracks and in-app (desktop) wiring
+  remain open.
 
 ### Fixed
 - **Comparer's proxy-history diff overlay could hang/OOM on a large response.**
