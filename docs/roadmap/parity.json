@@ -1586,7 +1586,12 @@
       "gap": "Reclassify absent->partial: the 'add issues' half IS present \u2014 reportFinding(severity,kind,summary,evidence,url) routes into the same findings/scanner sink with CWE/OWASP/CVSS enrichment (extensions_api.cpp:61-78), which is the addToSiteMap-issue equivalent. The READ half (api.siteMap()/api.proxy().history()) is still absent \u2014 extensions only see the single live entry built per request/response, n",
       "why": "Reclassified absent -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
       "evidence": "extensions_api.cpp:61-78 reportFinding->scanner sink (issue-add works); onResponseReceived (196-240) builds one live entry only; no history/siteMap read method on the bridge",
-      "audited_state": "absent"
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "13793d2",
+        "note": "PROGRESS (stays partial). Closes the proxy-history READ half: new bridge invokable nullock.history(max) returns the most recent proxy exchanges (method/host/port/path/url/tls/status/responseSize/atMs), Burp's api.proxy().history() equivalent. ExtensionsApi keeps a bounded ring (kMaxHistory) recorded at the TOP of onResponseReceived -- before the no-handlers early-return -- so history is complete even for a script that registered no onResponse handler; ungated (same traffic onResponse already observes); owner-thread only (record + read on the engine thread, no mutex); not cleared on engine rebuild (history is proxy traffic, outlives a reload). e2e vs the live app (4/4): a test extension driven by real proxy traffic (curl -x) reads a history growing 1->2->3 with correct GET/200/url per entry, history(1) clamps to one. ctest 99/99, probe 156/156. With the 'add issues' half already present (reportFinding), the two remaining pieces are api.siteMap() (a distinct tree API -- though an extension can now DERIVE a sitemap from history()) and history body/header access (current entries carry metadata + size, not full bytes)."
+      }
     },
     {
       "area": "extender",
