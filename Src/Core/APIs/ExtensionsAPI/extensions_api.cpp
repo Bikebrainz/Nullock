@@ -72,6 +72,30 @@ void ExtensionsApiBridge::registerUnloadingHandler(const QJSValue &callback) {
     onUnload(callback);   // Burp-name alias
 }
 
+QVariantList ExtensionsApiBridge::history(int max) const {
+    const QList<ExtensionsApi::HistoryEntry> &hist = m_owner->m_history;
+    // max<=0 -> all; otherwise the last `max` (most recent). Clamp to size.
+    const int n = (max <= 0) ? hist.size() : qMin(max, hist.size());
+    const int start = hist.size() - n;
+    QVariantList out;
+    out.reserve(n);
+    for (int i = start; i < hist.size(); ++i) {
+        const ExtensionsApi::HistoryEntry &h = hist[i];
+        QVariantMap m;
+        m["atMs"]         = h.atMs;
+        m["method"]       = h.method;
+        m["host"]         = h.host;
+        m["port"]         = h.port;
+        m["path"]         = h.path;
+        m["url"]          = h.url;
+        m["tls"]          = h.tls;
+        m["status"]       = h.status;
+        m["responseSize"] = h.responseSize;
+        out.append(m);
+    }
+    return out;   // Qt auto-converts QVariantList -> JS array of objects
+}
+
 void ExtensionsApiBridge::reportFinding(const QString &severity,
                                         const QString &kind,
                                         const QString &summary,
@@ -238,6 +262,28 @@ void ExtensionsApi::appendLog(const QString &message) {
 
 void ExtensionsApi::onResponseReceived(const Nullock::Proxy::HttpRequest &request,
                                        const Nullock::Proxy::HttpResponse &response) {
+    // Record the exchange in the history ring FIRST -- before the no-handlers
+    // early-return -- so nullock.history() is complete even for an extension that
+    // registered no onResponse handler. Owner-thread only, same as the read side.
+    {
+        HistoryEntry h;
+        h.atMs         = QDateTime::currentMSecsSinceEpoch();
+        h.method       = request.method;
+        h.host         = request.host;
+        h.port         = request.port;
+        h.path         = request.path;
+        h.tls          = response.wasTls;
+        h.url          = (response.wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
+                         + request.host
+                         + ((request.port == 80 || request.port == 443)
+                            ? QString() : QString(":%1").arg(request.port))
+                         + request.path;
+        h.status       = response.statusCode;
+        h.responseSize = static_cast<int>(response.body.size());
+        m_history.append(h);
+        while (m_history.size() > kMaxHistory) m_history.removeFirst();
+    }
+
     if (m_onResponseHandlers.isEmpty()) return;
 
     QJSValue entry = m_engine->newObject();

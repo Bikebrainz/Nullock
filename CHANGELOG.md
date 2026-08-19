@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can read recent proxy history.** A JavaScript extension used to see
+  only the single request/response it was handed at the moment it fired &mdash; to
+  build up any picture of the traffic it had to accumulate that itself. It can now
+  call <code class="inline">nullock.history(max)</code> to get the most recent proxy
+  exchanges (Burp's <code class="inline">api.proxy().history()</code> equivalent),
+  each an object with the method, host, port, path, URL, TLS flag, status code,
+  response size, and timestamp &mdash; so a recon or scanning extension can look
+  back over what's been captured. It needs no permission (it's the same traffic an
+  <code class="inline">onResponse</code> handler already observes), the list is
+  capped at the most recent entries, and it survives reloading the extension.
 - **Out-of-band DNS interactions are now recorded and listable, and answered by
   record type.** A whole class of findings only ever trigger a DNS lookup &mdash;
   Log4Shell whose LDAP egress is firewalled, blind SSRF/SQLi/XXE where only name

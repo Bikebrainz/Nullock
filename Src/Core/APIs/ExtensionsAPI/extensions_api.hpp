@@ -11,6 +11,7 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 
 #include <atomic>
 #include <memory>
@@ -145,6 +146,22 @@ private:
         bool     mayMutate = false;
     };
 
+    // A recorded proxy exchange, kept so an extension can read RECENT history
+    // (nullock.history()) rather than only the single live entry it sees per
+    // response. Plain C++ (not a QJSValue) so it survives an engine rebuild and
+    // needs no engine to store. Bounded ring; oldest dropped.
+    struct HistoryEntry {
+        qint64  atMs = 0;
+        QString method;
+        QString host;
+        int     port = 0;
+        QString path;
+        QString url;
+        bool    tls = false;
+        int     status = 0;
+        int     responseSize = 0;
+    };
+
     // Held by pointer so reload() can DESTROY and rebuild it. A QJSEngine has
     // no "clear the global scope" operation, and collectGarbage() only frees
     // what is already unreachable -- everything an extension assigned to a
@@ -172,6 +189,14 @@ private:
     // worker atomic: unlike onRequest/onResponse, no proxy worker ever consults
     // it -- it fires only on the owner thread at reload/exit.
     QList<QJSValue>      m_onUnloadHandlers;
+
+    // Recent proxy exchanges for nullock.history(). Recorded in onResponseReceived
+    // on this object's own thread and read by the bridge's history() during JS
+    // execution on the SAME thread -- so, like the handler lists, no mutex. NOT
+    // cleared on an engine rebuild: history is proxy traffic, independent of the
+    // extension lifetime, so a reloaded script still sees what came before.
+    QList<HistoryEntry>  m_history;
+    static constexpr int kMaxHistory = 500;
 
     // Worker-readable mirrors of "is that list non-empty".
     //
@@ -223,6 +248,15 @@ public:
 
     // Burp-API-parity alias for onUnload (Burp: registerUnloadingHandler).
     Q_INVOKABLE void registerUnloadingHandler(const QJSValue &callback);
+
+    // Exposed to JS as nullock.history(max) -- the most recent proxy exchanges
+    // (newest last), each an object { atMs, method, host, port, path, url, tls,
+    // status, responseSize }. max<=0 (or omitted) returns all retained (capped at
+    // kMaxHistory). Read-only and ungated: it is the same traffic an onResponse
+    // handler already observes, just retained so a scan/recon extension can look
+    // back over what was captured instead of accumulating it by hand. Burp's
+    // api.proxy().history() equivalent.
+    Q_INVOKABLE QVariantList history(int max = 0) const;
 
     // Exposed to JS as
     //   nullock.reportFinding(severity, kind, summary, evidence, url)
