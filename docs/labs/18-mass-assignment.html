@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Access control</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5018</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Mass assignment / over-posting</h1>
   <p class="lead" style="margin-top:12px;">PATCH /api/profile updates the profile object by blindly merging every key in the request body -- including privileged fields the UI never exposes, like &quot;role&quot; or &quot;is_admin&quot;. An attacker adds those keys to escalate. In Nullock: 1. nullock scope add http://localhost:5018/* 2. PATCH /api/profile  body {&quot;name&quot;:&quot;alice&quot;}   -&gt; is_admin stays false 3. Send to Repeater, body:  {&quot;name&quot;:&quot;alice&quot;,&quot;is_admin&quot;:true,&quot;role&quot;:&quot;admin&quot;} 4. The response shows is_admin: true -- privilege escalated. 5. Run the active probe (mass-assignment): it tries a battery of privileged field names and flags any that stick. 6. Confirm success: GET /flag -- returns the flag once is_admin AND role have actually flipped to admin, which no allow-listed field could ever do. Fix: bind only an explicit allow-list of fields; never merge the raw request body into your model/object.</p>
@@ -60,6 +61,40 @@ python labs/18-mass-assignment/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "18-mass-assignment";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

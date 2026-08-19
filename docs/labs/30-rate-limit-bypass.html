@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Authentication</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5030</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Rate-limit bypass via X-Forwarded-For</h1>
   <p class="lead" style="margin-top:12px;">/login rate-limits by client IP, but it trusts the X-Forwarded-For header to decide that IP -- so an attacker rotates X-Forwarded-For to reset the counter and brute-force the password freely. In Nullock: 1. nullock scope add http://localhost:5030/* 2. POST /login repeatedly -&gt; after 5 tries: 429 &quot;rate limited&quot;. 3. In Repeater/Intruder add header  X-Forwarded-For: 1.2.3.&lt;n&gt;  and vary &lt;n&gt; per request -- the limit never trips. 4. Confirm success: GET /flag -- solved only once a login has actually succeeded AFTER more than 5 real attempts from the same underlying connection, proving the per-header limit was bypassed. Fix: rate-limit on the real socket peer (or only a trusted proxy chain); never trust client-supplied X-Forwarded-For for security decisions.</p>
@@ -60,6 +61,40 @@ python labs/30-rate-limit-bypass/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "30-rate-limit-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

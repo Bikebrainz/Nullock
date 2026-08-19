@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Other</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5014</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Path traversal / LFI</h1>
   <p class="lead" style="margin-top:12px;">/download?file=... joins the name onto a base directory and returns the file contents with no canonicalization, so &#x27;../&#x27; escapes the directory and reads arbitrary files (e.g. /etc/passwd). In Nullock: 1. nullock scope add http://localhost:5014/* 2. Browse http://localhost:5014/download?file=note.txt   (normal) 3. Send to Repeater, set file to:  ../../../../etc/passwd 4. The response leaks the file outside the base dir. 5. Run the active probe (lfi): it confirms by the file&#x27;s content fingerprint (line-anchored /etc/passwd or win.ini signature). 6. Confirm success: GET /flag?file=../secret.txt -- same raw os.path.join /download uses, reading a marker file that lives one directory above BASE and was never linked from any page. Fix: resolve the path (os.path.realpath) and verify it stays within the base dir with a prefix check; never join user input onto a path raw.</p>
@@ -60,6 +61,40 @@ python labs/14-path-traversal/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "14-path-traversal";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

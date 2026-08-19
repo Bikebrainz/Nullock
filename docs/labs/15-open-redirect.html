@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Client-side</span>
     <span class="labs-diff labs-diff-easy">Easy</span>
     <span class="labs-port mono">localhost:5015</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Open redirect</h1>
   <p class="lead" style="margin-top:12px;">/go?next=... issues a 302 to whatever `next` says, with no allow-list, so ?next=https://evil.example sends the victim off-site -- the basis for phishing and OAuth token theft. In Nullock: 1. nullock scope add http://localhost:5015/* 2. Browse http://localhost:5015/go?next=/welcome   (intended) 3. Send to Repeater, set next to:  https://evil.example/ 4. The response is 302 Location: https://evil.example/ -- off origin. 5. Run the active probe (openredirect): it confirms only when the *resolved* Location host leaves the origin (no same-origin FPs), and it tries parser-confusion payloads (//evil, \\evil, @evil). 6. Confirm success: GET /flag?next=https://evil.example/ -- same unvalidated redirect() /go uses, hands back the flag once the resolved Location host genuinely leaves this origin. Fix: allow-list relative paths or exact hosts; reject absolute URLs to other origins.</p>
@@ -60,6 +61,40 @@ python labs/15-open-redirect/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "15-open-redirect";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

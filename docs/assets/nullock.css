@@ -591,6 +591,10 @@ code.inline {
 .labs-chip.is-active { background: rgba(157,78,221,0.16); border-color: var(--purple); color: var(--purple-light); }
 .labs-count { margin-left: auto; font-size: 12px; }
 
+.labs-progress { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.labs-progress-track { flex: 1; max-width: 320px; height: 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.labs-progress-fill { height: 100%; background: linear-gradient(90deg, var(--purple), var(--ok)); border-radius: 999px; transition: width .2s ease; }
+
 .labs-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .labs-card {
   display: flex; flex-direction: column; gap: 8px; background: var(--surface-1);
@@ -598,6 +602,8 @@ code.inline {
   color: var(--body); transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
 }
 .labs-card:hover { transform: translateY(-2px); border-color: var(--border-focus); box-shadow: 0 16px 36px -26px rgba(157,78,221,0.5); }
+.labs-card.is-solved { border-color: #1d3a24; }
+.labs-solved-badge { color: var(--ok); font-weight: 700; }
 .labs-card-top { display: flex; align-items: center; gap: 10px; font-size: 11px; }
 .labs-num { color: var(--purple); font-weight: 700; letter-spacing: 0.04em; }
 .labs-cat { color: var(--secondary); background: var(--surface-2); border: 1px solid #262630; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; }
@@ -614,6 +620,8 @@ code.inline {
 
 .labs-detail-head { display: flex; align-items: center; gap: 12px; margin-top: 18px; font-size: 12px; }
 .labs-detail-head .labs-port { margin-left: 0; }
+.labs-detail-head #labs-solve-btn { margin-left: auto; }
+.labs-detail-head #labs-solve-btn.is-solved { border-color: #1d3a24; color: var(--ok); }
 .labs-steps { padding-left: 22px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .labs-steps li { font-size: 14px; line-height: 1.6; color: var(--secondary); padding-left: 4px; }
 .labs-steps li::marker { color: var(--purple); font-family: var(--font-mono); font-size: 12px; }

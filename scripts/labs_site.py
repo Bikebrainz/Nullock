@@ -564,7 +564,8 @@ def page(title, desc, active, body):
 def build_index(labs):
     slim = [{"slug": l["slug"], "num": l["num"], "title": l.get("title", "") or l["slug"],
              "vuln": l.get("vuln", ""), "port": l["port"], "cat": l["category"],
-             "diff": l["difficulty"], "steps": len(l.get("steps", []))} for l in labs]
+             "diff": l["difficulty"], "steps": len(l.get("steps", [])),
+             "xp": XP_BY_DIFFICULTY.get(l["difficulty"], 0)} for l in labs]
     payload = json.dumps(slim, ensure_ascii=False).replace("</", "<\\/")
     cats = sorted({l["category"] for l in labs})
 
@@ -579,7 +580,11 @@ def build_index(labs):
   </div>
 </header>"""
 
-    controls = """<div class="labs-controls">
+    controls = """<div class="labs-progress">
+    <div class="labs-progress-track"><div class="labs-progress-fill" id="labs-progress-fill" style="width:0%%;"></div></div>
+    <span class="mono dim" id="labs-progress-text">0/%d labs solved</span>
+  </div>
+  <div class="labs-controls">
     <div class="labs-search">
       <span class="labs-search-ico mono" aria-hidden="true">&#8981;</span>
       <input id="labs-q" type="search" placeholder="filter by name, bug class, port&hellip;" aria-label="Filter labs" autocomplete="off">
@@ -588,7 +593,7 @@ def build_index(labs):
   <div class="labs-chips" id="labs-chips"></div>
   <div class="labs-chips" id="labs-diff-chips"></div>
   <div id="labs-grid" class="labs-grid"></div>
-  <div id="labs-empty" class="labs-empty" hidden><p class="mono muted">No labs match that filter.</p></div>"""
+  <div id="labs-empty" class="labs-empty" hidden><p class="mono muted">No labs match that filter.</p></div>""" % len(labs)
 
     script = """<script type="application/json" id="labs-data">%s</script>
 <script>
@@ -597,6 +602,17 @@ def build_index(labs):
   var LABS = JSON.parse(document.getElementById("labs-data").textContent);
   var DIFFS = ["all", "Easy", "Medium", "Hard"];
   var state = { q: "", cat: "all", diff: "all" };
+  function solvedSet() {
+    // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+    // client-side only, since these are throwaway localhost lab processes
+    // with no backend concept of progress. Separate origins so the two
+    // never actually share storage; kept identical only for consistency.
+    try {
+      var raw = window.localStorage && window.localStorage.getItem("nullock:labs:completed");
+      var arr = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : []);
+    } catch (e) { return new Set(); }
+  }
   function el(t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = String(x); return n; }
   function cats() {
     var s = []; LABS.forEach(function (l) { if (s.indexOf(l.cat) < 0) s.push(l.cat); });
@@ -611,13 +627,14 @@ def build_index(labs):
       return (l.title + " " + l.vuln + " " + l.port + " " + l.cat).toLowerCase().indexOf(q) >= 0;
     });
   }
-  function card(l) {
-    var a = el("a", "labs-card");
+  function card(l, solved) {
+    var a = el("a", "labs-card" + (solved ? " is-solved" : ""));
     a.href = encodeURIComponent(l.slug) + ".html";  // slug is [0-9a-z-] from the README
     var top = el("div", "labs-card-top");
     top.appendChild(el("span", "labs-num mono", l.num));
     top.appendChild(el("span", "labs-cat mono", l.cat));
     top.appendChild(el("span", "labs-diff labs-diff-" + l.diff.toLowerCase(), l.diff));
+    if (solved) top.appendChild(el("span", "labs-solved-badge mono", "\\u2713 solved"));
     top.appendChild(el("span", "labs-port mono", ":" + l.port));
     a.appendChild(top);
     a.appendChild(el("h3", "labs-title", l.title));
@@ -645,13 +662,22 @@ def build_index(labs):
     });
     var count = el("span", "mono dim labs-count"); dhost.appendChild(count); return count;
   }
+  function renderProgress(solved) {
+    var solvedXp = LABS.reduce(function (sum, l) { return sum + (solved.has(l.slug) ? l.xp : 0); }, 0);
+    var pct = LABS.length ? Math.round((solved.size / LABS.length) * 100) : 0;
+    document.getElementById("labs-progress-fill").style.width = pct + "%%";
+    document.getElementById("labs-progress-text").textContent =
+      solved.size + "/" + LABS.length + " labs solved \\u00b7 " + solvedXp + " XP";
+  }
   function render() {
+    var solved = solvedSet();
+    renderProgress(solved);
     var count = renderChips();
     var items = filtered();
     var grid = document.getElementById("labs-grid");
     var empty = document.getElementById("labs-empty");
     grid.textContent = "";
-    if (items.length) { empty.hidden = true; items.forEach(function (l) { grid.appendChild(card(l)); }); }
+    if (items.length) { empty.hidden = true; items.forEach(function (l) { grid.appendChild(card(l, solved.has(l.slug))); }); }
     else empty.hidden = false;
     count.textContent = items.length === LABS.length ? LABS.length + " labs" : items.length + " of " + LABS.length + " labs";
   }
@@ -708,6 +734,7 @@ def build_detail(l):
     <span class="labs-cat mono">%s</span>
     <span class="labs-diff labs-diff-%s">%s</span>
     <span class="labs-port mono">localhost:%s</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">%s</h1>
   <p class="lead" style="margin-top:12px;">%s</p>
@@ -742,6 +769,41 @@ def build_detail(l):
         steps_html,
         fix,
     )
+    body += """
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = %s;
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>""" % json.dumps(l["slug"])
     return page("%s — Nullock Labs" % (l.get("title", "") or l["slug"]),
                 (l.get("vuln", "") or "")[:180], "labs", body)
 

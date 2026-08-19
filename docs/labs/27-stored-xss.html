@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Client-side</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5027</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Stored (persistent) XSS in a comment feed</h1>
   <p class="lead" style="margin-top:12px;">POST /comment stores a comment; GET / renders every comment into the page WITHOUT escaping, so a comment containing &lt;script&gt; executes for every later visitor. In Nullock: 1. nullock scope add http://localhost:5027/* 2. POST /comment  text=&lt;script&gt;alert(document.domain)&lt;/script&gt; 3. GET / -- the script is served inline and runs for all visitors. 4. Confirm success: GET /flag -- solved only once a stored comment actually contains an unescaped &lt;script&gt; tag; escaped output would render it as harmless text and never match. Fix: escape on output (Jinja autoescape / markupsafe) or sanitize HTML with an allow-list; add a strict CSP as defense in depth.</p>
@@ -60,6 +61,40 @@ python labs/27-stored-xss/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "27-stored-xss";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

@@ -61,8 +61,8 @@
 > remaining feature. Closing an item = add a tab/menu/button that invokes the endpoint and
 > renders its result, then flip the matching parity.json item and regenerate.
 
-App exposes 24 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
-decoder, comparer, inspector, probe, sequencer, tests, discover, collaborator, reporting,
+App exposes 25 top-level tabs: proxy, scope, rules, issues, scans, recon, payloads,
+decoder, comparer, inspector, probe, sequencer, tests, discover, labs, collaborator, reporting,
 processor, stats, sessions, websockets, repeater, intercept, intruder, settings. A dedicated
 WEBSOCKETS tab groups the same NL.rows entries the Proxy tab already surfaced as pseudo-HTTP
 WS↑/WS↓ rows into a per-host:port connection list, with real direction/type/length columns

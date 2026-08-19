@@ -35,6 +35,7 @@
     <span class="labs-cat mono">Business logic</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5028</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Business-logic flaw: client-controlled price / negative quantity</h1>
   <p class="lead" style="margin-top:12px;">POST /checkout trusts the `price` and `qty` fields from the request, so a buyer can set their own price (price=0.01) or a negative quantity to invert the charge. The server never re-derives the total from a trusted catalog. In Nullock: 1. nullock scope add http://localhost:5028/* 2. POST /checkout item=widget&amp;price=99.00&amp;qty=1   (legit) 3. Send to Repeater; set price=0.01 (or qty=-5) -- the total obeys you. 4. Confirm success: GET /flag -- solved only once a checkout actually cleared for a total far below the real catalog price (99.00), proof the tampered price/qty was accepted, not just submitted. Fix: look up the price server-side from a trusted catalog by item id; validate qty &gt; 0; never trust client-supplied prices or totals.</p>
@@ -60,6 +61,40 @@ python labs/28-business-logic-price/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "28-business-logic-price";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>

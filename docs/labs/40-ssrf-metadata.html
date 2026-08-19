@@ -35,6 +35,7 @@
     <span class="labs-cat mono">SSRF &amp; fetch</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
     <span class="labs-port mono">localhost:5040</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">SSRF to internal-only services (cloud-metadata pattern)</h1>
   <p class="lead" style="margin-top:12px;">/fetch?url=... makes a server-side request to any URL with no allow-list, so it can reach services the client can&#x27;t -- this app&#x27;s own /internal endpoint (intended to be server-only), or cloud metadata at http://169.254.169.254/. In Nullock: 1. nullock scope add http://localhost:5040/* 2. /fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret through the server&#x27;s own request. 3. On a real cloud host: url=http://169.254.169.254/latest/meta-data/. 4. Confirm success: GET /flag -- solved only once /fetch&#x27;s SERVER-SIDE request actually returned the internal secret, proving the SSRF pivot worked (not just that /internal was requested directly). Fix: allow-list destination hosts/schemes; block loopback/link-local/RFC1918; re-resolve and re-check the IP to defeat DNS rebinding. (Needs `requests`, which is the labs&#x27; only non-Flask dependency.)</p>
@@ -60,6 +61,40 @@ python labs/40-ssrf-metadata/app.py
     <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
   </div>
 </main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "40-ssrf-metadata";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
 <footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
