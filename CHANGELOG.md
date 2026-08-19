@@ -601,6 +601,16 @@ developer-facing record.
   remain open.
 
 ### Fixed
+- **Creating a project from a template now applies the template's match &amp;
+  replace rules.** A project template can ship a set of proxy match/replace rules
+  (the OAuth-review template, for instance, carries a rule that flags an
+  <code class="inline">/authorize</code> request missing its <code class="inline">state</code>
+  parameter). Creating a project from a template applied its scope and notes but
+  silently dropped the rules, so a template that promised them delivered none.
+  They're now applied to the new project. (A template's <code class="inline">extensionsEnabled</code>
+  list is still not enforced &mdash; extensions currently load globally rather than
+  per-project, so there's no per-project set to write it into yet; the response
+  echoes back what the template asked for.)
 - **A session-handling rule that sets a fixed cookie/header/parameter value never
   fired.** A rule with a hard-coded value (e.g. "always add `X-Debug: 1`" or "set
   cookie `env=staging`" on this host) is purely static &mdash; it has no captured

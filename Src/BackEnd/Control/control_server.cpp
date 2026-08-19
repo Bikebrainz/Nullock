@@ -5428,8 +5428,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         m_wiring.projectStore->setInScope(inS);
         m_wiring.projectStore->setOutOfScope(outS);
         m_wiring.projectStore->setNotes(tplObj.value("notes").toString());
+
+        // Match & replace rules the template ships (was silently dropped: a
+        // template with rules used to apply none). Same JSON shape as /api/rules/*,
+        // so reuse the ruleFromJson parser above -- single source of truth.
+        QList<Nullock::Proxy::MatchReplaceRule> tplRules;
+        for (const QJsonValue &rv : tplObj.value("rules").toArray())
+            tplRules.append(ruleFromJson(rv.toObject()));
+        m_wiring.projectStore->setRules(tplRules);
+
+        // extensionsEnabled: NOT applied. Extensions currently load globally from
+        // the app-data dir; there is no per-project "which extensions run" set to
+        // write into, and the intended semantics ("ensure these are on" vs "only
+        // these, disable the rest") are ambiguous. Echoed back so a caller can see
+        // what the template asked for, but it is intentionally not enforced yet.
+        QJsonArray wantExt = tplObj.value("extensionsEnabled").toArray();
         return okJson({{ "ok", true }, { "project", name },
-                       { "applied", tplId }});
+                       { "applied", tplId },
+                       { "rulesApplied", tplRules.size() },
+                       { "extensionsRequested", wantExt }});
     }
 
     // ---- Report builder ----------------------------------------------
