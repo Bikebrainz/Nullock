@@ -434,12 +434,18 @@
     {
       "area": "intruder",
       "feature": "Payload type: Recursive grep",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
       "gap": "No chaining an extracted value into the next request; blocks CSRF-token/nonce walking and stateful sequences.",
       "why": "Re-read the fire loop. computeGrep results are stored on the row and never fed forward into the next request's payload. Confirmed absent.",
-      "evidence": "intruder.cpp:445-507 fireOne computes grep (484-487) and posts it to the row; combos are pre-generated at :376-378 before firing \u2014 no path takes a response-N extract into request N+1."
+      "evidence": "intruder.cpp:445-507 fireOne computes grep (484-487) and posts it to the row; combos are pre-generated at :376-378 before firing \u2014 no path takes a response-N extract into request N+1.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "d9d033c",
+        "note": "ENGINE done (the hard part the audit called 'weeks'): the extract IS now fed forward. Recursive grep runs as a SERIAL branch in Intruder::runWorker -- each request's payload is the value the grep-EXTRACT spec pulls from the PREVIOUS response, walked from a `seed` for `count` requests, stopping early when a response yields no extract (chain ended). fireOne was refactored to RETURN its extracted value (it already computed it for the result column) and to record the runtime-discovered payload into the row; start() reserves `count` placeholder rows and forces concurrency 1 (the run is inherently serial -- each request depends on the prior response); it reuses the existing IntruderGrep::grepExtract spec as the payload source, so no new extraction code. Config via /api/intruder/set { recursiveGrep, recursiveGrepSeed, recursiveGrepCount }; snapshot exposes intruder.recursiveGrep. VERIFIED e2e against a chaining mock: a 5-request walk carried exactly [seed, TOK0, TOK1, TOK2, TOK3] (each request carried the PRIOR response's extracted token -- the chain proven), result rows recorded the extracted token + the payload used, `count` bounded the run, and a dried-up token stopped the chain early (fired 3 of 10). Gauntlet ctest 98/98 + probe_smoke 156/156. This is the classic anti-CSRF-bruteforce / one-time-nonce / state-machine walk. REMAINDER (-> stays partial): the ui-v2 payload-type selector + seed/count fields (concurrent-agent lane), save/resume (RunConfig) of a recursive attack, and multi-position recursive (only position 0 carries the recursive value today, Sniper-style)."
+      }
     },
     {
       "area": "intruder",
