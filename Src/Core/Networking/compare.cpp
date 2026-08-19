@@ -3,15 +3,17 @@
 #include <QHash>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace Nullock::Core::Compare {
 namespace {
 
-// The control handler runs on the GUI thread, so bound the LCS table: with a
-// 2000-token-per-side cap the DP is at most 2000*2000 = 4M cells (~16 MB, tens
-// of ms) -- imperceptible, and an attacker/huge paste can't freeze the UI.
-constexpr int kMaxTokens = 2000;
+// Per-side HARD cap on tokenisation, so a huge paste can't build a giant token
+// list before the DP budget clips it. The DP table itself is bounded by kMaxCells
+// (via budgetedSizes) -- this is only the tokeniser's own stop point. Emitting one
+// past the cap is a SENTINEL that tells lcsDiff the input was longer (-> truncated).
+constexpr qsizetype kMaxTokensPerSide = 20000;
 
 QStringList tokenizeWords(const QString &s) {
     // Each token is a word plus its TRAILING whitespace (or a leading-whitespace
@@ -26,7 +28,7 @@ QStringList tokenizeWords(const QString &s) {
     // UB -> runaway loop / crash on the GUI thread), the very freeze the cap prevents.
     // tokenizeChars already uses qsizetype; bring words/lines in line.
     qsizetype i = 0;
-    while (i < s.size() && out.size() <= kMaxTokens) {
+    while (i < s.size() && out.size() <= kMaxTokensPerSide) {
         qsizetype j = i;
         if (s[i].isSpace()) {                                  // leading whitespace run
             while (j < s.size() && s[j].isSpace()) ++j;
@@ -43,10 +45,10 @@ QStringList tokenizeWords(const QString &s) {
 QStringList tokenizeLines(const QString &s) {
     QStringList out;
     qsizetype start = 0;   // qsizetype, not int: a >2GB single line would overflow (see tokenizeWords)
-    for (qsizetype i = 0; i < s.size() && out.size() <= kMaxTokens; ++i) {
+    for (qsizetype i = 0; i < s.size() && out.size() <= kMaxTokensPerSide; ++i) {
         if (s[i] == QLatin1Char('\n')) { out << s.mid(start, i - start + 1); start = i + 1; }
     }
-    if (start < s.size() && out.size() <= kMaxTokens) out << s.mid(start);
+    if (start < s.size() && out.size() <= kMaxTokensPerSide) out << s.mid(start);
     return out;
 }
 
@@ -56,9 +58,9 @@ QStringList tokenizeChars(const QString &s) {
     // surrogates -- which render as replacement glyphs AND false-match distinct
     // emoji (each shares a high surrogate).
     QStringList out;
-    out.reserve(qMin<qsizetype>(s.size(), qsizetype(kMaxTokens) + 1));
+    out.reserve(qMin<qsizetype>(s.size(), qsizetype(kMaxTokensPerSide) + 1));
     const qsizetype size = s.size();
-    for (qsizetype i = 0; i < size && out.size() <= kMaxTokens; ) {
+    for (qsizetype i = 0; i < size && out.size() <= kMaxTokensPerSide; ) {
         if (s[i].isHighSurrogate() && i + 1 < size && s[i + 1].isLowSurrogate()) {
             out << s.mid(i, 2); i += 2;
         } else {
@@ -71,8 +73,13 @@ QStringList tokenizeChars(const QString &s) {
 // Longest-common-subsequence diff over token lists, emitting coalesced segments.
 DiffResult lcsDiff(QStringList a, QStringList b) {
     DiffResult res;
-    if (a.size() > kMaxTokens) { a = a.mid(0, kMaxTokens); res.truncated = true; }
-    if (b.size() > kMaxTokens) { b = b.mid(0, kMaxTokens); res.truncated = true; }
+    if (a.size() > kMaxTokensPerSide) { a = a.mid(0, kMaxTokensPerSide); res.truncated = true; }
+    if (b.size() > kMaxTokensPerSide) { b = b.mid(0, kMaxTokensPerSide); res.truncated = true; }
+    // Clip to the DP cell budget, keeping as much of each side as possible (a short
+    // side is preserved whole; only an oversized side is clipped).
+    const QPair<qsizetype, qsizetype> bs = budgetedSizes(a.size(), b.size());
+    if (bs.first  < a.size()) { a = a.mid(0, bs.first);  res.truncated = true; }
+    if (bs.second < b.size()) { b = b.mid(0, bs.second); res.truncated = true; }
     const int n = a.size(), m = b.size();
 
     // Intern tokens to integer ids so each DP cell compares in O(1) regardless of
@@ -120,13 +127,24 @@ DiffResult lcsDiff(QStringList a, QStringList b) {
     while (j < m) { push("ins", b[j]); ++j; ++res.added; }
 
     // A TRUNCATED diff compared only the clipped prefix, so it must NEVER assert
-    // identity -- two inputs equal in the first kMaxTokens but differing after
+    // identity -- two inputs equal in the first kMaxTokensPerSide but differing after
     // would otherwise be wrongly reported identical.
     res.identical = (!res.truncated && res.added == 0 && res.removed == 0);
     return res;
 }
 
 } // namespace
+
+QPair<qsizetype, qsizetype> budgetedSizes(qsizetype n, qsizetype m) {
+    if (n <= 0 || m <= 0) return { n, m };
+    if (static_cast<long long>(n) * m <= kMaxCells) return { n, m };   // fits whole
+    const qsizetype side = static_cast<qsizetype>(std::floor(std::sqrt(static_cast<double>(kMaxCells))));
+    // Preserve a side that already fits under `side`, clipping only the oversized
+    // one to budget/kept; when both exceed `side`, clip both to `side`.
+    if (n <= side) return { n, static_cast<qsizetype>(kMaxCells / n) };
+    if (m <= side) return { static_cast<qsizetype>(kMaxCells / m), m };
+    return { side, side };
+}
 
 QStringList modes() {
     return { QStringLiteral("words"), QStringLiteral("lines"), QStringLiteral("chars") };

@@ -10,10 +10,24 @@
 // on the GUI thread -- an unbounded O(n*m) LCS on a huge input would freeze it.
 
 #include <QList>
+#include <QPair>
 #include <QString>
 #include <QStringList>
 
 namespace Nullock::Core::Compare {
+
+// Cell budget (n*m) for the LCS DP: the diff clips its inputs so the table never
+// exceeds this many cells, which bounds both memory (~4 bytes/cell) and wall-clock
+// on the synchronous handler. ~4000x4000 == 16M cells ~= 64 MB, ~100 ms.
+constexpr long long kMaxCells = 16000000LL;
+
+// Clip (n,m) so n*m <= kMaxCells while keeping as MUCH of each side as possible:
+// a side that already fits is preserved WHOLE and only the oversized side is
+// clipped (so a short blob vs a long one compares the long one nearly in full);
+// when BOTH are oversized each is clipped to floor(sqrt(kMaxCells)). This replaces
+// the old flat per-side cap, which needlessly truncated a large side even when the
+// other side was tiny. Pure; exposed for unit testing. Result sizes are <= inputs.
+QPair<qsizetype, qsizetype> budgetedSizes(qsizetype n, qsizetype m);
 
 // One run of tokens sharing an edit op. op is "eq" (in both), "del" (only in A),
 // or "ins" (only in B). text is the original token text, reassembled.

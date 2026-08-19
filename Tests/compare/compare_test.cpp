@@ -121,6 +121,36 @@ int main(int argc, char **argv) {
         chk("truncate: NOT identical (differs past the cap)", !d.identical);
     }
 
+    // ===== adaptive cell budget: a SHORT side vs a LONG side is NOT needlessly
+    // truncated. The old flat 2000/side cap clipped the long side even when the
+    // other side was tiny; the budget keeps a small side whole. ==============
+    {
+        QString longB;
+        for (int i = 0; i < 3000; ++i) longB += "w" + QString::number(i) + " ";  // 3000 distinct tokens
+        const auto d = diff("words", "q ", longB);
+        chk("budget: short vs 3000-token long side is NOT truncated", !d.truncated);
+        chk("budget: the full long side is diffed (3000 inserts)", d.added == 3000);
+    }
+
+    // ===== budgetedSizes: keep a fitting side whole, clip only the oversized one;
+    // clip both when both exceed sqrt(budget) =================================
+    {
+        auto p0 = budgetedSizes(100, 100);
+        chk("budget: both small -> unchanged", p0.first == 100 && p0.second == 100);
+        auto p = budgetedSizes(200, 200000);   // 40M > 16M; 200 fits -> clip only the long side
+        chk("budget: short side preserved, long clipped to budget/short",
+            p.first == 200 && p.second == kMaxCells / 200);
+        auto p2 = budgetedSizes(200000, 200);   // symmetric to the above
+        chk("budget: (long, short) also clips only the long side",
+            p2.first == kMaxCells / 200 && p2.second == 200);
+        auto q = budgetedSizes(100000, 100000);  // both huge -> floor(sqrt(16M)) = 4000 each
+        chk("budget: both large -> sqrt(budget) each (4000)", q.first == 4000 && q.second == 4000);
+        auto r = budgetedSizes(4000, 4000);      // exactly at budget -> unchanged
+        chk("budget: product == budget -> unchanged", r.first == 4000 && r.second == 4000);
+        auto z = budgetedSizes(0, 5);
+        chk("budget: zero side -> unchanged", z.first == 0 && z.second == 5);
+    }
+
     // ===== chars mode is code-point aware (audit-9) ====================
     {
         const char32_t a1[] = { 0x1F600 }, b1[] = { 0x1F601 };   // grinning vs beaming face

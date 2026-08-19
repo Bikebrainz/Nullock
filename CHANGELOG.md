@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Comparer handles bigger, lopsided inputs.** The diff was capped at a flat
+  2000 tokens per side, so comparing a short blob against a full-page response
+  clipped the long side immediately even though the short side was tiny. The cap
+  is now an adaptive *area* budget: a side that fits is kept whole and only an
+  oversized side is trimmed, so a short-vs-long compare (e.g. a one-line injected
+  value against a 30 KB response) now diffs the long side in full, and two
+  moderately large responses compare at up to ~4000 tokens each instead of 2000.
+  (Truly huge symmetric compares still clip &mdash; lifting that ceiling further
+  needs the diff moved off the request thread, which is the remaining step.)
 - **HTTPS interception now works against bare IP-address targets.** Proxying an
   `https://192.168.x.x/` or `https://10.x/` box &mdash; routine on internal
   engagements &mdash; used to fail: the forged certificate always carried a
