@@ -1367,6 +1367,8 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
   const [scanBusy, setScanBusy] = React.useState(false);
   const [scanRes, setScanRes] = React.useState(null);
   React.useEffect(() => { setScanRes(null); }, [current?.id]);
+  const [editorView, setEditorView] = React.useState("edit");
+  React.useEffect(() => { setEditorView("edit"); }, [current?.id]);
   const sendToScanner = () => {
     if (!current || current.kind === 1) return;
     const parsed = parseRawRequest({ host: current.host, port: current.port, tls: current.tls }, editedText);
@@ -1460,6 +1462,11 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
                 {scanBusy ? "SCANNING…" : "↦ SCAN"}
               </button>
             )}
+            <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }}
+                    title="Structured breakdown of this held message (Inspector)"
+                    onClick={() => setEditorView(v => v === "edit" ? "inspector" : "edit")}>
+              {editorView === "edit" ? "▤ INSPECTOR" : "✎ EDIT"}
+            </button>
             {more > 0 && (
               <span style={{ color: "var(--warn)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }} className="blink">
                 ▮ {more} more waiting
@@ -1497,12 +1504,16 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
               <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respStripSecureCookie(t))}>STRIP SECURE FLAG</button>
             </div>
           )}
-          <textarea
-            className="txt"
-            value={editedText}
-            onChange={e => setEditedText(e.target.value)}
-            spellCheck={false}
-          />
+          {editorView === "inspector" ? (
+            <RepeaterInspectorPanel raw={editedText} kind={current.kind === 1 ? "response" : "request"} />
+          ) : (
+            <textarea
+              className="txt"
+              value={editedText}
+              onChange={e => setEditedText(e.target.value)}
+              spellCheck={false}
+            />
+          )}
           <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)", background: "var(--pane-2)" }}>
             <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", alignSelf:"center" }}>
               edit then forward, or drop to abort
