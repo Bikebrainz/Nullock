@@ -244,7 +244,11 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
         // from another host must never ride along cross-origin.
         vars = m_varsByHost.value(req.host);
     }
-    if (rs.isEmpty() || vars.isEmpty()) return false;
+    // NB: do NOT bail on an empty variable bag -- a purely STATIC rule ("always
+    // set X-Debug: 1 on this host") has no {{var}} and must fire regardless of what
+    // has been captured. A rule whose template DOES need a var that's missing is
+    // skipped per-rule below (hasUnresolvedPlaceholder), not by short-circuiting all.
+    if (rs.isEmpty()) return false;
     bool modified = false;
 
     for (const auto &r : rs) {
@@ -257,7 +261,10 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
             ? QString("{{%1}}").arg(r.variable.isEmpty() ? r.injectKey : r.variable)
             : r.injectTemplate;
         const QString value = substitute(templ, vars);
-        if (value.isEmpty()) continue;
+        // Skip an empty result, OR one that still holds an un-substituted {{var}}
+        // (its variable was never captured) -- injecting the raw "{{token}}" would
+        // be garbage. A fully-static template passes through and injects.
+        if (value.isEmpty() || SessionRulesLogic::hasUnresolvedPlaceholder(value)) continue;
         modified = true;   // a rule matched + produced a value -> it injects below
 
         switch (r.injectInto) {

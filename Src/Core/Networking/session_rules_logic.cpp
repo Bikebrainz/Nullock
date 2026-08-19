@@ -89,6 +89,13 @@ QString substitute(const QString &templ, const QHash<QString, QString> &vars) {
     return out;
 }
 
+bool hasUnresolvedPlaceholder(const QString &s) {
+    // Same {{name}} shape substitute() targets, so this is exactly "a placeholder
+    // substitute() would have replaced had the variable existed".
+    static const QRegularExpression rx(R"(\{\{[A-Za-z_][A-Za-z0-9_]*\}\})");
+    return rx.match(s).hasMatch();
+}
+
 QString firstCapture(const QRegularExpressionMatch &m) {
     for (int i = 1; i <= m.lastCapturedIndex(); ++i)
         if (!m.captured(i).isNull() && !m.captured(i).isEmpty()) return m.captured(i);

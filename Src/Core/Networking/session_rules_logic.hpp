@@ -34,6 +34,13 @@ QString jsonPathGet(const QByteArray &body, const QString &path);
 // value is NOT re-scanned -- response-derived data must not pull in other vars).
 QString substitute(const QString &templ, const QHash<QString, QString> &vars);
 
+// True if `s` still contains a {{name}} placeholder of the exact shape substitute()
+// resolves -- i.e. a variable that was NEVER captured, left un-substituted. Used to
+// SKIP a session-rule injection whose own {{var}} is missing (injecting the raw
+// "{{token}}" would be garbage), while a purely STATIC template (no placeholder)
+// injects fine even when the variable bag is empty.
+bool hasUnresolvedPlaceholder(const QString &s);
+
 // The first capture group that actually PARTICIPATED (non-null), else the whole
 // match -- so an alternation/optional group 1 that didn't match doesn't drop a
 // value present in a later group.

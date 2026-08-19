@@ -184,6 +184,20 @@ int main(int argc, char **argv) {
     chk("loggedout: invalid regex is safe (no match, no crash)",
         !responseIsLoggedOut(200, "x", "", "("));
 
+    // ===== hasUnresolvedPlaceholder: detects a never-captured {{var}} ==========
+    chk("placeholder: bare {{token}} -> true",        hasUnresolvedPlaceholder("{{token}}"));
+    chk("placeholder: embedded 'a {{x}} b' -> true",  hasUnresolvedPlaceholder("a {{x}} b"));
+    chk("placeholder: leading-underscore name -> true", hasUnresolvedPlaceholder("{{_v1}}"));
+    chk("placeholder: a static value has none",        !hasUnresolvedPlaceholder("1"));
+    chk("placeholder: a resolved 'Bearer abc123' has none", !hasUnresolvedPlaceholder("Bearer abc123"));
+    chk("placeholder: empty string has none",          !hasUnresolvedPlaceholder(""));
+    chk("placeholder: name must start letter/_ ({{1x}} is not one)", !hasUnresolvedPlaceholder("{{1x}}"));
+    chk("placeholder: single braces {x} are not a placeholder", !hasUnresolvedPlaceholder("{x}"));
+    chk("placeholder: substitute leaves a missing var, detected here",
+        hasUnresolvedPlaceholder(substitute("id={{missing}}", {})));
+    chk("placeholder: substitute fully resolves a present var -> none",
+        !hasUnresolvedPlaceholder(substitute("id={{v}}", { { "v", "42" } })));
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

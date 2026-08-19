@@ -575,6 +575,16 @@ developer-facing record.
   remain open.
 
 ### Fixed
+- **A session-handling rule that sets a fixed cookie/header/parameter value never
+  fired.** A rule with a hard-coded value (e.g. "always add `X-Debug: 1`" or "set
+  cookie `env=staging`" on this host) is purely static &mdash; it has no captured
+  `{{variable}}` &mdash; yet the session engine bailed out entirely whenever the
+  per-host variable bag was empty, so nothing was ever injected until some other
+  rule happened to capture a value first. Static rules now fire regardless of what
+  has been captured. As a matched safeguard, a rule whose own `{{variable}}` was
+  never captured is now skipped individually (rather than injecting the raw
+  literal `{{token}}` as a garbage value), so one un-resolved rule can't corrupt
+  the request while the static rules alongside it still apply.
 - **Comparer's proxy-history diff overlay could hang/OOM on a large response.**
   The DIFF-vs overlay's client-side line diff (`diffLines`, `ui-v2/proxy.jsx`)
   built an uncapped n×m LCS table — the same unbounded-input risk the backend
