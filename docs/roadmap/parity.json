@@ -3656,12 +3656,18 @@
     {
       "area": "proxy",
       "feature": "Per-host leaf certificates for IP-address and IPv6 targets (IP SANs)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
       "gap": "Any https://<IP>/ target fails the client handshake, is auto-added to the MITM blocklist, and is blind-tunnelled from then on. No IP: SAN, no multi-SAN, no wildcard SAN, and no way to remove the resulting blocklist entry short of clearing the whole list.",
       "why": "Confirmed both halves by reading the code. The ext file is a fixed DNS: template, so an IPv4 literal produces DNS:192.168.1.10 (rejected by every modern client). IPv6 never even reaches minting: the validator's character allow-list has no ':' branch, so leafCertFor returns an empty LeafCert and the connection falls through to a blind tunnel. Absent confirmed; the high rating is right for internal ",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:215-219 `const QString contents = QStringLiteral(\\n            \"subjectAltName = DNS:%1\\n\" ...).arg(host);` -- single SAN, DNS type only. IPv6 rejected at Src/BackEnd/Proxy/cert_logic.cpp:25-29 `for (const QChar c : host) {\\n        if (c.isLetterOrNumber()) continue;\\n        if (c == QChar('-') || c == QChar('.') || c == QChar('_')) continue;\\n        return "
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:215-219 `const QString contents = QStringLiteral(\\n            \"subjectAltName = DNS:%1\\n\" ...).arg(host);` -- single SAN, DNS type only. IPv6 rejected at Src/BackEnd/Proxy/cert_logic.cpp:25-29 `for (const QChar c : host) {\\n        if (c.isLetterOrNumber()) continue;\\n        if (c == QChar('-') || c == QChar('.') || c == QChar('_')) continue;\\n        return ",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-18",
+        "commit": "81a0ba2",
+        "note": "IPv4 half done -- the dominant internal-engagement case (https://192.168.x.x / 10.x boxes). The forged-leaf SAN extension is no longer a fixed DNS: template: a new pure CertLogic::isIpv4Literal + sanEntryForHost picks the SAN TYPE, so a leaf minted for an IPv4 literal now carries an iPAddress SAN (IP:<addr>) that a verifying client accepts, instead of DNS:<addr> which every modern client rejects (and a rejected forged leaf auto-blocklists the host here). DNS hosts are unchanged. The blocklist half the audit called out ('no way to remove the resulting blocklist entry short of clearing the whole list') is ALSO addressed: the accept-invalid-cert work added a per-host POST /api/mitm/unblock + ProxyServer::clearMitmBlocked(host). VERIFIED: cert_logic_test 42/42 incl. the new IPv4/SAN cases + 2 mutations (octet-range bound; 4-octet requirement); e2e inspecting the ACTUAL forged leaf the proxy presents through CONNECT+MITM -- a 127.0.0.1 target now gets ('IP Address','127.0.0.1') and NO DNS SAN, while a DNS host still gets ('DNS',<host>). Gauntlet ctest 98/98 + probe_smoke 156/156. REMAINDER (-> stays partial): IPv6 literals still don't reach minting (isValidHostForCert rejects ':' as an injection guard; relaxing it needs a strict IPv6 validator PLUS collision-proof leaf-file naming since sanitize maps ':' -> '_' and an IPv6 addr could then collide with a DNS name's leaf path); multi-SAN / wildcard SAN; and a one-time clear of any STALE cached IP leaf minted with the old DNS SAN before this fix (the leaf cache is keyed by host, so a pre-fix leaf is served until the leaves cache is cleared)."
+      }
     },
     {
       "area": "proxy",
