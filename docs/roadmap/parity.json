@@ -3425,9 +3425,15 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Raw text only at the moment it matters. No hex editor (a binary body cannot be edited without corrupting it), no params table, no headers table, no Pretty view, no Inspector on the held message.",
-      "why": "Read both editors. Confirmed: ui-v2 is a bare <textarea>, QML is a bare TextArea, and the richer views live only on the history DetailPane. One of five Burp views exists. Kept partial (an editor does exist and edits do take effect) rather than stub.",
-      "evidence": "ui-v2/tabs.jsx:309-313 `<textarea\\n            className=\"txt\"\\n            value={editedText}\\n            onChange={e => setEditedText(e.target.value)}\\n            spellCheck={false}\\n          />` and the whole action row is tabs.jsx:318-321 (DROP / FORWARD). Desktop Src/App/app.qml:836-842. Binary-fidelity concession at Src/BackEnd/Proxy/intercept_logic.cpp:15-17 `for an edited binary body so"
+      "gap": "Inspector side panel now present (ui-v2 only). Still no hex editor (a binary body cannot be edited without corrupting it), no params table, no headers table, no Pretty view. Desktop QML editor is still a bare TextArea with none of the five views.",
+      "why": "Read both editors. ui-v2's held-message editor gained an EDIT/INSPECTOR toggle reusing RepeaterInspectorPanel (the same /api/inspect-backed structured breakdown already used by Repeater and Intruder's template editor) -- two of five Burp views now exist (Raw + Inspector) on ui-v2. QML is unchanged: still a bare TextArea, richer views still live only on the history DetailPane there. Kept partial (two of five views, not the full editor Burp has).",
+      "evidence": "ui-v2/tabs.jsx:1468 `{editorView === \\\"edit\\\" ? \\\"\\u25a4 INSPECTOR\\\" : \\\"\\u270e EDIT\\\"}` and :1507-1509 `{editorView === \\\"inspector\\\" ? (\\n            <RepeaterInspectorPanel raw={editedText} kind={current.kind === 1 ? \\\"response\\\" : \\\"request\\\"} />\\n          ) : (` -- same toggle pattern already proven at tabs.jsx:2009-2016 (Intruder's template EDIT/INSPECTOR toggle). Desktop Src/App/app.qml:836-842 unchanged (still bare TextArea). Binary-fidelity concession at Src/BackEnd/Proxy/intercept_logic.cpp:15-17 `for an edited binary body so",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "4196cf8",
+        "note": "partial -> partial, gap narrowed (not a state flip). InterceptTab (ui-v2/tabs.jsx) gained an EDIT/INSPECTOR toggle next to the existing send-to-* pivots, reusing RepeaterInspectorPanel -- the same /api/inspect-backed structured breakdown Repeater's request/response panes and Intruder's template editor already use -- scoped to the held message's own kind (request vs response). Closes the 'no Inspector on the held message' leg of this item's gap text; Pretty/Hex/Params/Headers table views (the other four of Burp's five editor views) remain genuinely absent, honestly still called out. Desktop QML editor (Src/App/app.qml) untouched -- still a bare TextArea, ui-v2-only capability, same asymmetry already documented for the sibling Intercept parity items above."
+      }
     },
     {
       "area": "proxy",

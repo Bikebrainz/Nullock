@@ -19,6 +19,8 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   pivot-to-Repeater/Intruder/Comparer/Decoder/Scanner and eight response-modification
                   presets as a standing auto-apply toggle set (persisted, applies to every future held
                   response the moment it's captured, plus manual one-off buttons on the current item);
+                  the held-message editor has an EDIT/INSPECTOR toggle for a structured Inspector
+                  side panel on the message being intercepted (same backend as Repeater's);
                   a live RULES panel decides which messages actually get held -- And/Or match rules
                   on file extension/method/URL regex/host glob/content-type/status code/header, per
                   rule negate and request/response/both direction, editable and reorderable in place
