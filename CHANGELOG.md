@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Search gains case-sensitivity and a negative match.** Two Burp-parity
+  modifiers on the search endpoint: `case=sensitive` makes the regex
+  case-sensitive (it defaults to insensitive as before), and `negate=1` inverts
+  the match to return the items that do **not** contain the pattern &mdash; the
+  fast way to answer "which requests are *missing* this header/token?" across
+  captured traffic. Negate works across every search source and shares the same
+  regex-safety limits. (Scoping a search to a single site-map branch is still to
+  come.)
 - **All 50 teaching labs now have a real submit-flag success-check.** Labs
   41-50 (OAuth redirect_uri theft, credentials-in-URL/Referer leakage, XXE,
   CRLF injection/response splitting, dangerous HTTP methods, verb tampering,

@@ -1809,6 +1809,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (where.isEmpty()) where = "both";
             const int limit = q.queryItemValue("limit").toInt() > 0
                                 ? q.queryItemValue("limit").toInt() : 200;
+            // Burp-parity search modifiers: case-sensitivity (default insensitive)
+            // and a negative match (rows/items where the pattern is ABSENT --
+            // "find requests that do NOT carry this token"). Negate is proxy-history
+            // scoped in v1 (a whole-item concept, not a per-excerpt one).
+            const bool caseSensitive = q.queryItemValue("case").compare("sensitive", Qt::CaseInsensitive) == 0;
+            const QString negRaw = q.queryItemValue("negate");
+            const bool negate = negRaw == "1" || negRaw.compare("true", Qt::CaseInsensitive) == 0;
             // ReDoS defence over a USER-SUPPLIED regex run against captured
             // history. PCRE2 (Qt's backend) caps each single match via its
             // internal match_limit (~tens of ms, then it aborts), so no one
@@ -1850,9 +1857,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     "rewrite or use a narrower pattern" }});
             }
             if (!pattern.isEmpty()) {
-                const QRegularExpression rx(pattern,
-                    QRegularExpression::CaseInsensitiveOption
-                  | QRegularExpression::MultilineOption);
+                QRegularExpression::PatternOptions opts = QRegularExpression::MultilineOption;
+                if (!caseSensitive) opts |= QRegularExpression::CaseInsensitiveOption;
+                const QRegularExpression rx(pattern, opts);
                 if (rx.isValid()) {
                     const int n = m_wiring.history->rowCount();
                     // Source-tagged hit builder, shared by every searchable store
@@ -1863,6 +1870,18 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                        const QString &whereLabel, const QString &text) {
                         if (hits.size() >= limit) return;
                         auto it = rx.globalMatch(text);
+                        // Negative match: this item is a hit iff the pattern is ABSENT
+                        // ("find items that do NOT contain X"); nothing matched, so no
+                        // excerpts. Positive match keeps the excerpt behaviour below.
+                        if (negate) {
+                            if (it.hasNext()) return;   // pattern present -> not a negate hit
+                            hits.append(QJsonObject{
+                                { "source",   source },
+                                { "id",       id },
+                                { "where",    whereLabel },
+                                { "excerpts", QJsonArray() } });
+                            return;
+                        }
                         if (!it.hasNext()) return;
                         // Pull at most 3 line-excerpts per hit so the response stays small.
                         QStringList excerpts;
