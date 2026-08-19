@@ -1855,18 +1855,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                   | QRegularExpression::MultilineOption);
                 if (rx.isValid()) {
                     const int n = m_wiring.history->rowCount();
-                    auto scan = [&](int row, const QString &text,
-                                    const QString &whereLabel) {
+                    // Source-tagged hit builder, shared by every searchable store
+                    // (proxy history, Repeater tabs, issues) so the excerpt logic +
+                    // limit are IDENTICAL across them. `id` is the store's own row /
+                    // tab / finding id; `source` labels which tool it came from.
+                    auto addHits = [&](const QString &source, int id,
+                                       const QString &whereLabel, const QString &text) {
                         if (hits.size() >= limit) return;
                         auto it = rx.globalMatch(text);
                         if (!it.hasNext()) return;
-                        // Pull at most 3 line-excerpts per hit so the
-                        // response stays small.
+                        // Pull at most 3 line-excerpts per hit so the response stays small.
                         QStringList excerpts;
                         int count = 0;
                         while (it.hasNext() && count < 3) {
                             const auto m = it.next();
-                            // Grab the line containing the match.
                             const int start = m.capturedStart();
                             int ls = text.lastIndexOf('\n', start - 1) + 1;
                             int le = text.indexOf('\n', start);
@@ -1876,14 +1878,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                             excerpts.append(line);
                             ++count;
                         }
-                        QJsonObject hit;
-                        const QModelIndex idx = m_wiring.history->index(row, 0);
-                        const int id = m_wiring.history->data(idx,
-                            Nullock::FrontEnd::ProxyModel::IdRole).toInt();
-                        hit["id"]       = id;
-                        hit["where"]    = whereLabel;
-                        hit["excerpts"] = QJsonArray::fromStringList(excerpts);
-                        hits.append(hit);
+                        hits.append(QJsonObject{
+                            { "source",   source },
+                            { "id",       id },
+                            { "where",    whereLabel },
+                            { "excerpts", QJsonArray::fromStringList(excerpts) } });
                     };
                     QElapsedTimer searchTimer;
                     searchTimer.start();
@@ -1898,10 +1897,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         // shape pre-screen still can't freeze this (main-thread)
                         // scan past kSearchBudgetMs -- stop with what we have.
                         if (searchTimer.elapsed() > kSearchBudgetMs) break;
+                        const QModelIndex ridx = m_wiring.history->index(row, 0);
+                        const int rid = m_wiring.history->data(ridx,
+                            Nullock::FrontEnd::ProxyModel::IdRole).toInt();
                         if (where == "req" || where == "both") {
                             QString t = m_wiring.history->requestRawAt(row);
                             if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
-                            if (!t.isEmpty()) scan(row, t, "req");
+                            if (!t.isEmpty()) addHits("proxy", rid, "req", t);
                         }
                         // Hit limit reached mid-row: this row is only partially
                         // examined, so it does NOT count toward `scanned`.
@@ -1909,7 +1911,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         if (where == "resp" || where == "both") {
                             QString t = m_wiring.history->responseRawAt(row);
                             if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
-                            if (!t.isEmpty()) scan(row, t, "resp");
+                            if (!t.isEmpty()) addHits("proxy", rid, "resp", t);
                         }
                         ++scanned;
                         lastScannedRow = row;   // oldest fully-scanned row so far
@@ -1925,6 +1927,39 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     }
                     scannedRows = scanned;
                     totalRows   = n;
+
+                    // Beyond proxy history: search the operator's OTHER text stores
+                    // with the same regex + shared wall-clock budget, so this is a
+                    // GLOBAL search, not a proxy-only one. Each hit is tagged with its
+                    // `source`. Repeater tab req/resp honour the `where` filter (they
+                    // ARE requests/responses); issues are their own category, included
+                    // for the default "both" search. Budget exhaustion -> truncated.
+                    if (m_wiring.repeater && hits.size() < limit
+                        && searchTimer.elapsed() <= kSearchBudgetMs) {
+                        const auto &tabs = m_wiring.repeater->tabs();
+                        for (int ti = 0; ti < tabs.size() && hits.size() < limit; ++ti) {
+                            if (searchTimer.elapsed() > kSearchBudgetMs) { truncated = true; break; }
+                            const auto &tab = tabs[ti];
+                            if ((where == "req" || where == "both") && !tab.requestText.isEmpty())
+                                addHits("repeater", ti, "req", tab.requestText.left(kSearchBodyCap));
+                            if (hits.size() >= limit) break;
+                            if ((where == "resp" || where == "both") && !tab.responseText.isEmpty())
+                                addHits("repeater", ti, "resp", tab.responseText.left(kSearchBodyCap));
+                        }
+                    }
+                    if (m_wiring.scanner && where == "both" && hits.size() < limit
+                        && searchTimer.elapsed() <= kSearchBudgetMs) {
+                        const auto findings = m_wiring.scanner->findings(1000);
+                        for (const auto &f : findings) {
+                            if (hits.size() >= limit) break;
+                            if (searchTimer.elapsed() > kSearchBudgetMs) { truncated = true; break; }
+                            // One blob of the finding's searchable text.
+                            const QString blob = f.summary + '\n' + f.evidence + '\n'
+                                               + f.url + '\n' + f.host + '\n'
+                                               + f.kind + '\n' + f.severity;
+                            addHits("issue", f.id, "issue", blob.left(kSearchBodyCap));
+                        }
+                    }
                 } else {
                     return httpJson(400, QJsonObject{{ "error", "invalid regex" }});
                 }

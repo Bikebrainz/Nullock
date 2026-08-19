@@ -25,6 +25,15 @@ developer-facing record.
   1-40's earlier flag rollout. Completes flag coverage for all 50 labs on
   the "Labs as TryHackMe/HackTheBox scenarios" roadmap item; XP/tracks and
   in-app (desktop) wiring remain open.
+- **Search now spans Repeater and issues, not just proxy history.** The search
+  endpoint only ever scanned captured proxy traffic, so a value sitting in a
+  Repeater tab you were hand-testing, or in a finding the scanner raised, was
+  invisible. It now searches those too: every result is tagged with the tool it
+  came from (`proxy`, `repeater`, `issue`), Repeater request/response bodies
+  honour the same request/response filter as history, and issues are matched on
+  their summary, evidence, URL, host and kind. The same regex-safety limits and
+  the single wall-clock budget cover every source, so a global search can't run
+  away. (Intruder results and the site-map are still to be wired in.)
 - **Comparer handles bigger, lopsided inputs.** The diff was capped at a flat
   2000 tokens per side, so comparing a short blob against a full-page response
   clipped the long side immediately even though the short side was tiny. The cap
