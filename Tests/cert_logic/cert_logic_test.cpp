@@ -92,6 +92,25 @@ int main(int argc, char **argv) {
     chk("sanitize: maps a backslash and space to '_'", sanitize("a\\ b") == "a__b");
     chk("sanitize: keeps the allowed punctuation", sanitize("a-b_c.d") == "a-b_c.d");
 
+    // ===== isIpv4Literal: exactly four ASCII 0..255 octets =====
+    chk("ipv4: 127.0.0.1",           isIpv4Literal("127.0.0.1"));
+    chk("ipv4: 192.168.1.254",       isIpv4Literal("192.168.1.254"));
+    chk("ipv4: 0.0.0.0 and 255.255.255.255",
+        isIpv4Literal("0.0.0.0") && isIpv4Literal("255.255.255.255"));
+    chk("ipv4: octet > 255 rejected (1.2.3.256)", !isIpv4Literal("1.2.3.256"));
+    chk("ipv4: only 3 octets rejected (1.2.3)",   !isIpv4Literal("1.2.3"));
+    chk("ipv4: 5 octets rejected (1.2.3.4.5)",    !isIpv4Literal("1.2.3.4.5"));
+    chk("ipv4: non-digit rejected (a.b.c.d)",     !isIpv4Literal("a.b.c.d"));
+    chk("ipv4: empty octet rejected (1..2.3)",    !isIpv4Literal("1..2.3"));
+    chk("ipv4: a DNS name is not an IPv4 literal", !isIpv4Literal("example.com"));
+    chk("ipv4: 4-digit octet rejected (1.2.3.4444)", !isIpv4Literal("1.2.3.4444"));
+
+    // ===== sanEntryForHost: IP: for an IPv4 literal, DNS: otherwise =====
+    chk("SAN: IPv4 literal -> IP: entry",  sanEntryForHost("10.0.0.5") == "IP:10.0.0.5");
+    chk("SAN: DNS name -> DNS: entry",     sanEntryForHost("api.example.com") == "DNS:api.example.com");
+    chk("SAN: over-range dotted-quad is treated as DNS (not IP)",
+        sanEntryForHost("1.2.3.999") == "DNS:1.2.3.999");
+
     std::fprintf(stderr, "cert_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

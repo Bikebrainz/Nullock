@@ -2,6 +2,8 @@
 
 #include "cert_logic.hpp"
 
+#include <QStringList>
+
 namespace Nullock::Proxy::CertLogic {
 
 QString sanitize(const QString &host) {
@@ -31,6 +33,25 @@ bool isValidHostForCert(const QString &host) {
     if (host.startsWith('.') || host.endsWith('.')) return false;
     if (host.contains(QLatin1String(".."))) return false;
     return true;
+}
+
+bool isIpv4Literal(const QString &host) {
+    const QStringList parts = host.split(QChar('.'));
+    if (parts.size() != 4) return false;
+    for (const QString &p : parts) {
+        if (p.isEmpty() || p.size() > 3) return false;
+        for (const QChar c : p)
+            if (c.unicode() < '0' || c.unicode() > '9') return false;  // ASCII digits only
+        bool ok = false;
+        const int v = p.toInt(&ok);
+        if (!ok || v < 0 || v > 255) return false;
+    }
+    return true;
+}
+
+QString sanEntryForHost(const QString &host) {
+    if (isIpv4Literal(host)) return QStringLiteral("IP:") + host;
+    return QStringLiteral("DNS:") + host;
 }
 
 } // namespace Nullock::Proxy::CertLogic

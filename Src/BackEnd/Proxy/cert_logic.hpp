@@ -28,4 +28,19 @@ bool isValidHostForCert(const QString &host);
 // relaxed (e.g. don't permit a char sanitize would rewrite without re-checking).
 QString sanitize(const QString &host);
 
+// Is `host` an IPv4 dotted-quad literal (exactly four ASCII 0..255 octets)? This
+// decides the SAN TYPE when minting a forged leaf: a client verifying an IP-literal
+// host requires an iPAddress SAN (RFC 6125), so a "DNS:<ip>" SAN is rejected -- and
+// in this proxy a rejected forged leaf then auto-blocklists the host, making every
+// https://<ip>/ target un-interceptable. Pure. (IPv6 literals are a separate,
+// tracked remainder: isValidHostForCert still rejects ':' as an injection guard, so
+// an IPv6 target never reaches minting; relaxing that safely needs collision-proof
+// leaf-file naming too.)
+bool isIpv4Literal(const QString &host);
+
+// The subjectAltName entry for a leaf minted for `host`: "IP:<addr>" for an IPv4
+// literal, else "DNS:<host>". `host` is assumed already isValidHostForCert-clean
+// (so it is safe to embed verbatim in the openssl SAN extension file).
+QString sanEntryForHost(const QString &host);
+
 } // namespace Nullock::Proxy::CertLogic

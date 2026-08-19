@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **HTTPS interception now works against bare IP-address targets.** Proxying an
+  `https://192.168.x.x/` or `https://10.x/` box &mdash; routine on internal
+  engagements &mdash; used to fail: the forged certificate always carried a
+  DNS-type name, which every modern client rejects for an IP host, and the failed
+  handshake then permanently blocklisted the target. The forged leaf for an IPv4
+  literal now carries a proper IP-address SAN, so a verifying client accepts it
+  and interception just works. (Paired with the per-host **unblock** added
+  alongside the invalid-cert work, a host blocked by the old behaviour is easy to
+  recover.) IPv6-literal targets and multi/wildcard SANs are still to come.
 - **Intruder: "Recursive grep" payload type &mdash; walk a token across requests.**
   Instead of a fixed wordlist, each request's payload is now the value pulled out
   of the *previous* response by the grep-extract rule &mdash; so an anti-CSRF

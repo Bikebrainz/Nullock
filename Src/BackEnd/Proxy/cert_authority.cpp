@@ -240,11 +240,14 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
             cleanup();
             return {};
         }
+        // IP-literal targets need an iPAddress SAN, not DNS -- a client verifying
+        // an https://<ip>/ host rejects a DNS:<ip> leaf (and a rejected forged leaf
+        // then auto-blocklists the host here). sanEntryForHost picks IP: vs DNS:.
         const QString contents = QStringLiteral(
-            "subjectAltName = DNS:%1\n"
+            "subjectAltName = %1\n"
             "basicConstraints = critical, CA:FALSE\n"
             "keyUsage = critical, digitalSignature, keyEncipherment\n"
-            "extendedKeyUsage = serverAuth\n").arg(host);
+            "extendedKeyUsage = serverAuth\n").arg(CertLogic::sanEntryForHost(host));
         extFile.write(contents.toUtf8());
     }
 
