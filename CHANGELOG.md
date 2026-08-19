@@ -11,6 +11,12 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Plaintext WebSocket (`ws://`) connections are now proxied properly.** An
+  unencrypted WebSocket handshake used to be answered and then the connection was
+  just dropped &mdash; the actual `ws://` messages never flowed, weren't logged,
+  and couldn't be replayed. They're now relayed frame-by-frame through the same
+  machinery as secure `wss://`, so plaintext WebSocket traffic shows up in the
+  WebSocket history and can be inspected and resent like everything else.
 - **Pre-add a host to the TLS pass-through list.** Nullock keeps a list of hosts
   it won't intercept &mdash; it tunnels their TLS straight through untouched. Until
   now that list only filled itself in *after* a host's handshake failed, so a

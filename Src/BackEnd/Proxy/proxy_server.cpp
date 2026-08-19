@@ -332,6 +332,21 @@ public:
         m_server->applyResponseRules(req, resp);
         if (logIt) emit m_server->responseReceived(req, resp);
 
+        // Plaintext WebSocket (ws://): on a 101 Switching Protocols with
+        // Upgrade: websocket, write the raw switch response and hand the socket
+        // pair to the frame relay -- which is transport-agnostic (plain
+        // QTcpSocket*) -- so ws:// traffic is relayed, logged and repeatable just
+        // like wss://, instead of the socket being closed after the 101. Mirrors
+        // the MITM path; the 101 itself is not response-intercepted (editing the
+        // switch would break the handshake).
+        if (resp.statusCode == 101
+            && findHeader(req.headers, "Upgrade").compare("websocket", Qt::CaseInsensitive) == 0) {
+            m_client->write(serializeUpgradeResponse(resp));
+            if (waitWritten(m_client, kReadTimeoutMs, m_server))
+                runWebSocketRelay(m_client, &upstream, req.host, req.port);
+            return;
+        }
+
         // Response interception: hold the response for the operator (edit/
         // forward/drop) before it reaches the client, mirroring the request
         // pend() above. Scope-gated like the request side.
