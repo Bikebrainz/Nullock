@@ -2429,7 +2429,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-19",
-        "commit": "PENDING",
+        "commit": "663a1f2",
         "note": "Sequencer report-export batch -- absent -> partial (client-only export, not wired into cmd_report/findings)"
       }
     },
@@ -4709,7 +4709,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-19",
-        "commit": "PENDING",
+        "commit": "663a1f2",
         "note": "register correction -- stale why/evidence text fixed, state unchanged (partial)"
       }
     },
