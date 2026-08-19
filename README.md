@@ -130,7 +130,9 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   history's DetailPane and Repeater's request/response panes sends the currently
                   selected text (a token) straight into the manual-load corpus, switching tabs
                   automatically -- builds up a sample set across several captures without
-                  copy-paste
+                  copy-paste; EXPORT HTML / EXPORT XML buttons download a standalone report of
+                  the current analysis (client-generated, not yet wired into cmd_report or the
+                  findings/baseline store)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
                   bundled" button in Settings copies the extensions shipped with the repo into
                   the user's extensions dir in one click

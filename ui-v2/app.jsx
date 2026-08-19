@@ -3480,6 +3480,102 @@ function sequencerSampleSummary(tokens) {
   };
 }
 
+// Escape text pulled from token data (e.g. lcs.longest is a literal substring
+// of the analyzed corpus) before it lands inside a generated HTML/XML report --
+// the corpus is untrusted input, so a token like "<script>" or "]]>" must never
+// be interpreted as markup by whatever opens the exported file.
+function sequencerReportEscape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// #185 "Sequencer analysis report export": build a standalone HTML report from
+// an /api/sequencer/analyze result, the same fields SequencerTab already
+// renders (Section blocks below), so the export can never drift from what the
+// operator sees on screen. Pure: no DOM, no I/O -- the caller wraps this in a
+// Blob download.
+function sequencerReportHtml(result, tokenCount) {
+  const esc = sequencerReportEscape;
+  if (!result || result.verdict === "no-data") {
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><title>Nullock Sequencer report</title></head>"
+      + "<body><h1>Nullock Sequencer report</h1><p>No tokens analyzed.</p></body></html>";
+  }
+  const sh = result.shannon || {}, cls = result.charClass || {}, ham = result.hamming || {};
+  const lcs = result.lcs || {}, seq = result.sequential || {}, pos = result.positional || {}, bit = result.bitLevel || {};
+  const fmt = (v, d) => (v == null ? "—" : (typeof v === "number" ? v.toFixed(d == null ? 3 : d) : esc(v)));
+  const pct = (v) => (v == null ? "—" : (v * 100).toFixed(0) + "%");
+  let rows = "";
+  rows += "<tr><th>Verdict</th><td>" + esc(result.verdict) + " (score " + esc(result.score) + ")</td></tr>";
+  rows += "<tr><th>Tokens analyzed</th><td>" + esc(result.n != null ? result.n : tokenCount) + "</td></tr>";
+  rows += "<tr><th>Distinct tokens</th><td>" + esc(result.distinctTokens != null ? result.distinctTokens : "—") + "</td></tr>";
+  rows += "<tr><th>Average length</th><td>" + esc(result.avgLen) + "</td></tr>";
+  rows += "<tr><th>Shannon entropy (bits/byte)</th><td>" + fmt(sh.bitsPerByte, 3) + "</td></tr>";
+  rows += "<tr><th>Shannon alphabet verdict</th><td>" + esc(sh.verdict) + "</td></tr>";
+  rows += "<tr><th>Effective bits/token</th><td>" + fmt(sh.effectiveBitsPerToken, 1) + "</td></tr>";
+  rows += "<tr><th>Character class ratios</th><td>alpha " + pct(cls.alphaRatio) + ", digit " + pct(cls.digitRatio)
+        + ", hex " + pct(cls.hexRatio) + ", upper " + pct(cls.upperRatio) + ", lower " + pct(cls.lowerRatio)
+        + ", special " + pct(cls.specialRatio) + "</td></tr>";
+  rows += "<tr><th>Hamming distance (consecutive)</th><td>min " + esc(ham.min) + ", avg " + esc(ham.avg) + ", max " + esc(ham.max) + "</td></tr>";
+  rows += "<tr><th>Longest common substring</th><td>length " + esc(lcs.length)
+        + (lcs.longest ? ", “" + esc(lcs.longest) + "”" : "") + "</td></tr>";
+  rows += "<tr><th>Sequential / counter detection</th><td>sequential " + esc(!!seq.looksSequential)
+        + ", monotonic " + esc(!!seq.looksMonotonic)
+        + (seq.looksSequential ? ", delta " + esc(seq.delta) : "") + "</td></tr>";
+  rows += "<tr><th>Per-position entropy</th><td>" + (pos.applicable
+        ? "width " + esc(pos.width) + ", sampled " + esc(pos.n) + ", weak columns " + esc(pos.weakColumns) + ", biased " + esc(!!pos.biased)
+        : "not applicable — needs ≥20 tokens of the same width") + "</td></tr>";
+  rows += "<tr><th>Bit-level tests</th><td>" + (bit.applicable
+        ? "scheme " + esc(bit.scheme) + ", bits " + esc(bit.bits)
+          + ", monobit p " + fmt(bit.monobit && bit.monobit.pValue, 3)
+          + ", two-bit χ² " + fmt(bit.twoBit && bit.twoBit.chiSquare, 2)
+          + ", serial r " + fmt(bit.serialCorrelation && bit.serialCorrelation.r, 3)
+        : "not applicable — needs ≥20 tokens that are all hex or all base64") + "</td></tr>";
+  return "<!doctype html><html><head><meta charset=\"utf-8\"><title>Nullock Sequencer report</title>"
+    + "<style>body{font-family:monospace;margin:24px;color:#111}table{border-collapse:collapse}"
+    + "th{text-align:left;padding:4px 12px 4px 0;color:#555}td{padding:4px 0}"
+    + "h1{font-size:16px}</style></head><body>"
+    + "<h1>Nullock Sequencer analysis report</h1>"
+    + "<p>Generated client-side from the token corpus currently loaded in the Sequencer tab.</p>"
+    + "<table>" + rows + "</table></body></html>";
+}
+
+// XML twin of sequencerReportHtml -- same field set, Burp's own Sequencer
+// export offers both formats.
+function sequencerReportXml(result, tokenCount) {
+  const esc = sequencerReportEscape;
+  if (!result || result.verdict === "no-data") {
+    return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sequencerReport><status>no-data</status></sequencerReport>";
+  }
+  const sh = result.shannon || {}, cls = result.charClass || {}, ham = result.hamming || {};
+  const lcs = result.lcs || {}, seq = result.sequential || {}, pos = result.positional || {}, bit = result.bitLevel || {};
+  const n = (v) => (v == null ? "" : esc(v));
+  let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sequencerReport>";
+  xml += "<summary verdict=\"" + n(result.verdict) + "\" score=\"" + n(result.score) + "\" tokensAnalyzed=\""
+       + n(result.n != null ? result.n : tokenCount) + "\" distinctTokens=\"" + n(result.distinctTokens)
+       + "\" avgLen=\"" + n(result.avgLen) + "\"/>";
+  xml += "<shannon bitsPerByte=\"" + n(sh.bitsPerByte) + "\" verdict=\"" + n(sh.verdict)
+       + "\" variableLen=\"" + n(sh.variableLen) + "\" effectiveBitsPerToken=\"" + n(sh.effectiveBitsPerToken) + "\"/>";
+  xml += "<charClass alphaRatio=\"" + n(cls.alphaRatio) + "\" digitRatio=\"" + n(cls.digitRatio)
+       + "\" hexRatio=\"" + n(cls.hexRatio) + "\" upperRatio=\"" + n(cls.upperRatio)
+       + "\" lowerRatio=\"" + n(cls.lowerRatio) + "\" specialRatio=\"" + n(cls.specialRatio) + "\"/>";
+  xml += "<hamming min=\"" + n(ham.min) + "\" avg=\"" + n(ham.avg) + "\" max=\"" + n(ham.max) + "\"/>";
+  xml += "<longestCommonSubstring length=\"" + n(lcs.length) + "\">" + (lcs.longest ? esc(lcs.longest) : "") + "</longestCommonSubstring>";
+  xml += "<sequential looksSequential=\"" + n(!!seq.looksSequential) + "\" looksMonotonic=\"" + n(!!seq.looksMonotonic)
+       + "\" delta=\"" + n(seq.delta) + "\"/>";
+  xml += pos.applicable
+    ? "<positional applicable=\"true\" width=\"" + n(pos.width) + "\" sampled=\"" + n(pos.n)
+        + "\" weakColumns=\"" + n(pos.weakColumns) + "\" biased=\"" + n(!!pos.biased) + "\"/>"
+    : "<positional applicable=\"false\"/>";
+  xml += bit.applicable
+    ? "<bitLevel applicable=\"true\" scheme=\"" + n(bit.scheme) + "\" bits=\"" + n(bit.bits)
+        + "\" monobitP=\"" + n(bit.monobit && bit.monobit.pValue) + "\" twoBitChiSquare=\"" + n(bit.twoBit && bit.twoBit.chiSquare)
+        + "\" serialR=\"" + n(bit.serialCorrelation && bit.serialCorrelation.r) + "\"/>"
+    : "<bitLevel applicable=\"false\"/>";
+  xml += "</sequencerReport>";
+  return xml;
+}
+
 function SequencerTab({ sequencer, dispatch }) {
   // Token randomness analyzer (Burp's Sequencer). Backend
   // (/api/sequencer/analyze, Src/Core/Networking/sequencer_logic.cpp) was
@@ -3574,6 +3670,24 @@ function SequencerTab({ sequencer, dispatch }) {
       else setResult(r);
     } catch (e) { setErr(String(e && e.message ? e.message : e)); }
     finally { setBusy(false); }
+  }
+
+  // #185: download the current analysis as a standalone HTML or XML report.
+  function exportReport(format) {
+    try {
+      const body = format === "xml" ? sequencerReportXml(result, tokens.length) : sequencerReportHtml(result, tokens.length);
+      const blob = new Blob([body], { type: format === "xml" ? "application/xml" : "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nullock-sequencer-report." + (format === "xml" ? "xml" : "html");
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr("report export failed: " + String(e && e.message ? e.message : e));
+    }
   }
 
   const verdictColor = (v) => ({
@@ -3707,6 +3821,8 @@ function SequencerTab({ sequencer, dispatch }) {
           <button className="btn" onClick={pasteFromClipboard}>PASTE FROM CLIPBOARD</button>
           <button className="btn" disabled={!tokens.length} onClick={copyTokens}>COPY TOKENS</button>
           <button className="btn" disabled={!tokens.length} onClick={saveTokens}>SAVE TOKENS</button>
+          <button className="btn" disabled={!result || result.verdict === "no-data"} onClick={() => exportReport("html")} title="Download an HTML report of the current analysis">EXPORT HTML</button>
+          <button className="btn" disabled={!result || result.verdict === "no-data"} onClick={() => exportReport("xml")} title="Download an XML report of the current analysis">EXPORT XML</button>
           <button className="btn" onClick={() => {
             setText(""); setResult(null); setErr("");
             seenTokenCountRef.current = sequencer.tokens.length; // don't resurrect cleared tokens on remount
