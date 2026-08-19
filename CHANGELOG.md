@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Pre-add a host to the TLS pass-through list.** Nullock keeps a list of hosts
+  it won't intercept &mdash; it tunnels their TLS straight through untouched. Until
+  now that list only filled itself in *after* a host's handshake failed, so a
+  certificate-pinned app (many mobile and desktop apps) had to break once before
+  it was left alone. You can now add a host to that list up front, so it's tunnelled
+  cleanly from the very first connection. Combined with the per-host "un-bypass"
+  added earlier, the pass-through list is now fully hand-manageable. (Wildcards and
+  IP-range entries are still to come.)
 - **Content discovery can sweep file extensions.** Point it at a wordlist and a
   set of extensions (`.php`, `.bak`, `.old`, `.zip`&hellip;) and each word is now
   probed both as-is and with every extension appended &mdash; the classic

@@ -6216,6 +6216,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "blocked", m_wiring.proxy ? QJsonArray::fromStringList(
                                         m_wiring.proxy->blockedHosts()) : QJsonArray() }});
     }
+    if (path == "/api/mitm/block") {
+        // TLS pass-through list: PRE-ADD a host so its TLS is tunnelled opaquely
+        // (never MITM'd) from the first CONNECT -- a pinned/cert-locked app no
+        // longer has to fail a handshake once before it's bypassed. Persisted.
+        const QString host = bodyJson.value("host").toString().trimmed();
+        if (m_wiring.proxy && !host.isEmpty()) m_wiring.proxy->markMitmBlocked(host);
+        return okJson({{ "blocked", m_wiring.proxy ? QJsonArray::fromStringList(
+                                        m_wiring.proxy->blockedHosts()) : QJsonArray() }});
+    }
     if (path == "/api/proxy/accept-invalid-hosts/add"
         || path == "/api/proxy/accept-invalid-hosts/remove") {
         // Add/remove a "host:port" from the accept-invalid-upstream-cert allow-list.
