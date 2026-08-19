@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5031</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Directory listing / index disclosure</h1>
-  <p class="lead" style="margin-top:12px;">/files (no specific file) returns an autoindex of the docroot -- file names an attacker would never have guessed (backups, internal notes). /files/&lt;name&gt; then serves any listed file. In Nullock: 1. nullock scope add http://localhost:5031/* 2. Browse /files -- the listing reveals secret-notes.txt and backup.zip. 3. Fetch /files/secret-notes.txt directly. Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p>
+  <p class="lead" style="margin-top:12px;">/files (no specific file) returns an autoindex of the docroot -- file names an attacker would never have guessed (backups, internal notes). /files/&lt;name&gt; then serves any listed file. In Nullock: 1. nullock scope add http://localhost:5031/* 2. Browse /files -- the listing reveals secret-notes.txt and backup.zip. 3. Fetch /files/secret-notes.txt directly. 4. Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed. Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/31-directory-listing/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Try requesting a directory path instead of a specific file.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Does the server return a file listing instead of a 404?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Browse the listing and fetch a file it exposes that was never linked from the app itself.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5031/*</li><li>Browse /files -- the listing reveals secret-notes.txt and backup.zip.</li><li>Fetch /files/secret-notes.txt directly.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5031/*</li><li>Browse /files -- the listing reveals secret-notes.txt and backup.zip.</li><li>Fetch /files/secret-notes.txt directly.</li><li>Confirm success: GET /flag -- solved only once the listing was browsed AND secret-notes.txt was fetched afterward, proving the file was actually discovered via the index rather than blindly guessed.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: disable autoindex; serve only an explicit allow-list; keep sensitive files out of the web root.</p></div>
 

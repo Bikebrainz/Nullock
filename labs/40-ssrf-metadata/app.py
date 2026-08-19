@@ -10,6 +10,9 @@ In Nullock:
     2. /fetch?url=http://127.0.0.1:5040/internal -- returns the internal secret
        through the server's own request.
     3. On a real cloud host: url=http://169.254.169.254/latest/meta-data/.
+    4. Confirm success: GET /flag -- solved only once /fetch's SERVER-SIDE
+       request actually returned the internal secret, proving the SSRF
+       pivot worked (not just that /internal was requested directly).
 
 Fix: allow-list destination hosts/schemes; block loopback/link-local/RFC1918;
 re-resolve and re-check the IP to defeat DNS rebinding.
@@ -17,10 +20,13 @@ re-resolve and re-check the IP to defeat DNS rebinding.
 (Needs `requests`, which is the labs' only non-Flask dependency.)
 """
 
-from flask import Flask, request
+from flask import Flask, request, jsonify
+import hashlib
 import requests
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-40-ssrf-metadata").hexdigest()[:16]
+SSRF_HIT = {"done": False}
 
 
 @app.route("/")
@@ -36,6 +42,8 @@ def fetch():
     try:
         # VULN: the server fetches an arbitrary, unvalidated URL.
         r = requests.get(url, timeout=3)
+        if "INTERNAL SECRET" in r.text:
+            SSRF_HIT["done"] = True
         return "fetched %d bytes:\n%s" % (len(r.text), r.text[:500])
     except Exception as e:
         return "error: %s" % e, 502
@@ -45,6 +53,13 @@ def fetch():
 def internal():
     # Intended to be an internal-only resource; reachable via SSRF above.
     return "INTERNAL SECRET: db_password=hunter2"
+
+
+@app.route("/flag")
+def flag_route():
+    if SSRF_HIT["done"]:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

@@ -10,15 +10,24 @@ In Nullock:
     2. POST /forgot user=victim -- note the token.
     3. The token == md5("reset-victim"); GET /reset?user=victim&token=<that>
        succeeds for anyone who knows the username.
+    4. Confirm success: compute md5("reset-admin") YOURSELF -- do not POST
+       /forgot for "admin" -- then GET /reset?user=admin&token=<that
+       computed value>. Only a reset that succeeds for a user whose token
+       was never once requested from the server proves the token is a pure,
+       predictable function of the username, not a per-request secret.
+       Then GET /flag.
 
 Fix: generate tokens with a CSPRNG (secrets.token_urlsafe), bind them to the
 account with a short expiry, and store only a hash.
 """
 
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import hashlib
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-33-weak-reset-token").hexdigest()[:16]
+FORGOT_REQUESTED = set()
+SOLVED = {"done": False}
 
 
 def weak_token(user):
@@ -35,6 +44,7 @@ def index():
 @app.route("/forgot", methods=["POST"])
 def forgot():
     user = request.form.get("user", "")
+    FORGOT_REQUESTED.add(user)
     return "reset token for %s: %s" % (user, weak_token(user))
 
 
@@ -43,8 +53,17 @@ def reset():
     user = request.args.get("user", "")
     token = request.args.get("token", "")
     if token and token == weak_token(user):
+        if user and user not in FORGOT_REQUESTED:
+            SOLVED["done"] = True
         return "valid token -- %s may set a new password" % user
     return "invalid token", 403
+
+
+@app.route("/flag")
+def flag_route():
+    if SOLVED["done"]:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

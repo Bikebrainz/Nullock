@@ -9,16 +9,22 @@ In Nullock:
     1. nullock scope add http://localhost:5031/*
     2. Browse /files -- the listing reveals secret-notes.txt and backup.zip.
     3. Fetch /files/secret-notes.txt directly.
+    4. Confirm success: GET /flag -- solved only once the listing was
+       browsed AND secret-notes.txt was fetched afterward, proving the file
+       was actually discovered via the index rather than blindly guessed.
 
 Fix: disable autoindex; serve only an explicit allow-list; keep sensitive
 files out of the web root.
 """
 
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
+import hashlib
 import os
 
 app = Flask(__name__)
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-31-directory-listing").hexdigest()[:16]
 DOC = os.path.join(os.path.dirname(__file__), "docroot")
+DISCOVERED = {"listing": False, "secret": False}
 
 
 @app.route("/")
@@ -30,6 +36,7 @@ def index():
 @app.route("/files/")
 def listing():
     # VULN: expose the directory index.
+    DISCOVERED["listing"] = True
     links = "".join('<li><a href="/files/%s">%s</a></li>' % (n, n)
                     for n in sorted(os.listdir(DOC)))
     return "<h1>Index of /files</h1><ul>" + links + "</ul>"
@@ -37,7 +44,16 @@ def listing():
 
 @app.route("/files/<path:name>")
 def getfile(name):
+    if name == "secret-notes.txt" and DISCOVERED["listing"]:
+        DISCOVERED["secret"] = True
     return send_from_directory(DOC, name)
+
+
+@app.route("/flag")
+def flag_route():
+    if DISCOVERED["listing"] and DISCOVERED["secret"]:
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

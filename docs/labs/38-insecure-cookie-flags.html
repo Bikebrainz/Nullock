@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5038</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Insecure cookie flags</h1>
-  <p class="lead" style="margin-top:12px;">/ sets a session cookie with NO HttpOnly, Secure, or SameSite attributes -- so it&#x27;s readable by JavaScript (XSS -&gt; session theft), sent over plaintext HTTP (sniffing), and attached cross-site (CSRF). In Nullock: 1. nullock scope add http://localhost:5038/* 2. nullock headeraudit http://localhost:5038/ -- raises cookie-insecure (missing HttpOnly / Secure / SameSite). Fix: set HttpOnly + Secure + SameSite=Lax/Strict on session cookies.</p>
+  <p class="lead" style="margin-top:12px;">/ sets a session cookie with NO HttpOnly, Secure, or SameSite attributes -- so it&#x27;s readable by JavaScript (XSS -&gt; session theft), sent over plaintext HTTP (sniffing), and attached cross-site (CSRF). In Nullock: 1. nullock scope add http://localhost:5038/* 2. nullock headeraudit http://localhost:5038/ -- raises cookie-insecure (missing HttpOnly / Secure / SameSite). 3. Confirm success: GET / and read the raw Set-Cookie value off the wire (readable because HttpOnly is absent -- a real attacker would read it via document.cookie after an XSS), then GET /flag?cookie=&lt;that value&gt; -- solved only for a value that was genuinely issued by the server. Fix: set HttpOnly + Secure + SameSite=Lax/Strict on session cookies.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/38-insecure-cookie-flags/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Inspect the Set-Cookie header on login.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Which of Secure, HttpOnly, and SameSite are actually present?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Missing HttpOnly means client-side script can read the session cookie; missing Secure/SameSite widens how it can leak or be forged.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5038/*</li><li>nullock headeraudit http://localhost:5038/ -- raises cookie-insecure (missing HttpOnly / Secure / SameSite).</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5038/*</li><li>nullock headeraudit http://localhost:5038/ -- raises cookie-insecure (missing HttpOnly / Secure / SameSite).</li><li>Confirm success: GET / and read the raw Set-Cookie value off the wire (readable because HttpOnly is absent -- a real attacker would read it via document.cookie after an XSS), then GET /flag?cookie=&lt;that value&gt; -- solved only for a value that was genuinely issued by the server.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: set HttpOnly + Secure + SameSite=Lax/Strict on session cookies.</p></div>
 

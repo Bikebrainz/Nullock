@@ -9,15 +9,19 @@ In Nullock:
     1. nullock scope add http://localhost:5034/*
     2. POST /login user=alice (you now have a session, mfa=false).
     3. GET /dashboard directly -- it loads WITHOUT completing 2FA.
+    4. Confirm success: GET /flag with the same session -- solved only if
+       /dashboard was actually reached while session["mfa"] was still false.
 
 Fix: gate sensitive pages on BOTH session["user"] AND session["mfa"]; fail
 closed when the 2FA step hasn't been completed.
 """
 
-from flask import Flask, request, session, redirect
+from flask import Flask, request, session, redirect, jsonify
+import hashlib
 
 app = Flask(__name__)
 app.secret_key = "lab34-not-secret"
+FLAG = "NULLOCK{%s}" % hashlib.sha256(b"lab-34-2fa-bypass").hexdigest()[:16]
 
 
 @app.route("/")
@@ -50,7 +54,16 @@ def dashboard():
     # VULN: checks login but NOT session["mfa"].
     if "user" not in session:
         return redirect("/login")
+    if not session.get("mfa"):
+        session["bypassed"] = True
     return "sensitive dashboard for %s (mfa=%s)" % (session["user"], session.get("mfa"))
+
+
+@app.route("/flag")
+def flag_route():
+    if session.get("bypassed"):
+        return jsonify(solved=True, flag=FLAG)
+    return jsonify(solved=False), 403
 
 
 if __name__ == "__main__":

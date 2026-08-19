@@ -463,7 +463,11 @@ def parse_docstring(slug):
     # Fall back to a fix paragraph anywhere in the docstring (some labs put it
     # after a blank line rather than inside the steps block).
     if not fix:
-        mfix = re.search(r"((?:The\s+fix|Fix|Mitigation|Remediation)\b[:\s][^\n]*"
+        # \b before the alternation, not just after: without it "Fix" (case-
+        # insensitive) matches the tail of an unrelated word like "suffix",
+        # since \b only asserts a word/non-word transition, and "...ffix"
+        # already sits inside one continuous word token.
+        mfix = re.search(r"(\b(?:The\s+fix|Fix|Mitigation|Remediation)\b[:\s][^\n]*"
                          r"(?:\n[^\n]+)*)", body, re.I)
         if mfix:
             fix = " ".join(x.strip() for x in mfix.group(1).split("\n")).strip()

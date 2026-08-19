@@ -37,7 +37,7 @@
     <span class="labs-port mono">localhost:5035</span>
   </div>
   <h1 class="h1-page" style="margin-top:14px;">Password-reset token reuse (token never invalidated)</h1>
-  <p class="lead" style="margin-top:12px;">/reset accepts a token and lets the holder set a new password, but never marks the token used -- so the same link works repeatedly, including after the password was already changed (an attacker who once saw the link keeps control). In Nullock: 1. nullock scope add http://localhost:5035/* 2. POST /reset token=abc123 password=new1   -&gt; success 3. Replay the SAME request with password=attacker -- still succeeds. Fix: single-use tokens -- invalidate on first use (and on expiry / after a successful password change); store a hash, not the raw token.</p>
+  <p class="lead" style="margin-top:12px;">/reset accepts a token and lets the holder set a new password, but never marks the token used -- so the same link works repeatedly, including after the password was already changed (an attacker who once saw the link keeps control). In Nullock: 1. nullock scope add http://localhost:5035/* 2. POST /reset token=abc123 password=new1   -&gt; success 3. Replay the SAME request with password=attacker -- still succeeds. 4. Confirm success: GET /flag -- solved only once the SAME token was actually accepted by /reset two or more times. Fix: single-use tokens -- invalidate on first use (and on expiry / after a successful password change); store a hash, not the raw token.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
@@ -51,7 +51,7 @@ python labs/35-reset-token-reuse/app.py
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Use a password-reset token once, successfully.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Now try using that exact same token again.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>If the token still works a second time, it was never invalidated -- replay it via Repeater to reset the password again.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5035/*</li><li>POST /reset token=abc123 password=new1   -&gt; success</li><li>Replay the SAME request with password=attacker -- still succeeds.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5035/*</li><li>POST /reset token=abc123 password=new1   -&gt; success</li><li>Replay the SAME request with password=attacker -- still succeeds.</li><li>Confirm success: GET /flag -- solved only once the SAME token was actually accepted by /reset two or more times.</li></ol>
 
   <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: single-use tokens -- invalidate on first use (and on expiry / after a successful password change); store a hash, not the raw token.</p></div>
 
