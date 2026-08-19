@@ -2033,12 +2033,18 @@
     {
       "area": "sequencer",
       "feature": "Rule action: \"Set a specific cookie or parameter value\" (static or derived value)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "A purely static rule (\"always set X-Debug: 1 on this host\") can never fire \u2014 line 143 bails until an unrelated extract rule has populated the host's bag. And once it can fire, a rule whose own variable was never captured injects the literal string `{{token}}` into the header, cookie, form body or query string instead of being skipped \u2014 a fail-open that corrupts the request and is invisible without a tracer.",
       "why": "The static-rule-never-fires claim is CONFIRMED verbatim at :143. Held at partial \u2014 but I found a strictly worse companion bug the first pass missed: once ANY variable exists for the host, an unresolved `{{var}}` is injected VERBATIM rather than skipped, so the feature does not merely no-op, it puts literal template text on the wire.",
-      "evidence": "session_rules.cpp:141-143 verbatim: `vars = m_varsByHost.value(req.host); } if (rs.isEmpty() || vars.isEmpty()) return;`. The verbatim-injection path: :150-154 `const QString templ = r.injectTemplate.isEmpty() ? QString(\"{{%1}}\").arg(r.variable.isEmpty() ? r.injectKey : r.variable) : r.injectTemplate; const QString value = substitute(templ, vars); if (value.isEmpty()) continue;` combined with sess"
+      "evidence": "session_rules.cpp:141-143 verbatim: `vars = m_varsByHost.value(req.host); } if (rs.isEmpty() || vars.isEmpty()) return;`. The verbatim-injection path: :150-154 `const QString templ = r.injectTemplate.isEmpty() ? QString(\"{{%1}}\").arg(r.variable.isEmpty() ? r.injectKey : r.variable) : r.injectTemplate; const QString value = substitute(templ, vars); if (value.isEmpty()) continue;` combined with sess",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "633fa79",
+        "note": "Both silent-failure paths fixed. (1) Dropped the `|| vars.isEmpty()` bail in applyToRequest so a purely static rule (no {{var}}) injects regardless of the per-host bag. (2) Added the pure SessionRulesLogic::hasUnresolvedPlaceholder and skip any rule whose substituted value still holds an un-resolved {{name}} -- no more literal `{{token}}` on the wire. Unit-tested (10 cases) + 2 mutations; e2e vs a raw-socket mock captured the wire bytes proving `X-Static-Test: fixedvalue123` injects on an empty bag while a missing-var rule emits neither the header nor {{token}} garbage. ctest 99/99, probe_smoke 156/156."
+      }
     },
     {
       "area": "sequencer",
