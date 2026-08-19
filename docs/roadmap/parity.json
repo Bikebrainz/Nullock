@@ -2645,12 +2645,18 @@
     {
       "area": "platform",
       "feature": "Collaborator: DNS interaction capture",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
       "gap": "DNS interactions are counted and correlated but never stored or listable \u2014 there is no way to inspect a DNS callback's source IP, qname or timing after the fact. Plus A-only answers regardless of QTYPE (no AAAA/TXT/CNAME/NS).",
       "why": "DOWNGRADED. The capture path is real and does feed the correlator, but the first pass missed the bigger of the two defects. DnsSink stores NO hits at all \u2014 it has only a counter, not a list. So a DNS callback can auto-confirm a finding, but the raw interaction record is unrecoverable: /api/oast/poll reads `m_wiring.oast->hitsSince(...)`, which is the HTTP sink's ring buffer. A DNS-only Log4Shell c",
-      "evidence": "Src/Core/APIs/Oast/dns_sink.hpp:67 `int m_hitCount = 0;` \u2014 the ONLY hit state (compare oast_server.hpp:90 `QList<OastHit> m_hits;  // ring; we cap at kMaxHits`). dns_sink.cpp:114-115 `++m_hitCount; emit hitReceived(hit);` \u2014 emit-and-forget, nothing retained. dns_sink.cpp:63-64 `resp.append(char(0xC0)).append(char(0x0C)); resp.append(char(0x00)).append(char(0x01)); // TYPE A` with no QTYPE branch a"
+      "evidence": "Src/Core/APIs/Oast/dns_sink.hpp:67 `int m_hitCount = 0;` \u2014 the ONLY hit state (compare oast_server.hpp:90 `QList<OastHit> m_hits;  // ring; we cap at kMaxHits`). dns_sink.cpp:114-115 `++m_hitCount; emit hitReceived(hit);` \u2014 emit-and-forget, nothing retained. dns_sink.cpp:63-64 `resp.append(char(0xC0)).append(char(0x0C)); resp.append(char(0x00)).append(char(0x01)); // TYPE A` with no QTYPE branch a",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "ccd2224",
+        "note": "partial -> present. Both defects fixed. (1) STORAGE+LISTING (the audit's 'bigger defect'): DnsSink gained a mutex-guarded OastHit ring (cap kMaxHits, own monotonic id space, mirrors OastServer) + hitsSince(sinceId), exposed at GET /api/oast/dns/poll?since=<id> -- a DNS-only callback (Log4Shell with LDAP egress firewalled, blind SSRF/XXE) is now listable with its qname, resolver source IP, timing, and record type, with a strictly-after cursor. (2) QTYPE: DnsLogic::ParsedQuery now parses qtype + a pure qtypeName(); the responder answers the type asked -- A for A/ANY, AAAA for AAAA, protocol-correct NODATA (NOERROR ANCOUNT=0) for anything else -- instead of always a mistyped A record; the interaction is logged regardless of qtype (token is in the QNAME). dns_logic_test 58/58 incl. qtype parse (A/AAAA/TXT/high-byte-257) + qtypeName, +2 mutations (parse reads QCLASS not QTYPE; qtypeName(28) mis-map). e2e vs the live UDP sink (14/14): listable w/ qname+sourceIp, cursor strictly-after, A->A, AAAA->AAAA, TXT->NODATA, every qtype logged. ctest 99/99, probe_smoke 156/156. NB the separate Collaborator-TAB item's 'Interactions table' still needs a ui-v2 panel to render these DNS rows (concurrent-agent lane); the backend list they need now exists."
+      }
     },
     {
       "area": "platform",
