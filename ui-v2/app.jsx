@@ -3996,6 +3996,18 @@ function DiscoverTab() {
   const [maxDepth, setMaxDepth]     = React.useState(4);
   const [throttleMs, setThrottleMs] = React.useState(200);
 
+  // Content-discovery config: a custom wordlist (paste or load-from-file, one
+  // word per line -- empty means the backend's built-in default list) and the
+  // extension-bruteforce suffixes (backend-side word x extension expansion,
+  // so the 2000-request cap bounds the true total instead of a pre-multiplied
+  // client-side array), plus the resource-pool dials the backend already
+  // accepts (concurrency/throttle) that had no UI.
+  const [wordlistText, setWordlistText]         = React.useState("");
+  const [extensionsText, setExtensionsText]     = React.useState("");
+  const [maxRequests, setMaxRequests]           = React.useState(300);
+  const [discConcurrency, setDiscConcurrency]   = React.useState(10);
+  const [discThrottleMs, setDiscThrottleMs]     = React.useState(0);
+
   const run = async (k, fn) => {
     if (!url) { setErr("enter a URL"); return; }
     setKind(k); setErr(""); setBusy(true); setRes(null);
@@ -4005,6 +4017,30 @@ function DiscoverTab() {
       else setRes(r);
     } catch (e) { setErr(String(e && e.message ? e.message : e)); }
     finally { setBusy(false); }
+  };
+
+  const runDiscover = async () => {
+    if (!url) { setErr("enter a URL"); return; }
+    setKind("content"); setErr(""); setBusy(true); setRes(null);
+    try {
+      const wordlist = wordlistText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const extensions = extensionsText.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+      const r = await NL.actions.discoverContent(url, maxRequests, {
+        wordlist, extensions, concurrency: discConcurrency, throttleMs: discThrottleMs,
+      });
+      if (r && r.ok === false && r.error) { setErr(r.error); setRes(null); }
+      else setRes(r);
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
+  const loadWordlistFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setWordlistText(String(reader.result || ""));
+    reader.readAsText(f);
+    e.target.value = "";
   };
 
   const startCrawl = async () => {
@@ -4052,9 +4088,10 @@ function DiscoverTab() {
     if (kind === "content") return (
       <div>
         <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>
-          {res.requestsSent || 0} requests · {res.hitCount || 0} hits
+          {res.requestsSent || 0} requests · {res.wordsTried || 0}/{res.wordsTotal || 0} words (post-extension-expansion) · {res.hitCount || 0} hits
           {res.wordlistTruncated ? " · wordlist truncated" : ""}
           {!res.calibrationReliable ? " · soft-404 calibration unreliable" : ""}
+          {res.softNotFoundIs200 ? " · soft-404 server (200s filtered by size)" : ""}
         </div>
         {res.hits && res.hits.length ? <Table cols={["path", "status", "size", "note"]} rows={res.hits} cell={h => [<span style={{ color: "var(--accent)" }}>{h.path}</span>, h.status, h.size, <span style={{ color: "var(--text-2)" }}>{h.note}</span>]} /> : <div style={{ color: "var(--dim)", fontSize: "12px" }}>no paths discovered</div>}
       </div>
@@ -4087,14 +4124,50 @@ function DiscoverTab() {
       </div>
       <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://target.example.com/"
-               onKeyDown={e => { if (e.key === "Enter") run("content", NL.actions.discoverContent); }}
+               onKeyDown={e => { if (e.key === "Enter") runDiscover(); }}
                style={{ flex: "1 1 320px", minWidth: 220, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
-        <Btn label="content discover" active={kind === "content"} onClick={() => run("content", NL.actions.discoverContent)} />
+        <Btn label="content discover" active={kind === "content"} onClick={runDiscover} />
         <Btn label="robots + sitemap" active={kind === "robots"} onClick={() => run("robots", NL.actions.scanRobots)} />
         {!crawling
           ? <Btn label="start crawl" active={kind === "crawl"} onClick={startCrawl} />
           : <Btn label="stop crawl" active={true} onClick={stopCrawl} />}
         <span style={{ color: err ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{busy ? "working…" : err || ""}</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <span style={{ color: "var(--dim)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em", paddingTop: 4 }}>Discovery config</span>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "11px", color: "var(--dim)" }}>
+          custom wordlist (one path per line — blank = built-in default)
+          <textarea value={wordlistText} onChange={e => setWordlistText(e.target.value)} rows={2} spellCheck={false}
+                    placeholder="admin&#10;backup&#10;.git/config"
+                    style={{ width: 220, resize: "vertical", background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "11px", fontFamily: "var(--ff-mono)" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          load wordlist file
+          <input type="file" accept=".txt,.lst" onChange={loadWordlistFile} style={{ fontSize: "11px", color: "var(--text)", maxWidth: 140 }} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: "11px", color: "var(--dim)" }}>
+          extensions (backup sweep — comma or newline separated)
+          <input value={extensionsText} onChange={e => setExtensionsText(e.target.value)} placeholder=".php, .bak, .old, .zip"
+                 style={{ width: 200, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "11px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          max requests
+          <input type="number" min={1} max={2000} value={maxRequests}
+                 onChange={e => setMaxRequests(Number(e.target.value) || 1)}
+                 style={{ width: 70, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          concurrency
+          <input type="number" min={1} max={64} value={discConcurrency}
+                 onChange={e => setDiscConcurrency(Number(e.target.value) || 1)}
+                 style={{ width: 60, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
+          throttle (ms)
+          <input type="number" min={0} max={60000} value={discThrottleMs}
+                 onChange={e => setDiscThrottleMs(Number(e.target.value) || 0)}
+                 style={{ width: 70, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </label>
       </div>
       <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ color: "var(--dim)", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Crawl config</span>

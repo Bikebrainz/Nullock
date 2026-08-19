@@ -310,7 +310,16 @@
     // depth-bypass/batch-bypass -- async, findings stream into Issues).
     graphqlSchema(url, headers)  { return post("/api/graphql/schema", { url, headers: headers || undefined }).then(r => r.json()); },
     graphqlProbe(url, headers)   { return post("/api/graphql/probe", { url, headers: headers || undefined }).then(r => r.json()); },
-    discoverContent(url, max)   { return post("/api/content/discover", { url, max: max || undefined }).then(r => r.json()); },
+    discoverContent(url, max, opts) {
+      opts = opts || {};
+      return post("/api/content/discover", {
+        url, max: max || undefined,
+        wordlist: opts.wordlist && opts.wordlist.length ? opts.wordlist : undefined,
+        extensions: opts.extensions && opts.extensions.length ? opts.extensions : undefined,
+        concurrency: opts.concurrency || undefined,
+        throttleMs: opts.throttleMs || undefined,
+      }).then(r => r.json());
+    },
     scanRobots(url)             { return post("/api/robots/scan", { url }).then(r => r.json()); },
     crawlerStart(seed, maxPages, maxDepth, throttleMs) {
       return post("/api/crawler/start", { seed, maxPages: maxPages || undefined, maxDepth: maxDepth || undefined, throttleMs: throttleMs || undefined }).then(r => r.json());
