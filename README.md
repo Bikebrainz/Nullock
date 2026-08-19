@@ -88,8 +88,9 @@ Recon             Port/CIDR sweeps (with nmap XML import for scans run outside N
                   WHOIS, cert transparency, wordlist enum, robots/sitemap, WAF/CDN detection,
                   subdomain-takeover fingerprints, HTTP/3 (Alt-Svc) readiness probe -- SCANS
                   tab, scope-gated BFS crawler
-Discovery         In-app content/directory brute-force (soft-404 calibrated), robots.txt + sitemap
-                  recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
+Discovery         In-app content/directory brute-force (soft-404 calibrated, custom wordlist paste/file-
+                  load, extension-bruteforce backup sweep, concurrency + throttle controls), robots.txt +
+                  sitemap recon, and start/stop control for the BFS crawler -- results feed Proxy history + Issues
 TLS audit         Certificate + protocol/cipher inspection (expired/self-signed/weak-key/legacy proto) --
                   SCANS tab
 OAST              In-process HTTP + DNS callback sinks for out-of-band confirmation -- one blast

@@ -5000,24 +5000,30 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No short/long choice, no file loading, no derivation from observed paths or response bodies (Burp's single most productive discovery source), no case-variation. 126 words is a smoke test.",
-      "why": "Held. I counted the wordlist programmatically to check the '126' claim -- it is exactly 126.",
-      "evidence": "content_discovery.cpp:54-84 `QStringList defaultWordlist() { return { \"admin\", \"administrator\", \"login\", \"wp-admin\", ... \"setup\", \"installer\", \"update\", \"shell\", \"cmd\", \"tools\", }; }` -- 126 entries (counted by regex over the quoted strings). Selection at cpp:91 `QStringList words = req.wordlist.isEmpty() ? defaultWordlist() : req.wordlist;`. Per-call override only, control_server.cpp:8462-8463 `f"
+      "gap": "Custom wordlist paste + load-from-file now exist in the DiscoverTab config panel (feeds the existing per-call wordlist override). Still no short/long built-in choice (only the one 126-word default), no derivation from observed site-map paths or response bodies (Burp's single most productive discovery source), and no case-variation -- all unbuilt on the backend, not just missing UI.",
+      "why": "Partially closed by this wave: the 'custom wordlist file' ask is now real (FileReader-backed load button, same pattern as Sequencer's manual-load). The remaining asks (short/long presets, derive-from-observed-traffic, case-sensitivity) need new backend logic this cloud session cannot build/verify, so the item stays partial rather than present.",
+      "evidence": "ui-v2/app.jsx DiscoverTab wordlistText state + loadWordlistFile (FileReader.readAsText, mirrors SequencerTab's loadFile) + a paste textarea, both feeding NL.actions.discoverContent opts.wordlist -> control_server.cpp:9094-9095 cr.wordlist array override of ContentDiscovery::defaultWordlist().",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-19",
+        "commit": "7f992c3",
+        "note": "Discovery config wave: wordlist paste + load-from-file added to DiscoverTab, closing the custom-wordlist-file half of this item. Built-in short/long presets, derive-from-sitemap/response-bodies, and case-sensitivity handling remain open backend gaps."
+      }
     },
     {
       "area": "target",
       "feature": "Content discovery: thread count / concurrency and request throttling controls",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "A 2000-word run is 2000 serial round-trips blocking the control server, and there is no way to slow down for a rate-limited or WAF'd target. Burp exposes both dials.",
-      "why": "Downgraded partial->absent. Neither of the two controls this item names exists in any form. The first pass credited it as partial on the strength of maxRequests, but a total-request CAP is a different control -- it bounds how much you send, not how fast or how parallel. There is no concurrency parameter and no delay parameter anywhere in the Request struct or the loop.",
-      "evidence": "Strictly serial, one blocking round-trip per word: content_discovery.cpp:99-104 `HttpClient client; ... auto get = [&](const QString &fullPath) { ++result.requestsSent; return client.send(req.host, port, req.tls, buildGet(req, fullPath)); };` driving cpp:154-160 `for (const QString &w : words) { if (result.requestsSent >= maxReq + 2) break; ... const auto r = get(full);`. The complete Request surf",
-      "audited_state": "absent",
+      "gap": "None -- concurrency (1-64) and throttle-ms (0-60000) fields in the DiscoverTab config panel POST straight to /api/content/discover's existing concurrency/throttleMs fields.",
+      "why": "The backend dials (631088c) had no GUI caller until this wave; DiscoverTab's new Discovery config panel adds both number inputs, closing the GUI-reachability gap.",
+      "evidence": "ui-v2/app.jsx DiscoverTab discConcurrency/discThrottleMs state -> NL.actions.discoverContent(url, max, {concurrency, throttleMs}) -> control_server.cpp:9090-9093 clamp+set on ContentDiscovery::Request.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "631088c",
-        "note": "Built (backend + API): ContentDiscovery::Request gains concurrency (1-64, default 10) + throttleMs (0-60000), and discover() fans its probe loop across a bounded QThreadPool + QSemaphore (one HttpClient per task -- HttpClient isn't thread-safe), guarding hits with a mutex and counters with atomics. Calibration stays serial and the per-path detection (classify against the read-only soft-404 CalibProfile) is untouched + order-independent, so results are IDENTICAL to the old serial run -- verified e2e (same hit set serial vs concurrent, ~4x faster wall-clock at concurrency 10). Set via /api/content/discover. PARTIAL: the concurrency/throttle knobs in the content-discovery UI (ui-v2) are the remaining follow-on."
+        "date": "2026-08-19",
+        "commit": "7f992c3",
+        "note": "Discovery config wave: concurrency + throttle-ms inputs added to DiscoverTab, the remaining ui-v2 follow-on flagged in the 631088c reconciled note."
       }
     },
     {
@@ -5244,14 +5250,14 @@
       "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Cannot ask 'try every word with .php/.bak/.old/.zip' -- the classic backup sweep. Every combination must be pre-expanded client-side and shipped in the wordlist array, which then collides with the 2000-request cap.",
-      "why": "Confirmed. The candidate path is a bare join with no inner loop and no mutation step.",
-      "evidence": "content_discovery.cpp:159 `const QString full = base + \"/\" + rel;` -- the entire candidate construction. No extensions field on Request (content_discovery.hpp:33-41). The only extensions present are baked into individual wordlist entries: cpp:57 `\"wp-login.php\"`, cpp:65 `\".env.local\"`, cpp:73 `\"backup.tar.gz\"`.",
-      "audited_state": "absent",
+      "gap": "Filename-mutation rules (word~, .word.swp, word.orig, case flips -- richer than a plain suffix append) are still not built. The extension-bruteforce half now has a GUI: an extensions field in DiscoverTab feeds the existing server-side word x extension expansion.",
+      "why": "0cd5f40 built the backend expansion but flagged the ui-v2 extensions input as a follow-on; this wave adds it (comma/newline-separated field, results readout shows wordsTried/wordsTotal proving the expansion). Mutation rules beyond suffix-append remain unbuilt, so the item stays partial rather than present.",
+      "evidence": "ui-v2/app.jsx DiscoverTab extensionsText -> parsed to an array -> NL.actions.discoverContent opts.extensions -> control_server.cpp:9098-9099 cr.extensions -> ContentDiscovery::expandWithExtensions (content_logic.cpp).",
+      "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-18",
-        "commit": "0cd5f40",
-        "note": "The file-extension bruteforce HALF is done (the classic backup sweep). Request gains an `extensions` list, and a pure ContentDiscovery::expandWithExtensions (content_logic.cpp, Qt6::Core only, mutation-proven) expands each word into the bare word + word+each-suffix BEFORE the maxRequests cap, so N words x M extensions expands server-side and the cap bounds the true total (wordsTotal reflects it). Control API /api/content/discover gains an `extensions` array. Verified: content_discovery_test 57/57 incl. new expand cases + 2 mutations (bare-word-first; word+ext order); e2e -- a mock that returns 200 only for /admin.php is NOT surfaced probing 'admin' alone but IS with extensions=['.php','.bak'] (wordsTotal=3). Gauntlet ctest 99/99 + probe 156. STAYS PARTIAL: the item ALSO asks for filename-MUTATION rules (word~, .word.swp, word.orig, case flips -- richer than a plain suffix append), which are not built, and the extensions input in the discovery UI is a ui-v2 follow-on."
+        "date": "2026-08-19",
+        "commit": "7f992c3",
+        "note": "Discovery config wave: extensions field added to DiscoverTab, closing the ui-v2 follow-on noted in 0cd5f40. Filename-mutation rules (beyond suffix-append) remain a separate, unbuilt backend gap."
       }
     },
     {
