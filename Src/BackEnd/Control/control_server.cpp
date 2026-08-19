@@ -1229,6 +1229,7 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["proxyOn"]         = m_wiring.proxy ? m_wiring.proxy->isRunning() : false;
     bootInfo["h2UpstreamCount"] = m_wiring.proxy ? m_wiring.proxy->h2UpstreamCount() : 0;
     bootInfo["filteredCount"]   = m_wiring.proxy ? m_wiring.proxy->filteredCount() : 0;
+    bootInfo["logOutOfScope"]   = m_wiring.proxy ? m_wiring.proxy->logOutOfScope() : false;
     if (m_wiring.proxy) {
         QJsonArray blocked;
         for (const QString &h : m_wiring.proxy->blockedHosts()) blocked.append(h);
@@ -3143,6 +3144,15 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             else                             m_wiring.proxy->restart();
         }
         return okJson({{ "isRunning", m_wiring.proxy && m_wiring.proxy->isRunning() }});
+    }
+    if (path == "/api/proxy/log-out-of-scope") {
+        // Burp's "log everything" -- retain out-of-scope traffic in history so the
+        // browse-broadly-then-set-scope loop works. A body carrying "value" sets it;
+        // any request returns the current state.
+        if (!m_wiring.proxy) return okJson({{ "logOutOfScope", false }});
+        if (bodyJson.contains("value"))
+            m_wiring.proxy->setLogOutOfScope(bodyJson.value("value").toBool());
+        return okJson({{ "logOutOfScope", m_wiring.proxy->logOutOfScope() }});
     }
     if (path == "/api/intercept/toggle") {
         if (m_wiring.intercept)

@@ -287,8 +287,11 @@ public:
 
         rewriteHostPort(req);
         const bool inScope = m_server->isUrlInScope(req.tls, req.host, req.port, req.path);
-        if (inScope) emit m_server->requestReceived(req);
-        else         m_server->noteFiltered();
+        // Log out-of-scope traffic too when the operator opted in (Burp's
+        // log-everything), so pre-scope browsing is reviewable; otherwise filter it.
+        const bool logIt = inScope || m_server->logOutOfScope();
+        if (logIt) emit m_server->requestReceived(req);
+        else       m_server->noteFiltered();
 
         // Let JS extensions rewrite headers / body / method / path before
         // we serialize. Mutations apply even to filtered hosts so a
@@ -327,7 +330,7 @@ public:
         if (auto *ext = m_server->extensions())
             resp = ext->applyResponseMutation(req, resp);
         m_server->applyResponseRules(req, resp);
-        if (inScope) emit m_server->responseReceived(req, resp);
+        if (logIt) emit m_server->responseReceived(req, resp);
 
         // Response interception: hold the response for the operator (edit/
         // forward/drop) before it reaches the client, mirroring the request

@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Optionally log out-of-scope traffic (the "browse, then scope, then review"
+  loop).** Nullock filters out-of-scope traffic out of history, which is great for
+  privacy but means anything you browsed *before* narrowing your scope was gone
+  for good. A new proxy switch lets you keep it: turn on "log out-of-scope
+  traffic" and requests to hosts outside your scope are retained in history and
+  searchable, so you can browse broadly, decide scope afterwards, and still review
+  what you already captured (Burp's log-everything behaviour). It stays **off by
+  default** &mdash; the privacy-preserving choice &mdash; and applies to plain
+  HTTP; an out-of-scope HTTPS host is still passed through opaquely with nothing
+  to decrypt. (The at-the-moment "stop logging out-of-scope?" prompt and a
+  per-row in/out-of-scope marker are still to come.)
 - **Search gains case-sensitivity and a negative match.** Two Burp-parity
   modifiers on the search endpoint: `case=sensitive` makes the regex
   case-sensitive (it defaults to insensitive as before), and `negate=1` inverts

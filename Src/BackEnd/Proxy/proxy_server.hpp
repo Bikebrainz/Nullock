@@ -239,6 +239,15 @@ public:
     void setH2Termination(bool on) { m_h2Termination = on; }
     bool h2Termination() const { return m_h2Termination; }
 
+    // Log OUT-OF-SCOPE traffic to history too (Burp's "log everything" default),
+    // so the browse-broadly -> set-scope -> review-what-you-captured loop works
+    // instead of losing pre-scope traffic forever. DEFAULT OFF (opt-in): when off,
+    // out-of-scope transactions are filtered from history as before. Applies to the
+    // plain-HTTP path; an out-of-scope HTTPS host is blind-tunnelled (no decrypted
+    // content to log). Set from the control thread, read on per-connection workers.
+    void setLogOutOfScope(bool on) { m_logOutOfScope.storeRelease(on ? 1 : 0); }
+    bool logOutOfScope() const { return m_logOutOfScope.loadAcquire() != 0; }
+
     // Set a file path where the blocked-host list is persisted. The file is
     // loaded immediately and rewritten on every mark/clear. Plain text, one
     // host per line.
@@ -320,6 +329,9 @@ private:
     Nullock::Core::SessionManager *m_sessionManager = nullptr;
     Nullock::Core::SessionRules   *m_sessionRules   = nullptr;
     bool m_h2Termination = false;   // --h2-termination (Phase 3, experimental)
+    // "Log out-of-scope traffic" (Burp's log-everything). Atomic: control thread
+    // writes, per-connection workers read. Default 0 = filter out-of-scope (as before).
+    QAtomicInt m_logOutOfScope {0};
     mutable QMutex m_blockMutex;
     QSet<QString> m_mitmBlocked;
     QString m_blocklistPath;
