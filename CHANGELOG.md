@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can register a teardown callback that runs when they're unloaded.**
+  A JavaScript extension can now call <code class="inline">nullock.onUnload(fn)</code>
+  (or the Burp-compatible name <code class="inline">nullock.registerUnloadingHandler(fn)</code>)
+  to register a function that fires once, on the engine thread, just before the
+  extension is torn down &mdash; on a reload/uninstall and on app exit &mdash; while
+  the JS engine is still alive. It's the hook a script needs to flush its own
+  state, close a resource, or log that it stopped, instead of being cut off mid-run
+  with no warning. Teardown callbacks need no permission (they clean up the script's
+  own state and can't touch the wire), each is isolated so one throwing can't skip
+  the others, and every registered handler is dropped when the engine is rebuilt so
+  none leaks across a reload.
 - **Match &amp; replace rules can match a literal string, not just a regex.** Each
   proxy match/replace rule now has a "literal" option: turn it on and the text you
   type in the *find* box is matched exactly, with characters like <code class="inline">.</code>,

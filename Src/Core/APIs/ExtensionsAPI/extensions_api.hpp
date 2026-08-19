@@ -126,6 +126,12 @@ private:
     // and NEVER while JS is executing -- destroying an engine from inside a
     // handler it is running would pull the stack out from under itself.
     void rebuildEngine();
+    // Invoke every registered nullock.onUnload handler once, on the owner thread,
+    // while the engine is still alive -- called at the START of reload() (before
+    // rebuildEngine tears the engine down) and from the destructor (app exit), so
+    // a script always gets its teardown callback before its world disappears.
+    // Does not clear the list; rebuildEngine() clears it (QJSValue-lifetime).
+    void runUnloadHandlers();
     void appendLog(const QString &message);
     // Re-publish the worker-visible handler flags. MUST be called on this
     // object's own thread after ANY change to the two handler lists.
@@ -159,6 +165,13 @@ private:
     // (which the proxy worker threads reach through a BlockingQueuedConnection).
     QList<ResponseHandler> m_onResponseHandlers;
     QList<QJSValue>      m_onRequestHandlers;   // only permitted extensions get in
+    // Teardown callbacks (nullock.onUnload). Owner-thread only, like the lists
+    // above: registered during evaluate(), fired by runUnloadHandlers() before an
+    // engine rebuild/app-exit, cleared by rebuildEngine(). Ungated -- a teardown
+    // callback is observe-level (it can't reach the wire). Not mirrored to a
+    // worker atomic: unlike onRequest/onResponse, no proxy worker ever consults
+    // it -- it fires only on the owner thread at reload/exit.
+    QList<QJSValue>      m_onUnloadHandlers;
 
     // Worker-readable mirrors of "is that list non-empty".
     //
@@ -197,6 +210,19 @@ public:
     // Returning a modified entry (with new headers/body/method/path) actually
     // changes what gets forwarded upstream.
     Q_INVOKABLE void onRequest(const QJSValue &callback);
+
+    // Exposed to JS as nullock.onUnload(function() { ... }). The callback runs
+    // once, on the owner thread, just BEFORE this extension is torn down -- on a
+    // reload/uninstall (reload() rebuilds the engine) and on app exit. It's the
+    // hook for a script to flush its own state, close a resource, or log that it
+    // stopped; the JS engine is still alive when it fires. No grant is required
+    // (a teardown callback cleans up the script's OWN state -- it can't touch the
+    // wire), so it registers like onResponse observation. Burp calls this
+    // registerUnloadingHandler; that name is provided below as an alias.
+    Q_INVOKABLE void onUnload(const QJSValue &callback);
+
+    // Burp-API-parity alias for onUnload (Burp: registerUnloadingHandler).
+    Q_INVOKABLE void registerUnloadingHandler(const QJSValue &callback);
 
     // Exposed to JS as
     //   nullock.reportFinding(severity, kind, summary, evidence, url)

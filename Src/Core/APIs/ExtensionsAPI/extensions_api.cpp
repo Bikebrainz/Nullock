@@ -58,6 +58,20 @@ void ExtensionsApiBridge::onRequest(const QJSValue &callback) {
     m_owner->refreshHandlerFlags();
 }
 
+void ExtensionsApiBridge::onUnload(const QJSValue &callback) {
+    if (!callback.isCallable()) {
+        m_owner->appendLog("[ext] onUnload: argument is not a function");
+        return;
+    }
+    // Ungated: a teardown callback cleans up the SCRIPT's own state and can't
+    // touch the wire, so -- like onResponse observation -- it always registers.
+    m_owner->m_onUnloadHandlers.append(callback);
+}
+
+void ExtensionsApiBridge::registerUnloadingHandler(const QJSValue &callback) {
+    onUnload(callback);   // Burp-name alias
+}
+
 void ExtensionsApiBridge::reportFinding(const QString &severity,
                                         const QString &kind,
                                         const QString &summary,
@@ -99,6 +113,7 @@ void ExtensionsApi::rebuildEngine() {
     // forgets, because dropping them here is idempotent.
     m_onResponseHandlers.clear();
     m_onRequestHandlers.clear();
+    m_onUnloadHandlers.clear();   // same QJSValue-lifetime rule as the two above
     refreshHandlerFlags();
 
     m_engine = std::make_unique<QJSEngine>();
@@ -106,7 +121,29 @@ void ExtensionsApi::rebuildEngine() {
     m_engine->globalObject().setProperty("nullock", nullockObj);
 }
 
-ExtensionsApi::~ExtensionsApi() = default;
+ExtensionsApi::~ExtensionsApi() {
+    // App exit is an unload too: fire teardown callbacks while the engine and
+    // the parented bridge are still alive (both outlive this body -- m_engine is
+    // a member destroyed after ~body runs, m_bridge is a child QObject cleaned up
+    // in ~QObject). A well-behaved onUnload handler flushes JS-side state / logs.
+    runUnloadHandlers();
+}
+
+void ExtensionsApi::runUnloadHandlers() {
+    // Owner thread only. Fire each teardown callback in turn; one throwing must
+    // not stop the others (a half-run teardown is worse than a logged error), so
+    // each is isolated and its error surfaced to the extension log. The list is
+    // NOT cleared here -- rebuildEngine() owns clearing it (the QJSValues belong
+    // to the engine it is about to destroy).
+    for (QJSValue &fn : m_onUnloadHandlers) {
+        if (!fn.isCallable()) continue;
+        const QJSValue r = fn.call();
+        if (r.isError())
+            appendLog(QString("[ext] onUnload handler error: %1 at line %2")
+                          .arg(r.toString())
+                          .arg(r.property("lineNumber").toInt()));
+    }
+}
 
 QString ExtensionsApi::extensionsDir() const {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -119,6 +156,12 @@ QStringList ExtensionsApi::recentLog(int max) const {
 }
 
 bool ExtensionsApi::reload() {
+    // Every currently-loaded script is about to be torn down (rebuildEngine
+    // destroys the engine, then loadAll re-reads from disk -- an uninstalled
+    // script is simply gone afterward). Give each its onUnload callback FIRST,
+    // while its engine is still alive, before anything is cleared.
+    runUnloadHandlers();
+
     m_loadedScripts.clear();
     m_scriptGrants.clear();
     m_currentGrants.clear();
