@@ -1623,12 +1623,18 @@
     {
       "area": "extender",
       "feature": "[B19] Extension can send items to other tools (sendToRepeater / Intruder / Organizer / Comparer)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Extension-driven cross-tool workflow is not possible.",
       "why": "CONFIRMED by my own greps (sendToRepeater=0, sendToIntruder=0) and by reading the bridge.",
-      "evidence": "extensions_api.hpp:164-185 \u2014 no cross-tool method"
+      "evidence": "extensions_api.hpp:164-185 \u2014 no cross-tool method",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "75d8ec9",
+        "note": "absent -> partial. Cross-tool workflow from an extension is now possible for the two primary attack tools: nullock.sendToRepeater(host,port,tls,request) opens a fresh Repeater tab and populates its target + request; nullock.sendToIntruder(...) loads Intruder's base request. Since APIs deliberately does NOT link Networking, the handlers are std::function callbacks (ExtensionsApi::SendFn) wired from app.cpp with lambdas that drive repeater.addTab/setHost/... and intruder.setHost/setRequestTemplate; ungated (uses the extension's own request data + only stages a tool the user then drives). VERIFIED e2e (7/7): a test extension's sends land -- Repeater snapshot shows target.example:8443 tls + the request text, Intruder snapshot shows intr.example:9443 + the request template. ctest 100/100, probe 156/156. REMAINDER (why still partial): sendToComparer / sendToOrganizer / sendToDecoder from an extension (the '/ Organizer / Comparer' half of the title) not wired yet."
+      }
     },
     {
       "area": "extender",
