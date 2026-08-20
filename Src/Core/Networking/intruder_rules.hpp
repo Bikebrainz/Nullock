@@ -45,11 +45,20 @@ struct Rule {
 //                    This is Burp's global "URL-encode these characters" safety
 //                    net; the Intruder appends it to every payload's chain when
 //                    a global char-set is configured.
+//   add-raw-payload -> appends the ORIGINAL, pre-chain payload value (ignoring
+//                    any transforms applied by earlier rules in the same chain)
+//                    -- Burp's rule for sign-then-send patterns, e.g.
+//                    [sha256] -> [add-raw-payload] yields "<hash><rawvalue>".
+//                    Called standalone (the 2-arg overload) `original` defaults
+//                    to `value` itself.
 // An unknown op, or an encode/hash op that fails, leaves the value UNCHANGED (a
 // payload run must never silently vanish).
+QString applyRule(const QString &value, const Rule &rule, const QString &original);
 QString applyRule(const QString &value, const Rule &rule);
 
-// Apply an ordered chain, threading each rule's output into the next.
+// Apply an ordered chain, threading each rule's output into the next. Rules see
+// the ORIGINAL, pre-chain value via add-raw-payload regardless of how many
+// earlier rules already transformed the running value.
 QString applyRules(const QString &value, const QList<Rule> &rules);
 
 // The processing ops this engine understands (for UI discovery). Union of the

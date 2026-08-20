@@ -1659,6 +1659,7 @@ const ATTACK_TYPES = [
 
 const RULE_OPS_FALLBACK = [
   "prefix", "suffix", "uppercase", "lowercase", "reverse", "match-replace",
+  "add-raw-payload",
   "base64-encode", "base64url-encode", "url-encode", "hex-encode",
   "html-encode", "unicode-escape", "rot13", "md5", "sha1", "sha256", "sha512",
 ];

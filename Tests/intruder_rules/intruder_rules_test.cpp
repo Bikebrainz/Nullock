@@ -56,6 +56,20 @@ int main(int argc, char **argv) {
     chk("op name is case-insensitive", applyRule("aBc", rule("UPPERCASE")) == "ABC");
     chk("op name trimmed",   applyRule("aBc", rule("  uppercase  ")) == "ABC");
 
+    // ----- add-raw-payload (Burp sign-then-send: re-insert the ORIGINAL,
+    // pre-chain payload, ignoring any transforms earlier rules already applied) -----
+    // Standalone 2-arg call: `original` defaults to `value` itself.
+    chk("add-raw-payload standalone appends value to itself",
+        applyRule("val", rule("add-raw-payload")) == "valval");
+    chk("add-raw-payload after a transform appends the ORIGINAL, not the running value",
+        applyRules("abc", { rule("uppercase"), rule("add-raw-payload") }) == "ABCabc");
+    chk("add-raw-payload sign-then-send pattern: hash then raw",
+        applyRules("secret", { rule("sha256"), rule("add-raw-payload") })
+            == applyRule("secret", rule("sha256")) + "secret");
+    chk("add-raw-payload repeated in a chain always appends the SAME original",
+        applyRules("ab", { rule("add-raw-payload"), rule("add-raw-payload") }) == "ababab");
+    chk("add-raw-payload is advertised in operations()", operations().contains("add-raw-payload"));
+
     // ----- no-op safety: a payload must never silently vanish -----
     chk("unknown op -> unchanged", applyRule("val", rule("nonsense")) == "val");
     chk("empty op -> unchanged",   applyRule("val", rule(""))         == "val");

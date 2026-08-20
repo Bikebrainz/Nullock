@@ -26,9 +26,14 @@ QString properCaseRule(const QString &s, bool lowerRest) {
 } // namespace
 
 QString applyRule(const QString &value, const Rule &rule) {
+    return applyRule(value, rule, value);
+}
+
+QString applyRule(const QString &value, const Rule &rule, const QString &original) {
     const QString op = rule.op.trimmed().toLower();
     if (op.isEmpty()) return value;
 
+    if (op == QLatin1String("add-raw-payload")) return value + original;
     if (op == QLatin1String("prefix"))    return rule.arg + value;
     if (op == QLatin1String("suffix"))    return value + rule.arg;
     if (op == QLatin1String("uppercase")) return value.toUpper();
@@ -168,7 +173,7 @@ QString applyRule(const QString &value, const Rule &rule) {
 
 QString applyRules(const QString &value, const QList<Rule> &rules) {
     QString out = value;
-    for (const Rule &r : rules) out = applyRule(out, r);
+    for (const Rule &r : rules) out = applyRule(out, r, value);
     return out;
 }
 
@@ -189,7 +194,7 @@ QStringList operations() {
         QStringLiteral("uppercase"), QStringLiteral("lowercase"),
         QStringLiteral("propername"), QStringLiteral("propername-keep"),
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
-        QStringLiteral("regex-replace"),
+        QStringLiteral("regex-replace"), QStringLiteral("add-raw-payload"),
         QStringLiteral("substring"), QStringLiteral("reverse-substring"),
         QStringLiteral("url-encode-chars"),
         QStringLiteral("base64-encode"), QStringLiteral("base64url-encode"),
