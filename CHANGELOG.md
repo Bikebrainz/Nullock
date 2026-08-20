@@ -786,6 +786,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked the redirect / Host-header-reflection detectors.**
+  `open-redirect-suspect` (a 3xx whose cross-host Location host is echoed from a
+  request query param) and `host-header-reflected-location` (the Host value
+  reflected into an absolute Location &mdash; password-reset-poisoning surface)
+  gained positive + negative coverage, pinning the cross-host + query-derivation
+  requirement and the schemeless-Location skip. Mutation-proven.
 - **Locked the two JWT-leakage detectors.** `jwt-in-url` (a JWT-shape token in
   the request path &mdash; logged in proxies, referrers, history) and
   `jwt-echoed-in-body` (a JWT reflected in a non-auth response body) gained

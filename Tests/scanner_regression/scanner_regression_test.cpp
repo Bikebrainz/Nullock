@@ -621,6 +621,52 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- Redirect / Host-header reflection (were untested) -------------
+    // open-redirect-suspect: a 3xx whose cross-host Location host also appears
+    // in a request query param (attacker-controlled redirect target).
+    tc.append({ "cross-host redirect echoed from query -> open-redirect-suspect",
+                "open-redirect-suspect", false,
+        makeReq("GET", "app.example.test", "/go?next=evil.example.test"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "https://evil.example.test/"}}) });
+
+    // No query param carrying the target host -> not derived from user input.
+    tc.append({ "cross-host redirect with no query param must NOT fire open-redirect-suspect",
+                "open-redirect-suspect", true,
+        makeReq("GET", "app.example.test", "/go"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "https://evil.example.test/"}}) });
+
+    // Same-host redirect is not an open redirect even if echoed in the query.
+    tc.append({ "same-host redirect must NOT fire open-redirect-suspect",
+                "open-redirect-suspect", true,
+        makeReq("GET", "app.example.test", "/go?next=app.example.test"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "https://app.example.test/dashboard"}}) });
+
+    // host-header-reflected-location: the Host value shows up in an absolute /
+    // root-relative Location (password-reset-poisoning surface).
+    tc.append({ "Host reflected in absolute Location -> host-header-reflected-location",
+                "host-header-reflected-location", false,
+        makeReq("GET", "evil.example.test", "/reset"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "https://evil.example.test/reset?t=1"}}) });
+
+    // A relative Location without scheme/slash that merely contains the host is
+    // the already-normal case the scanner deliberately skips.
+    tc.append({ "schemeless reflected Location must NOT fire host-header-reflected-location",
+                "host-header-reflected-location", true,
+        makeReq("GET", "evil.example.test", "/reset"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "evil.example.test/reset"}}) });
+
+    // Host not present in Location at all -> nothing reflected.
+    tc.append({ "unrelated Location must NOT fire host-header-reflected-location",
+                "host-header-reflected-location", true,
+        makeReq("GET", "app.example.test", "/asset"),
+        makeResp(302, "text/html", "",
+                 {{"Location", "https://cdn.otherhost.test/a.js"}}) });
+
     // ---- JWT leakage (were untested) -----------------------------------
     // A JWT-shape token (ey<b64>.ey<b64>.<b64>, 3 segments) leaked in the URL
     // or echoed in a non-auth response body. The token is split across adjacent
