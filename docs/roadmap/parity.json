@@ -1570,12 +1570,18 @@
     {
       "area": "extender",
       "feature": "[B16] Extension access to Burp Collaborator (api.collaborator().createClient(), poll interactions)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "No OOB payload generation or interaction polling from an extension.",
       "why": "CONFIRMED after checking the local synonym the brief warned about \u2014 'Collaborator' is 'OAST' here, and oast_logic.cpp does exist \u2014 but the bridge exposes none of it. There is no oast/collaborator reference anywhere under Src/Core/APIs, and the four-method bridge has no payload-generation or polling entry point.",
-      "evidence": "extensions_api.hpp:164-185 (complete bridge, no OAST method); the OAST subsystem lives at Src/Core/Networking/oast_logic.cpp and is wired to the scanner in app.cpp:890 `oastCorrelator.setScanner(&scanner);` \u2014 never to extensions"
+      "evidence": "extensions_api.hpp:164-185 (complete bridge, no OAST method); the OAST subsystem lives at Src/Core/Networking/oast_logic.cpp and is wired to the scanner in app.cpp:890 `oastCorrelator.setScanner(&scanner);` \u2014 never to extensions",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "1646b14",
+        "note": "absent -> partial. Both named absences closed: nullock.collaborator (Burp's api.collaborator()) now gives extensions OOB payload generation AND interaction polling. generate() mints an OAST token via OastServer::mintToken() and returns { token, hostUrl, pathUrl, port, baseHost }, recording the token; interactions() reads OastServer::hitsSince(0) (HTTP) + DnsSink::hitsSince(0) (DNS), filters to the tokens THIS collaborator minted, and returns each as { id, token, type:'http'|'dns', sourceIp, atMs, host, method, path }. Wired via ExtensionsApi::setOast(&oast,&dnsSink) in app.cpp (OAST + DNS sinks are in the same APIs lib -- no cross-lib callback interface); the collaborator bridge is CppOwned so its minted-token set survives an engine reload (a callback landing after a reload still surfaces). VERIFIED e2e (5/5): a test extension generates a token (interactions empty), a real DNS callback is fired to that token, and after reload interactions() surfaces a dns hit scoped to its token. ctest 100/100, probe 156/156. REMAINDER (why still partial): SMTP interactions (Nullock has no SMTP sink) and the full raw callback body / Burp's per-client object nesting; the core mint+poll for HTTP+DNS is done."
+      }
     },
     {
       "area": "extender",
