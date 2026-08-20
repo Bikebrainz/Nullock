@@ -317,7 +317,20 @@ baseline diff as everything else.
 
 ## Build from source
 
-Requirements: CMake 3.24+, Qt 6.7+, C++20 (MSVC 2022 / GCC 13+ / Clang 16+), libnghttp2, OpenSSL.
+Requirements: CMake 3.24+, C++20 (MSVC 2022 / GCC 12+ / Clang 15+), **Qt 6.7.3
+with the `qtwebsockets` add-on module**, and the **dev headers** for libnghttp2
+and OpenSSL. The two dev packages are the usual missing piece — install them first
+(full per-platform steps in [`INSTALL.md`](INSTALL.md)):
+
+```sh
+# Debian/Ubuntu
+sudo apt-get install build-essential cmake ninja-build libnghttp2-dev libssl-dev
+# Fedora:  sudo dnf install gcc-c++ cmake ninja-build libnghttp2-devel openssl-devel
+# macOS:   brew install nghttp2
+```
+
+Then build (Qt must be discoverable — set `CMAKE_PREFIX_PATH` to your Qt if `cmake`
+can't find it, e.g. `-DCMAKE_PREFIX_PATH="$(qmake6 -query QT_INSTALL_PREFIX)"`):
 
 ```sh
 git clone https://github.com/Bikebrainz/Nullock

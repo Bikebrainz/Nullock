@@ -194,6 +194,30 @@ jobs:
         # Linux is a follow-up (not yet validated there).
         run: cmake --build build -j
 
+  build-macos:
+    name: build NullockApp (macOS)
+    runs-on: macos-14
+    # macOS had NO per-push coverage: the app is only built for macOS in
+    # release.yml, which fires on v*.*.* tags -- so the last time a macOS build
+    # ran at all was the v3.7.0 tag. Weeks of development could regress the macOS
+    # compile with nothing to catch it (a real user hit exactly this). This job
+    # mirrors release.yml's build-macos configure+build (minus signing/DMG) so a
+    # macOS compile/link break is caught on every push, the same guarantee Linux
+    # and Windows already have.
+    steps:
+      - uses: actions/checkout@v4
+      - name: install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtwebsockets'
+      - name: install nghttp2
+        run: brew install nghttp2
+      - name: configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: build (guards macOS compile/link regressions)
+        run: cmake --build build -j
+
   fuzz-corpus-replay:
     name: replay fuzz corpus (standalone)
     runs-on: ubuntu-latest

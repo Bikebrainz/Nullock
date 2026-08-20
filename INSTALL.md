@@ -20,11 +20,17 @@ The CLI `nullock` (in `bin/`) talks to a running instance over
 ## Build from source
 
 ### Prerequisites
-- **Qt 6.7.3** (module `msvc2019_64` on Windows; distro/Homebrew Qt 6
-  elsewhere), with `qtwebsockets`.
-- A C++20 compiler (MSVC 2022 / recent GCC / Clang) and CMake ≥ 3.24.
-- **nghttp2** (HTTP/2). Windows: `vcpkg install nghttp2:x64-windows`.
-- OpenSSL (for the forged-leaf CA).
+- **Qt 6.7.3**, **including the `qtwebsockets` module** (it is a *separate*
+  add-on — a base Qt install without it will fail to configure). The QML / Quick
+  / Sql / Network / Concurrent modules ship in the base Qt 6 install. This is the
+  version CI builds against; other Qt 6.7+ builds usually work but are not tested.
+- A C++20 compiler (MSVC 2022 / GCC 12+ / Clang 15+) and CMake ≥ 3.24.
+- **nghttp2** dev headers (HTTP/2) and **OpenSSL** dev headers (forged-leaf CA).
+  These are the two dependencies most often missing — install them explicitly:
+  - **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential cmake ninja-build libnghttp2-dev libssl-dev`
+  - **Linux (Fedora):** `sudo dnf install gcc-c++ cmake ninja-build libnghttp2-devel openssl-devel`
+  - **macOS:** `brew install nghttp2` (OpenSSL comes with the toolchain; CMake finds it via Homebrew)
+  - **Windows:** `vcpkg install nghttp2:x64-windows` (OpenSSL is provided by Qt)
 
 ### Windows (MSVC)
 Use the VS-bundled CMake (see [`CONTRIBUTING.md`](CONTRIBUTING.md)):
