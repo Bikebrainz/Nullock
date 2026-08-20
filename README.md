@@ -116,7 +116,7 @@ Template scanner  Nuclei-style detection templates (JSON or real nuclei .yaml): 
                   custom JSON one, run against a target URL
 CI security gate  Headless one-shot scan (NullockApp --scan URL --fail-on high -> nonzero exit) +
                   GET /api/gate pipeline pass/fail; composite GitHub Action + reference Dockerfile
-Reporting         Markdown / styled HTML / JSON reports, posture grade, OWASP + compliance coverage,
+Reporting         Markdown / styled HTML / JSON / Burp-style XML issue reports, posture grade, OWASP + compliance coverage,
                   asset inventory; in-app REPORTING tab also drives OpenAPI export/import, SBOM
                   download, and workspace push/pull (findings baseline/diff lives in ISSUES, see Findings)
 Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equivalent); a named,

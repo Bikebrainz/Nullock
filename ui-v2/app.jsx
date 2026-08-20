@@ -4574,6 +4574,7 @@ function ReportingTab() {
           <Btn k="md" label="Download Markdown" onClick={() => downloadBlob("md", NL.actions.reportBuild, "nullock-report.md")} />
           <Btn k="html" label="Download HTML" onClick={() => downloadBlob("html", NL.actions.reportHtml, "nullock-report.html")} />
           <Btn k="jsondl" label="Download JSON" onClick={() => downloadHref("/api/report/json", "nullock-report.json")} />
+          <Btn k="xmldl" label="Download XML" onClick={() => downloadHref("/api/report/xml", "nullock-report.xml")} />
           <Btn k="json" label="View summary" onClick={loadSummary} />
         </div>
         {summary && (
