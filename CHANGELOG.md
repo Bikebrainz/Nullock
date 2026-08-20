@@ -786,6 +786,13 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked five request/method/caching detectors.** `secret-in-url` (a
+  sensitive query param), `debug-method-allowed` (an accepted TRACE/CONNECT/
+  PROPFIND), `cache-vary-missing-cookie` (a cookie-setting cacheable 200 with no
+  `Vary: Cookie`), `server-timing-leak`, and `options-mutation-methods` gained
+  positive + negative coverage, including the TRACE-must-be-2xx and Vary:Cookie
+  discriminators. Mutation-proven. This completes regression coverage for the
+  passive scanner's full detector set.
 - **Locked four content-leak detectors.** `mixed-content` (an HTTPS page
   referencing `http://` resources), `internal-hostname-leak` (an internal-TLD
   hostname in the body), `html-comment-leak` (TODO/FIXME/password/etc. in an HTML

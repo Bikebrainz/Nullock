@@ -621,6 +621,59 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- Sensitive params / methods / caching (were untested) ----------
+    tc.append({ "sensitive query param -> secret-in-url", "secret-in-url", false,
+        makeReq("GET", "example.test", "/callback?api_key=abc123&next=/home"),
+        makeResp(200, "text/html", "ok") });
+
+    tc.append({ "ordinary query param must NOT fire secret-in-url", "secret-in-url", true,
+        makeReq("GET", "example.test", "/search?q=hello&page=2"),
+        makeResp(200, "text/html", "ok") });
+
+    tc.append({ "TRACE accepted (2xx) -> debug-method-allowed", "debug-method-allowed", false,
+        makeReq("TRACE", "example.test", "/"),
+        makeResp(200, "message/http", "TRACE / HTTP/1.1") });
+
+    // Status gate: a rejected TRACE (405) is not an accepted debug method.
+    tc.append({ "TRACE rejected (405) must NOT fire debug-method-allowed",
+                "debug-method-allowed", true,
+        makeReq("TRACE", "example.test", "/"),
+        makeResp(405, "text/html", "Method Not Allowed") });
+
+    tc.append({ "cookie-setting cacheable 200 without Vary:Cookie -> cache-vary-missing-cookie",
+                "cache-vary-missing-cookie", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Set-Cookie", "sid=abc; Secure; HttpOnly; SameSite=Lax"},
+                  {"Cache-Control", "public, max-age=60"}}) });
+
+    tc.append({ "same response WITH Vary:Cookie must NOT fire cache-vary-missing-cookie",
+                "cache-vary-missing-cookie", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Set-Cookie", "sid=abc; Secure; HttpOnly; SameSite=Lax"},
+                  {"Cache-Control", "public, max-age=60"},
+                  {"Vary", "Cookie, Accept-Encoding"}}) });
+
+    tc.append({ "Server-Timing with dur= -> server-timing-leak", "server-timing-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x", {{"Server-Timing", "db;dur=53.2, cache;dur=1.1"}}) });
+
+    tc.append({ "Server-Timing without dur= must NOT fire server-timing-leak",
+                "server-timing-leak", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x", {{"Server-Timing", "cache;desc=\"hit\""}}) });
+
+    tc.append({ "OPTIONS Allow with mutation methods -> options-mutation-methods",
+                "options-mutation-methods", false,
+        makeReq("OPTIONS", "example.test", "/api/item"),
+        makeResp(204, "", "", {{"Allow", "GET, POST, PUT, DELETE, OPTIONS"}}) });
+
+    tc.append({ "OPTIONS Allow with only safe methods must NOT fire options-mutation-methods",
+                "options-mutation-methods", true,
+        makeReq("OPTIONS", "example.test", "/api/item"),
+        makeResp(204, "", "", {{"Allow", "GET, HEAD, OPTIONS"}}) });
+
     // ---- Content leaks (were untested) ---------------------------------
     tc.append({ "HTTPS page with http:// resource -> mixed-content", "mixed-content", false,
         makeReq("GET", "example.test", "/"),
