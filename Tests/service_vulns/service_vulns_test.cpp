@@ -277,6 +277,24 @@ int main(int argc, char **argv) {
             pOnly("220 mail.example.com ESMTP Exim 4.94") == "exim");
     }
 
+    // ---- version-match boundaries for two previously-unexercised CVEs ---
+    // exim CVE-2019-10149 (9.8 RCE) affects [4.87, 4.92); apache CVE-2021-44790
+    // (9.8 mod_lua RCE) affects [2.4.0, 2.4.52). Their table rows had no
+    // matchVersion positive -- only banner name-resolution was tested.
+    {
+        chk("exim 4.90 (in range) -> CVE-2019-10149 matched",
+            has(cves("exim", "4.90"), "CVE-2019-10149"));
+        chk("exim 4.92 (= fix, exclusive upper) -> NOT CVE-2019-10149",
+            !has(cves("exim", "4.92"), "CVE-2019-10149"));
+        chk("exim 4.86 (below lower bound) -> NOT CVE-2019-10149",
+            !has(cves("exim", "4.86"), "CVE-2019-10149"));
+
+        chk("apache 2.4.51 (in range) -> CVE-2021-44790 matched",
+            has(cves("apache", "2.4.51"), "CVE-2021-44790"));
+        chk("apache 2.4.52 (= fix) -> NOT CVE-2021-44790",
+            !has(cves("apache", "2.4.52"), "CVE-2021-44790"));
+    }
+
     std::fprintf(stderr, "service_vulns_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
