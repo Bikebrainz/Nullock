@@ -1267,6 +1267,7 @@ QByteArray ControlServer::buildSnapshot() const {
                 { "name",    s },
                 { "enabled", m_wiring.extensions->isExtensionEnabled(s) } });
         bootInfo["extensionAll"]      = allExt;
+        bootInfo["extAutoReload"]     = m_wiring.extensions->autoReload();
         bootInfo["extensionsDir"]     = m_wiring.extensions->extensionsDir();
         // Per-script DECLARED capability set (the whole thing -- observe-level
         // and future tokens are kept too, not just the dangerous ones). The UI
@@ -6326,6 +6327,14 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return okJson({{ "ok", true },
                        { "enabled", m_wiring.extensions->isExtensionEnabled(name) },
                        { "loaded",  m_wiring.extensions->loadedCount() }});
+    }
+    // POST /api/extensions/auto-reload { value } -- toggle dev auto-reload (also
+    // settable at launch via --ext-autoreload / NULLOCK_EXT_AUTORELOAD).
+    if (path == "/api/extensions/auto-reload") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+        m_wiring.extensions->setAutoReload(bodyJson.value("value").toBool(true));
+        return okJson({{ "ok", true }, { "autoReload", m_wiring.extensions->autoReload() }});
     }
 
     if (path == "/api/findings/clear") {

@@ -17,6 +17,9 @@
 #include <atomic>
 #include <memory>
 
+class QFileSystemWatcher;   // forward — auto-reload watcher (pointer member)
+class QTimer;               // forward — reload debounce (pointer member)
+
 namespace Nullock::Core {
 
 // Findings from nullock.reportFinding() go to an IFindingSink, which
@@ -102,6 +105,13 @@ public:
 
     Q_INVOKABLE QStringList recentLog(int max = 50) const;
     Q_INVOKABLE bool reload();
+
+    // Auto-reload during development: when enabled, a filesystem watcher on the
+    // extensions dir reloads (debounced) whenever a .js is added, edited, or
+    // removed -- no manual Reload needed. Opt-in (Burp's per-extension model) so a
+    // stateful extension isn't torn down on every unrelated file save. Default off.
+    void setAutoReload(bool on);
+    bool autoReload() const { return m_autoReload; }
 
     // Wire the passive scanner so extensions can call
     // nullock.reportFinding(severity, kind, summary, evidence, url).
@@ -256,6 +266,15 @@ private:
     QSet<QString>        m_disabled;
     void loadDisabledSet();   // read .nullock-disabled.json into m_disabled
     void saveDisabledSet();   // write m_disabled back out
+
+    // Auto-reload plumbing. m_watcher watches the extensions dir + each .js;
+    // m_reloadDebounce coalesces the burst of events an editor's save produces
+    // into a single reload(). refreshWatch() re-syncs the watched paths after a
+    // reload (files are commonly deleted+recreated on save, dropping the watch).
+    bool                 m_autoReload = false;
+    QFileSystemWatcher  *m_watcher = nullptr;
+    QTimer              *m_reloadDebounce = nullptr;
+    void refreshWatch();
 };
 
 // The C++ object the JS side calls into. Lives inside ExtensionsApi.

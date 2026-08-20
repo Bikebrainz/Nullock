@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QFileSystemWatcher>
+#include <QTimer>
 #include <QJSValueIterator>
 #include <QMetaType>
 #include <QStandardPaths>
@@ -182,8 +184,47 @@ ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // survive every engine reload() destroys, and is re-published each rebuild.
     m_utils  = new ExtensionsUtilsBridge(this);
     m_collab = new ExtensionsCollaboratorBridge(this);
+
+    // Auto-reload plumbing (inert until setAutoReload(true)). A save produces a
+    // burst of watcher events; the debounce collapses them into one reload().
+    m_watcher = new QFileSystemWatcher(this);
+    m_reloadDebounce = new QTimer(this);
+    m_reloadDebounce->setSingleShot(true);
+    m_reloadDebounce->setInterval(300);
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this,
+            [this]() { if (m_autoReload) m_reloadDebounce->start(); });
+    connect(m_watcher, &QFileSystemWatcher::fileChanged, this,
+            [this]() { if (m_autoReload) m_reloadDebounce->start(); });
+    connect(m_reloadDebounce, &QTimer::timeout, this, [this]() {
+        appendLog(QStringLiteral("[ext] auto-reload: extensions dir changed"));
+        reload();   // reload() re-reads the dir; refreshWatch() at its end re-syncs
+    });
+
     rebuildEngine();
     loadAll();
+}
+
+void ExtensionsApi::setAutoReload(bool on) {
+    if (on == m_autoReload) return;
+    m_autoReload = on;
+    if (on) { refreshWatch(); appendLog(QStringLiteral("[ext] auto-reload ENABLED")); }
+    else {
+        if (m_watcher && !m_watcher->files().isEmpty())       m_watcher->removePaths(m_watcher->files());
+        if (m_watcher && !m_watcher->directories().isEmpty()) m_watcher->removePaths(m_watcher->directories());
+        appendLog(QStringLiteral("[ext] auto-reload disabled"));
+    }
+}
+
+void ExtensionsApi::refreshWatch() {
+    if (!m_autoReload || !m_watcher) return;
+    // Re-sync from scratch: editors often delete+recreate a file on save, which
+    // silently drops its watch, so a persistent watch would miss the 2nd save.
+    if (!m_watcher->files().isEmpty())       m_watcher->removePaths(m_watcher->files());
+    if (!m_watcher->directories().isEmpty()) m_watcher->removePaths(m_watcher->directories());
+    const QString dir = extensionsDir();
+    if (QFileInfo::exists(dir)) m_watcher->addPath(dir);   // catches add/remove/rename
+    for (const QFileInfo &fi : QDir(dir).entryInfoList({ "*.js" }, QDir::Files))
+        m_watcher->addPath(fi.absoluteFilePath());          // catches in-place edits
 }
 
 void ExtensionsApi::rebuildEngine() {
@@ -314,6 +355,7 @@ void ExtensionsApi::loadAll() {
             : QString("[ext] loaded %1 (granted: %2)").arg(fi.fileName(), g.join(", ")));
     }
     m_currentGrants.clear();   // not evaluating any extension now
+    refreshWatch();            // re-sync auto-reload watches (no-op unless enabled)
     emit loadedChanged();
 }
 

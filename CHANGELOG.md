@@ -11,6 +11,13 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can auto-reload while you're developing them.** Turn on auto-reload
+  (launch with <code class="inline">--ext-autoreload</code>, set
+  <code class="inline">NULLOCK_EXT_AUTORELOAD</code>, or <code class="inline">POST /api/extensions/auto-reload {value:true}</code>)
+  and editing, adding, or removing an extension file reloads your extensions
+  automatically &mdash; no more clicking Reload after every change. It's off by
+  default so a stateful extension isn't torn down on an unrelated save, and the
+  reloads are debounced so one save is one reload.
 - **Extensions can run their own out-of-band (OOB) checks.** A JavaScript extension
   can now mint a Collaborator-style payload with <code class="inline">nullock.collaborator.generate()</code>
   (Burp's <code class="inline">api.collaborator()</code>), drop it into a request, and

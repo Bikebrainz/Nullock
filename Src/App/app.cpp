@@ -1194,6 +1194,12 @@ int main(int argc, char *argv[]) {
     // (nullock.collaborator). Wired here, after both sinks exist.
     extensions.setOast(&oast, &dnsSink);
 
+    // Opt-in extension auto-reload during development (--ext-autoreload or
+    // NULLOCK_EXT_AUTORELOAD): reload extensions whenever a .js in the dir changes.
+    if (hasFlag(argc, argv, "--ext-autoreload")
+        || qEnvironmentVariableIsSet("NULLOCK_EXT_AUTORELOAD"))
+        extensions.setAutoReload(true);
+
     // Background update check. Hits GitHub Releases API once at startup,
     // surfaces the result via /api/snapshot. No telemetry, no
     // auto-download -- just a small "X.Y.Z available" pill in the UI.
