@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-08-18",
+  "reconciled_through": "2026-08-20",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -1616,12 +1616,18 @@
     {
       "area": "extender",
       "feature": "[B20] Extension utilities: api.utilities() \u2014 Base64/URL/hex/gzip codecs, ByteArray, crypto helpers",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
       "gap": "Every extension re-implements primitives by hand in ES5. No base64, gzip, hashing or byte-level type.",
       "why": "CONFIRMED. The engine setup is two lines and installs exactly one global; with installExtensions never called there is not even a console. I verified the downstream consequence in the shipped extension.",
-      "evidence": "extensions_api.cpp:87-88 `QJSValue nullockObj = m_engine.newQObject(m_bridge); m_engine.globalObject().setProperty(\"nullock\", nullockObj);` \u2014 the only global; extensions/aws_sigv4.js inlines SHA-256/HMAC because of it"
+      "evidence": "extensions_api.cpp:87-88 `QJSValue nullockObj = m_engine.newQObject(m_bridge); m_engine.globalObject().setProperty(\"nullock\", nullockObj);` \u2014 the only global; extensions/aws_sigv4.js inlines SHA-256/HMAC because of it",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "694064a",
+        "note": "absent -> partial. Added nullock.utils (Burp's api.utilities() grouping): base64Encode/Decode, urlEncode/Decode, hexEncode/Decode, htmlEncode/Decode, sha256/sha1/md5 -- so an extension no longer hand-rolls base64/hex/hashing in ES5 (the aws_sigv4.js inline-SHA256 the evidence cites). Pure Qt6::Core module extensions_utils_logic.{hpp,cpp} (QByteArray/QUrl/QCryptographicHash) wrapped 1:1 by a grouped ExtensionsUtilsBridge QObject published as nullock.utils, CppOwned so it survives an engine reload() and is re-wrapped each rebuild; ungated (pure text transforms). extensions_utils_logic_test 23/23 (known base64/hex/html vectors + the sha256/sha1/md5 'abc' digests) + 2 mutations (htmlEncode < mis-map; sha256->Sha1 swap); e2e vs the live QJSEngine 12/12 (a test extension's nullock.utils.* results match the pure module). ctest 100/100, probe 156/156. REMAINDER (why still partial): gzip/compression helpers (need a zlib deflate path; extensions already get decompressed response bodies via onResponse) and a byte-array type + the broader Burp utils families (number/random/string) -- JS has no native byte type, so a ByteArray helper is a separate design."
+      }
     },
     {
       "area": "extender",
