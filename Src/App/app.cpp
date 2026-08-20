@@ -1190,6 +1190,10 @@ int main(int argc, char *argv[]) {
     }
     wiring.dnsSink = &dnsSink;
 
+    // Let extensions mint OOB payloads + read their interactions
+    // (nullock.collaborator). Wired here, after both sinks exist.
+    extensions.setOast(&oast, &dnsSink);
+
     // Background update check. Hits GitHub Releases API once at startup,
     // surfaces the result via /api/snapshot. No telemetry, no
     // auto-download -- just a small "X.Y.Z available" pill in the UI.

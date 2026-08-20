@@ -1,6 +1,8 @@
 #include "extensions_api.hpp"
 #include "extension_perms_logic.hpp"
 #include "extensions_utils_logic.hpp"
+#include "oast_server.hpp"   // OastServer + OastHit (same APIs lib)
+#include "dns_sink.hpp"      // DnsSink
 
 #include <QDateTime>
 #include <QUrl>
@@ -131,6 +133,42 @@ QString ExtensionsUtilsBridge::sha256(const QString &s)       const { return Ext
 QString ExtensionsUtilsBridge::sha1(const QString &s)         const { return ExtUtils::sha1Hex(s); }
 QString ExtensionsUtilsBridge::md5(const QString &s)          const { return ExtUtils::md5Hex(s); }
 
+// nullock.collaborator.* -- mint OOB payloads + read the interactions they trigger.
+ExtensionsCollaboratorBridge::ExtensionsCollaboratorBridge(ExtensionsApi *owner)
+    : QObject(owner), m_owner(owner) {}
+
+QVariantMap ExtensionsCollaboratorBridge::generate() const {
+    OastServer *oast = m_owner->oast();
+    if (!oast) return {};
+    const QJsonObject minted = oast->mintToken();
+    const QString tok = minted.value("token").toString();
+    if (!tok.isEmpty()) m_tokens.insert(tok);
+    return minted.toVariantMap();
+}
+
+QVariantList ExtensionsCollaboratorBridge::interactions() const {
+    QVariantList out;
+    if (m_tokens.isEmpty()) return out;
+    auto append = [&](const OastHit &h, const char *type) {
+        if (!m_tokens.contains(h.token)) return;   // scope to THIS extension's tokens
+        QVariantMap m;
+        m["id"]       = static_cast<qlonglong>(h.id);
+        m["token"]    = h.token;
+        m["type"]     = QString::fromLatin1(type);
+        m["sourceIp"] = h.sourceIp;
+        m["atMs"]     = static_cast<qlonglong>(h.atMs);
+        m["host"]     = h.hostHeader;   // Host header (HTTP) / queried name (DNS)
+        m["method"]   = h.method;       // HTTP verb / "DNS"
+        m["path"]     = h.path;         // request path (HTTP) / record type (DNS)
+        out.append(m);
+    };
+    if (OastServer *oast = m_owner->oast())
+        for (const OastHit &h : oast->hitsSince(0)) append(h, "http");
+    if (DnsSink *dns = m_owner->dnsSink())
+        for (const OastHit &h : dns->hitsSince(0)) append(h, "dns");
+    return out;
+}
+
 ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // Both types travel across thread boundaries when worker threads call
     // applyRequestMutation / applyResponseMutation via BlockingQueuedConnection.
@@ -143,6 +181,7 @@ ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // Parented to this (CppOwnership) for the same reason as m_bridge: it must
     // survive every engine reload() destroys, and is re-published each rebuild.
     m_utils  = new ExtensionsUtilsBridge(this);
+    m_collab = new ExtensionsCollaboratorBridge(this);
     rebuildEngine();
     loadAll();
 }
@@ -165,6 +204,7 @@ void ExtensionsApi::rebuildEngine() {
     // m_utils is CppOwned (parented to this), so re-wrapping it on the fresh
     // engine each rebuild is safe -- the object itself is never recreated.
     nullockObj.setProperty("utils", m_engine->newQObject(m_utils));
+    nullockObj.setProperty("collaborator", m_engine->newQObject(m_collab));
     m_engine->globalObject().setProperty("nullock", nullockObj);
 }
 

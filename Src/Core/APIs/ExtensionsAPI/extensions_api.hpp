@@ -12,6 +12,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include <atomic>
 #include <memory>
@@ -24,6 +25,9 @@ namespace Nullock::Core {
 // Networking -- see finding_sink.hpp for why that mattered.
 class ExtensionsApiBridge;    // forward — internal
 class ExtensionsUtilsBridge;  // forward — internal (published as nullock.utils)
+class ExtensionsCollaboratorBridge;  // forward — internal (nullock.collaborator)
+class OastServer;             // forward — Src/Core/APIs/Oast (same lib)
+class DnsSink;                // forward — Src/Core/APIs/Oast (same lib)
 
 // Loads JavaScript extensions from <appdata>/Nullock/Nullock/extensions/
 // at startup and dispatches proxy events to them.
@@ -104,6 +108,14 @@ public:
     // Optional -- if unset, reportFinding() falls back to logging.
     void setScanner(IFindingSink *scanner) { m_scanner = scanner; }
     IFindingSink *scanner() const { return m_scanner; }
+
+    // Wire the OAST sinks so extensions can mint OOB payloads + read the
+    // interactions they trigger (nullock.collaborator). Optional -- unset means
+    // generate() returns {} and interactions() returns []. Both live in the same
+    // APIs lib, so no cross-lib callback interface is needed.
+    void setOast(OastServer *oast, DnsSink *dns) { m_oast = oast; m_dns = dns; }
+    OastServer *oast() const { return m_oast; }
+    DnsSink    *dnsSink() const { return m_dns; }
 
     // Apply onRequest mutation handlers and return the (possibly modified)
     // request. Thread-safe: if called from a non-main thread it routes via
@@ -191,6 +203,9 @@ private:
     std::unique_ptr<QJSEngine> m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
     ExtensionsUtilsBridge *m_utils = nullptr;   // published as nullock.utils each rebuild
+    ExtensionsCollaboratorBridge *m_collab = nullptr;  // published as nullock.collaborator
+    OastServer *m_oast = nullptr;   // OOB HTTP sink (optional)
+    DnsSink    *m_dns  = nullptr;   // OOB DNS sink (optional)
     IFindingSink        *m_scanner = nullptr;
     // Touched ONLY on this object's own thread: registered during script
     // evaluation, cleared by reload(), read by doMutateRequest/doMutateResponse
@@ -321,6 +336,33 @@ public:
     Q_INVOKABLE QString sha256(const QString &s) const;
     Q_INVOKABLE QString sha1(const QString &s) const;
     Q_INVOKABLE QString md5(const QString &s) const;
+};
+
+// Published as nullock.collaborator -- Burp's api.collaborator() equivalent. Lets
+// an extension mint an out-of-band payload and later read the interactions that
+// payload triggered (SSRF/blind-injection/XXE proofs). Parented to ExtensionsApi
+// (CppOwnership) so it survives an engine reload() and keeps the set of tokens it
+// generated; re-published on the fresh engine by rebuildEngine().
+class ExtensionsCollaboratorBridge : public QObject {
+    Q_OBJECT
+public:
+    explicit ExtensionsCollaboratorBridge(ExtensionsApi *owner);
+
+    // Mint an OOB payload. Returns the minted object { token, hostUrl, pathUrl,
+    // port, baseHost } (embed hostUrl/pathUrl, or build "<token>.<baseHost>"
+    // yourself). Records the token so interactions() can scope to it. {} if no
+    // OAST sink is wired.
+    Q_INVOKABLE QVariantMap generate() const;
+
+    // Every OOB interaction (HTTP + DNS) seen so far for a token THIS object
+    // minted, newest last: { id, token, type ("http"|"dns"), sourceIp, atMs,
+    // host, method, path }. The extension dedups by id / filters by its own
+    // token. [] if no sink is wired.
+    Q_INVOKABLE QVariantList interactions() const;
+
+private:
+    ExtensionsApi *m_owner;
+    mutable QSet<QString> m_tokens;   // tokens this collaborator minted
 };
 
 } // namespace Nullock::Core

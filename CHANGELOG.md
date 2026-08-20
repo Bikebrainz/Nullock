@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can run their own out-of-band (OOB) checks.** A JavaScript extension
+  can now mint a Collaborator-style payload with <code class="inline">nullock.collaborator.generate()</code>
+  (Burp's <code class="inline">api.collaborator()</code>), drop it into a request, and
+  later read back any interactions it triggered with <code class="inline">nullock.collaborator.interactions()</code>
+  &mdash; the DNS and HTTP callbacks a target made to that payload, each with its
+  token, source IP, timing, and request details. That's the building block for
+  extension-written SSRF, blind-injection, XXE, and log4shell checks; interactions
+  are scoped to the tokens that extension generated. (SMTP interactions and the full
+  raw callback body are still to come.)
 - **Individual extensions can be turned off without deleting them.** Disabling one
   extension used to mean physically moving its file out of the extensions folder
   and reloading. Now each extension has an enable/disable state: turn one off and
