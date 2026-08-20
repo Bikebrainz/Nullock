@@ -786,6 +786,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked the untested HTTP tech-fingerprint header extractors.** The
+  `Server` (nginx, IIS, Cloudflare), `X-Powered-By` (PHP, Express, Next.js),
+  `X-AspNet-Version`, and `X-Jenkins` version-capture paths had no regression
+  coverage &mdash; a broken regex would silently stop fingerprinting the server and
+  feed CVE correlation nothing. Added a positive per extractor asserting the
+  captured version and CVE kind. Mutation-proven.
 - **Locked six untested sensitive-file exposure probes.** The exposure scanner's
   `/.git/HEAD`, `/phpinfo.php`, `/.DS_Store`, `/wp-config.php.bak`,
   `/actuator/env`, and `/config.php.bak` signatures had no regression coverage &mdash;

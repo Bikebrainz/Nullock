@@ -78,6 +78,34 @@ int main(int argc, char **argv) {
               return t && t->version == "9.5.2"; }());
     chk("phpsessid cookie -> PHP", find(detect(H({{"Set-Cookie", "PHPSESSID=abc"}}), ""), "PHP") != nullptr);
 
+    // ---- header extractors that had no coverage ------------------------
+    // The Server / X-Powered-By / X-AspNet-Version / X-Jenkins version-capture
+    // paths (and the presence-only ones) were untested; a broken regex would
+    // silently stop fingerprinting the server + feed CVE correlation nothing.
+    chk("server nginx -> version + server-nginx",
+        [](){ const Tech *t = find(detect(H({{"Server", "nginx/1.20.1"}}), ""), "nginx");
+              return t && t->version == "1.20.1" && t->cveKind == "server-nginx"; }());
+    chk("server IIS -> version + server-iis",
+        [](){ const Tech *t = find(detect(H({{"Server", "Microsoft-IIS/10.0"}}), ""), "IIS");
+              return t && t->version == "10.0" && t->cveKind == "server-iis"; }());
+    chk("server cloudflare -> detected (versionless)",
+        [](){ const Tech *t = find(detect(H({{"Server", "cloudflare"}}), ""), "Cloudflare");
+              return t && t->version.isEmpty(); }());
+    chk("X-Powered-By PHP -> version + lang-php",
+        [](){ const Tech *t = find(detect(H({{"X-Powered-By", "PHP/8.1.2"}}), ""), "PHP");
+              return t && t->version == "8.1.2" && t->cveKind == "lang-php"; }());
+    chk("X-Powered-By Express -> detected",
+        find(detect(H({{"X-Powered-By", "Express"}}), ""), "Express") != nullptr);
+    chk("X-Powered-By Next.js -> fw-nextjs",
+        [](){ const Tech *t = find(detect(H({{"X-Powered-By", "Next.js"}}), ""), "Next.js");
+              return t && t->cveKind == "fw-nextjs"; }());
+    chk("X-AspNet-Version -> ASP.NET version + fw-aspnet",
+        [](){ const Tech *t = find(detect(H({{"X-AspNet-Version", "4.0.30319"}}), ""), "ASP.NET");
+              return t && t->version == "4.0.30319" && t->cveKind == "fw-aspnet"; }());
+    chk("X-Jenkins header -> version + app-jenkins",
+        [](){ const Tech *t = find(detect(H({{"X-Jenkins", "2.426.1"}}), ""), "Jenkins");
+              return t && t->version == "2.426.1" && t->cveKind == "app-jenkins"; }());
+
     // ---- buildGet: CR/LF guards ----------------------------------------
     {
         Request req; req.host = "victim.tld"; req.basePath = "/";
