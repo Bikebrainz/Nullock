@@ -786,6 +786,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked four server/stack info-disclosure detectors.** `source-map-exposed`
+  (a production JS `sourceMappingURL`), `phpinfo-output` (a reachable phpinfo()
+  page &mdash; critical), `server-version-leak` (a versioned `Server` header), and
+  `x-powered-by` gained positive + negative coverage, pinning phpinfo's
+  three-marker AND and that a bare `Server` product name (no `/version`) is not a
+  leak. Mutation-proven.
 - **Locked the redirect / Host-header-reflection detectors.**
   `open-redirect-suspect` (a 3xx whose cross-host Location host is echoed from a
   request query param) and `host-header-reflected-location` (the Host value

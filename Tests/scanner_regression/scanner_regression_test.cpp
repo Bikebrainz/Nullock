@@ -621,6 +621,47 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- Server / stack info disclosure (were untested) ----------------
+    tc.append({ "JS with sourceMappingURL -> source-map-exposed", "source-map-exposed", false,
+        makeReq("GET", "example.test", "/app.js"),
+        makeResp(200, "application/javascript",
+                 "console.log(1);\n//# sourceMappingURL=app.js.map") });
+
+    tc.append({ "JS without a sourcemap directive must NOT fire source-map-exposed",
+                "source-map-exposed", true,
+        makeReq("GET", "example.test", "/app.js"),
+        makeResp(200, "application/javascript", "console.log(1);") });
+
+    tc.append({ "phpinfo() page -> phpinfo-output", "phpinfo-output", false,
+        makeReq("GET", "example.test", "/info.php"),
+        makeResp(200, "text/html",
+                 "<html><body><h1>phpinfo()</h1><tr><td>PHP Version</td><td>8.1.2</td></tr>"
+                 "<tr><td>System </td><td>Linux web01</td></tr></body></html>") });
+
+    // Needs all three markers -- a page merely mentioning "PHP Version" is not it.
+    tc.append({ "partial phpinfo markers must NOT fire phpinfo-output", "phpinfo-output", true,
+        makeReq("GET", "example.test", "/docs"),
+        makeResp(200, "text/html",
+                 "<html><body>Requires PHP Version 8.1 or newer.</body></html>") });
+
+    tc.append({ "versioned Server header -> server-version-leak", "server-version-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x", {{"Server", "Apache/2.4.41 (Ubuntu)"}}) });
+
+    // A bare product name (no /version) is fine.
+    tc.append({ "bare Server product name must NOT fire server-version-leak",
+                "server-version-leak", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x", {{"Server", "nginx"}}) });
+
+    tc.append({ "X-Powered-By present -> x-powered-by", "x-powered-by", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x", {{"X-Powered-By", "PHP/8.1.2"}}) });
+
+    tc.append({ "no X-Powered-By header must NOT fire x-powered-by", "x-powered-by", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x") });
+
     // ---- Redirect / Host-header reflection (were untested) -------------
     // open-redirect-suspect: a 3xx whose cross-host Location host also appears
     // in a request query param (attacker-controlled redirect target).
