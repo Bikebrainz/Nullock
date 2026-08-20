@@ -4804,12 +4804,18 @@
     {
       "area": "target",
       "feature": "Site map tree roots keyed by protocol://host:port (http://x.com:80 and https://x.com:443 are separate branches)",
-      "state": "stub",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Burp's root key is the origin. Nullock's is a bare hostname with a TLS flag that is true if ANY request to that host was TLS. An app on :443 and an admin panel on :8443 merge into one node with one count and a misleading padlock; a host served over both http and https shows as TLS. The proof that the codebase CAN do this correctly is /api/openapi/export (control_server.cpp:4687-4692), which builds a proper `scheme + \"://\" + host + (:port)` key -- the site map just doesn't.",
-      "why": "Re-read site_map_model.hpp/.cpp and the snapshot serializer. Downgraded from partial: the port and scheme dimensions are not merely unused, they have no field to live in. Entry is {host,count,anyTls} and the snapshot emits exactly those three keys, so nothing downstream could reconstruct an origin even if it wanted to. Also raised effort hours->days: changing the key touches the model struct, inde",
-      "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.hpp:40-44 `struct Entry { QString host; int count = 0; bool anyTls = false; };` -- no port, no scheme. site_map_model.cpp:83-89 keys purely on host: `const QString host = m_source->data(idx, ProxyModel::HostRole).toString(); ... const int existing = indexOfHost(host); if (existing >= 0) { m_entries[existing].count++; if (tls) m_entries[existing].anyTls "
+      "gap": "Closed for the ui-v2 web UI, still absent for the native Qt desktop app. ui-v2/proxy.jsx's SiteMap tree now groups by scheme+host+port (derived client-side from NL.rows, which already carries host/port/tls per request), so an app on :443 and an admin panel on :8443 render as two distinct nodes with correct per-node counts and non-OR'd TLS flags, and clicking a node scopes the history table to that exact origin. The Qt desktop app's own Site Map list (Src/App/app.qml:159-167, bound directly to the siteMap C++ model) is unchanged: SiteMapModel's Entry struct still has no port field and still ORs TLS across every request to a host -- that half needs a backend model change this cloud session can't build.",
+      "why": "Re-verified against live source after the ui-v2 fix. site_map_model.hpp/.cpp genuinely still has Entry {host,count,anyTls} with no port/scheme (unchanged from the prior audit) -- app.qml's Site Map list binds this model directly, so the desktop half of the gap is fully unchanged. ui-v2/proxy.jsx no longer reads NL.sitemap (the host-only /api/snapshot block fed by that same model) for its tree at all; it derives origin-keyed entries from rows instead, same technique already proven for leaf derivation (#370, same file).",
+      "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.hpp:40-44 `struct Entry { QString host; int count = 0; bool anyTls = false; };` -- no port, no scheme, unchanged. Src/App/app.qml:159-167 binds `model: siteMap` directly, unchanged. ui-v2/proxy.jsx's ProxyTab now computes `sitemapEntries` via `React.useMemo` over `rows`, keyed by `(tls?\"https\":\"http\")+\"://\"+r.host+\":\"+port` (r.port/r.tls per row: control_server.cpp:1481/1488/1491), and `SiteMap` renders `e.origin` (default port omitted, mirroring the SSRF-probe origin-builder at control_server.cpp:2275-2278) as the tree label.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "8703ab3",
+        "note": "ui-v2/proxy.jsx's SiteMap tree roots and leaf lookup now key on scheme+host+port derived client-side from NL.rows, instead of the backend's host-only NL.sitemap block -- closes the merged-node/OR'd-TLS half of the gap absent -> partial for the web UI; the Qt desktop app's own Site Map (bound to the same host-only SiteMapModel) is unchanged and still needs the backend model change, called out honestly. Selecting a tree node now filters the history table by exact origin (host+port+tls), not just a host substring."
+      }
     },
     {
       "area": "target",
