@@ -3612,7 +3612,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-20",
-        "commit": "PENDING",
+        "commit": "b0d2cb3",
         "note": "partial -> present. The 80f8ec9 wave left this at partial ONLY because the ui-v2 checkbox was missing (all backend/API/snapshot plumbing was already done and e2e-verified 6/6). This wave adds that checkbox to the Scope tab: a 'log out-of-scope traffic' toggle (default OFF, matching Burp's default) bound to the existing POST /api/proxy/log-out-of-scope endpoint via a new reducer case + NL.actions.setLogOutOfScope, reading its initial/live state from bootInfo.logOutOfScope. No backend change. Verified: bundled-babel transform of app.jsx/tabs.jsx/real-data.js; NUL byte in tabs.jsx still exactly 1 occurrence; a 10-check Node functional test of the reducer toggle + snapshot-merge + init-coercion logic; a 12-check hook-stubbed vm render of ScopeTab across off/on/undefined states confirming the checkbox reflects the prop and its onChange dispatches log-out-of-scope-toggle."
       }
     },
