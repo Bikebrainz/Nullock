@@ -1146,6 +1146,70 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html",
                  "<html><body>x<script id=\"__NEXT_DATA__\" type=\"application/json\">{}</script></body></html>") });
 
+    // ---- Framework fingerprints (were untested) ------------------------
+    // Header-, cookie-, and body-marker fingerprints. The cookie-based ones
+    // (rails/laravel/django) use REALISTIC responses that set the framework
+    // cookie as a SEPARATE Set-Cookie header (often not the first) -- the shape
+    // real servers emit -- to cover the scan-all-Set-Cookies path.
+    tc.append({ "Express via X-Powered-By -> fw-express", "fw-express", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Powered-By", "Express"}}) });
+
+    tc.append({ "Nuxt via window.__NUXT__ -> fw-nuxt", "fw-nuxt", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>window.__NUXT__={data:[]}</script></html>") });
+
+    tc.append({ "AngularJS via ng-app -> fw-angularjs", "fw-angularjs", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html ng-app=\"myApp\"><body>x</body></html>") });
+
+    tc.append({ "React via data-reactroot -> fw-react", "fw-react", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<div data-reactroot=\"\">x</div>") });
+
+    tc.append({ "Vue via data-server-rendered -> fw-vue", "fw-vue", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<div id=\"app\" data-server-rendered=\"true\">x</div>") });
+
+    tc.append({ "Rails via _session_id (non-first cookie) -> fw-rails", "fw-rails", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "remember_token=z; Path=/"},
+                  {"Set-Cookie", "_session_id=abc123; HttpOnly; Path=/"}}) });
+
+    tc.append({ "Laravel via laravel_session (non-first cookie) -> fw-laravel", "fw-laravel", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "XSRF-TOKEN=z; Path=/"},
+                  {"Set-Cookie", "laravel_session=abc123; HttpOnly; Path=/"}}) });
+
+    tc.append({ "Django via csrftoken + sessionid (separate cookies) -> fw-django", "fw-django", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "csrftoken=abc; Path=/"},
+                  {"Set-Cookie", "sessionid=def; HttpOnly; Path=/"}}) });
+
+    // Django needs BOTH cookies: csrftoken alone must NOT fire.
+    tc.append({ "csrftoken WITHOUT sessionid must NOT fire fw-django", "fw-django", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "csrftoken=abc; Path=/"}}) });
+
+    tc.append({ "Symfony via X-Debug-Token -> fw-symfony", "fw-symfony", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Debug-Token", "a1b2c3"}}) });
+
+    tc.append({ "Inlined initial-state JSON -> fw-spa-state-leak", "fw-spa-state-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>window.__INITIAL_STATE__={user:1}</script></html>") });
+
+    // FP control: a plain page with no framework markers fires none of them.
+    tc.append({ "plain page must NOT fire fw-react", "fw-react", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><body>hello</body></html>") });
+
     tc.append({ "Sitecore via /sitecore/ path", "cms-sitecore", false,
         makeReq("GET", "example.test", "/sitecore/login"),
         makeResp(200, "text/html", "<html>...</html>") });

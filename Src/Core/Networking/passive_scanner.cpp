@@ -1468,6 +1468,14 @@ void PassiveScanner::checkResponse(int rowId,
         const QString bodyHead = QString::fromUtf8(scanBody.left(64 * 1024));
         const QString xPoweredBy = headerOf(resp.headers, "X-Powered-By");
         const QString genHdr = headerOf(resp.headers, "X-Generator");
+        // ALL Set-Cookie values joined -- a server sets each cookie in its OWN
+        // Set-Cookie header, so headerOf() (which returns only the FIRST match)
+        // misses a framework cookie that isn't first, and could NEVER satisfy a
+        // detector needing two cookies at once (Django's csrftoken + sessionid
+        // arrive as separate headers). The cookie-based fingerprints below scan
+        // this joined view instead.
+        const QString allSetCookie =
+            allHeaderValues(resp.headers, "Set-Cookie").join(QLatin1Char('\n'));
         // Cached "have we already flagged a CMS for this row?" -- one
         // CMS finding per response is plenty.
         bool cmsHit = false;
@@ -1611,19 +1619,19 @@ void PassiveScanner::checkResponse(int rowId,
                        "Vue.js runtime marker");
         }
         if (!headerOf(resp.headers, "X-Runtime").isEmpty()
-            || headerOf(resp.headers, "Set-Cookie").contains("_session_id=", Qt::CaseInsensitive)) {
+            || allSetCookie.contains("_session_id=", Qt::CaseInsensitive)) {
             addFinding(rowId, req, resp, "info", "fw-rails",
                        "Detected: Ruby on Rails",
                        "X-Runtime or _session_id cookie");
         }
-        if (headerOf(resp.headers, "Set-Cookie").contains("laravel_session", Qt::CaseInsensitive)
+        if (allSetCookie.contains("laravel_session", Qt::CaseInsensitive)
             || xPoweredBy.contains("Laravel", Qt::CaseInsensitive)) {
             addFinding(rowId, req, resp, "info", "fw-laravel",
                        "Detected: Laravel",
                        "laravel_session cookie / X-Powered-By");
         }
-        if (headerOf(resp.headers, "Set-Cookie").contains("csrftoken=", Qt::CaseInsensitive)
-            && headerOf(resp.headers, "Set-Cookie").contains("sessionid=", Qt::CaseInsensitive)) {
+        if (allSetCookie.contains("csrftoken=", Qt::CaseInsensitive)
+            && allSetCookie.contains("sessionid=", Qt::CaseInsensitive)) {
             addFinding(rowId, req, resp, "info", "fw-django",
                        "Detected: Django",
                        "csrftoken + sessionid cookies");

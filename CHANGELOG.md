@@ -673,6 +673,16 @@ developer-facing record.
   remain open.
 
 ### Fixed
+- **Framework fingerprints that key off cookies now scan every Set-Cookie
+  header.** The Rails, Laravel, and Django detectors checked only the *first*
+  `Set-Cookie` header, but servers emit each cookie in its own header. Rails and
+  Laravel missed their session cookie whenever it wasn't first, and Django &mdash;
+  which needs both `csrftoken` and `sessionid`, always sent as separate headers
+  &mdash; could essentially never fire. All three now scan the joined set of all
+  Set-Cookie values, so a realistic multi-cookie response is fingerprinted
+  correctly. Covered by a new mutation-proven framework-fingerprint batch (all
+  ten previously-untested `fw-*` detectors: Express, Nuxt, AngularJS, React, Vue,
+  Rails, Laravel, Django, Symfony, and inlined-initial-state leak).
 - **Creating a project from a template now applies the template's match &amp;
   replace rules.** A project template can ship a set of proxy match/replace rules
   (the OAuth-review template, for instance, carries a rule that flags an
