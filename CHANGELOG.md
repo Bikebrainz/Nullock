@@ -786,6 +786,11 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked HSTS-strength and auth-hygiene detectors.** `hsts-no-subdomains`,
+  `hsts-no-preload`, `auth-over-http` (an Authorization header on plaintext), and
+  `auth-no-cache-control` (an authenticated 200 cacheable by shared proxies) gained
+  positive + negative coverage, including their gates: HSTS strength only on TLS,
+  auth-over-http only on plaintext, auth-no-cache only when authenticated. Mutation-proven.
 - **Locked four untested cross-origin-isolation-header detectors.**
   `missing-permissions-policy`, `missing-coop`, `missing-coep`, and
   `missing-corp` gained positive + header-present-negative coverage, plus gate

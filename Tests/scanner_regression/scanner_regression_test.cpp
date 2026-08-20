@@ -621,6 +621,67 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- HSTS strength + auth hygiene (were untested) ------------------
+    // HSTS strength checks fire only on a TLS response carrying the header.
+    // max-age is a full year so hsts-short-max-age stays quiet.
+    tc.append({ "HSTS without includeSubDomains -> hsts-no-subdomains",
+                "hsts-no-subdomains", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Strict-Transport-Security", "max-age=31536000"}}) });
+
+    tc.append({ "HSTS with includeSubDomains must NOT fire hsts-no-subdomains",
+                "hsts-no-subdomains", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Strict-Transport-Security",
+                   "max-age=31536000; includeSubDomains; preload"}}) });
+
+    tc.append({ "HSTS without preload -> hsts-no-preload", "hsts-no-preload", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Strict-Transport-Security", "max-age=31536000; includeSubDomains"}}) });
+
+    tc.append({ "HSTS with preload must NOT fire hsts-no-preload", "hsts-no-preload", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x",
+                 {{"Strict-Transport-Security",
+                   "max-age=31536000; includeSubDomains; preload"}}) });
+
+    // wasTls gate: an HSTS header on a plaintext response is browser-ignored,
+    // so the strength checks must not fire.
+    tc.append({ "HSTS over plaintext must NOT fire hsts-no-subdomains",
+                "hsts-no-subdomains", true,
+        makeReq("GET", "example.test", "/", {}, {}, 80, false),
+        makeResp(200, "text/html", "x",
+                 {{"Strict-Transport-Security", "max-age=31536000"}}, /*wasTls=*/false) });
+
+    // auth-over-http: an Authorization header on a plaintext connection.
+    tc.append({ "Authorization over plaintext -> auth-over-http", "auth-over-http", false,
+        makeReq("GET", "example.test", "/", {{"Authorization", "Bearer xyz"}}, {}, 80, false),
+        makeResp(200, "text/html", "x", {}, /*wasTls=*/false) });
+
+    tc.append({ "Authorization over TLS must NOT fire auth-over-http", "auth-over-http", true,
+        makeReq("GET", "example.test", "/", {{"Authorization", "Bearer xyz"}}),
+        makeResp(200, "text/html", "x") });
+
+    // auth-no-cache-control: an authenticated 200 cacheable by shared proxies.
+    tc.append({ "authenticated 200 without Cache-Control -> auth-no-cache-control",
+                "auth-no-cache-control", false,
+        makeReq("GET", "example.test", "/", {{"Cookie", "sid=abc"}}),
+        makeResp(200, "text/html", "x") });
+
+    tc.append({ "authenticated 200 with Cache-Control: private is fine",
+                "auth-no-cache-control", true,
+        makeReq("GET", "example.test", "/", {{"Cookie", "sid=abc"}}),
+        makeResp(200, "text/html", "x", {{"Cache-Control", "private, max-age=0"}}) });
+
+    // auth gate: an UNauthenticated 200 with no Set-Cookie must not fire.
+    tc.append({ "unauthenticated 200 must NOT fire auth-no-cache-control",
+                "auth-no-cache-control", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "x") });
+
     // ---- Cross-origin isolation headers (were untested) ----------------
     // missing-{permissions-policy,coop,coep,corp} fire on an html 2xx/3xx that
     // omits the header. Each negative supplies the header so it must not fire;
