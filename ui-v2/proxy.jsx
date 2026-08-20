@@ -63,6 +63,39 @@ function parseSearchTerm(raw) {
   return { term: raw || "", negate: false };
 }
 
+// #299: HTTP history annotations (Burp's per-item highlight colour + comment).
+// No backend model field exists for this yet (ProxyModel::Entry carries only
+// id/request/response), so this is a client-side-only layer, persisted to
+// localStorage keyed by row id so it survives a reload of this browser tab --
+// an honest partial vs. Burp's project-file persistence, but the same core
+// triage workflow (flag a row, filter back to it) works end to end.
+const ANNOTATION_COLORS = [
+  { key: "red",    hex: "#b8433a" },
+  { key: "orange", hex: "#c07a2e" },
+  { key: "yellow", hex: "#b8a92e" },
+  { key: "green",  hex: "#4a9d5c" },
+  { key: "cyan",   hex: "#3a9ba8" },
+  { key: "blue",   hex: "#3d6fb0" },
+  { key: "purple", hex: "#8358b0" },
+  { key: "pink",   hex: "#b0559a" },
+  { key: "gray",   hex: "#6b6b6b" },
+];
+const ANNOTATIONS_STORAGE_KEY = "nl.history.annotations.v1";
+function loadAnnotations() {
+  try {
+    const raw = window.localStorage.getItem(ANNOTATIONS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) { return {}; }
+}
+function saveAnnotations(map) {
+  try { window.localStorage.setItem(ANNOTATIONS_STORAGE_KEY, JSON.stringify(map)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
+}
+function annotationColorHex(key) {
+  const c = ANNOTATION_COLORS.find(c => c.key === key);
+  return c ? c.hex : null;
+}
+
 function MethodCell({ m }) {
   let cls = "meth " + m.replace("↑", "").replace("↓", "");
   if (m === "WS↑") cls = "meth WS";
@@ -70,7 +103,7 @@ function MethodCell({ m }) {
   return <span className={cls}>{m}</span>;
 }
 
-function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive, onRowContextMenu }) {
+function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive, onRowContextMenu, annotations, annotatedOnly }) {
   const filtered = React.useMemo(() => rows.filter(r => {
     if (hostFilter && !r.host.includes(hostFilter)) return false;
     if (paramsOnly && !(r.params > 0)) return false;
@@ -78,6 +111,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     if (inScopeOnly && !hostInScope(r.host, scope)) return false;
     if (mimeFilter && mimeFilter !== "all" && mimeCategory(r.mime) !== mimeFilter) return false;
     if (extList && extList.length > 0 && !extFilterMatch(r.path, extList, extHide)) return false;
+    if (annotatedOnly && !(annotations && annotations[r.id])) return false;
     if (search) {
       const { term, negate } = parseSearchTerm(search);
       const s = caseSensitive ? term : term.toLowerCase();
@@ -111,12 +145,13 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
     }
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     return true;
-  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive]);
+  }), [rows, hostFilter, statusClass, methodFilter, search, deepHits, deepMinId, paramsOnly, hideNotFound, inScopeOnly, scope, mimeFilter, extList, extHide, caseSensitive, annotations, annotatedOnly]);
 
   return (
     <div style={{ height: "100%", overflow: "auto" }}>
       <table className="tbl">
         <colgroup>
+          <col style={{ width: 18 }} />
           <col style={{ width: 44 }} />
           <col style={{ width: 64 }} />
           <col style={{ width: 78 }} />
@@ -131,6 +166,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
         </colgroup>
         <thead>
           <tr>
+            <th></th>
             <th>#</th>
             <th>Method</th>
             <th>Status</th>
@@ -145,13 +181,20 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
           </tr>
         </thead>
         <tbody>
-          {filtered.map(r => (
+          {filtered.map(r => {
+            const note = annotations && annotations[r.id];
+            const rowStyle = note && note.color
+              ? { boxShadow: "inset 3px 0 0 " + annotationColorHex(note.color) }
+              : undefined;
+            return (
             <tr
               key={r.id}
               className={selectedId === r.id ? "sel" : ""}
+              style={rowStyle}
               onClick={() => onSelect(r)}
-              onContextMenu={onRowContextMenu ? (e => { e.preventDefault(); onRowContextMenu(r.host, e); }) : undefined}
+              onContextMenu={onRowContextMenu ? (e => { e.preventDefault(); onRowContextMenu(r.host, e, r.id); }) : undefined}
             >
+              <td>{note && note.comment ? <span title={note.comment} style={{ cursor: "help" }}>💬</span> : null}</td>
               <td className="num">{r.id.toString().padStart(3, "0")}</td>
               <td><MethodCell m={r.method} /></td>
               <td><span className={"status " + statusKind(r.status)}>{r.status || "—"}</span></td>
@@ -164,9 +207,10 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
               <td className="num">{r.ip}</td>
               <td className="num">{r.ts}</td>
             </tr>
-          ))}
+            );
+          })}
           {filtered.length === 0 && (
-            <tr><td colSpan={11} style={{ textAlign: "center", color: "var(--dim)", height: 80 }}>
+            <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--dim)", height: 80 }}>
               ╌╌  no rows match filters  ╌╌
             </td></tr>
           )}
@@ -176,7 +220,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly, mimeFilter, setMimeFilter, extText, setExtText, extHide, setExtHide, caseSensitive, setCaseSensitive }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly, mimeFilter, setMimeFilter, extText, setExtText, extHide, setExtHide, caseSensitive, setCaseSensitive, annotatedOnly, setAnnotatedOnly }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -285,6 +329,7 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
         ["IN-SCOPE", inScopeOnly, setInScopeOnly, "Show only rows whose host matches an in-scope glob"],
         ["PARAMS", paramsOnly, setParamsOnly, "Show only rows with query/body parameters"],
         ["HIDE 404", hideNotFound, setHideNotFound, "Hide rows with a 404 Not Found status"],
+        ["ANNOTATED", annotatedOnly, setAnnotatedOnly, "Show only rows with a highlight colour or comment"],
       ].map(([label, on, setOn, title]) => (
         <button
           key={label}
@@ -2270,10 +2315,36 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
   const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
 
-  const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host} | null
-  const openRowMenu = (host, e) => setCtxMenu({ x: e.clientX, y: e.clientY, host });
+  const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host,rowId?} | null
+  const openRowMenu = (host, e, rowId) => setCtxMenu({ x: e.clientX, y: e.clientY, host, rowId });
   const closeRowMenu = () => setCtxMenu(null);
   const hostIsInScope = ctxMenu ? (scope.in || []).includes(ctxMenu.host) : false;
+
+  // #299: highlight colour + comment per history row (client-side, localStorage-persisted).
+  const [annotations, setAnnotations] = React.useState(loadAnnotations);
+  const [annotatedOnly, setAnnotatedOnly] = React.useState(false);
+  const setRowColor = (id, color) => setAnnotations(prev => {
+    const cur = prev[id] || {};
+    const next = { ...prev, [id]: { ...cur, color } };
+    if (!next[id].color && !next[id].comment) delete next[id];
+    saveAnnotations(next);
+    return next;
+  });
+  const setRowComment = (id, comment) => setAnnotations(prev => {
+    const cur = prev[id] || {};
+    const next = { ...prev, [id]: { ...cur, comment } };
+    if (!next[id].color && !next[id].comment) delete next[id];
+    saveAnnotations(next);
+    return next;
+  });
+  const clearRowAnnotation = (id) => setAnnotations(prev => {
+    if (!(id in prev)) return prev;
+    const next = { ...prev };
+    delete next[id];
+    saveAnnotations(next);
+    return next;
+  });
+  const ctxRowNote = ctxMenu && ctxMenu.rowId != null ? annotations[ctxMenu.rowId] : null;
 
   // Deep search: when enabled, the search box query is also run against
   // request and response bodies via /api/search. We debounce by 250ms so
@@ -2338,6 +2409,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     if (inScopeOnly && !hostInScope(r.host, scope)) return false;
     if (mimeFilter !== "all" && mimeCategory(r.mime) !== mimeFilter) return false;
     if (extList.length > 0 && !extFilterMatch(r.path, extList, extHide)) return false;
+    if (annotatedOnly && !annotations[r.id]) return false;
     return true;
   }).length;
   const hidden = rows.length - shown;
@@ -2410,6 +2482,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           setExtHide={setExtHide}
           caseSensitive={caseSensitive}
           setCaseSensitive={setCaseSensitive}
+          annotatedOnly={annotatedOnly}
+          setAnnotatedOnly={setAnnotatedOnly}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -2431,6 +2505,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
             extHide={extHide}
             caseSensitive={caseSensitive}
             onRowContextMenu={openRowMenu}
+            annotations={annotations}
+            annotatedOnly={annotatedOnly}
           />
         </div>
         <DetailPane
@@ -2478,6 +2554,52 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
                 closeRowMenu();
               }}
             >− REMOVE FROM SCOPE</div>
+            {ctxMenu.rowId != null && (
+              <React.Fragment>
+                <div style={{ borderTop: "1px solid var(--line)", padding: "6px 10px", fontSize: "var(--fz-xs)", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  Highlight
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 10px 8px" }}>
+                  {ANNOTATION_COLORS.map(c => (
+                    <span
+                      key={c.key}
+                      title={c.key}
+                      onClick={() => { setRowColor(ctxMenu.rowId, c.key); closeRowMenu(); }}
+                      style={{
+                        width: 16, height: 16, borderRadius: 3, cursor: "pointer",
+                        background: c.hex,
+                        outline: ctxRowNote && ctxRowNote.color === c.key ? "2px solid var(--text)" : "1px solid rgba(0,0,0,0.3)",
+                      }}
+                    />
+                  ))}
+                  <span
+                    title="no highlight"
+                    onClick={() => { setRowColor(ctxMenu.rowId, null); closeRowMenu(); }}
+                    style={{
+                      width: 16, height: 16, borderRadius: 3, cursor: "pointer",
+                      background: "transparent", border: "1px dashed var(--dim)",
+                    }}
+                  >×</span>
+                </div>
+                <div
+                  className="btn"
+                  style={{ display: "block", width: "100%", textAlign: "left" }}
+                  onClick={() => {
+                    const cur = ctxRowNote && ctxRowNote.comment ? ctxRowNote.comment : "";
+                    const next = window.prompt("Comment for this row:", cur);
+                    if (next !== null) setRowComment(ctxMenu.rowId, next.trim());
+                    closeRowMenu();
+                  }}
+                >{ctxRowNote && ctxRowNote.comment ? "✎ EDIT COMMENT" : "✎ ADD COMMENT"}</div>
+                {ctxRowNote && (ctxRowNote.color || ctxRowNote.comment) && (
+                  <div
+                    className="btn"
+                    style={{ display: "block", width: "100%", textAlign: "left" }}
+                    onClick={() => { clearRowAnnotation(ctxMenu.rowId); closeRowMenu(); }}
+                  >⊘ CLEAR ANNOTATION</div>
+                )}
+              </React.Fragment>
+            )}
           </div>
         </React.Fragment>
       )}

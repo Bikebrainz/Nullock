@@ -3946,12 +3946,18 @@
     {
       "area": "proxy",
       "feature": "HTTP history annotations: per-item highlight colours and comments, plus filter-by-annotation",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No way to colour-flag or comment interesting requests during a long session, and therefore no way to filter back to them. A core triage workflow in Burp.",
-      "why": "Re-grepped highlight/annotation/rowNote/setComment across Src and ui-v2 myself: the only hits are a code comment in proxy.jsx and PROJECT-level notes. I also confirmed the storage side -- ProxyModel::Entry has three fields and no annotation slot, and the snapshot row builder emits no comment/colour key. Absent confirmed.",
-      "evidence": "Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp:70-74 `struct Entry {\\n        int id;\\n        Nullock::Proxy::HttpRequest request;\\n        Nullock::Proxy::HttpResponse response;\\n    };` ; snapshot row keys at Src/BackEnd/Control/control_server.cpp:1414-1436 (id/host/method/url/path/status/mime/params/tls/ip/ts/port/size/reqSize/elapsed -- nothing else). Project-level notes only: Src/Core/Storage"
+      "gap": "Backend still absent: ProxyModel::Entry (Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp) carries no annotation field and the /api/snapshot row builder emits no comment/colour key, so a highlight or comment does not survive a server restart, is invisible to the CLI/API, and cannot be exported into a report. What now exists: a client-side annotation layer in the ui-v2 Proxy tab -- right-click any history/site-map row to pick one of 9 highlight colours and/or set a free-text comment, rendered as a coloured row edge + a comment-icon tooltip, persisted to this browser's localStorage (survives a page reload, not a different browser or machine), and filterable via a new ANNOTATED chip in the filter bar alongside IN-SCOPE/PARAMS/HIDE 404. The core triage workflow (flag a row during a long session, filter back to it) works end to end; only server-side/cross-client persistence remains a real gap.",
+      "why": "Re-derived 2026-08-20 against live source: confirmed the backend gap is still real (ProxyModel::Entry has exactly id/request/response, no annotation slot; control_server.cpp's history-row builder emits only id/host/method/url/path/status/mime/params/tls/ip/ts/port/size/reqSize/elapsed). Rather than leave the whole item absent while waiting on a backend model change this cloud session cannot build/verify, added the highlight+comment+filter UI as a client-side layer (ANNOTATION_COLORS/loadAnnotations/saveAnnotations/annotationColorHex in ui-v2/proxy.jsx), which delivers the actual triage workflow today without touching the wire format. Moved absent -> partial: a real, working feature exists now, honestly short of Burp's project-persisted version.",
+      "evidence": "ui-v2/proxy.jsx: ANNOTATION_COLORS (9-colour palette) + loadAnnotations/saveAnnotations (localStorage key nl.history.annotations.v1) + annotationColorHex; HistoryTable renders a coloured left-edge box-shadow keyed by annotations[r.id].color and a comment-icon cell for annotations[r.id].comment, plus an annotatedOnly filter; FilterBar gains an ANNOTATED chip beside IN-SCOPE/PARAMS/HIDE 404; ProxyTab's row context menu (already used for scope add/remove) gains a colour-swatch row, an ADD/EDIT COMMENT action (window.prompt), and CLEAR ANNOTATION, wired through setRowColor/setRowComment/clearRowAnnotation. Backend gap confirmed unchanged: Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp `struct Entry {\\n        int id;\\n        Nullock::Proxy::HttpRequest request;\\n        Nullock::Proxy::HttpResponse response;\\n    };` -- still no annotation field.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "PENDING",
+        "note": "Client-side highlight-colour + comment + ANNOTATED filter chip shipped in ui-v2/proxy.jsx (localStorage-persisted); backend model field/persistence stays an honest remaining gap."
+      }
     },
     {
       "area": "proxy",
