@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Individual extensions can be turned off without deleting them.** Disabling one
+  extension used to mean physically moving its file out of the extensions folder
+  and reloading. Now each extension has an enable/disable state: turn one off and
+  it stays on disk and in the list but stops running (no globals, no handlers),
+  turn it back on and it loads again &mdash; the equivalent of Burp's per-extension
+  "Loaded" checkbox. The choice is remembered across restarts (in a small file
+  alongside the extensions), and the change takes effect immediately. (Driven
+  through the API for now &mdash; `POST /api/extensions/set-enabled {name, enabled}`,
+  with every installed extension and its state in the snapshot; the checkbox in the
+  Extensions view is the next step.)
 - **Extensions get a built-in `nullock.utils` toolbox of codecs and hashes.** A
   JavaScript extension used to hand-roll base64, hex, and hashing in ES5. It can
   now call ready-made helpers &mdash; <code class="inline">nullock.utils.base64Encode/Decode</code>,

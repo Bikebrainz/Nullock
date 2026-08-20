@@ -8,6 +8,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QJSValueIterator>
 #include <QMetaType>
 #include <QStandardPaths>
@@ -236,8 +238,19 @@ bool ExtensionsApi::reload() {
 void ExtensionsApi::loadAll() {
     const QString dir = extensionsDir();
     QDir().mkpath(dir);
-    const QFileInfoList files = QDir(dir).entryInfoList({ "*.js" }, QDir::Files);
+    m_allScripts.clear();
+    loadDisabledSet();   // refresh the user's per-extension enable/disable choices
+    const QFileInfoList files = QDir(dir).entryInfoList({ "*.js" }, QDir::Files, QDir::Name);
     for (const QFileInfo &fi : files) {
+        m_allScripts.append(fi.fileName());
+        // A user-disabled extension stays on disk + in the list, but is never
+        // evaluated (no globals, no handlers) -- the same "unchecked Loaded" state
+        // Burp gives it. Skipping BEFORE reading the file also avoids running a
+        // script the user turned off.
+        if (m_disabled.contains(fi.fileName())) {
+            appendLog(QString("[ext] %1 (disabled)").arg(fi.fileName()));
+            continue;
+        }
         QFile f(fi.absoluteFilePath());
         if (!f.open(QIODevice::ReadOnly)) continue;
         const QString source = QString::fromUtf8(f.readAll());
@@ -262,6 +275,39 @@ void ExtensionsApi::loadAll() {
     }
     m_currentGrants.clear();   // not evaluating any extension now
     emit loadedChanged();
+}
+
+void ExtensionsApi::setExtensionEnabled(const QString &name, bool enabled) {
+    if (name.isEmpty()) return;
+    const bool wasDisabled = m_disabled.contains(name);
+    if (enabled == !wasDisabled) return;   // no change
+    if (enabled) m_disabled.remove(name);
+    else         m_disabled.insert(name);
+    saveDisabledSet();
+    reload();   // re-evaluate everything under the new enable/disable set
+}
+
+void ExtensionsApi::loadDisabledSet() {
+    m_disabled.clear();
+    QFile f(extensionsDir() + "/.nullock-disabled.json");
+    if (!f.open(QIODevice::ReadOnly)) return;   // absent == nothing disabled
+    const QJsonArray arr = QJsonDocument::fromJson(f.readAll()).array();
+    for (const QJsonValue &v : arr) {
+        const QString s = v.toString();
+        if (!s.isEmpty()) m_disabled.insert(s);
+    }
+}
+
+void ExtensionsApi::saveDisabledSet() {
+    const QString path = extensionsDir() + "/.nullock-disabled.json";
+    if (m_disabled.isEmpty()) { QFile::remove(path); return; }   // clean slate = no file
+    QJsonArray arr;
+    QStringList names(m_disabled.constBegin(), m_disabled.constEnd());
+    names.sort();   // stable on-disk order
+    for (const QString &s : names) arr.append(s);
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 
 void ExtensionsApi::refreshHandlerFlags() {

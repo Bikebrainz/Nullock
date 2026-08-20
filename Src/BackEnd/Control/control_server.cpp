@@ -1259,6 +1259,14 @@ QByteArray ControlServer::buildSnapshot() const {
         for (const QString &s : m_wiring.extensions->loadedScripts())
             scripts.append(s);
         bootInfo["extensionScripts"]  = scripts;
+        // Every .js present (loaded OR disabled) with its enabled state, so the
+        // Extensions "Installed" tab can render a per-extension Loaded checkbox.
+        QJsonArray allExt;
+        for (const QString &s : m_wiring.extensions->allScripts())
+            allExt.append(QJsonObject{
+                { "name",    s },
+                { "enabled", m_wiring.extensions->isExtensionEnabled(s) } });
+        bootInfo["extensionAll"]      = allExt;
         bootInfo["extensionsDir"]     = m_wiring.extensions->extensionsDir();
         // Per-script DECLARED capability set (the whole thing -- observe-level
         // and future tokens are kept too, not just the dangerous ones). The UI
@@ -6304,6 +6312,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/extensions/reload") {
         if (m_wiring.extensions) m_wiring.extensions->reload();
         return okJson({{ "loaded", m_wiring.extensions ? m_wiring.extensions->loadedCount() : 0 }});
+    }
+    // POST /api/extensions/set-enabled { name, enabled } -- Burp's per-extension
+    // Loaded checkbox. Disabling an extension leaves it on disk (still listed) but
+    // stops it evaluating; the choice persists and takes effect immediately.
+    if (path == "/api/extensions/set-enabled") {
+        if (!m_wiring.extensions)
+            return okJson({{ "ok", false }, { "error", "no extensions wired" }});
+        const QString name = bodyJson.value("name").toString();
+        if (name.isEmpty())
+            return okJson({{ "ok", false }, { "error", "name required" }});
+        m_wiring.extensions->setExtensionEnabled(name, bodyJson.value("enabled").toBool(true));
+        return okJson({{ "ok", true },
+                       { "enabled", m_wiring.extensions->isExtensionEnabled(name) },
+                       { "loaded",  m_wiring.extensions->loadedCount() }});
     }
 
     if (path == "/api/findings/clear") {

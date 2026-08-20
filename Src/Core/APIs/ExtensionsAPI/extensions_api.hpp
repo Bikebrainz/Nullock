@@ -83,6 +83,19 @@ public:
     QString extensionsDir() const;
     int logLineCount() const { return m_logLines.size(); }
 
+    // Every .js file present in the extensions dir (loaded or disabled), so the
+    // UI can render the full "Installed" list with a per-extension Loaded
+    // checkbox, not just the ones that evaluated.
+    QStringList allScripts() const { return m_allScripts; }
+    // False iff `name` is in the persisted disabled set. An extension the user
+    // unchecked is present on disk + listed, but never evaluated.
+    bool isExtensionEnabled(const QString &name) const { return !m_disabled.contains(name); }
+    // Enable/disable a single extension by file name. Persists the choice and
+    // reloads (an enable evaluates it, a disable tears it down via the normal
+    // reload path) so the change takes effect immediately, the way Burp's
+    // per-extension Loaded checkbox does.
+    void setExtensionEnabled(const QString &name, bool enabled);
+
     Q_INVOKABLE QStringList recentLog(int max = 50) const;
     Q_INVOKABLE bool reload();
 
@@ -219,6 +232,15 @@ private:
     QSet<QString>        m_currentGrants;
     // Per-script granted capabilities, for display / the API.
     QMap<QString, QStringList> m_scriptGrants;
+
+    // Every .js in the extensions dir at the last loadAll() (loaded OR disabled),
+    // sorted; and the persisted set of file names the user disabled. m_disabled is
+    // read from <extensionsDir>/.nullock-disabled.json at loadAll() and rewritten
+    // by setExtensionEnabled(). Owner-thread only, like the other lists.
+    QStringList          m_allScripts;
+    QSet<QString>        m_disabled;
+    void loadDisabledSet();   // read .nullock-disabled.json into m_disabled
+    void saveDisabledSet();   // write m_disabled back out
 };
 
 // The C++ object the JS side calls into. Lives inside ExtensionsApi.
