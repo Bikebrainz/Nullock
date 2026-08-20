@@ -776,6 +776,11 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked four untested cross-origin-isolation-header detectors.**
+  `missing-permissions-policy`, `missing-coop`, `missing-coep`, and
+  `missing-corp` gained positive + header-present-negative coverage, plus gate
+  negatives (a JSON body or a 5xx response must not fire) and the legacy
+  `Feature-Policy` fallback for permissions-policy. Mutation-proven.
 - **Locked three untested deserialization-gadget detectors.** `deser-pickle`
   (Python), `deser-ruby` (Marshal), and `deser-dotnet` (BinaryFormatter) &mdash;
   HIGH `gadget-chain RCE candidate` findings keyed off a base64 magic prefix in

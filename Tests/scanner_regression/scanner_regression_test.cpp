@@ -621,6 +621,60 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- Cross-origin isolation headers (were untested) ----------------
+    // missing-{permissions-policy,coop,coep,corp} fire on an html 2xx/3xx that
+    // omits the header. Each negative supplies the header so it must not fire;
+    // permissions-policy also honours the legacy Feature-Policy fallback. Two
+    // gate negatives pin html-only + 2xx/3xx-only (a JSON body or a 5xx skips).
+    tc.append({ "html without Permissions-Policy -> missing-permissions-policy",
+                "missing-permissions-policy", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    // legacy Feature-Policy satisfies the check (the scanner &&s both).
+    tc.append({ "legacy Feature-Policy must NOT fire missing-permissions-policy",
+                "missing-permissions-policy", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Feature-Policy", "geolocation 'none'"}}) });
+
+    tc.append({ "html without COOP -> missing-coop", "missing-coop", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    tc.append({ "COOP present must NOT fire missing-coop", "missing-coop", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Cross-Origin-Opener-Policy", "same-origin"}}) });
+
+    tc.append({ "html without COEP -> missing-coep", "missing-coep", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    tc.append({ "COEP present must NOT fire missing-coep", "missing-coep", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Cross-Origin-Embedder-Policy", "require-corp"}}) });
+
+    tc.append({ "html without CORP -> missing-corp", "missing-corp", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    tc.append({ "CORP present must NOT fire missing-corp", "missing-corp", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Cross-Origin-Resource-Policy", "same-origin"}}) });
+
+    // html gate: a JSON response with no isolation headers must NOT fire.
+    tc.append({ "non-html response must NOT fire missing-coop", "missing-coop", true,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}") });
+
+    // status gate: a 5xx html response is out of the 2xx/3xx window.
+    tc.append({ "5xx html must NOT fire missing-coop", "missing-coop", true,
+        makeReq("GET", "example.test", "/boom"),
+        makeResp(500, "text/html", "<html>err</html>") });
+
     // ---- CSP granular weaknesses (were untested) -----------------------
     // A present CSP can still be weak. Each directive check is independent;
     // csp-unsafe-eval / csp-wildcard-src / csp-no-form-action / csp-no-base-uri
