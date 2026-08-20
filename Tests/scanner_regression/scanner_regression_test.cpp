@@ -621,6 +621,50 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- Content leaks (were untested) ---------------------------------
+    tc.append({ "HTTPS page with http:// resource -> mixed-content", "mixed-content", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body><img src=\"http://cdn.other.test/a.png\"></body></html>") });
+
+    tc.append({ "HTTPS page with only https resources must NOT fire mixed-content",
+                "mixed-content", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body><img src=\"https://cdn.other.test/a.png\"></body></html>") });
+
+    tc.append({ "internal-TLD hostname in body -> internal-hostname-leak",
+                "internal-hostname-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>Backend: buildserver.internal is down</body></html>") });
+
+    tc.append({ "only external hostnames must NOT fire internal-hostname-leak",
+                "internal-hostname-leak", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><body>See www.example.com for details</body></html>") });
+
+    tc.append({ "interesting HTML comment -> html-comment-leak", "html-comment-leak", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><!-- FIXME: remove before prod --><body>hi</body></html>") });
+
+    tc.append({ "benign HTML comment must NOT fire html-comment-leak", "html-comment-leak", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><!-- site header --><body>hi</body></html>") });
+
+    tc.append({ "robots.txt with sensitive paths -> robots-discloses-paths",
+                "robots-discloses-paths", false,
+        makeReq("GET", "example.test", "/robots.txt"),
+        makeResp(200, "text/plain",
+                 "User-agent: *\nDisallow: /admin/\nDisallow: /private/\n") });
+
+    tc.append({ "robots.txt without sensitive paths must NOT fire robots-discloses-paths",
+                "robots-discloses-paths", true,
+        makeReq("GET", "example.test", "/robots.txt"),
+        makeResp(200, "text/plain", "User-agent: *\nDisallow: /images/\n") });
+
     // ---- GraphQL / gRPC protocol detection (were untested) -------------
     tc.append({ "application/grpc content-type -> protocol-grpc", "protocol-grpc", false,
         makeReq("POST", "api.example.test", "/pkg.Svc/Method"),

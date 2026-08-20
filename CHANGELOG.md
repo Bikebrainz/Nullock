@@ -786,6 +786,11 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked four content-leak detectors.** `mixed-content` (an HTTPS page
+  referencing `http://` resources), `internal-hostname-leak` (an internal-TLD
+  hostname in the body), `html-comment-leak` (TODO/FIXME/password/etc. in an HTML
+  comment), and `robots-discloses-paths` (sensitive paths in robots.txt) gained
+  positive + negative coverage, including the robots.txt path gate. Mutation-proven.
 - **Locked the GraphQL/gRPC protocol detectors.** `protocol-grpc`,
   `protocol-graphql`, and `graphql-introspection` gained positive + negative
   coverage, pinning that only `__schema` (not the ubiquitous `__typename`) marks
