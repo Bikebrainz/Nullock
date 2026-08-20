@@ -3007,14 +3007,14 @@
       "state": "partial",
       "impact": "low",
       "effort": "hours",
-      "gap": "A Triage button per finding in the ISSUES tab now calls the endpoint and renders the model verdict (or the heuristic fallback text) inline -- closing the \"no UI entry point\" blocker. Two blockers remain, unchanged: the verdict is never persisted (re-opening the tab loses it), and it still depends on an unbundled local Ollama instance serving qwen2.5:14b, with a silent heuristic fallback when that is not running.",
-      "why": "UPGRADED (partial, was already partial): ui-v2/app.jsx IssuesTab adds a Triage button per finding row -> POST /api/triage/finding, rendered inline (model name + verdict text, or the heuristic fallback with its reason when Ollama is unreachable). Closes the 'no UI entry point' third of the prior gap; persistence and the external-dependency caveats are real and untouched.",
-      "evidence": "ui-v2/app.jsx IssuesTab doTriage()/triage state + inline result panel; control_server.cpp:4791 /api/triage/finding (rowId/kind/severity/summary/evidence in; ok/model/triage/error out).",
+      "gap": "A Triage button per finding in the ISSUES tab calls the endpoint and renders the model verdict (or the heuristic fallback text) inline. The verdict is now also cached to localStorage, keyed by the same finding-identity formula the backend already uses for its own per-finding flags (kind+U+001F+host+U+001F+url+U+001F+summary, matching FindingTriageLogic::findingKey) rather than the ephemeral row id, so it survives switching away from the ISSUES tab and back, and a full page reload -- closing the \"never persisted\" blocker. That persistence is honestly browser-local only, not a real per-project backend store: it does not sync across browsers/devices, is lost if site data is cleared, and is not scoped per-project the way Burp's own state would be. One blocker remains, unchanged: it still depends on an unbundled local Ollama instance serving qwen2.5:14b, with a silent heuristic fallback when that is not running.",
+      "why": "UPGRADED (partial, was already partial): ui-v2/app.jsx IssuesTab's doTriage() writes each completed verdict (model result or heuristic fallback) to a localStorage cache via saveTriageCacheEntry(), and a new hydration effect rehydrates React state for any currently-listed finding whose identity key is found in that cache on mount -- so a verdict computed before a tab switch (which previously unmounted IssuesTab and discarded its state) or before a page reload is shown again without re-querying the model. Re-clicking Triage on an already-triaged finding now just toggles the panel instead of re-fetching. Closes the persistence third of the prior gap; the Ollama dependency is unchanged, and the new persistence is explicitly client-local, not project-scoped -- both honestly disclosed above, not claimed fixed.",
+      "evidence": "ui-v2/app.jsx: findingIdentityKey()/loadTriageCache()/saveTriageCacheEntry() (localStorage key \"nl-triage-cache\"), IssuesTab's rehydration useEffect keyed on `findings`, and doTriage()'s cache-write + toggle-instead-of-refetch branch. Backend precedent for the identity formula: control_server.cpp:1362 `const QString fkey = FT::findingKey(f.kind, f.host, f.url, f.summary);` and Src/Core/Networking/finding_triage_logic.cpp:10-14 (QChar(0x1f) separator).",
       "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-10",
-        "commit": "06e1d6d",
-        "note": "Issues/Baseline batch: Triage button closes the GUI-reachability third of the gap; persistence and the Ollama dependency remain honest partials."
+        "date": "2026-08-20",
+        "commit": "8002e72",
+        "note": "Wave 2: persisted AI-triage verdicts to localStorage keyed by finding identity (matching the backend's own findingKey formula), closing the \"never persisted\" blocker; the Ollama dependency and the client-local (not per-project) nature of the new persistence remain honest partials."
       }
     },
     {
