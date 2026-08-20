@@ -786,6 +786,11 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked the GraphQL/gRPC protocol detectors.** `protocol-grpc`,
+  `protocol-graphql`, and `graphql-introspection` gained positive + negative
+  coverage, pinning that only `__schema` (not the ubiquitous `__typename`) marks
+  introspection as enabled and that a non-GraphQL JSON path stays quiet.
+  Mutation-proven.
 - **Locked four server/stack info-disclosure detectors.** `source-map-exposed`
   (a production JS `sourceMappingURL`), `phpinfo-output` (a reachable phpinfo()
   page &mdash; critical), `server-version-leak` (a versioned `Server` header), and

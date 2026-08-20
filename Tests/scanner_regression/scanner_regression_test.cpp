@@ -621,6 +621,39 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- GraphQL / gRPC protocol detection (were untested) -------------
+    tc.append({ "application/grpc content-type -> protocol-grpc", "protocol-grpc", false,
+        makeReq("POST", "api.example.test", "/pkg.Svc/Method"),
+        makeResp(200, "application/grpc", "\x00\x00\x00\x00\x00") });
+
+    tc.append({ "non-grpc response must NOT fire protocol-grpc", "protocol-grpc", true,
+        makeReq("GET", "api.example.test", "/api/users"),
+        makeResp(200, "application/json", "[]") });
+
+    // __schema in a /graphql body -> introspection is ON.
+    tc.append({ "graphql body with __schema -> graphql-introspection",
+                "graphql-introspection", false,
+        makeReq("POST", "api.example.test", "/graphql"),
+        makeResp(200, "application/json",
+                 "{\"data\":{\"__schema\":{\"types\":[{\"name\":\"Query\"}]}}}") });
+
+    // __typename (not __schema) is ordinary traffic -- introspection must NOT
+    // fire (it downgrades to the info-level protocol-graphql detection).
+    tc.append({ "graphql body with only __typename must NOT fire graphql-introspection",
+                "graphql-introspection", true,
+        makeReq("POST", "api.example.test", "/graphql"),
+        makeResp(200, "application/json",
+                 "{\"data\":{\"user\":{\"__typename\":\"User\",\"id\":1}}}") });
+
+    // A /graphql endpoint with no introspection marker -> plain detection.
+    tc.append({ "graphql endpoint without __schema -> protocol-graphql", "protocol-graphql", false,
+        makeReq("POST", "api.example.test", "/api/graphql"),
+        makeResp(200, "application/json", "{\"data\":{\"ok\":true}}") });
+
+    tc.append({ "non-graphql json path must NOT fire protocol-graphql", "protocol-graphql", true,
+        makeReq("GET", "api.example.test", "/api/users"),
+        makeResp(200, "application/json", "[]") });
+
     // ---- Server / stack info disclosure (were untested) ----------------
     tc.append({ "JS with sourceMappingURL -> source-map-exposed", "source-map-exposed", false,
         makeReq("GET", "example.test", "/app.js"),
