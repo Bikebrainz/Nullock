@@ -604,12 +604,18 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Add raw payload",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Cannot append the un-processed payload alongside a hashed/encoded copy (hash+salt sign-then-send patterns).",
-      "why": "Re-read applyRule/applyRules \u2014 a pure value->value chain with no notion of the pre-processing raw value; no add-raw op.",
-      "evidence": "intruder_rules.cpp:49-53 applyRules folds rules value->value; operations() has no 'add-raw'."
+      "gap": "None -- add-raw-payload is a new local op in the processing-rule chain: it appends the ORIGINAL, pre-chain payload value regardless of what earlier rules already did to the running value, so e.g. [sha256] -> [add-raw-payload] yields \"<hash><rawvalue>\" for sign-then-send patterns.",
+      "why": "Closed: applyRule/applyRules only ever saw the current running value, with no way to reach back to the pre-chain original once an earlier rule had transformed it. Gave applyRule a third `original` parameter (the 2-arg overload defaults it to `value` itself, preserving every existing call site and test) and had applyRules thread the constant pre-chain value through as `original` on every step, so add-raw-payload works correctly no matter where it sits in the chain or how many times it repeats.",
+      "evidence": "Src/Core/Networking/intruder_rules.hpp:56-57 (applyRule 3-arg + 2-arg overloads), intruder_rules.cpp:28-35 (add-raw-payload op + original threading), :169-172 (applyRules passes the constant original), operations() now advertises add-raw-payload; ui-v2/tabs.jsx RULE_OPS_FALLBACK includes it (the live list already comes from GET /api/intruder/rule-ops -> IntruderRules::operations(), control_server.cpp:3635-3639); Tests/intruder_rules/intruder_rules_test.cpp adds 5 checks (standalone self-append, appends original past an earlier transform, sha256-then-raw sign-then-send pattern, repeated add-raw-payload chain, operations() advertisement).",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "eba3a61",
+        "note": "absent -> present. Burp Payload Processing rule \"Add raw payload\": re-inserts the unmodified original payload at that point in the chain, most commonly used after a hash/encode step to build a sign-then-send value (hash+raw). The engine (intruder_rules.cpp) previously threaded only the running value through each rule with no notion of the untouched pre-chain original, so there was no way to get back to it once an earlier rule (e.g. sha256) had overwritten the running value. Added a third `original` parameter to applyRule (2-arg overload defaults it to value, so every existing call site and the 40+ existing unit tests are untouched) and have applyRules thread the constant pre-chain payload through as `original` on every step of the loop, so add-raw-payload appends the true original no matter where it sits in the chain or how many times it repeats. New op registered in operations() (auto-flows to the GUI dropdown via the existing /api/intruder/rule-ops -> ruleOps live-fetch, ui-v2/tabs.jsx:1642-1648) plus added to the static RULE_OPS_FALLBACK for when that fetch fails. 5 new unit tests in Tests/intruder_rules/intruder_rules_test.cpp lock the standalone self-append semantics, correct original-vs-running-value behavior after an earlier transform, the sha256-then-raw sign-then-send pattern named in the prior gap text, a repeated-in-chain case, and operations() advertisement. Backend C++ change this cloud session cannot build locally -- pushed and will be confirmed against a green GitHub Actions ctest run (ctest -R intruder_rules) before being called fully verified; documented here as the honest state at push time per this file's convention for cloud session C++ waves."
+      }
     },
     {
       "area": "intruder",
