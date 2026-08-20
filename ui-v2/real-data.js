@@ -145,6 +145,7 @@
   }
   NL.actions = {
     toggleProxy()           { return post("/api/proxy/toggle"); },
+    setLogOutOfScope(value) { return post("/api/proxy/log-out-of-scope", { value }); },
     toggleIntercept()          { return post("/api/intercept/toggle"); },
     toggleInterceptResponses() { return post("/api/intercept/responses/toggle"); },
     interceptForward(text)  { return post("/api/intercept/forward", { text }); },

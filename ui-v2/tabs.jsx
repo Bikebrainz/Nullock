@@ -98,7 +98,7 @@ function ScopeColumn({ label, colorVar, list, kind, dispatch, includeSubdomains 
   );
 }
 
-function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
+function ScopeTab({ scope, dispatch, bootInfo, logOutOfScope, onCopyCa }) {
   const [includeSubdomains, setIncludeSubdomains] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
   const [notesDraft, setNotesDraft] = React.useState(scope.notes || "");
@@ -150,6 +150,12 @@ function ScopeTab({ scope, dispatch, bootInfo, onCopyCa }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "var(--dim)", fontSize: "var(--fz-xs)" }}>
           <input type="checkbox" checked={includeSubdomains} onChange={e => setIncludeSubdomains(e.target.checked)} />
           include subdomains when adding
+        </label>
+        <label
+          title="When off (Burp default), out-of-scope traffic is dropped from Proxy history and live tasks (passive scan). When on, everything is kept regardless of scope."
+          style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "var(--dim)", fontSize: "var(--fz-xs)" }}>
+          <input type="checkbox" checked={!!logOutOfScope} onChange={() => dispatch({ type: "log-out-of-scope-toggle" })} />
+          log out-of-scope traffic
         </label>
         <span className="ph-count">project: {bootInfo.project}</span>
       </div>

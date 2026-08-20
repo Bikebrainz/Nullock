@@ -53,6 +53,7 @@ function reducer(state, action) {
         repeater: NL.repeater ? { ...state.repeater, ...NL.repeater } : state.repeater,
         intruder: NL.intruder ? { ...state.intruder, ...NL.intruder } : state.intruder,
         proxyOn: NL.bootInfo && NL.bootInfo.proxyOn !== undefined ? NL.bootInfo.proxyOn : state.proxyOn,
+        logOutOfScope: NL.bootInfo && NL.bootInfo.logOutOfScope !== undefined ? NL.bootInfo.logOutOfScope : state.logOutOfScope,
       };
     }
 
@@ -191,6 +192,11 @@ function reducer(state, action) {
       const next = !state.interceptAutoContentLength;
       act("interceptSetAutoContentLength", next);
       return { ...state, interceptAutoContentLength: next };
+    }
+    case "log-out-of-scope-toggle": {
+      const next = !state.logOutOfScope;
+      act("setLogOutOfScope", next);
+      return { ...state, logOutOfScope: next };
     }
     case "intercept-forward": {
       const current = state.intercepted[0];
@@ -6887,6 +6893,7 @@ function App() {
     selectedHost: null,
     selectedOrigin: null,
     proxyOn: true,
+    logOutOfScope: NL.bootInfo && NL.bootInfo.logOutOfScope === true,
     intercept: false,
     interceptResponses: false,
     interceptAutoContentLength: NL.interceptAutoContentLength,
@@ -7137,6 +7144,7 @@ function App() {
             scope={state.scope}
             dispatch={dispatch}
             bootInfo={NL.bootInfo}
+            logOutOfScope={state.logOutOfScope}
             onCopyCa={copyCa}
           />
         )}
