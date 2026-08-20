@@ -1,5 +1,6 @@
 #include "extensions_api.hpp"
 #include "extension_perms_logic.hpp"
+#include "extensions_utils_logic.hpp"
 
 #include <QDateTime>
 #include <QUrl>
@@ -115,6 +116,19 @@ void ExtensionsApiBridge::reportFinding(const QString &severity,
     scanner->reportFinding(0, severity, kind, summary, evidence, host, url);
 }
 
+// nullock.utils.* -- thin wrappers over the pure, unit-tested ExtUtils codecs.
+QString ExtensionsUtilsBridge::base64Encode(const QString &s) const { return ExtUtils::base64Encode(s); }
+QString ExtensionsUtilsBridge::base64Decode(const QString &s) const { return ExtUtils::base64Decode(s); }
+QString ExtensionsUtilsBridge::urlEncode(const QString &s)    const { return ExtUtils::urlEncode(s); }
+QString ExtensionsUtilsBridge::urlDecode(const QString &s)    const { return ExtUtils::urlDecode(s); }
+QString ExtensionsUtilsBridge::hexEncode(const QString &s)    const { return ExtUtils::hexEncode(s); }
+QString ExtensionsUtilsBridge::hexDecode(const QString &s)    const { return ExtUtils::hexDecode(s); }
+QString ExtensionsUtilsBridge::htmlEncode(const QString &s)   const { return ExtUtils::htmlEncode(s); }
+QString ExtensionsUtilsBridge::htmlDecode(const QString &s)   const { return ExtUtils::htmlDecode(s); }
+QString ExtensionsUtilsBridge::sha256(const QString &s)       const { return ExtUtils::sha256Hex(s); }
+QString ExtensionsUtilsBridge::sha1(const QString &s)         const { return ExtUtils::sha1Hex(s); }
+QString ExtensionsUtilsBridge::md5(const QString &s)          const { return ExtUtils::md5Hex(s); }
+
 ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // Both types travel across thread boundaries when worker threads call
     // applyRequestMutation / applyResponseMutation via BlockingQueuedConnection.
@@ -124,6 +138,9 @@ ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // Parented to this, which is what gives it CppOwnership when handed to
     // newQObject() -- so the bridge outlives any engine that reload() destroys.
     m_bridge = new ExtensionsApiBridge(this);
+    // Parented to this (CppOwnership) for the same reason as m_bridge: it must
+    // survive every engine reload() destroys, and is re-published each rebuild.
+    m_utils  = new ExtensionsUtilsBridge(this);
     rebuildEngine();
     loadAll();
 }
@@ -142,6 +159,10 @@ void ExtensionsApi::rebuildEngine() {
 
     m_engine = std::make_unique<QJSEngine>();
     QJSValue nullockObj = m_engine->newQObject(m_bridge);
+    // Group the codec/hash helpers under nullock.utils (Burp's api.utilities()).
+    // m_utils is CppOwned (parented to this), so re-wrapping it on the fresh
+    // engine each rebuild is safe -- the object itself is never recreated.
+    nullockObj.setProperty("utils", m_engine->newQObject(m_utils));
     m_engine->globalObject().setProperty("nullock", nullockObj);
 }
 

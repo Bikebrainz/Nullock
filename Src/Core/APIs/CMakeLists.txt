@@ -6,6 +6,8 @@ add_library(APIs STATIC
     ExtensionsAPI/extensions_api.hpp
     ExtensionsAPI/extension_perms_logic.cpp
     ExtensionsAPI/extension_perms_logic.hpp
+    ExtensionsAPI/extensions_utils_logic.cpp
+    ExtensionsAPI/extensions_utils_logic.hpp
     ManagerAPI/manager_api.cpp
     ManagerAPI/manager_api.hpp
     Oast/oast_server.cpp

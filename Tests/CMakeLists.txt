@@ -476,6 +476,7 @@ add_subdirectory(h2_server_logic)
 # sanitization (report-injection defence). Compiles dns_logic.cpp directly; Qt6::Core.
 # Run via: ctest -R dns_logic -V
 add_subdirectory(dns_logic)
+add_subdirectory(extensions_utils_logic)
 
 # OAST HTTP-callback token extractor: attacker-controlled Host header + request
 # path -> exact-16-hex token or nothing. Locks the shape contract (no looser

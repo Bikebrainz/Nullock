@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions get a built-in `nullock.utils` toolbox of codecs and hashes.** A
+  JavaScript extension used to hand-roll base64, hex, and hashing in ES5. It can
+  now call ready-made helpers &mdash; <code class="inline">nullock.utils.base64Encode/Decode</code>,
+  <code class="inline">urlEncode/Decode</code>, <code class="inline">hexEncode/Decode</code>,
+  <code class="inline">htmlEncode/Decode</code>, and <code class="inline">sha256</code> /
+  <code class="inline">sha1</code> / <code class="inline">md5</code> (Burp's
+  <code class="inline">api.utilities()</code> equivalent). They're plain text-in /
+  text-out transforms with no permission needed, backed by a small unit-tested
+  core so the results are correct and consistent. (A byte-array type and gzip
+  helpers are still to come &mdash; JS has no native byte type, and extensions
+  already receive decompressed response bodies.)
 - **Extensions can read recent proxy history.** A JavaScript extension used to see
   only the single request/response it was handed at the moment it fired &mdash; to
   build up any picture of the traffic it had to accumulate that itself. It can now

@@ -22,7 +22,8 @@ namespace Nullock::Core {
 // PassiveScanner implements and app.cpp wires in. Depending on the header-only
 // interface rather than the concrete class is what lets APIs stop LINKING
 // Networking -- see finding_sink.hpp for why that mattered.
-class ExtensionsApiBridge;  // forward — internal
+class ExtensionsApiBridge;    // forward — internal
+class ExtensionsUtilsBridge;  // forward — internal (published as nullock.utils)
 
 // Loads JavaScript extensions from <appdata>/Nullock/Nullock/extensions/
 // at startup and dispatches proxy events to them.
@@ -176,6 +177,7 @@ private:
     // reset -- a QJSValue outliving its engine is undefined behaviour.
     std::unique_ptr<QJSEngine> m_engine;
     ExtensionsApiBridge *m_bridge = nullptr;
+    ExtensionsUtilsBridge *m_utils = nullptr;   // published as nullock.utils each rebuild
     IFindingSink        *m_scanner = nullptr;
     // Touched ONLY on this object's own thread: registered during script
     // evaluation, cleared by reload(), read by doMutateRequest/doMutateResponse
@@ -273,6 +275,30 @@ public:
 
 private:
     ExtensionsApi *m_owner;
+};
+
+// Published as nullock.utils -- Burp's api.utilities() equivalent. A grouped set
+// of pure codec/hash primitives so extensions stop hand-rolling base64/hex/hashing
+// in ES5. Ungated (pure text transforms, no I/O, no wire access). Parented to
+// ExtensionsApi so it outlives any engine reload() destroys; re-published on the
+// fresh engine by rebuildEngine(). Every method is a thin wrapper over the pure,
+// unit-tested Nullock::Core::ExtUtils functions.
+class ExtensionsUtilsBridge : public QObject {
+    Q_OBJECT
+public:
+    explicit ExtensionsUtilsBridge(QObject *parent = nullptr) : QObject(parent) {}
+
+    Q_INVOKABLE QString base64Encode(const QString &s) const;
+    Q_INVOKABLE QString base64Decode(const QString &s) const;
+    Q_INVOKABLE QString urlEncode(const QString &s) const;
+    Q_INVOKABLE QString urlDecode(const QString &s) const;
+    Q_INVOKABLE QString hexEncode(const QString &s) const;
+    Q_INVOKABLE QString hexDecode(const QString &s) const;
+    Q_INVOKABLE QString htmlEncode(const QString &s) const;
+    Q_INVOKABLE QString htmlDecode(const QString &s) const;
+    Q_INVOKABLE QString sha256(const QString &s) const;
+    Q_INVOKABLE QString sha1(const QString &s) const;
+    Q_INVOKABLE QString md5(const QString &s) const;
 };
 
 } // namespace Nullock::Core
