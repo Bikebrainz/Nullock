@@ -496,6 +496,72 @@ QList<TestCase> buildCorpus() {
                  "<html><body>Whatever you were looking for doesn't currently "
                  "exist at this address.</body></html>") });
 
+    // ---- CORS misconfiguration (were untested) -------------------------
+    // Four independent CORS shapes, each its own severity. The wildcard/creds
+    // pair is an if/else in the scanner -- ACAO:* WITH Allow-Credentials is the
+    // HIGH finding, ACAO:* ALONE is the INFO one -- so the discriminating
+    // negatives below pin that mutual exclusivity: neither may fire for the
+    // other's shape, and a specific echoed origin is not a wildcard at all.
+    tc.append({ "ACAO:* + Allow-Credentials:true -> cors-wildcard-creds",
+                "cors-wildcard-creds", false,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}",
+                 {{"Access-Control-Allow-Origin", "*"},
+                  {"Access-Control-Allow-Credentials", "true"}}) });
+
+    // Same ACAO:* response, no credentials -> the HIGH creds finding must NOT
+    // fire (pins the Allow-Credentials condition, not just the ACAO one).
+    tc.append({ "ACAO:* without credentials must NOT fire cors-wildcard-creds",
+                "cors-wildcard-creds", true,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}",
+                 {{"Access-Control-Allow-Origin", "*"}}) });
+
+    tc.append({ "ACAO:* alone -> cors-wildcard (info)", "cors-wildcard", false,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}",
+                 {{"Access-Control-Allow-Origin", "*"}}) });
+
+    // With credentials the info-level cors-wildcard must NOT ALSO fire (it is
+    // the else branch of the creds check) ...
+    tc.append({ "ACAO:* + creds must NOT ALSO fire the info cors-wildcard",
+                "cors-wildcard", true,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}",
+                 {{"Access-Control-Allow-Origin", "*"},
+                  {"Access-Control-Allow-Credentials", "true"}}) });
+
+    // ... and a specific echoed origin is not a wildcard.
+    tc.append({ "specific ACAO origin must NOT fire cors-wildcard",
+                "cors-wildcard", true,
+        makeReq("GET", "api.example.test", "/data"),
+        makeResp(200, "application/json", "{}",
+                 {{"Access-Control-Allow-Origin", "https://app.example.test"}}) });
+
+    tc.append({ "Allow-Methods contains * -> cors-methods-wildcard",
+                "cors-methods-wildcard", false,
+        makeReq("OPTIONS", "api.example.test", "/data"),
+        makeResp(204, "", "",
+                 {{"Access-Control-Allow-Methods", "GET, POST, *"}}) });
+
+    tc.append({ "Allow-Methods without * must NOT fire cors-methods-wildcard",
+                "cors-methods-wildcard", true,
+        makeReq("OPTIONS", "api.example.test", "/data"),
+        makeResp(204, "", "",
+                 {{"Access-Control-Allow-Methods", "GET, POST, PUT, DELETE"}}) });
+
+    tc.append({ "Allow-Headers contains * -> cors-headers-wildcard",
+                "cors-headers-wildcard", false,
+        makeReq("OPTIONS", "api.example.test", "/data"),
+        makeResp(204, "", "",
+                 {{"Access-Control-Allow-Headers", "*"}}) });
+
+    tc.append({ "Allow-Headers without * must NOT fire cors-headers-wildcard",
+                "cors-headers-wildcard", true,
+        makeReq("OPTIONS", "api.example.test", "/data"),
+        makeResp(204, "", "",
+                 {{"Access-Control-Allow-Headers", "Content-Type, Authorization"}}) });
+
     // ---- Server-error stack-trace fingerprints (were untested) ---------
     // A 5xx body leaking an internal stack trace tells an attacker which
     // framework + line numbers to hit. Gated on statusCode >= 500; the
