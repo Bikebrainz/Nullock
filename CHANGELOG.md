@@ -786,6 +786,10 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked the last two passive detectors** &mdash; `csv-formula-injection` (a CSV
+  cell starting with `=/+/-/@`, an Excel formula-injection vector) and
+  `cms-woocommerce` (WooCommerce layered on WordPress). Every kind the passive
+  scanner can emit now has mutation-proven regression coverage.
 - **Locked five request/method/caching detectors.** `secret-in-url` (a
   sensitive query param), `debug-method-allowed` (an accepted TRACE/CONNECT/
   PROPFIND), `cache-vary-missing-cookie` (a cookie-setting cacheable 200 with no

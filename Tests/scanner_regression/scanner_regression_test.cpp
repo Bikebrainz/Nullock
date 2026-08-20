@@ -621,6 +621,31 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- CSV formula injection + WooCommerce (last untested) -----------
+    // A CSV cell starting with =/+/-/@ executes as a formula in Excel on open.
+    tc.append({ "CSV cell starting with =SUM -> csv-formula-injection",
+                "csv-formula-injection", false,
+        makeReq("GET", "example.test", "/export.csv"),
+        makeResp(200, "text/csv", "item,formula\n=SUM(A1:A9),100\n") });
+
+    // The trigger char must be at cell/line start -- a mid-cell '=' is fine.
+    tc.append({ "mid-cell '=' must NOT fire csv-formula-injection",
+                "csv-formula-injection", true,
+        makeReq("GET", "example.test", "/export.csv"),
+        makeResp(200, "text/csv", "item,note\nAlice,a=b\n") });
+
+    // WooCommerce is layered on WordPress: needs a WP hit (/wp-content/) AND a
+    // "woocommerce" marker in the body.
+    tc.append({ "wp-content + woocommerce marker -> cms-woocommerce", "cms-woocommerce", false,
+        makeReq("GET", "shop.example.test", "/wp-content/plugins/woocommerce/assets/x.js"),
+        makeResp(200, "text/html", "<html><body>woocommerce cart</body></html>") });
+
+    // A WordPress site without the woocommerce marker must not fire it.
+    tc.append({ "wp-content without woocommerce marker must NOT fire cms-woocommerce",
+                "cms-woocommerce", true,
+        makeReq("GET", "blog.example.test", "/wp-content/themes/x/style.css"),
+        makeResp(200, "text/html", "<html><body>just a wordpress blog</body></html>") });
+
     // ---- Sensitive params / methods / caching (were untested) ----------
     tc.append({ "sensitive query param -> secret-in-url", "secret-in-url", false,
         makeReq("GET", "example.test", "/callback?api_key=abc123&next=/home"),
