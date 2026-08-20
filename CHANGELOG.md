@@ -767,6 +767,21 @@ developer-facing record.
   confirms 0 broken links and every page reaches all five sections.
 
 ### Security
+- **Fixed a dead cookie-security detector.** `cookie-secure-prefix-violation`
+  (a `__Secure-` prefixed cookie set without the Secure attribute) could never
+  fire: the check was `!contains("secure")` against the whole lowercased cookie,
+  and a `__Secure-` cookie's name *always* contains the substring "secure", so
+  the condition was tautologically false. The `__Host-` check and, in the same
+  spirit, could be spoofed by a cookie value containing "secure". Both now match
+  an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
+  check. Locked with a mutation-proven batch that also covers the untested
+  `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked all four CORS-misconfiguration detectors.** `cors-wildcard`,
+  `cors-wildcard-creds`, `cors-methods-wildcard`, and `cors-headers-wildcard`
+  had no regression coverage &mdash; a condition regression could have silently
+  stopped flagging an `ACAO: *` with `Allow-Credentials: true` (a genuine
+  cross-origin exposure). Added positive + discriminating-negative cases that
+  pin the wildcard/credentials if-else mutual exclusivity; mutation-proven.
 - **Locked seven previously-untested leaked-secret detectors.** The passive
   scanner ships ten `leaked-*` credential patterns but only three (AWS key, GitHub
   PAT, Stripe) had a regression test — so a regex regression could have silently

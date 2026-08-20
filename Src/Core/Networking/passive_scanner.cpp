@@ -494,8 +494,17 @@ void PassiveScanner::checkResponse(int rowId,
         if (cookieN2++ >= kMaxCookiesScanned) break;   // bound finding-spam
         const QString lc = cookie.toLower();
         const QString name = cookie.section('=', 0, 0).trimmed();
+        // The Secure ATTRIBUTE, tokenized -- NOT a substring test. A naive
+        // lc.contains("secure") is tautologically TRUE for a "__Secure-"
+        // prefixed cookie (the prefix itself contains "secure"), which made the
+        // prefix-violation check below un-fireable -- a dead detector. It also
+        // let a cookie whose value merely contains "secure" spoof the flag for
+        // the "__Host-" check. Split on ';' and match an exact "secure" token.
+        bool hasSecureAttr = false;
+        for (const QString &attr : lc.split(';'))
+            if (attr.trimmed() == "secure") { hasSecureAttr = true; break; }
         // __Secure- prefix requires Secure.
-        if (name.startsWith("__Secure-", Qt::CaseInsensitive) && !lc.contains("secure")) {
+        if (name.startsWith("__Secure-", Qt::CaseInsensitive) && !hasSecureAttr) {
             addFinding(rowId, req, resp, "medium", "cookie-secure-prefix-violation",
                        "__Secure- prefixed cookie set without Secure flag",
                        cookie.left(240));
@@ -513,7 +522,7 @@ void PassiveScanner::checkResponse(int rowId,
         // __Host- prefix requires Secure, Path=/, no Domain.
         if (name.startsWith("__Host-", Qt::CaseInsensitive)) {
             const bool hasDomain = lc.contains("domain=");
-            const bool hasSecure = lc.contains("secure");
+            const bool hasSecure = hasSecureAttr;
             if (hasDomain || !hasSecure || !pathRoot) {
                 addFinding(rowId, req, resp, "medium", "cookie-host-prefix-violation",
                            "__Host- prefixed cookie missing Secure / Path=/ or has Domain",

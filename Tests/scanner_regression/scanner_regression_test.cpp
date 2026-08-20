@@ -562,6 +562,65 @@ QList<TestCase> buildCorpus() {
         makeResp(204, "", "",
                  {{"Access-Control-Allow-Headers", "Content-Type, Authorization"}}) });
 
+    // ---- Cookie flag hygiene (were untested) ---------------------------
+    // cookie-no-secure / cookie-no-samesite / cookie-secure-prefix-violation
+    // had no coverage; each Set-Cookie is walked and flag-checked. A regression
+    // here silently stops flagging insecure session cookies.
+
+    // cookie-no-secure fires only on TLS responses whose cookie lacks Secure.
+    tc.append({ "TLS Set-Cookie without Secure -> cookie-no-secure",
+                "cookie-no-secure", false,
+        makeReq("GET", "example.test", "/login"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
+
+    tc.append({ "TLS Set-Cookie WITH Secure must NOT fire cookie-no-secure",
+                "cookie-no-secure", true,
+        makeReq("GET", "example.test", "/login"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; Secure; HttpOnly; SameSite=Lax"}}) });
+
+    // wasTls gate: the SAME insecure cookie over plaintext HTTP must NOT fire
+    // cookie-no-secure (a plaintext connection has no Secure channel to demand).
+    tc.append({ "plaintext Set-Cookie without Secure must NOT fire cookie-no-secure",
+                "cookie-no-secure", true,
+        makeReq("GET", "example.test", "/login", {}, {}, 80, false),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}, /*wasTls=*/false) });
+
+    tc.append({ "Set-Cookie without SameSite -> cookie-no-samesite",
+                "cookie-no-samesite", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; Secure; HttpOnly"}}) });
+
+    tc.append({ "Set-Cookie WITH SameSite must NOT fire cookie-no-samesite",
+                "cookie-no-samesite", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; Secure; HttpOnly; SameSite=Strict"}}) });
+
+    // __Secure- prefix demands the Secure attribute.
+    tc.append({ "__Secure- cookie without Secure -> cookie-secure-prefix-violation",
+                "cookie-secure-prefix-violation", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "__Secure-sid=abc123; HttpOnly; SameSite=Lax"}}) });
+
+    tc.append({ "__Secure- cookie WITH Secure must NOT fire the prefix violation",
+                "cookie-secure-prefix-violation", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "__Secure-sid=abc123; Secure; HttpOnly; SameSite=Lax"}}) });
+
+    // Prefix gate: a non-__Secure- cookie lacking Secure must NOT raise the
+    // prefix violation (that shape is cookie-no-secure's job, not this one's).
+    tc.append({ "non-prefixed insecure cookie must NOT fire the prefix violation",
+                "cookie-secure-prefix-violation", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
+
     // ---- Server-error stack-trace fingerprints (were untested) ---------
     // A 5xx body leaking an internal stack trace tells an attacker which
     // framework + line numbers to hit. Gated on statusCode >= 500; the
