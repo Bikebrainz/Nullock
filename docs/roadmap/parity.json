@@ -3847,12 +3847,18 @@
     {
       "area": "proxy",
       "feature": "Intercept: 'Do intercept > Response to this request' (per-message opt-in)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
       "gap": "No way to say 'hold the response to THIS request'. The only choice is all responses on in-scope hosts, or none.",
       "why": "Confirmed by reading both intercept panes and the controller's Q_INVOKABLE surface: four actions in ui-v2 (toggle, responses-toggle, forward-all, drop/forward), and no per-message menu in QML either. There is no plumbing to tag one pending's response for holding. Absent confirmed.",
-      "evidence": "ui-v2/tabs.jsx:286-288 FORWARD ALL and :318-321 `<button className=\"btn danger\" ...>DROP</button>\\n            <button className=\"btn primary\" ...>\u21a6 FORWARD</button>` -- the complete action row. Controller surface: Src/BackEnd/Proxy/intercept.hpp:83-96 `setEnabled / setResponsesEnabled / forward / drop / forwardAll`. Desktop equivalent Src/App/app.qml:864-868."
+      "evidence": "ui-v2/tabs.jsx:286-288 FORWARD ALL and :318-321 `<button className=\"btn danger\" ...>DROP</button>\\n            <button className=\"btn primary\" ...>\u21a6 FORWARD</button>` -- the complete action row. Controller surface: Src/BackEnd/Proxy/intercept.hpp:83-96 `setEnabled / setResponsesEnabled / forward / drop / forwardAll`. Desktop equivalent Src/App/app.qml:864-868.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "f859d3a",
+        "note": "absent -> partial. The plumbing to hold ONE request's response now exists: forwardInterceptingResponse() flags the current request pending (PendingRequest::holdResponse); pendImpl carries it out in InterceptResult::holdResponse; the proxy worker (plaintext run(), MITM, and h2-upstream legs) captures it after the request pend() and passes forceHold to resolveResponseForClient -> pendResponse. forceHold threads pendResponse -> pendImpl -> addPendingOnMain, bypassing the m_enabledResponses gate AND the intercept-rule gate for that one response while still respecting the backpressure cap; per-pending m_forceHold is set on the worker before addPendingOnMain reads it (same cross-thread pattern as m_kind); the forceHold=false path is byte-identical to before. Endpoint POST /api/intercept/forward-hold-response. VERIFIED e2e (5/5): with request-intercept ON + RESPONSE-intercept OFF, a held request forwarded via forward-hold-response holds its response (real upstream body), other responses keep flowing, and the client gets the response once it's forwarded. ctest 100/100, probe 156/156. REMAINDER (why still partial): the ui-v2 (and QML) right-click 'Do intercept > Response to this request' menu item -- the endpoint gives it everything it needs (concurrent-agent lane)."
+      }
     },
     {
       "area": "proxy",
