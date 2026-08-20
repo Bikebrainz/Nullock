@@ -776,6 +776,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked three untested deserialization-gadget detectors.** `deser-pickle`
+  (Python), `deser-ruby` (Marshal), and `deser-dotnet` (BinaryFormatter) &mdash;
+  HIGH `gadget-chain RCE candidate` findings keyed off a base64 magic prefix in
+  the request body &mdash; had no coverage. Added a positive per language plus a
+  one-char-off near-miss negative each (e.g. pickle matches `gASV` but not
+  `gASX`), pinning the deliberately narrow needles. Mutation-proven.
 - **Locked four untested CSP-weakness detectors.** `csp-unsafe-eval`,
   `csp-wildcard-src`, `csp-no-form-action`, and `csp-no-base-uri` gained
   positive + discriminating-negative coverage &mdash; including that a wildcard

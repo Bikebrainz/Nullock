@@ -1015,6 +1015,43 @@ QList<TestCase> buildCorpus() {
                 "obj=O:8:\"stdClass\":0:{}"),
         makeResp(200, "text/html", "ok") });
 
+    // Python pickle / Ruby Marshal / .NET BinaryFormatter magic prefixes were
+    // untested. Each keys off a base64 magic prefix in the REQUEST body; each
+    // negative is a one-char-off near-miss that pins the exact (deliberately
+    // narrow) needle -- e.g. pickle matches "gASV" but not "gASX".
+    tc.append({ "Python pickle magic in request body -> deser-pickle",
+                "deser-pickle", false,
+        makeReq("POST", "example.test", "/api", {},
+                "state=gASVEAAAAAAAAACMBWhlbGxvlC4="),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ "near-miss gASX must NOT fire deser-pickle", "deser-pickle", true,
+        makeReq("POST", "example.test", "/api", {},
+                "state=gASXEAAAAAAAAACMBWhlbGxvlC4="),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ "Ruby Marshal magic in request body -> deser-ruby",
+                "deser-ruby", false,
+        makeReq("POST", "example.test", "/api", {},
+                "m=BAhJIgpoZWxsbwY6BkVU"),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ "near-miss BAg must NOT fire deser-ruby", "deser-ruby", true,
+        makeReq("POST", "example.test", "/api", {},
+                "m=BAgJIgpoZWxsbwY6BkVU"),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ ".NET BinaryFormatter magic in request body -> deser-dotnet",
+                "deser-dotnet", false,
+        makeReq("POST", "example.test", "/api", {},
+                "d=AAEAAAD/////AQAAAAAAAAAMAgAAAA=="),
+        makeResp(200, "application/json", "{}") });
+
+    tc.append({ "near-miss AAEAAAA must NOT fire deser-dotnet", "deser-dotnet", true,
+        makeReq("POST", "example.test", "/api", {},
+                "d=AAEAAAAAAAAAAAAAAAAAAAAAAAAAAA=="),
+        makeResp(200, "application/json", "{}") });
+
     // ---- CSP report-only when nothing enforced ------------------------
     tc.append({ "csp-report-only with no enforcing CSP",
                 "csp-report-only", false,
