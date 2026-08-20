@@ -67,7 +67,10 @@ Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count,
                   false-positive assessment -- all three were API-only before this; clicking a
                   finding opens an inline Advisory/Request/Response detail pane (CWE/OWASP/CVSS/
                   compliance/fix guidance, plus the underlying raw request/response with the
-                  scanner's evidence string highlighted) instead of jumping straight to Proxy
+                  scanner's evidence string highlighted) instead of jumping straight to Proxy;
+                  a per-finding false-positive mark, severity override, and soft-delete/restore,
+                  plus per-kind mute -- all persisted in the project and reversible with no
+                  re-scan -- are also now reachable from that same tab
 Active scanner    SQLi (error + blind/time), NoSQLi, LDAP + XPath injection, XXE, SSTI, OS cmd-i,
                   CRLF, path traversal, reflected XSS, IDOR, verb tampering, open redirect, CORS,
                   mass assignment, SSRF (cloud-metadata/file/internal, fetch-proven), insecure
