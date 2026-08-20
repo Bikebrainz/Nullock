@@ -15,6 +15,7 @@
 #include <QVariantMap>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class QFileSystemWatcher;   // forward — auto-reload watcher (pointer member)
@@ -128,6 +129,17 @@ public:
     OastServer *oast() const { return m_oast; }
     DnsSink    *dnsSink() const { return m_dns; }
 
+    // Wire cross-tool send handlers so extensions can push a request to Repeater /
+    // Intruder (nullock.sendToRepeater / sendToIntruder). Set from app.cpp with
+    // lambdas that populate the tool -- ExtensionsApi lives in the APIs lib which
+    // deliberately does NOT link Networking (Repeater/Intruder), so a std::function
+    // set at wiring time is the callback, not a direct call. Optional -- unset means
+    // the bridge method just logs.
+    using SendFn = std::function<void(const QString &host, int port, bool tls,
+                                      const QString &requestText)>;
+    void setSendToRepeater(SendFn fn) { m_sendToRepeater = std::move(fn); }
+    void setSendToIntruder(SendFn fn) { m_sendToIntruder = std::move(fn); }
+
     // Apply onRequest mutation handlers and return the (possibly modified)
     // request. Thread-safe: if called from a non-main thread it routes via
     // BlockingQueuedConnection so the JS engine still runs on its owner
@@ -218,6 +230,8 @@ private:
     ExtensionsStorageBridge *m_storage = nullptr;      // published as nullock.storage
     OastServer *m_oast = nullptr;   // OOB HTTP sink (optional)
     DnsSink    *m_dns  = nullptr;   // OOB DNS sink (optional)
+    SendFn      m_sendToRepeater;   // wired in app.cpp (optional)
+    SendFn      m_sendToIntruder;   // wired in app.cpp (optional)
     IFindingSink        *m_scanner = nullptr;
     // Touched ONLY on this object's own thread: registered during script
     // evaluation, cleared by reload(), read by doMutateRequest/doMutateResponse
@@ -330,6 +344,14 @@ public:
                                    const QString &summary,
                                    const QString &evidence,
                                    const QString &url);
+
+    // Push a request into Repeater / Intruder (Burp's sendToRepeater / sendToIntruder).
+    // Opens/populates a Repeater tab, or loads Intruder's base request, with the
+    // given target + raw request text. No-op (logged) if the tool isn't wired.
+    Q_INVOKABLE void sendToRepeater(const QString &host, int port, bool tls,
+                                    const QString &requestText);
+    Q_INVOKABLE void sendToIntruder(const QString &host, int port, bool tls,
+                                    const QString &requestText);
 
 private:
     ExtensionsApi *m_owner;

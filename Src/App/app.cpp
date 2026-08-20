@@ -1200,6 +1200,25 @@ int main(int argc, char *argv[]) {
         || qEnvironmentVariableIsSet("NULLOCK_EXT_AUTORELOAD"))
         extensions.setAutoReload(true);
 
+    // nullock.sendToRepeater / sendToIntruder: extensions push a request into the
+    // tool. APIs doesn't link Networking, so the handler is a lambda wired here.
+    extensions.setSendToRepeater([&repeater](const QString &host, int port, bool tls,
+                                             const QString &req) {
+        const int idx = repeater.addTab(QStringLiteral("from extension"));
+        repeater.setActiveTab(idx);
+        repeater.setHost(host);
+        repeater.setPort(port);
+        repeater.setUseTls(tls);
+        repeater.setRequestText(req);
+    });
+    extensions.setSendToIntruder([&intruder](const QString &host, int port, bool tls,
+                                             const QString &req) {
+        intruder.setHost(host);
+        intruder.setPort(port);
+        intruder.setUseTls(tls);
+        intruder.setRequestTemplate(req);
+    });
+
     // Background update check. Hits GitHub Releases API once at startup,
     // surfaces the result via /api/snapshot. No telemetry, no
     // auto-download -- just a small "X.Y.Z available" pill in the UI.

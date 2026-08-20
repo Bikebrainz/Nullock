@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can hand a request to Repeater or Intruder.** An extension can now
+  call <code class="inline">nullock.sendToRepeater(host, port, tls, request)</code>
+  or <code class="inline">nullock.sendToIntruder(...)</code> to drop a request it
+  built or observed straight into a new Repeater tab or Intruder's base request
+  (Burp's send-to-tool). That's the piece that lets an extension kick off a manual
+  follow-up &mdash; find something interesting, send it over for hands-on testing
+  &mdash; without copy-paste. (Sending to Comparer/Decoder from an extension is
+  still to come.)
 - **Extensions can save their own settings and state.** An extension can now keep
   data across restarts with a small key/value store &mdash; <code class="inline">nullock.storage.set(key, value)</code>,
   <code class="inline">get(key, default)</code>, <code class="inline">has</code>,

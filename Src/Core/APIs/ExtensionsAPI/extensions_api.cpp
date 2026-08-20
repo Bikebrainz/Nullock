@@ -123,6 +123,26 @@ void ExtensionsApiBridge::reportFinding(const QString &severity,
     scanner->reportFinding(0, severity, kind, summary, evidence, host, url);
 }
 
+void ExtensionsApiBridge::sendToRepeater(const QString &host, int port, bool tls,
+                                         const QString &requestText) {
+    if (m_owner->m_sendToRepeater) {
+        m_owner->m_sendToRepeater(host, port, tls, requestText);
+        m_owner->appendLog(QStringLiteral("[ext] sendToRepeater %1:%2").arg(host).arg(port));
+    } else {
+        m_owner->appendLog(QStringLiteral("[ext] sendToRepeater ignored (Repeater not wired)"));
+    }
+}
+
+void ExtensionsApiBridge::sendToIntruder(const QString &host, int port, bool tls,
+                                         const QString &requestText) {
+    if (m_owner->m_sendToIntruder) {
+        m_owner->m_sendToIntruder(host, port, tls, requestText);
+        m_owner->appendLog(QStringLiteral("[ext] sendToIntruder %1:%2").arg(host).arg(port));
+    } else {
+        m_owner->appendLog(QStringLiteral("[ext] sendToIntruder ignored (Intruder not wired)"));
+    }
+}
+
 // nullock.utils.* -- thin wrappers over the pure, unit-tested ExtUtils codecs.
 QString ExtensionsUtilsBridge::base64Encode(const QString &s) const { return ExtUtils::base64Encode(s); }
 QString ExtensionsUtilsBridge::base64Decode(const QString &s) const { return ExtUtils::base64Decode(s); }
