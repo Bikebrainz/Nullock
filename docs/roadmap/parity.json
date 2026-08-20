@@ -3204,14 +3204,14 @@
       "state": "present",
       "impact": "high",
       "effort": "hours",
-      "gap": "You cannot produce the HTML report by clicking anything or by pasting a URL \u2014 it needs `curl -X POST -H 'X-Nullock-UI: 1'`. The most client-facing deliverable is effectively hidden.",
-      "why": "State CONFIRMED but the evidence needed correcting in two places. I grepped ui-v2 recursively plus Src/App/app.qml plus the docs for /api/report/* and got zero hits, so nothing invokes the report \u2014 that part holds, as does the allowlist/CSRF analysis (I verified /api/report/json IS listed but html and build are not). The corrections: there are THREE export buttons in ui-v2, not one, and app.jsx:80",
-      "evidence": "No report caller: `grep -an \"report/html\\|report/json\\|report/build\\|/api/report\" ui-v2/ -r` \u2192 no output; same over Src/App/app.qml \u2192 no output. Allowlist gap real: control_server.cpp:1678 `|| p == \"/api/report/json\"` with no html/build entry, then :1687 `if (!isReadPath(path) && method != \"POST\") return httpResponse(405, \"text/plain\", \"Use POST for mutating endpoints (see README)\");` and CSRF at ",
-      "audited_state": "stub",
+      "gap": "None -- the REPORTING tab (ReportingTab in ui-v2/app.jsx, mounted at `tab === \"reporting\"`) is Burp's Report menu equivalent: every engagement report is one click. The Engagement report section now downloads Markdown (POST /api/report/build), styled HTML (POST /api/report/html), JSON (GET /api/report/json), and the Burp-style XML issue report (GET /api/report/xml) plus a View-summary readout; the same tab drives OpenAPI export/import, SBOM download, and workspace push/pull. The POST-only generators are reached via fetch->blob download (downloadBlob), the two allowlisted GET reports via a plain anchor (downloadHref). No curl needed for any format.",
+      "why": "Reconciled forward. The original 2026-08-08 note already recorded the REPORTING tab shipping (Markdown/HTML/JSON reachable from one panel), but the top-level gap/why/evidence were never updated off the pre-tab 'you must curl it' state and audited_state was left at stub. Re-derived against live source this wave: the tab exists and is mounted, all four report formats download from buttons, and the XML report -- the last format that was reachable only via curl -- now has its own Download XML button too.",
+      "evidence": "ui-v2/app.jsx: ReportingTab Engagement-report Btns -- Download Markdown (downloadBlob->NL.actions.reportBuild), Download HTML (downloadBlob->NL.actions.reportHtml), Download JSON (downloadHref '/api/report/json'), Download XML (downloadHref '/api/report/xml'); tab mounted at `{tab === \"reporting\" && <ReportingTab />}`. Backend: control_server.cpp report/build :5473, report/html :5561, report/json :5739, report/xml :5787; isReadPath allowlists report/json :1764 and report/xml :1765 so the GET anchor downloads work without the X-Nullock-UI header.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-08",
-        "commit": "557e5f8",
-        "note": "REPORTING tab is the Report menu equivalent: Markdown/HTML/JSON report download, OpenAPI export/import, SBOM download, workspace push/pull all reachable from one panel."
+        "date": "2026-08-20",
+        "commit": "b09aa99",
+        "note": "Register reconciled to reality (audited_state stub->present) and the last curl-only report format wired: a Download XML button (GET /api/report/xml) added beside the existing Markdown/HTML/JSON downloads, so every engagement report format is now one click from the REPORTING tab. Builds on the 2026-08-08 tab (557e5f8)."
       }
     },
     {
