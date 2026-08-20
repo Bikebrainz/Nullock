@@ -1351,13 +1351,18 @@
     {
       "area": "extender",
       "feature": "[A4] Extension auto-reload during development (Auto-reload checkbox; Ctrl/Cmd-click to reload a single extension)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
       "gap": "No filesystem-watcher / auto-reload exists (grep QFileSystemWatcher|autoReload in Src is empty); only a single manual global Reload button driving /api/extensions/reload, a different capability.",
       "why": "Corrected from 'stub' on independent re-derivation (2026-08-02): there is no auto-reload scaffold at all, so this is absent rather than a partial stub.",
       "evidence": "grep QFileSystemWatcher|autoReload in Src/ = empty; extensions_api.cpp reload() is a global engine rebuild; ui-v2/app.jsx has one manual Reload button.",
-      "audited_state": "stub"
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "5dba22c",
+        "note": "absent -> partial. The 'no filesystem-watcher / auto-reload exists' gap is closed: ExtensionsApi now has an opt-in auto-reload -- a QFileSystemWatcher on the extensions dir (dir for add/remove + each .js for in-place edits) fires a 300ms-debounced reload() on any change. Off by default (so a stateful extension isn't torn down on an unrelated save); enabled via --ext-autoreload / NULLOCK_EXT_AUTORELOAD or POST /api/extensions/auto-reload {value}; snapshot bootInfo.extAutoReload. refreshWatch() re-syncs watched paths at the end of every loadAll() because editors delete+recreate on save (dropping the watch). VERIFIED e2e (5/5): with --ext-autoreload, editing a .js in place is picked up WITHOUT a manual reload, a newly-added .js auto-loads, and the snapshot reports it enabled. ctest 100/100, probe 156/156. REMAINDER (why still partial): the ui-v2 auto-reload CHECKBOX and the Ctrl/Cmd-click-to-reload-a-single-extension gesture in the item title (concurrent-agent lane; the extAutoReload state + toggle endpoint give the checkbox everything it needs). Reload is global today, not per-single-extension."
+      }
     },
     {
       "area": "extender",
