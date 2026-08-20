@@ -3226,7 +3226,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-20",
-        "commit": "PENDING",
+        "commit": "fd5c37f",
         "note": "Wave 2: wired the already-complete backend issue-lifecycle (FP mark, severity override, soft-delete, kind-mute) into ui-v2's Issues tab \u2014 the remaining follow-on this item's own prior reconciled note (536f2b7) had explicitly flagged as outstanding. No backend change."
       }
     },
