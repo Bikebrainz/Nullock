@@ -1320,6 +1320,29 @@ function IssueDetailBody({ finding, tab }) {
   );
 }
 
+// AI-triage verdicts (/api/triage/finding) are client-only and, until now,
+// lived solely in IssuesTab's React state -- switching to another tab
+// unmounts it, silently discarding every verdict. Persist to localStorage
+// (matching the WebSockets-comment / labs-completed pattern) keyed by the
+// same finding identity the backend already uses for its own per-finding
+// flags (FindingTriageLogic::findingKey: kind+U+001F+host+U+001F+url+U+001F+summary),
+// not the ephemeral f.id, so a verdict survives a tab switch and a reload.
+const TRIAGE_CACHE_KEY = "nl-triage-cache";
+function findingIdentityKey(f) {
+  return [f.kind, f.host, f.url, f.summary].map(x => x || "").join("");
+}
+function loadTriageCache() {
+  try { return JSON.parse(localStorage.getItem(TRIAGE_CACHE_KEY) || "{}") || {}; }
+  catch (e) { return {}; }
+}
+function saveTriageCacheEntry(key, value) {
+  try {
+    const cache = loadTriageCache();
+    cache[key] = value;
+    localStorage.setItem(TRIAGE_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) { /* storage unavailable/full -- verdict stays in-memory only */ }
+}
+
 function IssuesTab({ dispatch }) {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -1401,7 +1424,33 @@ function IssuesTab({ dispatch }) {
   // AI-assisted triage (/api/triage/finding) -- per-finding, keyed by id.
   const [triage, setTriage] = React.useState({});      // id -> {loading,ok,triage,error,model}
   const [triageOpenId, setTriageOpenId] = React.useState(null);
+
+  // Rehydrate any verdict already computed (this session, an earlier tab
+  // switch, or a prior page load) from the localStorage cache, matched by
+  // finding identity rather than the ephemeral id.
+  React.useEffect(() => {
+    if (!findings.length) return;
+    const cache = loadTriageCache();
+    setTriage(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const f of findings) {
+        if (next[f.id]) continue;
+        const cached = cache[findingIdentityKey(f)];
+        if (cached) { next[f.id] = cached; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [findings]);
+
   const doTriage = async (f) => {
+    const existing = triage[f.id];
+    if (existing && !existing.loading) {
+      // Already have a verdict (fresh or rehydrated) -- toggle the panel
+      // instead of re-querying the model.
+      setTriageOpenId(prev => (prev === f.id ? null : f.id));
+      return;
+    }
     setTriageOpenId(f.id);
     setTriage(prev => ({ ...prev, [f.id]: { loading: true } }));
     try {
@@ -1409,7 +1458,9 @@ function IssuesTab({ dispatch }) {
         rowId: f.rowId, kind: f.kind, severity: f.severity,
         summary: f.summary, evidence: f.evidence || "",
       });
-      setTriage(prev => ({ ...prev, [f.id]: { loading: false, ...r } }));
+      const entry = { loading: false, ...r };
+      setTriage(prev => ({ ...prev, [f.id]: entry }));
+      saveTriageCacheEntry(findingIdentityKey(f), entry);
     } catch (e) {
       setTriage(prev => ({ ...prev, [f.id]: { loading: false, error: String(e) } }));
     }
