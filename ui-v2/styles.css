@@ -197,6 +197,13 @@ textarea, input { user-select: text; }
   position: relative;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
+  /* Constrain the single column to the viewport. Without this the implicit grid
+     column is `auto` and grows to the content's max-content -- a long captured URL
+     in the history table then stretched the whole app past 100vw, and `overflow:
+     hidden` (below) clipped everything to its right with no scrollbar. minmax(0,1fr)
+     pins the column to the window width so inner panes size to available space and
+     scroll/ellipsize their own overflow instead of pushing the shell wide. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   background: var(--bg);
@@ -232,7 +239,12 @@ textarea, input { user-select: text; }
 /* ---------- title bar ---------- */
 .tb {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  /* minmax(0, 1fr) for the tab strip, NOT 1fr: a bare 1fr is minmax(auto, 1fr)
+     whose `auto` minimum is the tabs' full nowrap width, so as tabs were added
+     (Sequencer, Collaborator, WebSockets, ...) the strip grew past the window and
+     the rightmost tabs were clipped. minmax(0, 1fr) caps the strip at the space
+     left by the brand + controls; the strip itself scrolls (.tb-tabs). */
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   height: 44px;
   padding: 0 0 0 12px;
@@ -341,7 +353,15 @@ textarea, input { user-select: text; }
   gap: 1px;
   height: 100%;
   -webkit-app-region: no-drag;
+  /* When there are more tabs than fit the window, scroll the strip instead of
+     clipping the rightmost tabs unreachably. Thin scrollbar so the single-row
+     title-bar aesthetic is preserved; wheel/trackpad scroll it horizontally. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
+.tb-tabs::-webkit-scrollbar { height: 3px; }
+.tb-tabs::-webkit-scrollbar-thumb { background: var(--line); }
 .tb-tab {
   position: relative;
   display: flex;
@@ -648,6 +668,17 @@ textarea, input { user-select: text; }
 /* ---------- HTTP table ---------- */
 .tbl {
   width: 100%;
+  /* FIXED layout is load-bearing: the colgroup gives every column an explicit
+     width except the one flexible column (Path here, Comment in the WS table),
+     which is meant to fill the remainder and ELLIPSIZE long values. Under the
+     default `auto` layout the browser ignores that intent and grows the
+     width-less column to fit its widest content -- a single long captured URL
+     (query strings, tokens: ubiquitous in real testing) then stretched the table
+     past the viewport, and `body { overflow-x: hidden }` clipped it with no
+     scrollbar (the "cut off on the right" bug). `fixed` caps the table at 100%
+     of its container, honors the colgroup widths, and lets the cells'
+     overflow:hidden + text-overflow:ellipsis (below) actually truncate. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--fz-sm);
   line-height: var(--row-h);
@@ -765,7 +796,16 @@ textarea, input { user-select: text; }
   background: var(--pane);
   border-bottom: 1px solid var(--line);
   height: 38px;
+  /* The filter controls are fixed-width; on a narrow pane (laptop widths) the
+     rightmost ones (EXT / scope / params toggles) used to clip off the right with
+     no way to reach them. Scroll the row instead. Only appears when it actually
+     overflows, so at desktop widths there is no scrollbar. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+  flex-shrink: 0;
 }
+.filterbar::-webkit-scrollbar { height: 3px; }
+.filterbar::-webkit-scrollbar-thumb { background: var(--line); }
 .filterbar .fld { flex: 0 0 260px; }
 .seg-btns {
   display: flex;

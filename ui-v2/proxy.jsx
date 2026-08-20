@@ -2342,9 +2342,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   }).length;
   const hidden = rows.length - shown;
 
+  // minmax(0, 1fr), NOT 1fr: a bare 1fr track is minmax(auto, 1fr), whose `auto`
+  // minimum grows to the pane's content -- a long URL in the history table then
+  // pushed the pane (and the whole shell) wider than the viewport. minmax(0, 1fr)
+  // lets the pane shrink to the available space so the table ellipsizes instead.
   const columns = showSitemap
-    ? "minmax(220px, 280px) 1px 1fr"
-    : "1fr";
+    ? "minmax(220px, 280px) 1px minmax(0, 1fr)"
+    : "minmax(0, 1fr)";
 
   return (
     <div className="tab-body" style={{ gridTemplateColumns: columns }}>
