@@ -786,6 +786,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked six untested sensitive-file exposure probes.** The exposure scanner's
+  `/.git/HEAD`, `/phpinfo.php`, `/.DS_Store`, `/wp-config.php.bak`,
+  `/actuator/env`, and `/config.php.bak` signatures had no regression coverage &mdash;
+  a regex/flag regression would silently stop flagging those exposed files. Added
+  a positive per probe plus rejectHtml, no-marker, and evidence-redaction
+  discriminators. Mutation-proven.
 - **Locked eight untested provider patterns in the client-side secret scanner.**
   A separate scanner (`secret_logic`, from the in-page JS secret sweep) had
   coverage for only AWS/JWT/Twilio/assigned secrets; its `github-token`,

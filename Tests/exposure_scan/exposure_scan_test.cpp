@@ -62,6 +62,37 @@ int main(int argc, char **argv) {
     chk("docker single image: line -> NOT flagged",
         m("/docker-compose.yml", "Our blog about image: tags").isEmpty());
 
+    // ---- previously-untested probes ------------------------------------
+    // Six signatures had no regression coverage; a regex/flag regression would
+    // silently stop flagging these exposed files.
+    chk("git/HEAD real ref -> flagged", !m("/.git/HEAD", "ref: refs/heads/main\n").isEmpty());
+    chk("git/HEAD served as HTML shell -> NOT flagged (rejectHtml)",
+        m("/.git/HEAD", "<html><body>ref: refs/heads/main</body></html>").isEmpty());
+
+    chk("phpinfo.php page -> flagged",
+        !m("/phpinfo.php", "<html><head><title>PHP 8.1.2 - phpinfo()</title></head></html>").isEmpty());
+    chk("phpinfo.php without the marker -> NOT flagged",
+        m("/phpinfo.php", "<html><body>welcome home</body></html>").isEmpty());
+
+    chk("DS_Store magic (Bud1) -> flagged", !m("/.DS_Store", "Bud1 mac directory metadata").isEmpty());
+
+    chk("wp-config.php.bak with DB creds -> flagged",
+        !m("/wp-config.php.bak", "<?php\ndefine('DB_PASSWORD', 'p@ssw0rd');\n").isEmpty());
+    chk("wp-config.php.bak served as HTML shell -> NOT flagged (rejectHtml)",
+        m("/wp-config.php.bak", "<html><body>docs about DB_PASSWORD define()</body></html>").isEmpty());
+
+    chk("actuator/env json -> flagged",
+        !m("/actuator/env", "{\"activeProfiles\":[\"prod\"],\"propertySources\":[{\"name\":\"env\"}]}").isEmpty());
+
+    chk("config.php.bak with credentials -> flagged",
+        !m("/config.php.bak", "<?php define('DB_PASSWORD','x'); mysql_connect('db');").isEmpty());
+
+    // secret-bearing probes redact their evidence.
+    chk("wp-config.php.bak evidence redacted",
+        m("/wp-config.php.bak", "<?php\ndefine('DB_PASSWORD', 'p@ssw0rd');\n").contains("redacted"));
+    chk("actuator/env evidence redacted",
+        m("/actuator/env", "{\"activeProfiles\":[\"prod\"]}").contains("redacted"));
+
     // ---- evidence redaction (secret-bearing files) ----------------------
     chk("env evidence redacted (no value dumped)",
         m("/.env", "DB_PASSWORD=hunter2\nAPI_KEY=zzz\n").contains("redacted"));
