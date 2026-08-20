@@ -1665,12 +1665,18 @@
     {
       "area": "extender",
       "feature": "[B22] Extension settings persistence: persistence().extensionData() / preferences()",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
       "gap": "Config is still a hand-edited literal in the .js. The manifest's declared secret handling remains decorative even after the marketplace rewrite. Configuring AWS creds means editing source and reloading.",
       "why": "CONFIRMED and REINFORCED. The obvious upgrade candidate was the new marketplace code, so I checked it specifically: `grep -n config Src/Core/Networking/marketplace_logic.cpp` = 0 hits, and the CatalogEntry struct has no config member. The manifest's config schema \u2014 including `\"secret\": true` on the AWS keys \u2014 is still read by nothing at all.",
-      "evidence": "marketplace_logic.hpp:64-77 `struct CatalogEntry { QString id; QString name; QString summary; QString version; QString author; QStringList categories; QString url; QString sha256; QStringList hooks; QStringList declaredPermissions; };` \u2014 no config field; extensions/aws_sigv4.js:30-36 `var CONFIG = { accessKey: \"\", secretKey: \"\", ...`"
+      "evidence": "marketplace_logic.hpp:64-77 `struct CatalogEntry { QString id; QString name; QString summary; QString version; QString author; QStringList categories; QString url; QString sha256; QStringList hooks; QStringList declaredPermissions; };` \u2014 no config field; extensions/aws_sigv4.js:30-36 `var CONFIG = { accessKey: \"\", secretKey: \"\", ...`",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "614a77e",
+        "note": "absent -> partial. The persistence().extensionData() / preferences() API now exists: nullock.storage.set/get/has/keys/remove/clear, a JSON key/value store (strings, numbers, nested objects/arrays) an extension uses to keep settings/state. Persisted to <appData>/nullock-ext-storage.json -- deliberately a SIBLING of the extensions dir, NOT inside it, so a set() never trips the new auto-reload watcher. Grouped ExtensionsStorageBridge published as nullock.storage, CppOwned so it survives an engine reload(). VERIFIED e2e (8/8): set/get round-trips a string/number/nested-object, has()/keys() correct, the value is written to the sibling file, and after a full app RESTART the extension reads it back on boot. ctest 100/100, probe 156/156. So an extension can now stop hardcoding config (e.g. aws_sigv4's CONFIG literal) and persist it via nullock.storage. REMAINDER (why still partial): (1) the store is GLOBAL, not per-extension isolated (Nullock's shared engine has no per-extension identity at call time; extensions namespace keys) -- Burp's extensionData() is per-extension; (2) no user-facing config INPUT path yet -- Nullock extensions have no per-extension settings UI, so a user still can't enter e.g. AWS creds through the GUI (they'd call the API or the extension self-configures); the manifest's decorative 'secret:true' config schema is a separate injection mechanism, still unwired."
+      }
     },
     {
       "area": "extender",
