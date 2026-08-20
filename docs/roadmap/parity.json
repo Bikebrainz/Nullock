@@ -3955,7 +3955,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-20",
-        "commit": "PENDING",
+        "commit": "c25af6a",
         "note": "Client-side highlight-colour + comment + ANNOTATED filter chip shipped in ui-v2/proxy.jsx (localStorage-persisted); backend model field/persistence stays an honest remaining gap."
       }
     },
