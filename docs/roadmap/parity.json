@@ -1658,12 +1658,18 @@
     {
       "area": "extender",
       "feature": "[B23] Extensions > Installed tab: per-extension 'Loaded' checkbox to enable/disable without removing",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "hours",
       "gap": "To disable one extension you must move the file out of the directory and reload. `extensionsEnabled` in four project templates and in SCHEMA.md is a documented stub that reads as configured and does nothing.",
       "why": "CONFIRMED \u2014 I verified the misleading-template claim myself rather than trusting it. control_server.cpp:4902 echoes extensionsEnabled into the template LISTING, but I read the create-from-template body and it applies only setInScope/setOutOfScope/setNotes and returns; the field is never acted on. Loading remains all-or-nothing over one directory. The new uninstall endpoint is deletion, not disable",
-      "evidence": "control_server.cpp:4948-4951 `m_wiring.projectStore->setInScope(inS); m_wiring.projectStore->setOutOfScope(outS); m_wiring.projectStore->setNotes(tplObj.value(\"notes\").toString()); return okJson({{ \"ok\", true }, ...});` \u2014 extensionsEnabled never read; templates/projects/api-pentest.json:13 `\"extensionsEnabled\": [\"aws_sigv4.js\"],`"
+      "evidence": "control_server.cpp:4948-4951 `m_wiring.projectStore->setInScope(inS); m_wiring.projectStore->setOutOfScope(outS); m_wiring.projectStore->setNotes(tplObj.value(\"notes\").toString()); return okJson({{ \"ok\", true }, ...});` \u2014 extensionsEnabled never read; templates/projects/api-pentest.json:13 `\"extensionsEnabled\": [\"aws_sigv4.js\"],`",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-20",
+        "commit": "de0efca",
+        "note": "absent -> partial. Loading is no longer all-or-nothing: each extension now has a persisted enable/disable state (Burp's per-extension Loaded checkbox). ExtensionsApi keeps a disabled-name set in <extensionsDir>/.nullock-disabled.json, read at loadAll(); a disabled file is still listed (m_allScripts / snapshot extensionAll) but skipped BEFORE it is read/evaluated. setExtensionEnabled(name,enabled) flips the set, rewrites the file, and reload()s so the change is immediate; endpoint POST /api/extensions/set-enabled {name,enabled}; snapshot bootInfo.extensionAll gives each installed .js + its enabled flag. VERIFIED e2e (8/8): two extensions both load; disable one -> listed-but-disabled + logs '(disabled)', the other stays loaded, choice persists to the file; re-enable -> loads again. ctest 100/100, probe 156/156. REMAINDER (why still partial): the ui-v2 Loaded checkbox in the Installed tab (concurrent-agent lane; extensionAll + set-enabled give it everything it needs). The state is global (an installation setting); the SEPARATE per-project extensionsEnabled template field still does nothing -- wiring it needs per-project extension state (reload on project switch), a distinct feature, not this global enable/disable."
+      }
     },
     {
       "area": "extender",
