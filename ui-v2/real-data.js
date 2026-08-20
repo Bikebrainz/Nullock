@@ -420,6 +420,16 @@
     // Ask a local Ollama model (falls back to a heuristic if unreachable) to
     // grade impact / suggest a fix / flag false-positive risk for one finding.
     triageFinding(payload) { return post("/api/triage/finding", payload).then(r => r.json()); },
+    // Issue lifecycle (persisted in the project, keyed by finding identity so
+    // it survives a re-scan): mark/unmark false positive, soft-delete/restore,
+    // override severity (empty string clears the override back to the
+    // scanner's own verdict), and mute/unmute every finding of one kind.
+    // Every finding in NL.findings already carries falsePositive/deleted/
+    // suppressed flags computed server-side from these same stores.
+    findingMark(id, falsePositive)   { return post("/api/findings/mark", { id, falsePositive }).then(r => r.json()); },
+    findingDelete(id, deleted)       { return post("/api/findings/delete", { id, deleted }).then(r => r.json()); },
+    findingSetSeverity(id, severity) { return post("/api/findings/set-severity", { id, severity }).then(r => r.json()); },
+    findingSuppressKind(kind, suppressed) { return post("/api/findings/suppress-kind", { kind, suppressed }).then(r => r.json()); },
 
     // --- recon: sensitive-path exposure / service-banner CVE / JS mining ---
     // Probes curated sensitive paths (.git/.env/actuator/...) against one

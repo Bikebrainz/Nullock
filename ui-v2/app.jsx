@@ -1365,8 +1365,34 @@ function IssuesTab({ dispatch }) {
     kindCounts[f.kind]    = (kindCounts[f.kind]    || 0) + 1;
   }
 
+  // Issue lifecycle (/api/findings/mark, /set-severity, /delete,
+  // /suppress-kind -- all persisted per-project, applied server-side and
+  // reflected back on every finding as falsePositive/deleted/suppressed).
+  // Soft-deleted and muted-kind findings stay in NL.findings (so a restore
+  // needs no re-scan) but are hidden from the default view, same as Burp
+  // dropping a deleted issue from the live list while keeping it in state.
+  const [showHidden, setShowHidden] = React.useState(false);
+  const hiddenCount = findings.filter(f => f.deleted || f.suppressed).length;
+  const doMarkFP = (f, e) => {
+    e.stopPropagation();
+    NL.actions.findingMark(f.id, !f.falsePositive);
+  };
+  const doToggleDelete = (f, e) => {
+    e.stopPropagation();
+    NL.actions.findingDelete(f.id, !f.deleted);
+  };
+  const doSetSeverity = (f, sev, e) => {
+    e.stopPropagation();
+    NL.actions.findingSetSeverity(f.id, sev);
+  };
+  const doSuppressKind = (kind, suppressed, e) => {
+    e.stopPropagation();
+    NL.actions.findingSuppressKind(kind, suppressed);
+  };
+
   const visible = findings.filter(f =>
-    (sevFilter  === "all" || f.severity === sevFilter)
+    (showHidden || (!f.deleted && !f.suppressed))
+    && (sevFilter  === "all" || f.severity === sevFilter)
     && (kindFilter === "all" || f.kind     === kindFilter)
   ).sort((a, b) => {
     const sa = SEVERITY_ORDER[a.severity] ?? 5;
@@ -1528,6 +1554,15 @@ function IssuesTab({ dispatch }) {
             fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
             letterSpacing: "0.05em", textTransform: "uppercase",
           }}>Grouped</button>
+        <button onClick={() => setShowHidden(h => !h)}
+          title={showHidden ? "Hide deleted / muted findings again" : "Show findings marked deleted or from a muted kind"}
+          style={{
+            background: showHidden ? "var(--accent)" : "transparent",
+            color: showHidden ? "var(--bg)" : "var(--text-2)",
+            border: "1px solid var(--line)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>{showHidden ? "showing hidden" : "show hidden"}{hiddenCount ? " · " + hiddenCount : ""}</button>
         <span style={{ flex: 1 }} />
         <button
           onClick={() => {
@@ -1684,11 +1719,27 @@ function IssuesTab({ dispatch }) {
           </div>
           <div>
             <Chip label="any kind" active={kindFilter === "all"} onClick={() => setKindFilter("all")} />
-            {Object.entries(kindCounts).sort((a, b) => b[1] - a[1]).map(([k, c]) => (
-              <Chip key={k} label={k} count={c}
-                    active={kindFilter === k}
-                    onClick={() => setKindFilter(k)} />
-            ))}
+            {Object.entries(kindCounts).sort((a, b) => b[1] - a[1]).map(([k, c]) => {
+              const kindMuted = findings.some(f => f.kind === k && f.suppressed);
+              return (
+                <span key={k} style={{ display: "inline-flex", verticalAlign: "top" }}>
+                  <Chip label={k} count={c}
+                        active={kindFilter === k}
+                        onClick={() => setKindFilter(k)} />
+                  <button
+                    onClick={(e) => doSuppressKind(k, !kindMuted, e)}
+                    title={kindMuted ? "Un-mute this kind (stop hiding it)" : "Mute this kind (hide every finding of it)"}
+                    style={{
+                      background: kindMuted ? "var(--dim)" : "transparent",
+                      color: kindMuted ? "var(--bg)" : "var(--dim)",
+                      border: "1px solid var(--line)",
+                      marginLeft: -8, marginRight: 4, marginBottom: 4,
+                      padding: "3px 6px", fontSize: "9.5px", fontFamily: "var(--ff-mono)",
+                      cursor: "pointer", letterSpacing: "0.05em", textTransform: "uppercase",
+                    }}>{kindMuted ? "muted" : "mute"}</button>
+                </span>
+              );
+            })}
           </div>
         </React.Fragment>
       )}
@@ -1705,11 +1756,14 @@ function IssuesTab({ dispatch }) {
               </div>
             )}
             {visible.map(f => (
-              <div key={f.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+              <div key={f.id} style={{
+                borderBottom: "1px solid var(--line-soft)",
+                opacity: (f.deleted || f.falsePositive || f.suppressed) ? 0.5 : 1,
+              }}>
                 <div onClick={() => toggleDetail(f)}
                      style={{
                        display: "grid",
-                       gridTemplateColumns: "70px 60px 180px 1fr 60px",
+                       gridTemplateColumns: "70px 60px 180px 1fr 96px",
                        gap: 8, padding: "6px 12px",
                        alignItems: "baseline",
                        cursor: "pointer", fontSize: "12px",
@@ -1730,7 +1784,10 @@ function IssuesTab({ dispatch }) {
                     {f.kind}
                   </span>
                   <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span style={{ color: "var(--text)" }}>{f.summary}</span>
+                    <span style={{
+                      color: "var(--text)",
+                      textDecoration: (f.deleted || f.falsePositive) ? "line-through" : "none",
+                    }}>{f.summary}</span>
                     <span style={{
                       color: "var(--text-2)", fontSize: "10.5px",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -1741,16 +1798,59 @@ function IssuesTab({ dispatch }) {
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>↳ {f.evidence}</span>
                     )}
+                    {(f.deleted || f.falsePositive || f.suppressed) && (
+                      <span style={{ color: "var(--dim)", fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        {[f.deleted && "deleted", f.falsePositive && "false positive", f.suppressed && "kind muted"].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); doTriage(f); }}
-                    style={{
-                      background: "transparent", color: "var(--accent)",
-                      border: "1px solid var(--accent)", padding: "1px 6px",
-                      fontSize: "9.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
-                      letterSpacing: "0.05em", textTransform: "uppercase",
-                      justifySelf: "start",
-                    }}>Triage</button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, justifySelf: "start" }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); doTriage(f); }}
+                      style={{
+                        background: "transparent", color: "var(--accent)",
+                        border: "1px solid var(--accent)", padding: "1px 6px",
+                        fontSize: "9.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                        letterSpacing: "0.05em", textTransform: "uppercase",
+                      }}>Triage</button>
+                    <div style={{ display: "flex", gap: 3 }}>
+                      <button
+                        onClick={(e) => doMarkFP(f, e)}
+                        title={f.falsePositive ? "Un-mark as false positive" : "Mark as false positive"}
+                        style={{
+                          background: f.falsePositive ? "var(--dim)" : "transparent",
+                          color: f.falsePositive ? "var(--bg)" : "var(--text-2)",
+                          border: "1px solid var(--line)", padding: "1px 5px",
+                          fontSize: "9px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                          letterSpacing: "0.05em", textTransform: "uppercase", flex: 1,
+                        }}>{f.falsePositive ? "un-fp" : "fp"}</button>
+                      <button
+                        onClick={(e) => doToggleDelete(f, e)}
+                        title={f.deleted ? "Restore this finding" : "Delete this finding (soft -- can be restored)"}
+                        style={{
+                          background: f.deleted ? "var(--dim)" : "transparent",
+                          color: f.deleted ? "var(--bg)" : "var(--text-2)",
+                          border: "1px solid var(--line)", padding: "1px 5px",
+                          fontSize: "9px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                          letterSpacing: "0.05em", textTransform: "uppercase", flex: 1,
+                        }}>{f.deleted ? "restore" : "del"}</button>
+                    </div>
+                    <select
+                      value={f.severity}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => doSetSeverity(f, e.target.value, e)}
+                      title="Override this finding's severity (persisted per project)"
+                      style={{
+                        background: "var(--pane)", color: "var(--text-2)",
+                        border: "1px solid var(--line)", padding: "1px 3px",
+                        fontSize: "9px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+                        letterSpacing: "0.03em", width: "100%",
+                      }}>
+                      {["critical", "high", "medium", "low", "info"].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 {triageOpenId === f.id && triage[f.id] && (
                   <div style={{
