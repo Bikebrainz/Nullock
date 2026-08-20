@@ -621,6 +621,42 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- JWT leakage (were untested) -----------------------------------
+    // A JWT-shape token (ey<b64>.ey<b64>.<b64>, 3 segments) leaked in the URL
+    // or echoed in a non-auth response body. The token is split across adjacent
+    // string literals so no full JWT-shape string sits in the source; the
+    // compiler concatenates them.
+    tc.append({ "JWT-shape token in URL -> jwt-in-url", "jwt-in-url", false,
+        makeReq("GET", "example.test",
+                "/callback?id_token=" "ey" "J0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+                "." "ey" "JzdWIiOiIxMjM0NTY3ODkwIn0"
+                "." "SflKxwRJSMeKKF2QT4fwpMeJf36POkXadQssw5c"),
+        makeResp(200, "text/html", "ok") });
+
+    // A two-segment near-miss (no signature segment) is not a JWT shape.
+    tc.append({ "two-segment token in URL must NOT fire jwt-in-url", "jwt-in-url", true,
+        makeReq("GET", "example.test",
+                "/callback?t=" "ey" "J0eXAiOiJKV1QifQ" "." "ey" "JzdWIiOiIxMjMifQ"),
+        makeResp(200, "text/html", "ok") });
+
+    // Echoed in a NON-auth response body -> flagged.
+    tc.append({ "JWT echoed in non-auth body -> jwt-echoed-in-body", "jwt-echoed-in-body", false,
+        makeReq("GET", "example.test", "/api/profile"),
+        makeResp(200, "application/json",
+                 "{\"t\":\"" "ey" "J0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+                 "." "ey" "JzdWIiOiIxMjM0NTY3ODkwIn0"
+                 "." "SflKxwRJSMeKKF2QT4fwpMeJf36POkXadQssw5c" "\"}") });
+
+    // Suppression: the same JWT on an /auth/ path is expected (login flows),
+    // so jwt-echoed-in-body must NOT fire (path contains "auth").
+    tc.append({ "JWT echoed on an auth path must NOT fire jwt-echoed-in-body",
+                "jwt-echoed-in-body", true,
+        makeReq("GET", "example.test", "/api/auth/me"),
+        makeResp(200, "application/json",
+                 "{\"t\":\"" "ey" "J0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
+                 "." "ey" "JzdWIiOiIxMjM0NTY3ODkwIn0"
+                 "." "SflKxwRJSMeKKF2QT4fwpMeJf36POkXadQssw5c" "\"}") });
+
     // ---- HSTS strength + auth hygiene (were untested) ------------------
     // HSTS strength checks fire only on a TLS response carrying the header.
     // max-age is a full year so hsts-short-max-age stays quiet.

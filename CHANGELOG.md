@@ -786,6 +786,12 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked the two JWT-leakage detectors.** `jwt-in-url` (a JWT-shape token in
+  the request path &mdash; logged in proxies, referrers, history) and
+  `jwt-echoed-in-body` (a JWT reflected in a non-auth response body) gained
+  positive + negative coverage, including the 3-segment shape requirement and the
+  login/auth/token path suppression. Mutation-proven; fixtures built from
+  fragments so no full JWT-shape literal sits in the repo.
 - **Locked HSTS-strength and auth-hygiene detectors.** `hsts-no-subdomains`,
   `hsts-no-preload`, `auth-over-http` (an Authorization header on plaintext), and
   `auth-no-cache-control` (an authenticated 200 cacheable by shared proxies) gained
