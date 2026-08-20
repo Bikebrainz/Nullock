@@ -65,6 +65,24 @@ void InterceptController::forward(const QString &editedText) {
         QMutexLocker lk(&m_queueMutex);
         promoteNextLocked();
     }
+    emit currentChanged();
+}
+
+void InterceptController::forwardInterceptingResponse(const QString &editedText) {
+    PendingRequest *p = nullptr;
+    {
+        QMutexLocker lk(&m_queueMutex);
+        p = m_current;
+    }
+    if (!p) return;
+    p->m_text = editedText;
+    p->holdResponse.storeRelease(1);   // the worker reads this after done.acquire()
+    p->decision.storeRelease(0);
+    p->done.release();
+    {
+        QMutexLocker lk(&m_queueMutex);
+        promoteNextLocked();
+    }
     // Emit AFTER releasing the lock. QML rebinds synchronously on signal
     // emit and reads back queueDepth() which re-acquires m_queueMutex --
     // a recursive lock attempt that deadlocks the main thread.
@@ -164,9 +182,10 @@ void InterceptController::addPendingOnMain(PendingRequest *p) {
         // mutex -- a response pending is gated by m_enabledResponses, a request
         // by m_enabled. (The cap below counts both kinds: it is a total cap on
         // parked worker threads + secret-bearing byte copies, direction-agnostic.)
-        const bool kindEnabled = (p->m_kind == PendingRequest::Response)
-            ? (m_enabledResponses.loadAcquire() != 0)
-            : (m_enabled.loadAcquire() != 0);
+        const bool kindEnabled = p->m_forceHold   // per-request "intercept this response"
+            || ((p->m_kind == PendingRequest::Response)
+                    ? (m_enabledResponses.loadAcquire() != 0)
+                    : (m_enabled.loadAcquire() != 0));
         if (!kindEnabled) {
             releaseAsForward = true;
         } else if (!InterceptLogic::interceptQueueHasRoom(outstanding)) {
@@ -213,15 +232,19 @@ InterceptResult InterceptController::pend(const QByteArray &requestBytes,
 }
 
 InterceptResult InterceptController::pendResponse(const QByteArray &responseBytes,
-                                                  const QString &host, int port, bool tls) {
-    if (m_enabledResponses.loadAcquire() == 0) return { false, responseBytes };
+                                                  const QString &host, int port, bool tls,
+                                                  bool forceHold) {
+    // forceHold ("intercept the response to THIS request") bypasses the global
+    // response toggle AND the intercept rules -- the operator asked for this exact
+    // response, so neither gate applies.
+    if (!forceHold && m_enabledResponses.loadAcquire() == 0) return { false, responseBytes };
     QVector<InterceptLogic::InterceptRule> respRules;
     { QMutexLocker lk(&m_rulesMutex); respRules = m_interceptRules; }
-    if (!respRules.isEmpty()
+    if (!forceHold && !respRules.isEmpty()
         && !InterceptLogic::interceptRulesHold(
                respRules, InterceptLogic::extractResponseFields(responseBytes, host)))
         return { false, responseBytes };
-    return pendImpl(responseBytes, host, port, tls, PendingRequest::Response);
+    return pendImpl(responseBytes, host, port, tls, PendingRequest::Response, forceHold);
 }
 
 void InterceptController::setInterceptRules(const QVector<InterceptLogic::InterceptRule> &rules) {
@@ -235,13 +258,14 @@ QVector<InterceptLogic::InterceptRule> InterceptController::interceptRules() con
 }
 
 InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QString &host,
-                                              int port, bool tls, int kind) {
+                                              int port, bool tls, int kind, bool forceHold) {
     auto *p = new PendingRequest;
     {
         QMutexLocker lk(&m_queueMutex);
         p->m_id = m_nextId++;
     }
     p->m_kind = kind;
+    p->m_forceHold = forceHold;   // set before addPendingOnMain reads it (like m_kind)
     p->m_originalBytes = bytes;
     p->m_text = QString::fromUtf8(bytes);
     p->m_host = host;
@@ -256,6 +280,7 @@ InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QSt
 
     InterceptResult r;
     r.dropped = (p->decision.loadAcquire() == 1);
+    r.holdResponse = (p->holdResponse.loadAcquire() != 0);   // "intercept this response"
     // Unedited -> forward the captured bytes verbatim (preserves a binary body
     // byte-for-byte and keeps Content-Length honest); edited -> re-encode.
     // Identical resolver for requests and responses.

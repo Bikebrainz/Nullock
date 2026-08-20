@@ -3231,6 +3231,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         return okJson();
     }
+    // Forward the current request AND hold its response (Burp's "Do intercept >
+    // Response to this request"), independent of the global response toggle.
+    if (path == "/api/intercept/forward-hold-response") {
+        if (m_wiring.intercept)
+            m_wiring.intercept->forwardInterceptingResponse(bodyJson.value("text").toString());
+        return okJson();
+    }
     if (path == "/api/intercept/drop") {
         if (m_wiring.intercept) m_wiring.intercept->drop();
         return okJson();

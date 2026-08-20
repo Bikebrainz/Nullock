@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intercept the response to one specific request.** When you hold a request in
+  the intercept editor, you can now forward it and catch just its response &mdash;
+  without turning on response interception for everything (Burp's "Do intercept &gt;
+  Response to this request"). It's the surgical option: hold a login POST, forward
+  it, and see its response, while the flood of other in-scope responses keeps
+  flowing untouched. The response is held even with the global response toggle off,
+  and only for the request you flagged. (Driven via
+  <code class="inline">POST /api/intercept/forward-hold-response</code> for now; the
+  right-click menu item in the intercept view is next.)
 - **Extensions can hand a request to Repeater or Intruder.** An extension can now
   call <code class="inline">nullock.sendToRepeater(host, port, tls, request)</code>
   or <code class="inline">nullock.sendToIntruder(...)</code> to drop a request it

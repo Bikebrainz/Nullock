@@ -309,6 +309,7 @@ public:
         }
 
         QByteArray outBytes = serializeRequestForOrigin(req);
+        bool holdResp = false;   // "intercept the response to THIS request" opt-in
         if (auto *ic = m_server->interceptController(); ic && inScope) {
             const InterceptResult ir = ic->pend(outBytes, req.host, req.port, /*tls=*/false);
             if (ir.dropped) {
@@ -316,6 +317,7 @@ public:
                 return;
             }
             outBytes = ir.bytes;
+            holdResp = ir.holdResponse;
         }
         upstream.write(outBytes);
         if (!waitWritten(&upstream, kReadTimeoutMs, m_server)) {
@@ -351,7 +353,7 @@ public:
         // forward/drop) before it reaches the client, mirroring the request
         // pend() above. Scope-gated like the request side.
         const InterceptResult ir =
-            resolveResponseForClient(resp, req.host, req.port, /*tls=*/false, inScope);
+            resolveResponseForClient(resp, req.host, req.port, /*tls=*/false, inScope, holdResp);
         if (ir.dropped) { m_client->disconnectFromHost(); return; }
         m_client->write(ir.bytes);
         waitWritten(m_client, kReadTimeoutMs, m_server);
@@ -691,10 +693,12 @@ public:
 
                 // Intercept still pends before sending upstream. (Editing the
                 // request text in h2 mode is a known limitation; documented.)
+                bool holdResp = false;   // "intercept the response to THIS request"
                 if (auto *ic = m_server->interceptController()) {
                     QByteArray dummyBytes = serializeRequestForOrigin(req);
                     const InterceptResult ir = ic->pend(dummyBytes, host, port, true);
                     if (ir.dropped) { sslClient->disconnectFromHost(); return; }
+                    holdResp = ir.holdResponse;
                 }
 
                 const auto h2res = h2.send(upstream, req);
@@ -727,7 +731,7 @@ public:
                 // response bytes as any other h1 response.
                 {
                     const InterceptResult ir =
-                        resolveResponseForClient(h2resp, host, port, /*tls=*/true, /*inScope=*/true);
+                        resolveResponseForClient(h2resp, host, port, /*tls=*/true, /*inScope=*/true, holdResp);
                     if (ir.dropped) { sslClient->disconnectFromHost(); return; }
                     sslClient->write(ir.bytes);
                 }
@@ -772,6 +776,7 @@ public:
             m_server->applyRequestRules(req);
 
             QByteArray outBytes = serializeRequestForOrigin(req);
+            bool holdResp = false;   // "intercept the response to THIS request" opt-in
             if (auto *ic = m_server->interceptController()) {
                 const InterceptResult ir = ic->pend(outBytes, host, port, /*tls=*/true);
                 if (ir.dropped) {
@@ -779,6 +784,7 @@ public:
                     return;
                 }
                 outBytes = ir.bytes;
+                holdResp = ir.holdResponse;
             }
             upstream->write(outBytes);
             if (!waitWritten(upstream, kReadTimeoutMs, m_server)) {
@@ -818,7 +824,7 @@ public:
             // only MITM'd for in-scope hosts, so inScope is implicitly true.
             {
                 const InterceptResult ir =
-                    resolveResponseForClient(resp, host, port, /*tls=*/true, /*inScope=*/true);
+                    resolveResponseForClient(resp, host, port, /*tls=*/true, /*inScope=*/true, holdResp);
                 if (ir.dropped) { sslClient->disconnectFromHost(); return; }
                 sslClient->write(ir.bytes);
             }
@@ -1005,11 +1011,15 @@ private:
     // guarantee it can never deadlock the proxy.
     InterceptResult resolveResponseForClient(const HttpResponse &resp,
                                              const QString &host, int port,
-                                             bool tls, bool inScope) {
+                                             bool tls, bool inScope,
+                                             bool forceHold = false) {
         QByteArray bytes = serializeResponse(resp);
         auto *ic = m_server->interceptController();
-        if (ic && inScope && ic->responsesEnabled())
-            return ic->pendResponse(bytes, host, port, tls);
+        // Hold when the global response toggle is on OR the operator flagged this
+        // specific request's response ("Do intercept > Response to this request").
+        // forceHold bypasses the responsesEnabled gate but not the scope gate.
+        if (ic && inScope && (ic->responsesEnabled() || forceHold))
+            return ic->pendResponse(bytes, host, port, tls, forceHold);
         return { false, bytes };
     }
 

@@ -63,6 +63,15 @@ public:
 
     QSemaphore done {0};
     QAtomicInt decision {0};  // 0 = forward, 1 = drop
+    // Set by forwardInterceptingResponse() on a REQUEST pending: "hold the response
+    // to THIS request too", even if the global response toggle is off. Read by the
+    // worker in pendImpl after done.acquire() and carried out in InterceptResult.
+    QAtomicInt holdResponse {0};
+    // Set on the worker (in pendImpl) before addPendingOnMain, read there on the
+    // main thread (like m_kind): a force-held RESPONSE pending must NOT be drained
+    // by addPendingOnMain's m_enabledResponses re-check. Plain bool -- the queued
+    // addPendingOnMain call synchronizes the write, same as m_kind.
+    bool       m_forceHold = false;
 
 signals:
     void textChanged();
@@ -71,6 +80,9 @@ signals:
 struct InterceptResult {
     bool       dropped = false;
     QByteArray bytes;
+    // True when the operator chose "forward + intercept the response to this one".
+    // The proxy worker holds the paired response regardless of responsesEnabled().
+    bool       holdResponse = false;
 };
 
 class InterceptController : public QObject {
@@ -105,6 +117,10 @@ public:
     int queueDepth() const;
 
     Q_INVOKABLE void forward(const QString &editedText);
+    // Like forward(), but also flags the CURRENT request pending so the proxy holds
+    // the response it comes back with -- Burp's "Do intercept > Response to this
+    // request", a per-message opt-in independent of the global response toggle.
+    Q_INVOKABLE void forwardInterceptingResponse(const QString &editedText);
     Q_INVOKABLE void drop();
     Q_INVOKABLE void forwardAll();
 
@@ -124,8 +140,12 @@ public:
     // the same queue + semaphore + main-thread promote machinery.
     InterceptResult pend(const QByteArray &requestBytes,
                          const QString &host, int port, bool tls);
+    // forceHold=true holds the response even if the global response toggle is off
+    // and regardless of intercept rules -- the per-request "intercept this response"
+    // opt-in. The backpressure cap still applies.
     InterceptResult pendResponse(const QByteArray &responseBytes,
-                                 const QString &host, int port, bool tls);
+                                 const QString &host, int port, bool tls,
+                                 bool forceHold = false);
 
 signals:
     void enabledChanged();
@@ -143,7 +163,7 @@ private:
     // of the given kind, hand it to the main thread, block on the semaphore,
     // and resolve the outgoing bytes once the operator (or a drain) releases.
     InterceptResult pendImpl(const QByteArray &bytes, const QString &host,
-                             int port, bool tls, int kind);
+                             int port, bool tls, int kind, bool forceHold = false);
     void promoteNextLocked();
     void releaseAllAsForward();
     // Auto-forward every parked message of one kind (used when that kind's
