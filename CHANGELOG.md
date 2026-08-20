@@ -786,6 +786,14 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked eight untested provider patterns in the client-side secret scanner.**
+  A separate scanner (`secret_logic`, from the in-page JS secret sweep) had
+  coverage for only AWS/JWT/Twilio/assigned secrets; its `github-token`,
+  `github-pat`, `google-api-key`, `stripe-secret-key`, `slack-token`,
+  `sendgrid-key`, `npm-token`, and `private-key-block` regexes were untested &mdash;
+  a regression would silently stop flagging those leaked credentials. Added a
+  positive per pattern plus length and placeholder discriminators, mutation-proven.
+  Fixtures are assembled from fragments so no literal secret sits in the repo.
 - **Locked the last two passive detectors** &mdash; `csv-formula-injection` (a CSV
   cell starting with `=/+/-/@`, an Excel formula-injection vector) and
   `cms-woocommerce` (WooCommerce layered on WordPress). Every kind the passive

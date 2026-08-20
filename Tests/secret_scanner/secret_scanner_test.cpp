@@ -85,6 +85,47 @@ int main(int argc, char **argv) {
         chk("twilio SID severity is low (identifier, not secret)", t && t->severity == "low");
     }
 
+    // ---- provider secret patterns (previously untested) -----------------
+    // Only aws / jwt / twilio / assigned had coverage; the 8 provider patterns
+    // below (github, google, stripe, slack, sendgrid, npm, private-key) had
+    // none -- a regex regression would silently stop flagging leaked creds.
+    // Each value is ASSEMBLED from fragments + a generic high-entropy pool so
+    // no literal provider-shaped secret sits in source (would trip push-
+    // protection + our own secret-scan). Synthetic, not real keys.
+    {
+        // 48 chars, alnum only, no placeholder word, no 6+ same-char run.
+        const QString ent  = QStringLiteral("Z7XKpLm4NwJr58Qv3Bd9Ck1Fg6Hj0Ln2PqRt8Sw5Uy7Vx0Ea");
+        const QString ent2 = ent + ent;
+        auto flagged = [](const QString &secret, const char *type) {
+            return hasType(scanText("k = \"" + secret + "\"", "x"), type);
+        };
+        chk("github-token flagged",
+            flagged(QStringLiteral("ghp") + "_" + ent.left(36), "github-token"));
+        chk("github-pat flagged",
+            flagged(QStringLiteral("github") + "_pat_" + ent.left(22), "github-pat"));
+        chk("google-api-key flagged",
+            flagged(QStringLiteral("AI") + "za" + ent.left(35), "google-api-key"));
+        chk("stripe-secret-key flagged",
+            flagged(QStringLiteral("sk") + "_live_" + ent.left(24), "stripe-secret-key"));
+        chk("slack-token flagged",
+            flagged(QStringLiteral("xox") + "b-" + ent.left(20), "slack-token"));
+        chk("sendgrid-key flagged",
+            flagged(QStringLiteral("SG") + "." + ent.left(22) + "." + ent2.left(43), "sendgrid-key"));
+        chk("npm-token flagged",
+            flagged(QStringLiteral("npm") + "_" + ent.left(36), "npm-token"));
+        chk("private-key-block flagged",
+            flagged(QStringLiteral("-----") + "BEGIN " + "RSA " + "PRIVATE KEY-----",
+                    "private-key-block"));
+
+        // length discriminator: a 35-char github-token body is not a match.
+        chk("github-token one char short -> NOT flagged",
+            !flagged(QStringLiteral("ghp") + "_" + ent.left(35), "github-token"));
+        // the placeholder filter applies to provider patterns too.
+        chk("google-api-key placeholder value -> NOT flagged",
+            !flagged(QStringLiteral("AI") + "za" + "your_google_api_key_placeholder_123",
+                     "google-api-key"));
+    }
+
     // ---- masking never leaks the value ----------------------------------
     {
         const auto h = scanText("creds = \"" + awsReal + "\"", "x");
