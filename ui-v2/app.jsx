@@ -6194,7 +6194,9 @@ function StatsTab({ dispatch }) {
   }, [agg, sortBy, order]);
 
   const jumpToHost = (host) => {
-    dispatch({ type: "set", payload: { tab: "proxy", hostFilter: host, selectedHost: host } });
+    // Clears any stale site-map origin scoping (exact host+port+tls) left
+    // over from a prior Proxy-tab click -- this is a plain host-substring jump.
+    dispatch({ type: "set", payload: { tab: "proxy", hostFilter: host, selectedHost: host, selectedOrigin: null } });
   };
 
   const setSort = (key) => {
@@ -6731,6 +6733,7 @@ function App() {
     methodFilter: "ALL",
     search: "",
     selectedHost: null,
+    selectedOrigin: null,
     proxyOn: true,
     intercept: false,
     interceptResponses: false,
@@ -6853,8 +6856,14 @@ function App() {
   // chrome props -- same filter logic as the table so the "N filtered"
   // counter in the status bar matches what the table actually shows.
   const filtered = state.rows.filter(r => {
-    const tableHostFilter = state.selectedHost || state.hostFilter;
-    if (tableHostFilter && !r.host.includes(tableHostFilter)) return false;
+    if (state.selectedOrigin) {
+      const o = state.selectedOrigin;
+      const port = r.port || (r.tls ? 443 : 80);
+      if (r.host !== o.host || port !== o.port || !!r.tls !== o.tls) return false;
+    } else {
+      const tableHostFilter = state.selectedHost || state.hostFilter;
+      if (tableHostFilter && !r.host.includes(tableHostFilter)) return false;
+    }
     if (state.statusClass !== "all" && (Math.floor(r.status / 100) + "xx") !== state.statusClass) return false;
     if (state.methodFilter !== "ALL" && r.method !== state.methodFilter) return false;
     if (state.search) {

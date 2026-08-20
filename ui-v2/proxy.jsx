@@ -313,7 +313,7 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
   );
 }
 
-function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu }) {
+function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu }) {
   // #370: Burp's tree lets you click a leaf node straight to its editor, but
   // the backend's /api/snapshot sitemap block is host-only (no per-path
   // field, control_server.cpp:1446-1459). Rather than a backend change, this
@@ -321,19 +321,29 @@ function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelec
   // already in state -- when two rows share a host+method+path, the most
   // recent (highest id) one is the leaf's target, mirroring how Burp's tree
   // node opens the latest request/response pair for that URL.
+  //
+  // Tree roots (`entries`, computed by the caller from `rows`) are likewise
+  // keyed by full origin (scheme://host[:port]), not bare host -- the
+  // backend's SiteMapModel entry is {host,count,anyTls} with no port field
+  // (site_map_model.hpp:40-44), which merges e.g. an app on :443 and an
+  // admin panel on :8443 into one node with an OR'd TLS flag. `rows` already
+  // carries host/port/tls per request, so this closes the same gap the same
+  // way -- client-side derivation, no backend change.
   const [expanded, setExpanded] = React.useState(() => new Set());
-  const toggleExpand = (host, e) => {
+  const toggleExpand = (origin, e) => {
     e.stopPropagation();
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(host)) next.delete(host); else next.add(host);
+      if (next.has(origin)) next.delete(origin); else next.add(origin);
       return next;
     });
   };
-  const leavesFor = (host) => {
+  const leavesFor = (entry) => {
     const byKey = new Map();
     for (const r of rows) {
-      if (r.host !== host) continue;
+      if (r.host !== entry.host) continue;
+      const port = r.port || (r.tls ? 443 : 80);
+      if (port !== entry.port || !!r.tls !== entry.tls) continue;
       const key = r.method + " " + r.path;
       const prev = byKey.get(key);
       if (!prev || r.id > prev.id) byKey.set(key, r);
@@ -350,7 +360,7 @@ function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelec
       </div>
       <div className="pane-body">
         <div
-          className={"sm-row " + (selectedHost === null ? "sel" : "")}
+          className={"sm-row " + (selectedOrigin == null ? "sel" : "")}
           onClick={() => onSelect(null)}
         >
           <span style={{ color: "var(--accent)" }}>◆</span>
@@ -358,27 +368,29 @@ function SiteMap({ entries, rows, selectedHost, selectedRowId, onSelect, onSelec
           <span className="sm-count">{totalRows}</span>
         </div>
         {entries.map(e => {
-          const isOpen = expanded.has(e.host);
+          const isOpen = expanded.has(e.origin);
+          const isSel = selectedOrigin != null && selectedOrigin.host === e.host
+            && selectedOrigin.port === e.port && selectedOrigin.tls === e.tls;
           return (
-            <React.Fragment key={e.host}>
+            <React.Fragment key={e.origin}>
               <div
-                className={"sm-row " + (selectedHost === e.host ? "sel" : "")}
-                onClick={() => onSelect(e.host)}
+                className={"sm-row " + (isSel ? "sel" : "")}
+                onClick={() => onSelect(e)}
                 onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev); }) : undefined}
               >
                 <span className={"sm-tls" + (e.tls ? "" : " off")}>◉</span>
-                <span className="sm-host" title={e.host}>
-                  <span className="sm-twisty" onClick={ev => toggleExpand(e.host, ev)} title={isOpen ? "collapse" : "expand URLs"}>{isOpen ? "▾" : "▸"}</span>
-                  {e.host}
+                <span className="sm-host" title={e.origin}>
+                  <span className="sm-twisty" onClick={ev => toggleExpand(e.origin, ev)} title={isOpen ? "collapse" : "expand URLs"}>{isOpen ? "▾" : "▸"}</span>
+                  {e.origin}
                 </span>
                 <span className="sm-count">{e.count}</span>
               </div>
-              {isOpen && leavesFor(e.host).map(r => (
+              {isOpen && leavesFor(e).map(r => (
                 <div
                   key={r.id}
                   className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "")}
                   title={r.method + " " + r.path}
-                  onClick={() => onSelectLeaf(e.host, r.id)}
+                  onClick={() => onSelectLeaf(e, r.id)}
                 >
                   <span className="sm-leaf-method">{r.method}</span>
                   <span className="sm-leaf-path">{r.path || "/"}</span>
@@ -2212,8 +2224,32 @@ function toHexDump(s) {
 }
 
 function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
-  const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost, scope } = state;
-  const sitemapEntries = NL.sitemap;
+  const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost, selectedOrigin, scope } = state;
+  // #495: grouped by full origin (scheme://host[:port]), not NL.sitemap's
+  // bare-host entries -- see the SiteMap component's own comment for why.
+  const sitemapEntries = React.useMemo(() => {
+    const byOrigin = new Map();
+    for (const r of rows) {
+      const tls = !!r.tls;
+      const port = r.port || (tls ? 443 : 80);
+      const key = (tls ? "https" : "http") + "://" + r.host + ":" + port;
+      let e = byOrigin.get(key);
+      if (!e) {
+        const hostPort = (port === 80 || port === 443) ? "" : ":" + port;
+        e = { host: r.host, port, tls, origin: (tls ? "https" : "http") + "://" + r.host + hostPort, count: 0 };
+        byOrigin.set(key, e);
+      }
+      e.count++;
+    }
+    return Array.from(byOrigin.values()).sort((a, b) => a.origin.localeCompare(b.origin));
+  }, [rows]);
+  // Rows scoped to the selected origin node -- exact host+port+tls match,
+  // stricter than the host-substring hostFilter/selectedHost text filter.
+  const originRows = selectedOrigin
+    ? rows.filter(r => r.host === selectedOrigin.host
+        && (r.port || (r.tls ? 443 : 80)) === selectedOrigin.port
+        && !!r.tls === selectedOrigin.tls)
+    : rows;
 
   // #392: site-map / history filter chips (in-scope / parameterized / hide-404).
   const [paramsOnly, setParamsOnly] = React.useState(false);
@@ -2282,8 +2318,12 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
 
   // count hidden -- mirrors HistoryTable's own filter predicate so the
   // "shown / total" header stays in sync with what the table actually renders.
-  const shown = rows.filter(r => {
-    if (tableHostFilter && !r.host.includes(tableHostFilter)) return false;
+  // originRows is already exact-scoped when a site-map origin node is
+  // selected, so the substring hostFilter/selectedHost check is skipped then
+  // (it would otherwise just re-match the same host, harmlessly, but drop
+  // the port/tls precision originRows already applied).
+  const shown = originRows.filter(r => {
+    if (!selectedOrigin && tableHostFilter && !r.host.includes(tableHostFilter)) return false;
     if (statusClass !== "all" && (Math.floor(r.status / 100) + "xx") !== statusClass) return false;
     if (methodFilter !== "ALL" && r.method !== methodFilter) return false;
     if (search) {
@@ -2312,10 +2352,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         <SiteMap
           entries={sitemapEntries}
           rows={rows}
-          selectedHost={selectedHost}
+          selectedOrigin={selectedOrigin}
           selectedRowId={selectedRowId}
-          onSelect={h => dispatch({ type: "set", payload: { selectedHost: h }})}
-          onSelectLeaf={(h, id) => dispatch({ type: "set", payload: { selectedHost: h, selectedRowId: id }})}
+          onSelect={e => dispatch({ type: "set", payload: { selectedHost: e ? e.host : null, selectedOrigin: e } })}
+          onSelectLeaf={(e, id) => dispatch({ type: "set", payload: { selectedHost: e.host, selectedOrigin: e, selectedRowId: id } })}
           totalRows={rows.length}
           onRowContextMenu={openRowMenu}
         />
@@ -2344,7 +2384,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           setSearch={v => dispatch({ type: "set", payload: { search: v }})}
           hidden={hidden}
           onClearFilters={() => { setDeepSearch(false); setDeepHits(null); setDeepCount(null); setDeepTruncated(false); setDeepMinId(null); setMimeFilter("all"); setExtText(""); setExtHide(false); setCaseSensitive(false); dispatch({ type: "set", payload: {
-            hostFilter: "", statusClass: "all", methodFilter: "ALL", search: "", selectedHost: null
+            hostFilter: "", statusClass: "all", methodFilter: "ALL", search: "", selectedHost: null, selectedOrigin: null
           }}); }}
           selectedHost={selectedHost}
           onSelectHost={h => dispatch({ type: "set", payload: { selectedHost: h }})}
@@ -2369,10 +2409,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
-            rows={rows}
+            rows={originRows}
             selectedId={selectedRowId}
             onSelect={r => dispatch({ type: "set", payload: { selectedRowId: r.id }})}
-            hostFilter={tableHostFilter}
+            hostFilter={selectedOrigin ? "" : tableHostFilter}
             statusClass={statusClass}
             methodFilter={methodFilter}
             search={search}
