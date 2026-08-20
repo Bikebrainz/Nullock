@@ -621,6 +621,58 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"Set-Cookie", "sid=abc123; HttpOnly; SameSite=Lax"}}) });
 
+    // ---- CSP granular weaknesses (were untested) -----------------------
+    // A present CSP can still be weak. Each directive check is independent;
+    // csp-unsafe-eval / csp-wildcard-src / csp-no-form-action / csp-no-base-uri
+    // had no coverage. All gated on a non-empty Content-Security-Policy header.
+    tc.append({ "CSP with 'unsafe-eval' -> csp-unsafe-eval", "csp-unsafe-eval", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy",
+                   "default-src 'self'; script-src 'self' 'unsafe-eval'"}}) });
+
+    tc.append({ "CSP without 'unsafe-eval' must NOT fire csp-unsafe-eval",
+                "csp-unsafe-eval", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'; script-src 'self'"}}) });
+
+    tc.append({ "CSP with a bare '*' source -> csp-wildcard-src", "csp-wildcard-src", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'; img-src *"}}) });
+
+    // Discriminator: a wildcard SUBDOMAIN (*.host) is not a bare '*' -- the
+    // detector flags only a standalone any-origin '*', so this must NOT fire.
+    tc.append({ "CSP wildcard subdomain must NOT fire csp-wildcard-src",
+                "csp-wildcard-src", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy",
+                   "default-src 'self'; img-src 'self' *.cdn.example.test"}}) });
+
+    tc.append({ "CSP missing form-action -> csp-no-form-action", "csp-no-form-action", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'"}}) });
+
+    tc.append({ "CSP with form-action must NOT fire csp-no-form-action",
+                "csp-no-form-action", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'; form-action 'self'"}}) });
+
+    tc.append({ "CSP missing base-uri -> csp-no-base-uri", "csp-no-base-uri", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'"}}) });
+
+    tc.append({ "CSP with base-uri must NOT fire csp-no-base-uri",
+                "csp-no-base-uri", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Content-Security-Policy", "default-src 'self'; base-uri 'self'"}}) });
+
     // ---- Server-error stack-trace fingerprints (were untested) ---------
     // A 5xx body leaking an internal stack trace tells an attacker which
     // framework + line numbers to hit. Gated on statusCode >= 500; the

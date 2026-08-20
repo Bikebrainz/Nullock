@@ -776,6 +776,11 @@ developer-facing record.
   an exact tokenized `Secure` attribute (`; secure`), like the adjacent `Path=/`
   check. Locked with a mutation-proven batch that also covers the untested
   `cookie-no-secure` (incl. its TLS-only gate) and `cookie-no-samesite`.
+- **Locked four untested CSP-weakness detectors.** `csp-unsafe-eval`,
+  `csp-wildcard-src`, `csp-no-form-action`, and `csp-no-base-uri` gained
+  positive + discriminating-negative coverage &mdash; including that a wildcard
+  *subdomain* (`*.host`) is not the bare any-origin `*` the wildcard check flags.
+  Mutation-proven so a directive-parsing regression can't silently pass a weak CSP.
 - **Locked all four CORS-misconfiguration detectors.** `cors-wildcard`,
   `cors-wildcard-creds`, `cors-methods-wildcard`, and `cors-headers-wildcard`
   had no regression coverage &mdash; a condition regression could have silently
