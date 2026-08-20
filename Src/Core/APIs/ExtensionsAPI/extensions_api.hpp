@@ -29,6 +29,7 @@ namespace Nullock::Core {
 class ExtensionsApiBridge;    // forward — internal
 class ExtensionsUtilsBridge;  // forward — internal (published as nullock.utils)
 class ExtensionsCollaboratorBridge;  // forward — internal (nullock.collaborator)
+class ExtensionsStorageBridge;       // forward — internal (nullock.storage)
 class OastServer;             // forward — Src/Core/APIs/Oast (same lib)
 class DnsSink;                // forward — Src/Core/APIs/Oast (same lib)
 
@@ -214,6 +215,7 @@ private:
     ExtensionsApiBridge *m_bridge = nullptr;
     ExtensionsUtilsBridge *m_utils = nullptr;   // published as nullock.utils each rebuild
     ExtensionsCollaboratorBridge *m_collab = nullptr;  // published as nullock.collaborator
+    ExtensionsStorageBridge *m_storage = nullptr;      // published as nullock.storage
     OastServer *m_oast = nullptr;   // OOB HTTP sink (optional)
     DnsSink    *m_dns  = nullptr;   // OOB DNS sink (optional)
     IFindingSink        *m_scanner = nullptr;
@@ -382,6 +384,33 @@ public:
 private:
     ExtensionsApi *m_owner;
     mutable QSet<QString> m_tokens;   // tokens this collaborator minted
+};
+
+// Published as nullock.storage -- Burp's persistence().extensionData() equivalent.
+// A key/value store extensions use to keep settings/state across restarts (JSON
+// values: strings, numbers, bools, arrays, objects). GLOBAL across extensions
+// (Nullock runs them in one shared engine, so there is no per-extension identity
+// at call time) -- extensions namespace their own keys. Persisted to a file OUTSIDE
+// the watched extensions dir so a set() never trips auto-reload. Parented to
+// ExtensionsApi (CppOwnership) so it survives an engine reload().
+class ExtensionsStorageBridge : public QObject {
+    Q_OBJECT
+public:
+    explicit ExtensionsStorageBridge(QObject *parent = nullptr);
+
+    Q_INVOKABLE void     set(const QString &key, const QVariant &value);
+    Q_INVOKABLE QVariant get(const QString &key, const QVariant &def = QVariant()) const;
+    Q_INVOKABLE bool     has(const QString &key) const { return m_data.contains(key); }
+    Q_INVOKABLE QStringList keys() const { return m_data.keys(); }
+    Q_INVOKABLE void     remove(const QString &key);
+    Q_INVOKABLE void     clear();
+
+private:
+    QString  filePath() const;
+    void     load();
+    void     save() const;
+    QVariantMap m_data;
+    bool        m_loaded = false;
 };
 
 } // namespace Nullock::Core

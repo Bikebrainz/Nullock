@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Extensions can save their own settings and state.** An extension can now keep
+  data across restarts with a small key/value store &mdash; <code class="inline">nullock.storage.set(key, value)</code>,
+  <code class="inline">get(key, default)</code>, <code class="inline">has</code>,
+  <code class="inline">keys</code>, <code class="inline">remove</code>,
+  <code class="inline">clear</code> (Burp's <code class="inline">persistence().extensionData()</code>).
+  It holds strings, numbers, and nested objects/arrays, persists to disk outside the
+  extensions folder (so saving never triggers auto-reload), and comes back after a
+  restart. The store is shared across extensions, so give your keys a prefix.
 - **Extensions can auto-reload while you're developing them.** Turn on auto-reload
   (launch with <code class="inline">--ext-autoreload</code>, set
   <code class="inline">NULLOCK_EXT_AUTORELOAD</code>, or <code class="inline">POST /api/extensions/auto-reload {value:true}</code>)

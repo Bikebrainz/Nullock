@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QFileSystemWatcher>
 #include <QTimer>
 #include <QJSValueIterator>
@@ -171,6 +172,55 @@ QVariantList ExtensionsCollaboratorBridge::interactions() const {
     return out;
 }
 
+// nullock.storage.* -- a persisted key/value store for extension settings/state.
+ExtensionsStorageBridge::ExtensionsStorageBridge(QObject *parent) : QObject(parent) {}
+
+QString ExtensionsStorageBridge::filePath() const {
+    // Sibling of the extensions dir, NOT inside it -- a write here must not trip
+    // the auto-reload filesystem watcher (which would reload on every set()).
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+           + "/nullock-ext-storage.json";
+}
+
+void ExtensionsStorageBridge::load() {
+    m_loaded = true;
+    QFile f(filePath());
+    if (!f.open(QIODevice::ReadOnly)) return;   // absent == empty store
+    m_data = QJsonDocument::fromJson(f.readAll()).object().toVariantMap();
+}
+
+void ExtensionsStorageBridge::save() const {
+    const QString p = filePath();
+    QDir().mkpath(QFileInfo(p).absolutePath());
+    QFile f(p);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write(QJsonDocument(QJsonObject::fromVariantMap(m_data)).toJson(QJsonDocument::Compact));
+}
+
+void ExtensionsStorageBridge::set(const QString &key, const QVariant &value) {
+    if (key.isEmpty()) return;
+    if (!m_loaded) load();
+    m_data.insert(key, value);
+    save();
+}
+
+QVariant ExtensionsStorageBridge::get(const QString &key, const QVariant &def) const {
+    if (!m_loaded) const_cast<ExtensionsStorageBridge *>(this)->load();
+    return m_data.value(key, def);
+}
+
+void ExtensionsStorageBridge::remove(const QString &key) {
+    if (!m_loaded) load();
+    if (m_data.remove(key) > 0) save();
+}
+
+void ExtensionsStorageBridge::clear() {
+    if (!m_loaded) load();
+    if (m_data.isEmpty()) return;
+    m_data.clear();
+    save();
+}
+
 ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // Both types travel across thread boundaries when worker threads call
     // applyRequestMutation / applyResponseMutation via BlockingQueuedConnection.
@@ -184,6 +234,7 @@ ExtensionsApi::ExtensionsApi(QObject *parent) : QObject(parent) {
     // survive every engine reload() destroys, and is re-published each rebuild.
     m_utils  = new ExtensionsUtilsBridge(this);
     m_collab = new ExtensionsCollaboratorBridge(this);
+    m_storage = new ExtensionsStorageBridge(this);
 
     // Auto-reload plumbing (inert until setAutoReload(true)). A save produces a
     // burst of watcher events; the debounce collapses them into one reload().
@@ -246,6 +297,7 @@ void ExtensionsApi::rebuildEngine() {
     // engine each rebuild is safe -- the object itself is never recreated.
     nullockObj.setProperty("utils", m_engine->newQObject(m_utils));
     nullockObj.setProperty("collaborator", m_engine->newQObject(m_collab));
+    nullockObj.setProperty("storage", m_engine->newQObject(m_storage));
     m_engine->globalObject().setProperty("nullock", nullockObj);
 }
 
