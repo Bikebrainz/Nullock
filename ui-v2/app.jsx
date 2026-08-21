@@ -484,6 +484,13 @@ function Marketplace({ Card, Btn }) {
           <div style={{ fontSize: "11px", fontFamily: "var(--ff-mono)", color: "var(--text)" }}>
             Permissions: {(detail.permissions || []).join(", ") || "(none — observe-only)"}
           </div>
+          {detail.minVersion && (
+            <div style={{ fontSize: "11px", fontFamily: "var(--ff-mono)",
+                          color: detail.compatible === false ? "var(--err)" : "var(--dim)" }}>
+              Requires Nullock ≥ {detail.minVersion}
+              {detail.compatible === false ? " — " + (detail.incompatReason || "incompatible with this build") : ""}
+            </div>
+          )}
           <div style={{ fontSize: "10.5px", color: "var(--dim)", fontFamily: "var(--ff-mono)", wordBreak: "break-all" }}>
             sha256 {detail.sha256}
           </div>
@@ -564,14 +571,21 @@ function Marketplace({ Card, Btn }) {
                 ? " (have " + x.installedVersion + ")" : ""}
             </span>
             {stateBadge(x.state)}
+            {x.compatible === false && (
+              <span title={x.incompatReason || "incompatible with this build"}>
+                {badge("incompatible", "var(--err)")}
+              </span>
+            )}
             {(x.permissions || []).length > 0 && badge("modifies traffic", "var(--warn, #d0a03a)")}
             <span style={{ flex: 1 }} />
             <Btn label="Details" onClick={() => setDetailId(detailId === x.id ? null : x.id)} />
             {x.state === "not-installed" && (
-              <Btn label={busy === x.id ? "…" : "Install"} onClick={() => doInstall(x.id, false)} />
+              <Btn label={busy === x.id ? "…" : "Install"} onClick={() => doInstall(x.id, false)}
+                   disabled={x.compatible === false} title={x.compatible === false ? x.incompatReason : undefined} />
             )}
             {x.state === "update-available" && (
-              <Btn label={busy === x.id ? "…" : "Update"} onClick={() => doInstall(x.id, false)} />
+              <Btn label={busy === x.id ? "…" : "Update"} onClick={() => doInstall(x.id, false)}
+                   disabled={x.compatible === false} title={x.compatible === false ? x.incompatReason : undefined} />
             )}
             {(x.state === "installed" || x.state === "update-available" || x.state === "local") && (
               <Btn label="Remove" onClick={() => doUninstall(x.id)} danger />

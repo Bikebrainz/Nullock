@@ -365,8 +365,11 @@ capability-gated and default-deny: an extension must declare
 `// nullock:permissions modify-requests` (or `modify-responses`) or it stays
 observe-only. The Settings tab shows this per loaded script (badge derived
 from the DOWNLOADED script's own declaration, not the catalog's marketing
-copy). The in-app Marketplace supports search/category filtering and a
-per-extension detail panel (author, permissions, sha256, source link).
+copy). The in-app Marketplace supports search/category filtering, a
+per-extension detail panel (author, permissions, sha256, source link), and
+version-compatibility gating — an entry requiring a newer build shows an
+"incompatible" badge with its Install/Update button disabled and the reason
+in the tooltip.
 Full authoring guide, API reference, and the permission model:
 [`EXTENSIONS.md`](EXTENSIONS.md).
 
