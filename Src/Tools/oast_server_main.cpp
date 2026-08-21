@@ -30,7 +30,9 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -170,7 +172,10 @@ int main(int argc, char **argv) {
     const quint16 callbackPort = static_cast<quint16>(envInt("OAST_PORT", 8888));
     const QString  baseHost    = envOr("OAST_BASE_HOST", QStringLiteral("127.0.0.1"));
     const quint16 adminPort    = static_cast<quint16>(envInt("OAST_ADMIN_PORT", 8889));
-    const QString  adminBind   = envOr("OAST_ADMIN_BIND", QStringLiteral("0.0.0.0"));
+    // Loopback by default (maybefix #8): the admin API can mint tokens + read
+    // callbacks, so it must not be exposed on every interface unless the operator
+    // opts in explicitly (OAST_ADMIN_BIND=0.0.0.0 for a remote-hosted sink).
+    const QString  adminBind   = envOr("OAST_ADMIN_BIND", QStringLiteral("127.0.0.1"));
     QString        adminKey    = envOr("OAST_ADMIN_KEY", QString());
     bool generatedKey = false;
     if (adminKey.isEmpty()) { adminKey = randomKey(); generatedKey = true; }
@@ -215,12 +220,30 @@ int main(int argc, char **argv) {
         baseHost.toUtf8().constData(), bound,
         adminBind.toUtf8().constData(), adminPort,
         baseHost.toUtf8().constData());
-    if (generatedKey)
-        std::fprintf(stdout,
-            "  admin key     : %s  (generated -- set OAST_ADMIN_KEY to pin it)\n",
-            adminKey.toUtf8().constData());
-    else
+    if (generatedKey) {
+        // Do NOT print a generated admin key to stdout (maybefix #8): this
+        // process streams to journald / docker logs, and the admin key grants
+        // token-mint + callback-read -- a log reader would inherit that
+        // authority. Write it to an owner-only file and print only the path.
+        const QString keyPath = envOr("OAST_ADMIN_KEY_FILE",
+                                      QDir::current().filePath(QStringLiteral("nullock-oast-admin.key")));
+        QFile kf(keyPath);
+        if (kf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            kf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);   // 0600
+            kf.write(adminKey.toUtf8());
+            kf.write("\n");
+            kf.close();
+            std::fprintf(stdout,
+                "  admin key     : (generated; written to %s -- or set OAST_ADMIN_KEY to pin it)\n",
+                keyPath.toUtf8().constData());
+        } else {
+            std::fprintf(stdout,
+                "  admin key     : (generated; could NOT write %s -- set OAST_ADMIN_KEY to pin a key)\n",
+                keyPath.toUtf8().constData());
+        }
+    } else {
         std::fprintf(stdout, "  admin key     : (from OAST_ADMIN_KEY)\n");
+    }
     std::fflush(stdout);
 
     return app.exec();

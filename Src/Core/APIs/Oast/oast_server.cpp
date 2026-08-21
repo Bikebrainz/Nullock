@@ -171,7 +171,13 @@ QJsonObject OastServer::mintToken() {
     // 64 bits of randomness as 16 hex chars. Long enough that an attacker
     // can't realistically guess valid tokens to spam our log; short enough
     // to fit into a DNS subdomain (max 63 chars total per label).
-    quint64 a = QRandomGenerator::global()->generate64();
+    //
+    // system() (a CSPRNG), NOT global() (Qt-documented Mersenne-Twister, non-
+    // cryptographic): a registered-token hit auto-confirms a high/critical
+    // finding, so a predictable token stream is a finding-fabrication /
+    // token-replay surface. Matches how the tool already mints admin keys.
+    // (maybefix #11)
+    quint64 a = QRandomGenerator::system()->generate64();
     QString tok = QString::number(a, 16).rightJustified(16, '0');
     const quint16 p = port();
     // Detect IP literal vs. DNS name: only DNS names can take a subdomain
