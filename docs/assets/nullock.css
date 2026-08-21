@@ -156,7 +156,9 @@ h3 { font-size: 18px; font-weight: 600; line-height: 1.3; }
   color: var(--body); width: 38px; height: 34px; cursor: pointer; font-size: 16px;
 }
 
-@media (max-width: 760px) {
+/* The full horizontal nav needs ~890px (10 items at 721px + brand + padding).
+   Collapse to the hamburger below that, or the bar pushes the page sideways. */
+@media (max-width: 900px) {
   .nav-toggle { display: block; }
   .nav-links {
     display: none; position: absolute; left: 0; right: 0; top: 100%;
@@ -267,6 +269,11 @@ code.inline {
 .matrix .feat-col { background: var(--surface-feat); color: var(--body); }
 .matrix tbody tr:hover td { background: rgba(157,78,221,0.04); }
 
+/* Long unbroken tokens (protocol/frame-type lists, hashes, URLs) must not force
+   the whole page to scroll sideways on narrow screens. `anywhere` also feeds the
+   grid's min-content sizing, which `break-word` does not. */
+.card p, .card li, .feat-grid p, .feat-grid li { overflow-wrap: anywhere; }
+
 /* ---------- footer ---------- */
 .footer {
   border-top: 1px solid var(--divider); padding: 38px var(--pad-x);
@@ -292,6 +299,11 @@ code.inline {
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .row.center { justify-content: center; }
 .muted { color: var(--secondary); }
+/* Inline code and long descriptive spans carry unbreakable tokens (API calls,
+   file names, protocol lists) that overflow narrow screens if they cannot wrap. */
+code.inline, .muted { overflow-wrap: anywhere; }
+/* The lab header chips + solve button must wrap rather than run off-screen. */
+.labs-detail-head, .labs-meta, .lab-meta { flex-wrap: wrap; }
 .dim { color: var(--dim); }
 .grid { display: grid; gap: 16px; }
 .stack-sm > * + * { margin-top: 8px; }
