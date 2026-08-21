@@ -623,6 +623,18 @@ function SettingsTab() {
   // etc) server-side; this lets a user opt into a full, unredacted export
   // when handing a HAR to a colleague who needs to reproduce the bug.
   const [harUnredacted, setHarUnredacted] = React.useState(false);
+
+  // Reload themes from disk -- picks up user-added/edited JSON theme files
+  // in the themes dir without an app restart.
+  const [themesReloaded, setThemesReloaded] = React.useState(false);
+  const reloadThemes = async () => {
+    try {
+      await NL.actions.reloadThemes();
+      setThemesReloaded(true);
+      setTimeout(() => setThemesReloaded(false), 1500);
+    } catch {}
+  };
+
   const refreshTemplates = React.useCallback(async () => {
     try {
       const r = await NL.actions.projectTemplates();
@@ -920,7 +932,29 @@ function SettingsTab() {
         <Row label="Path" value={b.projectDir} copyable />
         <Row label="Scope (in)"  value={String((scope.in || []).length) + " globs"} />
         <Row label="Scope (out)" value={String((scope.out || []).length) + " globs"} />
-        <Row label="Themes dir" value={b.themesDir || (window.NL ? NL.themesDir : "")} copyable />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "12px" }}>
+          <span style={{ minWidth: 110, color: "var(--dim)" }}>Themes dir</span>
+          <span style={{ flex: 1, fontFamily: "var(--ff-mono)", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {(b.themesDir || (window.NL ? NL.themesDir : "")) || "—"}
+          </span>
+          <button
+            onClick={() => copy(b.themesDir || (window.NL ? NL.themesDir : ""))}
+            style={{
+              background: "transparent", color: "var(--dim)", fontSize: "10px",
+              border: "1px solid var(--line)", padding: "2px 6px", cursor: "pointer",
+              fontFamily: "var(--ff-mono)",
+            }}
+          >COPY</button>
+          <button
+            onClick={reloadThemes}
+            title="Rescan the themes dir for new/edited JSON theme files"
+            style={{
+              background: "transparent", color: themesReloaded ? "var(--accent)" : "var(--dim)",
+              fontSize: "10px", border: "1px solid var(--line)", padding: "2px 6px",
+              cursor: "pointer", fontFamily: "var(--ff-mono)",
+            }}
+          >{themesReloaded ? "✓ RELOADED" : "RELOAD"}</button>
+        </div>
         <Row label="Notes" value={scope.notes ? scope.notes.split('\n')[0].slice(0, 60) : ""} hint="edit in Scope tab" />
         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
           <Btn label="Export HAR" onClick={() => NL.actions.exportHar(harUnredacted ? { redact: false } : {})} />
@@ -1123,10 +1157,11 @@ function RulesTab() {
     setEditingIndex(i);
   };
 
-  const Btn = ({ label, onClick, danger, primary, disabled }) => (
+  const Btn = ({ label, onClick, danger, primary, disabled, title }) => (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       style={{
         background: primary ? "var(--accent)" : "transparent",
         color: disabled ? "var(--dim)"
@@ -1228,7 +1263,7 @@ function RulesTab() {
       }}>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 140px",
+          gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 190px",
           gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--line)",
           fontSize: "10px", color: "var(--dim)", textTransform: "uppercase",
           letterSpacing: "0.06em",
@@ -1246,7 +1281,7 @@ function RulesTab() {
           {rules.map((r, i) => (
             <div key={i} style={{
               display: "grid",
-              gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 140px",
+              gridTemplateColumns: "40px 40px 120px 110px 130px 1fr 1fr 190px",
               gap: 6, padding: "6px 10px", alignItems: "center",
               fontSize: "12px", fontFamily: "var(--ff-mono)",
               borderBottom: "1px solid var(--line-soft)",
@@ -1268,6 +1303,10 @@ function RulesTab() {
               <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                     title={r.replace}>{r.replace}</span>
               <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                <Btn label="▲" title="Move up" disabled={i === 0}
+                     onClick={() => NL.actions.ruleMove(i, i - 1)} />
+                <Btn label="▼" title="Move down" disabled={i === rules.length - 1}
+                     onClick={() => NL.actions.ruleMove(i, i + 1)} />
                 <Btn label="Edit" onClick={() => startEdit(i)} />
                 <Btn label="Del"  onClick={() => { if (confirm("Delete rule \"" + (r.name || "(unnamed)") + "\"?")) NL.actions.ruleRemove(i); }} danger />
               </span>
