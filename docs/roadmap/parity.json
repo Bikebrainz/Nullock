@@ -2145,7 +2145,7 @@
       "evidence": "Src/Core/Networking/session_manager_logic.{hpp,cpp} (isValidCookieName/upsertCookie/removeCookieByName); Src/Core/Networking/session_manager.{hpp,cpp} (SessionManager::setCookie/removeCookie); Src/BackEnd/Control/control_server.cpp POST /api/sessions/setCookie + /api/sessions/removeCookie; ui-v2/app.jsx Cookie Jar section (Add cookie / Edit / Del buttons); ui-v2/real-data.js sessionSetCookie/sessionRemoveCookie; Tests/session_manager/session_manager_test.cpp (name-validation + upsert/remove list-op coverage).",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "ea8eba6",
         "note": "Cookie jar gains real per-cookie mutation: backend setCookie/removeCookie (upsert-by-name, single-cookie delete) plus Add/Edit/Del controls on the Sessions tab's Cookie Jar section, closing the item's last honest gap (no backend endpoint for the three per-cookie mutations). This cloud session cannot build/run ctest -- new pure-logic unit tests added and hand-traced against the implementation; will confirm the session_manager ctest target passes against a green GitHub Actions run before treating this fully verified."
       }
     },
