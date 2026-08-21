@@ -358,7 +358,7 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
   );
 }
 
-function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu }) {
+function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu, annotations, annotatedOnly }) {
   // #370: Burp's tree lets you click a leaf node straight to its editor, but
   // the backend's /api/snapshot sitemap block is host-only (no per-path
   // field, control_server.cpp:1446-1459). Rather than a backend change, this
@@ -393,7 +393,8 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
       const prev = byKey.get(key);
       if (!prev || r.id > prev.id) byKey.set(key, r);
     }
-    return Array.from(byKey.values()).sort((a, b) => a.path.localeCompare(b.path));
+    const leaves = Array.from(byKey.values()).sort((a, b) => a.path.localeCompare(b.path));
+    return annotatedOnly ? leaves.filter(r => annotations && annotations[r.id]) : leaves;
   };
 
   return (
@@ -430,18 +431,27 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
                 </span>
                 <span className="sm-count">{e.count}</span>
               </div>
-              {isOpen && leavesFor(e).map(r => (
+              {isOpen && leavesFor(e).map(r => {
+                const note = annotations && annotations[r.id];
+                const leafStyle = note && note.color
+                  ? { boxShadow: "inset 3px 0 0 " + annotationColorHex(note.color) }
+                  : undefined;
+                return (
                 <div
                   key={r.id}
                   className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "")}
-                  title={r.method + " " + r.path}
+                  title={note && note.comment ? (r.method + " " + r.path + " — " + note.comment) : (r.method + " " + r.path)}
+                  style={leafStyle}
                   onClick={() => onSelectLeaf(e, r.id)}
+                  onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev, r.id); }) : undefined}
                 >
+                  <span className="sm-leaf-note">{note && note.comment ? "💬" : ""}</span>
                   <span className="sm-leaf-method">{r.method}</span>
                   <span className="sm-leaf-path">{r.path || "/"}</span>
                   <span className="sm-leaf-status">{r.status}</span>
                 </div>
-              ))}
+                );
+              })}
             </React.Fragment>
           );
         })}
@@ -2434,6 +2444,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           onSelectLeaf={(e, id) => dispatch({ type: "set", payload: { selectedHost: e.host, selectedOrigin: e, selectedRowId: id } })}
           totalRows={rows.length}
           onRowContextMenu={openRowMenu}
+          annotations={annotations}
+          annotatedOnly={annotatedOnly}
         />
       )}
       {showSitemap && <div className="divider-v" />}

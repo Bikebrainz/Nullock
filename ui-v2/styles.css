@@ -771,7 +771,7 @@ textarea, input { user-select: text; }
 
 .sm-leaf {
   display: grid;
-  grid-template-columns: 40px 1fr 34px;
+  grid-template-columns: 14px 40px 1fr 34px;
   align-items: center;
   gap: 8px;
   padding: 0 10px 0 26px;
@@ -783,6 +783,7 @@ textarea, input { user-select: text; }
 }
 .sm-leaf:hover { background: var(--pane-2); color: var(--text); }
 .sm-leaf.sel { background: var(--row-sel); color: var(--text); }
+.sm-leaf .sm-leaf-note { text-align: center; }
 .sm-leaf .sm-leaf-method { color: var(--accent); letter-spacing: 0.04em; }
 .sm-leaf .sm-leaf-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sm-leaf .sm-leaf-status { color: var(--dim); text-align: right; }

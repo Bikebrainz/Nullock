@@ -37,9 +37,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   Burp doesn't have at all;
                   HTTP history/Site map filter bar -- scope/params/404/annotated chips, MIME class,
                   extension show/hide, case-sensitive toggle, and negative ("-term") search;
-                  right-click a history row to flag it with one of 9 highlight colours and/or a
-                  free-text comment (client-side, browser-local persistence), shown as a coloured
-                  row edge + a comment icon, filterable via the ANNOTATED chip; a DB Search
+                  right-click a history row (or a Site map tree leaf) to flag it with one of 9
+                  highlight colours and/or a free-text comment (client-side, browser-local
+                  persistence), shown as a coloured row edge + a comment icon, filterable via the
+                  ANNOTATED chip in either view; a DB Search
                   overlay queries the SQLite-backed history index directly (method/host/path/
                   status/size/since filters) so a row can be found and its full raw request/
                   response opened even after it has scrolled out of the bounded on-screen window;
