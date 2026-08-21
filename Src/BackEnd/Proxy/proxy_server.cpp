@@ -207,13 +207,22 @@ bool readExact(QTcpSocket *socket, qint64 n, QByteArray &out, const ProxyServer 
     return true;
 }
 
-void readUntilClose(QTcpSocket *socket, QByteArray &out, const ProxyServer *srv) {
+// Total cap on a close-delimited response body. A close-delimited response
+// declares no length, so without this a hostile upstream that streams bytes
+// forever (never stalling the per-read idle timeout) grows `out` without bound
+// -> proxy memory DoS. Matches the streaming (chunked) total; the CL path caps
+// at 128 MiB. Aborts past the cap like the CL/chunked paths (returns false).
+static constexpr qint64 kMaxCloseDelimitedBytes = 256LL * 1024 * 1024;
+
+bool readUntilClose(QTcpSocket *socket, QByteArray &out, const ProxyServer *srv) {
     while (socket->state() == QAbstractSocket::ConnectedState) {
         if (socket->bytesAvailable() == 0 && !waitReadable(socket, kReadTimeoutMs, srv))
             break;
         out.append(socket->readAll());
+        if (out.size() > kMaxCloseDelimitedBytes) return false;
     }
     out.append(socket->readAll());
+    return out.size() <= kMaxCloseDelimitedBytes;
 }
 
 // parseHeaders / findHeader / isFramingSafe / isChunkedTransfer and the bounded
@@ -967,7 +976,9 @@ private:
             }
         } else {
             QByteArray tail;
-            readUntilClose(upstream, tail, m_server);
+            // Abort an over-cap close-delimited body (memory DoS) like the
+            // Content-Length / chunked paths above do on their limits.
+            if (!readUntilClose(upstream, tail, m_server)) return false;
             resp.body = rest + tail;
         }
         // Decode Content-Encoding for inspection (history/search, passive scan,
