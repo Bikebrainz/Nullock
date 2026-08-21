@@ -24,22 +24,32 @@ const QList<Sig> &signatures() {
                                            "valid MySQL result|com\\.mysql\\.jdbc|MySQLSyntaxErrorException", ci) },
         { "PostgreSQL", QRegularExpression("PostgreSQL.*ERROR|Warning.*\\bpg_|valid PostgreSQL result|"
                                            "PG::SyntaxError|org\\.postgresql\\.util\\.PSQLException", ci) },
+        // Only the class/driver/error-CODE fingerprints stay here (a WAF page
+        // won't carry those). The English PROSE "Unclosed quotation mark" /
+        // "Incorrect syntax near" IS WAF-carryable -- a quote-selective block
+        // page echoes it -- so it moved to the status-gated generic family
+        // below, exactly as Oracle's prose was (a real System.Data.SqlClient
+        // error still surfaces its distinctive fingerprint here).
         { "MSSQL",      QRegularExpression("Microsoft SQL (Server|Native)|ODBC SQL Server Driver|"
-                                           "Unclosed quotation mark|SqlException|System\\.Data\\.SqlClient|"
-                                           "Incorrect syntax near", ci) },
+                                           "SqlException|System\\.Data\\.SqlClient", ci) },
         // ORA-##### / oracle.jdbc are true backend fingerprints a WAF page won't
         // carry. The prose "Oracle error" / "quoted string not properly
         // terminated" ARE WAF-carryable, so they live in the status-gated generic
         // family below (an unbalanced ORA-01756 still surfaces its ORA- code).
         { "Oracle",     QRegularExpression("\\bORA-[0-9]{4,5}|oracle\\.jdbc", ci) },
+        // Distinctive class/driver/error-code only. "unrecognized token" is
+        // WAF-carryable prose -> moved to the status-gated generic family (a real
+        // SQLITE_ERROR / sqlite3.OperationalError still fingerprints here).
         { "SQLite",     QRegularExpression("SQLite/JDBCDriver|SQLite\\.Exception|System\\.Data\\.SQLite|"
-                                           "SQLITE_ERROR|sqlite3\\.OperationalError|unrecognized token", ci) },
+                                           "SQLITE_ERROR|sqlite3\\.OperationalError", ci) },
         // GENERIC, low-distinctiveness phrasings a WAF/edge block page can also
-        // carry ("SQL syntax error detected", "SQLSTATE[..]"). Gated on status
-        // (see isBlockStatus) so a 4xx block page can't confirm.
+        // carry ("SQL syntax error detected", "SQLSTATE[..]", and the MSSQL/SQLite
+        // prose demoted from above). Gated on status (see isBlockStatus) so a 4xx
+        // block page can't confirm.
         { "generic",    QRegularExpression("SQL syntax error|syntax error at or near|Oracle error|"
                                            "unterminated quoted string|quoted string not properly terminated|"
-                                           "SQLSTATE\\[", ci) },
+                                           "SQLSTATE\\[|Unclosed quotation mark|Incorrect syntax near|"
+                                           "unrecognized token", ci) },
     };
     return s;
 }

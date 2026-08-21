@@ -47,6 +47,20 @@ int main(int argc, char **argv) {
         dbms("DB message: quoted string not properly terminated") == "generic");
     chk("sig: a real ORA-##### code still trusted as Oracle (even with the prose)",
         dbms("ORA-01756: quoted string not properly terminated") == "Oracle");
+    // maybefix #5: MSSQL/SQLite English PROSE is WAF-carryable, so it must be
+    // status-gated generic (not an ungated DBMS-specific confirm) -- the same
+    // class Oracle's prose was demoted out of. The distinctive class/driver
+    // fingerprints stay trusted on any status.
+    chk("sig: 'Unclosed quotation mark' prose alone -> generic (was ungated MSSQL)",
+        dbms("Request blocked: Unclosed quotation mark before ';'") == "generic");
+    chk("sig: 'Incorrect syntax near' prose alone -> generic (was ungated MSSQL)",
+        dbms("WAF: Incorrect syntax near the keyword 'OR'") == "generic");
+    chk("sig: 'unrecognized token' prose alone -> generic (was ungated SQLite)",
+        dbms("Blocked: unrecognized token in the submitted value") == "generic");
+    chk("sig: distinctive System.Data.SqlClient still trusted as MSSQL",
+        dbms("System.Data.SqlClient.SqlException: Login failed") == "MSSQL");
+    chk("sig: distinctive sqlite3.OperationalError still trusted as SQLite",
+        dbms("sqlite3.OperationalError: near \"WHERE\": syntax error") == "SQLite");
     chk("sig: unrelated -> none", dbms("<html>0 results</html>").isEmpty());
 
     // ---- isBlockStatus ---------------------------------------------------
