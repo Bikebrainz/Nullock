@@ -67,6 +67,12 @@ int main(int argc, char **argv) {
     chk("confirm: single product (calc) -> NO", !confirms({ pA }));
     chk("confirm: both products WRONG separator -> NO", !confirms({ pA + "XX" + pB }));
     chk("confirm: reflected exprA -> NO", !confirms({ eA + sep + eB }));
+    // Isolate the exprB operand of the reflection-suppression ||: a region that
+    // has BOTH products + sep (would confirm) yet also echoes the raw exprB but
+    // NOT exprA must still be suppressed -- the prior negative echoed BOTH, so
+    // the exprA operand alone satisfied the guard and exprB went unproven.
+    chk("confirm: products present but exprB reflected -> NO (exprB operand)",
+        !confirms({ pA + sep + pB + " " + eB }));
     chk("confirm: only productB -> NO",   !confirms({ pB }));
     chk("confirm: empty -> NO",           !confirms({}));
     // All-region scan: literal echo first, real eval second -> confirm.
