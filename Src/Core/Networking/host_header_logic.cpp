@@ -66,4 +66,40 @@ QByteArray buildRequest(const Request &req, const QString &hostLine,
     return out;
 }
 
+HostVerdict classifyHostReflection(const QString &sentinel, const QString &header,
+                                   bool fromHostLine, const QString &location,
+                                   const QString &body,
+                                   const QList<QPair<QString, QString>> &respHeaders) {
+    HostVerdict v;
+    const bool locUrl  = locationIsUrl(location, sentinel);
+    const bool bodyUrl = bodyHasUrl(body, sentinel);
+    // Reflection anywhere, including a response header value (e.g. an injected
+    // host echoed into a Set-Cookie Domain=), which a Location-only check misses.
+    QString hdrHit;
+    for (const auto &hh : respHeaders)
+        if (hh.second.contains(sentinel)) { hdrHit = hh.first; break; }
+
+    Hit &hit = v.hit;
+    hit.header       = header;
+    hit.sentinel     = sentinel;
+    hit.fromHostLine = fromHostLine;   // literal Host line (victim-sent) vs a
+                                       // forwarding header (not victim-deliverable)
+    hit.inLocation   = location.contains(sentinel);
+    hit.inUrlContext = locUrl || bodyUrl;
+    hit.reflected    = body.contains(sentinel) || !hdrHit.isEmpty() || hit.inLocation;
+
+    if (!hit.inUrlContext && !hit.reflected)
+        return v;   // sentinel didn't come back -> report stays false
+
+    if (locUrl)                 hit.where = QStringLiteral("Location");
+    else if (bodyUrl)           hit.where = QStringLiteral("body-url");
+    else if (!hdrHit.isEmpty()) hit.where = QStringLiteral("header:") + hdrHit;
+    else                        hit.where = QStringLiteral("body");
+
+    if (hit.inUrlContext)   v.anyInjection = true;
+    else if (hit.reflected) v.anyReflected = true;
+    v.report = true;
+    return v;
+}
+
 } // namespace Nullock::Core::HostHeader

@@ -112,6 +112,52 @@ int main(int argc, char **argv) {
         chk("build: CRLF hostLine -> empty", buildRequest(req, "victim.tld\r\nX: y", QString(), QString()).isEmpty());
     }
 
+    // ---- classifyHostReflection: the per-probe verdict (was untested) ----
+    // The whole classification (url-context, header reflection, the skip gate,
+    // the where cascade, injection-vs-reflection tiers) lived inline in the
+    // network test() with zero coverage.
+    {
+        using HL = QList<QPair<QString, QString>>;
+        // Literal Host line reaching a Location URL: the high-tier injection.
+        {
+            const auto v = classifyHostReflection(S, "Host", true,
+                "https://" + S + "/reset", "<html>ok</html>", HL{});
+            chk("classify: Host->Location url -> injection, where=Location, fromHostLine",
+                v.report && v.anyInjection && !v.anyReflected
+                && v.hit.where == "Location" && v.hit.fromHostLine && v.hit.inUrlContext);
+        }
+        // A forwarding header reaching a body //sentinel: injection, medium tier.
+        {
+            const auto v = classifyHostReflection(S, "X-Forwarded-Host", false,
+                QString(), "<a href=\"//" + S + "/x\">y</a>", HL{});
+            chk("classify: XFH->body-url -> injection, where=body-url, !fromHostLine",
+                v.report && v.anyInjection && v.hit.where == "body-url" && !v.hit.fromHostLine);
+        }
+        // THE header-only reflection: sentinel echoed ONLY into a response header
+        // value (Set-Cookie Domain=), which a Location/body-only check misses.
+        {
+            const auto v = classifyHostReflection(S, "Host", true,
+                QString(), "<html>clean</html>", HL{ { "Set-Cookie", "sid=1; Domain=" + S } });
+            chk("classify: sentinel only in a response header -> reflected, where=header:Set-Cookie",
+                v.report && v.anyReflected && !v.anyInjection && !v.hit.inUrlContext
+                && v.hit.where == "header:Set-Cookie" && v.hit.reflected);
+        }
+        // A bare body reflection (present, but not as a URL) -> reflected, not injection.
+        {
+            const auto v = classifyHostReflection(S, "Host", true,
+                QString(), "<!-- proxied via " + S + " -->", HL{});
+            chk("classify: bare body reflection -> reflected, where=body (not injection)",
+                v.report && v.anyReflected && !v.anyInjection && v.hit.where == "body");
+        }
+        // The skip gate: the sentinel came back NOWHERE -> report=false.
+        {
+            const auto v = classifyHostReflection(S, "Host", true,
+                "https://real.example/", "<html>no sentinel here</html>", HL{});
+            chk("classify: sentinel absent everywhere -> report=false (skip)",
+                !v.report && !v.anyInjection && !v.anyReflected);
+        }
+    }
+
     std::fprintf(stderr, "host_header_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

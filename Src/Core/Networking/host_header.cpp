@@ -74,36 +74,16 @@ Result test(const Request &reqIn) {
         const QString location = headerValue(r.parsed, "Location");
         const QString body = QString::fromUtf8(r.parsed.body);
 
-        const bool locUrl  = locationIsUrl(location, s);
-        const bool bodyUrl = bodyHasUrl(body, s);
-
-        // Reflection anywhere, including response headers (e.g. an injected host
-        // echoed into a Set-Cookie Domain=), which a Location-only check misses.
-        QString hdrHit;
-        for (const auto &hh : r.parsed.headers)
-            if (hh.second.contains(s)) { hdrHit = hh.first; break; }
-
-        Hit hit;
-        hit.header = header;
-        hit.sentinel = s;
-        hit.fromHostLine = p.replacesHost;   // the literal Host line (victim's
-                                             // browser sends it) vs a forwarding
-                                             // header (not victim-deliverable)
-        hit.inLocation   = location.contains(s);
-        hit.inUrlContext = locUrl || bodyUrl;
-        hit.reflected    = body.contains(s) || !hdrHit.isEmpty() || hit.inLocation;
-
-        if (!hit.inUrlContext && !hit.reflected)
+        // The whole reflection classification (url-context, header-reflection,
+        // the skip gate, the where cascade, injection-vs-reflection) is the pure,
+        // unit-tested classifyHostReflection().
+        const HostVerdict v = classifyHostReflection(s, header, p.replacesHost,
+                                                     location, body, r.parsed.headers);
+        if (!v.report)
             continue;   // sentinel didn't come back -> nothing to report
-
-        if (locUrl)                 hit.where = QStringLiteral("Location");
-        else if (bodyUrl)           hit.where = QStringLiteral("body-url");
-        else if (!hdrHit.isEmpty()) hit.where = QStringLiteral("header:") + hdrHit;
-        else                        hit.where = QStringLiteral("body");
-
-        if (hit.inUrlContext)   result.anyInjection = true;
-        else if (hit.reflected) result.anyReflected = true;
-        result.hits.append(hit);
+        if (v.anyInjection)      result.anyInjection = true;
+        else if (v.anyReflected) result.anyReflected = true;
+        result.hits.append(v.hit);
     }
 
     if (!gotAnyResponse && result.hits.isEmpty())

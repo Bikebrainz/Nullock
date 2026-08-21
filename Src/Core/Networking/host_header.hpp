@@ -85,4 +85,21 @@ bool bodyHasUrl(const QString &body, const QString &s);
 QByteArray buildRequest(const Request &req, const QString &hostLine,
                         const QString &extraHeader, const QString &extraValue);
 
+// The per-probe reflection verdict: whether the sentinel came back (report), the
+// Hit describing where + how, and the injection/reflected classification. Pure --
+// the decision the network test() applies to each probe response, extracted so it
+// can be unit-tested. `respHeaders` is the response's header list (a sentinel
+// echoed ONLY into a header value, e.g. Set-Cookie Domain=, is a reflection a
+// Location/body check would miss).
+struct HostVerdict {
+    bool report = false;        // false = sentinel didn't come back -> skip
+    Hit  hit;
+    bool anyInjection = false;  // a Location / url-context hit -> the real vuln
+    bool anyReflected = false;  // a bare body/header reflection
+};
+HostVerdict classifyHostReflection(const QString &sentinel, const QString &header,
+                                   bool fromHostLine, const QString &location,
+                                   const QString &body,
+                                   const QList<QPair<QString, QString>> &respHeaders);
+
 } // namespace Nullock::Core::HostHeader
