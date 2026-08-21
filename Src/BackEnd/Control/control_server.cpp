@@ -124,9 +124,15 @@ constexpr int     kReadTimeoutMs = 5'000;
 // Absolute wall-clock budget for receiving the full request header block.
 // Defeats slowloris: a client dribbling one byte every 4.9s would refill
 // the per-read kReadTimeoutMs forever, but the elapsed-since-accept clock
-// keeps counting and drops them at 10s regardless. 10s is generous for
-// any honest client on localhost.
-constexpr qint64  kHeaderDeadlineMs = 10'000;
+// keeps counting and drops them at this deadline regardless.
+//
+// This read is PRE-AUTH and blocks the main thread (see handle()), so the
+// deadline is kept short: an HTTP request's headers are a single small TCP
+// segment that any honest client -- localhost or a slow link -- delivers in
+// well under a second, so 3s is very generous while bounding how long one slow
+// socket can freeze the main thread before onNewConnection yields (maybefix #12).
+// The larger 30s budget applies only to the POST BODY, read AFTER this point.
+constexpr qint64  kHeaderDeadlineMs = 3'000;
 // Similar deadline for receiving the request body once headers have been
 // parsed. A POST body of up to kMaxBodyBytes on localhost completes in
 // well under 30s.
@@ -973,10 +979,22 @@ bool ControlServer::isRunning() const { return m_server->isListening(); }
 quint16 ControlServer::listeningPort() const { return m_server->serverPort(); }
 
 void ControlServer::onNewConnection() {
-    while (QTcpSocket *s = m_server->nextPendingConnection()) {
+    // Handle ONE pending connection per event-loop pass, then re-post to the
+    // event queue if more are waiting. handle() reads a (pre-auth) request
+    // synchronously and blocks the main thread while doing so; draining the
+    // whole accept backlog inline let a burst of slow / slowloris sockets
+    // serialise into a long cumulative main-thread freeze -- the operator UI
+    // polls /api/snapshot and would stall for that whole time. Yielding between
+    // connections lets the event loop (and those UI polls) run between each, so
+    // the worst case is one short-deadline connection's block, not the sum of a
+    // whole burst. maybefix #12. (A fully event-driven handle() remains the
+    // ideal; this bounds the damage without that rewrite.)
+    if (QTcpSocket *s = m_server->nextPendingConnection()) {
         connect(s, &QTcpSocket::disconnected, s, &QObject::deleteLater);
         handle(s);
     }
+    if (m_server->hasPendingConnections())
+        QMetaObject::invokeMethod(this, "onNewConnection", Qt::QueuedConnection);
 }
 
 void ControlServer::handle(QTcpSocket *socket) {
@@ -987,14 +1005,15 @@ void ControlServer::handle(QTcpSocket *socket) {
     // the main thread's handle() loop forever and freeze the entire API
     // surface (the UI included, since it polls /api/snapshot).
     //
-    // LIMITATION (tracked follow-up): this deadline bounds a SINGLE
-    // connection, not the AGGREGATE. handle() runs synchronously on the main
-    // thread (onNewConnection calls it inline) and blocks in waitForReadyRead,
-    // so N slow-but-valid connections serialize into ~kHeaderDeadlineMs * N of
-    // cumulative main-thread freeze -- there is no concurrency cap. The real
-    // fix is a non-blocking / event-driven handle() (readyRead + a QTimer
-    // deadline) plus a hard active-connection cap; until then a flood of slow
-    // sockets can still stall the operator UI for the duration.
+    // AGGREGATE bound (maybefix #12): handle() still runs synchronously on the
+    // main thread and blocks in waitForReadyRead, but two things now cap the
+    // damage from a burst of slow sockets: (1) this pre-auth header deadline is
+    // short (kHeaderDeadlineMs = 3s, not 10s), and (2) onNewConnection processes
+    // ONE connection per event-loop pass and re-posts, so the event loop -- and
+    // the operator UI's /api/snapshot poll -- runs between connections instead of
+    // after the whole backlog drains. The worst case is now one short-deadline
+    // block between UI turns, not kHeaderDeadlineMs * N of uninterrupted freeze.
+    // A fully event-driven handle() (readyRead + a QTimer) remains the ideal.
     QElapsedTimer deadline;
     deadline.start();
 
