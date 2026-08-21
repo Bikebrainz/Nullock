@@ -6288,7 +6288,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.projectStore) {
             const QString p = bodyJson.value("path").toString();
             if (!p.isEmpty()) {
-                n = m_wiring.projectStore->importHar(p);
+                // Confine a server-side import path under the projects root, so a
+                // loopback-CSRF request can't point importHar at an arbitrary file
+                // (defense in depth -- maybefix #16; safeJoin rejects .. / absolute
+                // / drive / UNC escapes). The web + CLI import flow uses the `har`
+                // bytes body below; the path field is only for re-importing a HAR
+                // that already lives under the projects tree.
+                const QString root = m_wiring.projectStore->projectsRoot();
+                const QString safe = root.isEmpty() ? QString()
+                                                    : ControlLogic::safeJoin(root, p);
+                n = safe.isEmpty() ? -1   // escaped the projects root -> refused
+                                   : m_wiring.projectStore->importHar(safe);
             } else if (bodyJson.contains("har")) {
                 // Caller posted the raw HAR object instead of a path.
                 const QByteArray bytes =

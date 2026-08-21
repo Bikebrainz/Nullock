@@ -28,7 +28,9 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -145,7 +147,10 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
     const quint16 port  = static_cast<quint16>(envInt("WORKSPACE_PORT", 8790));
-    const QString  bind = envOr("WORKSPACE_BIND", QStringLiteral("0.0.0.0"));
+    // Loopback by default (maybefix #15): the shared team key authorizes read +
+    // write of the workspace DB, so don't expose it on every interface unless the
+    // operator opts in (WORKSPACE_BIND=0.0.0.0 for a team-shared sync server).
+    const QString  bind = envOr("WORKSPACE_BIND", QStringLiteral("127.0.0.1"));
     const QString  dbPath = envOr("WORKSPACE_DB", QStringLiteral("nullock-workspace.sqlite"));
     QString        key  = envOr("WORKSPACE_KEY", QString());
     bool generatedKey = false;
@@ -160,11 +165,12 @@ int main(int argc, char **argv) {
     }
     ensureSchema(db);
 
-    auto authed = [&](const QByteArray &header, const QUrlQuery &query) {
-        QString k = query.queryItemValue(QStringLiteral("key"));
+    auto authed = [&](const QByteArray &header, const QUrlQuery & /*query*/) {
+        // Accept the key ONLY via the X-Workspace-Key header, never ?key= (a
+        // query-string credential lands in intermediary / proxy / access logs).
+        // maybefix #15 -- the Nullock client already sends the header.
         const QString hk = headerValue(header, "X-Workspace-Key");
-        if (!hk.isEmpty()) k = hk;
-        return !key.isEmpty() && k == key;
+        return !key.isEmpty() && hk == key;
     };
 
     QTcpServer server;
@@ -316,11 +322,28 @@ int main(int argc, char **argv) {
         "         GET /api/ws/engagements, GET /healthz)\n"
         "  db   : %s\n",
         bind.toUtf8().constData(), port, dbPath.toUtf8().constData());
-    if (generatedKey)
-        std::fprintf(stdout, "  key  : %s  (generated -- set WORKSPACE_KEY to pin it)\n",
-                     key.toUtf8().constData());
-    else
+    if (generatedKey) {
+        // Don't print a generated key to stdout (journald/docker logs).
+        // maybefix #15. Write it to an owner-only file; print only the path.
+        const QString keyPath = envOr("WORKSPACE_KEY_FILE",
+                                      QDir::current().filePath(QStringLiteral("nullock-workspace.key")));
+        QFile kf(keyPath);
+        if (kf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            kf.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);   // 0600
+            kf.write(key.toUtf8());
+            kf.write("\n");
+            kf.close();
+            std::fprintf(stdout,
+                "  key  : (generated; written to %s -- or set WORKSPACE_KEY to pin it)\n",
+                keyPath.toUtf8().constData());
+        } else {
+            std::fprintf(stdout,
+                "  key  : (generated; could NOT write %s -- set WORKSPACE_KEY to pin a key)\n",
+                keyPath.toUtf8().constData());
+        }
+    } else {
         std::fprintf(stdout, "  key  : (from WORKSPACE_KEY)\n");
+    }
     std::fflush(stdout);
 
     return app.exec();
