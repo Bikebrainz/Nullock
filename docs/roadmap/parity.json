@@ -5207,7 +5207,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "69c5b06",
         "note": "Threaded #299's client-side highlight/comment annotation layer into the Site Map tree's leaf rows (colour edge, comment glyph, right-click menu, annotatedOnly filter) so the gesture works from the tree view, not just the flat HTTP history table; backend persistence stays an honest remaining gap, matching the sibling proxy-area item."
       }
     },
