@@ -80,6 +80,17 @@ int main(int argc, char **argv) {
     chk("call: navigator.sendBeacon", has("navigator.sendBeacon(\"/collect\", b)", "/collect"));
     chk("call: new EventSource", has("new EventSource(\"/stream/events\")", "/stream/events"));
     chk("abs: new WebSocket wss:// captured", has("new WebSocket(\"wss://x.test/socket\")", "wss://x.test/socket"));
+    // axios / jQuery .ajax / Worker: the header comment claimed these are mined
+    // but nothing exercised them -- a break in the rxCall alternation would pass.
+    chk("call: axios.get path", has("axios.get(\"/data/feed\")", "/data/feed"));
+    chk("call: axios (bare) path", has("axios(\"/data/feed\")", "/data/feed"));
+    chk("call: jQuery .ajax path", has("$.ajax(\"/data/feed\")", "/data/feed"));
+    chk("call: axios verb-arg not an endpoint", !has("axios.get(\"GET\")", "GET"));
+    // Use a non-api-shaped path so ONLY the call-shape miner (not the anchor
+    // miner) can capture it -- isolates the Worker rxCall alternation.
+    chk("call: new Worker path", has("new Worker(\"/rt/channel\")", "/rt/channel"));
+    chk("call: new SharedWorker path", has("new SharedWorker(\"/rt/channel\")", "/rt/channel"));
+    chk("call: new Widget is NOT a mined constructor", !has("new Widget(\"/rt/channel\")", "/rt/channel"));
     chk("abs: https URL captured", has("var u=\"https://api.example.com/v1/me\"", "https://api.example.com/v1/me"));
     // recon-1: the authority accepts an explicit :port and the path/query accepts
     // any non-quote/non-space char, so a ported endpoint or a path with special
@@ -173,6 +184,31 @@ int main(int argc, char **argv) {
         chk("secret: generic high-entropy assignment -> info lead", hasKind(s, "generic-secret"));
         for (const auto &x : s) if (x.kind == "generic-secret")
             chk("secret: generic severity is info (lead)", x.severity == "info");
+    }
+    // Provider patterns that had no dedicated positive (assembled from fragments;
+    // no literal secret shape appears in source).
+    {
+        const QString g = QString("AI") + "za" + "0123456789abcdefghijABCDEFGHIJ12345";  // AIza + 35
+        const auto s = secrets("var k=\"" + g + "\";");
+        chk("secret: google-api-key detected", hasKind(s, "google-api-key"));
+        for (const auto &x : s) if (x.kind == "google-api-key")
+            chk("secret: google-api-key severity high", x.severity == "high");
+        // one char short of the {35} tail -> not a google key.
+        chk("secret: AIza too short -> NOT google-api-key",
+            !hasKind(secrets("var k=\"" + QString("AI") + "za" + "0123456789abcdefghij\";"), "google-api-key"));
+    }
+    {
+        const QString gl = QString("glp") + "at-" + "0123456789abcdefABCD";  // glpat- + 20
+        chk("secret: gitlab-pat detected", hasKind(secrets("token='" + gl + "'"), "gitlab-pat"));
+        chk("secret: glpat too short -> NOT gitlab-pat",
+            !hasKind(secrets("token='" + QString("glp") + "at-" + "0123456789abcdef'"), "gitlab-pat"));
+    }
+    {
+        const QString sk = QString("xox") + "b-" + "0123456789ab";  // xoxb- + 12 (>=10)
+        chk("secret: slack-token detected", hasKind(secrets("const t=\"" + sk + "\""), "slack-token"));
+        // type char must be one of [baprs]: 'z' is not.
+        chk("secret: xoxz- -> NOT slack-token",
+            !hasKind(secrets("const t=\"" + QString("xox") + "z-" + "0123456789ab\""), "slack-token"));
     }
     chk("secret: a clean bundle yields no secrets",
         secrets("function add(a,b){return a+b;} const x=fetch('/api/x');").isEmpty());
