@@ -1696,7 +1696,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "45b1363",
         "note": "partial -> present. The only remaining gap this item named -- the ui-v2 Loaded checkbox in the Installed tab -- is now built, wired to the already-verified backend endpoint. No backend touched. The separate per-project extensionsEnabled template field remains a no-op, but that is a distinct feature (per-project extension state on project switch), not this global enable/disable checkbox."
       }
     },
