@@ -161,6 +161,29 @@ int main(int argc, char **argv) {
     chk("gate(FIX): control FAILED, sig present -> suppress",
         !controlProvesFetch(false, true));
 
+    // ---- ssrfCandidateParams: probe EVERY recognized param (maybefix #9) ----
+    // The old auto-detect picked the FIRST recognized param and stopped, so a
+    // real sink (url=) after a decoy (path=) was never probed. This helper
+    // returns ALL recognized params in query order so the scanner probes each.
+    {
+        const QStringList c = ssrfCandidateParams("path=/etc&url=http://sink&q=hi");
+        chk("candidates: both path and url returned (not just the first)",
+            c.size() == 2 && c.contains("path") && c.contains("url"));
+        chk("candidates: preserve query order (path before url)",
+            c.size() == 2 && c.at(0) == "path" && c.at(1) == "url");
+        chk("candidates: unrecognized (q) excluded",
+            !ssrfCandidateParams("q=hi&search=x").contains("q"));
+        chk("candidates: none recognized -> empty",
+            ssrfCandidateParams("q=1&search=2&page=x").isEmpty()
+            == false /* 'page' IS a known sink name */);
+        chk("candidates: truly-generic query -> empty",
+            ssrfCandidateParams("q=1&search=2").isEmpty());
+        chk("candidates: dedup case-insensitive (URL + url -> one)",
+            ssrfCandidateParams("URL=a&url=b").size() == 1);
+        chk("candidates: original case preserved for injection",
+            ssrfCandidateParams("TargetUrl=x").value(0) == "TargetUrl");
+    }
+
     std::fprintf(stderr, "ssrf_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

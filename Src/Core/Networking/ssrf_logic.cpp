@@ -1,5 +1,8 @@
 #include "ssrf_logic.hpp"
 
+#include <QSet>
+#include <QUrlQuery>
+
 namespace Nullock::Core::SsrfScan {
 
 QByteArray buildRequest(const Request &req, const QString &query) {
@@ -47,6 +50,25 @@ QStringList knownSsrfParams() {
              "out", "to", "view", "show", "goto", "forward", "forward_url",
              "origin", "remote", "resource", "document", "wsdl", "xsl",
              "upload", "endpoint", "server", "u", "uri_ref" };
+}
+
+QStringList ssrfCandidateParams(const QString &query) {
+    // Every recognized SSRF-prone param in the query, in query order, deduped
+    // (case-insensitive). The scanner probes ALL of these -- not just the first
+    // match -- so a real sink (url=) after a decoy (path=) is not skipped.
+    const QStringList known = knownSsrfParams();
+    const QSet<QString> knownSet(known.begin(), known.end());
+    QStringList out;
+    QSet<QString> seen;
+    const QUrlQuery q(query);
+    for (const auto &kv : q.queryItems()) {
+        const QString lc = kv.first.toLower();
+        if (knownSet.contains(lc) && !seen.contains(lc)) {
+            seen.insert(lc);
+            out.append(kv.first);   // original-case name, for injection
+        }
+    }
+    return out;
 }
 
 bool controlProvesFetch(bool controlOk, bool controlReproducedSig) {

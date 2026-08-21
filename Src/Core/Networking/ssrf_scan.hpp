@@ -69,15 +69,20 @@ struct Result {
 // The payloads go into the query string only -- a sink that reads the target
 // URL from a POST body isn't covered here (use the parameter sweep for that).
 //
-// SINGLE-PARAM by design: when `param` is empty, auto-detect picks the FIRST
-// query item whose name is in knownSsrfParams() and stops. If a URL carries
-// several URL-typed params and the sink is not the first, the caller must
-// re-invoke test() once per candidate param (set req.param explicitly) for full
-// coverage -- one test() call probes exactly one parameter.
+// When `param` is set, test() probes exactly that parameter. When it is empty,
+// test() auto-detects and probes EVERY recognized URL-typed param in the query
+// (up to a small cap), stopping at the first confirmed sink -- so a decoy param
+// before the real sink (e.g. path= before url=) no longer steals the probe
+// budget and hides the SSRF (maybefix #9). Set req.param to target one.
 Result test(const Request &req);
 
 // Query keys treated as likely URL-typed (SSRF-prone) parameters when
 // auto-detecting which parameter to inject.
 QStringList knownSsrfParams();
+
+// ALL recognized SSRF-prone param names present in `query`, in query order,
+// deduped (case-insensitive). test() probes each of these when req.param is
+// empty. Pure; unit-tested.
+QStringList ssrfCandidateParams(const QString &query);
 
 } // namespace Nullock::Core::SsrfScan

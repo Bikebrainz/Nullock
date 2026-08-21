@@ -85,22 +85,16 @@ const Probe kProbes[] = {
 
 } // namespace
 
-Result test(const Request &reqIn) {
+// Probe a SINGLE, already-resolved parameter (req.param). The public test()
+// below loops this over EVERY recognized param so a real sink isn't skipped.
+static Result testSingleParam(const Request &reqIn) {
     Result result;
     if (reqIn.host.isEmpty()) { result.error = "host required"; return result; }
     Request req = reqIn;
     if (req.basePath.isEmpty()) req.basePath = QStringLiteral("/");
-
-    // Resolve which parameter to inject into.
-    QUrlQuery q(req.query);
     if (req.param.isEmpty()) {
-        const QStringList known = knownSsrfParams();
-        for (const auto &kv : q.queryItems())
-            if (known.contains(kv.first.toLower())) { req.param = kv.first; break; }
-        if (req.param.isEmpty()) {
-            result.error = "no SSRF-prone parameter given or auto-detected in the query";
-            return result;
-        }
+        result.error = "no SSRF parameter specified";
+        return result;
     }
     result.testedParam = req.param;
 
@@ -191,6 +185,43 @@ Result test(const Request &reqIn) {
     }
 
     return result;
+}
+
+// Probe EVERY recognized SSRF-prone param, not just the first. The old
+// auto-detect picked the first match and stopped, so a decoy param (path=)
+// before the real sink (url=) stole the probe budget and the sink was reported
+// clean -- a false negative (maybefix #9). A caller that sets req.param still
+// targets exactly that one.
+Result test(const Request &reqIn) {
+    if (!reqIn.param.isEmpty()) return testSingleParam(reqIn);
+    const QStringList candidates = ssrfCandidateParams(reqIn.query);
+    if (candidates.isEmpty()) {
+        Result r;
+        r.error = "no SSRF-prone parameter given or auto-detected in the query";
+        return r;
+    }
+    Result agg;
+    constexpr int kMaxParams = 8;   // bound request amplification on a busy query
+    int probed = 0;
+    for (const QString &p : candidates) {
+        if (probed >= kMaxParams) break;
+        ++probed;
+        Request req = reqIn;
+        req.param = p;
+        const Result one = testSingleParam(req);
+        agg.requestsSent += one.requestsSent;
+        if (agg.baselineStatus == 0) agg.baselineStatus = one.baselineStatus;
+        agg.hits.append(one.hits);
+        if (one.vulnerable) {
+            agg.vulnerable   = true;
+            agg.testedParam  = one.testedParam;   // the confirmed sink param
+            return agg;                           // stop at the first proven sink
+        }
+        if (agg.error.isEmpty() && !one.error.isEmpty()) agg.error = one.error;
+    }
+    if (agg.testedParam.isEmpty())
+        agg.testedParam = QStringList(candidates.mid(0, probed)).join(", ");
+    return agg;
 }
 
 } // namespace Nullock::Core::SsrfScan
