@@ -211,6 +211,26 @@ jobs:
         with: { path: artifacts }
       - name: list artifacts
         run: find artifacts -type f
+      - name: release notes + checksums
+        # Curated release body from this version's CHANGELOG section (the headline
+        # highlights) instead of only the auto-generated commit list; plus a
+        # SHA256SUMS.txt so downloaders can verify each installer's integrity.
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          # Literal index() matching (not regex) so the [ ] in the version header
+          # aren't parsed as a character class.
+          awk -v v="$VER" '
+            index($0, "## [" v "]") == 1 {p=1; print; next}
+            p && index($0, "## [") == 1 {exit}
+            p {print}
+          ' CHANGELOG.md > RELEASE_NOTES.md || true
+          [ -s RELEASE_NOTES.md ] || printf '## Nullock %s\n' "$VER" > RELEASE_NOTES.md
+          : > SHA256SUMS.txt
+          while IFS= read -r f; do
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" >> SHA256SUMS.txt
+          done < <(find artifacts -type f -name 'Nullock-*' | sort)
+          echo "----- RELEASE_NOTES.md -----"; cat RELEASE_NOTES.md
+          echo "----- SHA256SUMS.txt -----";   cat SHA256SUMS.txt
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
@@ -218,6 +238,9 @@ jobs:
           # then a maintainer reviews the artifacts and clicks Publish. Flip to
           # false once the release flow is trusted for hands-off publishing.
           draft: true
+          # Curated highlights first (from CHANGELOG); the auto-generated commit
+          # list is appended below them.
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
           # ** (recursive) because the Linux artifact preserves its build/ dir
           # (artifacts/linux/build/Nullock-*.deb) while windows/macos sit flat --
@@ -227,3 +250,4 @@ jobs:
             artifacts/windows/**
             artifacts/linux/**
             artifacts/macos/**
+            SHA256SUMS.txt

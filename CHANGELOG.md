@@ -10,6 +10,15 @@ developer-facing record.
 
 ## [Unreleased]
 
+## [3.8.0] — 2026-08-20
+
+This release folds in a large security-and-correctness pass: a whole-codebase
+multi-agent security review (16 findings, from a CRITICAL CI-action fix down to
+LOW hardening), two more dead-detector bugs surfaced and fixed by a per-module
+detector audit, and mutation-proven regression coverage locked across the passive
+scanner's full detector set plus every active-scan probe module. See the
+per-entry notes below.
+
 ### Added
 - **Intercept the response to one specific request.** When you hold a request in
   the intercept editor, you can now forward it and catch just its response &mdash;

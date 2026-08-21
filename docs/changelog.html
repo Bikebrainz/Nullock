@@ -25,7 +25,7 @@
       <a href="pricing.html">Pricing</a>
       <a href="changelog.html" class="active">Changelog</a>
       <a href="about.html">About</a>
-      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
       <a href="index.html#download" class="btn btn-primary btn-sm">Download</a>
     </div>
   </div>
@@ -45,9 +45,9 @@
 
       <article class="rel">
         <div class="rel-meta">
-          <span class="rel-ver">Unreleased</span>
-          <span class="caption">Aug 13, 2026</span>
-          <span class="badge"><span class="dot"></span>in progress</span>
+          <span class="rel-ver">v3.8.0</span>
+          <span class="caption">Aug 20, 2026</span>
+          <span class="badge"><span class="dot"></span>released</span>
         </div>
         <div class="rel-body">
           <p class="rel-note">The pre-launch blocker push &mdash; five of the first-hour blockers fixed: scan findings and Repeater tabs now survive app close and project reopen, Repeater auto-updates Content-Length, the proxy can bind off-loopback for device testing, and interception is now rule-driven &mdash; alongside a detector-hardening pass over the passive scanner (mutation-proven regression coverage around every finding kind), the false-negative bugs those tests surfaced, and new Burp-parity features on the roadmap.</p>
@@ -332,6 +332,12 @@
 .rel-body ul { list-style:none; margin:0; padding:0; }
 .rel-body li { font-size:14px; color:var(--secondary); line-height:1.6; padding:6px 0; display:flex; gap:10px; align-items:baseline; }
 .rel-note { color:var(--body); font-size:14px; margin:0 0 10px; }
+    /* Grid and flex items default to min-width:auto, so a long token in the notes
+       stretched the 1fr track and pushed the whole page sideways at every width. */
+    .rel-body { min-width:0; }
+    .rel-body li { min-width:0; }
+    .rel-body li > * { min-width:0; }
+    .rel-body p, .rel-body li { overflow-wrap:anywhere; }
 .tag { font-family:var(--font-mono); font-size:10.5px; font-weight:500; padding:1px 7px; border-radius:999px; flex-shrink:0; text-transform:uppercase; letter-spacing:.5px; }
 .tag.add { background:#102a18; color:var(--ok); }
 .tag.fix { background:var(--surface-2); color:var(--purple-light); }

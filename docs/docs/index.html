@@ -18,14 +18,14 @@
     <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="../index.html">Product</a>
-      <a href="index.html" class="active">Docs</a>
+      <a href="../docs/index.html" class="active">Docs</a>
       <a href="../marketplace/index.html">Extensions</a>
       <a href="../labs/index.html">Labs</a>
       <a href="../roadmap/index.html">Roadmap</a>
       <a href="../pricing.html">Pricing</a>
       <a href="../changelog.html">Changelog</a>
       <a href="../about.html">About</a>
-      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
       <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
     </div>
   </div>
@@ -53,7 +53,7 @@
 
   <!-- CONTENT -->
   <main class="docs-content">
-    <p class="eyebrow">// docs · v3.7.0</p>
+    <p class="eyebrow">// docs · v3.8.0</p>
     <h1 class="h1-page" style="margin:8px 0 0;">Documentation</h1>
     <p class="lead" style="margin:14px 0 0;">Self-host first. Everything here runs on your machine, offline, with no account.</p>
 
@@ -106,7 +106,8 @@
     <section id="cli" class="doc-sec">
       <h2 class="h2-section">CLI</h2>
       <p>The CLI drives a running instance over its local control API (<code class="inline">$NULLOCK_API</code>, default <code class="inline">127.0.0.1:17777</code>) — it needs <code class="inline">curl</code> and <code class="inline">jq</code>. Anything you do in the UI, you can script.</p>
-      <table class="matrix" style="margin-top:16px;">
+      <div style="overflow-x:auto;margin-top:16px;">
+      <table class="matrix" style="min-width:520px;">
         <thead><tr><th>Command</th><th>What it does</th></tr></thead>
         <tbody>
           <tr><td><code class="inline">nullock status</code></td><td>Proxy, scope &amp; findings summary</td></tr>
@@ -117,6 +118,7 @@
           <tr><td><code class="inline">nullock replay &lt;id&gt;</code></td><td>Re-send a captured request</td></tr>
         </tbody>
       </table>
+      </div>
     </section>
 
     <section id="extensions" class="doc-sec">
