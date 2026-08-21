@@ -46,6 +46,8 @@ int main(int argc, char **argv) {
     chk("block: 403", isBlockStatus(403));
     chk("block: 406", isBlockStatus(406));
     chk("block: 429", isBlockStatus(429));
+    chk("block: 451", isBlockStatus(451));
+    chk("block: 501", isBlockStatus(501));
     chk("block: 503", isBlockStatus(503));
     chk("block: 200 not", !isBlockStatus(200));
     chk("block: 500 not (real backend error)", !isBlockStatus(500));
@@ -62,6 +64,20 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "q=x").contains("X-Smuggled"));
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("build: drops CRLF in a carried header NAME",
+            !buildRequest(injName, "q=x").contains("X-Smuggled"));
+        Request dupHost = req;
+        dupHost.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        chk("build: drops carried Host (no duplicate)",
+            buildRequest(dupHost, "q=x").count("Host:") == 1
+            && !buildRequest(dupHost, "q=x").contains("attacker.tld"));
+        // A legitimate carried header (session Cookie) IS forwarded.
+        Request ck = req;
+        ck.headers.append(qMakePair(QString("Cookie"), QString("sid=abc123")));
+        chk("build: forwards a legit carried header (Cookie)",
+            buildRequest(ck, "q=x").contains("Cookie: sid=abc123\r\n"));
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "q=x").isEmpty());
