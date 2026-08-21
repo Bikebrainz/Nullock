@@ -3113,12 +3113,17 @@
     {
       "area": "platform",
       "feature": "Annotations: per-item Notes column and colour highlighting on Proxy history / any message table",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Cannot annotate or colour-code a row. On a multi-day 50k-row engagement this is how Burp users keep their place.",
-      "why": "Confirmed by reading the role enum directly rather than trusting the quote \u2014 it is verbatim and there is no note, comment, highlight or colour role. I also grepped the front-end and storage layers for highlight/annotat/note/rowColor/markRow and found no per-row annotation state anywhere. Confirmed absent.",
-      "evidence": "Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp:14-25 `enum Roles { IdRole = Qt::UserRole + 1, HostRole, MethodRole, UrlRole, StatusCodeRole, MimeRole, ParamsRole, TlsRole, IpRole, TimestampRole, };`. `grep -rani \"highlight|annotat|rowColor|markRow\" Src/FrontEnd Src/Core/Storage` \u2192 no product hits. The only per-row marking is the transient diff marker at ui-v2/proxy.jsx:210-211."
+      "gap": "Client-side only: right-click any Proxy history/site-map row for one of 9 highlight colours and/or a free-text comment, localStorage-persisted (nl.history.annotations.v1) and filterable via an ANNOTATED chip. ProxyModel::Entry still carries no annotation field and the /api/snapshot row builder emits no comment/colour key, so a note or highlight does not survive a server restart, reach a different browser, or reach the CLI/API -- the real per-item Notes column this item names is still absent server-side.",
+      "why": "Register-accuracy fix: this entry is the platform-area sibling of parity item #299 (proxy area, same underlying feature), closed by c25af6a (2026-08-20) -- but that wave's commit only flipped #299 and left this duplicate register entry stale, still reading 'no product hits' for highlight/annotat against code that now has ANNOTATION_COLORS/loadAnnotations/saveAnnotations. Re-verified live: ui-v2/proxy.jsx:66-98 defines the 9-colour palette + localStorage load/save; HistoryTable (:106-148) and SiteMap (:361-397) both filter on annotatedOnly and render a coloured row edge from annotations[r.id]; FilterBar (:332) exposes the ANNOTATED chip. Absent -> partial, matching #299's grade and reasoning exactly.",
+      "evidence": "ui-v2/proxy.jsx:72-98 (ANNOTATION_COLORS, ANNOTATIONS_STORAGE_KEY, loadAnnotations/saveAnnotations/annotationColorHex); :114,148,185-187 (HistoryTable annotatedOnly filter + row highlight); :397,435-437 (SiteMap same); :332 (ANNOTATED filter chip). No backend field: Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp Roles enum unchanged, still no note/colour role.",
+      "reconciled": {
+        "date": "2026-08-21",
+        "commit": "c25af6a",
+        "note": "Wave 0 register-accuracy fix: this platform-area duplicate of #299 was left absent when c25af6a shipped client-side-only highlight-colour + comment annotations (localStorage-persisted, ANNOTATED filter chip on both HTTP history and Site map) -- flipped absent -> partial to match #299, with the same honest backend-still-missing caveat. No code change this pass."
+      }
     },
     {
       "area": "platform",
@@ -3524,13 +3529,13 @@
       "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Annotation and listener/port filters remain missing -- Nullock has no per-row annotation store to filter by (tracked separately), and no dedicated listener-port dropdown (the port is visible per-row but not a filter dimension). Server-side deep body search (/api/search) is still forced case-insensitive (control_server.cpp:1769-1771) -- the new case-sensitivity toggle only applies to the local-column fast path, not the regex body scan.",
-      "why": "Closed 2026-08-10: FilterBar/HistoryTable (ui-v2/proxy.jsx) gain a MIME-class <select> (mimeCategory() bucketing r.mime into html/script/json/xml/css/images/other), an EXT text field + SHOW/HIDE toggle (pathExtension()/parseExtList()/extFilterMatch()), a case-sensitivity toggle button, and negative search via a leading '-' (parseSearchTerm()) -- on top of the in-scope/params/hide-404 chips and status/method filters already shipped in earlier waves. That closes every dimension the gap called out except annotation and listener, both blocked on missing backend stores.",
-      "evidence": "ui-v2/proxy.jsx: MIME_CATEGORIES/mimeCategory() and pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() helpers; HistoryTable's useMemo predicate applies mimeFilter/extList/extHide/caseSensitive/negate; FilterBar renders the MIME select, EXT input+toggle, and Aa case-sensitivity button; ProxyTab's `shown` count mirrors the same predicate so the header stays in sync.",
+      "gap": "Listener/port filter remains missing -- no dedicated listener-port dropdown (the port is visible per-row but not a filter dimension). Server-side deep body search (/api/search) is still forced case-insensitive (control_server.cpp:1769-1771) -- the case-sensitivity toggle only applies to the local-column fast path, not the regex body scan. Annotation filter is present but client-side/localStorage only (see #299) -- it does not reach the CLI/API and does not survive across browsers.",
+      "why": "Closed 2026-08-10 (5c0c4b4): FilterBar/HistoryTable gain MIME-class/extension/case-sensitivity/negative-search dimensions. Register-accuracy update 2026-08-21: the annotation dimension named in this feature's own title was still marked missing here after c25af6a (2026-08-20) shipped it -- FilterBar now renders an ANNOTATED chip (ui-v2/proxy.jsx:332) and HistoryTable's filter predicate honors annotatedOnly (:114), closing that dimension client-side. Only listener/port remains a real gap.",
+      "evidence": "ui-v2/proxy.jsx: MIME_CATEGORIES/mimeCategory() and pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() helpers; HistoryTable's useMemo predicate applies mimeFilter/extList/extHide/caseSensitive/negate/annotatedOnly (:107-148); FilterBar renders the MIME select, EXT input+toggle, Aa case-sensitivity button, and ANNOTATED chip (:332); ProxyTab's `shown` count mirrors the same predicate so the header stays in sync.",
       "reconciled": {
-        "date": "2026-08-10",
-        "commit": "5c0c4b4",
-        "note": "Proxy/Target filter-bar batch: MIME class, extension show/hide, case-sensitivity, and negative search closed the remaining frontend-only dimensions of #267 and #371 in one shared component."
+        "date": "2026-08-21",
+        "commit": "c25af6a",
+        "note": "Register-accuracy fix: the annotation filter dimension this feature names was closed client-side by c25af6a's ANNOTATED chip but this entry's gap text was never updated to say so -- corrected here. Listener/port is the sole remaining real gap. No code change this pass."
       }
     },
     {
@@ -4924,17 +4929,17 @@
     {
       "area": "target",
       "feature": "Site map filter \u2014 by MIME type (HTML/Script/XML/CSS/Other text/Images/Flash/Other binary), by status code family, by file extension (show only / hide), by search term (regex, case-sensitive, negative), by annotation (commented / highlighted)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Annotation filter (commented/highlighted) remains missing -- blocked on the same missing annotation store as #267, tracked separately. Case-sensitivity now applies to the local column/free-text match; the server regex body-search path is still forced case-insensitive.",
-      "why": "Register correction (2026-08-19): this entry's own gap text already admitted the annotation criterion enumerated in the feature name -- \"by annotation (commented/highlighted)\" -- was missing, blocked on the same absent comment/highlight store as the sibling item \"Site map / history annotations: per-item Comment and Highlight\" (itself state=absent). A compound feature whose name lists five criteria cannot be 'present' when one of those five is confirmed absent by its own text; downgraded to partial, matching how this file grades every other feature with one missing enumerated criterion out of several met ones. No code change -- register-only.",
-      "evidence": "ui-v2/proxy.jsx ProxyTab renders <SiteMap> beside the same <FilterBar>/<HistoryTable> pair used for HTTP history; mimeCategory()/pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() are the same pure helpers exercised by both surfaces.",
+      "gap": "Annotation filter is client-side/localStorage only (see #299/#234) -- it does not survive a server restart, reach a different browser, or reach the CLI/API. Case-sensitivity applies to the local column/free-text match; the server regex body-search path is still forced case-insensitive.",
+      "why": "Register correction (2026-08-19, 6dcc404): downgraded present -> partial because the annotation criterion this feature's own name enumerates was confirmed absent. Re-verified 2026-08-21: c25af6a (2026-08-20) shipped client-side highlight-colour + comment annotations with an ANNOTATED filter chip shared by FilterBar, and SiteMap (ui-v2/proxy.jsx:361-397) filters its leaf list on the same annotatedOnly/annotations props HistoryTable uses (:397 `return annotatedOnly ? leaves.filter(r => annotations && annotations[r.id]) : leaves;`) and renders the same coloured row edge (:435-437). All five enumerated criteria are now genuinely present at the surface, matching how this file grades #267's identical situation -- present, with the client-side-only caveat carried in the gap text rather than blocking the whole item.",
+      "evidence": "ui-v2/proxy.jsx:361 SiteMap signature takes annotations/annotatedOnly; :397 leaf-list filter on annotatedOnly; :435-437 row highlight from annotationColorHex(note.color); :332 FilterBar's ANNOTATED chip feeds the same state into both HistoryTable and SiteMap (ProxyTab :2497,:2520-2521). mimeCategory()/pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() remain the same pure helpers shared with HTTP history.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-19",
-        "commit": "6dcc404",
-        "note": "Wave 0 register-accuracy fix: \"Site map filter -- by MIME type/status/extension/search/annotation\" flipped present -> partial. MIME-class, status-family, extension show/hide, and search-term (regex/case/negative) filters are all genuinely present (ui-v2/proxy.jsx FilterBar/HistoryTable, shared by Site map and HTTP history); the annotation filter (commented/highlighted) is not -- there is no comment/highlight field anywhere in the backend history schema or the wire JSON, confirmed by grep across Src/BackEnd, Src/Core, and ui-v2/*.jsx. No code touched this wave; this corrects a register that contradicted its own gap text."
+        "date": "2026-08-21",
+        "commit": "c25af6a",
+        "note": "Wave 0 register-accuracy fix: flipped partial -> present. The annotation criterion that forced this item to partial on 2026-08-19 was closed client-side by c25af6a (already reconciled against sibling #299), which also wired SiteMap's leaf list into the same ANNOTATED chip/highlight rendering as HTTP history -- but that wave's commit didn't touch this entry, leaving it stale. No code change this pass; the backend-persistence gap is carried honestly in the gap text rather than claimed."
       }
     },
     {
