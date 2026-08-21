@@ -3493,7 +3493,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "57d85b9",
         "note": "Wired the pre-existing /api/rules/move endpoint (ProjectStore::moveRule) to the RulesTab UI via boundary-disabled up/down buttons per rule row -- previously present in the backend and real-data.js with zero UI callers, so rules could not be reordered from the GUI despite full CRUD support. State stays partial (param-name/value sections and chunked-response Content-Length framing remain the real, unaffected gaps)."
       }
     },
