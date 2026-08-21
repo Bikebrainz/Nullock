@@ -6924,10 +6924,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 int idx = l.indexOf(tok);
                 while (idx >= 0) {
                     const int after = idx + tok.size();
+                    // toLower() can LENGTHEN a string (e.g. U+0130 -> "i" + U+0307),
+                    // so an offset into `l` may fall past the end of the original
+                    // `fn`. The camelCase boundary checks read ORIGINAL-case fn[],
+                    // which MUST be bounds-guarded: a target-controlled field name
+                    // could otherwise drive an out-of-bounds read (a release build
+                    // compiles out QString's bounds assert). Out-of-range -> treat
+                    // as no boundary.
                     const bool boundBefore = idx == 0 || l[idx - 1] == '_'
-                        || fn[idx].isUpper();
+                        || (idx < fn.size() && fn[idx].isUpper());
                     const bool boundAfter = after >= l.size() || l[after] == '_'
-                        || fn[after].isUpper() || fn[after].isDigit();
+                        || (after < fn.size() && (fn[after].isUpper() || fn[after].isDigit()));
                     if (boundBefore && boundAfter) return true;
                     idx = l.indexOf(tok, idx + 1);
                 }
