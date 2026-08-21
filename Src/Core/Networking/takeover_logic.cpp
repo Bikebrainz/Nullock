@@ -67,6 +67,25 @@ QList<Hit> match(const QString &body) {
     return hits;
 }
 
+// A dangling cloud service returns its "unclaimed resource" page with an HTTP
+// error status (S3 NoSuchBucket -> 404, Heroku no-such-app -> 404, Fastly -> 500,
+// etc.). A 2xx/3xx carrying the same branded phrase is almost always the phrase
+// quoted in a live page (a blog post, docs) -- a false positive.
+static bool isTakeoverErrorStatus(int status) {
+    return status >= 400 && status < 600;
+}
+
+QList<Hit> match(const QString &body, int status) {
+    // Reuse the branded-fingerprint matcher, then grade by status: a match on a
+    // NON-error status is demoted to "possible" (body-only on a live page), so a
+    // healthy 200 quoting a vendor phrase can't yield a HIGH takeover finding
+    // (maybefix #10). Error-status matches keep their curated confidence.
+    QList<Hit> hits = match(body);
+    if (!isTakeoverErrorStatus(status))
+        for (Hit &h : hits) h.confidence = QStringLiteral("possible");
+    return hits;
+}
+
 QByteArray buildGet(const Request &req) {
     // host/basePath flow into the request line / Host header; a CR/LF would
     // smuggle a second request line or header -- refuse to build.

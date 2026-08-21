@@ -44,6 +44,13 @@ struct Result {
 Result scan(const Request &req);
 QList<Hit> match(const QString &body);
 
+// Status-aware match: a dangling service serves its "unclaimed" page as an HTTP
+// error (4xx/5xx). The same branded phrase on a 2xx/3xx is almost always quoted
+// in LIVE content, not a takeover, so those matches are demoted to "possible"
+// (without a DNS/CNAME dangling check we never claim "confirmed"; an error-status
+// hit keeps its curated confidence as a strong lead). scan() uses this overload.
+QList<Hit> match(const QString &body, int status);
+
 // Build the GET. Returns empty if host or basePath carries a CR/LF.
 QByteArray buildGet(const Request &req);
 

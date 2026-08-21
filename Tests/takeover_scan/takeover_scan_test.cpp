@@ -58,6 +58,26 @@ int main(int argc, char **argv) {
     chk("FP fix: WordPress.com requires .wordpress.com anchor",
         match(QString("Do you want to register your account today?")).isEmpty());
 
+    // ---- status-aware grading (maybefix #10) ---------------------------
+    // A branded phrase on an ERROR status (a real dangling service) keeps its
+    // curated confidence; the SAME phrase on a live 2xx/3xx (quoted content) is
+    // demoted to "possible" so a healthy page can't produce a HIGH takeover.
+    {
+        const QString ghBody = "<html>There isn't a GitHub Pages site here.</html>";
+        const auto err = match(ghBody, 404);
+        chk("status: GitHub phrase on 404 -> high (real dangling page)",
+            err.size() == 1 && err.at(0).confidence == "high");
+        const auto ok200 = match(ghBody, 200);
+        chk("status: SAME phrase on 200 -> demoted to 'possible' (quoted content, not takeover)",
+            ok200.size() == 1 && ok200.at(0).confidence == "possible");
+        const auto redir = match(ghBody, 302);
+        chk("status: phrase on 3xx -> demoted to 'possible'",
+            redir.size() == 1 && redir.at(0).confidence == "possible");
+        const auto err503 = match("Fastly error: unknown domain: x", 503);
+        chk("status: Fastly phrase on 503 -> keeps high",
+            err503.size() == 1 && err503.at(0).confidence == "high");
+    }
+
     // ---- buildGet: CR/LF guards ----------------------------------------
     {
         Request req; req.host = "sub.victim.tld"; req.basePath = "/";
