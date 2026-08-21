@@ -1801,7 +1801,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "056dd46",
         "note": "Marketplace UI wave: greys/disables Install and Update on a version-incompatible catalog entry (red 'incompatible' badge + disabled-button tooltip + a 'Requires Nullock >= X' line in the detail panel), closing the frontend half of [B31] left open by 007b2b9's backend gate."
       }
     },
