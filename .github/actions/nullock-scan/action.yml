@@ -29,13 +29,23 @@ runs:
   steps:
     - name: Nullock scan gate
       shell: bash
+      # SECURITY: never interpolate ${{ inputs.* }} into the run: script text --
+      # GitHub substitutes it before bash parses, so a runner-controllable input
+      # (e.g. a fork's head_ref spliced into `url`) would be command injection
+      # (CWE-78/94). Bind each input to env (a data value bash never re-parses)
+      # and reference the quoted shell variable instead.
+      env:
+        NULLOCK_URL: ${{ inputs.url }}
+        NULLOCK_FAIL_ON: ${{ inputs.fail-on }}
+        NULLOCK_NDJSON: ${{ inputs.ndjson }}
+        NULLOCK_BINARY: ${{ inputs.binary }}
       run: |
-        args=( --scan "${{ inputs.url }}" --fail-on "${{ inputs.fail-on }}" )
-        if [ "${{ inputs.ndjson }}" = "true" ]; then args+=( --ndjson ); fi
-        echo "::group::nullock --scan ${{ inputs.url }} --fail-on ${{ inputs.fail-on }}"
+        args=( --scan "$NULLOCK_URL" --fail-on "$NULLOCK_FAIL_ON" )
+        if [ "$NULLOCK_NDJSON" = "true" ]; then args+=( --ndjson ); fi
+        echo "::group::nullock --scan $NULLOCK_URL --fail-on $NULLOCK_FAIL_ON"
         # NullockApp exits 0 (clean) / 1 (finding >= threshold) / 2 (bad URL);
         # the nonzero exit fails this step, and therefore the job.
-        "${{ inputs.binary }}" "${args[@]}"
+        "$NULLOCK_BINARY" "${args[@]}"
         code=$?
         echo "::endgroup::"
         exit $code
