@@ -37,6 +37,13 @@ Result test(const Request &reqIn) {
               "application/x-www-form-urlencoded", false },
             { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ", "application/python-pickle", true },
             { "Ruby",   "BAhpBg==", "BAhbBg==", "application/octet-stream", true },
+            // .NET BinaryFormatter: wf = a valid serialized String "abc"
+            // (00 01 ... magic + BinaryObjectString + MessageEnd); mf = that
+            // stream truncated mid-record so a .NET deserializer errors with a
+            // SerializationException / "End of Stream encountered". Without this
+            // entry deser-dotnet was structurally unreachable (never probed).
+            { ".NET",   "AAEAAAD/////AQAAAAAAAAAGAQAAAANhYmML",
+              "AAEAAAD/////AQAAAAAAAAAG", "application/octet-stream", true },
         };
         result.testedParams = QStringList{ QStringLiteral("(request body)") };
         auto raw = [](const char *s, bool b64) {
@@ -83,6 +90,7 @@ Result test(const Request &reqIn) {
             { "Java",   "rO0ABXQAA2FiYw==", "rO0ABXNyABFOdWxsb2NrRGVzZXJDYW5hcnk=" },
             { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ" },
             { "Ruby",   "BAhpBg==", "BAhbBg==" },
+            { ".NET",   "AAEAAAD/////AQAAAAAAAAAGAQAAAANhYmML", "AAEAAAD/////AQAAAAAAAAAG" },
         };
         QStringList cookies;
         if (!req.param.isEmpty()) cookies << req.param;
@@ -129,6 +137,7 @@ Result test(const Request &reqIn) {
               "O:18:\"NullockDeserCanary\":9:{s:1:\"x\";i:1;}" },
             { "Python", "gAJLAS4=", "gASVBQAAAAAAAACMAQ" },
             { "Ruby", "BAhpBg==", "BAhbBg==" },
+            { ".NET", "AAEAAAD/////AQAAAAAAAAAGAQAAAANhYmML", "AAEAAAD/////AQAAAAAAAAAG" },
         };
         QStringList fields;
         if (!req.param.isEmpty()) fields << req.param;
@@ -209,6 +218,8 @@ Result test(const Request &reqIn) {
                     "gASVBQAAAAAAAACMAQ" },                          // truncated pickle
         { "Ruby",   "BAhpBg==",
                     "BAhbBg==" },                                    // Marshal array len 1, no elements -> EOF before any class
+        { ".NET",   "AAEAAAD/////AQAAAAAAAAAGAQAAAANhYmML",          // valid serialized String "abc"
+                    "AAEAAAD/////AQAAAAAAAAAG" },                    // magic + truncated record -> End of Stream
     };
 
     QSet<QString> confirmedParams;

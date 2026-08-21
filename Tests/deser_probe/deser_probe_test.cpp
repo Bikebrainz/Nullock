@@ -42,6 +42,22 @@ int main(int argc, char **argv) {
     chk("sig: Ruby marshal too short", matches("ArgumentError: marshal data too short", "Ruby"));
     chk("sig: .NET SerializationException",
         matches("System.Runtime.Serialization.SerializationException: End of Stream encountered", ".NET"));
+    // Each signature is an alternation; pin the branches that had no positive so a
+    // regex edit dropping one silently stops detecting that engine's error.
+    chk("sig: Java OptionalDataException", matches("java.io.OptionalDataException", "Java"));
+    chk("sig: Java InvalidClassException", matches("java.io.InvalidClassException: bad", "Java"));
+    chk("sig: Java WriteAbortedException", matches("java.io.WriteAbortedException", "Java"));
+    chk("sig: Java EOFException",          matches("java.io.EOFException at read", "Java"));
+    chk("sig: Java cast-to-Serializable",  matches("class X cannot be cast to java.io.Serializable", "Java"));
+    chk("sig: PHP __PHP_Incomplete_Class", matches("object(__PHP_Incomplete_Class)#1", "PHP"));
+    chk("sig: PHP Premature end of data",  matches("Notice: unserialize(): Premature end of data", "PHP"));
+    chk("sig: Python data truncated",      matches("pickle data was truncated", "Python"));
+    chk("sig: Python stack underflow",     matches("unpickling stack underflow", "Python"));
+    chk("sig: Python insecure string",     matches("insecure string pickle", "Python"));
+    chk("sig: Ruby incompatible format",   matches("incompatible marshal file format", "Ruby"));
+    chk("sig: Ruby dump format error",     matches("dump format error (user class)", "Ruby"));
+    chk("sig: .NET invalid BinaryHeader",  matches("The input stream does not contain a valid BinaryHeader", ".NET"));
+    chk("sig: .NET not a valid binary format", matches("input stream is not a valid binary format", ".NET"));
 
     // ---- matchError: must NOT match generic / bare-API noise ------------
     chk("sig: bare unserialize() not matched", matchError(QByteArray("call to unserialize() failed")).first.isEmpty());
