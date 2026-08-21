@@ -105,6 +105,20 @@ int main(int argc, char **argv) {
             && db.contains("Content-Length: " + QByteArray::number(body.size()) + "\r\n"));
         chk("build: carried Content-Type wins + deduped -> exactly one",
             db.count("Content-Type:") == 1 && db.contains("Content-Type: application/xml\r\n"));
+        // A carried Transfer-Encoding MUST be dropped: we emit our own
+        // Content-Length, so a surviving TE makes this probe's own request
+        // CL.TE-ambiguous (request smuggling in our outbound). Was unguarded.
+        Request te = req;
+        te.headers.append(qMakePair(QString("Transfer-Encoding"), QString("chunked")));
+        const QByteArray teb = buildRequest(te, true, body);
+        chk("build: carried Transfer-Encoding dropped (no CL.TE in our own send)",
+            !teb.contains("Transfer-Encoding") && teb.count("Content-Length:") == 1);
+        // The CR/LF drop-guard must cover the header NAME, not just the value
+        // (a crafted header name on a HAR-replay path is request-line injection).
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("build: drops CRLF in a carried header NAME",
+            !buildRequest(injName, true, body).contains("X-Smuggled"));
     }
 
     std::fprintf(stderr, "mass_assign_test: %d passed, %d failed\n", pass, fail);

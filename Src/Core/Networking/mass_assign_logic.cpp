@@ -45,6 +45,10 @@ QByteArray buildRequest(const Request &req, bool json, const QByteArray &body) {
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
         if (h.first.compare("Content-Length", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Transfer-Encoding too: we emit our OWN Content-Length
+        // (below), so a surviving Transfer-Encoding would make this probe's own
+        // outbound request CL.TE-ambiguous -- request smuggling in our own send.
+        if (h.first.compare("Transfer-Encoding", Qt::CaseInsensitive) == 0) continue;
         // Drop a carried Accept-Encoding: we force "identity" above (line 43) so a
         // gzip response can't hide the echoed marker; a surviving "gzip, deflate, br"
         // combines (RFC 7230 3.2.2) to let the server compress and the client does
