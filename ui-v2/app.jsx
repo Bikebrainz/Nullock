@@ -650,6 +650,21 @@ function SettingsTab() {
   const extLog = b.extensionsLog || [];
   const scripts = b.extensionScripts || [];
 
+  const [mitmBlockedList, setMitmBlockedList] = React.useState(blocked);
+  React.useEffect(() => { setMitmBlockedList(blocked); }, [blocked.join(",")]);
+  const [newBypassHost, setNewBypassHost] = React.useState("");
+  const addBypassHost = async () => {
+    const h = newBypassHost.trim();
+    if (!h) return;
+    const r = await NL.actions.markMitmBlocked(h);
+    if (r && Array.isArray(r.blocked)) setMitmBlockedList(r.blocked);
+    setNewBypassHost("");
+  };
+  const removeBypassHost = async (h) => {
+    const r = await NL.actions.unblockMitmHost(h);
+    if (r && Array.isArray(r.blocked)) setMitmBlockedList(r.blocked);
+  };
+
   const [installBusy, setInstallBusy] = React.useState(false);
   const [installMsg, setInstallMsg]   = React.useState("");
   const doInstallBuiltins = async () => {
@@ -733,7 +748,42 @@ function SettingsTab() {
         <Row label="HTTP/2 hops" value={String(b.h2UpstreamCount || 0)} />
         <Row label="Filtered" value={String(b.filteredCount || 0)} />
         <Row label="Captured" value={String(rowCount)} />
-        <Row label="MITM bypass" value={blocked.length ? blocked.join(", ") : ""} hint="empty" />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "12px" }}>
+          <span style={{ minWidth: 110, color: "var(--dim)" }}>MITM bypass</span>
+          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {mitmBlockedList.length ? mitmBlockedList.map((h) => (
+              <span key={h} style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                border: "1px solid var(--line)", borderRadius: 3,
+                padding: "1px 4px 1px 6px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+              }}>
+                {h}
+                <button
+                  onClick={() => removeBypassHost(h)}
+                  title={"Remove " + h + " from the pass-through list"}
+                  style={{
+                    background: "transparent", color: "var(--dim)", border: "none",
+                    cursor: "pointer", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: 0,
+                  }}
+                >×</button>
+              </span>
+            )) : <span style={{ color: "var(--dim)" }}>empty</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <input
+            value={newBypassHost}
+            onChange={(e) => setNewBypassHost(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addBypassHost(); }}
+            placeholder="host to pre-add (blind-tunnel from first CONNECT)"
+            style={{
+              flex: 1, background: "var(--bg)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 6px", fontSize: "11px",
+              fontFamily: "var(--ff-mono)",
+            }}
+          />
+          <Btn label="Add" onClick={addBypassHost} disabled={!newBypassHost.trim()} />
+        </div>
         <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
           <Btn label={b.proxyOn ? "Stop proxy" : "Start proxy"} onClick={() => NL.actions.toggleProxy()} />
           <Btn label="Clear blocklist" onClick={() => NL.actions.clearMitmBlocked()} />

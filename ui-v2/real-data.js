@@ -209,6 +209,11 @@
     importHar(harObject)    { return post("/api/har/import", { har: harObject }).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
+    // Pre-add a host to the TLS pass-through (blind-tunnel) list, or remove
+    // a single host from it -- both endpoints echo the resulting list back
+    // so callers can refresh state without waiting for the next poll.
+    markMitmBlocked(host)   { return post("/api/mitm/block", { host }).then(r => r.json()); },
+    unblockMitmHost(host)   { return post("/api/mitm/unblock", { host }).then(r => r.json()); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
 
     // --- extension marketplace ---
