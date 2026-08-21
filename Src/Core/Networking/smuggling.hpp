@@ -27,12 +27,19 @@
 // (a chain that only desyncs under keep-alive may be missed) -- we prefer a
 // false negative over ever smuggling into production traffic.
 
+#include "socket_outcome.hpp"
+
 #include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
 
 namespace Nullock::Core::Smuggling {
+
+// A response delayed by at least this much over baseline is a CANDIDATE desync;
+// the delay must also reproduce, survive the tarpit controls, and end in a
+// Timeout before it is graded (see confirmsSmuggle / test()).
+constexpr int kDelayThresholdMs = 4000;
 
 struct Hit {
     QString variant;     // "CL.TE" | "TE.CL"
@@ -74,5 +81,17 @@ QByteArray ambiguousControl(const Request &req);
 // delay that isn't a framing desync. (ambiguousControl covers the orthogonal
 // case: a WAF tarpitting on the mere PRESENCE of both framing headers.)
 QByteArray tarpitControl(const Request &req);
+
+// The verdict gauntlet, extracted from test() so it can be unit-tested. Given
+// the two confirming probe samples (delay over baseline + the socket outcome of
+// each read) and whether a control was reliably slow, decide if a CL.TE/TE.CL
+// desync is CONFIRMED. A hit requires: BOTH sends exceed the delay threshold
+// (candidate + reproduce), the control is NOT slow (not a tarpit), AND BOTH
+// sends end in a Timeout (the open-but-silent desync shape, vs a hold-then-RST
+// middlebox that mimics the timing but ends in a reset). Prefers a false
+// negative over a false critical.
+bool confirmsSmuggle(int d1Ms, Nullock::Core::SocketOutcome d1Out,
+                     int d2Ms, Nullock::Core::SocketOutcome d2Out,
+                     bool controlSlow, int baselineMs);
 
 } // namespace Nullock::Core::Smuggling

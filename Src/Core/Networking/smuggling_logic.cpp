@@ -11,6 +11,20 @@
 
 namespace Nullock::Core::Smuggling {
 
+bool confirmsSmuggle(int d1Ms, Nullock::Core::SocketOutcome d1Out,
+                     int d2Ms, Nullock::Core::SocketOutcome d2Out,
+                     bool controlSlow, int baselineMs) {
+    if (d1Ms - baselineMs < kDelayThresholdMs) return false;   // not a candidate
+    if (d2Ms - baselineMs < kDelayThresholdMs) return false;   // didn't reproduce
+    if (controlSlow) return false;                             // tarpit veto
+    // Transport gate (the false-positive fix): a genuine desync leaves the
+    // socket open and silent -> our read times out; a hold-then-RST quarantine
+    // mimics the delay but ends in a reset. Grade only the timeout shape, on
+    // BOTH confirming sends.
+    const auto TO = Nullock::Core::SocketOutcome::Timeout;
+    return d1Out == TO && d2Out == TO;
+}
+
 namespace {
 
 // A CR/LF in the request line / Host of a SMUGGLING probe is itself a framing

@@ -157,6 +157,37 @@ int main(int argc, char **argv) {
         chk("CRLF host -> control build aborts (empty)", ambiguousControl(bh).isEmpty());
     }
 
+    // ---- confirmsSmuggle: the verdict FP-guard gauntlet (was untested) ---
+    // The grade decision (delay threshold + reproduce + tarpit veto + transport
+    // gate) lived inline in the network test(); extracted here so every guard is
+    // pinned. baseline 100ms, threshold 4000ms -> a delay >= 4100ms is slow.
+    {
+        using SO = Nullock::Core::SocketOutcome;
+        const int base = 100;
+        const int slow = base + 4000;     // exactly at the threshold -> counts
+        const int fast = base + 100;      // well under
+        // The genuine desync: both sends slow, both TIMEOUT, control not slow.
+        chk("verdict: both slow + both Timeout + control ok -> CONFIRM",
+            confirmsSmuggle(slow, SO::Timeout, slow, SO::Timeout, false, base));
+        // reproduce guard: the second send must also be slow.
+        chk("verdict: 2nd send fast (no reproduce) -> NO",
+            !confirmsSmuggle(slow, SO::Timeout, fast, SO::Timeout, false, base));
+        // candidate guard: the first send must exceed the threshold.
+        chk("verdict: 1st send fast -> NO",
+            !confirmsSmuggle(fast, SO::Timeout, slow, SO::Timeout, false, base));
+        // tarpit veto: a reliably-slow control means the delay isn't a desync.
+        chk("verdict: controlSlow -> NO (tarpit veto)",
+            !confirmsSmuggle(slow, SO::Timeout, slow, SO::Timeout, true, base));
+        // transport gate: a hold-then-RST quarantine (Reset/ConnectError) mimics
+        // the delay but is NOT the open-silent desync shape -> not graded.
+        chk("verdict: d1 ends in Reset (not Timeout) -> NO (transport gate)",
+            !confirmsSmuggle(slow, SO::Reset, slow, SO::Timeout, false, base));
+        chk("verdict: d2 ends in ConnectError -> NO (transport gate)",
+            !confirmsSmuggle(slow, SO::Timeout, slow, SO::ConnectError, false, base));
+        chk("verdict: both Ok (fast socket) -> NO",
+            !confirmsSmuggle(slow, SO::Ok, slow, SO::Ok, false, base));
+    }
+
     std::fprintf(stderr, "smuggling_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -10,17 +10,8 @@ namespace Nullock::Core::Smuggling {
 // against Qt6::Core alone. This TU keeps test(), which pulls in HttpClient (the
 // Qt6::Network chain) and is therefore I/O.
 
-namespace {
-
-// A response delayed by at least this much over baseline is a CANDIDATE desync
-// signal -- a vulnerable back-end blocks on its socket read timeout (typically
-// >= 5-30s) waiting for body bytes the front-end never forwarded. Necessary but
-// not sufficient: the delay must also reproduce, survive the tarpit controls,
-// and end in a read TIMEOUT (socket open, silent) rather than a reset -- see the
-// transport gate in test().
-constexpr int kDelayThresholdMs = 4000;
-
-} // namespace
+// kDelayThresholdMs now lives in smuggling.hpp (shared with confirmsSmuggle in
+// smuggling_logic.cpp, which the unit test links).
 
 Result test(const Request &reqIn) {
     Result result;
@@ -91,25 +82,17 @@ Result test(const Request &reqIn) {
     };
 
     for (const Variant &v : variants) {
+        // First send establishes the candidate delay; the second re-sends to
+        // require the delay to REPRODUCE. The whole FP-guard gauntlet (threshold,
+        // reproduce, tarpit veto, transport-outcome gate) is confirmsSmuggle().
         const Sample d1 = timeSend(v.build(req));
+        // Skip the (costly) re-send when the first is already fast enough that no
+        // verdict could pass -- a pure optimisation; confirmsSmuggle re-checks it.
         if (d1.ms - result.baselineMs < kDelayThresholdMs) continue;
-        // Confirm: a one-off slow response isn't a desync. Require the delay to
-        // reproduce on a re-send before reporting.
         const Sample d2 = timeSend(v.build(req));
-        if (d2.ms - result.baselineMs < kDelayThresholdMs) continue;
-        // ...and only if the server doesn't just tarpit ambiguous/junk requests.
-        if (controlSlow) continue;
-        // Transport gate -- the false-positive fix. A genuine CL.TE/TE.CL desync
-        // leaves the socket OPEN and silent: the back-end blocks on its OWN read
-        // of body bytes the front-end never forwarded, so OUR response read
-        // times out with the connection still up (SocketOutcome::Timeout). A
-        // hold-then-RST middlebox/WAF that buffers the malformed probe,
-        // quarantines it for seconds, then RSTs or 500s produces the SAME delay
-        // but ends in Reset/ConnectError. Grade a CRITICAL only on the timeout
-        // shape, on BOTH confirming sends -- per this probe's stated stance,
-        // prefer a false negative over a false critical.
-        const auto Timeout = Nullock::Core::SocketOutcome::Timeout;
-        if (d1.outcome != Timeout || d2.outcome != Timeout) continue;
+        if (!confirmsSmuggle(d1.ms, d1.outcome, d2.ms, d2.outcome,
+                             controlSlow, result.baselineMs))
+            continue;
         result.hits.append({ QString::fromUtf8(v.name), qMin(d1.ms, d2.ms) - result.baselineMs });
         result.vulnerable = true;
     }
