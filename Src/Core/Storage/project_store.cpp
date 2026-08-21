@@ -731,6 +731,86 @@ static bool isSensitiveHeader(const QString &name) {
     return kSensitive.contains(name.toLower());
 }
 
+// Query/body PARAM keys that carry credentials. A redacted HAR export must
+// scrub these from the URL, the queryString array, and form/JSON bodies -- the
+// same intent as isSensitiveHeader, extended past headers. Without it a captured
+// ?access_token=... / X-Amz-Signature=... , an OAuth `code`, or a bearer in a
+// JSON/form login body survives verbatim into the artifact redaction exists to
+// make shareable.
+static bool isSensitiveParamKey(const QString &name) {
+    static const QSet<QString> k = {
+        "token", "access_token", "access-token", "refresh_token", "id_token",
+        "auth", "authorization", "api_key", "apikey", "x-api-key", "key",
+        "client_secret", "secret", "password", "passwd", "pwd", "session",
+        "sessionid", "sid", "jwt", "code", "signature", "sig",
+        "x-amz-signature", "x-amz-security-token",
+    };
+    return k.contains(name.trimmed().toLower());
+}
+
+static QString harRedactMarker(int n) {
+    return QStringLiteral("<redacted: %1 chars>").arg(n);
+}
+
+// Redact sensitive VALUES (by key) in an &-joined query/form string.
+static QString redactParamString(const QString &s) {
+    QStringList out;
+    const QStringList pairs = s.split('&', Qt::KeepEmptyParts);
+    for (const QString &pair : pairs) {
+        const int eq = pair.indexOf('=');
+        if (eq >= 0 && isSensitiveParamKey(pair.left(eq)))
+            out << pair.left(eq) + "=" + harRedactMarker(pair.size() - eq - 1);
+        else
+            out << pair;
+    }
+    return out.join('&');
+}
+
+// Recursively redact values of sensitive KEYS in a JSON value (depth-bounded).
+static QJsonValue redactJsonValue(const QJsonValue &v, int depth) {
+    if (depth > 12) return v;
+    if (v.isObject()) {
+        const QJsonObject in = v.toObject();
+        QJsonObject o;
+        for (auto it = in.begin(); it != in.end(); ++it) {
+            if (isSensitiveParamKey(it.key()) && it.value().isString())
+                o[it.key()] = harRedactMarker(it.value().toString().size());
+            else
+                o[it.key()] = redactJsonValue(it.value(), depth + 1);
+        }
+        return o;
+    }
+    if (v.isArray()) {
+        const QJsonArray in = v.toArray();
+        QJsonArray a;
+        for (const QJsonValue &e : in) a.append(redactJsonValue(e, depth + 1));
+        return a;
+    }
+    return v;
+}
+
+// Redact a request/response body by its content-type. Form bodies scrub by
+// param key; JSON bodies scrub by object key. An unrecognised/opaque body is
+// left as-is (we can't reliably locate a secret in it) -- header + query
+// redaction still covers the common credential vectors.
+static QString redactBody(const QByteArray &body, const QString &contentType, bool redact) {
+    if (!redact || body.isEmpty()) return QString::fromUtf8(body);
+    const QString ct = contentType.toLower();
+    if (ct.contains("application/x-www-form-urlencoded"))
+        return redactParamString(QString::fromUtf8(body));
+    if (ct.contains("json")) {
+        QJsonParseError err{};
+        const QJsonDocument d = QJsonDocument::fromJson(body, &err);
+        if (err.error == QJsonParseError::NoError) {
+            if (d.isObject())
+                return QString::fromUtf8(QJsonDocument(redactJsonValue(QJsonValue(d.object()), 0).toObject()).toJson(QJsonDocument::Compact));
+            if (d.isArray())
+                return QString::fromUtf8(QJsonDocument(redactJsonValue(QJsonValue(d.array()), 0).toArray()).toJson(QJsonDocument::Compact));
+        }
+    }
+    return QString::fromUtf8(body);
+}
+
 QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers, bool redact) {
     QJsonArray arr;
     for (const auto &kv : headers) {
@@ -751,7 +831,7 @@ QJsonArray harHeaders(const QList<QPair<QString, QString>> &headers, bool redact
     return arr;
 }
 
-QJsonArray harQueryString(const QString &path) {
+QJsonArray harQueryString(const QString &path, bool redact) {
     QJsonArray arr;
     const int q = path.indexOf('?');
     if (q < 0 || q + 1 >= path.size()) return arr;
@@ -761,7 +841,9 @@ QJsonArray harQueryString(const QString &path) {
         QJsonObject p;
         if (eq >= 0) {
             p["name"]  = pair.left(eq);
-            p["value"] = pair.mid(eq + 1);
+            const QString val = pair.mid(eq + 1);
+            p["value"] = (redact && isSensitiveParamKey(pair.left(eq)))
+                             ? harRedactMarker(val.size()) : val;
         } else {
             p["name"]  = pair;
             p["value"] = "";
@@ -782,18 +864,27 @@ QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls,
                        bool redact) {
     QJsonObject o;
     o["method"]      = r.method;
+    // Redact credential-bearing params out of the URL's query, too -- not just
+    // the queryString array below (both derive from r.path's query).
+    QString urlPath = r.path;
+    if (redact) {
+        const int q = urlPath.indexOf('?');
+        if (q >= 0 && q + 1 < urlPath.size())
+            urlPath = urlPath.left(q + 1) + redactParamString(urlPath.mid(q + 1));
+    }
     o["url"]         = (wasTls ? QStringLiteral("https://") : QStringLiteral("http://"))
                        + r.host
                        + ((r.port == 80 || r.port == 443) ? QString() : QString(":%1").arg(r.port))
-                       + r.path;
+                       + urlPath;
     o["httpVersion"] = r.httpVersion;
     o["headers"]     = harHeaders(r.headers, redact);
-    o["queryString"] = harQueryString(r.path);
+    o["queryString"] = harQueryString(r.path, redact);
     o["cookies"]     = QJsonArray();
     if (!r.body.isEmpty()) {
         QJsonObject post;
-        post["mimeType"] = findContentType(r.headers);
-        post["text"]     = QString::fromUtf8(r.body);
+        const QString ct = findContentType(r.headers);
+        post["mimeType"] = ct;
+        post["text"]     = redactBody(r.body, ct, redact);
         o["postData"]    = post;
     }
     o["headersSize"] = -1;
@@ -803,9 +894,12 @@ QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls,
 
 QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r, bool redact) {
     QJsonObject content;
+    const QString ct = findContentType(r.headers);
     content["size"]     = r.body.size();
-    content["mimeType"] = findContentType(r.headers);
-    content["text"]     = QString::fromUtf8(r.body);
+    content["mimeType"] = ct;
+    // A login/token response body carries the credential too (e.g. a JSON
+    // {"access_token":"..."}) -- redact by key like the request body.
+    content["text"]     = redactBody(r.body, ct, redact);
     QJsonObject o;
     o["status"]      = r.statusCode;
     o["statusText"]  = r.reasonPhrase;
