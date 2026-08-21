@@ -5234,7 +5234,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "5b36978",
         "note": "Manual add-to-map text box + unrequested (status-0) greying in the Site Map tree, plus a per-hit \"+ map\" promotion button on robots.txt Disallow paths and sitemap.xml URLs in the Discover tab -- all three reuse the existing /api/openapi/import synthetic-entry endpoint, no backend change."
       }
     },
