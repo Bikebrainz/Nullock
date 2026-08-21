@@ -67,12 +67,23 @@ struct Result {
 // Fire the Origin battery against the target and classify each response.
 Result test(const Request &req);
 
+// A probe's finding verdict: empty severity/kind = no finding for that probe.
+struct CorsVerdict {
+    QString severity;
+    QString kind;
+};
+
 // Exposed for the unit test (pure logic, no I/O):
 //  - registrableDomain: best-effort eTLD+1 ("" for IPs / single-label hosts).
 //  - originSpecs: the (origin, label) battery for a target host.
 //  - buildRequest: the raw GET, with CR/LF guards on every tainted field.
+//  - classifyCorsProbe: map a probe outcome (label + reflected/credentials/
+//    wildcard) to the finding {severity, kind}. This is the core verdict logic
+//    the network test() applies; extracted so it can be regression-tested.
 QString registrableDomain(const QString &host);
 QList<QPair<QString, QString>> originSpecs(const QString &host, bool tls);
 QByteArray buildRequest(const Request &req, const QString &origin);
+CorsVerdict classifyCorsProbe(const QString &label, bool reflected,
+                              bool credentials, bool wildcard);
 
 } // namespace Nullock::Core::CorsTester

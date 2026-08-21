@@ -113,4 +113,38 @@ QByteArray buildRequest(const Request &req, const QString &origin) {
     return out;
 }
 
+// Classify a CORS probe outcome into a finding {severity, kind}; empty = clean.
+// The verdict logic, pulled out of the network test() so it can be unit-tested.
+//   reflected   = the response's ACAO echoed the Origin we sent
+//   credentials = Access-Control-Allow-Credentials: true
+//   wildcard    = an ACAO: * was present among the returned values
+CorsVerdict classifyCorsProbe(const QString &label, bool reflected,
+                              bool credentials, bool wildcard) {
+    CorsVerdict v;
+    // scheme-swap is the site's own host over the other scheme (network-position
+    // only) -> low. trailing-dot is a host-normalization bypass with a narrow
+    // precondition -> never critical. The remaining reflected origins
+    // (arbitrary/null/subdomain-suffix) are attacker-controlled.
+    if (label == "scheme-swap") {
+        if (reflected) { v.severity = "low"; v.kind = "cors-scheme-downgrade"; }
+    } else if (label == "trailing-dot") {
+        if (reflected) {
+            v.severity = credentials ? "medium" : "low";
+            v.kind = "cors-origin-normalization";
+        }
+    } else if (reflected && credentials) {
+        v.severity = "critical";
+        v.kind = "cors-reflected-credentialed";
+    } else if (reflected) {
+        v.severity = (label == "null") ? "medium" : "high";
+        v.kind = (label == "null") ? "cors-null-origin" : "cors-arbitrary-origin";
+    } else if (wildcard && credentials) {
+        // ACAO:* with credentials is a contradiction browsers reject, but it
+        // means the policy is broken/confused -- worth a flag.
+        v.severity = "medium";
+        v.kind = "cors-wildcard-credentials";
+    }
+    return v;
+}
+
 } // namespace Nullock::Core::CorsTester

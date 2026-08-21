@@ -103,6 +103,54 @@ int main(int argc, char **argv) {
             originForLabel(specs, "scheme-swap") == "https://127.0.0.1");
     }
 
+    // ---- classifyCorsProbe: the verdict logic (was untested) -----------
+    // The core mapping from a probe outcome to a finding {severity, kind} lived
+    // inside the network test() with no coverage. Args: label, reflected,
+    // credentials, wildcard.
+    {
+        auto cls = [](const char *label, bool r, bool c, bool w) {
+            return classifyCorsProbe(QString::fromLatin1(label), r, c, w);
+        };
+        // reflected + credentials from an attacker origin = the critical case.
+        chk("verdict: arbitrary reflected+creds -> critical cors-reflected-credentialed",
+            cls("arbitrary", true, true, false).kind == "cors-reflected-credentialed"
+            && cls("arbitrary", true, true, false).severity == "critical");
+        // reflected without credentials -> high arbitrary-origin.
+        chk("verdict: arbitrary reflected no-creds -> high cors-arbitrary-origin",
+            cls("arbitrary", true, false, false).kind == "cors-arbitrary-origin"
+            && cls("arbitrary", true, false, false).severity == "high");
+        // null origin reflected -> medium null-origin (lower than arbitrary).
+        chk("verdict: null reflected -> medium cors-null-origin",
+            cls("null", true, false, false).kind == "cors-null-origin"
+            && cls("null", true, false, false).severity == "medium");
+        // scheme-swap reflected is only a network-position issue -> low.
+        chk("verdict: scheme-swap reflected -> low cors-scheme-downgrade",
+            cls("scheme-swap", true, true, false).kind == "cors-scheme-downgrade"
+            && cls("scheme-swap", true, true, false).severity == "low");
+        // trailing-dot normalization: medium with creds, low without.
+        chk("verdict: trailing-dot reflected+creds -> medium cors-origin-normalization",
+            cls("trailing-dot", true, true, false).kind == "cors-origin-normalization"
+            && cls("trailing-dot", true, true, false).severity == "medium");
+        chk("verdict: trailing-dot reflected no-creds -> low",
+            cls("trailing-dot", true, false, false).severity == "low");
+        // wildcard + credentials (not reflected) -> medium wildcard-credentials.
+        chk("verdict: wildcard+creds not-reflected -> medium cors-wildcard-credentials",
+            cls("arbitrary", false, true, true).kind == "cors-wildcard-credentials"
+            && cls("arbitrary", false, true, true).severity == "medium");
+        // NEGATIVES: not reflected + no dangerous wildcard combo -> no finding.
+        chk("verdict: not reflected, no wildcard -> clean (empty)",
+            cls("arbitrary", false, false, false).kind.isEmpty()
+            && cls("arbitrary", false, false, false).severity.isEmpty());
+        chk("verdict: scheme-swap not reflected -> clean",
+            cls("scheme-swap", false, true, false).kind.isEmpty());
+        // wildcard alone (no credentials) is not this detector's finding.
+        chk("verdict: wildcard without creds -> clean here",
+            cls("arbitrary", false, false, true).kind.isEmpty());
+        // Precedence: reflected+creds outranks a co-present wildcard.
+        chk("verdict: reflected+creds beats wildcard -> critical",
+            cls("arbitrary", true, true, true).kind == "cors-reflected-credentialed");
+    }
+
     // ---- buildRequest: CR/LF guards (jwt_probe parity) ----------------
     {
         Request req;

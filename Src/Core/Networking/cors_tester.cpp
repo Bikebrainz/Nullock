@@ -69,30 +69,10 @@ Result test(const Request &req) {
             if (v == "*") wildcard = true;
         }
 
-        // Classify. scheme-swap is the site's own host (network-position only).
-        // trailing-dot is a host-normalization bypass with a narrow precondition
-        // (attacker page served from a rooted FQDN), so it's never critical. The
-        // remaining origins (arbitrary/null/subdomain-suffix/suffix-domain) are
-        // attacker-controlled.
-        if (label == "scheme-swap") {
-            if (p.reflected) { p.severity = "low"; p.kind = "cors-scheme-downgrade"; }
-        } else if (label == "trailing-dot") {
-            if (p.reflected) {
-                p.severity = p.credentials ? "medium" : "low";
-                p.kind = "cors-origin-normalization";
-            }
-        } else if (p.reflected && p.credentials) {
-            p.severity = "critical";
-            p.kind = "cors-reflected-credentialed";
-        } else if (p.reflected) {
-            p.severity = (label == "null") ? "medium" : "high";
-            p.kind = (label == "null") ? "cors-null-origin" : "cors-arbitrary-origin";
-        } else if (wildcard && p.credentials) {
-            // ACAO:* with credentials is a contradiction browsers reject, but it
-            // means the policy is broken/confused -- worth a flag.
-            p.severity = "medium";
-            p.kind = "cors-wildcard-credentials";
-        }
+        // Classify via the extracted, unit-tested pure verdict function.
+        const CorsVerdict v = classifyCorsProbe(label, p.reflected, p.credentials, wildcard);
+        p.severity = v.severity;
+        p.kind     = v.kind;
         if (!p.severity.isEmpty()) ++result.findingCount;
         result.probes.append(p);
     }
