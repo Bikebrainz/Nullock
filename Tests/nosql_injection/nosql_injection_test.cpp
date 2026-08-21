@@ -36,6 +36,11 @@ int main(int argc, char **argv) {
     chk("len: 520 vs 530 similar (<40)", lenSimilar(520, 530));
     chk("len: 100 vs 200 differs",  lenDiffers(100, 200));
     chk("len: 1000 vs 1030 similar (ratio)", lenSimilar(1000, 1030));
+    // Isolate the two gates (d>40 AND ratio>0.25) -- prior cases had both agree.
+    chk("len: 1000 vs 1060 similar (d=60>40 but ratio 0.06<0.25 -> ratio gate)",
+        lenSimilar(1000, 1060));
+    chk("len: 100 vs 135 similar (ratio 0.26>0.25 but d=35<=40 -> d gate)",
+        lenSimilar(100, 135));
 
     // ---- confirmsInjection: TRUE-POSITIVES -------------------------------
     // Real over-match: $ne/$gt large & agree; $eq/literal small & agree; differ.
@@ -74,6 +79,15 @@ int main(int argc, char **argv) {
     // No injection: everything tracks -> groups don't differ.
     chk("confirm: no injection (all same) -> NO",
         !confirmsInjection(520,200, 520,200, 520,200, 520,200));
+    // STATUS-half coverage (prior TPs/FPs diverged by LENGTH). falseGroupTracksLit
+    // requires eqStatus == litStatus: an app treating the $eq OBJECT specially
+    // (403) while length tracks must NOT confirm.
+    chk("confirm: $eq status diverges (len tracks) -> NO (falseGroup status half)",
+        !confirmsInjection(520,200, 520,403, 1000,200, 1000,200));
+    // groupsDiffer via the STATUS disjunct only: identical lengths, but the
+    // always-true ops flip status (302) vs the literal (200) -> a real injection.
+    chk("confirm: status-only divergence (lengths equal) -> YES (groupsDiffer status half)",
+        confirmsInjection(520,200, 520,200, 520,302, 520,302));
 
     // ---- buildRequest: CR/LF guards -------------------------------------
     {
@@ -86,6 +100,17 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "q=x").contains("X-Smuggled"));
+        // The drop-guard must also cover the header NAME (not just the value).
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("build: drops CRLF in a carried header NAME",
+            !buildRequest(injName, "q=x").contains("X-Smuggled"));
+        // A carried Host is dropped so only the synthesized Host survives.
+        Request dupHost = req;
+        dupHost.headers.append(qMakePair(QString("Host"), QString("attacker.tld")));
+        chk("build: drops carried Host (no duplicate)",
+            buildRequest(dupHost, "q=x").count("Host:") == 1
+            && !buildRequest(dupHost, "q=x").contains("attacker.tld"));
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "q=x").isEmpty());
