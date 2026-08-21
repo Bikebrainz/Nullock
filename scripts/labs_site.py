@@ -521,12 +521,16 @@ def nav(active):
       <a href="../index.html">Product</a>
       <a href="../docs/index.html">Docs</a>
       <a href="../marketplace/index.html">Extensions</a>
-      <a href="index.html"%s>Labs</a>
+      <a href="../labs/index.html" class="active">Labs</a>
       <a href="../roadmap/index.html">Roadmap</a>
-      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
     </div>
   </div>
-</nav>""" % (' class="active"' if active == "labs" else "")
+</nav>"""
 
 
 FOOTER = """<footer class="footer">

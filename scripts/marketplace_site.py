@@ -212,8 +212,6 @@ def nav(active, prefix="../"):
         cls = ' class="active"' if key == active else ""
         return '<a href="%s%s"%s>%s</a>' % (prefix, rel, cls, label)
     links = "\n      ".join(link(rel, label, key) for rel, label, key in NAV_SECTIONS)
-    publish_cls = ' class="active"' if active == "publish" else ""
-    publish = '<a href="%smarketplace/publish.html"%s>Publish</a>' % (prefix, publish_cls)
     return """<nav class="nav">
   <div class="nav-inner">
     <a class="brand" href="%sindex.html" aria-label="nullock home">
@@ -224,11 +222,14 @@ def nav(active, prefix="../"):
     <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
     <div class="nav-links" id="nav-links">
       %s
-      %s
-      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+      <a href="%spricing.html">Pricing</a>
+      <a href="%schangelog.html">Changelog</a>
+      <a href="%sabout.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="%sindex.html#download" class="btn btn-primary btn-sm">Download</a>
     </div>
   </div>
-</nav>""" % (prefix, prefix, links, publish)
+</nav>""" % (prefix, prefix, links, prefix, prefix, prefix, prefix)
 
 
 def footer(prefix="../"):
@@ -615,7 +616,7 @@ def build_publish(exts):
     return page(
         "Publish — Nullock Marketplace",
         "How to publish a Nullock extension: catalog entry, generated integrity fields, and the rules that keep installs verifiable.",
-        "publish", body)
+        "extensions", body)
 
 
 # --------------------------------------------------------------------------- driver

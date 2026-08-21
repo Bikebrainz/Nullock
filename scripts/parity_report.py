@@ -156,9 +156,12 @@ def build(doc):
       <a href="../docs/index.html">Docs</a>
       <a href="../marketplace/index.html">Extensions</a>
       <a href="../labs/index.html">Labs</a>
-      <a href="index.html" class="active">Roadmap</a>
-      <a href="https://github.com/Bikebrainz/Nullock">GitHub</a>
-      <a class="btn btn-primary btn-sm" href="https://github.com/Bikebrainz/Nullock/releases/latest">Download</a>
+      <a href="../roadmap/index.html" class="active">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
     </div>
   </div>
 </nav>
