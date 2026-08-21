@@ -674,7 +674,23 @@ function SettingsTab() {
   const rowCount = (window.NL && NL.rows) ? NL.rows.length : 0;
   const blocked = b.mitmBlocked || [];
   const extLog = b.extensionsLog || [];
-  const scripts = b.extensionScripts || [];
+  // Every .js present (loaded OR disabled) with its persisted enabled state --
+  // control_server.cpp bootInfo.extensionAll -- so the Installed list can
+  // render Burp's per-extension Loaded checkbox without losing disabled scripts.
+  const extAll = b.extensionAll || [];
+  const [extAllList, setExtAllList] = React.useState(extAll);
+  React.useEffect(() => { setExtAllList(extAll); }, [JSON.stringify(extAll)]);
+  const toggleExtensionEnabled = async (name, next) => {
+    setExtAllList(list => list.map(e => e.name === name ? { ...e, enabled: next } : e));
+    try {
+      const r = await NL.actions.setExtensionEnabled(name, next);
+      if (r && typeof r.enabled === "boolean")
+        setExtAllList(list => list.map(e => e.name === name ? { ...e, enabled: r.enabled } : e));
+    } catch {
+      // revert on failure -- server state didn't change
+      setExtAllList(list => list.map(e => e.name === name ? { ...e, enabled: !next } : e));
+    }
+  };
 
   const [mitmBlockedList, setMitmBlockedList] = React.useState(blocked);
   React.useEffect(() => { setMitmBlockedList(blocked); }, [blocked.join(",")]);
@@ -1021,7 +1037,7 @@ function SettingsTab() {
       <Marketplace Card={Card} Btn={Btn} />
 
       <Card
-        title={"Extensions (" + scripts.length + ")"}
+        title={"Extensions (" + extAllList.length + ")"}
         action={
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {installMsg && <span style={{ color: "var(--dim)", fontSize: "10.5px", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{installMsg}</span>}
@@ -1032,27 +1048,45 @@ function SettingsTab() {
         }
       >
         <Row label="Folder" value={b.extensionsDir} copyable />
-        {scripts.length === 0 && <Row label="Loaded" value="" hint="none yet" />}
-        {scripts.length > 0 && (
+        {extAllList.length === 0 && <Row label="Loaded" value="" hint="none yet" />}
+        {extAllList.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
-            {scripts.map(s => {
+            {extAllList.map(e => {
+              const s = e.name;
               // What the DOWNLOADED/loaded script itself declared, not what the
               // catalog claims -- mirrors the marketplace confirm-panel's trust
               // model (bootInfo.extensionGrants, control_server.cpp:1240-1244).
+              // A disabled script is never (re-)parsed, so it carries no grants --
+              // show a plain "disabled" badge instead of a stale/absent trust one.
               const grants = (b.extensionGrants && b.extensionGrants[s]) || [];
               const mutates = grants.indexOf("modify-requests") >= 0 || grants.indexOf("modify-responses") >= 0;
               return (
                 <div key={s} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px" }}>
-                  <span style={{ fontFamily: "var(--ff-mono)", color: "var(--text)", flex: 1,
+                  <input
+                    type="checkbox"
+                    checked={!!e.enabled}
+                    onChange={() => toggleExtensionEnabled(s, !e.enabled)}
+                    title={e.enabled ? "Loaded -- click to disable" : "Disabled -- click to load"}
+                    style={{ cursor: "pointer", flexShrink: 0 }}
+                  />
+                  <span style={{ fontFamily: "var(--ff-mono)", color: e.enabled ? "var(--text)" : "var(--dim)", flex: 1,
                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
-                  <span style={{
-                    fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
-                    border: "1px solid " + (mutates ? "var(--warn, #d0a03a)" : "var(--dim)"),
-                    color: mutates ? "var(--warn, #d0a03a)" : "var(--dim)",
-                    padding: "1px 5px", borderRadius: 2, fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
-                  }} title={grants.length ? grants.join(", ") : "no declared capabilities"}>
-                    {mutates ? "modifies traffic" : "observe-only"}
-                  </span>
+                  {e.enabled ? (
+                    <span style={{
+                      fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
+                      border: "1px solid " + (mutates ? "var(--warn, #d0a03a)" : "var(--dim)"),
+                      color: mutates ? "var(--warn, #d0a03a)" : "var(--dim)",
+                      padding: "1px 5px", borderRadius: 2, fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
+                    }} title={grants.length ? grants.join(", ") : "no declared capabilities"}>
+                      {mutates ? "modifies traffic" : "observe-only"}
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
+                      border: "1px solid var(--line)", color: "var(--dim)",
+                      padding: "1px 5px", borderRadius: 2, fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
+                    }}>disabled</span>
+                  )}
                 </div>
               );
             })}

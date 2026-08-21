@@ -149,7 +149,9 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   findings/baseline store)
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
                   bundled" button in Settings copies the extensions shipped with the repo into
-                  the user's extensions dir in one click
+                  the user's extensions dir in one click; a per-extension "Loaded" checkbox in
+                  the Installed list disables one script without removing it from disk --
+                  the choice persists and takes effect immediately, no reload needed
 Decoders          JWT (security-annotated) + forge, base64, hex, JSON transcode, rot13, unicode escape,
                   gzip (client-side Compression Streams API, base64 in/out), and protocol decoders
                   (GraphQL pretty-print, gRPC framing, CBOR, SAML) all reachable from the Decoder tab's

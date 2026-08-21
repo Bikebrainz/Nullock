@@ -215,6 +215,12 @@
     markMitmBlocked(host)   { return post("/api/mitm/block", { host }).then(r => r.json()); },
     unblockMitmHost(host)   { return post("/api/mitm/unblock", { host }).then(r => r.json()); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
+    // Burp's per-extension Loaded checkbox: disable leaves the .js on disk
+    // (still listed in extensionAll) but stops it evaluating; re-enable
+    // reloads it immediately. Backend: POST /api/extensions/set-enabled.
+    setExtensionEnabled(name, enabled) {
+      return post("/api/extensions/set-enabled", { name, enabled: !!enabled }).then(r => r.json());
+    },
 
     // --- extension marketplace ---
     // Fetches the published catalog already merged against what is on disk, so
