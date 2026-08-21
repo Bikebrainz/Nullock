@@ -1176,7 +1176,11 @@ void ControlServer::handle(QTcpSocket *socket) {
                 hdr += "HTTP/1.1 200 OK\r\n";
                 hdr += "Content-Type: application/x-x509-ca-cert\r\n";
                 hdr += "Content-Disposition: attachment; filename=\"nullock-ca.crt\"\r\n";
-                hdr += "Access-Control-Allow-Origin: *\r\n";
+                // No Access-Control-Allow-Origin: the cert install flow is a
+                // top-level navigation (unaffected), but ACAO:* let ANY website
+                // read the cert cross-origin to confirm Nullock is running and
+                // probe the port -- contradicting the server's own no-ACAO
+                // invariant for every other route. Serve same-origin only.
                 hdr += "Connection: close\r\n";
                 const QByteArray body = f.readAll();
                 hdr += "Content-Length: " + QByteArray::number(body.size()) + "\r\n\r\n";
@@ -5249,6 +5253,37 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (!q.queryItemValue("ollama").isEmpty()) ollama = q.queryItemValue("ollama");
             if (!q.queryItemValue("model").isEmpty())  model  = q.queryItemValue("model");
         }
+        // Guard: this request inlines the captured request/response (cookies /
+        // Authorization, up to ~16 KiB) into the prompt sent to the ollama host.
+        // Refuse a NON-local ?ollama= host by default -- a typo'd or hostile
+        // value would exfiltrate those credentials off-box. Loopback/RFC-1918/
+        // .local is allowed; set NULLOCK_ALLOW_REMOTE_OLLAMA=1 to permit a
+        // public host explicitly.
+        {
+            const QString oh = QUrl(ollama).host().toLower();
+            auto isLocalOllama = [](const QString &h) {
+                if (h.isEmpty() || h == "localhost" || h == "::1"
+                    || h.startsWith("127.")) return true;
+                if (h.startsWith("10.") || h.startsWith("192.168.")) return true;
+                if (h.startsWith("172.")) {
+                    const int dot = h.indexOf('.', 4);
+                    bool ok = false;
+                    const int oct = h.mid(4, dot < 0 ? -1 : dot - 4).toInt(&ok);
+                    if (ok && oct >= 16 && oct <= 31) return true;
+                }
+                return h.endsWith(".local") || h.endsWith(".internal");
+            };
+            if (!isLocalOllama(oh)
+                && qEnvironmentVariableIntValue("NULLOCK_ALLOW_REMOTE_OLLAMA") == 0) {
+                QJsonObject r;
+                r["ok"]    = false;
+                r["error"] = "refusing to send captured request/response to the "
+                             "non-local ollama host '" + oh + "'; it would exfiltrate "
+                             "captured credentials. Set NULLOCK_ALLOW_REMOTE_OLLAMA=1 "
+                             "to allow a remote host.";
+                return httpJson(200, r);
+            }
+        }
         const QString summary  = bodyJson.value("summary").toString();
         const QString kind     = bodyJson.value("kind").toString();
         const QString severity = bodyJson.value("severity").toString();
@@ -7378,9 +7413,23 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 t.tls = resp ? resp->wasTls : (r->port == 443);
                 t.method = r->method.isEmpty() ? QStringLiteral("GET") : r->method;
                 t.basePath = r->path; t.body = r->body;
-                for (const auto &h : r->headers)
+                // Carry the captured request's headers into the audit target so
+                // an authenticated endpoint is probed WITH its Cookie /
+                // Authorization / X-* auth (else runDeepAudit fed t.headers with
+                // only Content-Type set here -- authed endpoints were probed bare
+                // and reported clean: a false negative). Drop only the hop-by-hop
+                // / tester-rebuilt transport headers to avoid duplicate or stale
+                // framing (Host/Content-Length/Connection/... are rebuilt per probe).
+                static const QSet<QString> kSkipAuditHeaders = {
+                    "host", "content-length", "connection", "accept-encoding",
+                    "transfer-encoding", "proxy-connection", "keep-alive", "upgrade",
+                };
+                for (const auto &h : r->headers) {
                     if (h.first.compare("Content-Type", Qt::CaseInsensitive) == 0)
-                        { t.contentType = h.second; break; }
+                        t.contentType = h.second;
+                    if (!kSkipAuditHeaders.contains(h.first.toLower()))
+                        t.headers.append(h);
+                }
                 t.url = (t.tls ? "https://" : "http://") + r->host + r->path;
                 targets.append(t);
             }
