@@ -3399,7 +3399,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-21",
-        "commit": "PENDING",
+        "commit": "98651e4",
         "note": "Closed the last UI gap on this item: the Proxy card (SettingsTab, ui-v2/app.jsx) now exposes per-host delete (× chip button -> NL.actions.unblockMitmHost) and pre-add (host input + Add button -> NL.actions.markMitmBlocked) for the TLS pass-through list, wired to the backend endpoints the 7c28cc9 wave already built and e2e-verified but which had no UI caller until now. No backend touched. Stays partial: exact-string-only matching (no host:port/IP-range/wildcard) and no 'apply to out-of-scope items' knob remain, both real backend gaps."
       }
     },
