@@ -368,6 +368,17 @@
     openapiImport(spec, baseUrl) {
       return post("/api/openapi/import", { spec, baseUrl: baseUrl || undefined }).then(r => r.json());
     },
+    // #394: manual "add to site map" for a single URL (hand-mapping an
+    // unrequested item, or promoting a robots.txt Disallow / sitemap.xml
+    // <loc> hit) with no dedicated backend route of its own -- reuses the
+    // existing openapi/import synthetic-entry path with a one-operation,
+    // one-path spec. Lands as the same status-0 "OpenAPI imported (not yet
+    // sent)" unrequested row the spec-paste importer already produces.
+    addUrlToSiteMap(originUrl, path, method) {
+      const p = path && path.startsWith("/") ? path : "/" + (path || "");
+      const spec = { paths: { [p]: { [(method || "GET").toLowerCase()]: {} } } };
+      return this.openapiImport(spec, originUrl);
+    },
     workspacePush(url, key, engagement, author) {
       return post("/api/workspace/push", { url, key, engagement, author: author || undefined }).then(r => r.json());
     },

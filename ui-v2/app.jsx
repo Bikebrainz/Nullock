@@ -4384,6 +4384,33 @@ function DiscoverTab() {
   const [discConcurrency, setDiscConcurrency]   = React.useState(10);
   const [discThrottleMs, setDiscThrottleMs]     = React.useState(0);
 
+  // #394: robots.txt Disallow paths and sitemap.xml <loc> URLs are discovered
+  // but otherwise dead-end here in a results table -- Burp infers unrequested
+  // site-map nodes from exactly this data. "+ map" promotes one hit into the
+  // same synthetic-import path the manual site-map add box uses, so it needs
+  // no new backend route either.
+  const [mappedHits, setMappedHits] = React.useState(() => new Set());
+  const [mapBusyKey, setMapBusyKey] = React.useState(null);
+  const addHitToMap = async (key, originUrl, path) => {
+    setMapBusyKey(key); setErr("");
+    try {
+      const r = await NL.actions.addUrlToSiteMap(originUrl, path, "GET");
+      if (r && r.ok === false) setErr(r.error || "add to map failed");
+      else setMappedHits(prev => new Set(prev).add(key));
+    } catch (e) { setErr(String(e && e.message ? e.message : e)); }
+    finally { setMapBusyKey(null); }
+  };
+  const MapBtn = ({ hitKey, onAdd }) => (
+    mappedHits.has(hitKey)
+      ? <span style={{ color: "var(--ok)", fontSize: "10px" }}>✓ mapped</span>
+      : <button onClick={onAdd} disabled={mapBusyKey === hitKey} title="Add to site map as an unrequested item"
+          style={{ background: "transparent", color: "var(--accent)", border: "1px solid var(--accent)",
+                   borderRadius: 3, padding: "1px 6px", fontSize: "10px", fontFamily: "var(--ff-mono)",
+                   cursor: mapBusyKey === hitKey ? "wait" : "pointer" }}>
+          {mapBusyKey === hitKey ? "…" : "+ map"}
+        </button>
+  );
+
   const run = async (k, fn) => {
     if (!url) { setErr("enter a URL"); return; }
     setKind(k); setErr(""); setBusy(true); setRes(null);
@@ -4477,9 +4504,19 @@ function DiscoverTab() {
         <div style={{ color: "var(--dim)", fontSize: "11px", marginBottom: 8 }}>
           robots.txt: {res.robotsFound ? "found" : "absent"} · sitemap: {res.sitemapFound ? "found" : "absent"} · {res.disallowedCount || 0} disallowed · {res.sitemapUrlCount || 0} sitemap URLs
         </div>
-        {res.disallowed && res.disallowed.length ? <Section title="Disallowed paths"><Table cols={["path"]} rows={res.disallowed} cell={p => [p]} /></Section> : null}
+        {res.disallowed && res.disallowed.length ? <Section title="Disallowed paths"><Table cols={["path", ""]} rows={res.disallowed} cell={p => {
+          const key = "d:" + p;
+          let origin = null;
+          try { origin = new URL(url).origin; } catch (e) { /* url already validated by run() */ }
+          return [p, origin ? <MapBtn hitKey={key} onAdd={() => addHitToMap(key, origin, p)} /> : null];
+        }} /></Section> : null}
         {res.disallowedPatterns && res.disallowedPatterns.length ? <Section title="Disallowed patterns"><Table cols={["pattern"]} rows={res.disallowedPatterns} cell={p => [p]} /></Section> : null}
-        {res.sitemapUrls && res.sitemapUrls.length ? <Section title={"Sitemap URLs (" + res.sitemapUrls.length + ")"}><Table cols={["url"]} rows={res.sitemapUrls.slice(0, 100)} cell={u => [<span style={{ wordBreak: "break-all" }}>{u}</span>]} /></Section> : null}
+        {res.sitemapUrls && res.sitemapUrls.length ? <Section title={"Sitemap URLs (" + res.sitemapUrls.length + ")"}><Table cols={["url", ""]} rows={res.sitemapUrls.slice(0, 100)} cell={u => {
+          const key = "s:" + u;
+          let uu = null;
+          try { uu = new URL(u); } catch (e) { /* malformed <loc>, no add-to-map possible */ }
+          return [<span style={{ wordBreak: "break-all" }}>{u}</span>, uu ? <MapBtn hitKey={key} onAdd={() => addHitToMap(key, uu.origin, uu.pathname + uu.search)} /> : null];
+        }} /></Section> : null}
         {!res.robotsFound && !res.sitemapFound ? <div style={{ color: "var(--dim)", fontSize: "12px" }}>no robots.txt or sitemap.xml found</div> : null}
       </div>
     );

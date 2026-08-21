@@ -383,6 +383,31 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
       return next;
     });
   };
+
+  // #394: manual "add to site map" for an unrequested item -- Burp lets you
+  // hand-add a URL that's never actually been sent; Nullock's only route was
+  // "import a whole OpenAPI spec". Reuses that same synthetic-entry endpoint
+  // with a one-path, one-op spec so a single URL lands as its own status-0
+  // "not yet sent" row without needing a dedicated backend endpoint.
+  const [addUrlText, setAddUrlText] = React.useState("");
+  const [addUrlBusy, setAddUrlBusy] = React.useState(false);
+  const [addUrlErr, setAddUrlErr]   = React.useState("");
+  const addUrlToMap = async () => {
+    const raw = addUrlText.trim();
+    if (!raw) return;
+    let u;
+    try { u = new URL(raw); } catch (e) { setAddUrlErr("invalid URL"); return; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") { setAddUrlErr("http/https only"); return; }
+    setAddUrlBusy(true); setAddUrlErr("");
+    try {
+      const origin = u.protocol + "//" + u.host;
+      const path = (u.pathname || "/") + u.search;
+      const r = await NL.actions.addUrlToSiteMap(origin, path, "GET");
+      if (r && r.ok === false) setAddUrlErr(r.error || "import failed");
+      else setAddUrlText("");
+    } catch (e) { setAddUrlErr(String(e && e.message ? e.message : e)); }
+    finally { setAddUrlBusy(false); }
+  };
   const leavesFor = (entry) => {
     const byKey = new Map();
     for (const r of rows) {
@@ -404,6 +429,18 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
         <span>SITE MAP</span>
         <span className="ph-count">{entries.length} HOSTS · {totalRows} REQ</span>
       </div>
+      <div className="sm-add-row" title="Hand-add an item to the site map without sending it -- lands as an unrequested (greyed) node, same as Burp's manual mapping">
+        <input
+          className="sm-add-input"
+          value={addUrlText}
+          onChange={e => setAddUrlText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") addUrlToMap(); }}
+          placeholder="add URL to map by hand…"
+          spellCheck={false}
+        />
+        <button className="sm-add-btn" disabled={addUrlBusy || !addUrlText.trim()} onClick={addUrlToMap}>+ ADD</button>
+      </div>
+      {addUrlErr && <div className="sm-add-err">{addUrlErr}</div>}
       <div className="pane-body">
         <div
           className={"sm-row " + (selectedOrigin == null ? "sel" : "")}
@@ -436,11 +473,19 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
                 const leafStyle = note && note.color
                   ? { boxShadow: "inset 3px 0 0 " + annotationColorHex(note.color) }
                   : undefined;
+                // #394: a synthetic import (manual add-to-map or an OpenAPI/
+                // robots-derived one) always lands with status 0 -- no other
+                // path in the backend persists a row with status 0, so this
+                // is an unambiguous "never actually sent" marker. Grey it
+                // out in the tree to distinguish it from captured traffic,
+                // matching Burp's inferred/unrequested node treatment.
+                const unrequested = r.status === 0;
+                const titleBase = unrequested ? (r.method + " " + r.path + " — not yet sent") : (r.method + " " + r.path);
                 return (
                 <div
                   key={r.id}
-                  className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "")}
-                  title={note && note.comment ? (r.method + " " + r.path + " — " + note.comment) : (r.method + " " + r.path)}
+                  className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "") + (unrequested ? " unrequested" : "")}
+                  title={note && note.comment ? (titleBase + " — " + note.comment) : titleBase}
                   style={leafStyle}
                   onClick={() => onSelectLeaf(e, r.id)}
                   onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev, r.id); }) : undefined}
@@ -448,7 +493,7 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
                   <span className="sm-leaf-note">{note && note.comment ? "💬" : ""}</span>
                   <span className="sm-leaf-method">{r.method}</span>
                   <span className="sm-leaf-path">{r.path || "/"}</span>
-                  <span className="sm-leaf-status">{r.status}</span>
+                  <span className="sm-leaf-status">{unrequested ? "not sent" : r.status}</span>
                 </div>
                 );
               })}

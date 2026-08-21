@@ -787,6 +787,41 @@ textarea, input { user-select: text; }
 .sm-leaf .sm-leaf-method { color: var(--accent); letter-spacing: 0.04em; }
 .sm-leaf .sm-leaf-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sm-leaf .sm-leaf-status { color: var(--dim); text-align: right; }
+.sm-leaf.unrequested { opacity: 0.55; font-style: italic; }
+.sm-leaf.unrequested .sm-leaf-method,
+.sm-leaf.unrequested .sm-leaf-path { border-bottom: 1px dashed var(--faint); }
+.sm-leaf.unrequested .sm-leaf-status { color: var(--faint); }
+
+.sm-add-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sm-add-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: var(--fz-xs);
+  font-family: var(--ff-mono);
+}
+.sm-add-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: var(--fz-xs);
+  font-family: var(--ff-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sm-add-btn:disabled { color: var(--dim); border-color: var(--line); cursor: default; }
+.sm-add-err { padding: 0 10px 6px; color: var(--err); font-size: var(--fz-xs); }
 
 /* ---------- filter bar ---------- */
 .filterbar {

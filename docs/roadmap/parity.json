@@ -5225,12 +5225,18 @@
     {
       "area": "target",
       "feature": "Manual application mapping / unrequested items: adding items to the site map by hand, and Burp inferring unrequested nodes from links, robots.txt and sitemap.xml so they show greyed-out in the tree",
-      "state": "stub",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Import-a-spec is the only hand-mapping route: no per-URL 'add to map', no greyed-out rendering to distinguish unrequested from captured (status 0 just shows as an em-dash), no UI button, and robots.txt Disallow paths and sitemap.xml <loc> URLs are discovered and then dead-end in a findings list instead of feeding the same import path.",
-      "why": "UPGRADED. The first pass said 'there is no add-to-map API' and 'nothing outside ProxyModel can put an item on the map'. Both are wrong. /api/openapi/import walks a spec and materializes one SYNTHETIC UNREQUESTED entry per operation -- status 0, reason phrase 'OpenAPI imported (not yet sent)' -- straight into the persistent history and, via entryLoaded, into the live site map. That is exactly manua",
-      "evidence": "Src/BackEnd/Control/control_server.cpp:5440-5445 `// ---- OpenAPI / Swagger spec import ---- // POST /api/openapi/import { spec: <JSON>, baseUrl?: \"https://...\" } // Walks paths + methods, emits one synthetic captured request per // operation. Lets the user see the full surface in history, fan any // operation out into the Repeater / Intruder, or auto-populate scope`. The materialization, cpp:5619"
+      "gap": "Both named legs now have a real UI path, but neither is automatic the way Burp's is: (1) hand-mapping is a one-URL-at-a-time text box (ui-v2/proxy.jsx), not a right-click 'add to site map' on an arbitrary selection; (2) robots.txt Disallow paths and sitemap.xml <loc> URLs each need an explicit '+ map' click per hit (ui-v2/app.jsx DiscoverTab) rather than being auto-inferred the moment they're discovered. There is still no link-graph inference (Burp also greys out same-page HTML links never actually requested) -- only the two backend-known sources (robots/sitemap) can be promoted, since content_discovery.cpp/robots_recon.cpp are the only C++ that surfaces candidate paths never sent.",
+      "why": "Closed the two frontend legs the prior why-text correctly identified as missing, reusing the existing synthetic-import mechanism rather than adding a backend route: a new NL.actions.addUrlToSiteMap(originUrl, path, method) thin wrapper (ui-v2/real-data.js) builds a one-path, one-operation OpenAPI-shaped spec and posts it through the already-proven /api/openapi/import endpoint, so a hand-typed URL or a promoted robots/sitemap hit lands as the exact same status-0 'OpenAPI imported (not yet sent)' unrequested row the spec-paste importer already produces -- confirmed by reading control_server.cpp:6231-6241 (resp.statusCode=0, reasonPhrase='OpenAPI imported (not yet sent)', persisted via appendEntry+entryLoaded) and confirming no other code path in the repo ever persists a status-0 row, so status===0 is an unambiguous unrequested marker for the frontend to grey on.",
+      "evidence": "ui-v2/proxy.jsx SiteMap(): a `.sm-add-row` text input + ADD button calls addUrlToMap() -> NL.actions.addUrlToSiteMap(origin, path, \"GET\"); each leaf row now computes `const unrequested = r.status === 0` and adds an `unrequested` class (opacity 0.55, dashed underline, status text replaced with \"not sent\") -- ui-v2/styles.css .sm-leaf.unrequested. ui-v2/app.jsx DiscoverTab(): each robots-scan \"Disallowed paths\" and \"Sitemap URLs\" table row gains a MapBtn calling addHitToMap(key, origin, path) -> the same wrapper, tracked per-hit in a mappedHits Set so a promoted hit shows \"\u2713 mapped\" instead of the button again. Src/BackEnd/Control/control_server.cpp:6057-6252 /api/openapi/import (unchanged, reused as-is) and :7814-7876 /api/robots/scan (unchanged, already returned `disallowed`/`sitemapUrls` -- only their existing UI table gained the per-row button).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-21",
+        "commit": "PENDING",
+        "note": "Manual add-to-map text box + unrequested (status-0) greying in the Site Map tree, plus a per-hit \"+ map\" promotion button on robots.txt Disallow paths and sitemap.xml URLs in the Discover tab -- all three reuse the existing /api/openapi/import synthetic-entry endpoint, no backend change."
+      }
     },
     {
       "area": "target",

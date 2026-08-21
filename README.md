@@ -46,7 +46,12 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   response opened even after it has scrolled out of the bounded on-screen window;
                   Site map hosts expand into per-URL leaf nodes (deduped by method+path, most
                   recent request wins) that jump straight to that message's editor, no detour
-                  through the history table below
+                  through the history table below;
+                  manual application mapping -- hand-add a URL to the Site map without sending it
+                  (a text box in the Site map pane), or promote a robots.txt Disallow path / sitemap.xml
+                  URL straight from the Discover tab with a one-click "+ map" button; every such
+                  entry renders greyed-out/dashed in the tree ("not sent") to distinguish an
+                  unrequested node from real captured traffic
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through
