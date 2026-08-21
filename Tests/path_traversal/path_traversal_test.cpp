@@ -53,6 +53,10 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "file=x").contains("X-Smuggled"));
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("build: drops CRLF in a carried header NAME",
+            !buildRequest(injName, "file=x").contains("X-Smuggled"));
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "file=x").isEmpty());

@@ -96,6 +96,10 @@ int main(int argc, char **argv) {
         injHdr.headers.append(qMakePair(QString("Cookie"), QString("a=1\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header",
             !buildRequest(injHdr, "/x").contains("X-Smuggled"));
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("build: drops CRLF in a carried header NAME",
+            !buildRequest(injName, "/x").contains("X-Smuggled"));
 
         // A carried Accept-Encoding must be dropped so ONLY our "identity" survives:
         // two Accept-Encoding lines combine (RFC 7230) to let the server gzip, and

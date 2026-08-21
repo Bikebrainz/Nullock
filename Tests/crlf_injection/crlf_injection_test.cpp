@@ -126,6 +126,8 @@ int main(int argc, char **argv) {
         chk("build: CRLF query -> no injected header", !buildRequest(req, "a\r\nEvil: 1").contains("\r\nEvil: 1"));
         Request bhe = req; bhe.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nEvil: 1")});
         chk("build: CRLF carried header dropped", !buildRequest(bhe, "").contains("Evil: 1"));
+        Request bhn = req; bhn.headers.append({QStringLiteral("X-A\r\nEvil"), QStringLiteral("1")});
+        chk("build: CRLF in a carried header NAME dropped", !buildRequest(bhn, "").contains("\r\nEvil:"));
 
         // Carried encoding/framing headers must be dropped so the ones buildRequest
         // forces stand alone:
