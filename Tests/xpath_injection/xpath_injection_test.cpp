@@ -46,11 +46,24 @@ int main(int argc, char **argv) {
     chk("sig: generic Invalid expression token", eng("Parse error: Invalid expression token near ']'") == "generic");
     chk("sig: generic Invalid predicate", eng("Invalid predicate") == "generic");
     chk("sig: generic node-set", eng("Expression must evaluate to a node-set") == "generic");
+    // Untested alternatives of each engine's alternation (a dropped branch would
+    // silently stop attributing that library's error).
+    chk("sig: Java saxon",      eng("net.sf.saxon.trans.XPathException: bad") == "Java");
+    chk("sig: Java xalan",      eng("org.apache.xpath.XPathException at eval") == "Java");
+    chk("sig: PHP evaluate",    eng("Warning: DOMXPath::evaluate(): Invalid expression") == "PHP");
+    chk("sig: PHP SimpleXML",   eng("Warning: SimpleXMLElement::xpath(): Invalid") == "PHP");
+    chk("sig: PHP xpath_eval",  eng("xpath_eval(): compilation failure") == "PHP");
+    chk("sig: libxml2 unregistered function", eng("XPath error : Unregistered function") == "libxml2");
+    chk("sig: libxml2 unregistered variable", eng("XPath error : Unregistered variable") == "libxml2");
+    chk("sig: generic Warning...XPath", eng("Warning: XPath compilation blocked") == "generic");
     chk("sig: unrelated -> none", eng("<html>0 nodes</html>").isEmpty());
 
     // ---- isBlockStatus ---------------------------------------------------
     chk("block: 403", isBlockStatus(403));
+    chk("block: 406", isBlockStatus(406));
     chk("block: 429", isBlockStatus(429));
+    chk("block: 451", isBlockStatus(451));
+    chk("block: 501", isBlockStatus(501));
     chk("block: 503", isBlockStatus(503));
     chk("block: 200 not", !isBlockStatus(200));
     chk("block: 500 not (real backend error)", !isBlockStatus(500));
