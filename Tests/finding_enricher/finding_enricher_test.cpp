@@ -93,6 +93,14 @@ const QList<Spot> &spotChecks() {
         { "deser-dotnet",                "CWE-502" },   // exact (new)
         { "jwt-signature-not-verified",  "CWE-347" },   // exact (new)
         { "jwt-weak-secret",             "CWE-347" },   // exact (new)
+        // maybefix #7 de-dup locks: these three kinds each had a DUPLICATE key in
+        // the mapping table whose entries DISAGREED. A QHash initializer keeps the
+        // LAST insert, so the effective (correct) mapping must be the winner --
+        // csp-unsafe-inline CWE-693 (dead dup was CWE-79), csp-unsafe-eval CWE-693
+        // (dead dup CWE-95), crlf-injection CWE-113 (dead dup, the parent, CWE-93).
+        { "csp-unsafe-inline",           "CWE-693" },
+        { "csp-unsafe-eval",             "CWE-693" },
+        { "crlf-injection",              "CWE-113" },
     };
     return s;
 }
@@ -143,6 +151,27 @@ int main(int argc, char **argv) {
             ++fail;
             failures << QString("spot %1").arg(s.kind);
         }
+    }
+
+    // 2b) maybefix #7 de-dup locks that aren't a CWE: the dead duplicate keys
+    //     also disagreed on OWASP category and score, so pin the winner's value.
+    {
+        auto enriched = [](const char *kind) {
+            Finding f; f.kind = QString::fromLatin1(kind); f.severity = "medium";
+            FindingEnricher::enrich(f); return f;
+        };
+        // web-cache-deception dead dup was A04:Insecure Design; winner is A05.
+        const Finding wcd = enriched("web-cache-deception");
+        if (wcd.owasp.startsWith("A05")) ++pass;
+        else { std::fprintf(stderr, "  FAIL  web-cache-deception owasp %s (wanted A05*)\n",
+                            wcd.owasp.toLocal8Bit().constData()); ++fail;
+               failures << "web-cache-deception owasp"; }
+        // path-traversal dead dup carried an 8.6 score (its own 7.5 vector
+        // contradicted it); the winner ships the consistent 7.5.
+        const Finding pt = enriched("path-traversal");
+        if (pt.cvssScore > 7.45 && pt.cvssScore < 7.55) ++pass;
+        else { std::fprintf(stderr, "  FAIL  path-traversal score %.1f (wanted 7.5)\n",
+                            pt.cvssScore); ++fail; failures << "path-traversal score"; }
     }
 
     // 3) Idempotency / stale-vector contract. enrich() advertises (in the

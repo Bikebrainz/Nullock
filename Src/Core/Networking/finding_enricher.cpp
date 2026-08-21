@@ -48,16 +48,10 @@ const QHash<QString, Mapping> &table() {
             "Add Referrer-Policy: strict-origin-when-cross-origin." } },
 
         // ---- CSP granular --------------------------------------------
-        { "csp-unsafe-inline", {
-            "CWE-79", "A03:2021-Injection", 5.4,
-            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-            "PCI-DSS-6.5.7",
-            "Replace 'unsafe-inline' with hashes / nonces." } },
-        { "csp-unsafe-eval", {
-            "CWE-95", "A03:2021-Injection", 5.4,
-            "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-            "PCI-DSS-6.5.1",
-            "Remove 'unsafe-eval'; refactor to avoid Function/eval." } },
+        // (csp-unsafe-inline / csp-unsafe-eval live in the CSP-family block
+        // below as single entries -- duplicate keys here were dead: a QHash
+        // initializer keeps the LAST insert, so these earlier ones never
+        // applied and shipped a contradictory CWE. Removed.)
         { "csp-no-frame-ancestors", {
             "CWE-1021", "A05:2021-Security Misconfiguration", 4.3,
             "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:L/I:L/A:N",
@@ -99,8 +93,8 @@ const QHash<QString, Mapping> &table() {
         { "leaked-private-key",    { "CWE-321", "A02:2021-Cryptographic Failures", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-3.5.2,SOC2-CC6.1", "Rotate the key and audit anywhere it was deployed." } },
 
         // ---- Active probes -------------------------------------------
-        { "reflected-xss",  { "CWE-79",  "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "PCI-DSS-6.5.7", "HTML-escape the reflected value at the output sink." } },
-        { "open-redirect",  { "CWE-601", "A01:2021-Broken Access Control", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Validate target against an allow-list before issuing 3xx." } },
+        // (reflected-xss / open-redirect deduped -- see the single entries below;
+        // these earlier duplicate keys were dead in the QHash initializer.)
         { "open-redirect-variant",  { "CWE-601", "A01:2021-Broken Access Control", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Filter redirect schemes and host components." } },
         { "open-redirect-suspect",  { "CWE-601", "A01:2021-Broken Access Control", 4.3, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N", "", "Validate target against an allow-list before issuing 3xx." } },
         { "sqli-error",     { "CWE-89",  "A03:2021-Injection", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.1", "Use parameterized queries / ORM bindings." } },
@@ -115,8 +109,10 @@ const QHash<QString, Mapping> &table() {
         { "ssti-smarty",       { "CWE-94", "A03:2021-Injection", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "", "Render user data via context, never inline into template source." } },
         { "lfi",            { "CWE-22",  "A01:2021-Broken Access Control", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:L", "", "Canonicalize paths and validate against an allow-list of files." } },
         { "cmd-injection",  { "CWE-78",  "A03:2021-Injection", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.1", "Don't shell out with user input; pass args as an exec() argv array." } },
-        { "crlf-injection", { "CWE-93",  "A03:2021-Injection", 6.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "", "Strip CR/LF from any value that ends up in a response header." } },
-        { "path-traversal", { "CWE-22",  "A01:2021-Broken Access Control", 8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Canonicalize and reject paths that escape the document root." } },
+        // (crlf-injection / path-traversal deduped -- the single entries below
+        // win; these earlier duplicate keys were dead. The dead crlf entry also
+        // had the parent CWE-93 rather than the specific CWE-113, and the dead
+        // path-traversal carried an 8.6 score its own 7.5 vector contradicts.)
         { "ssrf-cloud-metadata", { "CWE-918", "A10:2021-Server-Side Request Forgery", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "PCI-DSS-6.5.8", "Use IMDSv2 (token-required); block 169.254.0.0/16 at egress." } },
         { "oast-token-fired",    { "CWE-918", "A10:2021-Server-Side Request Forgery", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Check /api/oast/poll after a delay to confirm OOB callback." } },
         { "ssrf-oast-confirmed", { "CWE-918", "A10:2021-Server-Side Request Forgery", 9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N", "PCI-DSS-6.5.8", "Confirmed OOB fetch -- block egress to internal ranges; allow-list outbound hosts." } },
@@ -135,7 +131,8 @@ const QHash<QString, Mapping> &table() {
         { "auth-bypass-orig-ip",      { "CWE-285", "A01:2021-Broken Access Control", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Strip X-Originating-IP at the edge or validate the proxy chain." } },
         { "http-smuggling-clte-suspect", { "CWE-444", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N", "", "Reject messages with both Content-Length and Transfer-Encoding." } },
         { "cache-poison-xfh",         { "CWE-444", "A05:2021-Security Misconfiguration", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Strip X-Forwarded-Host / treat as untrusted in cache keys." } },
-        { "web-cache-deception",      { "CWE-525", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", "", "Don't cache responses to paths whose effective handler is dynamic." } },
+        // (web-cache-deception deduped -- the single entry below wins; this
+        // earlier duplicate key was dead and disagreed on OWASP category.)
         { "race-condition-suspect",   { "CWE-362", "A04:2021-Insecure Design", 7.5, "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:N", "", "Add a unique-row constraint / SELECT FOR UPDATE around the mutation." } },
 
         // ---- Parameter mining (hidden inputs) -----------------------
@@ -311,7 +308,8 @@ const QHash<QString, Mapping> &table() {
 
         // ---- CVE correlation ----------------------------------------
         { "cve-correlated", { "CWE-1395", "A06:2021-Vulnerable and Outdated Components", 0.0, "", "", "Upgrade the component to the fixed version named in the advisory." } },
-        { "tech-detected", { "CWE-200", "A05:2021-Security Misconfiguration", 1.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N", "", "Suppress version banners (Server, X-Powered-By, generator meta) to slow version-specific attacks." } },
+        // (tech-detected deduped -- the single recon-only entry below wins; this
+        // earlier duplicate key was dead.)
 
         // ---- Information disclosure -- secondary --------------------
         { "git-head-exposed", { "CWE-538", "A05:2021-Security Misconfiguration", 9.1, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", "PCI-DSS-6.5.5", "Block .git/ at the reverse proxy; redeploy without VCS metadata." } },
