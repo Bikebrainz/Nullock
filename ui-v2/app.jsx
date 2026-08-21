@@ -6048,12 +6048,19 @@ function SessionsTab() {
             <span style={{ color: "var(--dim)" }}>HttpOnly {h.httpOnlyPct}%</span>
             <span style={{ color: "var(--dim)" }}>Secure {h.securePct}%</span>
             <span style={{ color: "var(--dim)" }}>SameSite {h.sameSitePct}%</span>
+            <Btn label="Add cookie" size="sm" onClick={() => {
+              const name = prompt("Cookie name (for " + h.host + "):");
+              if (!name) return;
+              const value = prompt("Value for " + name + ":", "");
+              if (value === null) return;
+              NL.actions.sessionSetCookie(h.host, name, value).then(loadCookieJar);
+            }} />
           </div>
           {(h.cookies || []).length > 0 && (
             <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
               {h.cookies.map((c, i) => (
                 <div key={i} style={{
-                  display: "grid", gridTemplateColumns: "160px 90px 1fr 110px",
+                  display: "grid", gridTemplateColumns: "160px 90px 1fr 110px 100px",
                   gap: 6, padding: "3px 4px", fontFamily: "var(--ff-mono)", fontSize: "11px",
                   borderBottom: "1px solid var(--line-soft)",
                 }}>
@@ -6066,6 +6073,18 @@ function SessionsTab() {
                   </span>
                   <span style={{ color: "var(--dim)", fontSize: "10px", textAlign: "right" }}>
                     {c.httpOnly && "HO "}{c.secure && "S "}{c.sameSite}
+                  </span>
+                  <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                    <Btn label="Edit" size="sm" onClick={() => {
+                      const value = prompt("New value for " + c.name + ":", "");
+                      if (value === null) return;
+                      NL.actions.sessionSetCookie(h.host, c.name, value, c.path, c.httpOnly, c.secure, c.sameSite)
+                        .then(loadCookieJar);
+                    }} />
+                    <Btn label="Del" size="sm" danger onClick={() => {
+                      if (confirm("Delete cookie " + c.name + " for " + h.host + "?"))
+                        NL.actions.sessionRemoveCookie(h.host, c.name).then(loadCookieJar);
+                    }} />
                   </span>
                 </div>
               ))}

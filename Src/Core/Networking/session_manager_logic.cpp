@@ -234,4 +234,25 @@ CapturedCookie cookieFromJson(const QJsonObject &o) {
     return c;
 }
 
+bool isValidCookieName(const QString &name) {
+    if (name.isEmpty() || name.contains('=') || name.contains(' ')) return false;
+    for (const QChar ch : name)
+        if (ch.unicode() < 0x20) return false;
+    return true;
+}
+
+void upsertCookie(QList<CapturedCookie> &cookies, const CapturedCookie &c) {
+    for (auto &existing : cookies) {
+        if (existing.name == c.name) { existing = c; return; }
+    }
+    cookies.append(c);
+}
+
+bool removeCookieByName(QList<CapturedCookie> &cookies, const QString &name) {
+    for (int i = 0; i < cookies.size(); ++i) {
+        if (cookies[i].name == name) { cookies.removeAt(i); return true; }
+    }
+    return false;
+}
+
 } // namespace Nullock::Core::SessionLogic

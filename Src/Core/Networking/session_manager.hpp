@@ -42,6 +42,16 @@ public:
     // the user knows the wildcard should apply.
     Q_INVOKABLE bool copyTo(const QString &fromHost, const QString &toHost);
 
+    // Cookie jar manual editing (Burp: add a cookie obtained out-of-band, edit a
+    // value, delete one cookie). Distinct from the capture path (onResponseReceived)
+    // and from clearHost/clearAll, which drop a whole host's jar rather than one
+    // cookie. setCookie upserts by name and creates the host session if it doesn't
+    // exist yet; rejects a name that fails SessionLogic::isValidCookieName.
+    Q_INVOKABLE bool setCookie(const QString &host, const QString &name, const QString &value,
+                               const QString &path = QStringLiteral("/"), bool httpOnly = false,
+                               bool secure = false, const QString &sameSite = QString());
+    Q_INVOKABLE bool removeCookie(const QString &host, const QString &name);
+
     // Persist / restore the whole jar (project.json). exportJson serializes every
     // host's cookies + autoInject + lastSeen. importJson REPLACES the jar, dropping
     // any cookie already expired as of `nowEpoch` -- a stale / logged-out token must

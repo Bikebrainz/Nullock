@@ -10276,6 +10276,29 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                              bodyJson.value("to").toString());
         return okJson({{ "ok", ok }});
     }
+    // POST /api/sessions/setCookie {host, name, value, path?, httpOnly?, secure?, sameSite?}
+    // Cookie jar manual add/edit (add a cookie obtained out-of-band, or edit an
+    // existing one's value) -- upserts by name, creating the host jar if needed.
+    if (path == "/api/sessions/setCookie") {
+        const QString host = bodyJson.value("host").toString();
+        const QString name = bodyJson.value("name").toString();
+        bool ok = m_wiring.sessions
+               && m_wiring.sessions->setCookie(host, name,
+                                                bodyJson.value("value").toString(),
+                                                bodyJson.value("path").toString(QStringLiteral("/")),
+                                                bodyJson.value("httpOnly").toBool(false),
+                                                bodyJson.value("secure").toBool(false),
+                                                bodyJson.value("sameSite").toString());
+        return okJson({{ "ok", ok }});
+    }
+    // POST /api/sessions/removeCookie {host, name} -- delete exactly one cookie,
+    // distinct from /api/sessions/clear which drops the whole host jar.
+    if (path == "/api/sessions/removeCookie") {
+        bool ok = m_wiring.sessions
+               && m_wiring.sessions->removeCookie(bodyJson.value("host").toString(),
+                                                   bodyJson.value("name").toString());
+        return okJson({{ "ok", ok }});
+    }
     // POST /api/portscan/import-nmap  body: raw nmap XML
     // Pulls <host>/<ports>/<port>/<state>/<service> into PortResult.
     if (path == "/api/portscan/import-nmap") {

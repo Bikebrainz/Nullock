@@ -230,6 +230,45 @@ void SessionManager::importJson(const QJsonArray &arr, long long nowEpoch) {
     emit sessionsChanged();
 }
 
+bool SessionManager::setCookie(const QString &host, const QString &name, const QString &value,
+                               const QString &path, bool httpOnly, bool secure,
+                               const QString &sameSite) {
+    if (host.isEmpty() || !SessionLogic::isValidCookieName(name)) return false;
+    const QString value2 = SessionLogic::stripCtrl(value);
+    CapturedCookie c;
+    c.name      = name;
+    c.value     = value2;
+    c.raw       = name + "=" + value2;
+    c.path      = path.isEmpty() ? QStringLiteral("/") : path;
+    c.httpOnly  = httpOnly;
+    c.secure    = secure;
+    c.sameSite  = sameSite;
+    // No Max-Age/Expires on a hand-entered cookie: treat it as a session cookie
+    // (persistent=false), so cookieExpired() never auto-prunes it -- it survives
+    // exactly until the user removes it or clears the host, matching Burp.
+    {
+        QMutexLocker lk(&m_mutex);
+        HostSession &s = m_byHost[lowercaseHost(host)];
+        s.host     = host;
+        s.lastSeen = QDateTime::currentMSecsSinceEpoch();
+        SessionLogic::upsertCookie(s.cookies, c);
+    }
+    emit sessionsChanged();
+    return true;
+}
+
+bool SessionManager::removeCookie(const QString &host, const QString &name) {
+    bool removed = false;
+    {
+        QMutexLocker lk(&m_mutex);
+        auto it = m_byHost.find(lowercaseHost(host));
+        if (it == m_byHost.end()) return false;
+        removed = SessionLogic::removeCookieByName(it->cookies, name);
+    }
+    if (removed) emit sessionsChanged();
+    return removed;
+}
+
 bool SessionManager::copyTo(const QString &fromHost, const QString &toHost) {
     bool ok = false;
     {

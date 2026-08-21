@@ -229,6 +229,38 @@ int main(int argc, char **argv) {
             cookieExpired(rt, c.expiresEpoch + 1) && !cookieExpired(rt, c.expiresEpoch - 1));
     }
 
+    // ===== Cookie jar manual add/edit/remove (isValidCookieName / upsertCookie / removeCookieByName) =====
+    {
+        chk("valid name: plain token", isValidCookieName("sid"));
+        chk("invalid name: empty", !isValidCookieName(""));
+        chk("invalid name: contains '='", !isValidCookieName("a=b"));
+        chk("invalid name: contains space", !isValidCookieName("a b"));
+        chk("invalid name: contains a C0 control byte (header-injection guard)",
+            !isValidCookieName(QString("a") + QChar(0x0d) + "b"));
+
+        QList<CapturedCookie> jar;
+        CapturedCookie a; a.name = "a"; a.value = "1";
+        CapturedCookie b; b.name = "b"; b.value = "2";
+        upsertCookie(jar, a);
+        upsertCookie(jar, b);
+        chk("upsert: two distinct names append two cookies", jar.size() == 2);
+        chk("upsert: order preserved (a before b)", jar[0].name == "a" && jar[1].name == "b");
+
+        CapturedCookie a2; a2.name = "a"; a2.value = "edited";
+        upsertCookie(jar, a2);
+        chk("upsert: same-name replaces in place, no growth", jar.size() == 2);
+        chk("upsert: same-name replace keeps original position",
+            jar[0].name == "a" && jar[0].value == "edited");
+        chk("upsert: sibling cookie untouched by an unrelated edit", jar[1].name == "b" && jar[1].value == "2");
+
+        chk("remove: existing name removed, reports true", removeCookieByName(jar, "a"));
+        chk("remove: only the named cookie is gone", jar.size() == 1 && jar[0].name == "b");
+        chk("remove: a second removal of the same name reports false (already gone)",
+            !removeCookieByName(jar, "a"));
+        chk("remove: an unknown name reports false, leaves jar untouched",
+            !removeCookieByName(jar, "nope") && jar.size() == 1);
+    }
+
     std::fprintf(stderr, "session_manager_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

@@ -339,6 +339,12 @@
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },
     sessionCopyTo(from, to)     { return post("/api/sessions/copyTo",     { from, to }); },
+    // Cookie jar manual add/edit/remove -- add a cookie obtained out-of-band,
+    // edit an existing one's value, or delete exactly one cookie.
+    sessionSetCookie(host, name, value, path, httpOnly, secure, sameSite) {
+      return post("/api/sessions/setCookie", { host, name, value, path, httpOnly, secure, sameSite });
+    },
+    sessionRemoveCookie(host, name) { return post("/api/sessions/removeCookie", { host, name }); },
     sessionRulesSet(rules)      { return post("/api/session-rules/set",        { rules }); },
     sessionRulesClearVars()     { return post("/api/session-rules/clear-vars", {}); },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },

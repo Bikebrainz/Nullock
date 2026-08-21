@@ -6,6 +6,7 @@
 // (onResponseReceived/injectInto + the QObject/mutex) stays in session_manager.*.
 
 #include <QJsonObject>
+#include <QList>
 #include <QString>
 
 namespace Nullock::Core {
@@ -98,6 +99,24 @@ bool cookieExpired(const CapturedCookie &c, long long nowEpoch);
 // re-parsing. Pure, so it is unit-tested against Qt6::Core alone.
 QJsonObject    cookieToJson(const CapturedCookie &c);
 CapturedCookie cookieFromJson(const QJsonObject &o);
+
+// Validate a hand-typed cookie name against the same RFC 6265 token rule
+// parseSetCookie enforces on the wire: non-empty, no '='/space, no C0 control
+// byte. Guards the Cookie jar's manual add/edit path (roadmap: "add a cookie
+// obtained out-of-band") so a crafted name can't smuggle a second cookie via
+// header injection the next time this jar is injected into a request.
+bool isValidCookieName(const QString &name);
+
+// Upsert a cookie by name into a jar (the Cookie jar's manual add/edit): replaces
+// an existing same-name cookie IN PLACE (keeping its position in the list, so
+// row order in the UI doesn't jump around on edit); appends a new one otherwise.
+// Pure list operation, no I/O. Caller validates the name first.
+void upsertCookie(QList<CapturedCookie> &cookies, const CapturedCookie &c);
+
+// Remove exactly one cookie by name (the Cookie jar's per-cookie delete) --
+// distinct from clearing the whole host jar. Returns true iff a cookie was
+// found and removed.
+bool removeCookieByName(QList<CapturedCookie> &cookies, const QString &name);
 
 } // namespace SessionLogic
 } // namespace Nullock::Core
