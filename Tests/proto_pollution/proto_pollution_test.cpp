@@ -59,6 +59,13 @@ int main(int argc, char **argv) {
         const QString q = withBuster("a=1");
         chk("buster: preserves existing param", q.contains("a=1") && q.contains("__nlcb="));
     }
+    {
+        // A stale __nlcb (a re-run, or a query that already carried one) must be
+        // STRIPPED before a fresh token is added -- exactly one __nlcb, not two.
+        const QString q = withBuster("a=1&__nlcb=stale123");
+        chk("buster: dedups a pre-existing __nlcb (exactly one)",
+            q.count("__nlcb=") == 1 && !q.contains("stale123") && q.contains("a=1"));
+    }
 
     // ---- buildGet / buildPollute: CR/LF guards --------------------------
     {
@@ -79,6 +86,18 @@ int main(int argc, char **argv) {
         injHdr.headers.append(qMakePair(QString("Cookie"), QString("a=1\r\nX-Smuggled: 1")));
         chk("get: drops CRLF carried header",
             !buildGet(injHdr, "/api/me", QString()).contains("X-Smuggled"));
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-A\r\nX-Smuggled"), QString("1")));
+        chk("get: drops CRLF in a carried header NAME",
+            !buildGet(injName, "/api/me", QString()).contains("X-Smuggled"));
+        // buildPollute forces its own Content-Type: a carried one is dropped so it
+        // can't coexist with the computed Content-Length (CL.TE) / conflict.
+        Request dupCt = req;
+        dupCt.headers.append(qMakePair(QString("Content-Type"), QString("text/xml")));
+        const QByteArray pc = buildPollute(dupCt, "/api/merge", body);
+        chk("pollute: carried Content-Type dropped (own json wins, exactly one)",
+            pc.count("Content-Type:") == 1 && pc.contains("Content-Type: application/json\r\n")
+            && !pc.contains("text/xml"));
 
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("get: CRLF host -> empty", buildGet(badHost, "/api/me", QString()).isEmpty());
