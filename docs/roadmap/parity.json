@@ -1792,10 +1792,10 @@
     {
       "area": "extender",
       "feature": "[B31] BApp Store: version-compatibility gating ('requires a later version')",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Nothing prevents installing an extension written against a different API generation; a breaking change surfaces as a runtime TypeError in the extension log.",
+      "gap": "RECONCILED 2026-08-20 (backend+API live): a catalog entry may now declare minVersion; parseCatalog reads it, isVersionCompatible + merge(catalog,...,currentVersion) flag an entry needing a newer build as {compatible:false, incompatReason}, surfaced in the /api marketplace JSON with NULLOCK_VERSION baked into the Control target. Remaining: the ui-v2 greys/blocks Install on an incompatible entry. Original gap: nothing prevents installing an extension written against a different API generation; a breaking change surfaces as a runtime TypeError in the extension log.",
       "why": "CONFIRMED against the NEW schema specifically, which was the place an upgrade could have hidden: `grep -n 'minVersion|requiresVersion|compatib|apiVersion' marketplace_logic.cpp marketplace.cpp extensions/marketplace.json` = 0 hits. parseCatalog reads id/name/summary/version/author/url/sha256/categories/hooks/permissions and nothing else, so there is no field to gate on even though the parser was j",
       "evidence": "marketplace_logic.cpp:92-101 \u2014 the complete entry read: `e.id = str(o, \"id\", 64); e.name = ...; e.summary = ...; e.version = ...; e.author = ...; e.url = ...; e.sha256 = ...; e.categories = strList(o, \"categories\"); e.hooks = strList(o, \"hooks\"); e.declaredPermissions = strList(o, \"permissions\", 8);`"
     },

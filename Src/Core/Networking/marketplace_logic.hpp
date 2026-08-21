@@ -74,6 +74,10 @@ struct CatalogEntry {
     // What the catalog CLAIMS the extension will ask for. Advisory only -- the
     // authority is what parsePermissions() finds in the downloaded script.
     QStringList declaredPermissions;
+    // Minimum Nullock version this extension requires (semver, "" = any). An
+    // older running build gates the entry as incompatible (Burp's "requires a
+    // later version" -- [B31]).
+    QString     minVersion;
 };
 
 struct Catalog {
@@ -98,7 +102,17 @@ struct MergedEntry {
     CatalogEntry entry;
     InstallState state = InstallState::NotInstalled;
     QString      installedVersion;   // empty unless known
+    // Version-compatibility gate ([B31]): false when the entry's minVersion is
+    // newer than the running Nullock build. The UI greys it and shows the reason
+    // rather than offering an Install button that would fetch an unrunnable
+    // extension. An already-installed entry stays usable (never gated off).
+    bool         compatible = true;
+    QString      incompatReason;     // user-facing, e.g. "requires Nullock >= 4.0.0"
 };
+
+// True when `minVersion` (semver, "" = any) is satisfied by the running
+// `currentVersion`. Pure; the gate merge() applies. Exposed for the unit test.
+bool isVersionCompatible(const QString &minVersion, const QString &currentVersion);
 
 // ---- catalog ------------------------------------------------------------
 
@@ -198,9 +212,12 @@ InstallAudit auditInstall(const CatalogEntry &entry,
 // being hidden, so a user can always see everything the engine will load --
 // including a hand-written script, and including one that has been withdrawn
 // from the catalog since it was installed.
+// `currentVersion` (the running Nullock version) drives the [B31] compatibility
+// gate; empty disables gating (every entry stays compatible).
 QList<MergedEntry> merge(const Catalog &catalog,
                          const QStringList &installedFiles,
-                         const QList<QPair<QString, QString>> &installedVersions);
+                         const QList<QPair<QString, QString>> &installedVersions,
+                         const QString &currentVersion = QString());
 
 // Read the `// nullock:version 1.2.3` directive an installed script may carry,
 // so an update can be detected without trusting a filename. Empty when absent.

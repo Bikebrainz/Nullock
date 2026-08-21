@@ -13,6 +13,11 @@ target_link_libraries(Control PUBLIC
     Qt6::Sql
     Proxy
 )
+# Bake in the build version so the marketplace compatibility gate ([B31]) can
+# compare a catalog entry's minVersion against the running build.
+target_compile_definitions(Control PRIVATE
+    NULLOCK_VERSION="${PROJECT_VERSION}"
+)
 # extensions_api.hpp (included transitively for ExtensionsApi forward decl)
 # pulls in <QJSEngine>; only used in the .cpp's snapshot builder, so keep
 # Qml as a PRIVATE compile-time dep.

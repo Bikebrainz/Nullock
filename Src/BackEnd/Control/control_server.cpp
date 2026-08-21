@@ -5923,10 +5923,17 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
 
         const QString dir = m_wiring.extensions->extensionsDir();
+        const QString nullockVer =
+#ifdef NULLOCK_VERSION
+            QStringLiteral(NULLOCK_VERSION);
+#else
+            QString();   // gate disabled if the version wasn't baked in
+#endif
         const auto merged = Nullock::Core::MarketplaceLogic::merge(
             fetched.catalog,
             Nullock::Core::Marketplace::installedFiles(dir),
-            Nullock::Core::Marketplace::installedVersions(dir));
+            Nullock::Core::Marketplace::installedVersions(dir),
+            nullockVer);
 
         QJsonArray items;
         for (const auto &m : merged) {
@@ -5953,6 +5960,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 { "sha256",      m.entry.sha256 },
                 { "state",       QString::fromLatin1(state) },
                 { "installedVersion", m.installedVersion },
+                // [B31] compatibility gate for the UI: an entry requiring a newer
+                // Nullock is flagged so the UI can grey it + show the reason
+                // instead of offering Install.
+                { "minVersion",     m.entry.minVersion },
+                { "compatible",     m.compatible },
+                { "incompatReason", m.incompatReason },
             });
         }
         return okJson({{ "ok", true },

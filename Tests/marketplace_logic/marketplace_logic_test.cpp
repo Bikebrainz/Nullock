@@ -375,6 +375,29 @@ int main(int argc, char **argv) {
             chk("merge: a non-.js file in the dir is ignored",
                 m.size() == 2);
         }
+
+        // ---- [B31] version-compatibility gate --------------------------
+        chk("compat: no minVersion -> compatible", isVersionCompatible("", "3.8.0"));
+        chk("compat: no running version -> compatible (fail open)",
+            isVersionCompatible("4.0.0", ""));
+        chk("compat: running > min -> compatible", isVersionCompatible("3.0.0", "3.8.0"));
+        chk("compat: running == min -> compatible", isVersionCompatible("3.8.0", "3.8.0"));
+        chk("compat: running < min -> INCOMPATIBLE", !isVersionCompatible("4.0.0", "3.8.0"));
+        {
+            Catalog cg;
+            CatalogEntry needs4; needs4.id = "needs4"; needs4.version = "1.0.0"; needs4.minVersion = "4.0.0";
+            CatalogEntry okv;    okv.id    = "okv";    okv.version    = "1.0.0"; okv.minVersion    = "3.0.0";
+            cg.entries = { needs4, okv };
+            const auto m = merge(cg, {}, {}, "3.8.0");
+            chk("merge gate: entry requiring a newer Nullock is incompatible + reason",
+                !m.at(0).compatible && m.at(0).incompatReason.contains("4.0.0"));
+            chk("merge gate: entry within range is compatible",
+                m.at(1).compatible && m.at(1).incompatReason.isEmpty());
+            // No currentVersion passed -> gate disabled, everything compatible.
+            const auto mng = merge(cg, {}, {});
+            chk("merge gate: no running version -> gate disabled (all compatible)",
+                mng.at(0).compatible && mng.at(1).compatible);
+        }
     }
 
     std::fprintf(stderr, "\nmarketplace_logic: %d passed, %d failed\n", pass, fail);

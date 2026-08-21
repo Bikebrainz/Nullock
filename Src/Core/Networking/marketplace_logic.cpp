@@ -99,6 +99,7 @@ Catalog parseCatalog(const QByteArray &json) {
         e.categories = strList(o, "categories");
         e.hooks      = strList(o, "hooks");
         e.declaredPermissions = strList(o, "permissions", 8);
+        e.minVersion = str(o, "minVersion", 32).trimmed();
 
         // Every one of these is a hard requirement. A entry that fails any of
         // them is not "partially usable" -- it is an entry we cannot safely
@@ -301,9 +302,19 @@ QString parseInstalledVersion(const QString &jsSource) {
     return m.hasMatch() ? m.captured(1) : QString();
 }
 
+bool isVersionCompatible(const QString &minVersion, const QString &currentVersion) {
+    // No requirement, or no known running version -> don't gate (fail open to
+    // "compatible" so a missing version string never hides a usable extension).
+    if (minVersion.trimmed().isEmpty() || currentVersion.trimmed().isEmpty())
+        return true;
+    // Compatible when running >= required.
+    return UpdateLogic::compareSemver(currentVersion, minVersion) >= 0;
+}
+
 QList<MergedEntry> merge(const Catalog &catalog,
                          const QStringList &installedFiles,
-                         const QList<QPair<QString, QString>> &installedVersions) {
+                         const QList<QPair<QString, QString>> &installedVersions,
+                         const QString &currentVersion) {
     QMap<QString, QString> versionOf;
     for (const auto &kv : installedVersions) versionOf.insert(kv.first, kv.second);
 
@@ -319,6 +330,13 @@ QList<MergedEntry> merge(const Catalog &catalog,
     for (const CatalogEntry &e : catalog.entries) {
         MergedEntry m;
         m.entry = e;
+        // [B31] compatibility gate: an entry requiring a newer Nullock than the
+        // one running is flagged incompatible with a user-facing reason. (The UI
+        // greys it + disables Install; an already-installed copy keeps running.)
+        if (!isVersionCompatible(e.minVersion, currentVersion)) {
+            m.compatible = false;
+            m.incompatReason = QStringLiteral("requires Nullock >= ") + e.minVersion;
+        }
         if (installedIds.contains(e.id)) {
             covered.insert(e.id);
             m.installedVersion = versionOf.value(e.id);
