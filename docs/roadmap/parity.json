@@ -1827,7 +1827,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "4584fff",
         "note": "[B33] partial -> present: all 14 shipped extensions now emit the // nullock:version directive, lighting up the already-built update-available badge + reinstall-to-update flow end to end."
       }
     },
