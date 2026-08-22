@@ -10,6 +10,7 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QtGlobal>   // qAbs
 
 namespace Nullock::Core::JwtProbe {
 
@@ -41,6 +42,49 @@ bool isCredentialHeader(const QString &name) {
     return n == "cookie" || n == "authorization"
         || n.contains("auth") || n.contains("token")
         || n.contains("session") || n.contains("api-key") || n.contains("apikey");
+}
+
+// ---- Acceptance verdict (pure) -- see jwt_probe.hpp for the contract ------
+bool forgeryAccepted(int xStatus, int xLen,
+                     int validStatus, int validLen,
+                     int rejStatus, int rejLen) {
+    if (xStatus != validStatus) return false;
+    // A reject baseline with a DIFFERENT status already distinguishes an
+    // authorized-status forgery -- no body tiebreak (and reject's length, from
+    // a different status, is not a meaningful reference). Only a shared status
+    // (a body-only auth gate) lets length decide. Strict '<' so an exact
+    // midpoint no longer auto-accepts.
+    if (validStatus != rejStatus) return true;
+    return qAbs(xLen - validLen) < qAbs(xLen - rejLen);
+}
+
+bool corruptLooksAuthorized(int xStatus, int xLen,
+                            int validStatus, int validLen, int noAuthLen) {
+    if (xStatus != validStatus) return false;
+    // A server that does NOT verify the signature serves the corrupt token
+    // from the SAME authorized handler, so its page is essentially identical
+    // to valid. Require the corrupt length within 1/8 of the valid<->noAuth
+    // span of valid -- a verbose "invalid token" reject page merely past the
+    // midpoint sits well outside this neighbourhood and is not "accepted".
+    const int span = qAbs(validLen - noAuthLen);
+    return span == 0 ? xLen == validLen
+                     : qAbs(xLen - validLen) * 8 <= span;   // <= 12.5% of span
+}
+
+bool corruptProbeAccepted(bool rejectHasBaseline,
+                          int validStatus, int validLen,
+                          int noAuthStatus, int noAuthLen,
+                          int rejectStatus, int rejectLen) {
+    // No usable forged-rejection baseline (the tampered probe was dropped) ->
+    // we cannot judge the corrupt page's acceptance.
+    if (!rejectHasBaseline) return false;
+    // Status difference settles it with no body neighbourhood needed; a shared
+    // status requires the absolute neighbourhood test.
+    return (validStatus != noAuthStatus)
+        ? forgeryAccepted(rejectStatus, rejectLen, validStatus, validLen,
+                          noAuthStatus, noAuthLen)
+        : corruptLooksAuthorized(rejectStatus, rejectLen, validStatus, validLen,
+                                 noAuthLen);
 }
 
 QByteArray buildRequest(const Request &req, const QString &token) {

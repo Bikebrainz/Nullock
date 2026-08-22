@@ -75,15 +75,12 @@ static Result testOneCarrier(const Request &req) {
     // against the no-token page, so a forged-rejection page sized near valid
     // false-accepted every forgery. Comparing against the actual forged-rejection
     // page closes that. Strict '<' so an exact midpoint no longer auto-accepts.
+    // The acceptance verdict is now the pure forgeryAccepted() in
+    // jwt_probe_logic.cpp (unit-tested); these lambdas just bind the captured
+    // valid/noAuth baselines to it so the attack-class code below reads the same.
     auto looksValid = [&](const Resp &x, const Resp &rej) -> bool {
-        if (x.status != valid.status) return false;
-        // If the rejected baseline has a DIFFERENT status, a forgery that returns
-        // the authorized status is already distinguished -- no body tiebreak
-        // needed (and the reject page's length, from a different status, isn't a
-        // meaningful 200-vs-200 reference). Only when valid and reject share a
-        // status (a body-only gate) does the length decide.
-        if (valid.status != rej.status) return true;
-        return qAbs(x.len - valid.len) < qAbs(x.len - rej.len);
+        return forgeryAccepted(x.status, x.len, valid.status, valid.len,
+                               rej.status, rej.len);
     };
     // If the corrupt token ITSELF reads as valid, the server doesn't verify the
     // signature -- then it can't serve as the reject baseline, so the other
@@ -103,19 +100,14 @@ static Result testOneCarrier(const Request &req) {
     // require the corrupt length within 1/8 of the valid<->noAuth span of valid.
     // (A verbose "invalid token" reject page sized merely past the midpoint is
     // well outside this neighborhood and is no longer mistaken for acceptance.)
-    auto looksLikeValidBody = [&](const Resp &x) -> bool {
-        if (x.status != valid.status) return false;
-        const int span = qAbs(valid.len - noAuth.len);
-        return span == 0 ? x.len == valid.len
-                         : qAbs(x.len - valid.len) * 8 <= span;   // <= 12.5% of the span
-    };
-    // When valid and the corrupt page differ in STATUS, status alone settles it
-    // (no body neighborhood needed); otherwise require the absolute neighborhood.
-    // If the corrupt probe was dropped (no baseline) we can't judge acceptance of
-    // the corrupt page, and the reject baseline falls back to the no-token page.
-    const bool corruptAccepted = rejectHasBaseline
-        && ((valid.status != noAuth.status) ? looksValid(reject, noAuth)
-                                            : looksLikeValidBody(reject));
+    // Whether the signature-corrupted page reads as authorized (server doesn't
+    // verify signatures) -- derived by the pure corruptProbeAccepted(), which
+    // uses status-difference vs the absolute body neighbourhood exactly as the
+    // two lambdas above. If the corrupt probe was dropped (no baseline) we can't
+    // judge it and the reject baseline falls back to the no-token page.
+    const bool corruptAccepted = corruptProbeAccepted(
+        rejectHasBaseline, valid.status, valid.len,
+        noAuth.status, noAuth.len, reject.status, reject.len);
     const Resp rejectBaseline = (corruptAccepted || !rejectHasBaseline) ? noAuth : reject;
     auto accepted = [&](const Resp &x) -> bool { return looksValid(x, rejectBaseline); };
     auto acceptedStably = [&](const QString &token) -> bool {

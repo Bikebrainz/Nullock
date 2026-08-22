@@ -257,6 +257,65 @@ int main(int argc, char **argv) {
             != JwtTool::signHmac(fd0.header, fd0.payload, QByteArray("secret")).section('.', 2, 2));
     }
 
+    // ===== acceptance verdict (pure) ====================================
+    // The security brain of scan(), extracted from inline lambdas. A false
+    // positive brands a secure server JWT-forgeable; a false negative misses a
+    // real bypass. Cases pin the exact status-tiebreak and length rules.
+    {
+        // ---- forgeryAccepted: same status required --------------------
+        chk("verdict: forgery with a different status is not accepted",
+            !forgeryAccepted(/*x*/403,100, /*valid*/200,100, /*rej*/401,100));
+        // A reject baseline with a DIFFERENT status settles it on status alone:
+        // an authorized-status forgery is accepted regardless of its body size.
+        chk("verdict: authorized-status forgery accepted despite far body len "
+            "(status-distinguished reject)",
+            forgeryAccepted(200,5000, 200,100, 401,90));
+        // Body-only gate (valid & reject share status): length proximity decides.
+        chk("verdict: body-only gate, len closer to valid -> accepted",
+            forgeryAccepted(200,105, 200,100, 200,500));
+        chk("verdict: body-only gate, len closer to reject -> not accepted",
+            !forgeryAccepted(200,480, 200,100, 200,500));
+        // Strict '<' -- an exact midpoint no longer auto-accepts (valid=100,
+        // rej=200 -> midpoint 150; |150-100| == |150-200|).
+        chk("verdict: exact midpoint is NOT accepted (strict inequality)",
+            !forgeryAccepted(200,150, 200,100, 200,200));
+
+        // ---- corruptLooksAuthorized: the signature-ignored neighbourhood --
+        chk("verdict: corrupt page with a different status is not authorized",
+            !corruptLooksAuthorized(403,100, 200,100, 50));
+        // span==0 (valid.len==noAuth.len) demands an exact length match.
+        chk("verdict: zero-span requires exact length match (hit)",
+            corruptLooksAuthorized(200,100, 200,100, 100));
+        chk("verdict: zero-span requires exact length match (miss by 1)",
+            !corruptLooksAuthorized(200,101, 200,100, 100));
+        // valid=1000, noAuth=200 -> span 800, neighbourhood = 1/8 = 100.
+        chk("verdict: corrupt len within 1/8 span of valid -> authorized",
+            corruptLooksAuthorized(200,1050, 200,1000, 200));
+        chk("verdict: 1/8-span boundary is inclusive (<=)",
+            corruptLooksAuthorized(200,900, 200,1000, 200));   // |100|*8 == 800
+        // THE headline FP guard: a verbose reject page sized PAST the midpoint
+        // (nearer valid than noAuth) but outside the neighbourhood is NOT
+        // "authorized" -- else sig-not-verified fires on a server that rejects.
+        chk("verdict: reject page past midpoint but outside neighbourhood is NOT authorized",
+            !corruptLooksAuthorized(200,700, 200,1000, 200));  // nearer valid, |300|*8 > 800
+
+        // ---- corruptProbeAccepted: composition + baseline gate --------
+        chk("verdict: no forged-rejection baseline -> corrupt never 'accepted'",
+            !corruptProbeAccepted(/*rejectHasBaseline*/false, 200,1000, 200,200, 200,1000));
+        // Status-gate endpoint (valid 200 vs noAuth 401): a corrupt page that
+        // returns the authorized status means the signature was ignored.
+        chk("verdict: status-gate, corrupt returns authorized status -> accepted",
+            corruptProbeAccepted(true, 200,100, 401,50, 200,999));
+        chk("verdict: status-gate, corrupt returns the no-auth status -> not accepted",
+            !corruptProbeAccepted(true, 200,100, 401,50, 401,50));
+        // Body-only endpoint (valid & noAuth share status): the absolute
+        // neighbourhood decides whether the corrupt page was accepted.
+        chk("verdict: body-only gate, corrupt in neighbourhood -> accepted",
+            corruptProbeAccepted(true, 200,1000, 200,200, 200,1050));
+        chk("verdict: body-only gate, corrupt outside neighbourhood -> not accepted",
+            !corruptProbeAccepted(true, 200,1000, 200,200, 200,700));
+    }
+
     std::fprintf(stderr, "jwt_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

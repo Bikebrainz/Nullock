@@ -96,4 +96,32 @@ QStringList kidInjectionVariants(const JwtTool::Decoded &d);
 bool isCredentialHeader(const QString &name);
 QStringList defaultSecrets();
 
+// ---- Acceptance verdict (pure) -------------------------------------------
+// The security-critical decision of scan(): given only the numeric shape
+// (HTTP status + body length) of a probe response versus the calibrated
+// baselines, did the server ACCEPT the forgery? A false positive here brands
+// a secure server JWT-forgeable; a false negative misses a real bypass. These
+// were inline lambdas in scan() (untested); extracted so a unit test can pin
+// the length-neighbourhood and status-tiebreak rules. Params are ints so the
+// test needs no HttpClient. Mirrors the ssrf/cors/host-header verdict split.
+//
+//   forgeryAccepted -- a forged response matches the VALID baseline: same
+//     status, and (only when valid and the reject baseline share a status --
+//     a body-only gate) body length STRICTLY closer to valid than to reject.
+//   corruptLooksAuthorized -- the signature-corrupted page reads as the
+//     authorized page (server ignores signatures): same status AND length
+//     within 1/8 of the valid<->noAuth span of valid (absolute neighbourhood).
+//   corruptProbeAccepted -- composes the two the way scan() derives
+//     corruptAccepted: status-difference -> forgeryAccepted vs noAuth, shared
+//     status -> the absolute neighbourhood; false when the probe didn't land.
+bool forgeryAccepted(int xStatus, int xLen,
+                     int validStatus, int validLen,
+                     int rejStatus, int rejLen);
+bool corruptLooksAuthorized(int xStatus, int xLen,
+                            int validStatus, int validLen, int noAuthLen);
+bool corruptProbeAccepted(bool rejectHasBaseline,
+                          int validStatus, int validLen,
+                          int noAuthStatus, int noAuthLen,
+                          int rejectStatus, int rejectLen);
+
 } // namespace Nullock::Core::JwtProbe

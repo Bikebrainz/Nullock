@@ -27,6 +27,23 @@ developer-facing record.
   `Server:` cf-prefix guard and the intentional one-WAF-per-response `break`, so a
   future regression that silently blinds recon to a target's edge protection now
   fails the suite.
+- Mutation-proven regression coverage locked for the API-doc/GraphQL-console
+  exposure detectors (`swagger-spec`, `openapi-spec`, `graphql-voyager`,
+  `graphql-playground`) and the CMS fingerprint family (`cms-joomla`,
+  `cms-shopify`, `cms-aem`, `cms-umbraco`, `cms-confluence`, `cms-jira`),
+  including negatives that pin the `200`-only exposure gate, the `2xx`&ndash;`3xx`
+  CMS gate, and the one-CMS-per-response latch. (These detectors were emitted but
+  untested &mdash; a growth of the passive scanner that outran its corpus.)
+- **JWT probe acceptance verdict extracted into pure, unit-tested logic.** The
+  decision of whether a server *accepted* a forged token (alg:none, weak/blank
+  secret, RS256&rarr;HS256 confusion, kid injection) lived in untested inline
+  lambdas in `scan()`. It is now `forgeryAccepted` / `corruptLooksAuthorized` /
+  `corruptProbeAccepted` in `jwt_probe_logic.cpp`, mutation-proven against the
+  exact rules a bug here would break &mdash; the strict-midpoint length tiebreak,
+  the 1/8-span "signature-ignored" neighbourhood (the false-positive guard that
+  keeps a server which *rejects* bad signatures from being branded forgeable),
+  and the forged-rejection baseline gate. Behaviour is unchanged (probe_smoke's
+  end-to-end JWT cases still pass); the logic is simply now testable and pinned.
 
 ## [3.8.0] — 2026-08-20
 
