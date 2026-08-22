@@ -3483,7 +3483,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "446d097",
         "note": "Intercept Params-view wave: partial -> partial, gap narrowed further (not a state flip -- binary-safe hex editing is still the one genuinely missing piece of the six-view set). Added an editable QUERY/BODY/COOKIE Params grid to the held-request editor, closing the prior wave's own explicitly-named remaining gap. No backend change."
       }
     },
