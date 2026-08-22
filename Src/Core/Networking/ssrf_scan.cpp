@@ -124,17 +124,20 @@ static Result testSingleParam(const Request &reqIn) {
 
     auto confirm = [&](const Probe &p) {
         const QString sig = QString::fromLatin1(p.signature);
-        if (baseBody.contains(sig)) return;             // served unconditionally
+        const bool baseHasSig = baseBody.contains(sig);
+        if (baseHasSig) return;                         // served unconditionally
         const auto r = sendWith(QString::fromLatin1(p.url));
-        if (!r.ok || !bodyOf(r).contains(sig)) return;  // not fetched / not present
+        const bool probeOk = r.ok;
+        const bool probeHasSig = probeOk && bodyOf(r).contains(sig);
+        if (!probeOk || !probeHasSig) return;           // not fetched / not present
         // Shaped control: a same-shape, non-fetchable sibling. If the signature
         // is here too, it tracks the input shape (error/WAF/echo template), not
-        // a fetch -- suppress to keep the finding fetch-proven.
+        // a fetch -- suppress to keep the finding fetch-proven. The full verdict
+        // (baseline guard + detection + control gate) is the pure, unit-tested
+        // ssrfConfirms; the earlier returns just short-circuit the extra sends.
         const auto c = sendWith(QString::fromLatin1(p.control));
-        // FAIL CLOSED via the shared gate: report only when the control ran AND
-        // did not reproduce the signature. A reproduced sig is shape-tracking; a
-        // FAILED control leaves the FP defeater unrun -- neither is fetch-proven.
-        if (!controlProvesFetch(c.ok, bodyOf(c).contains(sig))) return;
+        if (!ssrfConfirms(baseHasSig, probeOk, probeHasSig,
+                          c.ok, bodyOf(c).contains(sig))) return;
         result.hits.append({ QString::fromLatin1(p.technique),
                              QString::fromLatin1(p.url), sig,
                              QString::fromLatin1(p.severity),
@@ -155,8 +158,7 @@ static Result testSingleParam(const Request &reqIn) {
             const auto roleResp = sendWith(listUrl);
             if (roleResp.ok) {
                 const QString role = bodyOf(roleResp).trimmed().section('\n', 0, 0).trimmed();
-                const bool roleLike = !role.isEmpty() && role.size() <= 128
-                    && !role.contains(' ') && !role.contains('<') && !role.contains('{');
+                const bool roleLike = isRoleLike(role);  // pure, unit-tested
                 if (roleLike && !bodyOf(roleResp).contains(sig)) {
                     const auto credResp = sendWith(listUrl + role);
                     if (credResp.ok && bodyOf(credResp).contains(sig)) {

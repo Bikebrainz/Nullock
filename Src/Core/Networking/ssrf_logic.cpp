@@ -79,4 +79,18 @@ bool controlProvesFetch(bool controlOk, bool controlReproducedSig) {
     return controlOk && !controlReproducedSig;
 }
 
+bool ssrfConfirms(bool baseHasSig, bool probeOk, bool probeHasSig,
+                  bool controlOk, bool controlReproducedSig) {
+    return !baseHasSig                                   // not served unconditionally
+        && probeOk && probeHasSig                        // fetched + signature present
+        && controlProvesFetch(controlOk, controlReproducedSig);  // fetch-proven
+}
+
+bool isRoleLike(const QString &role) {
+    return !role.isEmpty() && role.size() <= 128
+        && !role.contains(QLatin1Char(' '))
+        && !role.contains(QLatin1Char('<'))
+        && !role.contains(QLatin1Char('{'));
+}
+
 } // namespace Nullock::Core::SsrfScan

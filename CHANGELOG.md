@@ -73,6 +73,14 @@ developer-facing record.
   errors on valid data must not be branded RCE-vulnerable), the malformed-errors
   detection, and the flap re-confirm (a transient error between shots must not
   false-positive a critical finding). Behaviour unchanged.
+- SSRF scan's per-probe CONFIRMED verdict and the IMDS role-name gate extracted
+  to pure, unit-tested `ssrfConfirms()` / `isRoleLike()` and mutation-proven.
+  Only the shaped-control gate was previously tested; the baseline-absence
+  false-positive guard (a signature the target serves unconditionally isn't a
+  fetch) and the detection were inline in `confirm()`. `isRoleLike` gates the
+  two-step fetch of the critical `aws-imds-iam` AccessKeyId finding &mdash; tests
+  pin its `<=128` length boundary and that it accepts legal AWS role characters
+  (`+=,.@_-`) so a real role is never silently rejected. Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

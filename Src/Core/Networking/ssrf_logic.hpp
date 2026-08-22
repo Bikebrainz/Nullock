@@ -34,4 +34,25 @@ QByteArray buildRequest(const Request &req, const QString &query);
 // returns false (suppress) rather than fail open. PURE (no I/O).
 bool controlProvesFetch(bool controlOk, bool controlReproducedSig);
 
+// The full per-probe SSRF CONFIRMED verdict (pure). A hit is real only when:
+//   - the signature is NOT already served on the benign baseline (else it is
+//     served unconditionally and proves no fetch -- the baseline-absence FP guard);
+//   - the probe transported AND carried the signature (the detection); and
+//   - the shaped control proves a fetch (controlProvesFetch: ran AND did not
+//     reproduce the signature).
+// `baseHasSig` = the baseline body already contained the signature. Only
+// controlProvesFetch was previously unit-tested; the composition (the baseline
+// guard + detection) was inline in scan()'s confirm lambda. PURE (no I/O).
+bool ssrfConfirms(bool baseHasSig, bool probeOk, bool probeHasSig,
+                  bool controlOk, bool controlReproducedSig);
+
+// Does the IMDS security-credentials listing body look like a bare IAM ROLE
+// name (gating the deeper two-step credential fetch that yields the CRITICAL
+// aws-imds-iam AccessKeyId finding)? Non-empty, <= 128 chars, and free of the
+// space / '<' / '{' that mark an error page or JSON envelope rather than a role.
+// Must NOT reject legal AWS role characters (letters, digits, and +=,.@_-).
+// Was inline in scan(); a too-strict regression silently misses real credential
+// exposure, a too-loose one issues a follow-up to an attacker-shaped path. PURE.
+bool isRoleLike(const QString &role);
+
 } // namespace Nullock::Core::SsrfScan

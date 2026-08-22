@@ -184,6 +184,43 @@ int main(int argc, char **argv) {
             ssrfCandidateParams("TargetUrl=x").value(0) == "TargetUrl");
     }
 
+    // ---- ssrfConfirms: the full per-probe verdict (was inline) ---------
+    // controlProvesFetch was tested; the baseline-absence guard + detection
+    // that compose the actual VULNERABLE decision were inline in confirm().
+    {
+        // Fetch-proven: not on baseline, probe carried it, control clean.
+        chk("ssrfConfirms: baseline-absent + fetched + clean control -> VULNERABLE",
+            ssrfConfirms(false, true, true, true, false));
+        // Baseline already serves the signature -> served unconditionally, no fetch.
+        chk("ssrfConfirms: signature already on baseline -> NOT confirmed",
+            !ssrfConfirms(true, true, true, true, false));
+        // Probe didn't transport / didn't carry the signature -> no detection.
+        chk("ssrfConfirms: probe did not transport -> NOT confirmed",
+            !ssrfConfirms(false, false, false, true, false));
+        chk("ssrfConfirms: probe transported but no signature -> NOT confirmed",
+            !ssrfConfirms(false, true, false, true, false));
+        // Control reproduced the signature -> shape-tracking, not a fetch.
+        chk("ssrfConfirms: control reproduced signature -> NOT confirmed (shape-tracking)",
+            !ssrfConfirms(false, true, true, true, true));
+        // Control failed to run -> FP defeater unrun, fail closed.
+        chk("ssrfConfirms: control failed to run -> NOT confirmed (fail closed)",
+            !ssrfConfirms(false, true, true, false, false));
+    }
+
+    // ---- isRoleLike: the IMDS credential-fetch gate (was inline) -------
+    {
+        chk("isRoleLike: a plain role name -> true", isRoleLike("ec2-instance-role"));
+        chk("isRoleLike: empty -> false", !isRoleLike(QString()));
+        chk("isRoleLike: 128 chars -> true (boundary)", isRoleLike(QString(128, QLatin1Char('a'))));
+        chk("isRoleLike: 129 chars -> false (over boundary)", !isRoleLike(QString(129, QLatin1Char('a'))));
+        chk("isRoleLike: contains a space -> false", !isRoleLike("role with space"));
+        chk("isRoleLike: contains '<' (HTML error page) -> false", !isRoleLike("<html>err"));
+        chk("isRoleLike: contains '{' (JSON envelope) -> false", !isRoleLike("{\"error\":1}"));
+        // Must NOT reject legal AWS role characters (+=,.@_-).
+        chk("isRoleLike: a legal AWS role with +=,.@_- chars -> true",
+            isRoleLike("my.role+test=a,b@1_x-y"));
+    }
+
     std::fprintf(stderr, "ssrf_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
