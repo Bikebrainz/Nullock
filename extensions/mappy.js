@@ -1,5 +1,7 @@
 // mappy.js -- flag exposed JavaScript/CSS source maps.
 //
+// nullock:version 0.1.0
+//
 // Source maps are a build-time convenience that routinely ship to prod by
 // accident. A reachable .map file hands an attacker your ORIGINAL source --
 // pre-minification names, code comments, dead/feature-flagged branches,

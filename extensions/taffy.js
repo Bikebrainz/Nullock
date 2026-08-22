@@ -1,6 +1,7 @@
 // taffy.js -- inline tag-based transforms on outgoing requests.
 //
 // nullock:permissions modify-requests
+// nullock:version 0.1.0
 //
 // A proxy-side port of Gareth Heyes' Hackvertor (one of the most-installed
 // BApps). Hackvertor lets you drop <@tag>...<@/tag> markup into a request

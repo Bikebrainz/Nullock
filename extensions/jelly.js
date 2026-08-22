@@ -1,5 +1,7 @@
 // jelly.js -- wobbly JSON: JSONP endpoints & cross-site JSON hijacking.
 //
+// nullock:version 0.1.0
+//
 // A JSONP endpoint wraps its data in an attacker-named callback, so any site
 // can <script src> it and read the response cross-origin -- and if the
 // callback name is reflected raw, that's reflected XSS on top. Top-level JSON

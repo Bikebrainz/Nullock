@@ -1,5 +1,7 @@
 // crumbs.js -- endpoint & route crumbs picked out of served JavaScript.
 //
+// nullock:version 0.1.0
+//
 // The recon staple: modern apps ship their whole API surface in the JS
 // bundle. Pull the paths, fetch()/axios() targets and route strings out of
 // every script that flows past, and you get a map of endpoints to go poke --

@@ -1,5 +1,7 @@
 // sniffy.js -- a nose for interesting data in responses (HaE-style).
 //
+// nullock:version 0.1.0
+//
 // Highlighter-and-Extractor's whole idea is a user-editable rule list that
 // tags interesting strings as they fly past -- PII, custom markers, whatever
 // this engagement cares about. Nullock's native scanner hunts *credentials*;

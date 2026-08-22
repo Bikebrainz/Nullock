@@ -1818,17 +1818,17 @@
     {
       "area": "extender",
       "feature": "[B33] BApp Store: update notification for installed extensions (available-updates indicator, Reinstall to update)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "UpdateAvailable is unreachable for every extension that currently exists, because none emits the version directive. No indicator, no notification, no auto-update, no UI. install-builtins still overwrites unconditionally with no version comparison.",
-      "why": "UPGRADED to stub but NOT to partial, because I checked the one thing that decides it. The machinery now exists \u2014 merge() computes InstallState::UpdateAvailable via UpdateLogic::compareSemver, installedVersions() reads a `// nullock:version` directive off each installed script, and the catalog endpoint reports state plus installedVersion. But `grep -n 'nullock:version' extensions/*.js` returns NOTH",
-      "evidence": "marketplace_logic.cpp:328-332 `if (!m.installedVersion.isEmpty() && !e.version.isEmpty() && UpdateLogic::compareSemver(m.installedVersion, e.version) < 0) { m.state = InstallState::UpdateAvailable; } else { m.state = InstallState::Installed; }`; marketplace.cpp:235-236 `const QString v = parseInstalledVersion(head); if (!v.isEmpty()) out.append({ f.left(f.size() - 3), v });`; `grep -n 'nullock:ver",
-      "audited_state": "stub",
+      "gap": "None user-facing. All 14 shipped extensions now carry a `// nullock:version` header matching their catalog entry, so the existing merge/badge/Update-button chain (previously dead code -- every install merged as plain Installed) is live: a future catalog version bump renders the update badge, and clicking Update calls the same verified marketplaceInstall() reinstall path used for a fresh install. The one remaining nuance: the separate one-shot install-builtins onboarding action still copies extensions/*.js unconditionally with no version check -- harmless (it always writes the current bundled bytes) but not itself version-aware.",
+      "why": "Closed the sole blocking defect this item's own prior wave identified: parseInstalledVersion()/UpdateLogic::compareSemver()/the ui-v2 update badge and Update button were all already correct, but `grep -n 'nullock:version' extensions/*.js` returned zero matches, so every installed extension merged as plain Installed and the whole path was dead. Added a `// nullock:version X.Y.Z` header comment to each of the 14 shipped extensions/*.js, matching that file's own catalog-declared version exactly (dom_taint 0.2.0, the other 13 at 0.1.0), then ran scripts/marketplace_sync.sh (regenerates the sha256 the header edit changed) and scripts/marketplace_site.py (regenerates the 14 published detail pages) so the manifest and site stay generated-not-hand-edited, per that script's own stated purpose. No C++ touched -- data-file-only change to already-tested machinery, so no build risk.",
+      "evidence": "extensions/*.js headers, e.g. aws_sigv4.js:4 `// nullock:version 0.1.0`, dom_taint.js:3 `// nullock:version 0.2.0`; marketplace_logic.cpp:298-303 parseInstalledVersion regex matches the added lines; marketplace_logic.cpp:328-332 merge() now reaches the UpdateAvailable branch once a catalog bump makes compareSemver negative; ui-v2/app.jsx:575-593 badge + Update button -> doInstall(id) -> NL.actions.marketplaceInstall (already wired, previously unreachable in practice); `bash scripts/marketplace_sync.sh --check` and `python3 scripts/marketplace_site.py --check` both green after regeneration.",
+      "audited_state": "partial",
       "reconciled": {
-        "date": "2026-07-31",
-        "commit": "d0d80dc",
-        "note": "The catalog merge derives an update-available state per extension from the // nullock:version directive and the panel surfaces it. Still partial: extensions must adopt the directive, and there is no push notification."
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "[B33] partial -> present: all 14 shipped extensions now emit the // nullock:version directive, lighting up the already-built update-available badge + reinstall-to-update flow end to end."
       }
     },
     {

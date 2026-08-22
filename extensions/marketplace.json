@@ -16,7 +16,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/dom_taint.js",
-      "sha256": "8c02c0578289944a6dc858726e7a1357804bff3872a80480fa606b496b554d1a",
+      "sha256": "47607f68394fea784b90f1f6475f0b93d484f87c69767593a3a342dc41485108",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -36,7 +36,7 @@
         "aws"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/aws_sigv4.js",
-      "sha256": "1a3963e705d1b7fac0eb18feef343dce04388055a720ae93fd44b5c4dc5b7165",
+      "sha256": "39a963f8f7df61c507ff70011d49b4bb5a21ae8a6f82b74cb2628c8cfddeecc4",
       "permissions": [
         "modify-requests"
       ],
@@ -83,7 +83,7 @@
         "fuzzing"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/identity_rotate.js",
-      "sha256": "57f532cef2afedc3364fdda7be96adc446d28f6169e20af98fbcbd491b51625b",
+      "sha256": "6dd3fb266f3b2871b779cb54ed5c3b19cc879507c7deef8655fbe291e9877f58",
       "permissions": [
         "modify-requests"
       ],
@@ -106,7 +106,7 @@
         "fuzzing"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/taffy.js",
-      "sha256": "6cca84bf59b65510c2c01bca8c4bb5d5d9c1cf52804f8daca311b47992d610ee",
+      "sha256": "b3f2a2cfd091330bf9432c560edc14ff570e6e34358f542522fcc1de62bd8145",
       "permissions": [
         "modify-requests"
       ],
@@ -129,7 +129,7 @@
         "injection"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/peep.js",
-      "sha256": "6a673f6747537b070bfb29a3b68ec56288a8cc6946ae57add1330c528f674056",
+      "sha256": "2f12950c232f02ca76ce45e2a54bd5f2e43b39b154a8482f6c1bbc5ba9abba1c",
       "permissions": [
         "modify-requests"
       ],
@@ -169,7 +169,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/waltz.js",
-      "sha256": "69f8d8a8da580ec660c17f5dbdff1137ecc5f46cd0824dd63ca3be6eb610a1c7",
+      "sha256": "ea4e66f7a16b61388092250e2c70c94800a023638e121b331f63c94c2d8163f7",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -190,7 +190,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sammy.js",
-      "sha256": "8eb5f0f5a9ce132002c9bfc44b09fd7d045f283f61f793e1c0a40ad8088eeb29",
+      "sha256": "1a151a92e9a9b189740cbff371d1731f50691b33f742e52d73636793ef016e8f",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -211,7 +211,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/mappy.js",
-      "sha256": "26a5324341a35480c0594abb40ecbd6704935dae3f69ae7c91706ada06889516",
+      "sha256": "3f78380fcdea0e57d09f2030e5c93565a63a9be9a9bb1e282c1566204cc79d58",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -232,7 +232,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/peekaboo.js",
-      "sha256": "b3bb17d73b0c91fc67e9b37cb49da34d25e1b95b2b707cea1149ee6566994964",
+      "sha256": "4ce5b0403508a5bce609c7c0b4b73f9c4ae147a8f56fdfaf7b2f68f558424dd3",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -252,7 +252,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hallpass.js",
-      "sha256": "5c145f2da8efcb45704888a1c2c514e9d07276cc43f62f753501c93d739cd1a5",
+      "sha256": "8895d630fd2df2e98b9cafe9211a53dc2d1247175bb5ebd67de99b54603ca3a8",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -273,7 +273,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/crumbs.js",
-      "sha256": "2dde54129c32e6d0a92380d9207248a8306cd20db516049c395daef0a24edb3e",
+      "sha256": "ec59d813b97aa9e284d2eeedee697a223432a5e67c7418fd2b4f3f5caa60a36e",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -294,7 +294,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/ouchie.js",
-      "sha256": "07b2a303e41610b02f9c3437dc05a984117879487ee20752ad214c9fedf3f1fe",
+      "sha256": "f56f06dae7fe11524c750913c1706a7c77ea4721fc0c0cc97958b8ef894d92a5",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -315,7 +315,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/sniffy.js",
-      "sha256": "87608151a483f010806a7fff656621085e8fb70d8b8f2b33cb61e58be8fab2ea",
+      "sha256": "3f9c22375100de7556ca373e5027633f6e7c2b9d6bcda155dc73a3eff7827969",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -336,7 +336,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/jelly.js",
-      "sha256": "14f25e273f4bfee8e8c6dc07ed3ca737581ed9fc8528172bd9ecd4fccd608f17",
+      "sha256": "9d3b48d1365382357e4fd87a082df680244fdb03c756c326eb963e5f2daa4423",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"

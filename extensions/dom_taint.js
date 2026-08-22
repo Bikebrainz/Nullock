@@ -1,5 +1,7 @@
 // dom_taint.js -- static DOM-XSS taint analysis on served HTML/JS.
 //
+// nullock:version 0.2.0
+//
 // Burp Pro's DOM Invader runs *inside* the browser and instruments the
 // live DOM at runtime. Nullock is a proxy, so we can't hook the page --
 // but every script the app serves passes through us, and we can analyse

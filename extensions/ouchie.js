@@ -1,5 +1,7 @@
 // ouchie.js -- catches the app saying "ouch" out loud.
 //
+// nullock:version 0.1.0
+//
 // Verbose errors are a gift to an attacker: framework stack traces leak
 // internal file paths, library versions, SQL, and sometimes source; an
 // interactive debugger page (Werkzeug console, Symfony/Whoops) can be an

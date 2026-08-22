@@ -1,5 +1,7 @@
 // waltz.js -- passive OAuth 2.0 / OpenID Connect misconfig auditor.
 //
+// nullock:version 0.1.0
+//
 // The proxy-side answer to EsPReSSO / OAuthScan: watch the OAuth dance go
 // by and flag the classic mistakes without sending a single extra request.
 // Nullock's native scanner already dissects JWTs; this covers the *flow*

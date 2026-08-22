@@ -1,6 +1,7 @@
 // identity_rotate.js -- per-request identity rotation.
 //
 // nullock:permissions modify-requests
+// nullock:version 0.1.0
 //
 // Rotates User-Agent, Accept-Language, Sec-CH-UA, and a handful of
 // other browser-fingerprint headers across a pool of realistic

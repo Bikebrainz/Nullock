@@ -1,5 +1,7 @@
 // sammy.js -- passive SAML response/assertion auditor.
 //
+// nullock:version 0.1.0
+//
 // A proxy-side take on SAML Raider (the SAML BApp everyone reaches for).
 // SAML Raider is an active editor for forging/replaying assertions; Nullock
 // can't hook the browser to intercept the POST, but it doesn't need to: the

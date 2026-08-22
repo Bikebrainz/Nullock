@@ -1,5 +1,7 @@
 // hallpass.js -- passive anti-CSRF token auditor for HTML forms.
 //
+// nullock:version 0.1.0
+//
 // A proxy-side CSRF Scanner: for every state-changing form the app serves,
 // check whether it carries an anti-CSRF token. Nullock's native scanner
 // grades cookie SameSite attributes, but SameSite is a backstop, not the

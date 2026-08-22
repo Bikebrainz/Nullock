@@ -1,5 +1,7 @@
 // peekaboo.js -- passive ASP.NET __VIEWSTATE auditor.
 //
+// nullock:version 0.1.0
+//
 // ASP.NET Web Forms round-trips page state through a base64 __VIEWSTATE
 // field. When it isn't encrypted (ViewStateEncryptionMode) it's readable --
 // leaking control tree, data-bound values and internal structure -- and when

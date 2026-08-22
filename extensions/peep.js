@@ -1,6 +1,7 @@
 // peep.js -- decorate outbound traffic with OAST canaries.
 //
 // nullock:permissions modify-requests
+// nullock:version 0.1.0
 //
 // A port of James Kettle's "Collaborator Everywhere" (PortSwigger's own
 // flagship BApp). The idea: a lot of blind server-side vulnerabilities --
