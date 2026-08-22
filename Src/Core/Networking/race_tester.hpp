@@ -53,7 +53,7 @@ struct Result {
     int     count = 0;
     int     successCount = 0;          // matched the success criteria
     int     rejectionCount = 0;       // CONTENTION-indicative loss: 409/422/423 only
-    int     otherClientError = 0;     // unrelated 4xx (400/401/403/404/...): noise, not a race signal
+    int     otherClientError = 0;     // unrelated 3xx redirects + 4xx (400/401/403/404/...): noise, not a race signal
     int     rateLimited = 0;          // 429
     int     serverError = 0;          // 5xx
     int     transportFail = 0;        // connection failed / dropped
@@ -91,6 +91,27 @@ bool isSafeMethod(const QString &method);
 // every write request won. Unrelated 4xx / 429 / 5xx / drops are noise.
 Verdict classify(int count, int successCount, int rejectionCount, int otherClientError,
                  int rateLimited, int serverError, int transportFail, bool safeMethod);
+
+// The atomic per-response "win" verdict (pure): status in [successMin,successMax]
+// AND (successMatch empty OR the body contains it). The body scan is truncated to
+// the first 256 KiB to bound cost -- a success marker beyond that is not seen (a
+// documented limitation; keep markers early). Was inline in test()'s worker.
+bool raceIsWin(int status, int successMin, int successMax,
+               const QByteArray &body, const QString &successMatch);
+
+// Which classify() bucket a single response falls into. Extracted from test()'s
+// inline histogram cascade so the raw-status -> bucket mapping is unit-tested.
+// NOTE the fix: 3xx redirects now count as OtherClientError (noise). Previously
+// they matched NO branch and vanished from classify's inputs, so a redirect-heavy
+// burst (e.g. 6x302 to a login page) bypassed the inconclusive noise guard and
+// could false-positive raceSuspected. A redirect did not cleanly exercise the
+// contended resource, so it is noise -- like an unrelated 4xx. Uncounted covers
+// only a 2xx-that-didn't-match-success (an ambiguous alternate response).
+enum class RaceBucket {
+    TransportFail, Success, RateLimited, ServerError,
+    Rejection, OtherClientError, Uncounted,
+};
+RaceBucket raceBucketOf(bool ok, bool success, int status);
 
 // Build the raw request. Returns empty if method/host/path or a carried header
 // carries a CR/LF (request-line / header injection guard).

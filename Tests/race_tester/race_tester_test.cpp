@@ -111,6 +111,49 @@ int main(int argc, char **argv) {
             co.count("Connection:") == 1 && !co.contains("keep-alive"));
     }
 
+    // ---- raceIsWin: the atomic per-response win verdict (was inline) ---
+    {
+        chk("raceIsWin: 200 in [200,299], no match -> win",
+            raceIsWin(200, 200, 299, QByteArray(), QString()));
+        chk("raceIsWin: 299 upper-inclusive -> win", raceIsWin(299, 200, 299, QByteArray(), QString()));
+        chk("raceIsWin: 300 above range -> not win", !raceIsWin(300, 200, 299, QByteArray(), QString()));
+        chk("raceIsWin: 199 below range -> not win", !raceIsWin(199, 200, 299, QByteArray(), QString()));
+        chk("raceIsWin: in range + body contains marker -> win",
+            raceIsWin(200, 200, 299, QByteArray("... granted: ok ..."), QStringLiteral("granted")));
+        chk("raceIsWin: in range but marker absent -> not win",
+            !raceIsWin(200, 200, 299, QByteArray("denied"), QStringLiteral("granted")));
+    }
+
+    // ---- raceBucketOf: status -> bucket, incl. the 3xx-as-noise fix ----
+    {
+        chk("bucket: transport fail", raceBucketOf(false, false, 0) == RaceBucket::TransportFail);
+        chk("bucket: success", raceBucketOf(true, true, 200) == RaceBucket::Success);
+        chk("bucket: 429 rate-limited", raceBucketOf(true, false, 429) == RaceBucket::RateLimited);
+        chk("bucket: 503 server error", raceBucketOf(true, false, 503) == RaceBucket::ServerError);
+        chk("bucket: 409 contention rejection", raceBucketOf(true, false, 409) == RaceBucket::Rejection);
+        chk("bucket: 422 contention rejection", raceBucketOf(true, false, 422) == RaceBucket::Rejection);
+        chk("bucket: 423 contention rejection", raceBucketOf(true, false, 423) == RaceBucket::Rejection);
+        chk("bucket: 404 unrelated 4xx -> noise", raceBucketOf(true, false, 404) == RaceBucket::OtherClientError);
+        // THE FIX: 3xx redirects are noise, not an untracked dead-zone.
+        chk("bucket: 302 redirect -> noise (fix, was uncounted)",
+            raceBucketOf(true, false, 302) == RaceBucket::OtherClientError);
+        chk("bucket: 301 redirect -> noise", raceBucketOf(true, false, 301) == RaceBucket::OtherClientError);
+        // A 2xx that didn't meet the success criteria stays ambiguous/uncounted.
+        chk("bucket: 204 non-success 2xx -> uncounted", raceBucketOf(true, false, 204) == RaceBucket::Uncounted);
+    }
+
+    // ---- FP fix end-to-end: a redirect-heavy burst is inconclusive -----
+    // 3 wins + 1x409 + 6x302. Before the fix the 6 redirects were uncounted, so
+    // infraNoise=0 -> not inconclusive -> raceSuspected TRUE (a false positive).
+    // Now the 6x302 count as otherClientError noise -> inconclusive -> NOT a race.
+    {
+        chk("race: 3 wins + 1x409 + 6x302(noise) -> inconclusive, NOT suspected",
+            V(10, 3, 1, /*other=*/6).inconclusive && !V(10, 3, 1, 6).raceSuspected);
+        // Sanity: the SAME shape with the redirects replaced by more wins/rejects
+        // (no noise) still reads as a race, so the guard only suppresses noise.
+        chk("race: 3 wins + 7x409 (no noise) -> still suspected", V(10, 3, 7, 0).raceSuspected);
+    }
+
     std::fprintf(stderr, "race_tester_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

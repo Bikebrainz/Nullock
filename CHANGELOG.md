@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Race-condition probe: a redirect-heavy burst could false-positive as a race.**
+  The burst classifier treats transport drops, 429s, 5xx, and unrelated 4xx as
+  "noise" that makes a run inconclusive &mdash; but 3xx redirects matched no bucket
+  in the status cascade and vanished from the accounting entirely. A burst that
+  was mostly 302s (e.g. redirects to a login page) alongside a couple of wins and
+  a 409 therefore evaded the inconclusive guard and reported `raceSuspected`. 3xx
+  responses now count as noise (a redirect didn't cleanly exercise the contended
+  resource), so a redirect-dominated burst is correctly inconclusive. The status
+  &rarr; bucket mapping and the win verdict are extracted to pure, unit-tested
+  `raceBucketOf()` / `raceIsWin()` (mutation-proven).
 - **WebSocket CSWSH probe: a transient reconnect failure could manufacture a
   "confirmed hijack".** After an authenticated cross-origin upgrade is accepted,
   the probe re-issues the same handshake with the credential stripped &mdash; only

@@ -46,9 +46,8 @@ Result test(const Request &req, int count, int successMin, int successMax,
             o.ok = r.ok;
             if (r.ok) {
                 o.status = r.parsed.statusCode;
-                const bool matchOk = successMatch.isEmpty()
-                    || QString::fromUtf8(r.parsed.body.left(256 * 1024)).contains(successMatch);
-                o.success = (o.status >= successMin && o.status <= successMax) && matchOk;
+                o.success = raceIsWin(o.status, successMin, successMax,
+                                      r.parsed.body, successMatch);
             }
             return o;
         });
@@ -57,18 +56,20 @@ Result test(const Request &req, int count, int successMin, int successMax,
 
     for (auto &f : futures) {
         const Outcome o = f.result();  // blocks until finished
-        if (!o.ok) { ++result.transportFail; continue; }
+        // Bucketing is the pure, unit-tested raceBucketOf (incl. the 3xx-as-noise
+        // fix); the counters below mirror its enum one-to-one.
+        const RaceBucket b = raceBucketOf(o.ok, o.success, o.status);
+        if (b == RaceBucket::TransportFail) { ++result.transportFail; continue; }
         result.statusHistogram[o.status]++;
-        if (o.success)                          ++result.successCount;
-        else if (o.status == 429)               ++result.rateLimited;
-        else if (o.status >= 500)               ++result.serverError;
-        // Only genuine CONTENTION rejections count as "lost the race": 409
-        // Conflict / 422 Unprocessable / 423 Locked. An unrelated 4xx (400 bad
-        // request, 401/403 auth, 404) is noise -- it does NOT imply a consumed
-        // resource and must not satisfy the raceSuspected gate.
-        else if (o.status == 409 || o.status == 422 || o.status == 423)
-                                                ++result.rejectionCount;
-        else if (o.status >= 400)               ++result.otherClientError;
+        switch (b) {
+            case RaceBucket::Success:          ++result.successCount;     break;
+            case RaceBucket::RateLimited:      ++result.rateLimited;      break;
+            case RaceBucket::ServerError:      ++result.serverError;      break;
+            case RaceBucket::Rejection:        ++result.rejectionCount;   break;
+            case RaceBucket::OtherClientError: ++result.otherClientError; break;
+            case RaceBucket::Uncounted:        /* 2xx-non-success: count nothing */ break;
+            case RaceBucket::TransportFail:    /* handled above */        break;
+        }
     }
 
     const Verdict v = classify(count, result.successCount, result.rejectionCount,

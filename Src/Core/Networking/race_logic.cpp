@@ -37,6 +37,28 @@ Verdict classify(int count, int successCount, int rejectionCount, int otherClien
     return v;
 }
 
+bool raceIsWin(int status, int successMin, int successMax,
+               const QByteArray &body, const QString &successMatch) {
+    const bool matchOk = successMatch.isEmpty()
+        || QString::fromUtf8(body.left(256 * 1024)).contains(successMatch);
+    return status >= successMin && status <= successMax && matchOk;
+}
+
+RaceBucket raceBucketOf(bool ok, bool success, int status) {
+    if (!ok)                     return RaceBucket::TransportFail;
+    if (success)                 return RaceBucket::Success;
+    if (status == 429)           return RaceBucket::RateLimited;
+    if (status >= 500)           return RaceBucket::ServerError;
+    // Genuine CONTENTION rejections only: 409 Conflict / 422 / 423 Locked.
+    if (status == 409 || status == 422 || status == 423)
+                                 return RaceBucket::Rejection;
+    // Noise: unrelated 4xx AND 3xx redirects -- neither cleanly exercised the
+    // contended resource, so both must count toward the inconclusive guard.
+    if (status >= 300)           return RaceBucket::OtherClientError;
+    // A 2xx that didn't match the success criteria: ambiguous, count nothing.
+    return RaceBucket::Uncounted;
+}
+
 QByteArray buildRequest(const Request &req) {
     auto crlf = [](const QString &s) { return s.contains('\r') || s.contains('\n'); };
     // method/host/path flow raw from the deep-audit / fromHistory path; a CR/LF
