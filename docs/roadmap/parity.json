@@ -5147,28 +5147,33 @@
     {
       "area": "target",
       "feature": "Engagement tools > Search (regex search across a site map branch, request and response)",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "hours",
-      "gap": "The critical silent-truncation defect is FIXED, and the case-sensitivity toggle + negative-match operator are now DONE (see reconciled). Remaining vs Burp: cannot scope to a site-map branch (branches don't exist yet).",
-      "why": "Upgraded within partial. The fail-silent bug -- the scan examined only the OLDEST 500 rows and reported a complete result, and the DEEP filter then hid the matching recent rows -- is resolved. The scan is now newest-first, uncapped (bounded by the 1s wall-clock budget), and reports scanned/total/truncated honestly. Still partial on the UI-scope features Burp has: branch-scoped search, case toggle, negative match.",
+      "gap": "None -- the last remaining gap (cannot scope to a site-map branch) is closed: the Site map tree now has real directory nodes (see the sibling \"hierarchical tree\" item), and clicking one scopes both the HTTP history table and Deep Search's /api/search regex-over-bodies results to that branch (client-side post-filter on the already-server-scanned hits, the same pattern already used for the in-scope/params/hide-404 chips).",
+      "why": "CLOSED 2026-08-22: proxy.jsx SiteMap folder click now sets selectedOrigin.branch (a path prefix); ProxyTab.originRows filters on it (r.path stripped of its query string === branch, or startsWith branch + \"/\"), and both HistoryTable (fed originRows) and the existing Deep Search toggle (which filters those same rows by deepHits) are scoped for free -- no backend change needed since /api/search already returns global hits and the frontend was already post-filtering them against the visible row set.",
       "evidence": "control_server.cpp /api/search now iterates ControlLogic::searchRowForIteration(n,i) newest-first with NO fixed row cap; truncated = ControlLogic::searchTruncated(scanned,n); the response carries scanned/total/scannedMinId. proxy.jsx HistoryTable keeps rows with id < deepMinId (unscanned) visible. Locks in Tests/control_logic: newest-first mapping + truncated-iff-incomplete, mutation-proven.",
-      "audited_state": "partial",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-18",
-        "commit": "8f29b73",
-        "note": "Two reconciliations. (1) 07e43be (2026-08-01): fixed the fail-silent oldest-500 row cap -- the body search scans newest-first, bounded only by the 1s wall-clock budget, and reports scanned/total/truncated so it never answers a confident 0 for traffic it didn't examine. (2) 8f29b73 (2026-08-18): the two missing Burp search MODIFIERS are now done. /api/search takes case=sensitive (drops the default CaseInsensitiveOption -> a case-sensitive regex) and negate=1 (inverts the match to the items that do NOT contain the pattern -- 'which requests are MISSING this token?'). Negate is a uniform per-item modifier in the shared addHits (emit iff no match, no excerpts), so it applies across every search source (proxy/repeater/issues) under the same regex-safety limits + budget. Verified e2e: case=sensitive rejects a wrong-case query + matches exact case while the default matches either; negate excludes the matching row + returns the non-matching rows with empty excerpts (7/7). Gauntlet ctest 99/99 + probe 156. STILL PARTIAL on the one remaining Burp feature: scoping a search to a single SITE-MAP BRANCH (the site map has no branch/tree structure to scope to yet)."
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "Site map branch-scoping wave: added real directory nodes to the Site map tree (buildSiteMapTree in ui-v2/proxy.jsx) and threaded folder selection through as selectedOrigin.branch, scoping originRows (and therefore both HistoryTable and Deep Search) to the selected branch. Closes the sole remaining gap on this item -- flips partial -> present."
       }
     },
     {
       "area": "target",
       "feature": "Site map: hierarchical tree (protocol://host:port \u2192 directory \u2192 file), expandable, one node per discovered resource",
-      "state": "absent",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "The central artifact of Burp Target does not exist. You cannot expand a host to see /api/v2/users, cannot read the app's directory structure, cannot act on a branch. The workaround is host-substring filtering the flat history (proxy.jsx:24 `if (hostFilter && !r.host.includes(hostFilter)) return false;`) and reading paths off rows.",
-      "why": "Confirmed absent after checking both front ends and every synonym I could think of (tree/TreeView/QAbstractItemModel/parent index/branch/node). The Qt front end, which the first pass never opened for this, renders the same flat host list.",
-      "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.hpp:18 `class FRONTEND_GUI_EXPORT SiteMapModel : public QAbstractListModel {` -- a LIST model; rowCount returns 0 for any valid parent (cpp:17-20 `if (parent.isValid()) return 0;`). Entry is host/count/anyTls (hpp:40-44); path is never read -- site_map_model.cpp:83 reads only HostRole and TlsRole. Browser UI: ui-v2/proxy.jsx:189-198 `{entries.map(e => ("
+      "gap": "Client-side only, same architecture as the existing #370 per-host leaf derivation: SiteMapModel (site_map_model.hpp) stays a flat host-only QAbstractListModel with no parent-index tree, so the Qt desktop front end (Src/App/app.qml) does not gain this -- ui-v2-only, the same asymmetry already flagged on sibling ui-v2-only capabilities elsewhere in this file. The tree only reflects paths actually seen in HTTP history (captured traffic, manual \"+ map\" adds, and OpenAPI/robots/sitemap promotions) -- it is not merged live with a running content-discovery session's own tree (tracked separately: \"Content discovery results as a live tree merged into the site map\").",
+      "why": "CLOSED 2026-08-22: ui-v2/proxy.jsx SiteMap now builds a real protocol://host:port -> directory -> file tree via buildSiteMapTree(), splitting each leaf's pathname (query stripped for the directory split only, kept on the leaf itself) on \"/\" into nested, independently expandable directory nodes -- exactly the node-per-segment structure the item asks for, one leaf per discovered method+path resource at the bottom. Selecting a directory node scopes the HTTP history table (and Deep Search) to that branch, doubling as the \"Engagement tools > Search\" branch-scoping fix (sibling item, same commit).",
+      "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.hpp:18 `class FRONTEND_GUI_EXPORT SiteMapModel : public QAbstractListModel {` -- a LIST model; rowCount returns 0 for any valid parent (cpp:17-20 `if (parent.isValid()) return 0;`). Entry is host/count/anyTls (hpp:40-44); path is never read -- site_map_model.cpp:83 reads only HostRole and TlsRole. Browser UI: ui-v2/proxy.jsx:189-198 `{entries.map(e => (",
+      "reconciled": {
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "Site map branch-scoping wave: buildSiteMapTree()/siteMapTreeLeafCount() (pure, unit-tested) group a host's leaves into nested directory nodes by path segment; SiteMap renders them as expandable folder rows (a new .sm-folder style) recursively nested under each host, with a scope banner to show/clear the selected branch. absent -> present."
+      }
     },
     {
       "area": "target",

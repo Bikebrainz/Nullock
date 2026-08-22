@@ -769,6 +769,37 @@ textarea, input { user-select: text; }
 .sm-twisty { display: inline-block; width: 12px; cursor: pointer; color: var(--dim); }
 .sm-twisty:hover { color: var(--accent); }
 
+.sm-scope-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: var(--fz-xs);
+  color: var(--accent);
+  background: var(--pane-2);
+  border-bottom: 1px solid var(--line-soft);
+}
+.sm-scope-clear { cursor: pointer; color: var(--dim); }
+.sm-scope-clear:hover { color: var(--text); }
+
+.sm-folder {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: calc(var(--row-h) - 2px);
+  font-size: var(--fz-xs);
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sm-folder:hover { background: var(--pane-2); color: var(--text); }
+.sm-folder.sel { background: var(--row-sel); color: var(--text); }
+.sm-folder.sel .sm-folder-name { color: var(--accent); }
+.sm-folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .sm-leaf {
   display: grid;
   grid-template-columns: 14px 40px 1fr 34px;

@@ -358,6 +358,38 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
   );
 }
 
+// Site map hierarchical tree (protocol://host:port -> directory -> file):
+// groups a host's leaves (already deduped per method+path by leavesFor) into
+// nested directory nodes by splitting each leaf's pathname (query string
+// stripped) on "/". Pure and unit-testable independent of React -- the
+// grouping/leaf-count logic is proven without a DOM.
+function buildSiteMapTree(leaves) {
+  const root = { name: "", fullPath: "", children: new Map(), leaves: [] };
+  for (const leaf of leaves) {
+    const pathname = (leaf.path || "/").split("?")[0] || "/";
+    const segs = pathname.split("/").filter(Boolean);
+    let node = root;
+    let acc = "";
+    for (let i = 0; i < segs.length - 1; i++) {
+      acc += "/" + segs[i];
+      let child = node.children.get(segs[i]);
+      if (!child) {
+        child = { name: segs[i], fullPath: acc, children: new Map(), leaves: [] };
+        node.children.set(segs[i], child);
+      }
+      node = child;
+    }
+    node.leaves.push(leaf);
+  }
+  return root;
+}
+
+function siteMapTreeLeafCount(node) {
+  let n = node.leaves.length;
+  for (const child of node.children.values()) n += siteMapTreeLeafCount(child);
+  return n;
+}
+
 function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu, annotations, annotatedOnly }) {
   // #370: Burp's tree lets you click a leaf node straight to its editor, but
   // the backend's /api/snapshot sitemap block is host-only (no per-path
@@ -382,6 +414,77 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
       if (next.has(origin)) next.delete(origin); else next.add(origin);
       return next;
     });
+  };
+
+  // Directory-node expand state, keyed by "<origin>|<folder fullPath>" so
+  // the same folder name under two different hosts doesn't collide.
+  const [expandedFolders, setExpandedFolders] = React.useState(() => new Set());
+  const toggleFolder = (key, e) => {
+    e.stopPropagation();
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Recursively renders a tree node's child directories (each an expandable
+  // folder row scoping the HTTP History table -- and, with Deep Search on,
+  // the search results -- to that branch when clicked) followed by its own
+  // leaves. depth 1 = directly under the host row, matching the indent the
+  // flat leaf list already used before folders existed.
+  const renderTreeNode = (node, entry, depth) => {
+    const folders = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const leaves = node.leaves.slice().sort((a, b) => a.path.localeCompare(b.path));
+    const pad = 12 + depth * 14;
+    return (
+      <React.Fragment>
+        {folders.map(folder => {
+          const key = entry.origin + "|" + folder.fullPath;
+          const isOpen = expandedFolders.has(key);
+          const isSel = selectedOrigin != null && selectedOrigin.host === entry.host
+            && selectedOrigin.port === entry.port && selectedOrigin.tls === entry.tls
+            && selectedOrigin.branch === folder.fullPath;
+          return (
+            <React.Fragment key={key}>
+              <div
+                className={"sm-folder " + (isSel ? "sel" : "")}
+                style={{ paddingLeft: pad }}
+                title={folder.fullPath}
+                onClick={() => onSelect(entry, folder.fullPath)}
+              >
+                <span className="sm-twisty" onClick={ev => toggleFolder(key, ev)} title={isOpen ? "collapse" : "expand"}>{isOpen ? "▾" : "▸"}</span>
+                <span className="sm-folder-name">📁 {folder.name}</span>
+                <span className="sm-count">{siteMapTreeLeafCount(folder)}</span>
+              </div>
+              {isOpen && renderTreeNode(folder, entry, depth + 1)}
+            </React.Fragment>
+          );
+        })}
+        {leaves.map(r => {
+          const note = annotations && annotations[r.id];
+          const leafStyle = { paddingLeft: pad };
+          if (note && note.color) leafStyle.boxShadow = "inset 3px 0 0 " + annotationColorHex(note.color);
+          const unrequested = r.status === 0;
+          const titleBase = unrequested ? (r.method + " " + r.path + " — not yet sent") : (r.method + " " + r.path);
+          return (
+            <div
+              key={r.id}
+              className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "") + (unrequested ? " unrequested" : "")}
+              title={note && note.comment ? (titleBase + " — " + note.comment) : titleBase}
+              style={leafStyle}
+              onClick={() => onSelectLeaf(entry, r.id)}
+              onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(entry.host, ev, r.id); }) : undefined}
+            >
+              <span className="sm-leaf-note">{note && note.comment ? "💬" : ""}</span>
+              <span className="sm-leaf-method">{r.method}</span>
+              <span className="sm-leaf-path">{r.path || "/"}</span>
+              <span className="sm-leaf-status">{unrequested ? "not sent" : r.status}</span>
+            </div>
+          );
+        })}
+      </React.Fragment>
+    );
   };
 
   // #394: manual "add to site map" for an unrequested item -- Burp lets you
@@ -450,10 +553,17 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
           <span className="sm-host">all hosts</span>
           <span className="sm-count">{totalRows}</span>
         </div>
+        {selectedOrigin && selectedOrigin.branch && (
+          <div className="sm-scope-banner" title="History table (and Deep Search results) are scoped to this branch">
+            <span>▸ branch: {selectedOrigin.branch}</span>
+            <span className="sm-scope-clear" onClick={() => onSelect(selectedOrigin)}>✕ clear</span>
+          </div>
+        )}
         {entries.map(e => {
           const isOpen = expanded.has(e.origin);
           const isSel = selectedOrigin != null && selectedOrigin.host === e.host
-            && selectedOrigin.port === e.port && selectedOrigin.tls === e.tls;
+            && selectedOrigin.port === e.port && selectedOrigin.tls === e.tls
+            && !selectedOrigin.branch;
           return (
             <React.Fragment key={e.origin}>
               <div
@@ -468,35 +578,7 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
                 </span>
                 <span className="sm-count">{e.count}</span>
               </div>
-              {isOpen && leavesFor(e).map(r => {
-                const note = annotations && annotations[r.id];
-                const leafStyle = note && note.color
-                  ? { boxShadow: "inset 3px 0 0 " + annotationColorHex(note.color) }
-                  : undefined;
-                // #394: a synthetic import (manual add-to-map or an OpenAPI/
-                // robots-derived one) always lands with status 0 -- no other
-                // path in the backend persists a row with status 0, so this
-                // is an unambiguous "never actually sent" marker. Grey it
-                // out in the tree to distinguish it from captured traffic,
-                // matching Burp's inferred/unrequested node treatment.
-                const unrequested = r.status === 0;
-                const titleBase = unrequested ? (r.method + " " + r.path + " — not yet sent") : (r.method + " " + r.path);
-                return (
-                <div
-                  key={r.id}
-                  className={"sm-leaf " + (selectedRowId === r.id ? "sel" : "") + (unrequested ? " unrequested" : "")}
-                  title={note && note.comment ? (titleBase + " — " + note.comment) : titleBase}
-                  style={leafStyle}
-                  onClick={() => onSelectLeaf(e, r.id)}
-                  onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(e.host, ev, r.id); }) : undefined}
-                >
-                  <span className="sm-leaf-note">{note && note.comment ? "💬" : ""}</span>
-                  <span className="sm-leaf-method">{r.method}</span>
-                  <span className="sm-leaf-path">{r.path || "/"}</span>
-                  <span className="sm-leaf-status">{unrequested ? "not sent" : r.status}</span>
-                </div>
-                );
-              })}
+              {isOpen && renderTreeNode(buildSiteMapTree(leavesFor(e)), e, 1)}
             </React.Fragment>
           );
         })}
@@ -2348,7 +2430,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const originRows = selectedOrigin
     ? rows.filter(r => r.host === selectedOrigin.host
         && (r.port || (r.tls ? 443 : 80)) === selectedOrigin.port
-        && !!r.tls === selectedOrigin.tls)
+        && !!r.tls === selectedOrigin.tls
+        && (!selectedOrigin.branch
+            || r.path.split("?")[0] === selectedOrigin.branch
+            || r.path.split("?")[0].startsWith(selectedOrigin.branch + "/")))
     : rows;
 
   // #392: site-map / history filter chips (in-scope / parameterized / hide-404).
@@ -2485,7 +2570,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           rows={rows}
           selectedOrigin={selectedOrigin}
           selectedRowId={selectedRowId}
-          onSelect={e => dispatch({ type: "set", payload: { selectedHost: e ? e.host : null, selectedOrigin: e } })}
+          onSelect={(e, branch) => dispatch({ type: "set", payload: { selectedHost: e ? e.host : null, selectedOrigin: e ? { ...e, branch: branch || null } : null } })}
           onSelectLeaf={(e, id) => dispatch({ type: "set", payload: { selectedHost: e.host, selectedOrigin: e, selectedRowId: id } })}
           totalRows={rows.length}
           onRowContextMenu={openRowMenu}

@@ -48,9 +48,12 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   overlay queries the SQLite-backed history index directly (method/host/path/
                   status/size/since filters) so a row can be found and its full raw request/
                   response opened even after it has scrolled out of the bounded on-screen window;
-                  Site map hosts expand into per-URL leaf nodes (deduped by method+path, most
-                  recent request wins) that jump straight to that message's editor, no detour
-                  through the history table below;
+                  Site map hosts expand into a full protocol://host:port -> directory -> file
+                  tree (each path segment its own expandable folder, leaves deduped by
+                  method+path, most recent request wins) that jumps straight to that message's
+                  editor, no detour through the history table below; clicking a folder scopes
+                  both the HTTP history table and Deep Search's regex-over-bodies results to
+                  that branch (a scope banner in the Site map pane shows and clears it);
                   manual application mapping -- hand-add a URL to the Site map without sending it
                   (a text box in the Site map pane), or promote a robots.txt Disallow path / sitemap.xml
                   URL straight from the Discover tab with a one-click "+ map" button; every such
