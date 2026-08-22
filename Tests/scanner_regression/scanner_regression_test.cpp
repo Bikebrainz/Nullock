@@ -1566,6 +1566,52 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"X-Generator", "Drupal 10 (https://www.drupal.org)"}}) });
 
+    // WordPress + Drupal were tested; the other six CMS fingerprints were not.
+    // The detector is a single-fire latch scanned in a fixed order (WP, Drupal,
+    // Joomla, Magento, Shopify, Sitecore, AEM, Umbraco, Salesforce, Confluence,
+    // Jira), so each fixture below carries ONLY its own vendor's marker and none
+    // of an earlier vendor's -- otherwise the earlier vendor would win the latch.
+    tc.append({ "Joomla via body marker", "cms-joomla", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html><body>Powered by Joomla!</body></html>") });
+
+    tc.append({ "Shopify via X-Shopify-Stage", "cms-shopify", false,
+        makeReq("GET", "shop.example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Shopify-Stage", "production"}}) });
+
+    tc.append({ "AEM via /content/dam/ asset ref", "cms-aem", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<img src=\"/content/dam/site/logo.png\">") });
+
+    tc.append({ "Umbraco via /umbraco/ path", "cms-umbraco", false,
+        makeReq("GET", "example.test", "/umbraco/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    tc.append({ "Confluence via X-Confluence-Request-Time", "cms-confluence", false,
+        makeReq("GET", "wiki.example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Confluence-Request-Time", "1723200000000"}}) });
+
+    tc.append({ "Jira via /secure/Dashboard.jspa path", "cms-jira", false,
+        makeReq("GET", "jira.example.test", "/secure/Dashboard.jspa"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
+    // Status-gate negative: fingerprinting only runs on a 2xx-3xx response, so a
+    // Joomla marker in a 404 body must NOT report Joomla.
+    tc.append({ "Joomla marker in a 404 must NOT fire cms-joomla", "cms-joomla", true,
+        makeReq("GET", "example.test", "/missing"),
+        makeResp(404, "text/html", "<html><body>Joomla! not found</body></html>") });
+
+    // Single-fire-latch negative: a page carrying BOTH a WordPress marker and a
+    // Joomla marker reports only WordPress (first in order), never Joomla. Fails
+    // if the one-CMS-per-response latch is removed or the order changes.
+    tc.append({ "wp-content + Joomla marker -> WordPress wins, not cms-joomla",
+                "cms-joomla", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<link href='/wp-content/x.css'><!-- Joomla! -->") });
+
     tc.append({ "ASP.NET via header", "fw-aspnet", false,
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html", "x",
