@@ -3483,7 +3483,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "d27ee99",
         "note": "Intercept editor view-tab wave: partial -> partial, gap narrowed (not a state flip). Added HEADERS/BODY/PREVIEW/HEX views to the held-message editor's EDIT/INSPECTOR toggle by lifting Repeater's own RepeaterEditorToolbar + renderView()/toHexDump() + find-in-view search, matching the same read-only-for-derived-views design already accepted as 'present' for Repeater's sibling item. Genuinely still missing: an editable Params table and binary-safe hex editing -- both honestly kept in the gap text, not claimed."
       }
     },
