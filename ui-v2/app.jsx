@@ -203,6 +203,11 @@ function reducer(state, action) {
       act("interceptForward", current ? current.text : "");
       return { ...state, intercepted: state.intercepted.slice(1) };
     }
+    case "intercept-forward-hold-response": {
+      const current = state.intercepted[0];
+      act("interceptForwardHoldResponse", current ? current.text : "");
+      return { ...state, intercepted: state.intercepted.slice(1) };
+    }
     case "intercept-drop":
       act("interceptDrop");
       return { ...state, intercepted: state.intercepted.slice(1) };

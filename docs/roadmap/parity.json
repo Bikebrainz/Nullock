@@ -3858,17 +3858,17 @@
     {
       "area": "proxy",
       "feature": "Intercept: 'Do intercept > Response to this request' (per-message opt-in)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No way to say 'hold the response to THIS request'. The only choice is all responses on in-scope hosts, or none.",
-      "why": "Confirmed by reading both intercept panes and the controller's Q_INVOKABLE surface: four actions in ui-v2 (toggle, responses-toggle, forward-all, drop/forward), and no per-message menu in QML either. There is no plumbing to tag one pending's response for holding. Absent confirmed.",
-      "evidence": "ui-v2/tabs.jsx:286-288 FORWARD ALL and :318-321 `<button className=\"btn danger\" ...>DROP</button>\\n            <button className=\"btn primary\" ...>\u21a6 FORWARD</button>` -- the complete action row. Controller surface: Src/BackEnd/Proxy/intercept.hpp:83-96 `setEnabled / setResponsesEnabled / forward / drop / forwardAll`. Desktop equivalent Src/App/app.qml:864-868.",
-      "audited_state": "absent",
+      "gap": "None for the primary ui-v2 GUI: a per-message FORWARD, HOLD RESPONSE button in the Intercept tab opts just the current held request into response-holding, forwarding it while the RESPONSES toggle can stay off for everything else. The Qt desktop app.qml intercept pane has no equivalent control yet -- a separate, QML-only remainder not addressed here (not buildable/verifiable from this cloud session).",
+      "why": "The backend plumbing (forwardInterceptingResponse -> POST /api/intercept/forward-hold-response) was built and e2e-verified in the prior wave (f859d3a) but had zero ui-v2 caller -- the concurrent-agent-lane remainder that wave named explicitly. This wave adds the ui-v2 half: InterceptTab (ui-v2/tabs.jsx) gains a FORWARD, HOLD RESPONSE button next to DROP/FORWARD, shown only for held REQUESTS (current.kind !== 1), dispatching a new intercept-forward-hold-response reducer case (ui-v2/app.jsx) that calls NL.actions.interceptForwardHoldResponse(text) (ui-v2/real-data.js), posting the edited buffer to the existing endpoint and advancing the intercept queue exactly like plain FORWARD.",
+      "evidence": "ui-v2/tabs.jsx InterceptTab: the FORWARD, HOLD RESPONSE button (current.kind !== 1 guard) dispatching {type:\"intercept-forward-hold-response\", text: editedText}; ui-v2/app.jsx reducer case \"intercept-forward-hold-response\" calling act(\"interceptForwardHoldResponse\", ...) and slicing the queue; ui-v2/real-data.js interceptForwardHoldResponse(text) posting to /api/intercept/forward-hold-response (control_server.cpp:3259, body field \"text\" matching the server's bodyJson.value(\"text\") read).",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-20",
-        "commit": "f859d3a",
-        "note": "absent -> partial. The plumbing to hold ONE request's response now exists: forwardInterceptingResponse() flags the current request pending (PendingRequest::holdResponse); pendImpl carries it out in InterceptResult::holdResponse; the proxy worker (plaintext run(), MITM, and h2-upstream legs) captures it after the request pend() and passes forceHold to resolveResponseForClient -> pendResponse. forceHold threads pendResponse -> pendImpl -> addPendingOnMain, bypassing the m_enabledResponses gate AND the intercept-rule gate for that one response while still respecting the backpressure cap; per-pending m_forceHold is set on the worker before addPendingOnMain reads it (same cross-thread pattern as m_kind); the forceHold=false path is byte-identical to before. Endpoint POST /api/intercept/forward-hold-response. VERIFIED e2e (5/5): with request-intercept ON + RESPONSE-intercept OFF, a held request forwarded via forward-hold-response holds its response (real upstream body), other responses keep flowing, and the client gets the response once it's forwarded. ctest 100/100, probe 156/156. REMAINDER (why still partial): the ui-v2 (and QML) right-click 'Do intercept > Response to this request' menu item -- the endpoint gives it everything it needs (concurrent-agent lane)."
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "GUI-reachability wave: added the per-message FORWARD, HOLD RESPONSE control to ui-v2 InterceptTab, closing the concurrent-agent-lane remainder the f859d3a backend wave named. No backend change -- pure frontend wiring of an already-built, already-verified endpoint. partial -> present for the ui-v2 GUI; the Qt desktop app.qml pane is untouched and still lacks the control (not buildable/verifiable from this cloud session, tracked separately if the desktop UI is ever audited on its own)."
       }
     },
     {

@@ -149,6 +149,7 @@
     toggleIntercept()          { return post("/api/intercept/toggle"); },
     toggleInterceptResponses() { return post("/api/intercept/responses/toggle"); },
     interceptForward(text)  { return post("/api/intercept/forward", { text }); },
+    interceptForwardHoldResponse(text) { return post("/api/intercept/forward-hold-response", { text }); },
     interceptDrop()         { return post("/api/intercept/drop"); },
     interceptForwardAll()   { return post("/api/intercept/forwardAll"); },
     interceptRulesSet(rules) { return post("/api/intercept/rules", { rules }); },

@@ -1566,6 +1566,15 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
             </span>
             <span style={{ flex: 1 }} />
             <button className="btn danger" onClick={() => dispatch({ type: "intercept-drop" })}>DROP</button>
+            {current.kind !== 1 && (
+              <button
+                className="btn"
+                title="Do intercept > Response to this request -- forward this request and hold ITS response, even while the RESPONSES toggle above is off"
+                onClick={() => dispatch({ type: "intercept-forward-hold-response", text: editedText })}
+              >
+                ↦ FORWARD, HOLD RESPONSE
+              </button>
+            )}
             <button className="btn primary" onClick={() => dispatch({ type: "intercept-forward", text: editedText })}>
               ↦ FORWARD
             </button>
