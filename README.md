@@ -21,10 +21,11 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   response the moment it's captured, plus manual one-off buttons on the current item);
                   a per-message FORWARD, HOLD RESPONSE button opts just the current held request into
                   response-holding without flipping the global RESPONSES toggle;
-                  the held-message editor has EDIT/HEADERS/BODY/PREVIEW/HEX/INSPECTOR view tabs --
-                  Pretty-printed JSON/XML, a hex dump of the body, and a structured Inspector side
-                  panel on the message being intercepted (same view primitives and backend as
-                  Repeater's), plus the same find-in-view search Repeater's panes have;
+                  the held-message editor has EDIT/PARAMS/HEADERS/BODY/PREVIEW/HEX/INSPECTOR view tabs --
+                  Pretty-printed JSON/XML, a hex dump of the body, an editable query/body-form/cookie
+                  Params grid on a held request, and a structured Inspector side panel on the message
+                  being intercepted (same view primitives and backend as Repeater's), plus the same
+                  find-in-view search Repeater's panes have;
                   a live RULES panel decides which messages actually get held -- And/Or match rules
                   on file extension/method/URL regex/host glob/content-type/status code/header, per
                   rule negate and request/response/both direction, editable and reorderable in place

@@ -415,6 +415,131 @@ function repeaterChangeBodyEncoding(raw, boundary) {
   return repeaterBuildRaw(p);
 }
 
+// Burp's fifth named message-editor view: a flat editable table of URL
+// query / body-form / cookie key-value pairs (item #263's "Params table"
+// gap). Each row keeps its own {key, value}; edits round-trip back into the
+// one real buffer (the "edit" view) via repeaterRebuildParams, the same
+// split/rebuild machinery repeaterChangeMethod/repeaterChangeBodyEncoding
+// already use. Query and body pairs are form-urlencoded on the wire, so
+// they're decoded for display and re-encoded on write, matching those two
+// functions; Cookie pairs are NOT url-encoded (cookie tokens routinely
+// carry base64 '+'/'/' that repeaterUrlDecode's '+'->' ' rule would mangle),
+// so they round-trip verbatim.
+function repeaterParseFormPairs(s) {
+  return (s || "").split("&").filter(Boolean).map(kv => {
+    const eq = kv.indexOf("=");
+    const k = eq >= 0 ? kv.slice(0, eq) : kv;
+    const v = eq >= 0 ? kv.slice(eq + 1) : "";
+    return { key: repeaterUrlDecode(k), value: repeaterUrlDecode(v) };
+  });
+}
+function repeaterParseCookiePairs(headerLines) {
+  const raw = repeaterGetHeader(headerLines, "Cookie");
+  if (!raw) return [];
+  return raw.split(";").map(s => s.trim()).filter(Boolean).map(kv => {
+    const eq = kv.indexOf("=");
+    const k = eq >= 0 ? kv.slice(0, eq) : kv;
+    const v = eq >= 0 ? kv.slice(eq + 1) : "";
+    return { key: k, value: v };
+  });
+}
+// bodyParams is null (not an editable table) unless Content-Type is
+// exactly form-urlencoded -- a JSON/multipart/binary body stays
+// Params-invisible, same "genuinely still missing" scope the roadmap gap
+// already names, rather than silently corrupting it.
+function repeaterParams(raw) {
+  const p = repeaterSplitRaw(raw);
+  const qIdx = p.target.indexOf("?");
+  const query = qIdx >= 0 ? p.target.slice(qIdx + 1) : "";
+  const queryParams = repeaterParseFormPairs(query);
+  const ct = (repeaterGetHeader(p.headerLines, "Content-Type") || "").toLowerCase();
+  const bodyParams = ct.includes("application/x-www-form-urlencoded") ? repeaterParseFormPairs(p.body) : null;
+  const cookieParams = repeaterParseCookiePairs(p.headerLines);
+  return { queryParams, bodyParams, cookieParams };
+}
+function repeaterRebuildParams(raw, { queryParams, bodyParams, cookieParams }) {
+  const p = repeaterSplitRaw(raw);
+  const qIdx = p.target.indexOf("?");
+  const path = qIdx >= 0 ? p.target.slice(0, qIdx) : p.target;
+  const q = (queryParams || []).map(({ key, value }) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
+  p.target = q ? path + "?" + q : path;
+  if (bodyParams) {
+    p.body = bodyParams.map(({ key, value }) => encodeURIComponent(key) + "=" + encodeURIComponent(value)).join("&");
+    repeaterSetHeader(p.headerLines, "Content-Length", String(repeaterByteLength(p.body)));
+  }
+  if (cookieParams && cookieParams.length) {
+    repeaterSetHeader(p.headerLines, "Cookie", cookieParams.map(({ key, value }) => key + "=" + value).join("; "));
+  } else if (cookieParams) {
+    repeaterRemoveHeader(p.headerLines, "Cookie");
+  }
+  return repeaterBuildRaw(p);
+}
+
+function RepeaterParamRow({ label, row, onKey, onValue, onRemove }) {
+  return (
+    <tr>
+      <td style={{ color: "var(--dim)", fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em", padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top" }}>{label}</td>
+      <td style={{ padding: "1px 4px" }}>
+        <input value={row.key} onChange={e => onKey(e.target.value)} spellCheck={false}
+               style={{ width: "100%", background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: "2px 6px" }} />
+      </td>
+      <td style={{ padding: "1px 4px" }}>
+        <input value={row.value} onChange={e => onValue(e.target.value)} spellCheck={false}
+               style={{ width: "100%", background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: "2px 6px" }} />
+      </td>
+      <td style={{ padding: "1px 0 1px 4px" }}>
+        <button className="btn danger" style={{ padding: "1px 6px", fontSize: "10px" }} onClick={onRemove}>×</button>
+      </td>
+    </tr>
+  );
+}
+// The editable Params grid itself: three sections (query / body / cookie),
+// each an ADD-ROW-capable table. bodyParams===null means the body isn't
+// form-urlencoded, so that section is hidden rather than shown empty (there
+// is nothing there to add a row TO without picking a wrong encoding).
+function RepeaterParamsView({ raw, onChange }) {
+  const parsed = React.useMemo(() => repeaterParams(raw), [raw]);
+  const commit = (patch) => onChange(repeaterRebuildParams(raw, { ...parsed, ...patch }));
+  const section = (label, rows, key) => {
+    if (rows === null) return null;
+    const setRow = (i, field, value) => {
+      const next = rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r);
+      commit({ [key]: next });
+    };
+    const removeRow = (i) => commit({ [key]: rows.filter((_, idx) => idx !== i) });
+    const addRow = () => commit({ [key]: [...rows, { key: "", value: "" }] });
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: "9.5px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>
+          {label} <span style={{ color: "var(--dim)" }}>({rows.length})</span>
+        </div>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <tbody>
+            {rows.map((r, i) => (
+              <RepeaterParamRow key={i} label="" row={r}
+                onKey={v => setRow(i, "key", v)} onValue={v => setRow(i, "value", v)}
+                onRemove={() => removeRow(i)} />
+            ))}
+          </tbody>
+        </table>
+        <button className="btn" style={{ marginTop: 4, padding: "2px 8px", fontSize: "10px" }} onClick={addRow}>+ ADD {label}</button>
+      </div>
+    );
+  };
+  return (
+    <div className="txt readonly" style={{ overflow: "auto", padding: "8px 10px" }}>
+      {section("QUERY", parsed.queryParams, "queryParams")}
+      {section("BODY", parsed.bodyParams, "bodyParams")}
+      {section("COOKIE", parsed.cookieParams, "cookieParams")}
+      {parsed.bodyParams === null && (
+        <div style={{ color: "var(--dim)", fontSize: "10px" }}>
+          body is not application/x-www-form-urlencoded — not shown as params
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepeaterEditorToolbar({
   views, active, onView, search, onSearch, matchCount, onNext, onPrev,
   caseSensitive, onCaseSensitive, regex, onRegex,
@@ -1529,7 +1654,9 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
             </div>
           )}
           <RepeaterEditorToolbar
-            views={["edit", "headers", "body", "preview", "hex", "inspector"]}
+            views={current.kind === 1
+              ? ["edit", "headers", "body", "preview", "hex", "inspector"]
+              : ["edit", "params", "headers", "body", "preview", "hex", "inspector"]}
             active={editorView}
             onView={v => { setEditorView(v); setIcpSearch(""); setIcpMatchIdx(-1); }}
             search={icpSearch}
@@ -1544,6 +1671,8 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
           />
           {editorView === "inspector" ? (
             <RepeaterInspectorPanel raw={editedText} kind={current.kind === 1 ? "response" : "request"} />
+          ) : editorView === "params" ? (
+            <RepeaterParamsView raw={editedText} onChange={setEditedText} />
           ) : editorView === "edit" ? (
             <textarea
               ref={icpRef}
