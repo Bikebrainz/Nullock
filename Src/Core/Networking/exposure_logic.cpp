@@ -128,4 +128,11 @@ QByteArray buildGet(const Request &req, const QString &path) {
     return out;
 }
 
+bool suppressAsCatchAll(bool controlIs2xx, const QByteArray &controlBody,
+                        const Signature &sig) {
+    // Only a host that 200s a bogus path can be a catch-all; and only when the
+    // SAME signature fires on that control body is the match non-file-specific.
+    return controlIs2xx && !matchSignature(controlBody, sig).isEmpty();
+}
+
 } // namespace Nullock::Core::ExposureScan

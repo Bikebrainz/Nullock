@@ -68,6 +68,17 @@ bool looksHtml(const QByteArray &body);
 // minMatches / redact.
 QString matchSignature(const QByteArray &body, const Signature &sig);
 
+// Catch-all suppression verdict (pure): a signature that matched the real file
+// body is a genuine exposure UNLESS the host also 200s a known-bogus path AND
+// the SAME signature fires on that control body -- then the host serves the
+// content for any path (SPA fallback / soft-404) and it isn't file-specific.
+// Returns true when the hit should be SUPPRESSED. Extracted from scan()'s
+// inline guard so the report-vs-suppress composition is unit-tested; it re-runs
+// matchSignature on the control body, so it correctly honors rejectHtml (a
+// plain-text config signature never suppresses against an HTML control shell).
+bool suppressAsCatchAll(bool controlIs2xx, const QByteArray &controlBody,
+                        const Signature &sig);
+
 // Build the GET. Returns empty if host or path carries a CR/LF.
 QByteArray buildGet(const Request &req, const QString &path);
 

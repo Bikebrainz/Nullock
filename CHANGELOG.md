@@ -56,6 +56,14 @@ developer-facing record.
   keeps a server which *rejects* bad signatures from being branded forgeable),
   and the forged-rejection baseline gate. Behaviour is unchanged (probe_smoke's
   end-to-end JWT cases still pass); the logic is simply now testable and pinned.
+- Exposure scan's soft-404 / catch-all suppression verdict extracted to a pure,
+  unit-tested `suppressAsCatchAll()` and mutation-proven. This is the guard that
+  decides whether a matched `.env` / `.git/config` / AWS-credentials exposure is
+  reported or dropped as a host that 200s every path &mdash; a regression could
+  silently drop every real exposure on any SPA/catch-all host (FN) or brand a
+  catch-all shell vulnerable (FP). Tests pin the `controlIs2xx` gate, the
+  per-signature control re-match, and the `rejectHtml` coupling (an HTML control
+  shell never suppresses a plain-text config signature). Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

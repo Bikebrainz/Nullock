@@ -41,8 +41,8 @@ Result scan(const Request &req) {
         const QString ev = matchSignature(r.parsed.body, sig);
         if (ev.isEmpty()) continue;
         // The same signature firing on the bogus control => the host serves it
-        // for any path => not a real exposure of this file.
-        if (controlIs2xx && !matchSignature(controlBody, sig).isEmpty()) continue;
+        // for any path => not a real exposure of this file (pure, unit-tested).
+        if (suppressAsCatchAll(controlIs2xx, controlBody, sig)) continue;
         result.hits.append({ sig.path, sig.severity, sig.summary, r.parsed.statusCode, ev });
     }
     return result;

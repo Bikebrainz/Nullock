@@ -159,6 +159,35 @@ int main(int argc, char **argv) {
             !fr.contains("Content-Length:") && !fr.contains("Transfer-Encoding:"));
     }
 
+    // ---- suppressAsCatchAll: the report-vs-suppress verdict ------------
+    // Decides whether a matched exposure is reported or dropped as a soft-404
+    // catch-all. Was inline in scan() and untested. A regression here either
+    // suppresses EVERY real .env/.git/AWS-cred hit on any host that 200s a
+    // random path (SPAs -- FN), or reports a catch-all shell as vulnerable (FP).
+    {
+        const QByteArray gitCfg("[core]\nrepositoryformatversion = 0\n");
+        const QByteArray envBody("DB_PASSWORD=x\nAPI_KEY=y\n");
+        const QByteArray htmlShell("<!DOCTYPE html><html><body>welcome</body></html>");
+        // No catch-all (control not 2xx) -> never suppress, even if bodies match.
+        chk("suppress: no 2xx control -> a real /.git/config hit is reported",
+            !suppressAsCatchAll(false, gitCfg, sig("/.git/config")));
+        // Catch-all AND the control serves the same signature -> suppress.
+        chk("suppress: bogus path also serves git config -> catch-all, suppressed",
+            suppressAsCatchAll(true, gitCfg, sig("/.git/config")));
+        // Catch-all but the control body does NOT match this signature -> report.
+        chk("suppress: 2xx control is an HTML shell (no git match) -> real hit reported",
+            !suppressAsCatchAll(true, htmlShell, sig("/.git/config")));
+        chk("suppress: 2xx control has no env markers -> real /.env hit reported",
+            !suppressAsCatchAll(true, htmlShell, sig("/.env")));
+        // rejectHtml coupling: an HTML control shell must NOT suppress a
+        // plain-text config signature (matchSignature rejects HTML for it), even
+        // if the shell text happens to contain the signature's phrase.
+        chk("suppress: rejectHtml -- HTML control quoting '[core] repositoryformatversion' does NOT suppress",
+            !suppressAsCatchAll(true,
+                QByteArray("<html><body>[core]\nrepositoryformatversion = 0</body></html>"),
+                sig("/.git/config")));
+    }
+
     std::fprintf(stderr, "exposure_scan_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
