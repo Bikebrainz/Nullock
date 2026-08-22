@@ -4965,7 +4965,7 @@
       "evidence": "ui-v2/proxy.jsx SiteMap's folder-row onContextMenu now calls onRowContextMenu(entry.host, ev, undefined, folder.fullPath); ProxyTab's ctxMenu state gained a branch field and a ctxMenuTargetUrls()/copyCtxMenuUrls() pair building the scoped URL list from `rows` and writing it via navigator.clipboard.write([new ClipboardItem(...)]) or writeText() fallback. Delete host/branch, Save selected items (Burp XML), and scoped report remain absent -- SiteMapModel's only mutator is still site_map_model.hpp:33 clear() (whole-map only), and no per-selection export/report endpoint exists.",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "4a20310",
         "note": "Gap-narrowing: Copy URLs / Copy links added to the Site map right-click menu (host/branch/single-item scoped), client-side only. Delete host/branch, Save selected items, and scoped report stay absent -- state stays partial."
       }
     },
