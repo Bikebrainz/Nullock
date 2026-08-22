@@ -1310,6 +1310,41 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/manager/html"),
         makeResp(200, "text/html", "<title>Tomcat Manager</title>") });
 
+    // ---- Exposed API docs / GraphQL consoles ---------------------------
+    // Same first-match-wins dev-tool table; these four rows were emitted but
+    // untested. A leaked OpenAPI/Swagger spec hands an attacker the entire
+    // API surface; a live Voyager/Playground console is an interactive way
+    // to explore (and often mutate) it. All gated on a 200.
+    tc.append({ "swagger-spec via /swagger.json", "swagger-spec", false,
+        makeReq("GET", "api.example.test", "/swagger.json"),
+        makeResp(200, "application/json", "{\"swagger\":\"2.0\"}") });
+
+    tc.append({ "openapi-spec via /openapi.json", "openapi-spec", false,
+        makeReq("GET", "api.example.test", "/openapi.json"),
+        makeResp(200, "application/json", "{\"openapi\":\"3.0.1\"}") });
+
+    tc.append({ "graphql-voyager via /voyager", "graphql-voyager", false,
+        makeReq("GET", "api.example.test", "/voyager"),
+        makeResp(200, "text/html", "<title>GraphQL Voyager</title>") });
+
+    tc.append({ "graphql-playground via /playground", "graphql-playground", false,
+        makeReq("GET", "api.example.test", "/playground"),
+        makeResp(200, "text/html", "<div id=\"root\">playground</div>") });
+
+    // Discriminating negative: the dev-tool table only fires on a 200, so a
+    // 404 for the same path must NOT report an exposed spec. Locks the
+    // statusCode==200 gate against reporting probes that came back not-found.
+    tc.append({ "/swagger.json 404 must NOT fire swagger-spec", "swagger-spec", true,
+        makeReq("GET", "api.example.test", "/swagger.json"),
+        makeResp(404, "application/json", "{\"error\":\"not found\"}") });
+
+    // Order negative: /swagger-ui sits ABOVE /swagger.json and wins first, so
+    // a Swagger UI path reports swagger-ui, never swagger-spec. Fails if the
+    // rows are reordered or the swagger-spec needle is made too generic.
+    tc.append({ "/swagger-ui path is swagger-ui, NOT swagger-spec", "swagger-spec", true,
+        makeReq("GET", "api.example.test", "/swagger-ui/index.html"),
+        makeResp(200, "text/html", "<title>Swagger UI</title>") });
+
     // ---- Cookie broad-path ---------------------------------------------
     // The finding text asserts the cookie is "scoped to whole origin", so the
     // Path test must be the tokenized one. contains("path=/") also matches
