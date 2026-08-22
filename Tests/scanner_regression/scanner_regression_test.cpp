@@ -1384,6 +1384,63 @@ QList<TestCase> buildCorpus() {
         makeResp(200, "text/html", "<html>x</html>",
                  {{"CF-RAY", "12abc-LAX"}}) });
 
+    // Each non-Cloudflare vendor keys off a single vendor-specific header;
+    // one fixture per kind, carrying ONLY that header, so the first-match
+    // `break` in the detector loop cannot mask one vendor behind another.
+    tc.append({ "Akamai via X-Akamai-Transformed", "waf-akamai", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Akamai-Transformed", "9 - 0 pmb=mRUM,1"}}) });
+
+    tc.append({ "Imperva via X-Iinfo", "waf-imperva", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Iinfo", "8-12345678-12345679 NNNN CT(1 1 0)"}}) });
+
+    tc.append({ "Fastly/CDN via X-CDN", "waf-fastly", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-CDN", "fastly"}}) });
+
+    tc.append({ "Varnish/CDN via X-Cache", "waf-varnish", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Cache", "HIT"}}) });
+
+    tc.append({ "Sucuri via X-Sucuri-ID", "waf-sucuri", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Sucuri-ID", "12006"}}) });
+
+    // Non-empty Server-Timing without a dur= measurement fires the WAF
+    // marker but NOT server-timing-leak (that needs a dur=<digit>).
+    tc.append({ "Server-Timing marker via Server-Timing", "waf-server-timing", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Server-Timing", "cdn-cache; desc=cache-hit"}}) });
+
+    // Server: <cf...> is the second Cloudflare signal; value must start "cf".
+    tc.append({ "Cloudflare via Server: cloudflare", "waf-cloudflare", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Server", "cloudflare"}}) });
+
+    // Discriminating negative: a non-cf Server value must NOT be read as
+    // Cloudflare -- locks the startsWith("cf") guard against false positives.
+    tc.append({ "Server: nginx is NOT Cloudflare", "waf-cloudflare", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"Server", "nginx"}}) });
+
+    // Behavioral lock: the loop reports only the FIRST non-Cloudflare WAF
+    // (table order Akamai before Sucuri), so Akamai present suppresses the
+    // later Sucuri finding. Pins the intentional one-WAF-per-response break.
+    tc.append({ "Akamai present suppresses later Sucuri (break)", "waf-sucuri", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>",
+                 {{"X-Akamai-Transformed", "9 - 0 pmb=mRUM,1"},
+                  {"X-Sucuri-ID", "12006"}}) });
+
     // ---- Cloud bucket references --------------------------------------
     tc.append({ "S3 bucket URL referenced", "cloud-s3-bucket", false,
         makeReq("GET", "example.test", "/"),

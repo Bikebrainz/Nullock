@@ -891,7 +891,13 @@ void PassiveScanner::checkResponse(int rowId,
         const QString v = headerOf(resp.headers, w.header);
         if (v.isEmpty()) continue;
         if (QString::fromLatin1(w.kind) == "waf-cloudflare" && QString::fromLatin1(w.header) == "Server") {
-            if (!v.toLower().startsWith("cf")) continue;  // not cloudflare
+            // Cloudflare's Server header is literally "cloudflare"
+            // (older edge: "cloudflare-nginx"); neither starts with "cf",
+            // so the original startsWith("cf") guard matched nothing and
+            // this whole signal was dead. Accept the real values, and keep
+            // a cf-prefix fallback for any cf-branded edge variant.
+            const QString lv = v.toLower();
+            if (!lv.startsWith("cloudflare") && !lv.startsWith("cf")) continue;  // not cloudflare
         }
         addFinding(rowId, req, resp, "info", w.kind,
                    QString("%1 detected via %2 header").arg(QString::fromLatin1(w.label),

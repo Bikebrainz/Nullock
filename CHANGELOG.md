@@ -10,6 +10,24 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Fixed
+- **WAF fingerprinting: the `Server:`-header Cloudflare signal was dead code.**
+  The guard only accepted a `Server` value starting with `cf`, but Cloudflare's
+  actual `Server` header is literally `cloudflare` (older edge: `cloudflare-nginx`)
+  &mdash; neither starts with `cf`, so this back-up detection path never fired. The
+  guard now accepts the real `cloudflare` prefix (keeping a `cf` fallback for any
+  cf-branded edge variant). CF-RAY-based detection was unaffected; this only
+  restores the secondary signal for responses that carry `Server` but not `CF-RAY`.
+
+### Security
+- Mutation-proven regression coverage locked for the WAF/CDN fingerprint family
+  (`waf-akamai`, `waf-imperva`, `waf-fastly`, `waf-varnish`, `waf-sucuri`,
+  `waf-server-timing`, plus both Cloudflare signals) &mdash; previously only
+  `waf-cloudflare` via CF-RAY was tested. Includes discriminating negatives for the
+  `Server:` cf-prefix guard and the intentional one-WAF-per-response `break`, so a
+  future regression that silently blinds recon to a target's edge protection now
+  fails the suite.
+
 ## [3.8.0] — 2026-08-20
 
 This release folds in a large security-and-correctness pass: a whole-codebase
