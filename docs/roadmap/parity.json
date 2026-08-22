@@ -3867,7 +3867,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "ec9e79b",
         "note": "GUI-reachability wave: added the per-message FORWARD, HOLD RESPONSE control to ui-v2 InterceptTab, closing the concurrent-agent-lane remainder the f859d3a backend wave named. No backend change -- pure frontend wiring of an already-built, already-verified endpoint. partial -> present for the ui-v2 GUI; the Qt desktop app.qml pane is untouched and still lacks the control (not buildable/verifiable from this cloud session, tracked separately if the desktop UI is ever audited on its own)."
       }
     },
@@ -5156,7 +5156,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "84b0dd9",
         "note": "Site map branch-scoping wave: added real directory nodes to the Site map tree (buildSiteMapTree in ui-v2/proxy.jsx) and threaded folder selection through as selectedOrigin.branch, scoping originRows (and therefore both HistoryTable and Deep Search) to the selected branch. Closes the sole remaining gap on this item -- flips partial -> present."
       }
     },
@@ -5171,7 +5171,7 @@
       "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.hpp:18 `class FRONTEND_GUI_EXPORT SiteMapModel : public QAbstractListModel {` -- a LIST model; rowCount returns 0 for any valid parent (cpp:17-20 `if (parent.isValid()) return 0;`). Entry is host/count/anyTls (hpp:40-44); path is never read -- site_map_model.cpp:83 reads only HostRole and TlsRole. Browser UI: ui-v2/proxy.jsx:189-198 `{entries.map(e => (",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "84b0dd9",
         "note": "Site map branch-scoping wave: buildSiteMapTree()/siteMapTreeLeafCount() (pure, unit-tested) group a host's leaves into nested directory nodes by path segment; SiteMap renders them as expandable folder rows (a new .sm-folder style) recursively nested under each host, with a scope banner to show/clear the selected branch. absent -> present."
       }
     },
