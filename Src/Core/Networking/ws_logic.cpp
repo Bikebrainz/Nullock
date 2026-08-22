@@ -120,4 +120,14 @@ QByteArray buildHandshake(const Request &req, const QString &origin, const QByte
     return r;
 }
 
+bool wsConfirmsHijack(bool baselineOk, int baselineStatus, bool baselineAcceptValid) {
+    // The baseline must have actually responded. A transient reconnect failure
+    // (baselineOk == false, status 0) tells us nothing about session gating --
+    // treating it as a "refusal" would brand a mere network flake a CONFIRMED
+    // credentialed hijack. Only a real response that did NOT complete the
+    // upgrade proves the socket honors the session cross-site.
+    if (!baselineOk) return false;
+    return !(baselineStatus == 101 && baselineAcceptValid);
+}
+
 } // namespace Nullock::Core::WsProbe

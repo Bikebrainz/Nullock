@@ -89,4 +89,19 @@ QStringList schemePortVariants(const QString &host, bool tls, int port);
 // lead, not a confirmed credentialed hijack. Pure.
 QList<QPair<QString, QString>> stripCredentials(const QList<QPair<QString, QString>> &headers);
 
+// Grade the credential-stripped baseline of an already-accepted cross-origin
+// upgrade: is this a CONFIRMED credentialed hijack (CWE-1385 CSWSH) or only a
+// LEAD? A confirmed hijack requires that the no-credential baseline actually
+// RESPONDED and REFUSED the upgrade -- i.e. it proves the socket gates on the
+// session. Params are the baseline Shake's numeric shape:
+//   baselineOk          -- the baseline handshake transported and got a response
+//   baselineStatus      -- its HTTP status (101 == upgrade)
+//   baselineAcceptValid -- its Sec-WebSocket-Accept validated
+// Returns true (CONFIRMED) only when baselineOk && NOT(status==101 && accept).
+// Critically it requires baselineOk: a transient reconnect FAILURE (ok=false,
+// status=0) is NOT evidence the socket honors the session cross-site, so it must
+// grade a LEAD, not manufacture a confirmed hijack. Extracted from scan()'s
+// inline gradeAccepted lambda so the decision is unit-tested.
+bool wsConfirmsHijack(bool baselineOk, int baselineStatus, bool baselineAcceptValid);
+
 } // namespace Nullock::Core::WsProbe

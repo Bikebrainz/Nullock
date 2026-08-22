@@ -220,6 +220,31 @@ int main(int argc, char **argv) {
             schemePortVariants("victim.tld", true, 443).count("https://victim.tld") == 0);
     }
 
+    // ===== wsConfirmsHijack: CONFIRMED-CSWSH vs LEAD verdict ============
+    // The credential-stripped baseline of an already-accepted cross-origin
+    // upgrade. CONFIRMED only when the baseline RESPONDED and refused; a
+    // transient reconnect failure must grade a LEAD, not a hijack. This
+    // decision was inline in scan()'s gradeAccepted lambda and untested.
+    {
+        // Genuine refusals (baseline responded, did not upgrade) -> CONFIRMED.
+        chk("wsConfirmsHijack: baseline 403 (refused) -> confirmed",
+            wsConfirmsHijack(/*ok*/true, 403, /*acceptValid*/false));
+        chk("wsConfirmsHijack: baseline 200 non-upgrade -> confirmed",
+            wsConfirmsHijack(true, 200, false));
+        chk("wsConfirmsHijack: baseline 101 with INVALID accept -> confirmed (not a real upgrade)",
+            wsConfirmsHijack(true, 101, false));
+        // Baseline ALSO upgraded without the credential -> socket ignores the
+        // session -> LEAD, not a hijack.
+        chk("wsConfirmsHijack: baseline 101 + valid accept -> NOT confirmed (LEAD)",
+            !wsConfirmsHijack(true, 101, true));
+        // THE BUG FIX: a transient reconnect failure (no response) must NOT be
+        // read as a refusal. Previously !(0==101 && ...) == true -> false hijack.
+        chk("wsConfirmsHijack: transient connection failure (ok=false,status=0) -> NOT confirmed",
+            !wsConfirmsHijack(false, 0, false));
+        chk("wsConfirmsHijack: baseline transport fail even at a stale 403 status -> NOT confirmed",
+            !wsConfirmsHijack(false, 403, false));
+    }
+
     std::fprintf(stderr, "ws_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

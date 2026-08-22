@@ -11,6 +11,18 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **WebSocket CSWSH probe: a transient reconnect failure could manufacture a
+  "confirmed hijack".** After an authenticated cross-origin upgrade is accepted,
+  the probe re-issues the same handshake with the credential stripped &mdash; only
+  a *refused* baseline confirms the socket honors the session cross-site (CWE-1385).
+  The verdict was `!(baseline.status == 101 && baseline.acceptValid)`, which reads
+  a transport failure (no response: `ok=false`, `status=0`) as a refusal &mdash; so a
+  flaky reconnect (TLS reset, timeout, a server that RSTs the retry) would brand a
+  socket a CONFIRMED credentialed hijack. It now requires the baseline to have
+  actually responded (`ok`) before treating a non-upgrade as a refusal; an
+  ambiguous connection failure grades a LEAD, not a confirmed hijack. The decision
+  is extracted to a pure, unit-tested `wsConfirmsHijack()` (mutation-proven: the
+  removed guard reintroduces exactly this false positive).
 - **WAF fingerprinting: the `Server:`-header Cloudflare signal was dead code.**
   The guard only accepted a `Server` value starting with `cf`, but Cloudflare's
   actual `Server` header is literally `cloudflare` (older edge: `cloudflare-nginx`)

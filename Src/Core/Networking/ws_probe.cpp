@@ -114,7 +114,10 @@ Result test(const Request &reqIn) {
             bare.headers = stripCredentials(req.headers);
             const Shake base = handshake(bare, origin);   // same Origin, credential removed
             result.controlStatus = base.status;           // the no-credential baseline status
-            confirmed = !(base.status == 101 && base.acceptValid);
+            // Only a baseline that actually RESPONDED and refused the upgrade
+            // confirms a hijack; a transient reconnect failure must NOT (pure,
+            // unit-tested -- see wsConfirmsHijack).
+            confirmed = wsConfirmsHijack(base.ok, base.status, base.acceptValid);
         }
         if (confirmed) {
             result.crossOriginAccepted = true;
