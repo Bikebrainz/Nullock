@@ -58,18 +58,22 @@ Result test(const Request &reqIn) {
             const QString ct = req.contentType.isEmpty()
                 ? QString::fromUtf8(p.ct) : req.contentType;
             const auto wf = sendBody(raw(p.wf, p.b64), ct);
-            if (!wf.ok) continue;
-            result.baselineStatus = wf.parsed.statusCode;
-            if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / strict / not a deser
+            const bool wfOk = wf.ok;
+            if (wfOk) result.baselineStatus = wf.parsed.statusCode;
+            const bool wfErr = wfOk && !matchError(wf.parsed.body).first.isEmpty();
+            if (!wfOk || wfErr) continue;   // shape-WAF / strict / not a deser
             const auto mf = sendBody(raw(p.mf, p.b64), ct);
-            if (!mf.ok) continue;
-            const auto err = matchError(mf.parsed.body);
-            if (err.first.isEmpty()) continue;
+            const bool mfOk = mf.ok;
+            const auto err = mfOk ? matchError(mf.parsed.body) : QPair<QString, QString>{};
+            const bool mfErr = !err.first.isEmpty();
+            if (!mfOk || !mfErr) continue;
             // Re-confirm the well-formed control is STILL clean -- a server that
             // flapped into an error state between the two shots would otherwise
             // false-positive a critical finding.
             const auto wf2 = sendBody(raw(p.wf, p.b64), ct);
-            if (!wf2.ok || !matchError(wf2.parsed.body).first.isEmpty()) continue;
+            const bool wf2Ok = wf2.ok;
+            const bool wf2Err = wf2Ok && !matchError(wf2.parsed.body).first.isEmpty();
+            if (!confirmsDeser(wfOk, wfErr, mfOk, mfErr, wf2Ok, wf2Err)) continue;
             result.hits.append({ QStringLiteral("(body)"), err.first,
                                  QString::fromUtf8(p.mf), err.second });
             result.vulnerable = true;
@@ -106,15 +110,19 @@ Result test(const Request &reqIn) {
             for (const Ck &p : cprobes) {
                 if (result.requestsSent >= kMaxSends) break;
                 const auto wf = sendCookie(ck, QString::fromUtf8(p.wf));
-                if (!wf.ok) continue;
-                result.baselineStatus = wf.parsed.statusCode;
-                if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / not a deser
+                const bool wfOk = wf.ok;
+                if (wfOk) result.baselineStatus = wf.parsed.statusCode;
+                const bool wfErr = wfOk && !matchError(wf.parsed.body).first.isEmpty();
+                if (!wfOk || wfErr) continue;  // shape-WAF / not a deser
                 const auto mf = sendCookie(ck, QString::fromUtf8(p.mf));
-                if (!mf.ok) continue;
-                const auto err = matchError(mf.parsed.body);
-                if (err.first.isEmpty()) continue;
+                const bool mfOk = mf.ok;
+                const auto err = mfOk ? matchError(mf.parsed.body) : QPair<QString, QString>{};
+                const bool mfErr = !err.first.isEmpty();
+                if (!mfOk || !mfErr) continue;
                 const auto wf2 = sendCookie(ck, QString::fromUtf8(p.wf));   // re-confirm clean control
-                if (!wf2.ok || !matchError(wf2.parsed.body).first.isEmpty()) continue;
+                const bool wf2Ok = wf2.ok;
+                const bool wf2Err = wf2Ok && !matchError(wf2.parsed.body).first.isEmpty();
+                if (!confirmsDeser(wfOk, wfErr, mfOk, mfErr, wf2Ok, wf2Err)) continue;
                 result.hits.append({ "cookie:" + ck, err.first,
                                      QString::fromUtf8(p.mf), err.second });
                 result.vulnerable = true;
@@ -153,15 +161,19 @@ Result test(const Request &reqIn) {
             for (const Fp &p : fprobes) {
                 if (result.requestsSent >= kMaxSends) break;
                 const auto wf = sendField(f, QString::fromUtf8(p.wf));
-                if (!wf.ok) continue;
-                result.baselineStatus = wf.parsed.statusCode;
-                if (!matchError(wf.parsed.body).first.isEmpty()) continue;  // shape-WAF / not a deser
+                const bool wfOk = wf.ok;
+                if (wfOk) result.baselineStatus = wf.parsed.statusCode;
+                const bool wfErr = wfOk && !matchError(wf.parsed.body).first.isEmpty();
+                if (!wfOk || wfErr) continue;  // shape-WAF / not a deser
                 const auto mf = sendField(f, QString::fromUtf8(p.mf));
-                if (!mf.ok) continue;
-                const auto err = matchError(mf.parsed.body);
-                if (err.first.isEmpty()) continue;
+                const bool mfOk = mf.ok;
+                const auto err = mfOk ? matchError(mf.parsed.body) : QPair<QString, QString>{};
+                const bool mfErr = !err.first.isEmpty();
+                if (!mfOk || !mfErr) continue;
                 const auto wf2 = sendField(f, QString::fromUtf8(p.wf));   // re-confirm clean control
-                if (!wf2.ok || !matchError(wf2.parsed.body).first.isEmpty()) continue;
+                const bool wf2Ok = wf2.ok;
+                const bool wf2Err = wf2Ok && !matchError(wf2.parsed.body).first.isEmpty();
+                if (!confirmsDeser(wfOk, wfErr, mfOk, mfErr, wf2Ok, wf2Err)) continue;
                 result.hits.append({ "field:" + f, err.first,
                                      QString::fromUtf8(p.mf), err.second });
                 result.vulnerable = true;
@@ -229,22 +241,26 @@ Result test(const Request &reqIn) {
         for (const Probe &p : probes) {
             if (result.requestsSent >= kMaxSends) break;
             // 1) Well-formed control: a real deserializer accepts it cleanly.
+            //    If even valid serialized data errors, the sink isn't a plain
+            //    deserializer (shape-WAF / strict type / not deserializing) --
+            //    can't soundly attribute a malformed error to deserialization.
             const auto wf = send(queryWith(req.query, param, QString::fromUtf8(p.wellFormed)));
-            if (!wf.ok) continue;
-            // If even valid serialized data errors, the sink isn't a plain
-            // deserializer (shape-WAF / strict type / not deserializing) --
-            // can't soundly attribute a malformed error to deserialization.
-            if (!matchError(wf.parsed.body).first.isEmpty()) continue;
+            const bool wfOk = wf.ok;
+            const bool wfErr = wfOk && !matchError(wf.parsed.body).first.isEmpty();
+            if (!wfOk || wfErr) continue;   // short-circuit: don't send malformed
             // 2) Malformed of the same format: a real deserializer errors.
             const auto mf = send(queryWith(req.query, param, QString::fromUtf8(p.malformed)));
-            if (!mf.ok) continue;
-            const auto err = matchError(mf.parsed.body);
-            if (err.first.isEmpty()) continue;
+            const bool mfOk = mf.ok;
+            const auto err = mfOk ? matchError(mf.parsed.body) : QPair<QString, QString>{};
+            const bool mfErr = !err.first.isEmpty();
+            if (!mfOk || !mfErr) continue;  // short-circuit: don't re-confirm
             // 3) Re-confirm the well-formed control is STILL clean: a server that
             //    flapped into a transient error state (load, rate limit) between
             //    shots would otherwise false-positive a critical finding.
             const auto wf2 = send(queryWith(req.query, param, QString::fromUtf8(p.wellFormed)));
-            if (!wf2.ok || !matchError(wf2.parsed.body).first.isEmpty()) continue;
+            const bool wf2Ok = wf2.ok;
+            const bool wf2Err = wf2Ok && !matchError(wf2.parsed.body).first.isEmpty();
+            if (!confirmsDeser(wfOk, wfErr, mfOk, mfErr, wf2Ok, wf2Err)) continue;
             result.hits.append({ param, err.first,
                                  QString::fromUtf8(p.malformed), err.second });
             result.vulnerable = true;

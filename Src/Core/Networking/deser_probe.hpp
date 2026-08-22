@@ -110,4 +110,18 @@ QByteArray buildFieldRequest(const Request &req, const QString &field, const QSt
 // Rebuild `existing` query with `param` set to `value` (replacing any prior).
 QString queryWith(const QString &existing, const QString &param, const QString &value);
 
+// The CWE-502 CONFIRMED verdict (pure): a three-shot differential over
+// matchError() results. A deserialization sink is confirmed iff
+//   (1) the well-formed control transported AND did NOT error (else the sink is
+//       a shape-WAF / strict-type guard / not deserializing -> can't attribute);
+//   (2) the malformed shot transported AND errored;
+//   (3) a re-sent well-formed control STILL transported AND is clean (a server
+//       that flapped into a transient error between shots must not false-positive).
+// Params are the (transported?, matchError-nonempty?) pair for each of the three
+// shots. Extracted from test()'s inline short-circuit chain (replicated across
+// the query/body/cookie/field paths) so the composition is unit-tested; the live
+// paths keep their early-outs and gate the finding append on this predicate.
+bool confirmsDeser(bool wfOk, bool wfErr, bool mfOk, bool mfErr,
+                   bool wf2Ok, bool wf2Err);
+
 } // namespace Nullock::Core::DeserProbe

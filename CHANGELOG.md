@@ -64,6 +64,15 @@ developer-facing record.
   catch-all shell vulnerable (FP). Tests pin the `controlIs2xx` gate, the
   per-signature control re-match, and the `rejectHtml` coupling (an HTML control
   shell never suppresses a plain-text config signature). Behaviour unchanged.
+- Deserialization (CWE-502) probe's CONFIRMED verdict extracted to a pure,
+  unit-tested `confirmsDeser()` and mutation-proven. The three-shot differential
+  (well-formed control clean &rarr; malformed errors &rarr; re-confirm control still
+  clean) was composed inline in `test()` and replicated across the
+  query/body/cookie/field paths; all four now gate the finding on the one tested
+  predicate. Tests pin each guard: the well-formed-clean gate (a shape-WAF that
+  errors on valid data must not be branded RCE-vulnerable), the malformed-errors
+  detection, and the flap re-confirm (a transient error between shots must not
+  false-positive a critical finding). Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

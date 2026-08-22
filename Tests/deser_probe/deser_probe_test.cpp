@@ -193,6 +193,35 @@ int main(int argc, char **argv) {
         chk("kindForFormat: unknown -> deser-unknown (default)", kindForFormat("nonsense") == "deser-unknown");
     }
 
+    // ---- confirmsDeser: the CWE-502 three-shot verdict composition -----
+    // Was inline in test()'s short-circuit chain (replicated across the
+    // query/body/cookie/field paths) and untested; matchError was covered in
+    // isolation, the composition was not. Args are (transported?, errored?) for
+    // the well-formed control, the malformed shot, and the re-confirm control.
+    {
+        // Sound confirmation: clean wf, malformed errors, re-confirm still clean.
+        chk("confirmsDeser: clean/error/clean -> VULNERABLE",
+            confirmsDeser(true, false, true, true, true, false));
+        // Shape-WAF / strict-type: the well-formed control ALSO errors -> can't
+        // attribute the malformed error to deserialization (critical FP guard).
+        chk("confirmsDeser: well-formed control errors (shape-WAF) -> NOT confirmed",
+            !confirmsDeser(true, true, true, true, true, false));
+        // Echo sink / non-deserializer: malformed does NOT error -> no signal.
+        chk("confirmsDeser: malformed does not error -> NOT confirmed",
+            !confirmsDeser(true, false, true, false, true, false));
+        // Flap: the control re-confirm errored (transient server error between
+        // shots) -> must not brand a critical finding.
+        chk("confirmsDeser: re-confirm control flapped to error -> NOT confirmed",
+            !confirmsDeser(true, false, true, true, true, true));
+        // Transport failures on any shot -> inconclusive, not confirmed.
+        chk("confirmsDeser: well-formed control did not transport -> NOT confirmed",
+            !confirmsDeser(false, false, true, true, true, false));
+        chk("confirmsDeser: malformed did not transport -> NOT confirmed",
+            !confirmsDeser(true, false, false, false, true, false));
+        chk("confirmsDeser: re-confirm did not transport -> NOT confirmed",
+            !confirmsDeser(true, false, true, true, false, false));
+    }
+
     std::fprintf(stderr, "deser_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

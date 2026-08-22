@@ -219,4 +219,11 @@ QString kindForFormat(const QString &format) {
     return QStringLiteral("deser-unknown");
 }
 
+bool confirmsDeser(bool wfOk, bool wfErr, bool mfOk, bool mfErr,
+                   bool wf2Ok, bool wf2Err) {
+    return wfOk && !wfErr    // well-formed control clean (not a shape-WAF)
+        && mfOk && mfErr     // malformed of the same format errors
+        && wf2Ok && !wf2Err; // re-confirmed control still clean (no flap)
+}
+
 } // namespace Nullock::Core::DeserProbe
