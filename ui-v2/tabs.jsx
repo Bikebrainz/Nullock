@@ -1375,6 +1375,29 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
   React.useEffect(() => { setScanRes(null); }, [current?.id]);
   const [editorView, setEditorView] = React.useState("edit");
   React.useEffect(() => { setEditorView("edit"); }, [current?.id]);
+  // Burp's held-message editor has Pretty/Raw/Hex/Params/Headers views plus
+  // the Inspector; reuse the same view-tab toolbar and renderView()/
+  // toHexDump() primitives Repeater already proved (#342) rather than
+  // building a second implementation. "edit" is the one editable view (the
+  // buffer that actually gets forwarded); the rest are read-only derived
+  // renderings of it, same split as Repeater's raw-vs-other views.
+  const [icpSearch, setIcpSearch] = React.useState("");
+  const [icpMatchIdx, setIcpMatchIdx] = React.useState(-1);
+  const [icpCaseSensitive, setIcpCaseSensitive] = React.useState(false);
+  const [icpRegex, setIcpRegex] = React.useState(false);
+  const icpRef = React.useRef(null);
+  const icpText = editorView === "edit" ? editedText : renderView(editedText, editorView);
+  const icpMatches = React.useMemo(
+    () => repeaterFindMatches(icpText, icpSearch, { caseSensitive: icpCaseSensitive, regex: icpRegex }),
+    [icpText, icpSearch, icpCaseSensitive, icpRegex]
+  );
+  const jumpIcp = (dir) => {
+    const hit = repeaterGotoMatch(icpMatches, icpMatchIdx, dir);
+    if (!hit || !icpRef.current) return;
+    setIcpMatchIdx(hit.idx);
+    icpRef.current.focus();
+    icpRef.current.setSelectionRange(hit.range[0], hit.range[1]);
+  };
   const sendToScanner = () => {
     if (!current || current.kind === 1) return;
     const parsed = parseRawRequest({ host: current.host, port: current.port, tls: current.tls }, editedText);
@@ -1468,11 +1491,6 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
                 {scanBusy ? "SCANNING…" : "↦ SCAN"}
               </button>
             )}
-            <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }}
-                    title="Structured breakdown of this held message (Inspector)"
-                    onClick={() => setEditorView(v => v === "edit" ? "inspector" : "edit")}>
-              {editorView === "edit" ? "▤ INSPECTOR" : "✎ EDIT"}
-            </button>
             {more > 0 && (
               <span style={{ color: "var(--warn)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }} className="blink">
                 ▮ {more} more waiting
@@ -1510,14 +1528,36 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
               <button className="btn" style={{ padding: "2px 8px", fontSize: "var(--fz-xs)" }} onClick={() => setEditedText(t => respStripSecureCookie(t))}>STRIP SECURE FLAG</button>
             </div>
           )}
+          <RepeaterEditorToolbar
+            views={["edit", "headers", "body", "preview", "hex", "inspector"]}
+            active={editorView}
+            onView={v => { setEditorView(v); setIcpSearch(""); setIcpMatchIdx(-1); }}
+            search={icpSearch}
+            onSearch={s => { setIcpSearch(s); setIcpMatchIdx(-1); }}
+            matchCount={icpMatches.length}
+            onNext={() => jumpIcp(1)}
+            onPrev={() => jumpIcp(-1)}
+            caseSensitive={icpCaseSensitive}
+            onCaseSensitive={v => { setIcpCaseSensitive(v); setIcpMatchIdx(-1); }}
+            regex={icpRegex}
+            onRegex={v => { setIcpRegex(v); setIcpMatchIdx(-1); }}
+          />
           {editorView === "inspector" ? (
             <RepeaterInspectorPanel raw={editedText} kind={current.kind === 1 ? "response" : "request"} />
-          ) : (
+          ) : editorView === "edit" ? (
             <textarea
+              ref={icpRef}
               className="txt"
               value={editedText}
               onChange={e => setEditedText(e.target.value)}
               spellCheck={false}
+            />
+          ) : (
+            <textarea
+              ref={icpRef}
+              className="txt readonly"
+              value={icpText}
+              readOnly
             />
           )}
           <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--line)", background: "var(--pane-2)" }}>
