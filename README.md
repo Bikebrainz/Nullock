@@ -59,7 +59,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   (a text box in the Site map pane), or promote a robots.txt Disallow path / sitemap.xml
                   URL straight from the Discover tab with a one-click "+ map" button; every such
                   entry renders greyed-out/dashed in the tree ("not sent") to distinguish an
-                  unrequested node from real captured traffic
+                  unrequested node from real captured traffic; right-click a host, a folder, or
+                  a single leaf for COPY URLS (plain-text list) / COPY LINKS (clickable HTML,
+                  pastes into tickets/docs), scoped to whatever was clicked -- the whole host,
+                  just that branch, or one URL
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through

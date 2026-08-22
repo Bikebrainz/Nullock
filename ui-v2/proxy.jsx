@@ -452,6 +452,7 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
                 style={{ paddingLeft: pad }}
                 title={folder.fullPath}
                 onClick={() => onSelect(entry, folder.fullPath)}
+                onContextMenu={onRowContextMenu ? (ev => { ev.preventDefault(); onRowContextMenu(entry.host, ev, undefined, folder.fullPath); }) : undefined}
               >
                 <span className="sm-twisty" onClick={ev => toggleFolder(key, ev)} title={isOpen ? "collapse" : "expand"}>{isOpen ? "▾" : "▸"}</span>
                 <span className="sm-folder-name">📁 {folder.name}</span>
@@ -2455,10 +2456,52 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
   const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
 
-  const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host,rowId?} | null
-  const openRowMenu = (host, e, rowId) => setCtxMenu({ x: e.clientX, y: e.clientY, host, rowId });
+  const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host,rowId?,branch?} | null
+  const openRowMenu = (host, e, rowId, branch) => setCtxMenu({ x: e.clientX, y: e.clientY, host, rowId, branch });
   const closeRowMenu = () => setCtxMenu(null);
   const hostIsInScope = ctxMenu ? (scope.in || []).includes(ctxMenu.host) : false;
+
+  // #372: "Copy URLs" / "Copy links" from a site-map context menu -- scoped
+  // to a single row (rowId set), a directory branch (branch set), or the
+  // whole host (neither set), matching how "Delete branch"/"Save selected
+  // items" would scope in Burp. Client-side only: derives URLs from the
+  // HTTP history rows already in state, same source SiteMap's own tree uses.
+  const ctxMenuTargetUrls = () => {
+    if (!ctxMenu) return [];
+    let target = rows.filter(r => r.host === ctxMenu.host);
+    if (ctxMenu.branch) {
+      target = target.filter(r => {
+        const p = (r.path || "/").split("?")[0];
+        return p === ctxMenu.branch || p.startsWith(ctxMenu.branch + "/");
+      });
+    }
+    if (ctxMenu.rowId != null) target = target.filter(r => r.id === ctxMenu.rowId);
+    const urls = target.map(r => {
+      const proto = r.tls ? "https" : "http";
+      const port = r.port || (r.tls ? 443 : 80);
+      const portStr = (port === 80 || port === 443) ? "" : ":" + port;
+      return proto + "://" + r.host + portStr + (r.path || "/");
+    });
+    return Array.from(new Set(urls));
+  };
+  const copyCtxMenuUrls = async (asLinks) => {
+    const urls = ctxMenuTargetUrls();
+    if (urls.length) {
+      try {
+        if (asLinks && navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+          const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+          const html = urls.map(u => `<a href="${esc(u)}">${esc(u)}</a>`).join("<br>");
+          await navigator.clipboard.write([new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([urls.join("\n")], { type: "text/plain" }),
+          })]);
+        } else {
+          await navigator.clipboard.writeText(urls.join("\n"));
+        }
+      } catch (e) { /* clipboard denied/unsupported -- silently no-op like the existing COPY AS copy() */ }
+    }
+    closeRowMenu();
+  };
 
   // #299: highlight colour + comment per history row (client-side, localStorage-persisted).
   const [annotations, setAnnotations] = React.useState(loadAnnotations);
@@ -2696,6 +2739,19 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
                 closeRowMenu();
               }}
             >− REMOVE FROM SCOPE</div>
+            <div style={{ borderTop: "1px solid var(--line)" }} />
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              title={ctxMenu.rowId != null ? "Copy this URL" : (ctxMenu.branch ? "Copy every URL under this branch" : "Copy every URL under this host")}
+              onClick={() => copyCtxMenuUrls(false)}
+            >📋 COPY URLS</div>
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              title="Copy as clickable HTML links (pastes into rich-text tools/tickets)"
+              onClick={() => copyCtxMenuUrls(true)}
+            >🔗 COPY LINKS</div>
             {ctxMenu.rowId != null && (
               <React.Fragment>
                 <div style={{ borderTop: "1px solid var(--line)", padding: "6px 10px", fontSize: "var(--fz-xs)", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.08em" }}>

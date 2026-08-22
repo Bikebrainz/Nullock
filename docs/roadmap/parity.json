@@ -4960,9 +4960,14 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No per-host or per-branch delete, no selective export, no bulk URL copy under a node, no scoped report from a map selection.",
-      "why": "Held. Grepped for per-host deletion under every name I could think of (deleteHost/removeHost/purgeHost) -- nothing. The only nuance worth adding is that the per-row COPY AS menu does yield a full absolute URL, which covers a sliver of 'Copy URLs' for a single row.",
-      "evidence": "Whole-history only: control_server.cpp:5726 `if (path == \"/api/clear-history\") {`, exposed as real-data.js:163 `clearHistory() { return post(\"/api/clear-history\"); }`. Export is whole-history HAR: project_store.hpp:53 `Q_INVOKABLE QString exportHar(const QString &outPath = {});`. SiteMapModel's only mutator is site_map_model.hpp:33 `Q_INVOKABLE void clear();` -> cpp:42-48 `beginResetModel(); m_ent"
+      "gap": "No per-host or per-branch delete, no selective export, no scoped report from a map selection. Copy URLs / Copy links now exist and are scoped (host, branch, or single item).",
+      "why": "Closed the Copy-URLs/Copy-links half (still partial overall -- delete/save/report remain unbuilt). SiteMap's folder rows (ui-v2/proxy.jsx) gained an onContextMenu handler (host rows and leaf rows already had one via #398's scope menu); the shared right-click menu in ProxyTab now carries an optional branch alongside host/rowId and adds two entries -- COPY URLS (plain-text newline list) and COPY LINKS (an HTML anchor-tag list written via a dual text/html+text/plain ClipboardItem so it pastes as clickable links into rich-text tools, falling back to plain writeText when ClipboardItem is unsupported) -- both derived client-side from the same HTTP-history rows the tree itself is built from (no backend change), scoped to exactly what was right-clicked: one URL for a leaf, every URL under that directory for a folder, or the whole host for the host row.",
+      "evidence": "ui-v2/proxy.jsx SiteMap's folder-row onContextMenu now calls onRowContextMenu(entry.host, ev, undefined, folder.fullPath); ProxyTab's ctxMenu state gained a branch field and a ctxMenuTargetUrls()/copyCtxMenuUrls() pair building the scoped URL list from `rows` and writing it via navigator.clipboard.write([new ClipboardItem(...)]) or writeText() fallback. Delete host/branch, Save selected items (Burp XML), and scoped report remain absent -- SiteMapModel's only mutator is still site_map_model.hpp:33 clear() (whole-map only), and no per-selection export/report endpoint exists.",
+      "reconciled": {
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "Gap-narrowing: Copy URLs / Copy links added to the Site map right-click menu (host/branch/single-item scoped), client-side only. Delete host/branch, Save selected items, and scoped report stay absent -- state stays partial."
+      }
     },
     {
       "area": "target",
