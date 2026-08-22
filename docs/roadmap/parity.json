@@ -4643,7 +4643,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "a941656",
         "note": "Repeater send-to wave: absent -> present. Added \u2192 Intruder and \u2192 Scanner send-to buttons to RepeaterTab's request pane, completing the five-tool set (Comparer/Decoder/Sequencer already present from prior waves). Pure frontend, reusing existing reducer cases and the existing parseRawRequest+auditRun pairing InterceptTab already established. No backend change."
       }
     },
