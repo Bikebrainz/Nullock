@@ -22,18 +22,6 @@ QStringList allHeaderValues(const QList<QPair<QString, QString>> &headers,
     return out;
 }
 
-// Origin comparison is case-insensitive (scheme + host are) and ignores a
-// trailing slash, so a server that re-cases or normalizes our origin when
-// reflecting it doesn't slip past as a false negative. Note: a trailing DOT is
-// deliberately NOT stripped -- we want https://attacker.example. to compare
-// distinct from https://attacker.example so the trailing-dot probe can detect a
-// verbatim reflection of the dotted form.
-QString normOrigin(const QString &s) {
-    QString t = s.trimmed();
-    while (t.endsWith('/')) t.chop(1);
-    return t.toLower();
-}
-
 } // namespace
 
 Result test(const Request &req) {
@@ -59,15 +47,17 @@ Result test(const Request &req) {
         const QStringList acaoVals =
             allHeaderValues(r.parsed.headers, "Access-Control-Allow-Origin");
         p.acao = acaoVals.isEmpty() ? QString() : acaoVals.first();
-        p.credentials = headerOf(r.parsed.headers, "Access-Control-Allow-Credentials")
-                            .compare("true", Qt::CaseInsensitive) == 0;
-        // Reflected if ANY ACAO value (normalized) equals the origin we sent;
-        // note a wildcard among them separately.
-        bool wildcard = false;
-        for (const QString &v : acaoVals) {
-            if (normOrigin(v) == normOrigin(origin)) { p.reflected = true; p.acao = v; }
-            if (v == "*") wildcard = true;
-        }
+        // Reflection / wildcard / credentials derivation is now the pure,
+        // unit-tested cors* helpers (this test() is excluded from the test
+        // binary, so those semantics were previously uncovered).
+        p.credentials = corsCredentialsAllowed(
+            headerOf(r.parsed.headers, "Access-Control-Allow-Credentials"));
+        p.reflected = corsOriginReflected(acaoVals, origin);
+        const bool wildcard = corsHasWildcard(acaoVals);
+        // Capture the matched ACAO value for display (last normalized match, as
+        // the original loop did); p.acao otherwise keeps the first value above.
+        for (const QString &v : acaoVals)
+            if (corsNormalizeOrigin(v) == corsNormalizeOrigin(origin)) p.acao = v;
 
         // Classify via the extracted, unit-tested pure verdict function.
         const CorsVerdict v = classifyCorsProbe(label, p.reflected, p.credentials, wildcard);

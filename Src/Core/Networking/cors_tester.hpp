@@ -35,6 +35,7 @@
 #include <QList>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 
 namespace Nullock::Core::CorsTester {
 
@@ -85,5 +86,24 @@ QList<QPair<QString, QString>> originSpecs(const QString &host, bool tls);
 QByteArray buildRequest(const Request &req, const QString &origin);
 CorsVerdict classifyCorsProbe(const QString &label, bool reflected,
                               bool credentials, bool wildcard);
+
+// The reflection derivation (pure) -- how the network test() decides the
+// `reflected` / `wildcard` / `credentials` inputs it feeds to classifyCorsProbe.
+// This was inline in test() (which the test binary excludes), so the ACAO-match
+// semantics -- the load-bearing part -- were unit-tested only downstream of the
+// bool. Extracted here so they are pinned:
+//
+//  - corsNormalizeOrigin: case-fold + strip trailing slash for the ACAO-vs-sent
+//    comparison, but DELIBERATELY keep a trailing DOT (so the trailing-dot probe
+//    detects a verbatim dotted reflection instead of it collapsing to a match).
+//  - corsOriginReflected: true if ANY of the response's ACAO values (a response
+//    can carry more than one) normalizes equal to the sent origin.
+//  - corsHasWildcard: true if any ACAO value is "*".
+//  - corsCredentialsAllowed: Access-Control-Allow-Credentials is exactly "true"
+//    (case-insensitive, trimmed) -- the critical-vs-high severity tiebreak.
+QString corsNormalizeOrigin(const QString &origin);
+bool corsOriginReflected(const QStringList &acaoValues, const QString &sentOrigin);
+bool corsHasWildcard(const QStringList &acaoValues);
+bool corsCredentialsAllowed(const QString &acacValue);
 
 } // namespace Nullock::Core::CorsTester

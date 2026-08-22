@@ -91,6 +91,17 @@ developer-facing record.
   two-step fetch of the critical `aws-imds-iam` AccessKeyId finding &mdash; tests
   pin its `<=128` length boundary and that it accepts legal AWS role characters
   (`+=,.@_-`) so a real role is never silently rejected. Behaviour unchanged.
+- CORS reflection derivation extracted to pure, unit-tested `corsNormalizeOrigin`
+  / `corsOriginReflected` / `corsHasWildcard` / `corsCredentialsAllowed` and
+  mutation-proven. `classifyCorsProbe` (which grades a reflected+credentialed
+  origin CRITICAL) was tested, but the derivation of its `reflected` input &mdash;
+  the actual "did the server echo our Origin?" decision &mdash; was inline in a
+  `test()` the test binary excludes. Tests pin the load-bearing semantics: case-
+  fold + trailing-slash normalization (so a re-cased echo isn't a false negative),
+  the deliberately-preserved trailing dot (so the trailing-dot host-normalization
+  bypass probe still detects a verbatim dotted reflection), and the multi-value
+  ACAO scan (a proxy-added second header must not hide a malicious reflection).
+  Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

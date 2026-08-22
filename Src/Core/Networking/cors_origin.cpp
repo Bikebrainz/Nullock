@@ -147,4 +147,28 @@ CorsVerdict classifyCorsProbe(const QString &label, bool reflected,
     return v;
 }
 
+QString corsNormalizeOrigin(const QString &origin) {
+    QString t = origin.trimmed();
+    while (t.endsWith('/')) t.chop(1);   // a trailing slash is not significant
+    return t.toLower();                  // scheme+host are case-insensitive;
+                                         // a trailing DOT is intentionally kept
+}
+
+bool corsOriginReflected(const QStringList &acaoValues, const QString &sentOrigin) {
+    const QString want = corsNormalizeOrigin(sentOrigin);
+    for (const QString &v : acaoValues)
+        if (corsNormalizeOrigin(v) == want) return true;
+    return false;
+}
+
+bool corsHasWildcard(const QStringList &acaoValues) {
+    for (const QString &v : acaoValues)
+        if (v.trimmed() == QLatin1String("*")) return true;
+    return false;
+}
+
+bool corsCredentialsAllowed(const QString &acacValue) {
+    return acacValue.trimmed().compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
+}
+
 } // namespace Nullock::Core::CorsTester

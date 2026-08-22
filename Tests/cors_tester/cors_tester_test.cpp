@@ -187,6 +187,49 @@ int main(int argc, char **argv) {
         chk("build: CRLF origin -> empty", buildRequest(req, "https://e\r\nX: y").isEmpty());
     }
 
+    // ---- reflection derivation (was inline in the excluded test()) -----
+    // How `reflected` / `wildcard` / `credentials` -- the inputs to the tested
+    // classifyCorsProbe -- are actually derived from the response headers.
+    {
+        // corsNormalizeOrigin: case-fold + strip trailing slash, keep trailing dot.
+        chk("normOrigin: lowercases", corsNormalizeOrigin("HTTPS://ATTACKER.EXAMPLE") == "https://attacker.example");
+        chk("normOrigin: strips a trailing slash", corsNormalizeOrigin("https://attacker.example/") == "https://attacker.example");
+        chk("normOrigin: trims surrounding space", corsNormalizeOrigin("  https://attacker.example  ") == "https://attacker.example");
+        chk("normOrigin: KEEPS a trailing dot (distinct from the un-dotted form)",
+            corsNormalizeOrigin("https://attacker.example.") == "https://attacker.example.");
+
+        const QString origin = "https://attacker.example";
+        // Straight reflection.
+        chk("reflected: exact echo -> true", corsOriginReflected({origin}, origin));
+        // Case-folded reflection still detected (no false negative).
+        chk("reflected: re-cased echo -> true", corsOriginReflected({"HTTPS://ATTACKER.EXAMPLE"}, origin));
+        // Trailing-slash-normalized reflection detected.
+        chk("reflected: echo with trailing slash -> true", corsOriginReflected({"https://attacker.example/"}, origin));
+        // Multi-value ACAO: a proxy-added second value must not hide the malicious one.
+        chk("reflected: found among multiple ACAO values -> true",
+            corsOriginReflected({"https://good.example", origin}, origin));
+        // No reflection.
+        chk("reflected: a different allowed origin -> false",
+            !corsOriginReflected({"https://good.example"}, origin));
+        chk("reflected: wildcard alone is not a reflection of our origin",
+            !corsOriginReflected({"*"}, origin));
+        // Trailing-dot bypass: a dotted sent origin reflected verbatim IS a hit,
+        // but must NOT match the un-dotted form (that's the whole point of keeping the dot).
+        chk("reflected: dotted origin echoed verbatim -> true",
+            corsOriginReflected({"https://attacker.example."}, "https://attacker.example."));
+        chk("reflected: un-dotted ACAO does NOT match a dotted sent origin",
+            !corsOriginReflected({"https://attacker.example"}, "https://attacker.example."));
+
+        chk("wildcard: '*' present -> true", corsHasWildcard({"https://good.example", "*"}));
+        chk("wildcard: none -> false", !corsHasWildcard({"https://good.example"}));
+
+        chk("credentials: 'true' -> true", corsCredentialsAllowed("true"));
+        chk("credentials: 'TRUE' (case-insensitive) -> true", corsCredentialsAllowed("TRUE"));
+        chk("credentials: ' true ' (trimmed) -> true", corsCredentialsAllowed(" true "));
+        chk("credentials: '1' is NOT true", !corsCredentialsAllowed("1"));
+        chk("credentials: empty -> false", !corsCredentialsAllowed(QString()));
+    }
+
     std::fprintf(stderr, "cors_tester_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
