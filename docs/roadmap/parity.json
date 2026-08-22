@@ -2957,7 +2957,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-22",
-        "commit": "PENDING",
+        "commit": "41710a4",
         "note": "Added a build-docker CI job (docker build + --help runtime smoke) closing the 'never built by CI, self-declared unvalidated' half of the gap; no published image and no digest-pinned base remain, honestly unaffected. CI outcome unknown at commit time -- this cloud session has no Docker daemon to pre-validate; confirm green next wave."
       }
     },
