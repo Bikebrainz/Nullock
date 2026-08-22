@@ -233,3 +233,21 @@ jobs:
           # NULLOCK_FUZZ + standalone-driver build steps go here in a
           # future iteration -- currently the fuzz harnesses build but
           # the corpus is gitignored.
+
+  build-docker:
+    name: build Docker image
+    runs-on: ubuntu-latest
+    # The root Dockerfile shipped with a "not yet validated with `docker
+    # build`" self-disclaimer -- nothing in CI ever actually built it, so a
+    # broken multi-stage build (a bad aqtinstall module name, a missing
+    # runtime .so, a COPY --from typo) could sit unnoticed indefinitely. This
+    # job builds the real multi-stage image on every push and then runs the
+    # resulting binary's `--help` path (deterministic, no network/proxy
+    # binds, no API token needed) to prove the runtime stage actually
+    # executes -- not just that the layers copied.
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t nullock:ci .
+      - name: runtime smoke (--help, no listeners/token required)
+        run: docker run --rm nullock:ci --help
