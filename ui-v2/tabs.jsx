@@ -759,6 +759,30 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
     const t = el.value.substring(el.selectionStart, el.selectionEnd);
     if (t) { dispatch({ type: "sequencer-add-token", text: t }); if (onSwitchTab) onSwitchTab("sequencer"); }
   };
+  // Promote the current draft request into a new Intruder attack template
+  // -- reducer (app.jsx "send-to-intruder-raw") already switches state.tab
+  // itself, same case InterceptTab's own sendToIntruder already reuses.
+  const sendToIntruder = () => dispatch({ type: "send-to-intruder-raw", host: rep.host, port: rep.port, tls: rep.tls, text: rep.request });
+
+  // "Send to Scanner": run the active-test battery against the draft request
+  // right now, same parseRawRequest(proxy.jsx)+auditRun pairing InterceptTab's
+  // own sendToScanner already established -- no history row id is needed,
+  // the raw text + host/port/tls are enough.
+  const [scanBusy, setScanBusy] = React.useState(false);
+  const [scanRes, setScanRes] = React.useState(null);
+  const sendToScanner = () => {
+    const parsed = parseRawRequest({ host: rep.host, port: rep.port, tls: rep.tls }, rep.request);
+    const headers = {};
+    for (const [k, v] of parsed.headers) headers[k] = v;
+    const opts = { method: parsed.method };
+    if (parsed.body) opts.body = parsed.body;
+    if (Object.keys(headers).length) opts.headers = headers;
+    setScanBusy(true); setScanRes(null);
+    NL.actions.auditRun(parsed.fullUrl, opts)
+      .then(r => setScanRes(r))
+      .catch(e => setScanRes({ ok: false, error: String(e && e.message ? e.message : e) }))
+      .finally(() => setScanBusy(false));
+  };
 
   // Live tab strip pulled from the snapshot. Fall back to a single fake
   // entry if the backend hasn't reported tabs yet (older builds).
@@ -1159,6 +1183,11 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             <button className="btn" style={{ marginLeft: 6 }} disabled={!reqSel}
                     title="Send the selected text (a token) to Sequencer"
                     onClick={() => sendSelectionToSequencer(reqRef)}>↦ SEQ</button>
+            <button className="btn" style={{ marginLeft: 6 }} title="Send to Intruder as a new attack template"
+                    onClick={sendToIntruder}>↦ INT</button>
+            <button className="btn" style={{ marginLeft: 6 }} disabled={scanBusy}
+                    title="Run the active-test battery against this request"
+                    onClick={sendToScanner}>{scanBusy ? "SCANNING…" : "↦ SCAN"}</button>
             <button className="btn" style={{ marginLeft: 6 }}
                     title="Toggle GET/POST, moving params between the query string and an urlencoded body"
                     onClick={() => dispatch({ type: "repeater-set", payload: { request: repeaterChangeMethod(rep.request) }})}>
@@ -1184,6 +1213,23 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
             regex={reqRegex}
             onRegex={v => { setReqRegex(v); setReqMatchIdx(-1); }}
           />
+          {scanRes && (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "4px 8px",
+                          borderBottom: "1px solid var(--line)", background: "var(--pane-2)", flexWrap: "wrap" }}>
+              <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                scan:
+              </span>
+              {scanRes.ok === false ? (
+                <span style={{ color: "var(--err)", fontSize: "var(--fz-xs)" }}>{scanRes.error || "scan failed"}</span>
+              ) : (
+                <span style={{ color: "var(--text-2)", fontSize: "var(--fz-xs)" }}>
+                  {scanRes.totalFindings} finding{scanRes.totalFindings === 1 ? "" : "s"} across {(scanRes.testers || []).length} tester{(scanRes.testers || []).length === 1 ? "" : "s"} — see Issues
+                </span>
+              )}
+              <span style={{ flex: 1 }} />
+              <button className="btn" style={{ padding: "1px 6px", fontSize: "var(--fz-xs)" }} onClick={() => setScanRes(null)}>DISMISS</button>
+            </div>
+          )}
           {reqView === "inspector" ? (
             <RepeaterInspectorPanel raw={rep.request} kind="request" sel={reqSel} />
           ) : reqView === "raw" ? (

@@ -69,7 +69,11 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
                   the final page with a COOKIES toggle to thread Set-Cookie through every hop,
                   ⇄ METHOD toggles GET/POST (moving params between the query string and an
                   urlencoded body) and ⇄ ENCODING converts urlencoded <-> multipart/form-data
-                  bodies, both recomputing Content-Type/Content-Length
+                  bodies, both recomputing Content-Type/Content-Length; the request pane can
+                  also push the draft straight onward -- ↦ CMP/DEC/SEQ plus ↦ INT (promotes
+                  it to a new Intruder attack template) and ↦ SCAN (runs the active-test
+                  battery against it, findings streaming into Issues), so Repeater is no
+                  longer a dead end for the other tools
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/

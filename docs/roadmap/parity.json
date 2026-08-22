@@ -4634,12 +4634,18 @@
     {
       "area": "repeater",
       "feature": "Repeater: send from a Repeater tab to Intruder / Comparer / Decoder / Sequencer / Scanner",
-      "state": "absent",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Repeater is a dead end: a refined request cannot be promoted to Intruder, and a response cannot be pushed to Comparer or Decoder. The tools are isolated islands rather than a workflow.",
-      "why": "Confirmed. I enumerated every send-to site in the UI myself: exactly two actions exist (repeater, intruder) and both are dispatched from the proxy DetailPane.",
-      "evidence": "All send-to call sites: D:/dev/Nullock/ui-v2/app.jsx:49 `case \"send-to-repeater\"`, :63 `case \"send-to-intruder\"`; ui-v2/proxy.jsx:264-265 the two buttons; ui-v2/proxy.jsx:1225 `onSendRepeater={() => dispatch({ type: \"send-to-repeater\", row: selectedRow })}`. Nothing else. The Repeater control row in ui-v2/tabs.jsx contains only PROTO/HOST/port/TLS/STATUS/CLEAR/SEND."
+      "gap": "Closed: RepeaterTab now has a send-to path for all five sibling tools -- \u2192 Comparer/\u2192 Decoder/\u2192 Sequencer already existed (#345/#323/#167), and this wave added \u2192 Intruder (promotes the draft request into a new attack template via the same send-to-intruder-raw reducer case InterceptTab's own send-to-Intruder button already used) and \u2192 Scanner (runs the active-test battery against the draft request via the same parseRawRequest+auditRun pairing InterceptTab's own send-to-Scanner button already established). No remaining Repeater-side gap; Repeater is no longer a dead end.",
+      "why": "Reclassified 2026-08-22 (repeater send-to wave). Re-audited live source: the original claim ('exactly two send-to sites, both in the proxy DetailPane') is now stale -- RepeaterTab (ui-v2/tabs.jsx) already had working \u2192 CMP / \u2192 DEC / \u2192 SEQ buttons in its request/response pane headers from prior waves. The only two missing legs, Intruder and Scanner, are added in this wave: sendToIntruder dispatches the existing send-to-intruder-raw action (app.jsx, already used by InterceptTab) with rep.host/port/tls/request; sendToScanner reuses parseRawRequest (proxy.jsx, already used by InterceptTab's own send-to-Scanner) to build the audit URL/method/body/headers and calls NL.actions.auditRun, rendering the same finding-count banner InterceptTab already renders. Both reuse existing, already-verified reducer cases/backend calls -- no new backend surface.",
+      "evidence": "ui-v2/tabs.jsx RepeaterTab: sendToComparer/sendToDecoder/sendSelectionToSequencer (pre-existing) plus this wave's sendToIntruder (dispatch({type:\"send-to-intruder-raw\", host: rep.host, port: rep.port, tls: rep.tls, text: rep.request})) and sendToScanner (parseRawRequest({host:rep.host,port:rep.port,tls:rep.tls}, rep.request) -> NL.actions.auditRun(parsed.fullUrl, {method, body, headers})); request-pane header buttons \u21a6 CMP / \u21a6 DEC / \u21a6 SEQ / \u21a6 INT / \u21a6 SCAN plus a scan-result banner (finding count / error, DISMISS); app.jsx \"send-to-intruder-raw\" reducer case (pre-existing, previously reachable only from InterceptTab); ui-v2/real-data.js auditRun() (pre-existing, POST /api/audit/run).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-22",
+        "commit": "PENDING",
+        "note": "Repeater send-to wave: absent -> present. Added \u2192 Intruder and \u2192 Scanner send-to buttons to RepeaterTab's request pane, completing the five-tool set (Comparer/Decoder/Sequencer already present from prior waves). Pure frontend, reusing existing reducer cases and the existing parseRawRequest+auditRun pairing InterceptTab already established. No backend change."
+      }
     },
     {
       "area": "repeater",
