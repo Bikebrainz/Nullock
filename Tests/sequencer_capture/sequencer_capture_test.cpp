@@ -92,6 +92,19 @@ int main(int argc, char **argv) {
     chk("extract: an out-of-range 'from' -> empty (no crash)",
         extractToken(99, "x", 200, {}, "body").isEmpty());
 
+    // ===== cookieNameFromSetCookie (name-only extraction) ===============
+    chk("cookie-name: simple pair", cookieNameFromSetCookie("sid=REALTOKEN") == "sid");
+    chk("cookie-name: attributes after the first ';' ignored",
+        cookieNameFromSetCookie("sid=REALTOKEN; Path=/; HttpOnly") == "sid");
+    chk("cookie-name: whitespace around the name trimmed",
+        cookieNameFromSetCookie("  sid  =REALTOKEN") == "sid");
+    chk("cookie-name: an attribute-only value later in the string is not the name",
+        cookieNameFromSetCookie("csrftoken=abc; Domain=example.com") == "csrftoken");
+    chk("cookie-name: no '=' at all -> empty", cookieNameFromSetCookie("garbage").isEmpty());
+    chk("cookie-name: '=' as the very first char (empty name) -> empty",
+        cookieNameFromSetCookie("=novalue").isEmpty());
+    chk("cookie-name: empty input -> empty", cookieNameFromSetCookie("").isEmpty());
+
     // ===== clampCaptureCount (DoS guard) ================================
     chk("clamp-count: within cap unchanged", clampCaptureCount(50, 500) == 50);
     chk("clamp-count: exactly at cap unchanged", clampCaptureCount(500, 500) == 500);

@@ -4339,6 +4339,21 @@ function SequencerTab({ sequencer, dispatch }) {
           <input type="number" title="throttle (ms)" value={capThrottleMs} onChange={e => setCapThrottleMs(parseInt(e.target.value, 10) || 0)}
                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
         </div>
+        {capExtractFrom === "cookie" && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: "10.5px", color: "var(--dim)" }}>cookies seen so far:</span>
+            {capSnapshot && capSnapshot.cookieNames && capSnapshot.cookieNames.length > 0 ? (
+              <select value="" onChange={e => { if (e.target.value) setCapExtractKey(e.target.value); }}
+                      title="Pick a cookie name harvested from a response so far, instead of typing one blind"
+                      style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 6px", fontSize: "11px", fontFamily: "var(--ff-mono)" }}>
+                <option value="">pick a cookie…</option>
+                {capSnapshot.cookieNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            ) : (
+              <span style={{ fontSize: "10.5px", color: "var(--dim)", fontStyle: "italic" }}>none yet — appears once a shot's response sets one</span>
+            )}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn" disabled={capBusy || (capSnapshot && capSnapshot.running) || !capHost.trim()} onClick={captureStart}>
             {capBusy ? "STARTING…" : "START"}

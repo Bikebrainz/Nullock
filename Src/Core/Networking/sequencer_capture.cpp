@@ -8,6 +8,7 @@
 #include "networking.hpp"            // HttpClient
 #include "session_rules_logic.hpp"   // findHeader (Retry-After)
 
+#include <QJsonArray>
 #include <QThread>
 #include <QtConcurrent/QtConcurrent>   // module-qualified: bare <QtConcurrent> won't resolve on Linux/GCC
 
@@ -49,6 +50,7 @@ bool SequencerCapture::start(const Request &reqIn, QString *err) {
     {
         QMutexLocker lk(&m_mutex);
         m_tokens.clear();
+        m_cookieNames.clear();
         m_error.clear();
         m_host = req.host;
     }
@@ -77,6 +79,7 @@ void SequencerCapture::clear() {
     {
         QMutexLocker lk(&m_mutex);
         m_tokens.clear();
+        m_cookieNames.clear();
         m_error.clear();
         m_host.clear();
     }
@@ -127,6 +130,20 @@ void SequencerCapture::run(Request req) {
             // sanitized -- the token is an analysis sample, never re-sent.
             token = SCL::extractToken(req.extractFrom, req.extractKey, status,
                                       res.parsed.headers, res.parsed.bodyForInspection());
+
+            // Track distinct Set-Cookie NAMES seen this run (not values), so the
+            // UI can offer a live "cookies seen" picker instead of a blind
+            // free-text key -- independent of extractFrom, so a capture started
+            // in Header/JSON/Regex mode still builds a usable cookie list if the
+            // response happens to set one.
+            for (const auto &h : res.parsed.headers) {
+                if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) != 0) continue;
+                const QString name = SCL::cookieNameFromSetCookie(h.second);
+                if (name.isEmpty()) continue;
+                QMutexLocker lk(&m_mutex);
+                if (!m_cookieNames.contains(name) && m_cookieNames.size() < kMaxCookieNames)
+                    m_cookieNames.append(name);
+            }
         }
 
         const auto cls = SCL::classifyShot(res.ok, status, token.isEmpty());
@@ -194,6 +211,7 @@ QJsonObject SequencerCapture::snapshot() const {
         { "transportErrors", m_transportErrors.loadAcquire() },
         { "lastStatus",      m_lastStatus.loadAcquire() },
         { "error",           m_error },
+        { "cookieNames",     QJsonArray::fromStringList(m_cookieNames) },
     };
 }
 

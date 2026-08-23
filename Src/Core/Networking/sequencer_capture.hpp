@@ -44,6 +44,10 @@ public:
     static constexpr int kConsecFailAbort = 10;
     // Cap a 429 Retry-After backoff so a hostile "Retry-After: 999999" can't stall.
     static constexpr int kRetryAfterCapMs = 60000;
+    // Cap the distinct Set-Cookie NAMES tracked for the UI picker -- a target
+    // minting a fresh cookie name on every response must not grow this
+    // unbounded across a 10000-shot capture.
+    static constexpr int kMaxCookieNames  = 64;
 
     struct Request {
         QByteArray request;   // raw HTTP/1.1 bytes, fired verbatim each shot
@@ -68,7 +72,9 @@ public:
 
     // Live counters (mutex/atomic guarded). NO tokens -- keeps a 250ms poll cheap
     // even for a large capture. Fields: running, host, done, total, harvested,
-    // emptyExtract, httpErrors, transportErrors, lastStatus, error.
+    // emptyExtract, httpErrors, transportErrors, lastStatus, error, cookieNames
+    // (distinct Set-Cookie names seen so far, capped at kMaxCookieNames -- lets
+    // the UI offer a live picker instead of a blind free-text cookie key).
     QJsonObject snapshot() const;
     // The harvested corpus, fetched once on completion. Mutex-guarded copy.
     QStringList tokens() const;
@@ -81,7 +87,7 @@ private:
     void run(Request req);          // worker body -- runs on a QtConcurrent pool thread
     void interruptibleSleep(int ms);
 
-    mutable QMutex m_mutex;         // guards m_host / m_error / m_tokens
+    mutable QMutex m_mutex;         // guards m_host / m_error / m_tokens / m_cookieNames
     QAtomicInt m_running         { 0 };
     QAtomicInt m_stop            { 0 };
     QAtomicInt m_done            { 0 };
@@ -94,6 +100,7 @@ private:
     QString       m_host;
     QString       m_error;
     QStringList   m_tokens;
+    QStringList   m_cookieNames;    // distinct Set-Cookie names seen, capped at kMaxCookieNames
     QFuture<void> m_worker;         // joined in ~SequencerCapture()
 };
 

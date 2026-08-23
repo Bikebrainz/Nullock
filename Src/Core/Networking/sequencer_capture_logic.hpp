@@ -50,6 +50,15 @@ QString extractToken(int from, const QString &key, int statusCode,
                      const QList<QPair<QString, QString>> &headers,
                      const QByteArray &body);
 
+// Extract the cookie NAME from a raw Set-Cookie header value (everything
+// before the first '=' in the first ';'-delimited segment -- the same
+// first-segment rule findCookieValue uses for the VALUE), so a caller can
+// list which cookies a response set without needing to already know a name
+// to look up. A later segment's '=' (an attribute like "Path=/") is never
+// mistaken for a name. No '=' in the first segment, or an empty/whitespace-
+// only name -> empty.
+QString cookieNameFromSetCookie(const QString &raw);
+
 // Clamp a requested shot count into [0, maxCap]. A live-capture loop auto-issues
 // this many requests, so an unbounded / negative / absurd count is a
 // self-inflicted DoS on the target -- the engine always routes the requested

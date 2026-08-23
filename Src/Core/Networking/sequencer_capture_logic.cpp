@@ -49,6 +49,15 @@ QString extractToken(int from, const QString &key, int statusCode,
     return {};
 }
 
+QString cookieNameFromSetCookie(const QString &raw) {
+    const QList<QString> segs = raw.split(';');
+    if (segs.isEmpty()) return {};
+    const QString s = segs.first().trimmed();
+    const int eq = s.indexOf('=');
+    if (eq <= 0) return {};
+    return s.left(eq).trimmed();
+}
+
 int clampCaptureCount(int requested, int maxCap) {
     if (maxCap < 0) maxCap = 0;
     if (requested < 0) return 0;

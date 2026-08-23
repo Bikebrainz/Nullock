@@ -2242,17 +2242,17 @@
     {
       "area": "sequencer",
       "feature": "Live capture token location: Cookie (dropdown of cookies seen in the response)",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Cookie extraction is fully wired end-to-end and now UI-reachable: SequencerTab's Live Capture panel has an extract-from select with a Cookie option and a free-text key field the operator types the cookie name into. Still not what the item literally asks for: a DROPDOWN auto-populated from cookies actually seen in a response (the UI takes a manually-typed name, same as the backend's key parameter) -- that auto-listing convenience remains unbuilt.",
-      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave closed the backend half ('the extraction primitive exists but is simply not wired to token capture'); this wave adds the UI half but as a free-text field, not the named auto-populated dropdown.",
-      "evidence": "ui-v2/app.jsx SequencerTab's SEQ_CAPTURE_EXTRACT_FROM select (value='cookie') + capExtractKey text input; Src/Core/Networking/sequencer_capture_logic.cpp FromCookie branch (unchanged).",
-      "audited_state": "absent",
+      "gap": "None -- SequencerTab's Live Capture panel (ui-v2/app.jsx) now shows a live \"cookies seen so far\" <select>, auto-populated from the distinct Set-Cookie names the capture engine has actually observed in captured responses so far (SequencerCapture::snapshot()'s new cookieNames field), refreshed on the same 1.5s poll the rest of the panel already uses. Picking an entry fills the existing free-text extract-key field, which stays editable by hand for a cookie not yet seen or before any shot has completed.",
+      "why": "Closed 2026-08-23 (partial -> present): the prior wave's free-text-only key field is now backed by a real auto-populated picker, closing the literal \"dropdown of cookies seen in the response\" ask. Backend: SequencerCapture tracks the distinct Set-Cookie NAMES (not values) seen across a run in a mutex-guarded, capped (kMaxCookieNames=64 -- a target minting a fresh name every response can't grow it unbounded) list, reset on start()/clear(), exposed as snapshot()'s new cookieNames field. /api/sequencer/capture/tokens already forwards the whole snapshot() object (control_server.cpp:5167), so no control_server.cpp change was needed -- the new field reached the frontend for free. Frontend: the picker renders only in Cookie extract-from mode, seeded from the already-polled capSnapshot.cookieNames, with a friendly \"none yet\" placeholder before the first Set-Cookie response arrives.",
+      "evidence": "Src/Core/Networking/sequencer_capture_logic.{hpp,cpp} cookieNameFromSetCookie (7 unit-tested cases, Tests/sequencer_capture/sequencer_capture_test.cpp); sequencer_capture.{hpp,cpp} m_cookieNames/kMaxCookieNames + snapshot()'s cookieNames field, reset in start()/clear(), populated in run()'s per-shot Set-Cookie scan; ui-v2/app.jsx SequencerTab's new cookie-picker <select>, gated on capExtractFrom === 'cookie'.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "f910a9e",
-        "note": "The cookie token-location is now wired to live capture: capture with extract:{from:'cookie',key:'SESSIONID'} walks the response's Set-Cookie headers (SequencerCaptureLogic::extractToken, unit-tested + mutation-proven) and harvests that cookie each shot -- the audit's 'the extraction primitive exists but is simply not wired to token capture' gap is closed. Remaining: the 'dropdown of cookies seen in the response' auto-listing is a UI convenience, still pending."
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Sequencer live-capture cookie-picker wave: backend now tracks distinct Set-Cookie names seen per run and exposes them via the existing snapshot()/tokens endpoint; SequencerTab's Live Capture panel gets a \"cookies seen so far\" dropdown in Cookie mode that fills the existing free-text extract key, closing the item's literal \"dropdown of cookies seen in the response\" ask."
       }
     },
     {
