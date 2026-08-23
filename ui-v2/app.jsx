@@ -729,6 +729,18 @@ function SettingsTab() {
     if (r && Array.isArray(r.acceptInvalidUpstreamHosts)) setAcceptInvalidList(r.acceptInvalidUpstreamHosts);
   };
 
+  const [extAutoReload, setExtAutoReloadState] = React.useState(!!b.extAutoReload);
+  React.useEffect(() => { setExtAutoReloadState(!!b.extAutoReload); }, [b.extAutoReload]);
+  const toggleExtAutoReload = async (next) => {
+    setExtAutoReloadState(next);
+    try {
+      const r = await NL.actions.setExtAutoReload(next);
+      if (r && typeof r.autoReload === "boolean") setExtAutoReloadState(r.autoReload);
+    } catch {
+      setExtAutoReloadState(!next);
+    }
+  };
+
   const [installBusy, setInstallBusy] = React.useState(false);
   const [installMsg, setInstallMsg]   = React.useState("");
   const doInstallBuiltins = async () => {
@@ -1120,6 +1132,16 @@ function SettingsTab() {
             {installMsg && <span style={{ color: "var(--dim)", fontSize: "10.5px", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{installMsg}</span>}
             <Btn label="Install bundled" onClick={doInstallBuiltins} disabled={installBusy}
                  title="Copy the extensions shipped with Nullock (extensions/*.js) into your extensions folder" />
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "10.5px", color: "var(--dim)", cursor: "pointer" }}
+                   title="Watch the extensions folder and auto-reload all extensions ~300ms after any .js is added, removed, or edited">
+              <input
+                type="checkbox"
+                checked={extAutoReload}
+                onChange={() => toggleExtAutoReload(!extAutoReload)}
+                style={{ cursor: "pointer" }}
+              />
+              Auto-reload (dev)
+            </label>
             <Btn label="Reload" onClick={() => NL.actions.reloadExtensions()} />
           </div>
         }

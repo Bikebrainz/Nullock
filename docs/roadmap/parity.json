@@ -1360,14 +1360,14 @@
       "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No filesystem-watcher / auto-reload exists (grep QFileSystemWatcher|autoReload in Src is empty); only a single manual global Reload button driving /api/extensions/reload, a different capability.",
-      "why": "Corrected from 'stub' on independent re-derivation (2026-08-02): there is no auto-reload scaffold at all, so this is absent rather than a partial stub.",
-      "evidence": "grep QFileSystemWatcher|autoReload in Src/ = empty; extensions_api.cpp reload() is a global engine rebuild; ui-v2/app.jsx has one manual Reload button.",
-      "audited_state": "stub",
+      "gap": "The auto-reload checkbox now exists and works end-to-end (toggling it in Settings' Extensions card flips the same opt-in QFileSystemWatcher the backend shipped in 5dba22c). Still missing: the Ctrl/Cmd-click-to-reload-a-single-extension gesture named in the title -- Reload (and now auto-reload) both rebuild the whole QJSEngine and re-run every script; there is no per-extension reload path, backend or frontend.",
+      "why": "Wave 2 (2026-08-23): wired the auto-reload CHECKBOX -- the ui-v2 half the prior wave (5dba22c) explicitly left as the honest remainder. Added NL.actions.setExtAutoReload (ui-v2/real-data.js, POSTs the already-existing /api/extensions/auto-reload {value}) and a checkbox in Settings' Extensions card action row (ui-v2/app.jsx), initialised from the already-published bootInfo.extAutoReload and updated optimistically with a revert-on-failure guard, matching the toggleExtensionEnabled pattern already used two rows below it. No backend change -- the endpoint and snapshot field existed and were unread, same shape as the accept-invalid-cert and CVE-overlay waves before it. Stays partial, not present: single-extension reload (the Ctrl/Cmd-click gesture) is unbuilt at any layer.",
+      "evidence": "ui-v2/real-data.js setExtAutoReload(value) posts /api/extensions/auto-reload {value}; ui-v2/app.jsx SettingsTab: extAutoReload state seeded from b.extAutoReload (bootInfo, control_server.cpp:1293 bootInfo[\"extAutoReload\"] = m_wiring.extensions->autoReload()), toggleExtAutoReload() calls the action and reconciles against the server's echoed autoReload; checkbox rendered in the Extensions card's action row next to the existing Install bundled / Reload buttons. control_server.cpp:6417-6421 POST handler unchanged (pre-existing). Single-extension reload: grep 'reload.*name\\|per-extension.*reload' across ExtensionsApi/ui-v2 = no match; /api/extensions/reload and setAutoReload's own reload() both call the same whole-engine rebuildEngine().",
+      "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-20",
-        "commit": "5dba22c",
-        "note": "absent -> partial. The 'no filesystem-watcher / auto-reload exists' gap is closed: ExtensionsApi now has an opt-in auto-reload -- a QFileSystemWatcher on the extensions dir (dir for add/remove + each .js for in-place edits) fires a 300ms-debounced reload() on any change. Off by default (so a stateful extension isn't torn down on an unrelated save); enabled via --ext-autoreload / NULLOCK_EXT_AUTORELOAD or POST /api/extensions/auto-reload {value}; snapshot bootInfo.extAutoReload. refreshWatch() re-syncs watched paths at the end of every loadAll() because editors delete+recreate on save (dropping the watch). VERIFIED e2e (5/5): with --ext-autoreload, editing a .js in place is picked up WITHOUT a manual reload, a newly-added .js auto-loads, and the snapshot reports it enabled. ctest 100/100, probe 156/156. REMAINDER (why still partial): the ui-v2 auto-reload CHECKBOX and the Ctrl/Cmd-click-to-reload-a-single-extension gesture in the item title (concurrent-agent lane; the extAutoReload state + toggle endpoint give the checkbox everything it needs). Reload is global today, not per-single-extension."
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Wave 2: wired the [A4] auto-reload checkbox into Settings' Extensions card (ui-v2/app.jsx + ui-v2/real-data.js), closing the ui-v2-reachability half the prior backend wave (5dba22c) left open. No backend change. Stays partial -- the Ctrl/Cmd-click single-extension reload gesture remains unbuilt, honestly named in the updated gap text."
       }
     },
     {

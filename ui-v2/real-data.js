@@ -227,6 +227,13 @@
     setExtensionEnabled(name, enabled) {
       return post("/api/extensions/set-enabled", { name, enabled: !!enabled }).then(r => r.json());
     },
+    // Dev auto-reload: a QFileSystemWatcher on the extensions dir debounce-
+    // reloads on any add/remove/edit. Off by default so a stateful extension
+    // isn't torn down on an unrelated save. Backend: POST /api/extensions/
+    // auto-reload; also settable at launch via --ext-autoreload.
+    setExtAutoReload(value) {
+      return post("/api/extensions/auto-reload", { value: !!value }).then(r => r.json());
+    },
 
     // --- extension marketplace ---
     // Fetches the published catalog already merged against what is on disk, so
