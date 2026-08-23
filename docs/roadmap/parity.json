@@ -4400,7 +4400,7 @@
       "audited_state": "stub",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "fae9287",
         "note": "Editable HEADERS view (add/remove/reorder, ui-v2/tabs.jsx RepeaterHeadersView) wired into the Repeater request editor and Intercept's held request+response editors, sharing the repeaterSplitRaw/repeaterBuildRaw round-trip already used by the method/encoding transforms. Repeater's read-only response pane and Proxy history's DetailPane intentionally left on the prior read-only headers text view."
       }
     },
