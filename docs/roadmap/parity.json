@@ -2957,7 +2957,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "3538e4c",
         "note": "Confirmed last wave's build-docker CI job had actually failed on its first real run (never checked before), then root-caused and fixed five distinct real bugs across five CI round-trips (Qt6.7 aqtinstall arch rename, apt cmake too old, missing zlib1g-dev, missing fontconfig/freetype/dbus dev+runtime libs, FrontEndGUI.so never installed into the runtime image, missing GLVND+Mesa-software-driver GL stack) until the sixth push came back fully green -- both docker build and the --help runtime smoke check now pass on GitHub Actions. No published image and no digest-pinned base remain, honestly unaffected -- this closes the CI-validation gap for real, not just 'wired in and hoped', which is what the state stays 'partial' for."
       }
     },
