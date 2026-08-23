@@ -1366,7 +1366,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "bf351de",
         "note": "Wave 2: wired the [A4] auto-reload checkbox into Settings' Extensions card (ui-v2/app.jsx + ui-v2/real-data.js), closing the ui-v2-reachability half the prior backend wave (5dba22c) left open. No backend change. Stays partial -- the Ctrl/Cmd-click single-extension reload gesture remains unbuilt, honestly named in the updated gap text."
       }
     },
