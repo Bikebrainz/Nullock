@@ -102,6 +102,14 @@ developer-facing record.
   bypass probe still detects a verbatim dotted reflection), and the multi-value
   ACAO scan (a proxy-added second header must not hide a malicious reflection).
   Behaviour unchanged.
+- IDOR enumeration verdict's length-tolerance calibration extracted to pure,
+  unit-tested `idorTolerance` / `idorDiffersFromNotFound` and mutation-proven.
+  `isAccessible` was tested but took `differsFromNotFound` pre-resolved; the
+  threshold that produces it &mdash; the boundary between a real distinct object
+  and the not-found template &mdash; was inline. Tests pin the `+16` jitter floor
+  (so a low-jitter endpoint still needs a real difference), the `qMax` of
+  baseline/control jitter (so a token-jittery not-found page widens tolerance and
+  is not false-flagged), and the strict `>` boundary. Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

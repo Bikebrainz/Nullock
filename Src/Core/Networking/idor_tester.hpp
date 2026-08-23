@@ -113,4 +113,19 @@ bool controlUsable(int controlLen);
 // not-found template, and not byte-identical to your own baseline object.
 bool isAccessible(int status, bool differsFromNotFound, bool differsFromBaseline);
 
+// The length-tolerance calibration + the not-found discriminator (both pure).
+// These derive the `differsFromNotFound` bool that isAccessible consumes; they
+// were inline in test() and untested, so the threshold that separates "a real
+// distinct object" from "just the not-found template" had no regression lock.
+//
+//  - idorTolerance: how many bytes a neighbor must differ from the not-found
+//    control before it counts as distinct. Calibrated as the LARGER of the
+//    baseline's and the control's own request-to-request length jitter (dynamic
+//    CSRF tokens / timestamps make identical objects differ a little), plus a
+//    16-byte floor so a low-jitter endpoint still needs a real difference.
+//  - idorDiffersFromNotFound: STRICT '>' so a neighbor exactly `tol` bytes from
+//    the control is treated as the not-found template (not a lead) -- fail safe.
+int  idorTolerance(int baseJitter, int ctrlJitter);
+bool idorDiffersFromNotFound(int len, int ctrlLen, int tol);
+
 } // namespace Nullock::Core::IdorTester

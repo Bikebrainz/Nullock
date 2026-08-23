@@ -7,6 +7,7 @@
 #include "idor_tester.hpp"
 
 #include <QRegularExpression>
+#include <QtGlobal>   // qMax, qAbs
 
 namespace Nullock::Core::IdorTester {
 
@@ -134,6 +135,14 @@ bool controlUsable(int controlLen) {
 
 bool isAccessible(int status, bool differsFromNotFound, bool differsFromBaseline) {
     return status >= 200 && status < 300 && differsFromNotFound && differsFromBaseline;
+}
+
+int idorTolerance(int baseJitter, int ctrlJitter) {
+    return qMax(baseJitter, ctrlJitter) + 16;
+}
+
+bool idorDiffersFromNotFound(int len, int ctrlLen, int tol) {
+    return qAbs(len - ctrlLen) > tol;
 }
 
 } // namespace Nullock::Core::IdorTester

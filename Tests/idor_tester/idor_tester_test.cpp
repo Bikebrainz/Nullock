@@ -119,6 +119,29 @@ int main(int argc, char **argv) {
         chk("build: CRLF path -> empty", buildRequest(req, "/x\r\nX-Smuggled: 1").isEmpty());
     }
 
+    // ---- idorTolerance + idorDiffersFromNotFound (were inline) ---------
+    // isAccessible took differsFromNotFound pre-resolved; the threshold math that
+    // produces it -- the boundary between "a real distinct object" and "the
+    // not-found template" -- was inline in test() and untested.
+    {
+        // Tolerance = max(baseJitter, ctrlJitter) + 16 floor.
+        chk("idorTolerance: zero jitter -> 16 floor", idorTolerance(0, 0) == 16);
+        chk("idorTolerance: takes the larger jitter (base)", idorTolerance(30, 5) == 46);
+        chk("idorTolerance: takes the larger jitter (ctrl)", idorTolerance(5, 30) == 46);
+
+        // differsFromNotFound = |len - ctrlLen| > tol (STRICT).
+        chk("differs: identical to control -> not a lead", !idorDiffersFromNotFound(100, 100, 16));
+        chk("differs: 20 bytes apart over a 16 tol -> lead", idorDiffersFromNotFound(120, 100, 16));
+        // Strict '>' boundary: exactly tol is NOT a lead; one past it is.
+        chk("differs: exactly tol bytes apart -> NOT a lead (strict >)",
+            !idorDiffersFromNotFound(116, 100, 16));
+        chk("differs: one byte past tol -> lead", idorDiffersFromNotFound(117, 100, 16));
+        // FP suppression: a jittery not-found page (large ctrlJitter) widens tol,
+        // so a neighbor within that jitter is correctly NOT flagged.
+        chk("differs: within a jittery not-found tolerance -> suppressed",
+            !idorDiffersFromNotFound(120, 100, idorTolerance(40, 0)));   // tol=56, 20<=56
+    }
+
     std::fprintf(stderr, "idor_tester_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

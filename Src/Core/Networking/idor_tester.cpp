@@ -90,7 +90,7 @@ Result test(const Request &req, const QString &explicitIdParam, int mutationsPer
         if (!controlUsable(ctrlLen)) continue;
         const int ctrlJitter = (ctrlA.ok && ctrlB.ok)
                                ? qAbs(ctrlB.parsed.body.size() - ctrlLen) : 0;
-        const int tol = qMax(baseJitter, ctrlJitter) + 16;
+        const int tol = idorTolerance(baseJitter, ctrlJitter);  // pure, unit-tested
 
         Finding finding;
         finding.loc = loc;
@@ -105,7 +105,7 @@ Result test(const Request &req, const QString &explicitIdParam, int mutationsPer
             // the control -- and (b) not literally your own identical object
             // (an endpoint that ignores the id / serves a static page returns
             // body == baseBody for every neighbor).
-            const bool notNotFound = qAbs(len - ctrlLen) > tol;
+            const bool notNotFound = idorDiffersFromNotFound(len, ctrlLen, tol);  // pure, unit-tested
             const bool notMine     = body != baseBody;
             if (isAccessible(st, notNotFound, notMine))
                 finding.accessible.append({ nid, st, len });
