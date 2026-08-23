@@ -2656,16 +2656,25 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                                     { "ssti-smarty",     "Smarty",
                                       "{7*7}", "49" },
                                 };
+                                // Benign baseline so the arithmetic result must
+                                // be INTRODUCED by the payload -- a page that
+                                // just contains "49" (a price, a year, an id, or
+                                // a literal echo of {{7*7}}) must not read as RCE.
+                                const auto sstiBase = fire(i, QStringLiteral("nlkbaseline"));
+                                const QString sstiBaseBody = sstiBase.ok
+                                    ? QString::fromUtf8(sstiBase.parsed.body.left(64 * 1024))
+                                    : QString();
                                 for (const auto &s : kSstis) {
                                     const auto res = fire(i, QString::fromLatin1(s.payload));
                                     if (!res.ok) continue;
                                     const QString b = QString::fromUtf8(
                                         res.parsed.body.left(64 * 1024));
                                     // Require the signature AND that it wasn't
-                                    // already in the original response (avoid
-                                    // false positives from pages that just
-                                    // happen to contain "49").
-                                    if (b.contains(QString::fromLatin1(s.signature))) {
+                                    // already in the baseline response (the guard
+                                    // this battery always promised) -- pure,
+                                    // unit-tested Ssti::sstiEchoConfirms.
+                                    if (Nullock::Core::Ssti::sstiEchoConfirms(
+                                            sstiBaseBody, b, QString::fromLatin1(s.signature))) {
                                         report("critical", s.kind,
                                                QString("Param '%1' looks vulnerable to %2 SSTI (RCE-class)")
                                                    .arg(key, QString::fromLatin1(s.engine)),

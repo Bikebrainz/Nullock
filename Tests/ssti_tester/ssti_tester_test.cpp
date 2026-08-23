@@ -120,6 +120,27 @@ int main(int argc, char **argv) {
             buildRequest(postOk, postOk.basePath, "", QByteArray("{}")).contains("Content-Type: application/json\r\n"));
     }
 
+    // ---- sstiEchoConfirms: the /audit battery's single-shot verdict ----
+    // The battery reported ANY response containing "49" as critical RCE SSTI;
+    // its own comment promised a baseline exclusion it never implemented. This
+    // is that guard, extracted + locked.
+    {
+        // Real evaluation: 49 introduced by the payload, absent from baseline.
+        chk("ssti-echo: 49 newly appears -> confirmed",
+            sstiEchoConfirms(/*baseline*/"hello world", /*probe*/"hello world 49", "49"));
+        // Static "49" already on the page (a price / year / id) -> NOT SSTI.
+        chk("ssti-echo: 49 already in baseline ($49 price) -> NOT confirmed",
+            !sstiEchoConfirms("Order total: $49.00", "Order total: $49.00 {{7*7}}", "49"));
+        chk("ssti-echo: 49 in baseline (year 1949) -> NOT confirmed",
+            !sstiEchoConfirms("Founded 1949", "Founded 1949", "49"));
+        // Literal echo of an un-evaluated payload: no "49" appears at all.
+        chk("ssti-echo: payload reflected but not evaluated (no 49) -> NOT confirmed",
+            !sstiEchoConfirms("q=", "q={{7*7}}", "49"));
+        // Signature genuinely absent.
+        chk("ssti-echo: signature absent from probe -> NOT confirmed",
+            !sstiEchoConfirms("hello", "hello there", "49"));
+    }
+
     std::fprintf(stderr, "ssti_tester_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

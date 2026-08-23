@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **/audit SSTI battery: any page containing "49" was branded a CRITICAL RCE.**
+  The single-shot `{{7*7}}`-style probes reported a critical, RCE-class SSTI
+  finding whenever the response contained the arithmetic result (`"49"`), with no
+  baseline comparison &mdash; so a page with a `$49` price, a `1949` date, an id,
+  or a literal echo of the un-evaluated payload was flagged as remote code
+  execution. The battery's own comment promised "require the signature AND that
+  it wasn't already in the original response," but the check never did. It now
+  fires a benign baseline and confirms only when the result is INTRODUCED by the
+  payload (present in the probe, absent from the baseline), via the pure,
+  unit-tested `Ssti::sstiEchoConfirms` (mutation-proven).
 - **Race-condition probe: a redirect-heavy burst could false-positive as a race.**
   The burst classifier treats transport drops, 429s, 5xx, and unrelated 4xx as
   "noise" that makes a run inconclusive &mdash; but 3xx redirects matched no bucket

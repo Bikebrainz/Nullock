@@ -82,4 +82,16 @@ bool engineLikelyFrom(int baselineStatus, bool delimOk, int delimStatus,
 QByteArray buildRequest(const Request &req, const QString &path,
                         const QString &query, const QByteArray &body);
 
+// Single-expression echo confirmation for the /audit SSTI battery (pure). A
+// {{7*7}}-style probe confirms ONLY when its arithmetic result (`signature`,
+// e.g. "49") appears in the probe response AND was NOT already present in the
+// benign baseline response. Without the baseline check, any page that merely
+// contains the digits "49" (a price like $49, a year 1949, an id, or a literal
+// echo of the un-evaluated payload) is branded a CRITICAL RCE-class SSTI. This
+// is the guard the battery's own comment promised but did not implement.
+// (The full two-expression proof is confirmsArithmetic; this is the lighter
+// echo check the single-shot battery uses.)
+bool sstiEchoConfirms(const QString &baselineBody, const QString &probeBody,
+                      const QString &signature);
+
 } // namespace Nullock::Core::Ssti

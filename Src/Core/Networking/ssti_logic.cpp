@@ -112,4 +112,12 @@ QByteArray buildRequest(const Request &req, const QString &path,
     return out;
 }
 
+bool sstiEchoConfirms(const QString &baselineBody, const QString &probeBody,
+                      const QString &signature) {
+    // The arithmetic result must be introduced BY the probe: present now, and
+    // NOT already in the benign baseline (a static "49" -- price/year/id -- or a
+    // literal echo of the un-evaluated payload must not read as evaluation).
+    return probeBody.contains(signature) && !baselineBody.contains(signature);
+}
+
 } // namespace Nullock::Core::Ssti
