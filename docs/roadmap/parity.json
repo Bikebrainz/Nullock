@@ -5409,7 +5409,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "c7a0bfc",
         "note": "Target Analyzer wave: client-side ANALYZE TARGET overlay in the Proxy tab closes the URL-count/parameter-name/entry-point legs of this item, scoped to the current site-map selection; body-parameter names stay an honest remaining gap."
       }
     },
