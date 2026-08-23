@@ -62,7 +62,12 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   unrequested node from real captured traffic; right-click a host, a folder, or
                   a single leaf for COPY URLS (plain-text list) / COPY LINKS (clickable HTML,
                   pastes into tickets/docs), scoped to whatever was clicked -- the whole host,
-                  just that branch, or one URL
+                  just that branch, or one URL;
+                  Settings' CA & TLS card can allow-list a self-signed/expired upstream host
+                  (host:port) so it stays interceptable instead of getting permanently blocked
+                  on the first bad handshake -- verification only relaxes for listed hosts, and
+                  a read-only table shows exactly which leaf cert (sha256), which errors, and
+                  when it was waived
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through

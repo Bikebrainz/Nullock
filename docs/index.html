@@ -191,6 +191,10 @@
         <p>Free-text notes for the current project, editable right in the Scope tab and persisted server-side — no more curling <code>/api/scope/notes</code> by hand. New projects can also start pre-seeded from a bundled template (web-app/API/cloud pentest, OAuth review) via a picker in Settings' Projects card.</p>
       </div>
       <div class="card">
+        <h3>Accept invalid upstream certs</h3>
+        <p>A self-signed or expired cert on an internal/lab target used to permanently block that host. Settings' CA &amp; TLS card can now allow-list a host:port (default-deny — nothing is relaxed until you add it), keeping only the benign errors (self-signed, expired, hostname mismatch, unknown issuer) waived; a genuinely revoked or blacklisted cert still fails closed. A read-only table shows exactly which leaf cert (sha256), which errors, and when it was waived, so a change in the wild doesn't slip by unnoticed.</p>
+      </div>
+      <div class="card">
         <h3>Cookie jar</h3>
         <p>The Sessions tab's per-host captured-cookie list gets a full-inventory companion: Path, resolved Expires (or "session" for a non-persistent cookie), and per-host httpOnly/Secure/SameSite coverage percentages — the attributes that determine whether injection actually happens and whether a cookie is stale. Add a cookie obtained out-of-band, edit an existing value, or delete exactly one cookie, right from the same panel.</p>
       </div>

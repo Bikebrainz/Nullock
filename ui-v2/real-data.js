@@ -215,6 +215,11 @@
     // so callers can refresh state without waiting for the next poll.
     markMitmBlocked(host)   { return post("/api/mitm/block", { host }).then(r => r.json()); },
     unblockMitmHost(host)   { return post("/api/mitm/unblock", { host }).then(r => r.json()); },
+    // Allow-list a "host:port" whose upstream TLS cert is self-signed/expired/
+    // otherwise invalid so the proxy still MITMs it instead of permanently
+    // blocking the host -- both endpoints echo the resulting allow-list back.
+    acceptInvalidHostAdd(host)    { return post("/api/proxy/accept-invalid-hosts/add", { host }).then(r => r.json()); },
+    acceptInvalidHostRemove(host) { return post("/api/proxy/accept-invalid-hosts/remove", { host }).then(r => r.json()); },
     reloadExtensions()      { return post("/api/extensions/reload"); },
     // Burp's per-extension Loaded checkbox: disable leaves the .js on disk
     // (still listed in extensionAll) but stops it evaluating; re-enable

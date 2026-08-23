@@ -678,6 +678,8 @@ function SettingsTab() {
   const scope = (window.NL && NL.scope) || { in: [], out: [], notes: "" };
   const rowCount = (window.NL && NL.rows) ? NL.rows.length : 0;
   const blocked = b.mitmBlocked || [];
+  const acceptInvalidHosts0 = b.acceptInvalidUpstreamHosts || [];
+  const acceptedInvalidCerts = b.acceptedInvalidCerts || [];
   const extLog = b.extensionsLog || [];
   // Every .js present (loaded OR disabled) with its persisted enabled state --
   // control_server.cpp bootInfo.extensionAll -- so the Installed list can
@@ -710,6 +712,21 @@ function SettingsTab() {
   const removeBypassHost = async (h) => {
     const r = await NL.actions.unblockMitmHost(h);
     if (r && Array.isArray(r.blocked)) setMitmBlockedList(r.blocked);
+  };
+
+  const [acceptInvalidList, setAcceptInvalidList] = React.useState(acceptInvalidHosts0);
+  React.useEffect(() => { setAcceptInvalidList(acceptInvalidHosts0); }, [acceptInvalidHosts0.join(",")]);
+  const [newAcceptInvalidHost, setNewAcceptInvalidHost] = React.useState("");
+  const addAcceptInvalidHost = async () => {
+    const h = newAcceptInvalidHost.trim();
+    if (!h) return;
+    const r = await NL.actions.acceptInvalidHostAdd(h);
+    if (r && Array.isArray(r.acceptInvalidUpstreamHosts)) setAcceptInvalidList(r.acceptInvalidUpstreamHosts);
+    setNewAcceptInvalidHost("");
+  };
+  const removeAcceptInvalidHost = async (h) => {
+    const r = await NL.actions.acceptInvalidHostRemove(h);
+    if (r && Array.isArray(r.acceptInvalidUpstreamHosts)) setAcceptInvalidList(r.acceptInvalidUpstreamHosts);
   };
 
   const [installBusy, setInstallBusy] = React.useState(false);
@@ -862,6 +879,61 @@ function SettingsTab() {
           Install the CA in your browser's trust store so HTTPS MITM works without warnings.
           The download URL only works from this machine right now; for a phone, copy the .crt to it via AirDrop / USB / email.
         </div>
+
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: "12px", marginTop: 8 }}>
+          <span style={{ minWidth: 110, color: "var(--dim)" }}>Accept invalid</span>
+          <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {acceptInvalidList.length ? acceptInvalidList.map((h) => (
+              <span key={h} style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                border: "1px solid var(--line)", borderRadius: 3,
+                padding: "1px 4px 1px 6px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+              }}>
+                {h}
+                <button
+                  onClick={() => removeAcceptInvalidHost(h)}
+                  title={"Stop waiving invalid-cert errors for " + h}
+                  style={{
+                    background: "transparent", color: "var(--dim)", border: "none",
+                    cursor: "pointer", fontFamily: "var(--ff-mono)", fontSize: "11px", padding: 0,
+                  }}
+                >×</button>
+              </span>
+            )) : <span style={{ color: "var(--dim)" }}>empty</span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <input
+            value={newAcceptInvalidHost}
+            onChange={(e) => setNewAcceptInvalidHost(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addAcceptInvalidHost(); }}
+            placeholder="host:port to MITM despite a self-signed/expired cert"
+            style={{
+              flex: 1, background: "var(--bg)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 6px", fontSize: "11px",
+              fontFamily: "var(--ff-mono)",
+            }}
+          />
+          <Btn label="Add" onClick={addAcceptInvalidHost} disabled={!newAcceptInvalidHost.trim()} />
+        </div>
+        <div style={{ fontSize: "10.5px", color: "var(--dim)", marginTop: 2 }}>
+          Listed hosts keep interception working against lab/self-signed targets instead of
+          permanently blocking the connection on a TLS handshake failure. Verification stays
+          relaxed only for these hosts.
+        </div>
+        {acceptedInvalidCerts.length > 0 && (
+          <div style={{ fontSize: "10.5px", fontFamily: "var(--ff-mono)", color: "var(--dim)", marginTop: 4, display: "grid", gap: 2 }}>
+            <div style={{ color: "var(--text-2)" }}>Waived certs (exactly what was accepted):</div>
+            {acceptedInvalidCerts.map((c, i) => (
+              <div key={c.host + i} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ color: "var(--text)" }}>{c.host}</span>
+                <span>sha256 {String(c.sha256 || "").slice(0, 16)}…</span>
+                <span>{c.ignoredErrors}</span>
+                <span>{c.acceptedAt}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card title="Projects" action={<Btn label="Refresh" onClick={refreshProjects} />}>
