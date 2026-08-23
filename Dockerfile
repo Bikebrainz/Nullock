@@ -82,8 +82,19 @@ ARG QT_VERSION=6.7.3
 # / libdbus-1-dev -- the copied libQt6Gui.so / libQt6DBus.so dlopen these at
 # process start (even headless/offscreen), so NullockApp exits immediately with
 # "error while loading shared libraries" without them.
+#
+# GL stack: QT_QPA_PLATFORM=offscreen still needs a real OpenGL context for
+# Qt Quick's scene graph (FrontEndGUI is all QML/Quick), and Ubuntu 22.04
+# splits GLVND across several packages -- libgl1 alone got as far as
+# libOpenGL.so.0 missing (that's libopengl0, a separate package) before this
+# was added. libegl1/libgles2 cover the rest of the dispatch libraries a Qt6
+# GL context can probe for, and libgl1-mesa-dri ships the actual llvmpipe/
+# swrast SOFTWARE driver -- required since GitHub's runners (like most
+# containers) have no GPU, so software rasterization is the only path to a
+# working GL context at all.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnghttp2-14 libssl3 libglib2.0-0 libgl1 libxkbcommon0 \
+        libnghttp2-14 libssl3 libglib2.0-0 libxkbcommon0 \
+        libgl1 libopengl0 libegl1 libgles2 libgl1-mesa-dri \
         libfontconfig1 libfreetype6 libdbus-1-3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 10001 nullock
