@@ -104,6 +104,34 @@ int main(int argc, char **argv) {
         chk("build: lone-CR path -> empty", buildGet(loneCr).isEmpty());
     }
 
+    // ---- severityForTakeoverConfidence: the finding-severity map -------
+    // The /api/takeover/test handler mapped confidence with `== "high" ? high :
+    // medium`, so a "possible" hit (a vendor phrase quoted on a healthy 200,
+    // demoted by the status-aware match) became a MEDIUM takeover finding -- the
+    // exact false positive the demotion exists to prevent.
+    {
+        chk("severity: high -> high", severityForTakeoverConfidence("high") == "high");
+        chk("severity: medium -> medium", severityForTakeoverConfidence("medium") == "medium");
+        // The fix: 'possible' must NOT be medium.
+        chk("severity: possible -> info, NOT medium",
+            severityForTakeoverConfidence("possible") == "info");
+        chk("severity: unrecognized -> info (fail low)",
+            severityForTakeoverConfidence("weird") == "info");
+        // End-to-end intent: a 'possible' hit from a 2xx body match (the demoted
+        // tier) is reported at info, matching the passive path's 200-restraint.
+        {
+            const QList<Hit> h = match("There isn't a GitHub Pages site here.", 200);
+            const bool anyPossibleIsMedium = [&]{
+                for (const Hit &x : h)
+                    if (x.confidence == "possible"
+                        && severityForTakeoverConfidence(x.confidence) == "medium")
+                        return true;
+                return false;
+            }();
+            chk("severity: a 200-body 'possible' hit never maps to medium", !anyPossibleIsMedium);
+        }
+    }
+
     std::fprintf(stderr, "takeover_scan_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

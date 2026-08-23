@@ -7950,7 +7950,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             hits.append(QJsonObject{
                 { "service", h.service }, { "evidence", h.evidence }, { "confidence", h.confidence } });
             if (m_wiring.scanner)
-                m_wiring.scanner->reportFinding(0, h.confidence == "high" ? "high" : "medium",
+                m_wiring.scanner->reportFinding(0,
+                    Nullock::Core::TakeoverScan::severityForTakeoverConfidence(h.confidence),
                     "subdomain-takeover",
                     QString("Possible subdomain takeover on %1 -- dangling %2").arg(host, h.service),
                     "matched fingerprint: " + h.evidence + " (confirm the CNAME points to the unclaimed service)",

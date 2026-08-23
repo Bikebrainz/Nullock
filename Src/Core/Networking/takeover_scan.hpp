@@ -51,6 +51,15 @@ QList<Hit> match(const QString &body);
 // hit keeps its curated confidence as a strong lead). scan() uses this overload.
 QList<Hit> match(const QString &body, int status);
 
+// Map a hit's confidence to a reported finding SEVERITY (pure). "high"/"medium"
+// keep their tier; a "possible" hit -- a branded phrase quoted on a healthy
+// 2xx/3xx page, demoted by the status-aware match -- must NOT become a medium
+// takeover alarm (that is the false positive the demotion exists to prevent, and
+// the passive detector emits nothing at all on a 200). It maps to "info": a weak
+// lead worth surfacing on an explicit test, not a medium finding. Anything
+// unrecognized also maps to "info" (fail low).
+QString severityForTakeoverConfidence(const QString &confidence);
+
 // Build the GET. Returns empty if host or basePath carries a CR/LF.
 QByteArray buildGet(const Request &req);
 

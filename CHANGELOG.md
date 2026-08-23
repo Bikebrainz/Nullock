@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Subdomain-takeover test: a healthy 200 quoting a vendor phrase was reported
+  as a MEDIUM takeover.** The status-aware matcher demotes a branded fingerprint
+  seen on a live 2xx/3xx page to "possible" confidence (a dangling service serves
+  its unclaimed page as a 4xx/5xx), but the `/api/takeover/test` handler mapped
+  confidence to severity with `== "high" ? high : medium` &mdash; so "possible"
+  became a MEDIUM finding rather than being downgraded. A page merely quoting a
+  vendor string ("There isn't a GitHub Pages site here.", "NoSuchBucket") was
+  flagged. It now maps "possible" (and anything unrecognized) to `info` via the
+  pure, unit-tested `severityForTakeoverConfidence` &mdash; a weak lead on an
+  explicit test, not a medium alarm, consistent with the passive detector's
+  silence on a 200.
 - **/audit SSTI battery: any page containing "49" was branded a CRITICAL RCE.**
   The single-shot `{{7*7}}`-style probes reported a critical, RCE-class SSTI
   finding whenever the response contained the arithmetic result (`"49"`), with no

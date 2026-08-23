@@ -98,4 +98,11 @@ QByteArray buildGet(const Request &req) {
     return out;
 }
 
+QString severityForTakeoverConfidence(const QString &confidence) {
+    if (confidence == QLatin1String("high"))   return QStringLiteral("high");
+    if (confidence == QLatin1String("medium")) return QStringLiteral("medium");
+    // "possible" (or anything unrecognized): a weak lead, not a medium alarm.
+    return QStringLiteral("info");
+}
+
 } // namespace Nullock::Core::TakeoverScan
