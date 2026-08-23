@@ -12,9 +12,13 @@
 #   # one-shot CI gate (exits nonzero on a finding at/above the threshold):
 #   docker run --rm nullock --scan https://target.example/ --fail-on high
 #
-# NOTE: this Dockerfile is derived line-for-line from the known-green Linux CI
-# build; it has not yet been validated with `docker build` in this environment.
-# Pin Qt/base image digests before relying on it in production.
+# NOTE: validated green by CI's build-docker job (docker build + `--help`
+# runtime smoke, network-free) as of commit 6f39fea. The `--headless
+# --listen=0.0.0.0` server entrypoint itself is NOT covered by that smoke
+# check (it would need a live listener + token in a CI-safe way) -- only the
+# image build and basic binary startup are proven. Still no published image
+# (this file is a local/CI build recipe, not a distribution channel) and the
+# base images are pinned to a tag (`ubuntu:22.04`), not a content digest.
 
 # --------------------------------------------------------------------------
 # Build stage
