@@ -31,8 +31,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Qt 6.7.x via aqtinstall (the CLI equivalent of the install-qt-action CI uses).
+# NOTE: aqtinstall renamed the Linux desktop x86_64 arch from "gcc_64" to
+# "linux_gcc_64" as of Qt 6.7.0 (aqtinstall v3.1.12) -- the old name (still
+# valid for Qt5) has no package metadata for 6.7+ and made `aqt install-qt`
+# fail with "packages ... were not found while parsing XML". The install
+# *directory* aqt creates is still named "gcc_64" regardless of arch name,
+# so CMAKE_PREFIX_PATH is unaffected.
 RUN pip3 install --no-cache-dir aqtinstall \
-    && aqt install-qt linux desktop ${QT_VERSION} gcc_64 -m qtwebsockets -O /opt/qt
+    && aqt install-qt linux desktop ${QT_VERSION} linux_gcc_64 -m qtwebsockets -O /opt/qt
 ENV CMAKE_PREFIX_PATH=/opt/qt/${QT_VERSION}/gcc_64
 
 WORKDIR /src
