@@ -27,25 +27,10 @@ PortResult probeOne(const QString &host, quint16 port,
     s.connectToHost(host, port);
     if (!s.waitForConnected(timeoutMs)) {
         // Distinguishing closed vs filtered cleanly needs SYN scans; with
-        // TCP-connect we read the socket error. A refused connection is a real
-        // closed port; a DNS/network-level failure is NOT a firewalled port --
-        // labeling those "filtered" would report a dead/unresolvable host as
-        // "up but firewalled" on every port. Surface them as "unreachable".
-        switch (s.error()) {
-            case QAbstractSocket::ConnectionRefusedError:
-                r.status = "closed"; break;
-            case QAbstractSocket::HostNotFoundError:
-                // DNS didn't resolve the name. This is a property of the host,
-                // not the port -- every other port on it will fail identically,
-                // so let the caller short-circuit the rest of the scan.
-                if (hostNotFound) *hostNotFound = true;
-                r.status = "unreachable"; break;
-            case QAbstractSocket::NetworkError:
-            case QAbstractSocket::SocketAddressNotAvailableError:
-                r.status = "unreachable"; break;
-            default:                                  // timeout, etc.
-                r.status = "filtered"; break;
-        }
+        // TCP-connect we read the socket error. The mapping (and the
+        // host-not-found short-circuit signal) is the pure, unit-tested
+        // portStatusForError.
+        r.status = portStatusForError(s.error(), hostNotFound);
         r.latencyMs = static_cast<int>(t.elapsed());
         return r;
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QAbstractSocket>   // QAbstractSocket::SocketError (enum only)
 #include <QAtomicInt>
 #include <QByteArray>
 #include <QFuture>
@@ -14,6 +15,17 @@ namespace Nullock::Core {
 // Banner/port -> service label (pure; defined in port_logic.cpp). Exposed for
 // the unit test and called by the scanner on the RAW grabbed bytes.
 QString classifyBanner(quint16 port, const QByteArray &banner);
+
+// Map a failed TCP-connect's socket error to a port status (pure; defined in
+// port_logic.cpp). A refused connection is a real "closed" port; a DNS or
+// network-level failure is a property of the HOST, not the port, so it is
+// "unreachable" (labeling it "filtered" would report a dead/unresolvable host
+// as "up but firewalled" on every port). Everything else (timeout, ...) is
+// "filtered". Sets *hostNotFound = true ONLY for HostNotFoundError -- the caller
+// uses that to short-circuit the rest of the host's ports; widening it to a
+// transient error would silently skip a live host's remaining ports (an FN).
+// *hostNotFound is initialized to false, so the caller may pass a fresh bool.
+QString portStatusForError(QAbstractSocket::SocketError err, bool *hostNotFound);
 
 // One target port + result of probing it.
 struct PortResult {

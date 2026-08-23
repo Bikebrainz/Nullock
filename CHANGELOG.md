@@ -110,6 +110,14 @@ developer-facing record.
   (so a low-jitter endpoint still needs a real difference), the `qMax` of
   baseline/control jitter (so a token-jittery not-found page widens tolerance and
   is not false-flagged), and the strict `>` boundary. Behaviour unchanged.
+- Port scanner's socket-error &rarr; status mapping extracted to a pure,
+  unit-tested `portStatusForError()` and mutation-proven. It was inline in the
+  socket worker and untested (a different classifier covers the smuggling probe).
+  Tests pin that only `HostNotFoundError` sets the host-not-found signal that
+  short-circuits the rest of a host's ports &mdash; widening it to a transient
+  `NetworkError` would silently skip a live host's remaining open ports (an FN),
+  and mapping host-not-found to `filtered` would brand a dead host "up but
+  firewalled". Behaviour unchanged.
 
 ## [3.8.0] — 2026-08-20
 

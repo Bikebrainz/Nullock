@@ -246,4 +246,22 @@ QString classifyBanner(quint16 port, const QByteArray &banner) {
     return banner.isEmpty() ? QString() : QString("unknown");
 }
 
+QString portStatusForError(QAbstractSocket::SocketError err, bool *hostNotFound) {
+    if (hostNotFound) *hostNotFound = false;
+    switch (err) {
+        case QAbstractSocket::ConnectionRefusedError:
+            return QStringLiteral("closed");            // a real closed port
+        case QAbstractSocket::HostNotFoundError:
+            // DNS didn't resolve -- a property of the host, not the port; every
+            // other port will fail identically, so let the caller short-circuit.
+            if (hostNotFound) *hostNotFound = true;
+            return QStringLiteral("unreachable");
+        case QAbstractSocket::NetworkError:
+        case QAbstractSocket::SocketAddressNotAvailableError:
+            return QStringLiteral("unreachable");        // host-level, not a firewalled port
+        default:                                          // timeout, etc.
+            return QStringLiteral("filtered");
+    }
+}
+
 } // namespace Nullock::Core

@@ -253,6 +253,36 @@ int main(int argc, char **argv) {
     chk("port 9090 -> http (Prometheus over HTTP)",
         cls(9090, QByteArray()) == "http");
 
+    // ---- portStatusForError: socket-error -> status verdict ------------
+    // Was inline in probeOne() (the socket TU) and untested. The security-
+    // relevant part is which errors set hostNotFound (-> the caller skips the
+    // rest of the host's ports): a regression widening that to a transient
+    // error silently misses a live host's remaining open ports (FN); mapping
+    // HostNotFound to "filtered" instead brands a dead host "up but firewalled".
+    {
+        bool hnf = true;   // deliberately pre-set to prove the fn resets it
+        chk("port: refused -> closed, not host-not-found",
+            portStatusForError(QAbstractSocket::ConnectionRefusedError, &hnf) == "closed" && !hnf);
+        hnf = false;
+        chk("port: host-not-found -> unreachable + sets hostNotFound",
+            portStatusForError(QAbstractSocket::HostNotFoundError, &hnf) == "unreachable" && hnf);
+        hnf = false;
+        chk("port: network error -> unreachable, NOT host-not-found",
+            portStatusForError(QAbstractSocket::NetworkError, &hnf) == "unreachable" && !hnf);
+        hnf = false;
+        chk("port: address-unavailable -> unreachable, NOT host-not-found",
+            portStatusForError(QAbstractSocket::SocketAddressNotAvailableError, &hnf) == "unreachable" && !hnf);
+        hnf = false;
+        chk("port: timeout -> filtered, NOT host-not-found",
+            portStatusForError(QAbstractSocket::SocketTimeoutError, &hnf) == "filtered" && !hnf);
+        hnf = false;
+        chk("port: unknown error -> filtered",
+            portStatusForError(QAbstractSocket::UnknownSocketError, &hnf) == "filtered" && !hnf);
+        // Safety property: ONLY HostNotFoundError may skip the rest of the host.
+        chk("port: a null hostNotFound ptr is tolerated",
+            portStatusForError(QAbstractSocket::ConnectionRefusedError, nullptr) == "closed");
+    }
+
     std::fprintf(stderr, "port_scanner_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
