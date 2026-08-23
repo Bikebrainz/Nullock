@@ -2251,7 +2251,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "090709f",
         "note": "Sequencer live-capture cookie-picker wave: backend now tracks distinct Set-Cookie names seen per run and exposes them via the existing snapshot()/tokens endpoint; SequencerTab's Live Capture panel gets a \"cookies seen so far\" dropdown in Cookie mode that fills the existing free-text extract key, closing the item's literal \"dropdown of cookies seen in the response\" ask."
       }
     },
