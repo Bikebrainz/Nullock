@@ -2203,7 +2203,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "c35606a",
         "note": "Sequencer Live Capture UI wave: wired the existing capture engine/API (f910a9e) into SequencerTab, closing the tab's last missing sub-area."
       }
     },
@@ -2235,7 +2235,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "c35606a",
         "note": "Sequencer Live Capture UI wave: frontend-only wiring of the existing capture engine (f910a9e) -- Start/Stop/Clear + progress + corpus harvest, no backend change."
       }
     },
@@ -2335,7 +2335,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "c35606a",
         "note": "Sequencer Live Capture UI wave: harvested tokens append into the same SequencerTab `text` state the existing COPY TOKENS/SAVE TOKENS buttons already act on, closing this item's Live Capture half as a free side effect."
       }
     },
