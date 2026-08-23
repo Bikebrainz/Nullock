@@ -166,7 +166,11 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   automatically -- builds up a sample set across several captures without
                   copy-paste; EXPORT HTML / EXPORT XML buttons download a standalone report of
                   the current analysis (client-generated, not yet wired into cmd_report or the
-                  findings/baseline store)
+                  findings/baseline store); a Live capture panel drives the token-harvest engine
+                  directly (host/port/TLS + a raw request template, extract-from header/cookie/
+                  JSON-path/regex/status, shot count + throttle, START/STOP/CLEAR with a live
+                  progress readout) -- harvested tokens flow straight into the manual-load corpus
+                  above, ready for analysis, Copy, Save, or export
 Extensions        JS plugin API, onRequest/onResponse hooks, marketplace catalog; an "Install
                   bundled" button in Settings copies the extensions shipped with the repo into
                   the user's extensions dir in one click; a per-extension "Loaded" checkbox in

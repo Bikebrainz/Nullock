@@ -2194,17 +2194,17 @@
     {
       "area": "sequencer",
       "feature": "Sequencer tool tab (dedicated UI with Live capture / Manual load / Analysis sub-tabs)",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "A real SEQUENCER tab now exists (ui-v2/app.jsx SequencerTab, registered in TABS + the tab-render switch) with two of Burp's three sub-areas: Manual Load (paste / load-from-file / paste-from-clipboard, a pre-analysis sample summary, ANALYZE NOW) and Analysis (full results render of every field /api/sequencer/analyze returns). Live Capture is intentionally NOT built -- there is no backend request-issuing engine to repeatedly fire a request and harvest a token from each response, so that sub-area stays absent. Honest partial, not present.",
-      "why": "Closed 2026-08-10 (partial dimension): the backend was a headless JSON endpoint plus a bash CLI subcommand with zero frontend callers; docs/index.html even advertised the feature with no screen behind it. This wave gives it a real tab for the two sub-areas the backend actually supports.",
-      "evidence": "ui-v2/app.jsx SequencerTab (TABS entry 'sequencer', tab-render switch); Src/BackEnd/Control/control_server.cpp:4697 POST /api/sequencer/analyze; grep 'Live capture' Src/Core/Networking/sequencer*.cpp = no match (no request-issuing loop exists server-side)",
-      "audited_state": "partial",
+      "gap": "None -- the SEQUENCER tab (ui-v2/app.jsx SequencerTab) now has all three named sub-areas: Manual Load (paste/load-file/paste-clipboard + sample summary + ANALYZE NOW), Analysis (full results render), and Live Capture (host/port/TLS + raw request + extract-from picker + count/throttle, START/STOP/CLEAR, a progress readout, harvested tokens fed straight into the Manual Load corpus).",
+      "why": "Closed 2026-08-23: the Live Capture sub-area named absent in the 2026-08-10 wave note is now built -- the backend engine landed 2026-08-17 (f910a9e) but had no UI caller until this wave wired it up.",
+      "evidence": "ui-v2/app.jsx SequencerTab's Live capture card (capHost/capPort/capTls/capRequest/capExtractFrom/capExtractKey/capCount/capThrottleMs state + captureStart/captureStop/captureClear); ui-v2/real-data.js NL.actions.sequencerCapture{Start,Stop,Clear,Tokens}.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-10",
-        "commit": "a1aa15d",
-        "note": "Sequencer batch: Manual Load + Analysis sub-areas of the Sequencer tool tab; Live Capture stays absent (no backend engine)."
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Sequencer Live Capture UI wave: wired the existing capture engine/API (f910a9e) into SequencerTab, closing the tab's last missing sub-area."
       }
     },
     {
@@ -2226,17 +2226,17 @@
     {
       "area": "sequencer",
       "feature": "Live capture \u2014 repeatedly issue the selected request and harvest the token from each response",
-      "state": "partial",
+      "state": "present",
       "impact": "blocker",
       "effort": "weeks",
-      "gap": "No token-harvesting engine of any kind, under any local name. The user must collect the corpus themselves with an external script before Nullock can say anything about it.",
-      "why": "Confirmed by reading the entire handler and the entire public header rather than trusting a grep. There is no capture engine under any synonym.",
-      "evidence": "control_server.cpp:4655-4661 is the complete handler: `if (path == \"/api/sequencer/analyze\") { QStringList tokens; for (const QJsonValue &v : bodyJson.value(\"tokens\").toArray()) tokens.append(v.toString()); Nullock::Core::Sequencer seq; return httpJson(200, seq.analyze(tokens)); }` \u2014 it reads a caller-supplied array and never issues a request. sequencer.hpp (75 lines, read in full) declares exactl",
-      "audited_state": "absent",
+      "gap": "None -- SequencerTab's Live capture panel drives the full engine: host/port/TLS + a raw request template, an extract-from picker (header/cookie/JSON path/regex/status) + key, shot count + throttle, START/STOP/CLEAR, and a live progress readout (done/total/harvested/emptyExtract/httpErrors/transportErrors/lastStatus). Harvested tokens stream into the same corpus the Manual Load / Analysis sub-areas already use, so a capture flows straight into randomness analysis, Copy/Save, and export with no extra step.",
+      "why": "Closed 2026-08-23: f910a9e (2026-08-17) shipped the backend engine + API but left the UI as its own honest remainder ('the Live Capture UI sub-panel ... is the remaining piece'); this wave adds that panel with no backend change.",
+      "evidence": "ui-v2/app.jsx SequencerTab (capPoll polling /api/sequencer/capture/tokens every 1.5s while running, captureStart/captureStop/captureClear); ui-v2/real-data.js NL.actions.sequencerCaptureStart/Stop/Clear/Tokens; control_server.cpp:5105-5188 (unchanged) /api/sequencer/capture/{start,stop,clear,tokens}.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "f910a9e",
-        "note": "The token-harvest engine now exists (SequencerCapture, Src/Core/Networking): POST /api/sequencer/capture/start fires the SAME request N times on a background worker and pulls one token from each response, and /api/sequencer/capture/tokens feeds the harvested corpus into the existing Sequencer::analyze. Extraction reuses the chain/session vocabulary (cookie/header/json-path/regex) over the DECODED body (a gzip response no longer silently yields nothing), raw + unsanitized so the entropy measured is the token's real bytes. Verified end-to-end: rotating token -> 30 distinct -> 'looks-random'; scope refusal; stop mid-capture. Safety-gated because it AUTO-GENERATES traffic: refuses an empty/out-of-scope target, hard-caps the shot count, paces (429 Retry-After bounded+interruptible), trips a circuit breaker, and reports a constant/too-small corpus as exactly that instead of a false RNG verdict. PARTIAL, honestly: backend + API only -- the Live Capture UI sub-panel (request template, extract picker, Start/progress) is the remaining piece (ui-v2, concurrent-agent lane); drive it today via the API."
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Sequencer Live Capture UI wave: frontend-only wiring of the existing capture engine (f910a9e) -- Start/Stop/Clear + progress + corpus harvest, no backend change."
       }
     },
     {
@@ -2245,9 +2245,9 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Follows from live capture being absent. The extraction primitive exists twice over in the codebase and is simply not wired to token capture.",
-      "why": "Confirmed. I checked the obvious synonym risk \u2014 the codebase DOES have cookie-extraction machinery (SessionRule::ExtractFromCookie, ChainRunner::Extract::Cookie) \u2014 but neither is reachable from the sequencer path, which takes a raw string array.",
-      "evidence": "sequencer.hpp read in full: no location/extraction concept exists. The cookie extractors that DO exist are session_rules.cpp:94-103 (`case SessionRule::ExtractFromCookie:` walking Set-Cookie headers) and chain_runner.cpp:25-31 (`case Extract::Cookie:`). Neither is referenced from control_server.cpp:4655-4661, which accepts only `bodyJson.value(\"tokens\").toArray()`.",
+      "gap": "Cookie extraction is fully wired end-to-end and now UI-reachable: SequencerTab's Live Capture panel has an extract-from select with a Cookie option and a free-text key field the operator types the cookie name into. Still not what the item literally asks for: a DROPDOWN auto-populated from cookies actually seen in a response (the UI takes a manually-typed name, same as the backend's key parameter) -- that auto-listing convenience remains unbuilt.",
+      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave closed the backend half ('the extraction primitive exists but is simply not wired to token capture'); this wave adds the UI half but as a free-text field, not the named auto-populated dropdown.",
+      "evidence": "ui-v2/app.jsx SequencerTab's SEQ_CAPTURE_EXTRACT_FROM select (value='cookie') + capExtractKey text input; Src/Core/Networking/sequencer_capture_logic.cpp FromCookie branch (unchanged).",
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
@@ -2271,9 +2271,9 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Absent. No start/end delimiter mode anywhere (both existing extractors are capture-group regex only, no delimiter form).",
-      "why": "Confirmed. The regex extractors exist and I read both; neither is reachable from the sequencer endpoint.",
-      "evidence": "session_rules.cpp:107-117 `case SessionRule::ExtractFromRegex: { QRegularExpression rx(r.extractKey, QRegularExpression::DotMatchesEverythingOption); if (!rx.isValid()) break; const QByteArray buf = resp.body.left(1 * 1024 * 1024); auto m = rx.match(QString::fromUtf8(buf)); if (m.hasMatch()) val = firstCapture(m); break; }` and chain_runner.cpp:33-42 `case Extract::Regex:`. control_server.cpp:4656",
+      "gap": "The regex half is fully wired end-to-end and now UI-reachable (extract-from select's Regex option + a key field for the pattern, first capture group or whole match over the body). The literal 'start/end delimiters' mode named by this item is still absent at every layer -- both existing extractors (session rules, chain runner, and now sequencer capture) are capture-group regex only, never a delimiter pair.",
+      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave closed the backend regex-extraction half; this wave adds its UI. The delimiter-pair variant remains a separate, unbuilt extraction mode.",
+      "evidence": "ui-v2/app.jsx SequencerTab's SEQ_CAPTURE_EXTRACT_FROM select (value='regex') + capExtractKey text input; Src/Core/Networking/sequencer_capture_logic.cpp FromRegex branch (unchanged, capture-group only).",
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
@@ -2287,9 +2287,9 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Absent.",
-      "why": "Confirmed \u2014 follows necessarily from the absence of any capture loop, which I verified by reading the full handler and header.",
-      "evidence": "There is no capture state machine to control: sequencer.hpp (full read) exposes one pure function, and control_server.cpp:4655-4661 is stateless. Compare the tools that DO have run control \u2014 intruder has a pool and stop path (intruder.cpp:447 onward, intruder_pool_logic.cpp) \u2014 no analogue exists for token capture.",
+      "gap": "Start, Stop, running token count, and a full capture-progress panel (done/total/harvested/emptyExtract/httpErrors/transportErrors/lastStatus, plus corpus-guard notes) are now UI-reachable in SequencerTab's Live capture card, polling every 1.5s while a capture runs. Pause remains genuinely unbuilt at the engine level -- SequencerCapture has no pause/resume primitive, only start/stop -- so there is nothing for a Pause button to call.",
+      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave shipped Start/Stop + the progress snapshot at the API level only ('the control-panel UI is pending'); this wave adds that UI. Pause was never built at any layer and stays the honest remainder.",
+      "evidence": "ui-v2/app.jsx SequencerTab's START/STOP/CLEAR CAPTURE buttons + capSnapshot progress readout; Src/Core/Networking/sequencer_capture.cpp snapshot() fields (unchanged); grep for pause/resume in sequencer_capture.{hpp,cpp} = no match.",
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
@@ -2303,9 +2303,9 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Absent, because no capture engine exists to configure.",
-      "why": "Confirmed. Intruder's engine (which does have concurrency, throttling and 429 back-off) is the nearest thing and is entirely unconnected.",
-      "evidence": "intruder.cpp:445-447 `auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules, grepMatch, grepExtract](int row, const QStringList &combo) { HttpClient client;` with 429 back-off at :461 onward (`if (statusCode == 429) { int waitMs = 1000; for (const auto &h : result.parsed.headers) { if (h.first.compare(\"Retry-After\", ...)`). Nothing in sequencer*.cpp/hpp references HttpClient at ",
+      "gap": "Throttle-between-requests is now UI-reachable (a throttleMs number field in SequencerTab's Live capture card, clamped [0,60000] server-side). Thread-count is intentionally NOT offered at any layer -- capture fires sequentially by design, since rapid parallel identical requests risk tripping rate-limits/lockout on the very session being sampled -- a deliberate omission, not a gap to close. 'Retry on failure' has no operator-facing setting: the engine automatically backs off on a 429's Retry-After header, but there is no configurable retry-count/backoff-policy control.",
+      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave shipped throttleMs + automatic 429 backoff at the API level only; this wave adds the throttle UI. Thread-count stays a deliberate non-goal; a configurable retry policy remains unbuilt.",
+      "evidence": "ui-v2/app.jsx SequencerTab's throttle (ms) number input -> req.throttleMs; Src/Core/Networking/sequencer_capture_logic.cpp clampThrottleMs/retryAfterMs (unchanged).",
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-17",
@@ -2326,16 +2326,17 @@
     {
       "area": "sequencer",
       "feature": "Copy tokens / Save tokens to file from a capture",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Covers the Manual Load corpus only: the Sequencer tab's client-side token list (paste/load-file/clipboard-paste/Send-to-Sequencer) can now be copied to the clipboard or saved to a .txt file. Burp's Live Capture -- a growing token list harvested by repeatedly issuing a request -- has no Nullock equivalent at all (tracked separately, blocked on a request-issuing engine Nullock doesn't have), so there is no capture-store analogue for THAT half of the feature. Still partial for that reason, not present.",
-      "why": "The client already held the full manually-loaded/appended token corpus in SequencerTab's local `text`/`tokens` React state (ui-v2/app.jsx) -- the earlier 'no capture store' gap only ever applied to the backend's stateless /api/sequencer/analyze endpoint, not to the corpus itself. Added COPY TOKENS (navigator.clipboard.writeText(tokens.join(\"\\n\"))) and SAVE TOKENS (client-side Blob(text/plain) + object-URL <a download>, matching the CodecOverlay download pattern in ui-v2/proxy.jsx) buttons next to the existing LOAD FILE / PASTE FROM CLIPBOARD / CLEAR row, both disabled when the parsed token list is empty. No backend change -- purely client-side, reusing state that already existed.",
-      "evidence": "ui-v2/app.jsx SequencerTab: copyTokens()/saveTokens() functions + COPY TOKENS/SAVE TOKENS buttons in the manual-load control row; control_server.cpp:4656-4660 confirms the backend analyze endpoint itself still retains nothing (the honest remainder is Live Capture, not this corpus).",
+      "gap": "None -- Live Capture's harvested tokens are folded straight into SequencerTab's shared token corpus (the same `text` state Manual Load/Send-to-Sequencer already populate) as they arrive, so the existing COPY TOKENS (clipboard) and SAVE TOKENS (.txt download) buttons cover a capture's output too, with no separate capture-specific export path needed.",
+      "why": "Closed 2026-08-23: the 2026-08-18 wave (da90e67) closed the Manual Load half and named Live Capture's absent request-issuing engine as the reason the other half stayed partial ('blocked on a request-issuing engine Nullock doesn't have'). That engine shipped 2026-08-17 (f910a9e); this wave's Live Capture UI reuses the exact same `text` state for harvested tokens, so Copy/Save now cover both halves for free.",
+      "evidence": "ui-v2/app.jsx SequencerTab: copyTokens()/saveTokens() functions + COPY TOKENS/SAVE TOKENS buttons in the manual-load control row (unchanged, shipped 2026-08-18); the new Live Capture panel's capPoll folds harvested tokens into the same setText()-backed corpus those buttons already read from -- no separate export path was needed.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-18",
-        "commit": "da90e67",
-        "note": "SequencerTab (ui-v2/app.jsx) gains COPY TOKENS (clipboard) and SAVE TOKENS (Blob download, nullock-sequencer-tokens.txt) buttons for the manual-load token corpus. Closes the Manual Load half of #175 (absent -> partial); Live Capture has no capture store at all in Nullock and remains the honest, separately-tracked remainder."
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Sequencer Live Capture UI wave: harvested tokens append into the same SequencerTab `text` state the existing COPY TOKENS/SAVE TOKENS buttons already act on, closing this item's Live Capture half as a free side effect."
       }
     },
     {

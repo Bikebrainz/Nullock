@@ -326,6 +326,15 @@
     // Token randomness analyzer (Burp's Sequencer). tokens is a flat array
     // of strings; see sequencer.hpp for the returned JSON shape.
     sequencerAnalyze(tokens)    { return post("/api/sequencer/analyze", { tokens }).then(r => r.json()); },
+    // Sequencer LIVE CAPTURE: fire the same request N times and harvest one
+    // token per response (control_server.cpp /api/sequencer/capture/*).
+    // req = {host,port,tls,request,extract:{from,key},count,throttleMs}.
+    // tokens() returns the merged progress snapshot + corpus + analysis in
+    // one call -- see sequencer_capture.cpp::snapshot() for the shape.
+    sequencerCaptureStart(req)  { return post("/api/sequencer/capture/start", req).then(r => r.json()); },
+    sequencerCaptureStop()      { return post("/api/sequencer/capture/stop").then(r => r.json()); },
+    sequencerCaptureClear()     { return post("/api/sequencer/capture/clear").then(r => r.json()); },
+    sequencerCaptureTokens()    { return post("/api/sequencer/capture/tokens").then(r => r.json()); },
     fingerprintUrl(url)         { return post("/api/fingerprint", { url }).then(r => r.json()); },
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
     detectWaf(url)              { return post("/api/waf/detect", { url }).then(r => r.json()); },

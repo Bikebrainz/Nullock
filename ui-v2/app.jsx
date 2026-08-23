@@ -3973,14 +3973,77 @@ function SequencerTab({ sequencer, dispatch }) {
   // Token randomness analyzer (Burp's Sequencer). Backend
   // (/api/sequencer/analyze, Src/Core/Networking/sequencer_logic.cpp) was
   // complete and API-only -- no tab, no manual-load box, nothing. This is
-  // a Manual Load + Analysis pane; Live Capture (repeatedly issuing a
-  // request and harvesting a token from each response) has no backend
-  // request-issuing engine yet and is intentionally not claimed here.
+  // a Manual Load + Analysis pane, plus a Live Capture panel below it that
+  // drives the /api/sequencer/capture/* engine (fires the same request N
+  // times and harvests one token per response into the corpus above).
   const [text, setText]   = React.useState("");
   const [result, setResult] = React.useState(null);
   const [busy, setBusy]   = React.useState(false);
   const [err, setErr]     = React.useState("");
   const fileRef = React.useRef(null);
+
+  // Live capture -- see control_server.cpp /api/sequencer/capture/{start,
+  // stop,clear,tokens}. /tokens returns the progress snapshot AND the
+  // harvested corpus in one call, so a single poll covers both.
+  const [capHost, setCapHost]         = React.useState("");
+  const [capPort, setCapPort]         = React.useState(443);
+  const [capTls, setCapTls]           = React.useState(true);
+  const [capRequest, setCapRequest]   = React.useState("GET / HTTP/1.1\nHost: \n\n");
+  const [capExtractFrom, setCapExtractFrom] = React.useState("header");
+  const [capExtractKey, setCapExtractKey]   = React.useState("");
+  const [capCount, setCapCount]       = React.useState(200);
+  const [capThrottleMs, setCapThrottleMs] = React.useState(0);
+  const [capSnapshot, setCapSnapshot] = React.useState(null);
+  const [capBusy, setCapBusy]         = React.useState(false);
+  const [capErr, setCapErr]           = React.useState("");
+  const capImportedRef = React.useRef(0); // how many harvested tokens already folded into `text`
+
+  const capPoll = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.sequencerCaptureTokens();
+      if (!r || r.ok === false) return;
+      setCapSnapshot(r);
+      const toks = r.tokens || [];
+      if (toks.length > capImportedRef.current) {
+        const added = toks.slice(capImportedRef.current);
+        setText(prev => (prev ? prev.replace(/\n?$/, "\n") + added.join("\n") : added.join("\n")));
+        capImportedRef.current = toks.length;
+      }
+    } catch (e) { /* transient network blip; next tick retries */ }
+  }, []);
+
+  React.useEffect(() => {
+    capPoll();
+    const running = capSnapshot && capSnapshot.running;
+    if (!running) return;
+    const t = setInterval(capPoll, 1500);
+    return () => clearInterval(t);
+  }, [capPoll, capSnapshot && capSnapshot.running]);
+
+  async function captureStart() {
+    setCapErr(""); setCapBusy(true);
+    try {
+      const r = await NL.actions.sequencerCaptureStart({
+        host: capHost.trim(), port: capPort, tls: capTls, request: capRequest,
+        extract: { from: capExtractFrom, key: capExtractKey },
+        count: capCount, throttleMs: capThrottleMs,
+      });
+      if (r && r.ok === false) setCapErr(r.error || "capture failed to start");
+      else capPoll();
+    } catch (e) { setCapErr(String(e && e.message ? e.message : e)); }
+    finally { setCapBusy(false); }
+  }
+  async function captureStop() {
+    try { await NL.actions.sequencerCaptureStop(); capPoll(); }
+    catch (e) { setCapErr(String(e && e.message ? e.message : e)); }
+  }
+  async function captureClear() {
+    try {
+      await NL.actions.sequencerCaptureClear();
+      capImportedRef.current = 0;
+      setCapSnapshot(null);
+    } catch (e) { setCapErr(String(e && e.message ? e.message : e)); }
+  }
 
   // #167 "Send to Sequencer": Proxy history / Repeater dispatch
   // sequencer-add-token, appending into the app-level sequencer.tokens
@@ -4239,6 +4302,64 @@ function SequencerTab({ sequencer, dispatch }) {
             {" "}shortest <span style={{ color: "var(--text)" }}>{summary.minLen}</span> ·
             {" "}longest <span style={{ color: "var(--text)" }}>{summary.maxLen}</span> ·
             {" "}mean <span style={{ color: "var(--text)" }}>{summary.meanLen}</span>
+          </div>
+        )}
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+          <span style={{ fontSize: "10px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Live capture</span>
+          <span style={{ color: "var(--dim)", fontSize: "11px" }}>fire the request N times and harvest a token from each response into the corpus above</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 70px", gap: 8 }}>
+          <input placeholder="host" value={capHost} onChange={e => setCapHost(e.target.value)}
+                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          <input type="number" placeholder="port" value={capPort} onChange={e => setCapPort(parseInt(e.target.value, 10) || 0)}
+                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text-2)" }}>
+            <input type="checkbox" checked={capTls} onChange={e => setCapTls(e.target.checked)} /> TLS
+          </label>
+        </div>
+        <textarea
+          value={capRequest}
+          onChange={e => setCapRequest(e.target.value)}
+          placeholder={"GET /login HTTP/1.1\nHost: target\n\n"}
+          spellCheck={false}
+          style={{ minHeight: 70, resize: "vertical", background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "6px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }}
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 110px", gap: 8, alignItems: "center" }}>
+          <select value={capExtractFrom} onChange={e => setCapExtractFrom(e.target.value)}
+                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }}>
+            {SEQ_CAPTURE_EXTRACT_FROM.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <input placeholder="header/cookie name, JSON path, or regex (blank for status)" value={capExtractKey}
+                 onChange={e => setCapExtractKey(e.target.value)}
+                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          <input type="number" title="shots" value={capCount} onChange={e => setCapCount(parseInt(e.target.value, 10) || 0)}
+                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          <input type="number" title="throttle (ms)" value={capThrottleMs} onChange={e => setCapThrottleMs(parseInt(e.target.value, 10) || 0)}
+                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn" disabled={capBusy || (capSnapshot && capSnapshot.running) || !capHost.trim()} onClick={captureStart}>
+            {capBusy ? "STARTING…" : "START"}
+          </button>
+          <button className="btn" disabled={!(capSnapshot && capSnapshot.running)} onClick={captureStop}>STOP</button>
+          <button className="btn" disabled={capSnapshot && capSnapshot.running} onClick={captureClear}>CLEAR CAPTURE</button>
+          <span style={{ color: capErr ? "var(--err)" : "var(--dim)", fontSize: "11px" }}>{capErr || ""}</span>
+        </div>
+        {capSnapshot && (capSnapshot.total > 0 || capSnapshot.running) && (
+          <div style={{ fontSize: "11px", color: "var(--dim)" }}>
+            <span style={{ color: capSnapshot.running ? "var(--accent)" : "var(--text)" }}>
+              {capSnapshot.running ? "capturing" : "stopped"}
+            </span>
+            {" "}<span style={{ color: "var(--text)" }}>{capSnapshot.done}</span>/<span style={{ color: "var(--text)" }}>{capSnapshot.total}</span> ·
+            {" "}harvested <span style={{ color: "var(--text)" }}>{capSnapshot.harvested}</span> ·
+            {" "}empty <span style={{ color: "var(--text)" }}>{capSnapshot.emptyExtract}</span> ·
+            {" "}http err <span style={{ color: "var(--text)" }}>{capSnapshot.httpErrors}</span> ·
+            {" "}transport err <span style={{ color: "var(--text)" }}>{capSnapshot.transportErrors}</span> ·
+            {" "}last status <span style={{ color: "var(--text)" }}>{capSnapshot.lastStatus || "—"}</span>
+            {capSnapshot.error ? <span style={{ color: "var(--err)" }}> · {capSnapshot.error}</span> : null}
+            {capSnapshot.corpusNote ? <span style={{ color: "#d97706" }}> · {capSnapshot.corpusNote}</span> : null}
           </div>
         )}
       </div>
@@ -6069,6 +6190,16 @@ function ReconTab() {
 // endpoints exist -- so these pure helpers build the next full array
 // from the current one; the editor POSTs the result back wholesale.
 const EXTRACT_FROM_LABEL = ["Header", "Cookie", "JSON path", "Regex (body, 1st group)"];
+// Sequencer live-capture's extract-from vocabulary (SequencerCaptureLogic::
+// parseExtractFrom) is wire-string keyed, unlike EXTRACT_FROM_LABEL's
+// integer-indexed session-rule vocabulary above, and adds "status".
+const SEQ_CAPTURE_EXTRACT_FROM = [
+  { value: "header", label: "Header" },
+  { value: "cookie", label: "Cookie" },
+  { value: "json",   label: "JSON path" },
+  { value: "regex",  label: "Regex (body, 1st group)" },
+  { value: "status", label: "Status code" },
+];
 const INJECT_INTO_LABEL  = ["Header", "Cookie", "Body ({{var}})", "URL query"];
 
 // Tool-scope bitmask, mirroring SessionRulesLogic::SessionTool
