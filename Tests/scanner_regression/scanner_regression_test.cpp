@@ -1335,6 +1335,36 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/manager/html"),
         makeResp(200, "text/html", "<title>Tomcat Manager</title>") });
 
+    // The rest of the dev-tool exposure table was emitted but untested. The
+    // table mechanism (first-match/break, 200 gate) is already locked; these
+    // pin each NEEDLE so a typo (e.g. "/server-status") can't silently kill a
+    // detector. One positive per remaining kind (path present -> 200).
+    tc.append({ "admin-path via /admin/", "admin-path", false,
+        makeReq("GET", "example.test", "/admin/"), makeResp(200, "text/html", "<h1>Admin</h1>") });
+    tc.append({ "security-txt via /.well-known/security.txt", "security-txt", false,
+        makeReq("GET", "example.test", "/.well-known/security.txt"),
+        makeResp(200, "text/plain", "Contact: mailto:x@y") });
+    tc.append({ "tomcat-host-mgr via /host-manager", "tomcat-host-mgr", false,
+        makeReq("GET", "example.test", "/host-manager"), makeResp(200, "text/html", "host mgr") });
+    tc.append({ "wp-admin via /wp-admin", "wp-admin", false,
+        makeReq("GET", "example.test", "/wp-admin"), makeResp(200, "text/html", "wp") });
+    tc.append({ "apache-status via /server-status", "apache-status", false,
+        makeReq("GET", "example.test", "/server-status"), makeResp(200, "text/html", "Apache Server Status") });
+    tc.append({ "apache-info via /server-info", "apache-info", false,
+        makeReq("GET", "example.test", "/server-info"), makeResp(200, "text/html", "Apache Server Information") });
+    tc.append({ "jolokia via /jolokia", "jolokia-exposed", false,
+        makeReq("GET", "example.test", "/jolokia"), makeResp(200, "application/json", "{\"agent\":{}}") });
+    tc.append({ "druid via /druid", "druid-monitor", false,
+        makeReq("GET", "example.test", "/druid"), makeResp(200, "text/html", "Druid") });
+    tc.append({ "debug-bar via /_debugbar", "debug-bar", false,
+        makeReq("GET", "example.test", "/_debugbar"), makeResp(200, "text/html", "debugbar") });
+    tc.append({ "symfony-profiler via /_profiler", "symfony-profiler", false,
+        makeReq("GET", "example.test", "/_profiler"), makeResp(200, "text/html", "Symfony Profiler") });
+    tc.append({ "graphiql via /graphiql", "graphiql", false,
+        makeReq("GET", "example.test", "/graphiql"), makeResp(200, "text/html", "<title>GraphiQL</title>") });
+    tc.append({ "phpmyadmin via /phpmyadmin", "phpmyadmin", false,
+        makeReq("GET", "example.test", "/phpmyadmin"), makeResp(200, "text/html", "phpMyAdmin") });
+
     // ---- Exposed API docs / GraphQL consoles ---------------------------
     // Same first-match-wins dev-tool table; these four rows were emitted but
     // untested. A leaked OpenAPI/Swagger spec hands an attacker the entire
