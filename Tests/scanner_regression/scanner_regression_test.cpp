@@ -99,6 +99,31 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/", {}, {}, 80, false),
         makeResp(200, "text/html", "<html>x</html>", {}, /*wasTls=*/false) });
 
+    // The other three missing-header checks (same table/loop) were untested:
+    // X-Frame-Options (clickjacking), X-Content-Type-Options (MIME sniffing),
+    // Referrer-Policy (referrer leak). Positive = header absent on an HTML 2xx;
+    // negative = header present -> not flagged.
+    tc.append({ "missing-xfo on plain HTML", "missing-xfo", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+    tc.append({ "X-Frame-Options present -> no missing-xfo", "missing-xfo", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Frame-Options", "DENY"}}) });
+
+    tc.append({ "missing-xcto on plain HTML", "missing-xcto", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+    tc.append({ "X-Content-Type-Options present -> no missing-xcto", "missing-xcto", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Content-Type-Options", "nosniff"}}) });
+
+    tc.append({ "missing-rp on plain HTML", "missing-rp", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+    tc.append({ "Referrer-Policy present -> no missing-rp", "missing-rp", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"Referrer-Policy", "no-referrer"}}) });
+
     // ---- Subresource Integrity (cross-origin scripts) ------------------
     tc.append({ "cross-origin script without SRI", "sri-missing", false,
         makeReq("GET", "example.test", "/"),
