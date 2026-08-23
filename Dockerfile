@@ -30,9 +30,15 @@ ARG QT_VERSION=6.7.3
 # newer cmake pre-installed ahead of apt's on PATH, so `apt-get install cmake`
 # there is a silent no-op. A plain ubuntu:22.04 container has no such override,
 # so cmake is installed via pip instead (PyPI ships current upstream releases).
+# libfontconfig1-dev / libfreetype-dev / libdbus-1-dev: not needed to configure
+# or compile, but the final NullockApp link fails without them -- libQt6Gui.so
+# pulls in Fontconfig+FreeType symbols and libQt6DBus.so pulls in libdbus-1
+# ones, and a bare ubuntu:22.04 has neither installed (GitHub's hosted runner
+# images do, invisibly, which is why the CI build-linux job never needed this).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ninja-build build-essential git \
         libnghttp2-dev libssl-dev zlib1g-dev \
+        libfontconfig1-dev libfreetype-dev libdbus-1-dev \
         python3 python3-pip \
         libgl1-mesa-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -60,8 +66,13 @@ FROM ubuntu:22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 ARG QT_VERSION=6.7.3
 
+# Runtime counterparts of the build stage's libfontconfig1-dev / libfreetype-dev
+# / libdbus-1-dev -- the copied libQt6Gui.so / libQt6DBus.so dlopen these at
+# process start (even headless/offscreen), so NullockApp exits immediately with
+# "error while loading shared libraries" without them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnghttp2-14 libssl3 libglib2.0-0 libgl1 libxkbcommon0 ca-certificates \
+        libnghttp2-14 libssl3 libglib2.0-0 libgl1 libxkbcommon0 \
+        libfontconfig1 libfreetype6 libdbus-1-3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 10001 nullock
 
