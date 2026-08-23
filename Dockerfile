@@ -23,8 +23,15 @@ FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 ARG QT_VERSION=6.7.3
 
+# NOTE: cmake is deliberately NOT installed via apt here -- Ubuntu 22.04's repo
+# ships 3.22.1, but CMakeLists.txt:1 requires 3.24+ (`cmake_minimum_required`
+# fails hard before configuring even starts). The GitHub-hosted CI runners this
+# Dockerfile otherwise mirrors work around this invisibly: their images ship a
+# newer cmake pre-installed ahead of apt's on PATH, so `apt-get install cmake`
+# there is a silent no-op. A plain ubuntu:22.04 container has no such override,
+# so cmake is installed via pip instead (PyPI ships current upstream releases).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        cmake ninja-build build-essential git \
+        ninja-build build-essential git \
         libnghttp2-dev libssl-dev \
         python3 python3-pip \
         libgl1-mesa-dev libxkbcommon-dev \
@@ -37,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # fail with "packages ... were not found while parsing XML". The install
 # *directory* aqt creates is still named "gcc_64" regardless of arch name,
 # so CMAKE_PREFIX_PATH is unaffected.
-RUN pip3 install --no-cache-dir aqtinstall \
+RUN pip3 install --no-cache-dir aqtinstall cmake \
     && aqt install-qt linux desktop ${QT_VERSION} linux_gcc_64 -m qtwebsockets -O /opt/qt
 ENV CMAKE_PREFIX_PATH=/opt/qt/${QT_VERSION}/gcc_64
 
