@@ -85,7 +85,10 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
                   also push the draft straight onward -- ↦ CMP/DEC/SEQ plus ↦ INT (promotes
                   it to a new Intruder attack template) and ↦ SCAN (runs the active-test
                   battery against it, findings streaming into Issues), so Repeater is no
-                  longer a dead end for the other tools
+                  longer a dead end for the other tools; an editable HEADERS view (add /
+                  remove / reorder with per-row buttons, live in both the request editor
+                  and Intercept's held request/response editors) round-trips straight into
+                  the raw request
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/

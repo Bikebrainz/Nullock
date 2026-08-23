@@ -540,6 +540,100 @@ function RepeaterParamsView({ raw, onChange }) {
   );
 }
 
+// #331: Burp Inspector's editable "Headers" panel -- add, remove, and
+// reorder headers at the click of a button, distinct from the read-only
+// "headers" text view renderView already produced. Pure parse/rebuild pair
+// mirrors repeaterParams/repeaterRebuildParams above: repeaterSplitRaw's
+// headerLines (raw "Name: Value" strings, order preserved) round-trip
+// through an editable {name,value} row list and back via repeaterBuildRaw,
+// the same machinery repeaterChangeMethod/repeaterChangeBodyEncoding use --
+// works for both request and response raw text since repeaterSplitRaw only
+// treats the first line as three space-separated parts, true of a request
+// line and a status line alike.
+function repeaterHeaderRows(headerLines) {
+  return (headerLines || []).filter(l => l.length > 0).map(l => {
+    const c = l.indexOf(":");
+    return c >= 0
+      ? { name: l.slice(0, c), value: l.slice(c + 1).replace(/^ /, "") }
+      : { name: l, value: "" };
+  });
+}
+function repeaterHeaderRowsToLines(rows) {
+  return (rows || []).map(r => r.name + ": " + r.value);
+}
+function repeaterRebuildHeaderRows(raw, rows) {
+  const p = repeaterSplitRaw(raw);
+  p.headerLines = repeaterHeaderRowsToLines(rows);
+  return repeaterBuildRaw(p);
+}
+
+function RepeaterHeaderRow({ row, onName, onValue, onRemove, onMoveUp, onMoveDown, canUp, canDown }) {
+  const inputStyle = {
+    width: "100%", background: "var(--bg-deep)", color: "var(--text)",
+    border: "1px solid var(--line)", fontFamily: "var(--ff-mono)",
+    fontSize: "11px", padding: "2px 6px",
+  };
+  const moveBtn = { padding: "0 5px", fontSize: "10px" };
+  return (
+    <tr>
+      <td style={{ padding: "1px 2px", whiteSpace: "nowrap" }}>
+        <button className="btn" disabled={!canUp} title="move up" style={moveBtn} onClick={onMoveUp}>↑</button>
+        <button className="btn" disabled={!canDown} title="move down" style={moveBtn} onClick={onMoveDown}>↓</button>
+      </td>
+      <td style={{ padding: "1px 4px" }}>
+        <input value={row.name} onChange={e => onName(e.target.value)} spellCheck={false} style={inputStyle} />
+      </td>
+      <td style={{ padding: "1px 4px" }}>
+        <input value={row.value} onChange={e => onValue(e.target.value)} spellCheck={false} style={inputStyle} />
+      </td>
+      <td style={{ padding: "1px 0 1px 4px" }}>
+        <button className="btn danger" style={{ padding: "1px 6px", fontSize: "10px" }} onClick={onRemove}>×</button>
+      </td>
+    </tr>
+  );
+}
+// The editable Headers table itself: add/remove/reorder, round-tripping
+// through the shared raw text on every change so it stays in sync with
+// every other view (raw/body/inspector/etc) of the same editor.
+function RepeaterHeadersView({ raw, onChange }) {
+  const rows = React.useMemo(() => repeaterHeaderRows(repeaterSplitRaw(raw).headerLines), [raw]);
+  const commit = (next) => onChange(repeaterRebuildHeaderRows(raw, next));
+  const setName = (i, v) => commit(rows.map((r, idx) => idx === i ? { ...r, name: v } : r));
+  const setValue = (i, v) => commit(rows.map((r, idx) => idx === i ? { ...r, value: v } : r));
+  const removeRow = (i) => commit(rows.filter((_, idx) => idx !== i));
+  const addRow = () => commit([...rows, { name: "", value: "" }]);
+  const moveUp = (i) => {
+    if (i <= 0) return;
+    const next = rows.slice();
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    commit(next);
+  };
+  const moveDown = (i) => {
+    if (i >= rows.length - 1) return;
+    const next = rows.slice();
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    commit(next);
+  };
+  return (
+    <div className="txt readonly" style={{ overflow: "auto", padding: "8px 10px" }}>
+      <div style={{ fontSize: "9.5px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>
+        HEADERS <span style={{ color: "var(--dim)" }}>({rows.length})</span>
+      </div>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <tbody>
+          {rows.map((r, i) => (
+            <RepeaterHeaderRow key={i} row={r}
+              onName={v => setName(i, v)} onValue={v => setValue(i, v)} onRemove={() => removeRow(i)}
+              onMoveUp={() => moveUp(i)} onMoveDown={() => moveDown(i)}
+              canUp={i > 0} canDown={i < rows.length - 1} />
+          ))}
+        </tbody>
+      </table>
+      <button className="btn" style={{ marginTop: 4, padding: "2px 8px", fontSize: "10px" }} onClick={addRow}>+ ADD HEADER</button>
+    </div>
+  );
+}
+
 function RepeaterEditorToolbar({
   views, active, onView, search, onSearch, matchCount, onNext, onPrev,
   caseSensitive, onCaseSensitive, regex, onRegex,
@@ -1232,6 +1326,8 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
           )}
           {reqView === "inspector" ? (
             <RepeaterInspectorPanel raw={rep.request} kind="request" sel={reqSel} />
+          ) : reqView === "headers" ? (
+            <RepeaterHeadersView raw={rep.request} onChange={next => dispatch({ type: "repeater-set", payload: { request: next } })} />
           ) : reqView === "raw" ? (
             <textarea
               ref={reqRef}
@@ -1719,6 +1815,8 @@ function InterceptTab({ intercept, interceptResponses, interceptAutoContentLengt
             <RepeaterInspectorPanel raw={editedText} kind={current.kind === 1 ? "response" : "request"} />
           ) : editorView === "params" ? (
             <RepeaterParamsView raw={editedText} onChange={setEditedText} />
+          ) : editorView === "headers" ? (
+            <RepeaterHeadersView raw={editedText} onChange={setEditedText} />
           ) : editorView === "edit" ? (
             <textarea
               ref={icpRef}

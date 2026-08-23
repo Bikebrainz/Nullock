@@ -4391,12 +4391,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: \"Headers\" panel with add / remove / reorder",
-      "state": "stub",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Read-only projection with no consumer and no write direction. Burp's 'add, remove, and reorder items at the click of a button' has no counterpart at any layer.",
-      "why": "DOWNGRADED (unreachable), and I re-ran the write-path search myself: inspector_logic.hpp declares only inspectRequest/inspectResponse, and there is no re-serializer anywhere.",
-      "evidence": "Extraction verified: D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:56-58 `int sep = raw.indexOf(\"\\r\\n\\r\\n\"); int seplen = 4; if (sep < 0) { sep = raw.indexOf(\"\\n\\n\"); seplen = 2; }` and :67-73 `const int c = l.indexOf(':'); if (c < 0) continue; p.headers.append({ l.left(c).trimmed(), l.mid(c + 1).trimmed() });`, rendered by headersJson :83-87. Write path: `grep -rn 'rebuildRequest|applyIn"
+      "gap": "None -- an editable HEADERS view (its own tab alongside raw/body/preview/hex/inspector, the same sibling-view convention the Params table already established) now lets the user add, remove, and reorder headers with per-row up/down/\u00d7 buttons in both the Repeater request editor and Intercept's held request/response editors, rewriting the underlying raw text on every change.",
+      "why": "Closed 2026-08-23: added a pure repeaterHeaderRows/repeaterHeaderRowsToLines/repeaterRebuildHeaderRows round-trip (ui-v2/tabs.jsx) built on the same repeaterSplitRaw/repeaterBuildRaw machinery repeaterChangeMethod/repeaterChangeBodyEncoding already use -- works for both a request line and a status line, since repeaterSplitRaw only treats the first raw line as three space-separated parts. A new RepeaterHeadersView component (add-row button, per-row name/value inputs, up/down reorder, remove button) is wired into the \"headers\" view tab of the Repeater request editor (rep.request, dispatches repeater-set) and Intercept's held-message editor for both request and response (editedText/setEditedText) -- the two editors in the message-editor toolbar family that were already editable. Repeater's own RESPONSE pane and Proxy history's DetailPane stay on the prior read-only headers text view, matching their own pre-existing \"read-only\" labels/scope (Burp doesn't offer header editing on immutable history entries either). The write path the old why-text found missing (\"no re-serializer anywhere\") now exists and is UI-reachable.",
+      "evidence": "ui-v2/tabs.jsx repeaterHeaderRows/repeaterHeaderRowsToLines/repeaterRebuildHeaderRows (pure); RepeaterHeadersView + RepeaterHeaderRow (new components); reqView===\"headers\" branch in RepeaterTab's request pane (dispatches {type:\"repeater-set\", payload:{request:next}}); editorView===\"headers\" branch in the Intercept held-message editor (setEditedText) for both current.kind 0 (request) and 1 (response), both of which already listed \"headers\" in their views array.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Editable HEADERS view (add/remove/reorder, ui-v2/tabs.jsx RepeaterHeadersView) wired into the Repeater request editor and Intercept's held request+response editors, sharing the repeaterSplitRaw/repeaterBuildRaw round-trip already used by the method/encoding transforms. Repeater's read-only response pane and Proxy history's DetailPane intentionally left on the prior read-only headers text view."
+      }
     },
     {
       "area": "repeater",
