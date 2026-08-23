@@ -32,7 +32,7 @@ ARG QT_VERSION=6.7.3
 # so cmake is installed via pip instead (PyPI ships current upstream releases).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ninja-build build-essential git \
-        libnghttp2-dev libssl-dev \
+        libnghttp2-dev libssl-dev zlib1g-dev \
         python3 python3-pip \
         libgl1-mesa-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
