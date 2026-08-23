@@ -56,8 +56,20 @@ ENV CMAKE_PREFIX_PATH=/opt/qt/${QT_VERSION}/gcc_64
 
 WORKDIR /src
 COPY . .
-RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build build --target NullockApp -j
+# `cmake --install ... --component Runtime` (not a manual copy of individual
+# build-tree paths) deliberately: root CMakeLists.txt:89-99 already has a
+# Linux-specific install(TARGETS FrontEndGUI ...) + INSTALL_RPATH "$ORIGIN" on
+# NullockApp, added for exactly this problem (linuxdeploy/AppImage packaging
+# needing FrontEndGUI -- a qt_add_qml_module target, the one SHARED lib among
+# an otherwise all-STATIC Src/ tree -- installed next to the exe it's not
+# statically linked into). Reusing that proven path means NullockApp resolves
+# libFrontEndGUI.so via its own RPATH with no extra LD_LIBRARY_PATH entry, and
+# the Runtime component also installs ui-v2/templates/extensions in one shot,
+# so the runtime stage no longer hand-copies each of those from the source
+# tree (a copy that would silently drift if the project ever restructures them).
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/nullock \
+    && cmake --build build --target NullockApp -j \
+    && cmake --install build --component Runtime
 
 # --------------------------------------------------------------------------
 # Runtime stage
@@ -79,11 +91,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Qt runtime libraries + plugins (headless still needs the platform plugins).
 COPY --from=build /opt/qt/${QT_VERSION}/gcc_64/lib     /opt/qt/lib
 COPY --from=build /opt/qt/${QT_VERSION}/gcc_64/plugins /opt/qt/plugins
-# The app + its runtime assets (ui-v2, detection templates, extensions).
-COPY --from=build /src/build/Src/App/NullockApp /usr/local/bin/NullockApp
-COPY --from=build /src/ui-v2       /usr/local/share/nullock/ui
-COPY --from=build /src/templates   /usr/local/share/nullock/templates
-COPY --from=build /src/extensions  /usr/local/share/nullock/extensions
+# NullockApp + libFrontEndGUI.so (CMAKE_INSTALL_BINDIR, RPATH="$ORIGIN" already
+# resolves it from there -- see the build stage's `cmake --install` comment)
+# + ui-v2/templates/extensions (CMAKE_INSTALL_DATADIR/nullock/*), all from the
+# Runtime-component install prefix.
+COPY --from=build /opt/nullock/ /usr/local/
 
 ENV LD_LIBRARY_PATH=/opt/qt/lib \
     QT_PLUGIN_PATH=/opt/qt/plugins \
