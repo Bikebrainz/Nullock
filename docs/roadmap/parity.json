@@ -3437,7 +3437,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-23",
-        "commit": "PENDING",
+        "commit": "66b425a",
         "note": "Added the operator-facing UI for the per-host accept-invalid-cert allow-list that d95a390 built backend-only: a chip-list (add/remove) in Settings' CA & TLS card wired to the existing POST /api/proxy/accept-invalid-hosts/{add,remove}, plus a read-only table rendering bootInfo.acceptedInvalidCerts (host, leaf sha256, which errors were waived, when) so an operator can audit exactly what verification was relaxed. No backend change. partial -> present (backend was already sound; the missing piece was purely that no UI could reach it)."
       }
     },
