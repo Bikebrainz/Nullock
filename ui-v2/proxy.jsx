@@ -96,6 +96,80 @@ function annotationColorHex(key) {
   return c ? c.hex : null;
 }
 
+// Target Analyzer: attack-surface sizing over a site-map scope (Burp's
+// "counts of static vs dynamic URLs, unique parameter names, and per-URL
+// entry points"). Computed entirely client-side from the HTTP history rows
+// already in state -- no backend endpoint exists for this, and none is
+// needed: r.path already carries the full path+query (control_server.cpp's
+// history-row builder maps both "url" and "path" to ProxyModel::UrlRole,
+// which is request.path verbatim). The one honest gap: only query-string
+// parameter names are visible here, since request bodies aren't held
+// client-side -- form/JSON body parameter names aren't counted.
+const STATIC_URL_EXTS = new Set([
+  "js", "css", "png", "jpg", "jpeg", "gif", "svg", "ico", "webp",
+  "woff", "woff2", "ttf", "eot", "otf", "map",
+  "mp4", "webm", "mp3", "wav", "pdf", "zip",
+]);
+function classifyUrlKind(path) {
+  const raw = path || "";
+  const hasQuery = raw.split("?")[1] ? raw.split("?")[1].length > 0 : false;
+  if (hasQuery) return "dynamic";
+  const ext = pathExtension(raw);
+  return STATIC_URL_EXTS.has(ext) ? "static" : "dynamic";
+}
+function queryParamNames(path) {
+  const raw = path || "";
+  const qIdx = raw.indexOf("?");
+  if (qIdx === -1) return [];
+  const qs = raw.slice(qIdx + 1).split("#")[0];
+  if (!qs) return [];
+  const names = [];
+  for (const pair of qs.split("&")) {
+    if (!pair) continue;
+    const eq = pair.indexOf("=");
+    const rawName = eq === -1 ? pair : pair.slice(0, eq);
+    if (!rawName) continue;
+    let name;
+    try { name = decodeURIComponent(rawName.replace(/\+/g, " ")); } catch (e) { name = rawName; }
+    names.push(name);
+  }
+  return names;
+}
+function analyzeTargetSurface(rows) {
+  const byPath = new Map();
+  for (const r of (rows || [])) {
+    const rawPath = r.path || "/";
+    const clean = rawPath.split(/[?#]/)[0] || "/";
+    let ep = byPath.get(clean);
+    if (!ep) { ep = { path: clean, methods: new Set(), paramNames: new Set(), dynamic: false }; byPath.set(clean, ep); }
+    ep.methods.add(r.method);
+    if (classifyUrlKind(rawPath) === "dynamic") ep.dynamic = true;
+    for (const name of queryParamNames(rawPath)) ep.paramNames.add(name);
+  }
+  const paramNameCounts = new Map();
+  for (const ep of byPath.values()) {
+    for (const name of ep.paramNames) paramNameCounts.set(name, (paramNameCounts.get(name) || 0) + 1);
+  }
+  const entryPoints = Array.from(byPath.values())
+    .map(ep => ({
+      path: ep.path,
+      methods: Array.from(ep.methods).sort(),
+      paramNames: Array.from(ep.paramNames).sort(),
+      kind: ep.dynamic ? "dynamic" : "static",
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  const paramNames = Array.from(paramNameCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return {
+    totalUrls: entryPoints.length,
+    staticCount: entryPoints.filter(e => e.kind === "static").length,
+    dynamicCount: entryPoints.filter(e => e.kind === "dynamic").length,
+    entryPoints,
+    paramNames,
+  };
+}
+
 function MethodCell({ m }) {
   let cls = "meth " + m.replace("↑", "").replace("↓", "");
   if (m === "WS↑") cls = "meth WS";
@@ -1411,6 +1485,105 @@ function buildHistoryFindFilters(f, nowMs) {
   return filters;
 }
 
+function TargetAnalyzerOverlay({ rows, scopeLabel, onClose }) {
+  const result = React.useMemo(() => analyzeTargetSurface(rows), [rows]);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const btn = {
+    background: "transparent", color: "var(--accent)",
+    border: "1px solid var(--accent)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+  const dimBtn = { ...btn, borderColor: "var(--line)", color: "var(--dim)" };
+  const cellStyle = { padding: "3px 6px", borderBottom: "1px solid var(--line-soft)" };
+  const statBox = { padding: 8, textAlign: "center" };
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(94vw, 900px)", maxHeight: "88vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>◆ ANALYZE TARGET — {scopeLabel}</span>
+          <button onClick={onClose} style={dimBtn}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Attack-surface sizing computed client-side from the HTTP history already captured for
+          this scope — static/dynamic classification is a URL-shape heuristic (extension +
+          query string). Parameter names only cover the query string: request bodies aren't held
+          client-side, so form/JSON body parameter names aren't counted here.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--line-soft)" }}>
+          <div className="pane" style={statBox}>
+            <div style={{ fontSize: 20, color: "var(--accent)" }}>{result.totalUrls}</div>
+            <div style={{ fontSize: 10, color: "var(--dim)" }}>UNIQUE URLS</div>
+          </div>
+          <div className="pane" style={statBox}>
+            <div style={{ fontSize: 20, color: "var(--accent)" }}>{result.dynamicCount}</div>
+            <div style={{ fontSize: 10, color: "var(--dim)" }}>DYNAMIC</div>
+          </div>
+          <div className="pane" style={statBox}>
+            <div style={{ fontSize: 20, color: "var(--accent)" }}>{result.staticCount}</div>
+            <div style={{ fontSize: 10, color: "var(--dim)" }}>STATIC</div>
+          </div>
+        </div>
+        <div style={{ padding: "8px 12px 4px", color: "var(--dim)", fontSize: "10px" }}>
+          {result.paramNames.length} unique query parameter name{result.paramNames.length === 1 ? "" : "s"}
+        </div>
+        <div style={{ padding: "0 12px 8px", display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {result.paramNames.map(p => (
+            <span key={p.name} title={p.count + " entry point" + (p.count === 1 ? "" : "s")}
+                  style={{ border: "1px solid var(--line)", padding: "2px 6px", fontSize: "10px", fontFamily: "var(--ff-mono)" }}>
+              {p.name} <span style={{ color: "var(--dim)" }}>×{p.count}</span>
+            </span>
+          ))}
+          {result.paramNames.length === 0 && <span style={{ fontSize: 11, color: "var(--dim)" }}>none seen</span>}
+        </div>
+        <div style={{ overflowX: "auto", padding: "0 12px 12px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--ff-mono)", fontSize: "11px" }}>
+            <thead>
+              <tr style={{ color: "var(--dim)", textAlign: "left" }}>
+                <th style={cellStyle}>path</th>
+                <th style={cellStyle}>kind</th>
+                <th style={cellStyle}>methods</th>
+                <th style={cellStyle}>params</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.entryPoints.map(ep => (
+                <tr key={ep.path}>
+                  <td style={cellStyle}>{ep.path}</td>
+                  <td style={cellStyle}>{ep.kind}</td>
+                  <td style={cellStyle}>{ep.methods.join(", ")}</td>
+                  <td style={cellStyle}>{ep.paramNames.join(", ") || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DbSearchOverlay({ onClose }) {
   const [f, setF] = React.useState({ method: "", host: "", path: "", status: "", minSize: "", maxSize: "", sinceMins: "", limit: "200" });
   const [rows, setRows] = React.useState(null); // null = not searched yet
@@ -2455,6 +2628,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
   const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
+  const [analyzerOpen, setAnalyzerOpen] = React.useState(false);
 
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host,rowId?,branch?} | null
   const openRowMenu = (host, e, rowId, branch) => setCtxMenu({ x: e.clientX, y: e.clientY, host, rowId, branch });
@@ -2630,10 +2804,18 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <button onClick={() => setWsRepeaterOpen(true)} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
           <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
+          <button onClick={() => setAnalyzerOpen(true)} title="Attack-surface sizing: static/dynamic URL counts, query-parameter names, and per-URL entry points for the current site-map scope">◆ ANALYZE TARGET</button>
         </div>
         {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
         {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
         {dbSearchOpen && <DbSearchOverlay onClose={() => setDbSearchOpen(false)} />}
+        {analyzerOpen && (
+          <TargetAnalyzerOverlay
+            rows={originRows}
+            scopeLabel={selectedOrigin ? (selectedOrigin.origin + (selectedOrigin.branch || "")) : "all hosts"}
+            onClose={() => setAnalyzerOpen(false)}
+          />
+        )}
         <FilterBar
           hostFilter={hostFilter}
           setHostFilter={v => dispatch({ type: "set", payload: { hostFilter: v }})}

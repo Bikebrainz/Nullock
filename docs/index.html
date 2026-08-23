@@ -195,6 +195,10 @@
         <p>A self-signed or expired cert on an internal/lab target used to permanently block that host. Settings' CA &amp; TLS card can now allow-list a host:port (default-deny — nothing is relaxed until you add it), keeping only the benign errors (self-signed, expired, hostname mismatch, unknown issuer) waived; a genuinely revoked or blacklisted cert still fails closed. A read-only table shows exactly which leaf cert (sha256), which errors, and when it was waived, so a change in the wild doesn't slip by unnoticed.</p>
       </div>
       <div class="card">
+        <h3>Analyze target</h3>
+        <p>An ANALYZE TARGET overlay in the Proxy tab's HTTP HISTORY pane sizes the attack surface for whatever the Site map currently has selected — a single host, one directory branch, or all hosts — computed entirely client-side from history already captured, no separate scan. It reports unique-URL, static, and dynamic counts (a URL-shape heuristic: recognized static extension with no query string), a unique query-parameter-name list ranked by how many distinct entry points use each one, and a per-path entry-point table (methods + parameter names). Query-string parameters only — request bodies aren't held client-side, so form/JSON body parameter names aren't counted, an honest remaining gap.</p>
+      </div>
+      <div class="card">
         <h3>Cookie jar</h3>
         <p>The Sessions tab's per-host captured-cookie list gets a full-inventory companion: Path, resolved Expires (or "session" for a non-persistent cookie), and per-host httpOnly/Secure/SameSite coverage percentages — the attributes that determine whether injection actually happens and whether a cookie is stale. Add a cookie obtained out-of-band, edit an existing value, or delete exactly one cookie, right from the same panel.</p>
       </div>

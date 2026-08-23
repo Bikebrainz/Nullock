@@ -67,7 +67,11 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   (host:port) so it stays interceptable instead of getting permanently blocked
                   on the first bad handshake -- verification only relaxes for listed hosts, and
                   a read-only table shows exactly which leaf cert (sha256), which errors, and
-                  when it was waived
+                  when it was waived; an ANALYZE TARGET overlay (scoped to the Site map's current
+                  host/branch selection, or all hosts) sizes the attack surface from history
+                  already captured -- unique-URL/static/dynamic counts, a query-parameter-name
+                  frequency list, and a per-path entry-point table (methods + params), computed
+                  entirely client-side with no separate scan or backend call
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through

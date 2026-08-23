@@ -5400,12 +5400,18 @@
     {
       "area": "target",
       "feature": "Engagement tools > Analyze target (Target Analyzer): counts of static vs dynamic URLs, unique parameter names, and per-URL entry points across a site map branch",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "days",
-      "gap": "No attack-surface sizing at kickoff: how many dynamic URLs, how many distinct parameter names, which entry points. The two adjacent endpoints answer different questions and neither has a UI caller.",
-      "why": "Confirmed absent, but I found a closer neighbour than the first pass did: /api/openapi/export aggregates the full history into origin -> path -> method -> statuses. That is the URL half of an attack-surface summary. It still does not count parameters, classify static vs dynamic, or identify entry points, so the item stays absent -- but it is the right place to build it.",
-      "evidence": "`grep -rail \"target analyz|analyzeTarget|targetAnalyzer|entry point|uniqueParam|distinct param\" Src ui-v2 extensions` -> nothing relevant. Nearest neighbours, both UI-less: control_server.cpp:4664-4736 `/api/openapi/export -- walks captured history and synthesizes an OpenAPI 3.1 spec describing every (host, path, method) seen` building `QMap<QString, QMap<QString, QMap<QString, OpInfo>>> byHost;` "
+      "gap": "Query-string parameter names only -- request bodies aren't held client-side, so form/JSON body parameter names never appear in the unique-parameter list or an entry point's params column, a real gap vs. Burp's whole-body-aware analyzer. Static/dynamic classification is also a URL-shape heuristic (recognized static extension + no query string), not Burp's own algorithm, so edge cases (e.g. a static-looking path served dynamically with no query) can misclassify.",
+      "why": "Closed the frontend half via a client-side ANALYZE TARGET overlay (ui-v2/proxy.jsx TargetAnalyzerOverlay) reached from the HTTP HISTORY pane-head, computed entirely from HTTP history rows already in state -- no backend endpoint needed or added, since r.path already carries the full path+query (control_server.cpp:1515-1516 map both \"url\" and \"path\" to ProxyModel::UrlRole, which is request.path verbatim). Pure helpers classifyUrlKind/queryParamNames/analyzeTargetSurface produce unique-URL, static, and dynamic counts, a unique query-parameter-name list (each tagged with the entry-point count it appears across), and a per-path entry-point table (methods + param names + kind), scoped to whatever the site-map tree currently has selected (a host, a branch, or all hosts) via the existing originRows the SiteMap/HistoryTable pair already computes -- so \"across a site map branch\" is a real, working scope, not just the whole history. Moved absent -> partial rather than present: body-parameter names are a genuine, honestly-named remaining gap (see gap text).",
+      "evidence": "ui-v2/proxy.jsx: classifyUrlKind/queryParamNames/analyzeTargetSurface (pure helpers) + TargetAnalyzerOverlay (new component) + an \"ANALYZE TARGET\" button in ProxyTab's HTTP HISTORY pane-head, wired to originRows (the same site-map-scoped row set HistoryTable/SiteMap already use) and selectedOrigin for the scope label. Field contract: r.path/r.method already present on every row (control_server.cpp:1515-1516 url/path -> ProxyModel::UrlRole -> proxy_model.cpp:22 request.path); no new fields invented, no backend endpoint added.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-23",
+        "commit": "PENDING",
+        "note": "Target Analyzer wave: client-side ANALYZE TARGET overlay in the Proxy tab closes the URL-count/parameter-name/entry-point legs of this item, scoped to the current site-map selection; body-parameter names stay an honest remaining gap."
+      }
     },
     {
       "area": "target",
