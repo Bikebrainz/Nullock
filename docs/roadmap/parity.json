@@ -5046,7 +5046,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-24",
-        "commit": "PENDING",
+        "commit": "422f8d6",
         "note": "Prior wave (80f8ec9, 2026-08-18) added the 'log out-of-scope traffic' toggle and named three remaining gaps: the prompt, per-project persistence of the toggle, and a per-row in/out-of-scope marker in the history view. This wave closes the third: HistoryTable (ui-v2/proxy.jsx) now computes outOfScope = !hostInScope(r.host, scope) per row (the same glob matcher already backing the IN-SCOPE filter chip) and renders a dimmed row (CSS .row-oos, opacity 0.55) with a small ⊘ badge next to the host when a captured row falls outside the current scope allowlist -- visible whenever IN-SCOPE-only filtering is OFF, so a 'browse broadly, then review what fell outside scope' pass is now legible at a glance instead of requiring the filter toggle. Client-side only, no backend change (scope rules already live in frontend state; no new data needed per row). Stays partial: the prompt and per-project persistence are still not built."
       }
     },
