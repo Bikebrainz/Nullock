@@ -5000,7 +5000,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-24",
-        "commit": "PENDING",
+        "commit": "67cc444",
         "note": "Compare-hosts wave: stub -> partial. Added a client-side COMPARE HOSTS overlay (ui-v2/proxy.jsx) diffing URL paths and findings between two hosts already in HTTP history. Honest remaining gap: no arbitrary map/session picker, no request/response content diff, findings-only + path-only surface."
       }
     },
