@@ -50,6 +50,7 @@ function reducer(state, action) {
         intercept: NL.interceptEnabled !== undefined ? NL.interceptEnabled : state.intercept,
         interceptResponses: NL.interceptResponsesEnabled !== undefined ? NL.interceptResponsesEnabled : state.interceptResponses,
         interceptAutoContentLength: NL.interceptAutoContentLength !== undefined ? NL.interceptAutoContentLength : state.interceptAutoContentLength,
+        interceptAutoFixNewlines: NL.interceptAutoFixNewlines !== undefined ? NL.interceptAutoFixNewlines : state.interceptAutoFixNewlines,
         repeater: NL.repeater ? { ...state.repeater, ...NL.repeater } : state.repeater,
         intruder: NL.intruder ? { ...state.intruder, ...NL.intruder } : state.intruder,
         proxyOn: NL.bootInfo && NL.bootInfo.proxyOn !== undefined ? NL.bootInfo.proxyOn : state.proxyOn,
@@ -192,6 +193,11 @@ function reducer(state, action) {
       const next = !state.interceptAutoContentLength;
       act("interceptSetAutoContentLength", next);
       return { ...state, interceptAutoContentLength: next };
+    }
+    case "intercept-autonl-toggle": {
+      const next = !state.interceptAutoFixNewlines;
+      act("interceptSetAutoFixNewlines", next);
+      return { ...state, interceptAutoFixNewlines: next };
     }
     case "log-out-of-scope-toggle": {
       const next = !state.logOutOfScope;
@@ -7335,6 +7341,7 @@ function App() {
     intercept: false,
     interceptResponses: false,
     interceptAutoContentLength: NL.interceptAutoContentLength,
+    interceptAutoFixNewlines: NL.interceptAutoFixNewlines,
     intercepted: NL.intercepted,
     scope: NL.scope,
     repeater: NL.repeater,
@@ -7594,6 +7601,7 @@ function App() {
             intercept={state.intercept}
             interceptResponses={state.interceptResponses}
             interceptAutoContentLength={state.interceptAutoContentLength}
+            interceptAutoFixNewlines={state.interceptAutoFixNewlines}
             intercepted={state.intercepted}
             dispatch={dispatch}
             onSwitchTab={setTab}

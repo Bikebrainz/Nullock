@@ -90,6 +90,35 @@ bool shouldRecomputeContentLength(bool dropped, bool isRequest, bool autoCL, boo
 // Proxy layer stays free of a cross-library link edge.
 QByteArray recomputeContentLength(const QByteArray &req);
 
+// Should the intercept path fix the request's trailing newline framing before
+// forwarding? Same shape/rationale as shouldRecomputeContentLength: only an
+// EDITED REQUEST, with the operator's toggle on, is ever touched -- an
+// unedited passthrough (or a response, or a dropped message) is never
+// rewritten. autoFix is the operator's "Fix missing/superfluous new lines at
+// end of request" toggle (Burp default ON).
+bool shouldFixTrailingNewline(bool dropped, bool isRequest, bool autoFix, bool edited);
+
+// Bring an edited, bodyless request's header/body boundary back into a sane
+// shape (Burp's "Automatically fix missing or superfluous new lines at end of
+// request"): hand-editing the raw text in the intercept editor can drop the
+// blank line that terminates the headers, or leave stray blank lines behind
+// it, either of which desyncs the request framing on the wire. Contract:
+//   * no blank line anywhere (the terminating blank line was deleted outright)
+//     -> append one, matching the terminator style already used in the
+//     message (CRLF if none is present yet).
+//   * a blank line is found and nothing follows it -> already correct, no-op.
+//   * a blank line is found and everything after it is ALSO just terminator
+//     bytes (no real body content) -> drop the superfluous trailing blank
+//     line(s), UNLESS the head declares a body (Content-Length or
+//     Transfer-Encoding: chunked), in which case that is the operator's
+//     explicit framing choice (or a deliberate desync probe) and is left
+//     untouched.
+//   * anything else (a real body is present) -> untouched. This function only
+//     ever touches trailing whitespace-only framing, never body bytes.
+// Pure (QByteArray only), mirroring recomputeContentLength's scope and
+// philosophy: never introduce a change the operator didn't ask for.
+QByteArray fixTrailingNewline(const QByteArray &req);
+
 // Hard cap on simultaneously-parked intercepted requests. Intercept blocks one
 // worker thread (~1MB stack on Windows) and pins the full request bytes (auth
 // headers, cookies, body) per parked request, resolvable only one-at-a-time at

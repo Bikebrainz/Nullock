@@ -991,6 +991,9 @@ int main(int argc, char *argv[]) {
     // project's persisted value into the live controller.
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::interceptAutoContentLengthChanged,
                      &intercept, [&intercept](bool on) { intercept.setAutoContentLength(on); });
+    // Same for the "Fix missing/superfluous new lines" toggle.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::interceptAutoFixNewlinesChanged,
+                     &intercept, [&intercept](bool on) { intercept.setAutoFixNewlines(on); });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
@@ -1025,6 +1028,7 @@ int main(int argc, char *argv[]) {
     intercept.setInterceptRules(
         Nullock::Proxy::InterceptLogic::interceptRulesFromJson(projectStore.interceptRules()));
     intercept.setAutoContentLength(projectStore.interceptAutoContentLength());
+    intercept.setAutoFixNewlines(projectStore.interceptAutoFixNewlines());
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run

@@ -90,6 +90,7 @@ class InterceptController : public QObject {
     Q_PROPERTY(bool   enabled          READ enabled          WRITE setEnabled          NOTIFY enabledChanged)
     Q_PROPERTY(bool   responsesEnabled READ responsesEnabled WRITE setResponsesEnabled NOTIFY responsesEnabledChanged)
     Q_PROPERTY(bool   autoContentLength READ autoContentLength WRITE setAutoContentLength NOTIFY autoContentLengthChanged)
+    Q_PROPERTY(bool   autoFixNewlines READ autoFixNewlines WRITE setAutoFixNewlines NOTIFY autoFixNewlinesChanged)
     Q_PROPERTY(QObject* current   READ current     NOTIFY currentChanged)
     Q_PROPERTY(int    queueDepth  READ queueDepth  NOTIFY currentChanged)
 public:
@@ -112,6 +113,16 @@ public:
     // the QAtomicInt matches the file's m_enabled idiom.
     bool autoContentLength() const { return m_autoContentLength.loadAcquire() != 0; }
     Q_INVOKABLE void setAutoContentLength(bool e);
+
+    // "Fix missing/superfluous new lines at end of request" (Burp default ON):
+    // when an operator EDITS an intercepted REQUEST, repair the header/body
+    // boundary if hand-editing dropped the terminating blank line or left
+    // stray blank lines behind it. Surgical: a request that already declares a
+    // real body (Content-Length / Transfer-Encoding: chunked) is left exactly
+    // as typed (see fixTrailingNewline). Same read/write threading contract as
+    // autoContentLength.
+    bool autoFixNewlines() const { return m_autoFixNewlines.loadAcquire() != 0; }
+    Q_INVOKABLE void setAutoFixNewlines(bool e);
 
     QObject *current() const { return m_current; }
     int queueDepth() const;
@@ -151,6 +162,7 @@ signals:
     void enabledChanged();
     void responsesEnabledChanged();
     void autoContentLengthChanged();
+    void autoFixNewlinesChanged();
     void currentChanged();
     void interceptRulesChanged();
 
@@ -180,6 +192,10 @@ private:
     // "Update Content-Length on edit" -- Burp-parity default ON. Main writes
     // (setAutoContentLength), worker reads once in pendImpl after done.acquire().
     QAtomicInt                    m_autoContentLength {1};
+    // "Fix missing/superfluous new lines at end of request" -- Burp-parity
+    // default ON. Main writes (setAutoFixNewlines), worker reads once in
+    // pendImpl after done.acquire(), same idiom as m_autoContentLength.
+    QAtomicInt                    m_autoFixNewlines {1};
     PendingRequest               *m_current = nullptr;
     QQueue<PendingRequest *>      m_queue;
     int                           m_nextId  = 1;

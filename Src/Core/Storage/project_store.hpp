@@ -35,6 +35,11 @@ struct ProjectMeta {
     // default ON). Persisted under "interceptAutoContentLength" so a security
     // posture the operator turned OFF isn't silently re-armed to ON on reopen.
     bool interceptAutoContentLength = true;
+    // "Fix missing/superfluous new lines at end of request" toggle for the
+    // intercept editor (Burp default ON). Persisted under
+    // "interceptAutoFixNewlines" for the same reopen-must-not-silently-re-arm
+    // reason as interceptAutoContentLength.
+    bool interceptAutoFixNewlines = true;
     // Named session login macros (opaque JSON owned by SessionRules; see
     // sessionMacrosToJson), so a reopened project restores its recorded login
     // sequences + their auto-re-auth conditions. Serialized under "sessionMacros".
@@ -177,6 +182,13 @@ public:
     void setInterceptAutoContentLength(bool on);
     bool interceptAutoContentLength() const { return m_meta.interceptAutoContentLength; }
 
+    // Intercept "Fix missing/superfluous new lines at end of request" toggle,
+    // persisted under "interceptAutoFixNewlines". setInterceptAutoFixNewlines
+    // persists immediately; open() emits interceptAutoFixNewlinesChanged so
+    // app.cpp can push it into the live InterceptController.
+    void setInterceptAutoFixNewlines(bool on);
+    bool interceptAutoFixNewlines() const { return m_meta.interceptAutoFixNewlines; }
+
     // Session login macros, persisted in project.json under "sessionMacros".
     // Opaque JSON (SessionRules::sessionMacrosToJson owns the shape).
     // setSessionMacros persists immediately; open() emits sessionMacrosChanged so
@@ -270,6 +282,10 @@ signals:
     // Emitted at the END of open() with the freshly-loaded project's intercept
     // "Update Content-Length" toggle. Wire to InterceptController::setAutoContentLength.
     void interceptAutoContentLengthChanged(bool on);
+    // Emitted at the END of open() with the freshly-loaded project's intercept
+    // "Fix missing/superfluous new lines" toggle. Wire to
+    // InterceptController::setAutoFixNewlines.
+    void interceptAutoFixNewlinesChanged(bool on);
     // Emitted at the END of open() with the freshly-loaded project's session
     // login macros. Wire (via Nullock::Core::sessionMacrosFromJson) to
     // SessionRules::setMacros so a reopened project restores them.

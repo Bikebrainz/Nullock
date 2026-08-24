@@ -3897,12 +3897,18 @@
     {
       "area": "proxy",
       "feature": "'Automatically fix missing or superfluous new lines at end of request'",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "A stray or missing trailing newline after hand-editing breaks the request framing, and nothing warns.",
-      "why": "Same resolver, no normalisation; grep for superfluous/trailing newline/fixNewlines across Src returns nothing. Absent confirmed. Re-rated medium -> low: the editor shows the raw bytes including the terminator, so this is a self-correcting annoyance rather than a silent trap like the Content-Length one.",
-      "evidence": "Src/BackEnd/Proxy/intercept_logic.cpp:17 `return currentText.toUtf8();` -- the entire edited-forward path; no trimming, padding or CRLF fixup anywhere in the file (25 lines total)."
+      "gap": "None -- a hand-edited, bodyless request that dropped or duplicated its terminating blank line is repaired before forwarding, gated behind a Burp-default-ON 'FIX NEW LINES' toggle in the Intercept tab.",
+      "why": "Closed: InterceptLogic::fixTrailingNewline (Src/BackEnd/Proxy/intercept_logic.cpp) resolves the header/body boundary the same terminator-agnostic way as recomputeContentLength. Three cases: (1) no blank line anywhere -- the operator deleted the terminator that closes the headers -- append one, matching the message's own terminator style (CRLF/LF); (2) a blank line found with only stray terminator bytes after it and no declared body -- drop the superfluous trailing blank line(s); (3) anything else (a real body, or a body explicitly declared via Content-Length / Transfer-Encoding: chunked) -- left byte-for-byte untouched, so a deliberate desync probe still survives. Wired exactly like the existing 'Update Content-Length' toggle: a new autoFixNewlines Q_PROPERTY on InterceptController (default ON), shouldFixTrailingNewline gates it to edited REQUESTS only (never responses, drops, or a passive unedited forward), applied in pendImpl BEFORE the Content-Length recompute so CL is computed over the corrected framing. Persisted via ProjectStore's interceptAutoFixNewlines (same absent-key-means-ON contract as its CL sibling), surfaced in the boot snapshot, toggled from POST /api/intercept/autonl, and exposed as a 'FIX NEW LINES' checkbox next to 'UPDATE CONTENT-LENGTH' in the ui-v2 Intercept tab.",
+      "evidence": "Src/BackEnd/Proxy/intercept_logic.cpp fixTrailingNewline()/shouldFixTrailingNewline(); Src/BackEnd/Proxy/intercept.{hpp,cpp} autoFixNewlines Q_PROPERTY + pendImpl wiring (before recomputeContentLength); Src/Core/Storage/project_store.{hpp,cpp} interceptAutoFixNewlines persistence; Src/BackEnd/Control/control_server.cpp POST /api/intercept/autonl + boot snapshot field; ui-v2/tabs.jsx InterceptTab 'FIX NEW LINES' checkbox; ui-v2/real-data.js interceptSetAutoFixNewlines; Tests/intercept_logic/intercept_logic_test.cpp -- 13 new assertions (5-case gate + 8 fixTrailingNewline cases: missing blank line CRLF/LF/no-terminator-at-all, already-correct no-op, superfluous-blank-lines trim, real-body/declared-CL/declared-chunked preservation), all passing under a real local g++/Qt6Core build+run (93/93) -- this cloud session installed Qt6Core/Network/Sql headers and compiled+ran the actual test binary rather than relying on CI alone.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-24",
+        "commit": "PENDING",
+        "note": "Intercept 'Fix missing/superfluous new lines' wave: added InterceptLogic::fixTrailingNewline + shouldFixTrailingNewline, wired through InterceptController/ProjectStore/control_server exactly like the existing 'Update Content-Length' toggle, and exposed as a Burp-default-ON checkbox in the ui-v2 Intercept tab. Absent -> present."
+      }
     },
     {
       "area": "proxy",

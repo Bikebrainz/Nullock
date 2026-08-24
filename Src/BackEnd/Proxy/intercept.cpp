@@ -51,6 +51,15 @@ void InterceptController::setAutoContentLength(bool e) {
     emit autoContentLengthChanged();
 }
 
+void InterceptController::setAutoFixNewlines(bool e) {
+    const int want = e ? 1 : 0;
+    if (want == m_autoFixNewlines.loadAcquire()) return;
+    // Same publish-only contract as setAutoContentLength: this only affects
+    // how a future edited request's framing is resolved, not parked messages.
+    m_autoFixNewlines.storeRelease(want);
+    emit autoFixNewlinesChanged();
+}
+
 void InterceptController::forward(const QString &editedText) {
     PendingRequest *p = nullptr;
     {
@@ -288,6 +297,15 @@ InterceptResult InterceptController::pendImpl(const QByteArray &bytes, const QSt
         const InterceptLogic::ForwardResult fr =
             InterceptLogic::resolveForward(p->m_originalBytes, p->m_text);
         r.bytes = fr.bytes;
+        // "Fix missing/superfluous new lines at end of request" (Burp default
+        // ON): repair the header/body boundary BEFORE any Content-Length
+        // recompute below, so a length calculation runs over the corrected
+        // framing rather than a stray trailing blank line. Same isRequest /
+        // edited-only gate as the Content-Length toggle.
+        if (InterceptLogic::shouldFixTrailingNewline(
+                r.dropped, p->m_kind == PendingRequest::Request,
+                m_autoFixNewlines.loadAcquire() != 0, fr.edited))
+            r.bytes = InterceptLogic::fixTrailingNewline(r.bytes);
         // "Update Content-Length" (Burp default ON): when the operator EDITED a
         // REQUEST, bring its Content-Length in line with the new body. Surgical
         // (recomputeContentLength) so a chunked / duplicate-CL smuggling probe is

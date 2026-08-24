@@ -118,6 +118,70 @@ QByteArray recomputeContentLength(const QByteArray &req) {
     return out;
 }
 
+bool shouldFixTrailingNewline(bool dropped, bool isRequest, bool autoFix, bool edited) {
+    return !dropped && isRequest && autoFix && edited;
+}
+
+QByteArray fixTrailingNewline(const QByteArray &req) {
+    // Locate the head/body boundary exactly like recomputeContentLength: the
+    // earliest blank line (two adjacent terminators), terminator-agnostic.
+    int sep = -1, sepLen = 0;
+    for (int i = 0; i < req.size();) {
+        const int t1 = termLenAt(req, i);
+        if (t1 == 0) { ++i; continue; }
+        const int t2 = termLenAt(req, i + t1);
+        if (t2 > 0) { sep = i; sepLen = t1 + t2; break; }
+        i += t1;
+    }
+
+    if (sep < 0) {
+        // No blank line anywhere -- the operator deleted the terminator that
+        // closes the headers entirely. Close it out with whatever terminator
+        // style the message already uses (default CRLF when none is present
+        // at all, e.g. a bare one-line request) rather than inventing a body
+        // boundary that was never there.
+        QByteArray term = "\r\n";
+        for (int i = 0; i < req.size(); ++i) {
+            if (req[i] == '\n') {
+                term = (i > 0 && req[i - 1] == '\r') ? QByteArray("\r\n") : QByteArray("\n");
+                break;
+            }
+        }
+        QByteArray out = req;
+        if (!out.endsWith(term)) out += term;   // close the last header line first
+        out += term;                            // ...then the blank line that ends the head
+        return out;
+    }
+
+    const QByteArray head = req.left(sep + sepLen);
+    const QByteArray tail = req.mid(sep + sepLen);
+    if (tail.isEmpty()) return req;             // already correctly framed
+
+    // Any byte in the tail that isn't part of a run of terminators is a real
+    // body -- never touch a message that actually has one.
+    for (const char c : tail)
+        if (c != '\r' && c != '\n') return req;
+
+    // Tail is nothing but stray terminators. Leave it alone if the head
+    // DECLARES a body (Content-Length or Transfer-Encoding: chunked) -- that
+    // is the operator's explicit framing choice (or a deliberate desync
+    // probe), not accidental leftover whitespace from hand-editing.
+    int i = 0;
+    while (i < head.size()) {
+        const int lineStart = i;
+        while (i < head.size() && termLenAt(head, i) == 0) ++i;
+        const QByteArray line = head.mid(lineStart, i - lineStart);
+        i += termLenAt(head, i);
+        const int colon = line.indexOf(':');
+        if (colon <= 0) continue;
+        const QByteArray name = line.left(colon).trimmed().toLower();
+        if (name == "content-length") return req;
+        if (name == "transfer-encoding" && line.mid(colon + 1).toLower().contains("chunked"))
+            return req;
+    }
+    return head;   // drop the superfluous trailing blank line(s)
+}
+
 bool interceptQueueHasRoom(int outstanding) {
     if (outstanding < 0) return true;   // defensive: a bad count != "full"
     return outstanding < kMaxPendingIntercepts;

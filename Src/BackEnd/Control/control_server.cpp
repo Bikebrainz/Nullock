@@ -1568,6 +1568,7 @@ QByteArray ControlServer::buildSnapshot() const {
     root["interceptEnabled"]          = m_wiring.intercept ? m_wiring.intercept->enabled() : false;
     root["interceptResponsesEnabled"] = m_wiring.intercept ? m_wiring.intercept->responsesEnabled() : false;
     root["interceptAutoContentLength"]= m_wiring.intercept ? m_wiring.intercept->autoContentLength() : true;
+    root["interceptAutoFixNewlines"]  = m_wiring.intercept ? m_wiring.intercept->autoFixNewlines() : true;
     root["interceptRules"]            = m_wiring.intercept
         ? Nullock::Proxy::InterceptLogic::interceptRulesToJson(m_wiring.intercept->interceptRules())
         : QJsonArray();
@@ -3255,6 +3256,18 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (m_wiring.projectStore) m_wiring.projectStore->setInterceptAutoContentLength(v);
         }
         return okJson({{ "autoContentLength", m_wiring.intercept->autoContentLength() }});
+    }
+    if (path == "/api/intercept/autonl") {
+        // "Fix missing/superfluous new lines at end of request" (Burp default
+        // ON). Same persist-immediately contract as /api/intercept/autocl so a
+        // toggled-off posture survives a restart.
+        if (!m_wiring.intercept) return okJson({{ "autoFixNewlines", true }});
+        if (bodyJson.contains("autoFixNewlines")) {
+            const bool v = bodyJson.value("autoFixNewlines").toBool();
+            m_wiring.intercept->setAutoFixNewlines(v);
+            if (m_wiring.projectStore) m_wiring.projectStore->setInterceptAutoFixNewlines(v);
+        }
+        return okJson({{ "autoFixNewlines", m_wiring.intercept->autoFixNewlines() }});
     }
     if (path == "/api/intercept/forward") {
         if (m_wiring.intercept) {

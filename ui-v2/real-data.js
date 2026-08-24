@@ -55,6 +55,7 @@
     NL.interceptEnabled   = snap.interceptEnabled === true;
     NL.interceptResponsesEnabled = snap.interceptResponsesEnabled === true;
     NL.interceptAutoContentLength = snap.interceptAutoContentLength !== false;
+    NL.interceptAutoFixNewlines = snap.interceptAutoFixNewlines !== false;
     NL.interceptRules     = snap.interceptRules || [];
     NL.themeColors        = snap.themeColors || {};
     NL.themeIsBuiltin     = snap.themeIsBuiltin === true;
@@ -154,6 +155,7 @@
     interceptForwardAll()   { return post("/api/intercept/forwardAll"); },
     interceptRulesSet(rules) { return post("/api/intercept/rules", { rules }); },
     interceptSetAutoContentLength(autoContentLength) { return post("/api/intercept/autocl", { autoContentLength }); },
+    interceptSetAutoFixNewlines(autoFixNewlines) { return post("/api/intercept/autonl", { autoFixNewlines }); },
     scopeAddIn(glob)        { return post("/api/scope/in/add",     { glob }); },
     scopeRemoveIn(glob)     { return post("/api/scope/in/remove",  { glob }); },
     scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob }); },

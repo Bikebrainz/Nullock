@@ -446,6 +446,67 @@ int main(int argc, char **argv) {
             out.contains("content-length: 5\r\n") && actualBodyLength(out) == 5);
     }
 
+    // The gate: only a non-dropped, EDITED, REQUEST with auto-fix on repairs
+    // the trailing-newline framing. Identical shape to the auto-CL gate above.
+    {
+        chk("nl-gate: all conditions -> fix",
+            shouldFixTrailingNewline(false, true, true, true));
+        chk("nl-gate: dropped -> no",     !shouldFixTrailingNewline(true,  true,  true,  true));
+        chk("nl-gate: response -> no",    !shouldFixTrailingNewline(false, false, true,  true));
+        chk("nl-gate: autoFix off -> no", !shouldFixTrailingNewline(false, true,  false, true));
+        chk("nl-gate: unedited -> no",    !shouldFixTrailingNewline(false, true,  true,  false));
+    }
+
+    // fixTrailingNewline: missing terminating blank line -> appended.
+    {
+        QByteArray req = "GET /x HTTP/1.1\r\nHost: h\r\n";   // one CRLF, no blank line
+        chk("fixNewline: missing blank line -> closed with a matching CRLF blank line",
+            fixTrailingNewline(req) == QByteArray("GET /x HTTP/1.1\r\nHost: h\r\n\r\n"));
+    }
+    // No terminator anywhere at all -> a full CRLF CRLF blank line is appended.
+    {
+        QByteArray req = "GET /x HTTP/1.1";
+        chk("fixNewline: no terminator at all -> CRLF blank line appended",
+            fixTrailingNewline(req) == QByteArray("GET /x HTTP/1.1\r\n\r\n"));
+    }
+    // Bare-LF style request missing its blank line -> closed with a matching LF.
+    {
+        QByteArray req = "GET /x HTTP/1.1\nHost: h\n";
+        chk("fixNewline: bare-LF head -> closed with a matching LF blank line",
+            fixTrailingNewline(req) == QByteArray("GET /x HTTP/1.1\nHost: h\n\n"));
+    }
+    // Already correctly framed (no body, exactly one blank line) -> untouched.
+    {
+        QByteArray req = "GET /x HTTP/1.1\r\nHost: h\r\n\r\n";
+        chk("fixNewline: already correct -> no-op",
+            fixTrailingNewline(req) == req);
+    }
+    // Superfluous trailing blank lines with no declared body -> dropped.
+    {
+        QByteArray req = "GET /x HTTP/1.1\r\nHost: h\r\n\r\n\r\n\r\n";
+        chk("fixNewline: superfluous trailing blank lines -> trimmed to one",
+            fixTrailingNewline(req) == QByteArray("GET /x HTTP/1.1\r\nHost: h\r\n\r\n"));
+    }
+    // A real body is never touched, CL or no CL.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nHost: h\r\n\r\nhello";
+        chk("fixNewline: real body present -> untouched",
+            fixTrailingNewline(req) == req);
+    }
+    // A declared body (Content-Length) is the operator's explicit framing
+    // choice -- even trailing terminator-only bytes after it are left alone.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nContent-Length: 5\r\n\r\n\r\n\r\n";
+        chk("fixNewline: Content-Length declared -> untouched even if the tail looks stray",
+            fixTrailingNewline(req) == req);
+    }
+    // Same preservation for a declared chunked body.
+    {
+        QByteArray req = "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n\r\n\r\n";
+        chk("fixNewline: Transfer-Encoding chunked declared -> untouched",
+            fixTrailingNewline(req) == req);
+    }
+
     std::fprintf(stderr, "intercept_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

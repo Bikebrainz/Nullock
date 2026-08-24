@@ -30,6 +30,11 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   on file extension/method/URL regex/host glob/content-type/status code/header, per
                   rule negate and request/response/both direction, editable and reorderable in place
                   (an empty list holds everything, matching Burp);
+                  a FIX NEW LINES toggle (on by default) repairs a hand-edited request's
+                  header/body boundary before forwarding -- restoring a dropped terminating
+                  blank line or trimming stray ones left behind -- while a request that
+                  declares a real body (Content-Length / chunked) is always forwarded exactly
+                  as typed, so a deliberate CL/TE desync probe still survives;
                   WS Repeater overlay injects text/binary/close/ping/pong frames into a live
                   WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
                   a dedicated WEBSOCKETS tab groups captured WS traffic by connection with real
