@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**
+  The WebSocket cross-origin sweep tries a sentinel, `null`, and host-derived
+  subdomain/scheme variants, and the FIRST valid upgrade confirms a hijack. But a
+  dead-host early-bail keyed only off the FIRST origin's handshake &mdash; so a
+  transient failure there (TLS flake, a server that RSTs an unexpected Origin)
+  returned before the subdomain/scheme variants were tried, missing a real CSWSH
+  on a later variant (a false negative). It now bails only when EVERY variant
+  comes back dead, via the pure, unit-tested `wsHandshakeDead`.
 - **Subdomain-takeover test: a healthy 200 quoting a vendor phrase was reported
   as a MEDIUM takeover.** The status-aware matcher demotes a branded fingerprint
   seen on a live 2xx/3xx page to "possible" confidence (a dangling service serves

@@ -104,4 +104,11 @@ QList<QPair<QString, QString>> stripCredentials(const QList<QPair<QString, QStri
 // inline gradeAccepted lambda so the decision is unit-tested.
 bool wsConfirmsHijack(bool baselineOk, int baselineStatus, bool baselineAcceptValid);
 
+// Did a single handshake attempt fail to connect at all (no response)? Used by
+// the Origin sweep to decide the host is DEAD only when EVERY origin variant
+// comes back dead -- so a transient failure on the FIRST origin no longer aborts
+// the sweep before the subdomain/scheme variants (which could still complete a
+// real cross-origin upgrade -- the CSWSH the sweep exists to find).
+bool wsHandshakeDead(bool ok, int status);
+
 } // namespace Nullock::Core::WsProbe

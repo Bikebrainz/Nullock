@@ -245,6 +245,26 @@ int main(int argc, char **argv) {
             !wsConfirmsHijack(false, 403, false));
     }
 
+    // ===== wsHandshakeDead: the "no response" predicate ================
+    // The Origin sweep bails as a dead host only when EVERY variant is dead;
+    // a transient failure on the first origin must not abort the sweep before
+    // the subdomain/scheme variants (which could complete a real CSWSH upgrade).
+    {
+        chk("wsHandshakeDead: no transport + status 0 -> dead",
+            wsHandshakeDead(false, 0));
+        // A real HTTP response (even a refusal) is NOT dead -- the sweep must
+        // keep going / the host counts as connected.
+        chk("wsHandshakeDead: a 403 refusal is NOT dead", !wsHandshakeDead(true, 403));
+        chk("wsHandshakeDead: a 101 upgrade is NOT dead", !wsHandshakeDead(true, 101));
+        // ok=false but a status arrived (e.g. connected then reset after the
+        // status line) still counts as a response, not a dead host.
+        chk("wsHandshakeDead: ok=false but a status line arrived is NOT dead",
+            !wsHandshakeDead(false, 500));
+        // ok=true but no status parsed still means the socket connected.
+        chk("wsHandshakeDead: ok=true with status 0 (connected) is NOT dead",
+            !wsHandshakeDead(true, 0));
+    }
+
     std::fprintf(stderr, "ws_probe_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

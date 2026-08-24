@@ -151,17 +151,23 @@ Result test(const Request &reqIn) {
     origins << schemePortVariants(req.host, req.tls, req.port);
 
     int firstStatus = -1;
+    bool anyConnected = false;   // did ANY origin variant get a real response?
+    QString firstError;
     for (const QString &origin : origins) {
         const Shake s = handshake(req, origin);
         if (firstStatus < 0) {
             firstStatus = s.status;
             result.attackerStatus = s.status;
-            // Nothing answering on the very first try -> a dead host / aborted
-            // build; bail rather than sweeping a host that isn't there.
-            if (!s.ok && s.status == 0) { result.error = s.error; return result; }
+            firstError = s.error;
         }
+        if (!wsHandshakeDead(s.ok, s.status)) anyConnected = true;
         if (s.status == 101 && s.acceptValid) { gradeAccepted(origin); return result; }
     }
+    // A dead host answers NONE of the variants; only then bail. A transient
+    // failure on the FIRST origin used to abort here before the subdomain/scheme
+    // variants were tried -- so a real cross-origin upgrade on a later variant
+    // was missed (a false negative). Bail only when EVERY variant came back dead.
+    if (!anyConnected) { result.error = firstError; return result; }
 
     // 2) Every malicious Origin refused -> a no-Origin control distinguishes "the
     // endpoint validates Origin" from "not a WebSocket endpoint at all".

@@ -130,4 +130,9 @@ bool wsConfirmsHijack(bool baselineOk, int baselineStatus, bool baselineAcceptVa
     return !(baselineStatus == 101 && baselineAcceptValid);
 }
 
+bool wsHandshakeDead(bool ok, int status) {
+    // No transport and no status line -> nothing answered this attempt.
+    return !ok && status == 0;
+}
+
 } // namespace Nullock::Core::WsProbe
