@@ -1977,7 +1977,13 @@
       "effort": "days",
       "gap": "None -- a per-position effective-entropy estimate now sits alongside the global one. positionalEffectiveBits() sums log2(observed alphabet size) across the modal-width cohort's columns, so a token that is hex in columns 0-7 (4 bits each) and drawn from a reduced alphabet in 8-31 is credited its TRUE region-by-region keyspace, not the blended global average. Reported as shannon.perPositionEffectiveBits.",
       "why": "Closed 2026-08-24: added the pure positionalEffectiveBits(tokens) in sequencer_logic.cpp (per-column distinct-char count -> log2 -> sum), emitted as shannon.perPositionEffectiveBits in analyzeTokens' JSON. It is a lower bound that tightens with samples (conservative for a keyspace figure). Mutation-proven: dropping the log2 or using a global alphabet instead of per-column both fail the structured-corpus assertions.",
-      "evidence": "sequencer_logic.cpp positionalEffectiveBits(): modal-width cohort, per-column `QSet<QChar>` distinct count, `bits += std::log2(seen.size())` (1-symbol column adds 0); emitted at the shannon block `shannon[\"perPositionEffectiveBits\"] = positionalEffectiveBits(tokens);`. Tests: sequencer_test.cpp -- a hex-prefix + reduced-alphabet-suffix corpus scores ~56 bits (true keyspace) and BELOW the global rate*length estimate, while a uniform 32-hex corpus scores ~128 and agrees with the global estimate."
+      "evidence": "sequencer_logic.cpp positionalEffectiveBits(): modal-width cohort, per-column `QSet<QChar>` distinct count, `bits += std::log2(seen.size())` (1-symbol column adds 0); emitted at the shannon block `shannon[\"perPositionEffectiveBits\"] = positionalEffectiveBits(tokens);`. Tests: sequencer_test.cpp -- a hex-prefix + reduced-alphabet-suffix corpus scores ~56 bits (true keyspace) and BELOW the global rate*length estimate, while a uniform 32-hex corpus scores ~128 and agrees with the global estimate.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-24",
+        "commit": "a878a0e",
+        "note": "Wave 2: backfilled audited_state + reconciled -- the feat commit (a878a0e) flipped state/gap/why/evidence but never added the audited-page's reconciled block, so this closed item was invisible in the roadmap page's \"reconciled since audit\" list. No code change."
+      }
     },
     {
       "area": "sequencer",
@@ -1987,7 +1993,13 @@
       "effort": "days",
       "gap": "None -- positionalCharChiSquare() now runs a real per-column chi-square of the observed character distribution against a uniform distribution over that column's observed alphabet (dof = distinct-1), converts each column's statistic to a p-value via the exported chiSquareSurvival() (regularized upper incomplete gamma), and flags columns at a Bonferroni-corrected threshold (0.01/columns). Unlike the entropy-vs-sibling reference, this catches a generator biased UNIFORMLY across every column (each column fails against uniform on its own). Reported as positional.charChiSquare {columns, failures, minPValue, biased}.",
       "why": "Closed 2026-08-24: added positionalCharChiSquare (modal-width cohort, per-column histogram -> chi-square-vs-uniform -> chiSquareSurvival p-value -> Bonferroni pass/fail) alongside the existing per-column entropy. chiSquareSurvival is exported and unit-tested against standard chi-square critical values (dof 1/3/10/15) on BOTH the series and continued-fraction branches. Mutation-proven: breaking either survival branch fails the critical-value table; removing the Bonferroni flags a clean corpus.",
-      "evidence": "sequencer_logic.cpp positionalCharChiSquare() + chiSquareSurvival(); emitted at `posObj[\"charChiSquare\"]`. Tests: sequencer_test.cpp -- chiSquareSurvival matches the chi-square table to <0.003; a corpus with one column biased ~75% toward 'a' FLAGS charChiSquare while a clean 32-hex corpus does not."
+      "evidence": "sequencer_logic.cpp positionalCharChiSquare() + chiSquareSurvival(); emitted at `posObj[\"charChiSquare\"]`. Tests: sequencer_test.cpp -- chiSquareSurvival matches the chi-square table to <0.003; a corpus with one column biased ~75% toward 'a' FLAGS charChiSquare while a clean 32-hex corpus does not.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-24",
+        "commit": "9ba914e",
+        "note": "Wave 2: backfilled audited_state + reconciled -- the feat commit (9ba914e) flipped state/gap/why/evidence but never added the audited-page's reconciled block, so this closed item was invisible in the roadmap page's \"reconciled since audit\" list. No code change."
+      }
     },
     {
       "area": "sequencer",
@@ -1997,7 +2009,13 @@
       "effort": "days",
       "gap": "None -- bitLevelTests now runs a per-bit-position monobit over the modal decoded-byte-width cohort (iterating `per`, not the flattened `cat`): for each bit position it counts 1s across tokens and applies the erfc monobit p-value, with a Bonferroni-corrected threshold (0.01/positions) so the family-wise false-positive rate stays ~1% across all positions. A single stuck/biased bit that the aggregate monobit dilutes 1:(width*8) now fails independently and sets bitLevel.anyFail. Reported as bitLevel.perBitMonobit {positions, failures, minPValue, failed}.",
       "why": "Closed 2026-08-24: kept the aggregate monobit and ADDED the per-position pass over the modal-width cohort. Bonferroni was essential -- a naive 0.01 over 256 positions false-positives ~2.5 times on random data (caught by a clean-corpus regression assertion + an existing strong-random test before commit). Mutation-proven: removing the Bonferroni correction reintroduces the clean-corpus false positive; disabling the threshold misses the stuck bit.",
-      "evidence": "sequencer_logic.cpp bitLevelTests() per-bit-position block: modal decoded-byte-width cohort, `const double alpha = 0.01 / double(positions)`, per-position `onesP` count -> `erfc(sObs/sqrt2)` -> `if (p < alpha) ++r.perBitFails`; wired into anyFail and emitted as bitLevel.perBitMonobit. Tests: sequencer_test.cpp -- a corpus with one always-1 nibble bit FLAGS perBitMonobit while the aggregate monobit passes (the dilution it catches); a clean 32-hex corpus does NOT flag."
+      "evidence": "sequencer_logic.cpp bitLevelTests() per-bit-position block: modal decoded-byte-width cohort, `const double alpha = 0.01 / double(positions)`, per-position `onesP` count -> `erfc(sObs/sqrt2)` -> `if (p < alpha) ++r.perBitFails`; wired into anyFail and emitted as bitLevel.perBitMonobit. Tests: sequencer_test.cpp -- a corpus with one always-1 nibble bit FLAGS perBitMonobit while the aggregate monobit passes (the dilution it catches); a clean 32-hex corpus does NOT flag.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-24",
+        "commit": "1de965a",
+        "note": "Wave 2: backfilled audited_state + reconciled -- the feat commit (1de965a) flipped state/gap/why/evidence but never added the audited-page's reconciled block, so this closed item was invisible in the roadmap page's \"reconciled since audit\" list. No code change."
+      }
     },
     {
       "area": "sequencer",
@@ -2007,7 +2025,13 @@
       "effort": "days",
       "gap": "None -- bitLevelTests now correlates EVERY PAIR of bit positions across the modal-width cohort (not just byte lag-1): for each pair it builds the 2x2 contingency table and computes chi-square (1 dof) = n*phi^2 -> p via chiSquareSurvival, flagging pairs at a Bonferroni-corrected threshold (0.01/pairs) -- the significance adjustment for testing every interdependent pair. A bit-3-vs-bit-47 truncated-LCG relationship (invisible to byte lag-1) is caught, and no junction pairs are involved (it iterates per-token bit columns, not the flattened stream). Reported as bitLevel.bitCorrelation {pairs, failures, minPValue, failed}, folded into anyFail.",
       "why": "Closed 2026-08-24: added the all-pairs bit-position correlation (phi/chi-square per pair, Bonferroni over all pairs, capped at 1024 positions to bound O(positions^2*n)). The byte lag-1 serial correlation is kept as-is. Mutation-proven: disabling the flag misses a copied-bit pair; using a naive 0.01 (no Bonferroni) false-positives on a clean corpus across the ~8k pairs.",
-      "evidence": "sequencer_logic.cpp bitLevelTests() inter-bit-position correlation block: per-position bit columns over the cohort, 2x2 chi = num*num*N/den (num=both*N-a1*b1), p=chiSquareSurvival(chi,1), `if (p < 0.01/pairs) ++bitCorrFails`. Tests: sequencer_test.cpp -- forcing bit position 40 to equal bit 5 in every token FLAGS bitCorrelation; an independent-bit corpus does not."
+      "evidence": "sequencer_logic.cpp bitLevelTests() inter-bit-position correlation block: per-position bit columns over the cohort, 2x2 chi = num*num*N/den (num=both*N-a1*b1), p=chiSquareSurvival(chi,1), `if (p < 0.01/pairs) ++bitCorrFails`. Tests: sequencer_test.cpp -- forcing bit position 40 to equal bit 5 in every token FLAGS bitCorrelation; an independent-bit corpus does not.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-24",
+        "commit": "8502f0d",
+        "note": "Wave 2: backfilled audited_state + reconciled -- the feat commit (8502f0d) flipped state/gap/why/evidence but never added the audited-page's reconciled block, so this closed item was invisible in the roadmap page's \"reconciled since audit\" list. No code change."
+      }
     },
     {
       "area": "sequencer",
