@@ -3906,7 +3906,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-24",
-        "commit": "PENDING",
+        "commit": "69b21c2",
         "note": "Intercept 'Fix missing/superfluous new lines' wave: added InterceptLogic::fixTrailingNewline + shouldFixTrailingNewline, wired through InterceptController/ProjectStore/control_server exactly like the existing 'Update Content-Length' toggle, and exposed as a Burp-default-ON checkbox in the ui-v2 Intercept tab. Absent -> present."
       }
     },
