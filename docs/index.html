@@ -199,6 +199,10 @@
         <p>An ANALYZE TARGET overlay in the Proxy tab's HTTP HISTORY pane sizes the attack surface for whatever the Site map currently has selected — a single host, one directory branch, or all hosts — computed entirely client-side from history already captured, no separate scan. It reports unique-URL, static, and dynamic counts (a URL-shape heuristic: recognized static extension with no query string), a unique query-parameter-name list ranked by how many distinct entry points use each one, and a per-path entry-point table (methods + parameter names). Query-string parameters only — request bodies aren't held client-side, so form/JSON body parameter names aren't counted, an honest remaining gap.</p>
       </div>
       <div class="card">
+        <h3>Compare hosts</h3>
+        <p>A COMPARE HOSTS overlay next to Analyze target diffs two hosts already captured in HTTP history — the client-side analogue of comparing two site maps, useful for spotting drift between two environments or between the same target under two roles/sessions logged as separate hosts. Two dimensions, both computed entirely client-side: the URL-path surface (only-on-A / common / only-on-B, matched on path alone — no query string or response content) and the findings surface (matched by kind + path + summary, so the same bug on two hosts lines up). No arbitrary saved-map or session picker — Nullock has neither concept — so this compares captured hosts, not stored snapshots.</p>
+      </div>
+      <div class="card">
         <h3>Cookie jar</h3>
         <p>The Sessions tab's per-host captured-cookie list gets a full-inventory companion: Path, resolved Expires (or "session" for a non-persistent cookie), and per-host httpOnly/Secure/SameSite coverage percentages — the attributes that determine whether injection actually happens and whether a cookie is stale. Add a cookie obtained out-of-band, edit an existing value, or delete exactly one cookie, right from the same panel.</p>
       </div>

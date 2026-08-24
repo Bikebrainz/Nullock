@@ -76,7 +76,10 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   host/branch selection, or all hosts) sizes the attack surface from history
                   already captured -- unique-URL/static/dynamic counts, a query-parameter-name
                   frequency list, and a per-path entry-point table (methods + params), computed
-                  entirely client-side with no separate scan or backend call
+                  entirely client-side with no separate scan or backend call; a COMPARE HOSTS
+                  overlay diffs the URL-path surface and the findings of any two hosts already
+                  in HTTP history (two environments, or the same target under two roles/sessions
+                  logged as distinct hosts) into only-A/common/only-B panes, also client-side
 Repeater          Multi-tab, send-from-history, edit-and-resend, request chains, Pretty view
                   auto-indents JSON/XML/HTML bodies, per-tab NOTES for tracking what each
                   tab is testing, per-tab send history with ◀ ▶ navigation back through

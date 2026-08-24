@@ -170,6 +170,152 @@ function analyzeTargetSurface(rows) {
   };
 }
 
+// "Compare site maps" (target area, previously stub: "no request-selection
+// wizard ... no UI caller at all") -- Nullock has no saved-map/session concept
+// to pick from, so this is scoped honestly to what's genuinely comparable
+// client-side: two HOSTS already seen in HTTP history (e.g. two environments,
+// or the same target logged under two roles/sessions as distinct hosts).
+// Diffs both dimensions the item names -- content (URL paths) and issues
+// (findings) -- entirely from state already in the browser; no backend call.
+function hostUrlPaths(rows, host) {
+  const set = new Set();
+  for (const r of (rows || [])) {
+    if (r.host !== host) continue;
+    set.add((r.path || "/").split(/[?#]/)[0] || "/");
+  }
+  return set;
+}
+function diffHostSurfaces(rows, hostA, hostB) {
+  const a = hostUrlPaths(rows, hostA);
+  const b = hostUrlPaths(rows, hostB);
+  const onlyA = Array.from(a).filter(p => !b.has(p)).sort();
+  const onlyB = Array.from(b).filter(p => !a.has(p)).sort();
+  const common = Array.from(a).filter(p => b.has(p)).sort();
+  return { onlyA, onlyB, common };
+}
+// A finding's url is normally already a bare path, but strip a leading
+// scheme://host[:port] defensively so two hosts' findings still line up by
+// path alone if it's ever a full URL instead.
+function stripUrlOrigin(url) {
+  const raw = url || "";
+  const m = /^[a-z][a-z0-9+.-]*:\/\/[^/]+(\/.*)?$/i.exec(raw);
+  return m ? (m[1] || "/") : raw;
+}
+function diffHostFindings(findings, hostA, hostB) {
+  const keyOf = (f) => [f.kind || "", stripUrlOrigin(f.url), f.summary || ""].join("\x1f");
+  const byKeyA = new Map(), byKeyB = new Map();
+  for (const f of (findings || [])) {
+    if (f.host === hostA) byKeyA.set(keyOf(f), f);
+    else if (f.host === hostB) byKeyB.set(keyOf(f), f);
+  }
+  const onlyA = [], onlyB = [], common = [];
+  for (const [k, f] of byKeyA) (byKeyB.has(k) ? common : onlyA).push(f);
+  for (const [k, f] of byKeyB) if (!byKeyA.has(k)) onlyB.push(f);
+  const byKindSummary = (x, y) => x.kind.localeCompare(y.kind) || (x.summary || "").localeCompare(y.summary || "");
+  return { onlyA: onlyA.sort(byKindSummary), onlyB: onlyB.sort(byKindSummary), common: common.sort(byKindSummary) };
+}
+
+function CompareHostsOverlay({ hosts, rows, onClose }) {
+  const [hostA, setHostA] = React.useState(hosts[0] || "");
+  const [hostB, setHostB] = React.useState(hosts.find(h => h !== hosts[0]) || hosts[0] || "");
+  const findings = (window.NL && NL.findings) ? NL.findings : [];
+  const surface = React.useMemo(() => diffHostSurfaces(rows, hostA, hostB), [rows, hostA, hostB]);
+  const issues  = React.useMemo(() => diffHostFindings(findings, hostA, hostB), [findings, hostA, hostB]);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const dimBtn = {
+    background: "transparent", color: "var(--dim)",
+    border: "1px solid var(--line)", padding: "2px 8px",
+    fontSize: "10px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+  };
+  const selectStyle = {
+    background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)",
+    padding: "3px 6px", fontSize: "11px", fontFamily: "var(--ff-mono)",
+  };
+  const labelStyle = { display: "grid", gap: 2, fontSize: "10px", color: "var(--dim)" };
+  const colBox = { padding: 8, maxHeight: 160, overflow: "auto" };
+  const emptyRow = <div style={{ color: "var(--dim)", fontSize: 11 }}>— none —</div>;
+
+  return (
+    <div onClick={onClose}
+         style={{
+           position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+           display: "grid", placeItems: "center", zIndex: 50,
+         }}>
+      <div onClick={(e) => e.stopPropagation()}
+           style={{
+             background: "var(--pane)", border: "1px solid var(--accent)",
+             width: "min(94vw, 900px)", maxHeight: "88vh", overflow: "auto",
+             display: "flex", flexDirection: "column",
+             boxShadow: "0 0 0 1px var(--line), 0 12px 40px rgba(0,0,0,0.5)",
+           }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+          borderBottom: "1px solid var(--line)",
+          color: "var(--accent)", fontSize: "11px",
+          textTransform: "uppercase", letterSpacing: "0.06em",
+        }}>
+          <span style={{ flex: 1 }}>⇄ COMPARE HOSTS</span>
+          <button onClick={onClose} style={dimBtn}>CLOSE</button>
+        </div>
+        <div style={{ padding: "10px 12px", color: "var(--dim)", fontSize: "11px", borderBottom: "1px solid var(--line-soft)" }}>
+          Diffs the URL-path surface and the findings of two hosts already captured in HTTP
+          history — the client-side analogue of comparing two site maps (two environments, or
+          the same target under two roles/sessions logged as distinct hosts). Paths are matched
+          without query string or response content; findings are matched by kind+path+summary.
+        </div>
+        <div style={{ display: "flex", gap: 16, padding: "10px 12px", borderBottom: "1px solid var(--line-soft)" }}>
+          <label style={labelStyle}>HOST A
+            <select value={hostA} onChange={e => setHostA(e.target.value)} style={selectStyle}>
+              {hosts.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </label>
+          <label style={labelStyle}>HOST B
+            <select value={hostB} onChange={e => setHostB(e.target.value)} style={selectStyle}>
+              {hosts.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{ padding: "8px 12px 4px", color: "var(--dim)", fontSize: "10px" }}>
+          URL PATHS — {surface.onlyA.length} only on {hostA || "A"} · {surface.common.length} common · {surface.onlyB.length} only on {hostB || "B"}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 12px 10px" }}>
+          <div className="pane" style={colBox}>
+            {surface.onlyA.length === 0 ? emptyRow : surface.onlyA.map(p => (
+              <div key={p} style={{ fontFamily: "var(--ff-mono)", fontSize: 11 }}>{p}</div>
+            ))}
+          </div>
+          <div className="pane" style={colBox}>
+            {surface.onlyB.length === 0 ? emptyRow : surface.onlyB.map(p => (
+              <div key={p} style={{ fontFamily: "var(--ff-mono)", fontSize: 11 }}>{p}</div>
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: "8px 12px 4px", color: "var(--dim)", fontSize: "10px", borderTop: "1px solid var(--line-soft)" }}>
+          FINDINGS — {issues.onlyA.length} only on {hostA || "A"} · {issues.common.length} common · {issues.onlyB.length} only on {hostB || "B"}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 12px 12px" }}>
+          <div className="pane" style={colBox}>
+            {issues.onlyA.length === 0 ? emptyRow : issues.onlyA.map((f, i) => (
+              <div key={i} style={{ fontSize: 11 }}>{f.severity} {f.kind} — {f.summary}</div>
+            ))}
+          </div>
+          <div className="pane" style={colBox}>
+            {issues.onlyB.length === 0 ? emptyRow : issues.onlyB.map((f, i) => (
+              <div key={i} style={{ fontSize: 11 }}>{f.severity} {f.kind} — {f.summary}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MethodCell({ m }) {
   let cls = "meth " + m.replace("↑", "").replace("↓", "");
   if (m === "WS↑") cls = "meth WS";
@@ -2608,6 +2754,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     }
     return Array.from(byOrigin.values()).sort((a, b) => a.origin.localeCompare(b.origin));
   }, [rows]);
+  const compareHosts = React.useMemo(
+    () => Array.from(new Set(rows.map(r => r.host))).sort(),
+    [rows]
+  );
   // Rows scoped to the selected origin node -- exact host+port+tls match,
   // stricter than the host-substring hostFilter/selectedHost text filter.
   const originRows = selectedOrigin
@@ -2638,6 +2788,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
   const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
   const [analyzerOpen, setAnalyzerOpen] = React.useState(false);
+  const [compareOpen, setCompareOpen] = React.useState(false);
 
   const [ctxMenu, setCtxMenu] = React.useState(null); // {x,y,host,rowId?,branch?} | null
   const openRowMenu = (host, e, rowId, branch) => setCtxMenu({ x: e.clientX, y: e.clientY, host, rowId, branch });
@@ -2814,6 +2965,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
           <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
           <button onClick={() => setAnalyzerOpen(true)} title="Attack-surface sizing: static/dynamic URL counts, query-parameter names, and per-URL entry points for the current site-map scope">◆ ANALYZE TARGET</button>
+          <button onClick={() => setCompareOpen(true)} disabled={compareHosts.length < 2}
+            title={compareHosts.length < 2
+              ? "Needs at least two distinct hosts in HTTP history to compare"
+              : "Diff URL paths and findings between two hosts already in HTTP history"}>⇄ COMPARE HOSTS</button>
         </div>
         {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
         {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
@@ -2823,6 +2978,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
             rows={originRows}
             scopeLabel={selectedOrigin ? (selectedOrigin.origin + (selectedOrigin.branch || "")) : "all hosts"}
             onClose={() => setAnalyzerOpen(false)}
+          />
+        )}
+        {compareOpen && (
+          <CompareHostsOverlay
+            hosts={compareHosts}
+            rows={rows}
+            onClose={() => setCompareOpen(false)}
           />
         )}
         <FilterBar
