@@ -4114,7 +4114,7 @@
       "evidence": "ui-v2/proxy.jsx DetailPane: isWsFrame/isWsTextFrame/wsInitFromRow (row.method \"WS\u2191\"/\"WS\u2193\", label parsed from row.path, body split on the raw response's \"\\n\\n\" separator -- proxy_model.cpp responseRawAt joins headers with bare \\n, not \\r\\n); WS_LABEL_TO_OPCODE top-level const; WsRepeaterOverlay now takes an `initial` prop seeding direction/opcode/payload useState and preferring a session matching initial.host/port in its `refresh` session-list callback. Reused endpoints unchanged: POST /api/ws/send, GET /api/ws/sessions (control_server.cpp, already wired by #270).",
       "reconciled": {
         "date": "2026-08-24",
-        "commit": "PENDING",
+        "commit": "3aaa839",
         "note": "Wave 2 Repeater/WS batch -- WS message repeater tab reissue-link closed for text frames (binary/control frames stay honestly out of reach), partial -> partial (gap narrowed, not a state-count move)."
       }
     },
