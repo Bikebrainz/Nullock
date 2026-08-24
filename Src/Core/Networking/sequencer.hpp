@@ -54,6 +54,10 @@ QJsonObject analyzeTokens(const QStringList &tokens);
 //     positive = too many runs (over-alternating), large negative = too few
 //     (sticky/clumped). 0 if degenerate (all one symbol / too short).
 //   longestBitRun: length of the longest run of identical bits.
+// Upper tail P(X > chi) of the chi-square distribution with `dof` degrees of
+// freedom (regularized upper incomplete gamma). Turns a chi-square statistic
+// into a p-value; used by the per-position character test. Exposed for testing.
+double chiSquareSurvival(double chi, int dof);
 double fipsPokerChiSquare(const QByteArray &bytes);
 double fipsRunsZScore(const QByteArray &bytes);
 qint64 longestBitRun(const QByteArray &bytes);

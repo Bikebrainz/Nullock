@@ -184,6 +184,51 @@ int main(int argc, char **argv) {
             && rc["perBitMonobit"].toObject()["failures"].toInt() == 0);
     }
 
+    // ===== chi-square survival p-value (backs the per-position char test) =
+    // Verified against standard chi-square upper-tail critical values.
+    {
+        auto near = [](double a, double b, double tol) { return (a > b ? a - b : b - a) < tol; };
+        chk("chiSq survival: dof=1  chi=3.841  ~= 0.05", near(chiSquareSurvival(3.841, 1), 0.05, 0.003));
+        chk("chiSq survival: dof=1  chi=6.635  ~= 0.01", near(chiSquareSurvival(6.635, 1), 0.01, 0.002));
+        chk("chiSq survival: dof=3  chi=11.345 ~= 0.01", near(chiSquareSurvival(11.345, 3), 0.01, 0.002));
+        chk("chiSq survival: dof=10 chi=18.307 ~= 0.05", near(chiSquareSurvival(18.307, 10), 0.05, 0.003));
+        chk("chiSq survival: dof=15 chi=30.578 ~= 0.01", near(chiSquareSurvival(30.578, 15), 0.01, 0.002));
+        // Small chi relative to dof exercises the SERIES branch (x < a+1).
+        chk("chiSq survival: dof=10 chi=3.940 ~= 0.95 (series branch)", near(chiSquareSurvival(3.940, 10), 0.95, 0.004));
+        chk("chiSq survival: extremes (1.0 at chi=0, ~0 for a huge chi)",
+            chiSquareSurvival(0.0, 5) == 1.0 && chiSquareSurvival(500.0, 5) < 1e-9);
+    }
+
+    // ===== per-position character chi-square (roadmap: sequencer) =========
+    {
+        std::mt19937 gen(97531);
+        static const char HEX[] = "0123456789abcdef";
+        // 48x 32-hex tokens, but column 8 is 'a' ~75% of the time (rest random) --
+        // a per-column distribution skew the global char frequency hides. Only
+        // that column should fail the per-position chi-square.
+        QStringList biased;
+        for (int i = 0; i < 48; ++i) {
+            QString t;
+            for (int c = 0; c < 32; ++c) {
+                if (c == 8) t += ((gen() % 4u) ? QChar(QLatin1Char('a')) : QChar(QLatin1Char(HEX[gen() % 16])));
+                else        t += QChar(QLatin1Char(HEX[gen() % 16]));
+            }
+            biased << t;
+        }
+        const QJsonObject cb = analyze(biased)["positional"].toObject()["charChiSquare"].toObject();
+        chk("per-position char chi-square FLAGS a biased column",
+            cb["biased"].toBool() && cb["failures"].toInt() >= 1);
+
+        QStringList clean;
+        for (int i = 0; i < 48; ++i) {
+            QString t; for (int c = 0; c < 32; ++c) t += QChar(QLatin1Char(HEX[gen() % 16]));
+            clean << t;
+        }
+        const QJsonObject cc = analyze(clean)["positional"].toObject()["charChiSquare"].toObject();
+        chk("per-position char chi-square does NOT flag a clean corpus",
+            cc["biased"].toBool() == false && cc["failures"].toInt() == 0);
+    }
+
     // ===== #5 base detection: decimal counters (incl. the 9->0 carry) =====
     chk("decimal counter 18..23 -> sequential",
         analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["looksSequential"].toBool());

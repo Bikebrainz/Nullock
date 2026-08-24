@@ -15,6 +15,12 @@ namespace Nullock::Core {
 
 namespace {
 
+// Minimum corpus size before ANY deeper cross-sample test runs (per-position
+// entropy/char-chi-square, bit-level). Below this they are noise. Set well above
+// every existing small regression corpus so the deeper tests only ADD signal on
+// real (larger) captures -- they never perturb the legacy small-corpus grades.
+constexpr int kDeepMinN = 20;
+
 double shannonEntropy(const QString &s) {
     if (s.isEmpty()) return 0.0;
     // Count over ALL code units (a previous version dropped unicode >= 256 from
@@ -59,6 +65,52 @@ double positionalEffectiveBits(const QStringList &tokens) {
         if (seen.size() > 1) bits += std::log2(double(seen.size()));  // 1-symbol col -> 0
     }
     return bits;
+}
+
+// Per-character-POSITION chi-square: over the modal-width cohort, test each
+// column's observed character distribution against a uniform distribution over
+// that column's observed alphabet (dof = distinct-1). A column biased toward a
+// subset of its alphabet (a counter digit, a fixed-ish nibble) yields a large
+// chi-square / small p-value even when the GLOBAL character frequency looks flat.
+// A Bonferroni-corrected threshold (0.01/columns) holds the family-wise false-
+// positive rate ~1%. Returns the number of failing columns + the worst p-value.
+struct PositionalCharChi {
+    bool   applicable = false;
+    int    columns = 0;
+    int    failures = 0;
+    double minPValue = 1.0;
+};
+PositionalCharChi positionalCharChiSquare(const QStringList &tokens) {
+    PositionalCharChi r;
+    if (tokens.size() < kDeepMinN) return r;
+    QHash<int, int> widths;
+    for (const QString &t : tokens) if (!t.isEmpty()) widths[t.size()]++;
+    int width = 0, best = 0;
+    for (auto it = widths.cbegin(); it != widths.cend(); ++it)
+        if (it.value() > best) { best = it.value(); width = it.key(); }
+    QStringList cohort;
+    for (const QString &t : tokens) if (t.size() == width) cohort << t;
+    const int n = cohort.size();
+    if (width <= 0 || n < kDeepMinN) return r;
+    r.applicable = true;
+    r.columns = width;
+    const double alpha = 0.01 / double(width);   // Bonferroni over the columns
+    for (int col = 0; col < width; ++col) {
+        QHash<char16_t, int> hist;
+        for (const QString &t : cohort) hist[t.at(col).unicode()]++;
+        const int k = hist.size();
+        if (k < 2) continue;                     // a constant column carries no distribution
+        const double expected = double(n) / double(k);
+        double chi = 0.0;
+        for (auto it = hist.cbegin(); it != hist.cend(); ++it) {
+            const double dlt = double(it.value()) - expected;
+            chi += dlt * dlt / expected;
+        }
+        const double p = chiSquareSurvival(chi, k - 1);
+        if (p < r.minPValue) r.minPValue = p;
+        if (p < alpha) ++r.failures;
+    }
+    return r;
 }
 
 // Parse a token as an integer, detecting the base: a purely-decimal string is
@@ -283,11 +335,6 @@ bool looksMonotonic(const QStringList &tokens) {
 // threshold, so a small or genuinely-random corpus is never false-flagged.
 // ===================================================================
 
-// Minimum corpus size before ANY deeper test runs. The per-position and bit
-// tests are cross-sample statistics; below this they are noise. Set well above
-// every existing regression corpus so the deeper tests only ever ADD signal on
-// real (larger) captures -- they never perturb the legacy small-corpus grades.
-constexpr int kDeepMinN = 20;
 
 struct PositionalResult {
     bool   applicable = false;   // fixed-width corpus with enough samples?
@@ -491,6 +538,44 @@ struct BitLevelResult {
 //             r ~ 0; |r| past max(0.08, 3/sqrt(m)) (a generous ~3-sigma floor)
 //             flags a linear dependency.
 } // anonymous namespace boundary marker (functions below are exported)
+
+// Upper tail of the chi-square distribution: P(X > chi) for `dof` degrees of
+// freedom = the regularized upper incomplete gamma Q(dof/2, chi/2). Standard
+// series (x < a+1) / Lentz continued-fraction (else) split; std::lgamma supplies
+// the normaliser. Turns a chi-square statistic into a p-value. Exported so the
+// per-position character test and the unit test can both use it.
+double chiSquareSurvival(double chi, int dof) {
+    if (dof <= 0 || chi <= 0.0) return 1.0;
+    const double a = double(dof) / 2.0;
+    const double x = chi / 2.0;
+    const double gln = std::lgamma(a);
+    if (x < a + 1.0) {
+        // Series for the regularized LOWER incomplete gamma P(a,x); return 1-P.
+        double ap = a, sum = 1.0 / a, del = sum;
+        for (int i = 0; i < 300; ++i) {
+            ap += 1.0;
+            del *= x / ap;
+            sum += del;
+            if (std::fabs(del) < std::fabs(sum) * 1e-14) break;
+        }
+        const double P = sum * std::exp(-x + a * std::log(x) - gln);
+        return 1.0 - P;
+    }
+    // Lentz continued fraction for the regularized UPPER incomplete gamma Q(a,x).
+    const double tiny = 1e-300;
+    double b = x + 1.0 - a, c = 1.0 / tiny, d = 1.0 / b, h = d;
+    for (int i = 1; i < 300; ++i) {
+        const double an = -double(i) * (double(i) - a);
+        b += 2.0;
+        d = an * d + b; if (std::fabs(d) < tiny) d = tiny;
+        c = b + an / c; if (std::fabs(c) < tiny) c = tiny;
+        d = 1.0 / d;
+        const double delc = d * c;
+        h *= delc;
+        if (std::fabs(delc - 1.0) < 1e-14) break;
+    }
+    return std::exp(-x + a * std::log(x) - gln) * h;
+}
 
 double fipsPokerChiSquare(const QByteArray &bytes) {
     const qint64 bits = qint64(bytes.size()) * 8;
@@ -954,6 +1039,18 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     } else {
         posObj["skipReason"] = pos.skipReason;
     }
+    // Per-position character chi-square (distribution flatness per column, with a
+    // p-value per column and a Bonferroni-corrected pass/fail count).
+    const PositionalCharChi cc = positionalCharChiSquare(tokens);
+    QJsonObject ccObj;
+    ccObj["applicable"] = cc.applicable;
+    if (cc.applicable) {
+        ccObj["columns"]   = cc.columns;
+        ccObj["failures"]  = cc.failures;      // columns with p < 0.01/columns
+        ccObj["minPValue"] = cc.minPValue;     // the most-biased column's p-value
+        ccObj["biased"]    = cc.failures > 0;
+    }
+    posObj["charChiSquare"] = ccObj;
     result["positional"] = posObj;
 
     const BitLevelResult bit = bitLevelTests(tokens);

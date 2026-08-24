@@ -28,6 +28,15 @@ developer-facing record.
   verdict. A Bonferroni-corrected threshold (0.01/positions) keeps the family-
   wise false-positive rate at ~1% so a clean corpus is never flagged. (Roadmap:
   sequencer &mdash; "FIPS monobit … at every bit position independently".)
+- **Sequencer: per-position character chi-square + a chi-square p-value.** Token
+  analysis now runs a real chi-square of each column's character distribution
+  against uniform-over-its-alphabet, with a p-value per column (via a new
+  exported `chiSquareSurvival()` &mdash; the regularized upper incomplete gamma,
+  unit-tested against standard critical values) and a Bonferroni-corrected
+  pass/fail. Unlike the entropy-vs-strongest-sibling reference, this flags a
+  generator biased *uniformly* across every column. Reported as
+  `positional.charChiSquare`. (Roadmap: sequencer &mdash; "per-position chi-square
+  … with a p-value per position".)
 
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**

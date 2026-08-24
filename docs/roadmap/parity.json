@@ -1982,12 +1982,12 @@
     {
       "area": "sequencer",
       "feature": "Character-level test: Character count analysis (per-position chi-square on the distribution of characters, with a p-value per position)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "No chi-square, no per-position p-value, no per-position pass/fail. The reference is the strongest sibling column, so a generator biased UNIFORMLY across every column has no weak column to stand out against and scores clean. Self-disables below 20 tokens, below width 8, below 4 variable columns, or below reference 2.0 bits \u2014 four silent exits behind a single `applicable:false`.",
-      "why": "Verified verbatim including the self-disabling gates. Held at partial \u2014 a per-position statistic genuinely exists and is reported per column, it is just entropy-vs-sibling rather than chi-square-vs-uniform.",
-      "evidence": "sequencer_logic.cpp:272-296: `for (int c = 0; c < modeW; ++c) { QHash<char16_t, int> cnt; for (const QString &t : fw) cnt[t[c].unicode()]++; double H = 0.0; for (auto it = cnt.cbegin(); it != cnt.cend(); ++it) { const double p = double(it.value()) / tot; H -= p * std::log2(p); } r.columnEntropy << H; if (cnt.size() >= 2) varH << H; } double ref = 0.0; for (double h : varH) ref = qMax(ref, h); ... "
+      "gap": "None -- positionalCharChiSquare() now runs a real per-column chi-square of the observed character distribution against a uniform distribution over that column's observed alphabet (dof = distinct-1), converts each column's statistic to a p-value via the exported chiSquareSurvival() (regularized upper incomplete gamma), and flags columns at a Bonferroni-corrected threshold (0.01/columns). Unlike the entropy-vs-sibling reference, this catches a generator biased UNIFORMLY across every column (each column fails against uniform on its own). Reported as positional.charChiSquare {columns, failures, minPValue, biased}.",
+      "why": "Closed 2026-08-24: added positionalCharChiSquare (modal-width cohort, per-column histogram -> chi-square-vs-uniform -> chiSquareSurvival p-value -> Bonferroni pass/fail) alongside the existing per-column entropy. chiSquareSurvival is exported and unit-tested against standard chi-square critical values (dof 1/3/10/15) on BOTH the series and continued-fraction branches. Mutation-proven: breaking either survival branch fails the critical-value table; removing the Bonferroni flags a clean corpus.",
+      "evidence": "sequencer_logic.cpp positionalCharChiSquare() + chiSquareSurvival(); emitted at `posObj[\"charChiSquare\"]`. Tests: sequencer_test.cpp -- chiSquareSurvival matches the chi-square table to <0.003; a corpus with one column biased ~75% toward 'a' FLAGS charChiSquare while a clean 32-hex corpus does not."
     },
     {
       "area": "sequencer",
