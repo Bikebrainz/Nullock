@@ -46,6 +46,13 @@ developer-facing record.
   is the "significance adjusted for interdependence". Reported as
   `bitLevel.bitCorrelation`. (Roadmap: sequencer &mdash; "correlation between
   distinct bit positions …".)
+- **Repeater: record a request chain straight from Proxy history.** The
+  SCANS tab's Request chain section gains a "Record from history" control:
+  type one or more Proxy history row IDs and it builds the chain-step JSON
+  from those captured requests (via the existing `/api/chain/record`
+  backend, previously reachable only through the raw HTTP API), dropping it
+  straight into the editable steps textarea instead of requiring the steps
+  to be hand-written from scratch.
 
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**

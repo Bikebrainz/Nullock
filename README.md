@@ -152,7 +152,8 @@ OAST              In-process HTTP + DNS callback sinks for out-of-band confirmat
                   fire the SSRF/XXE/RCE/Log4Shell blast at a target URL from a Blast panel
 Orchestration     One-call host assessment + recon->vuln pipeline (point-at-host -> findings);
                   in-app SCANS tab drives target assess, synchronous audit-run, param miner,
-                  multi-step request chains, exposure scan, service CVE correlation, JS recon,
+                  multi-step request chains (record steps straight from Proxy history row IDs),
+                  exposure scan, service CVE correlation, JS recon,
                   TLS/certificate inspection, and the pipeline orchestrator, plus on-demand
                   posture grade / asset inventory /
                   OWASP-compliance coverage / CI-gate rollups -- all previously API-only

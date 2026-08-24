@@ -2296,6 +2296,8 @@ function ScansTab() {
   const [chainSteps, setChainSteps]     = React.useState("");
   const [chainContinue, setChainContinue] = React.useState(false);
   const [chainRes, setChainRes]         = React.useState(null);
+  const [chainRecordIds, setChainRecordIds] = React.useState("");
+  const [chainRecordMsg, setChainRecordMsg] = React.useState("");
 
   const [exposureUrl, setExposureUrl] = React.useState("");
   const [exposureRes, setExposureRes] = React.useState(null);
@@ -2381,6 +2383,20 @@ function ScansTab() {
     try { steps = JSON.parse(chainSteps); } catch (e) { setErr2("steps must be valid JSON: " + (e && e.message ? e.message : e)); return; }
     if (!Array.isArray(steps) || !steps.length) { setErr2("steps must be a non-empty JSON array"); return; }
     runBusy2("chain", setChainRes, () => NL.actions.chainRun(steps, chainContinue));
+  };
+
+  const doChainRecord = async () => {
+    const rowIds = chainRecordIds.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
+    if (!rowIds.length) { setErr2("enter one or more Proxy history row IDs (comma or space separated)"); return; }
+    setErr2(""); setChainRecordMsg(""); setBusy2("chainRecord");
+    try {
+      const r = await NL.actions.chainRecord(rowIds);
+      if (r && r.ok === false) { setErr2(r.error || "chain record failed"); return; }
+      setChainSteps(JSON.stringify(r.steps || [], null, 2));
+      setChainRecordMsg("recorded " + (r.steps || []).length + " of " + rowIds.length
+        + (r.skipped ? " (" + r.skipped + " skipped -- not in the history index)" : ""));
+    } catch (e) { setErr2(String(e && e.message ? e.message : e)); }
+    finally { setBusy2(""); }
   };
 
   const doExposureScan = () => {
@@ -2840,6 +2856,12 @@ function ScansTab() {
       </Section>
 
       <Section title="Request chain" hint="multi-step raw-HTTP chain with {{var}} extraction/substitution (e.g. login -> use token)">
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input value={chainRecordIds} onChange={e => setChainRecordIds(e.target.value)}
+                 placeholder="Proxy history row IDs, e.g. 12, 13, 14" style={{ ...inp, flex: 1 }} />
+          <Btn2 k="chainRecord" label="Record from history" onClick={doChainRecord} />
+        </div>
+        {chainRecordMsg && <div style={{ fontSize: "12px", color: "var(--text-2)" }}>{chainRecordMsg}</div>}
         <textarea value={chainSteps} onChange={e => setChainSteps(e.target.value)}
                   placeholder={CHAIN_STEPS_PLACEHOLDER}
                   rows={5} style={{ ...inp, resize: "vertical", fontSize: "11px" }} spellCheck={false} />

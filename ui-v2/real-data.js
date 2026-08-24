@@ -449,6 +449,12 @@
     chainRun(steps, continueOnError) {
       return post("/api/chain/run", { steps, continueOnError: !!continueOnError }).then(r => r.json());
     },
+    // Records a replayable chain from captured Proxy history: reads each
+    // history row (by id) and emits it as a chain step, ready to hand
+    // straight to chainRun above (or edit first to add {{var}} extractions).
+    chainRecord(rowIds) {
+      return post("/api/chain/record", { rowIds }).then(r => r.json());
+    },
     // Capstone "point at a host" orchestrator: bridges port-scan results
     // into findings, then runs `assess` against every open web port found.
     // `opts` may carry { host, assessWeb, includeOpenPorts, correlateCves }.
