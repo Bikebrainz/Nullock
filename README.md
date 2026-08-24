@@ -37,6 +37,8 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   as typed, so a deliberate CL/TE desync probe still survives;
                   WS Repeater overlay injects text/binary/close/ping/pong frames into a live
                   WebSocket tunnel by session, direction, and opcode, with one-click resend-last;
+                  a captured text-frame WS message in Proxy history can be sent straight to it,
+                  pre-filled and pre-targeted at a still-open session on that same host:port;
                   a dedicated WEBSOCKETS tab groups captured WS traffic by connection with real
                   direction/type/length columns (not the pseudo-HTTP Status/Mime placeholders),
                   direction and message-type filtering, a per-message comment, and the same

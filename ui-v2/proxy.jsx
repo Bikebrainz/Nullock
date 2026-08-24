@@ -817,7 +817,7 @@ function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSel
   );
 }
 
-function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSendDecoder, onSendSequencer }) {
+function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSendDecoder, onSendSequencer, onSendWsRepeater }) {
   const [view, setView] = React.useState("split"); // split | req | resp
   const [reqTab, setReqTab] = React.useState("raw"); // raw|headers|body
   const [respTab, setRespTab] = React.useState("raw");
@@ -857,6 +857,27 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
 
   const req = NL.requestRawById(row.id);
   const resp = NL.responseRawById(row.id);
+
+  // #270-follow-up "Send to WS Repeater": a captured WebSocket message is a
+  // synthetic history row (proxy_server.cpp emitMessage) with method "WS↑"/
+  // "WS↓", not a real HTTP exchange -- direction comes straight from that,
+  // and the frame type is recovered from the row's own path label ("(text,
+  // 42 B)"/"(binary deflate, 10 B)") since the row carries no numeric opcode
+  // field. Text-only: ProxyModel::responseRawAt renders a non-textual body
+  // (Content-Type application/octet-stream, which every non-text WS frame
+  // carries) as a "[binary N bytes, ...]" placeholder, not the real bytes
+  // (proxy_model.cpp renderBody/looksTextual) -- so a binary/close/ping/pong
+  // frame has nothing real to reissue from this view, and reusing the
+  // placeholder as a payload would silently send garbage. The reissue link
+  // stays honestly restricted to what it can actually recover.
+  const isWsFrame = row.method === "WS↑" || row.method === "WS↓";
+  const wsLabel = isWsFrame ? ((row.path || "").match(/^\(([a-z]+)/i) || [null, ""])[1].toLowerCase() : "";
+  const isWsTextFrame = wsLabel === "text";
+  const wsInitFromRow = () => {
+    const idx = resp.indexOf("\n\n");
+    const body = idx >= 0 ? resp.slice(idx + 2) : resp;
+    return { host: row.host, port: row.port, direction: row.method === "WS↑" ? "up" : "down", opcode: WS_LABEL_TO_OPCODE.text, payload: body };
+  };
 
   // Pull either the user's text selection or the entire textarea contents.
   // Clicking a codec button with no selection runs it against the whole
@@ -909,6 +930,16 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
         <span className="ph-count">{fmtSize(row.size)} · {fmtMs(row.elapsed)}</span>
         <button onClick={onSendRepeater} title="Send to Repeater">↦ REPEATER</button>
         <button onClick={onSendIntruder} title="Send to Intruder">↦ INTRUDER</button>
+        {isWsFrame && (
+          <button onClick={() => onSendWsRepeater && onSendWsRepeater(wsInitFromRow())}
+                  disabled={!isWsTextFrame}
+                  style={!isWsTextFrame ? { opacity: 0.5, cursor: "default" } : undefined}
+                  title={isWsTextFrame
+                    ? "Open this captured message in the WS Repeater, pre-filled to edit and reissue"
+                    : "Only a text-opcode WS frame's real bytes survive to this view -- binary/close/ping/pong bodies are shown as a placeholder, not reissuable from here"}>
+            ↦ WS REPEATER
+          </button>
+        )}
         <button onClick={sendSelectionToSequencer} disabled={!reqSel && !respSel}
                 title="Send the selected text (a token) to Sequencer -- select a value in the request or response first">↦ SEQUENCER</button>
         <div style={{ position: "relative", display: "inline-block" }}>
@@ -1307,25 +1338,41 @@ const WS_OPCODES = [
   { v: 0xA, label: "0xA pong" },
 ];
 
-function WsRepeaterOverlay({ onClose }) {
+// Reverse of websocket.cpp's wsOpcodeLabel(), used to recover an opcode from
+// a captured WS row's `path` field ("(text, 42 B)", "(binary deflate, 10 B)")
+// when reissuing it via "Send to WS Repeater". Falls back to text (0x1) for
+// a label this dropdown has no slot for (cont/reserved -- never real traffic).
+const WS_LABEL_TO_OPCODE = { text: 0x1, binary: 0x2, close: 0x8, ping: 0x9, pong: 0xA };
+
+function WsRepeaterOverlay({ onClose, initial }) {
   const [sessions, setSessions] = React.useState([]);
   const [sessionId, setSessionId] = React.useState(null);
-  const [direction, setDirection] = React.useState("up");
-  const [opcode, setOpcode] = React.useState(0x1);
-  const [payload, setPayload] = React.useState("");
+  const [direction, setDirection] = React.useState((initial && initial.direction) || "up");
+  const [opcode, setOpcode] = React.useState((initial && initial.opcode != null) ? initial.opcode : 0x1);
+  const [payload, setPayload] = React.useState((initial && initial.payload) || "");
   const [lastSent, setLastSent] = React.useState(null); // {sessionId,direction,opcode,payload} | null
   const [result, setResult] = React.useState(null); // {ok,queued} | null
   const [error, setError] = React.useState(null);
   const [sending, setSending] = React.useState(false);
 
+  // #270-follow-up: reissuing a captured message (initial.host/port set)
+  // prefers a live session on that same host:port over "just pick the first
+  // one" -- the tunnel the message actually came from, if it's still open.
   const refresh = React.useCallback(async () => {
     try {
       const r = await NL.actions.wsSessions();
       const list = r.sessions || [];
       setSessions(list);
-      setSessionId(id => (id != null && list.some(s => s.id === id)) ? id : (list[0] ? list[0].id : null));
+      setSessionId(id => {
+        if (id != null && list.some(s => s.id === id)) return id;
+        if (initial && initial.host) {
+          const match = list.find(s => s.host === initial.host && (!initial.port || s.port === initial.port));
+          if (match) return match.id;
+        }
+        return list[0] ? list[0].id : null;
+      });
     } catch (e) { /* transient poll failure, keep last-known list */ }
-  }, []);
+  }, [initial]);
 
   React.useEffect(() => {
     refresh();
@@ -1392,6 +1439,11 @@ function WsRepeaterOverlay({ onClose }) {
           Injects a frame directly onto a live WebSocket tunnel the MITM proxy is currently
           relaying (TLS-MITM leg only). Sessions list refreshes every 2s -- open/keep a
           WebSocket connection through the proxy to see one here.
+          {initial && initial.host && (
+            <React.Fragment><br />Pre-filled from a captured message on {initial.host}
+            {initial.port ? ":" + initial.port : ""} -- edit the payload and pick a still-open
+            session for that host to reissue it, or any other live session to replay it there.</React.Fragment>
+          )}
         </div>
         <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div>
@@ -2785,6 +2837,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
 
   // #398: right-click add/remove scope, on any site-map or history row.
   const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
+  const [wsRepeaterInit, setWsRepeaterInit] = React.useState(null); // {host,port,direction,opcode,payload} | null
+  const openWsRepeaterFor = (init) => { setWsRepeaterInit(init); setWsRepeaterOpen(true); };
   const [h2LogOpen, setH2LogOpen] = React.useState(false);
   const [dbSearchOpen, setDbSearchOpen] = React.useState(false);
   const [analyzerOpen, setAnalyzerOpen] = React.useState(false);
@@ -2961,7 +3015,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           <span className="ph-corner">▸</span>
           <span>HTTP HISTORY</span>
           <span className="ph-count">{shown} / {rows.length}</span>
-          <button onClick={() => setWsRepeaterOpen(true)} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
+          <button onClick={() => { setWsRepeaterInit(null); setWsRepeaterOpen(true); }} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
           <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
           <button onClick={() => setAnalyzerOpen(true)} title="Attack-surface sizing: static/dynamic URL counts, query-parameter names, and per-URL entry points for the current site-map scope">◆ ANALYZE TARGET</button>
@@ -2970,7 +3024,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
               ? "Needs at least two distinct hosts in HTTP history to compare"
               : "Diff URL paths and findings between two hosts already in HTTP history"}>⇄ COMPARE HOSTS</button>
         </div>
-        {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => setWsRepeaterOpen(false)} />}
+        {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => { setWsRepeaterOpen(false); setWsRepeaterInit(null); }} initial={wsRepeaterInit} />}
         {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
         {dbSearchOpen && <DbSearchOverlay onClose={() => setDbSearchOpen(false)} />}
         {analyzerOpen && (
@@ -3051,6 +3105,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           row={selectedRow}
           onSendRepeater={() => dispatch({ type: "send-to-repeater", row: selectedRow })}
           onSendIntruder={() => dispatch({ type: "send-to-intruder", row: selectedRow })}
+          onSendWsRepeater={openWsRepeaterFor}
           onSendComparer={(kind, label, text) => {
             dispatch({ type: "comparer-add", label, text });
             if (onSwitchTab) onSwitchTab("comparer");
