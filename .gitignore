@@ -28,3 +28,8 @@ ui_*.h
 # Python bytecode (e.g. from py_compile-ing the labs)
 __pycache__/
 *.pyc
+
+# Internal / private strategy docs -- must NOT be in the public repo
+MONETIZATION.md
+ROADMAP-EXECUTION-PLAN.md
+PARITY-BACKLOG.md
