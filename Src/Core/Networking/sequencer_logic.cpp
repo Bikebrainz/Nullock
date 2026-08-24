@@ -472,6 +472,13 @@ struct BitLevelResult {
     bool   runsBucketFail = false;
     double compRatio = 1.0;     // zlib compressed/original size
     bool   compFail = false;
+    // Per-bit-position monobit: the global monobit dilutes a single stuck/biased
+    // bit 1:(token bit-width). Evaluating monobit at EVERY bit position across the
+    // fixed-width cohort catches a lone position the aggregate test never reaches.
+    int    perBitPositions = 0; // positions evaluated (0 = not applicable)
+    int    perBitFails = 0;     // positions with monobit p < 0.01
+    double perBitMinP = 1.0;    // the worst (smallest) per-position p-value
+    bool   perBitFail = false;  // >= 1 position failed
     bool   anyFail = false;
 };
 
@@ -685,6 +692,44 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
         r.monobitFail = r.monobitP < 0.01;
     }
 
+    // ---- per-bit-position monobit ----
+    // Over the modal decoded-byte-width cohort, test EACH bit position's 1/0
+    // balance independently. A generator with one stuck/biased bit (a fixed flag
+    // bit, a low-entropy nibble rendered to a fixed column) fails here even when
+    // the aggregate monobit -- which dilutes it 1:(width*8) -- passes.
+    {
+        QHash<int, int> wcount;
+        for (const QByteArray &b : per) if (!b.isEmpty()) wcount[b.size()]++;
+        int modalW = 0, bestW = 0;
+        for (auto it = wcount.cbegin(); it != wcount.cend(); ++it)
+            if (it.value() > bestW) { bestW = it.value(); modalW = it.key(); }
+        QList<QByteArray> cohort;
+        for (const QByteArray &b : per) if (b.size() == modalW) cohort << b;
+        const int n = cohort.size();
+        if (modalW > 0 && n >= kDeepMinN) {
+            const int positions = modalW * 8;
+            r.perBitPositions = positions;
+            // Bonferroni: testing `positions` bits independently at a naive 0.01
+            // would false-positive ~positions*0.01 times on RANDOM data (256 bits
+            // -> ~2-3 spurious fails). Correct the per-position threshold to
+            // 0.01/positions so the family-wise error rate stays ~0.01 -- a clean
+            // corpus passes, while a genuinely stuck bit (p ~ 1e-11) still fails.
+            const double alpha = 0.01 / double(positions);
+            for (int pos = 0; pos < positions; ++pos) {
+                const int byteIdx = pos / 8;
+                const int bitIdx  = 7 - (pos % 8);   // MSB-first, matches the stream tests
+                qint64 onesP = 0;
+                for (const QByteArray &b : cohort)
+                    onesP += (static_cast<unsigned char>(b.at(byteIdx)) >> bitIdx) & 1;
+                const double sObs = std::fabs(double(2 * onesP - n)) / std::sqrt(double(n));
+                const double p    = std::erfc(sObs / std::sqrt(2.0));
+                if (p < r.perBitMinP) r.perBitMinP = p;
+                if (p < alpha) ++r.perBitFails;
+            }
+            r.perBitFail = r.perBitFails > 0;
+        }
+    }
+
     // ---- two-bit (non-overlapping) frequency chi-square ----
     {
         qint64 counts[4] = {0, 0, 0, 0};
@@ -751,7 +796,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
 
     r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail
              || r.pokerFail || r.runsFail || r.longRunFail
-             || r.runsBucketFail || r.compFail;
+             || r.runsBucketFail || r.compFail || r.perBitFail;
     return r;
 }
 
@@ -922,6 +967,12 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         mono["pValue"] = bit.monobitP;
         mono["failed"] = bit.monobitFail;
         bitObj["monobit"] = mono;
+        QJsonObject perBit;
+        perBit["positions"] = bit.perBitPositions;   // 0 = not evaluated (variable width / too few)
+        perBit["failures"]  = bit.perBitFails;       // positions with monobit p < 0.01
+        perBit["minPValue"] = bit.perBitMinP;        // the worst position's p-value
+        perBit["failed"]    = bit.perBitFail;
+        bitObj["perBitMonobit"] = perBit;
         QJsonObject two;
         two["chiSquare"] = bit.twoBitChi;
         two["failed"]    = bit.twoBitFail;

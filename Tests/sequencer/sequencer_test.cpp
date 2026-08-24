@@ -147,6 +147,43 @@ int main(int argc, char **argv) {
             (ppu > globu ? ppu - globu : globu - ppu) < 0.20 * globu);
     }
 
+    // ===== per-bit-position monobit (roadmap: sequencer) =================
+    // A single stuck/biased bit is diluted 1:(width*8) in the aggregate monobit
+    // but must be caught when monobit is evaluated at EVERY bit position.
+    {
+        std::mt19937 gen(13579);
+        static const char HEX[]  = "0123456789abcdef";
+        static const char HIGH[] = "89abcdef";   // hex nibbles whose top bit is 1
+        // Stuck-bit corpus: 48x 32-hex tokens where the very first nibble is
+        // always drawn from {8..f}, so bit position 0 (MSB of byte 0) is ALWAYS 1;
+        // every other bit is random. The aggregate monobit dilutes this and passes.
+        QStringList stuck;
+        for (int i = 0; i < 48; ++i) {
+            QString t;
+            t += QChar(QLatin1Char(HIGH[gen() % 8]));            // nibble with fixed top bit
+            for (int c = 1; c < 32; ++c) t += QChar(QLatin1Char(HEX[gen() % 16]));
+            stuck << t;
+        }
+        const QJsonObject rb = analyze(stuck)["bitLevel"].toObject();
+        chk("per-bit monobit FLAGS a single stuck bit position",
+            rb["perBitMonobit"].toObject()["failed"].toBool()
+            && rb["perBitMonobit"].toObject()["failures"].toInt() >= 1);
+        chk("per-bit monobit catches what the diluted aggregate monobit misses",
+            rb["monobit"].toObject()["failed"].toBool() == false);
+
+        // Clean corpus: all 32 hex columns fully random -> no stuck position.
+        QStringList clean;
+        for (int i = 0; i < 48; ++i) {
+            QString t;
+            for (int c = 0; c < 32; ++c) t += QChar(QLatin1Char(HEX[gen() % 16]));
+            clean << t;
+        }
+        const QJsonObject rc = analyze(clean)["bitLevel"].toObject();
+        chk("per-bit monobit does NOT flag a clean random corpus",
+            rc["perBitMonobit"].toObject()["failed"].toBool() == false
+            && rc["perBitMonobit"].toObject()["failures"].toInt() == 0);
+    }
+
     // ===== #5 base detection: decimal counters (incl. the 9->0 carry) =====
     chk("decimal counter 18..23 -> sequential",
         analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["looksSequential"].toBool());

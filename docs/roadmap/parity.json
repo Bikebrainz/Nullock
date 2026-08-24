@@ -1992,12 +1992,12 @@
     {
       "area": "sequencer",
       "feature": "Bit-level test: FIPS monobit test, evaluated at every bit position independently",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "One p-value over the whole concatenated stream. A single stuck bit in a 128-bit token is diluted 1:128 and will never reach p<0.01. Per-bit-position monobit is not merely missing \u2014 the `cat` flattening at :365-366 discards token boundaries, so implementing it requires restructuring bitLevelTests to iterate `per` rather than `cat`.",
-      "why": "Confirmed verbatim, and I found the structural reason it cannot be fixed cheaply: the corpus is flattened into one QByteArray at :365-366 before any test runs, and decodeCorpusBytes returns per-token arrays that may differ in length, so bit-position alignment across samples is destroyed before the test sees the data. Held at partial (the NIST frequency test itself is correctly implemented, just at",
-      "evidence": "sequencer_logic.cpp:365-367 `QByteArray cat; for (const QByteArray &b : per) cat += b; if (cat.size() < 32) return r;` then :372-381: `qint64 ones = 0; for (unsigned char ch : cat) for (int i = 0; i < 8; ++i) ones += (ch >> i) & 1; const qint64 total = qint64(cat.size()) * 8; ... const double s = double(2 * ones - total); const double sObs = std::fabs(s) / std::sqrt(double(total)); r.monobitP = st"
+      "gap": "None -- bitLevelTests now runs a per-bit-position monobit over the modal decoded-byte-width cohort (iterating `per`, not the flattened `cat`): for each bit position it counts 1s across tokens and applies the erfc monobit p-value, with a Bonferroni-corrected threshold (0.01/positions) so the family-wise false-positive rate stays ~1% across all positions. A single stuck/biased bit that the aggregate monobit dilutes 1:(width*8) now fails independently and sets bitLevel.anyFail. Reported as bitLevel.perBitMonobit {positions, failures, minPValue, failed}.",
+      "why": "Closed 2026-08-24: kept the aggregate monobit and ADDED the per-position pass over the modal-width cohort. Bonferroni was essential -- a naive 0.01 over 256 positions false-positives ~2.5 times on random data (caught by a clean-corpus regression assertion + an existing strong-random test before commit). Mutation-proven: removing the Bonferroni correction reintroduces the clean-corpus false positive; disabling the threshold misses the stuck bit.",
+      "evidence": "sequencer_logic.cpp bitLevelTests() per-bit-position block: modal decoded-byte-width cohort, `const double alpha = 0.01 / double(positions)`, per-position `onesP` count -> `erfc(sObs/sqrt2)` -> `if (p < alpha) ++r.perBitFails`; wired into anyFail and emitted as bitLevel.perBitMonobit. Tests: sequencer_test.cpp -- a corpus with one always-1 nibble bit FLAGS perBitMonobit while the aggregate monobit passes (the dilution it catches); a clean 32-hex corpus does NOT flag."
     },
     {
       "area": "sequencer",

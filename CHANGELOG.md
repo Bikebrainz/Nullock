@@ -20,6 +20,14 @@ developer-facing record.
   not the blended global average the length-based figure assigns to both regions.
   It is a conservative lower bound that tightens with more samples. (Roadmap:
   sequencer &mdash; "Effective entropy … summed across positions".)
+- **Sequencer: per-bit-position monobit test.** The FIPS/NIST monobit frequency
+  test now runs at every bit position independently (across the modal decoded-
+  width cohort), not just once over the whole concatenated stream. A single
+  stuck or biased bit &mdash; diluted 1:(width&times;8) in the aggregate test &mdash; is
+  now caught: reported as `bitLevel.perBitMonobit` and folded into the failure
+  verdict. A Bonferroni-corrected threshold (0.01/positions) keeps the family-
+  wise false-positive rate at ~1% so a clean corpus is never flagged. (Roadmap:
+  sequencer &mdash; "FIPS monobit … at every bit position independently".)
 
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**
