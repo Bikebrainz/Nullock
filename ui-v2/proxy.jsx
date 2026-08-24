@@ -260,10 +260,16 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
             const rowStyle = note && note.color
               ? { boxShadow: "inset 3px 0 0 " + annotationColorHex(note.color) }
               : undefined;
+            // #target-scope-marker: a per-row out-of-scope indicator, so a
+            // history view that isn't filtered to IN-SCOPE only can still
+            // show at a glance which captured rows fall outside the current
+            // scope rules -- reuses the same hostInScope() glob matcher the
+            // IN-SCOPE filter itself uses.
+            const outOfScope = !hostInScope(r.host, scope);
             return (
             <tr
               key={r.id}
-              className={selectedId === r.id ? "sel" : ""}
+              className={(selectedId === r.id ? "sel" : "") + (outOfScope ? " row-oos" : "")}
               style={rowStyle}
               onClick={() => onSelect(r)}
               onContextMenu={onRowContextMenu ? (e => { e.preventDefault(); onRowContextMenu(r.host, e, r.id); }) : undefined}
@@ -272,7 +278,10 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
               <td className="num">{r.id.toString().padStart(3, "0")}</td>
               <td><MethodCell m={r.method} /></td>
               <td><span className={"status " + statusKind(r.status)}>{r.status || "—"}</span></td>
-              <td><span className={"tls-dot " + (r.tls ? "" : "off")} />{r.host}</td>
+              <td>
+                {outOfScope && <span className="oos-badge" title="out of scope">⊘</span>}
+                <span className={"tls-dot " + (r.tls ? "" : "off")} />{r.host}
+              </td>
               <td>{r.path}</td>
               <td className="num">{r.params || ""}</td>
               <td className="num">{r.mime}</td>

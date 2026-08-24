@@ -746,6 +746,13 @@ textarea, input { user-select: text; }
 }
 .tls-dot.off { background: var(--faint); }
 
+.tbl tbody tr.row-oos { opacity: 0.55; }
+.oos-badge {
+  color: var(--dim);
+  margin-right: 4px;
+  cursor: help;
+}
+
 /* ---------- sitemap ---------- */
 .sm-row {
   display: grid;

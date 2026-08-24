@@ -238,6 +238,7 @@ Browser extension Chrome MV3 companion -- one-click proxy + CA install path
 Engagement notes   Free-text per-project notes, editable from the Scope tab, persisted server-side
 Scope logging      "Log out-of-scope traffic" toggle in the Scope tab -- off (default, Burp's
                   behaviour) drops out-of-scope items from Proxy history and live tasks; on keeps all
+                  (each retained out-of-scope row is dimmed with a ⊘ marker in the HTTP history table)
 Project templates  Start a new project pre-seeded with scope + notes from a bundled template
                   (web-app/API/cloud pentest, OAuth review) -- picker + "Create from template"
                   button in Settings' Projects card
