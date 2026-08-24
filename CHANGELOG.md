@@ -10,6 +10,17 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Added
+- **Sequencer: per-position effective entropy.** Alongside the global
+  bits/char&times;length keyspace estimate, token analysis now reports
+  `shannon.perPositionEffectiveBits` &mdash; the sum of log2(observed alphabet
+  size) across each column of the modal-width cohort. This credits a token's TRUE
+  region-by-region keyspace: a token that is hex in columns 0&ndash;7 (4 bits
+  each) but drawn from a reduced alphabet in later columns scores its real bits,
+  not the blended global average the length-based figure assigns to both regions.
+  It is a conservative lower bound that tightens with more samples. (Roadmap:
+  sequencer &mdash; "Effective entropy … summed across positions".)
+
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**
   The WebSocket cross-origin sweep tries a sentinel, `null`, and host-derived

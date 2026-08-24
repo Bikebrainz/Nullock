@@ -1972,12 +1972,12 @@
     {
       "area": "sequencer",
       "feature": "Effective entropy (bits assigned per character position from that position's observed character-set size, summed across positions)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "One global alphabet rate times a length. A token that is hex in columns 0-7 and fixed-case alpha in 8-31 is credited the blended average in both regions. Burp's per-position charset sizes are literally already computed at :272-282 and are one summation away from being the estimate \u2014 they are instead spent on a single -20 flag.",
-      "why": "Verified line by line. The claim that positionalEntropy's output never feeds effectiveBits is correct \u2014 I traced both: `pos` is computed at :544 and consumed only at :546-556 (JSON) and :624 (a flat -20). `effectiveBits` is computed at :464 from `combinedBits` and `varLen` only. Held at partial.",
-      "evidence": "sequencer_logic.cpp:461-464: `const int seqPre = commonAffixLen(tokens, true); const int seqSuf = commonAffixLen(tokens, false); const int varLen = qMax(0, avgLen - seqPre - seqSuf); const double effectiveBits = combinedBits * varLen;` where `combinedBits = shannonEntropy(combined)` (:452) over the whole concatenated corpus. Per-column entropy exists at :272-282 (`for (int c = 0; c < modeW; ++c) {"
+      "gap": "None -- a per-position effective-entropy estimate now sits alongside the global one. positionalEffectiveBits() sums log2(observed alphabet size) across the modal-width cohort's columns, so a token that is hex in columns 0-7 (4 bits each) and drawn from a reduced alphabet in 8-31 is credited its TRUE region-by-region keyspace, not the blended global average. Reported as shannon.perPositionEffectiveBits.",
+      "why": "Closed 2026-08-24: added the pure positionalEffectiveBits(tokens) in sequencer_logic.cpp (per-column distinct-char count -> log2 -> sum), emitted as shannon.perPositionEffectiveBits in analyzeTokens' JSON. It is a lower bound that tightens with samples (conservative for a keyspace figure). Mutation-proven: dropping the log2 or using a global alphabet instead of per-column both fail the structured-corpus assertions.",
+      "evidence": "sequencer_logic.cpp positionalEffectiveBits(): modal-width cohort, per-column `QSet<QChar>` distinct count, `bits += std::log2(seen.size())` (1-symbol column adds 0); emitted at the shannon block `shannon[\"perPositionEffectiveBits\"] = positionalEffectiveBits(tokens);`. Tests: sequencer_test.cpp -- a hex-prefix + reduced-alphabet-suffix corpus scores ~56 bits (true keyspace) and BELOW the global rate*length estimate, while a uniform 32-hex corpus scores ~128 and agrees with the global estimate."
     },
     {
       "area": "sequencer",

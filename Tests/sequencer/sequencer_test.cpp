@@ -105,6 +105,48 @@ int main(int argc, char **argv) {
             r["verdict"].toString() == "looks-random");
     }
 
+    // ===== per-position effective entropy (roadmap: sequencer) ============
+    // Effective entropy = sum of log2(observed alphabet size) per column. It
+    // credits a token's TRUE keyspace region-by-region, where the global
+    // bits/char * length blends a reduced-alphabet region into the average.
+    {
+        std::mt19937 gen(24680);
+        static const char HEX[] = "0123456789abcdef";
+        // Structured: 8 random hex columns (4 bits each) + 24 columns drawn from
+        // a 2-symbol {x,y} alphabet (1 bit each) that VARY per token (so they are
+        // NOT stripped as a common affix). True keyspace = 8*4 + 24*1 = 56 bits.
+        QStringList structured;
+        for (int i = 0; i < 48; ++i) {
+            QString t;
+            for (int c = 0; c < 8;  ++c) t += QChar(QLatin1Char(HEX[gen() % 16]));
+            for (int c = 0; c < 24; ++c) t += QChar((gen() & 1u) ? QLatin1Char('x') : QLatin1Char('y'));
+            structured << t;
+        }
+        const QJsonObject rs = analyze(structured);
+        const double pp   = rs["shannon"].toObject()["perPositionEffectiveBits"].toDouble();
+        const double glob = rs["shannon"].toObject()["effectiveBitsPerToken"].toDouble();
+        chk("perPositionEffectiveBits ~= the true 56-bit keyspace of a reduced-alphabet region",
+            pp > 48.0 && pp < 62.0);
+        chk("perPositionEffectiveBits is BELOW the global rate*length estimate for a structured token",
+            pp < glob);
+
+        // Uniform: every one of 32 columns is random hex -> ~128-bit keyspace,
+        // and per-position should agree with the global estimate.
+        QStringList uniform;
+        for (int i = 0; i < 48; ++i) {
+            QString t;
+            for (int c = 0; c < 32; ++c) t += QChar(QLatin1Char(HEX[gen() % 16]));
+            uniform << t;
+        }
+        const QJsonObject ru = analyze(uniform);
+        const double ppu   = ru["shannon"].toObject()["perPositionEffectiveBits"].toDouble();
+        const double globu = ru["shannon"].toObject()["effectiveBitsPerToken"].toDouble();
+        chk("perPositionEffectiveBits ~= 128 on a uniform 32-hex corpus",
+            ppu > 115.0 && ppu < 132.0);
+        chk("perPositionEffectiveBits ~= the global estimate when every column is uniform",
+            (ppu > globu ? ppu - globu : globu - ppu) < 0.20 * globu);
+    }
+
     // ===== #5 base detection: decimal counters (incl. the 9->0 carry) =====
     chk("decimal counter 18..23 -> sequential",
         analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["looksSequential"].toBool());

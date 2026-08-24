@@ -30,6 +30,37 @@ double shannonEntropy(const QString &s) {
     return h;
 }
 
+// Effective entropy from per-POSITION observed alphabet sizes: over the modal-
+// width cohort, credit each column log2(distinct characters observed at that
+// column) bits and sum across columns. Unlike a global bits/char * length, this
+// credits a token that is hex in columns 0-7 (16 symbols -> 4 bits each) and
+// FIXED in columns 8-31 (1 symbol -> 0 bits each) exactly ~32 bits, not the
+// blended average the global rate assigns to both regions. It is a LOWER bound
+// that tightens with more samples (a column's full alphabet only shows up once
+// enough tokens are seen), which is the conservative direction for a keyspace
+// estimate. Returns 0 for too few / variable-width samples (the caller reports
+// it alongside the global estimate; the deeper positional tests own the verdict).
+double positionalEffectiveBits(const QStringList &tokens) {
+    if (tokens.size() < 2) return 0.0;
+    // Modal (most common) token width -- the analyzable fixed-width cohort.
+    QHash<int, int> widths;
+    for (const QString &t : tokens) if (!t.isEmpty()) widths[t.size()]++;
+    int width = 0, best = 0;
+    for (auto it = widths.cbegin(); it != widths.cend(); ++it)
+        if (it.value() > best) { best = it.value(); width = it.key(); }
+    if (width <= 0) return 0.0;
+    QStringList cohort;
+    for (const QString &t : tokens) if (t.size() == width) cohort << t;
+    if (cohort.size() < 2) return 0.0;
+    double bits = 0.0;
+    for (int col = 0; col < width; ++col) {
+        QSet<QChar> seen;
+        for (const QString &t : cohort) seen.insert(t.at(col));
+        if (seen.size() > 1) bits += std::log2(double(seen.size()));  // 1-symbol col -> 0
+    }
+    return bits;
+}
+
 // Parse a token as an integer, detecting the base: a purely-decimal string is
 // base 10, a string with a hex letter (or 0x prefix) is base 16. Returns false
 // (skip) on anything else or on overflow. Detecting the base avoids the bug
@@ -764,6 +795,12 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     shannon["totalBits"]   = combinedBits * combined.size();
     shannon["variableLen"] = varLen;
     shannon["effectiveBitsPerToken"] = effectiveBits;
+    // Per-position effective entropy: sum of log2(observed alphabet size) per
+    // column. Unlike effectiveBitsPerToken (global rate x length), this credits
+    // only the entropy each column actually carries -- a structured token
+    // (random prefix + fixed suffix) scores far below the global estimate here,
+    // exposing keyspace the naive length-based figure over-counts.
+    shannon["perPositionEffectiveBits"] = positionalEffectiveBits(tokens);
     // Thresholds account for common token alphabets:
     //   full byte range:  ~8 bits/byte
     //   base64:           ~5.7 bits/byte
