@@ -526,6 +526,14 @@ struct BitLevelResult {
     int    perBitFails = 0;     // positions with monobit p < 0.01
     double perBitMinP = 1.0;    // the worst (smallest) per-position p-value
     bool   perBitFail = false;  // >= 1 position failed
+    // Inter-bit-position correlation: a pair of bit positions that move together
+    // across tokens (one bit derivable from another -> reduced real keyspace),
+    // which no single-position test sees. Pairwise phi/chi-square, Bonferroni over
+    // all pairs (the "significance adjusted for interdependence").
+    qint64 bitCorrPairs = 0;    // pairs evaluated (0 = not applicable)
+    qint64 bitCorrFails = 0;    // pairs correlated past the corrected threshold
+    double bitCorrMinP = 1.0;   // the most-correlated pair's p-value
+    bool   bitCorrFail = false;
     bool   anyFail = false;
 };
 
@@ -777,41 +785,89 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
         r.monobitFail = r.monobitP < 0.01;
     }
 
-    // ---- per-bit-position monobit ----
-    // Over the modal decoded-byte-width cohort, test EACH bit position's 1/0
-    // balance independently. A generator with one stuck/biased bit (a fixed flag
-    // bit, a low-entropy nibble rendered to a fixed column) fails here even when
-    // the aggregate monobit -- which dilutes it 1:(width*8) -- passes.
+    // Shared modal decoded-byte-width cohort for the per-position bit tests.
+    QList<QByteArray> cohort;
+    int modalW = 0;
     {
         QHash<int, int> wcount;
         for (const QByteArray &b : per) if (!b.isEmpty()) wcount[b.size()]++;
-        int modalW = 0, bestW = 0;
+        int bestW = 0;
         for (auto it = wcount.cbegin(); it != wcount.cend(); ++it)
             if (it.value() > bestW) { bestW = it.value(); modalW = it.key(); }
-        QList<QByteArray> cohort;
         for (const QByteArray &b : per) if (b.size() == modalW) cohort << b;
-        const int n = cohort.size();
-        if (modalW > 0 && n >= kDeepMinN) {
-            const int positions = modalW * 8;
-            r.perBitPositions = positions;
-            // Bonferroni: testing `positions` bits independently at a naive 0.01
-            // would false-positive ~positions*0.01 times on RANDOM data (256 bits
-            // -> ~2-3 spurious fails). Correct the per-position threshold to
-            // 0.01/positions so the family-wise error rate stays ~0.01 -- a clean
-            // corpus passes, while a genuinely stuck bit (p ~ 1e-11) still fails.
-            const double alpha = 0.01 / double(positions);
-            for (int pos = 0; pos < positions; ++pos) {
-                const int byteIdx = pos / 8;
-                const int bitIdx  = 7 - (pos % 8);   // MSB-first, matches the stream tests
-                qint64 onesP = 0;
-                for (const QByteArray &b : cohort)
-                    onesP += (static_cast<unsigned char>(b.at(byteIdx)) >> bitIdx) & 1;
-                const double sObs = std::fabs(double(2 * onesP - n)) / std::sqrt(double(n));
-                const double p    = std::erfc(sObs / std::sqrt(2.0));
-                if (p < r.perBitMinP) r.perBitMinP = p;
-                if (p < alpha) ++r.perBitFails;
+    }
+    const int cohortN = cohort.size();
+
+    // ---- per-bit-position monobit ----
+    // Test EACH bit position's 1/0 balance independently. A generator with one
+    // stuck/biased bit (a fixed flag bit, a low-entropy nibble rendered to a
+    // fixed column) fails here even when the aggregate monobit -- which dilutes
+    // it 1:(width*8) -- passes.
+    if (modalW > 0 && cohortN >= kDeepMinN) {
+        const int positions = modalW * 8;
+        r.perBitPositions = positions;
+        // Bonferroni: testing `positions` bits at a naive 0.01 would false-
+        // positive ~positions*0.01 times on RANDOM data. Correct to 0.01/positions
+        // so the family-wise error rate stays ~0.01 -- clean corpus passes, a
+        // genuinely stuck bit (p ~ 1e-11) still fails.
+        const double alpha = 0.01 / double(positions);
+        for (int pos = 0; pos < positions; ++pos) {
+            const int byteIdx = pos / 8;
+            const int bitIdx  = 7 - (pos % 8);   // MSB-first, matches the stream tests
+            qint64 onesP = 0;
+            for (const QByteArray &b : cohort)
+                onesP += (static_cast<unsigned char>(b.at(byteIdx)) >> bitIdx) & 1;
+            const double sObs = std::fabs(double(2 * onesP - cohortN)) / std::sqrt(double(cohortN));
+            const double p    = std::erfc(sObs / std::sqrt(2.0));
+            if (p < r.perBitMinP) r.perBitMinP = p;
+            if (p < alpha) ++r.perBitFails;
+        }
+        r.perBitFail = r.perBitFails > 0;
+    }
+
+    // ---- inter-bit-position correlation ----
+    // A pair of bit positions that move together across tokens means one bit is
+    // derivable from another -- the real keyspace is smaller than the bit count
+    // implies, and no single-position test sees it. For each pair build the 2x2
+    // contingency table across the cohort; chi-square (1 dof) = n*phi^2 -> p via
+    // chiSquareSurvival. Bonferroni over ALL pairs is the significance adjustment
+    // for the interdependence of testing every pair. Capped at 1024 positions
+    // (~500k pairs) to bound the O(positions^2 * n) cost.
+    {
+        const int positions = modalW * 8;
+        if (modalW > 0 && cohortN >= kDeepMinN && positions >= 2 && positions <= 1024) {
+            QVector<QVector<uint8_t>> bitcol(positions, QVector<uint8_t>(cohortN, 0));
+            QVector<int> onesAt(positions, 0);
+            for (int t = 0; t < cohortN; ++t) {
+                const QByteArray &b = cohort[t];
+                for (int pos = 0; pos < positions; ++pos) {
+                    const uint8_t bit = (static_cast<unsigned char>(b.at(pos / 8)) >> (7 - (pos % 8))) & 1;
+                    bitcol[pos][t] = bit;
+                    onesAt[pos]   += bit;
+                }
             }
-            r.perBitFail = r.perBitFails > 0;
+            const qint64 pairs = qint64(positions) * (positions - 1) / 2;
+            r.bitCorrPairs = pairs;
+            const double alpha = 0.01 / double(pairs);   // Bonferroni over all pairs
+            const double N = double(cohortN);
+            for (int i = 0; i < positions; ++i) {
+                const int a1 = onesAt[i];
+                if (a1 == 0 || a1 == cohortN) continue;  // constant position: no correlation defined
+                for (int j = i + 1; j < positions; ++j) {
+                    const int b1 = onesAt[j];
+                    if (b1 == 0 || b1 == cohortN) continue;
+                    int both = 0;
+                    for (int t = 0; t < cohortN; ++t) both += bitcol[i][t] & bitcol[j][t];
+                    const double den = double(a1) * double(cohortN - a1) * double(b1) * double(cohortN - b1);
+                    if (den <= 0.0) continue;
+                    const double num = double(both) * N - double(a1) * double(b1);
+                    const double chi = (num * num) * N / den;   // = n * phi^2, 1 dof
+                    const double p = chiSquareSurvival(chi, 1);
+                    if (p < r.bitCorrMinP) r.bitCorrMinP = p;
+                    if (p < alpha) ++r.bitCorrFails;
+                }
+            }
+            r.bitCorrFail = r.bitCorrFails > 0;
         }
     }
 
@@ -881,7 +937,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
 
     r.anyFail = r.monobitFail || r.twoBitFail || r.serialFail
              || r.pokerFail || r.runsFail || r.longRunFail
-             || r.runsBucketFail || r.compFail || r.perBitFail;
+             || r.runsBucketFail || r.compFail || r.perBitFail || r.bitCorrFail;
     return r;
 }
 
@@ -1070,6 +1126,12 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         perBit["minPValue"] = bit.perBitMinP;        // the worst position's p-value
         perBit["failed"]    = bit.perBitFail;
         bitObj["perBitMonobit"] = perBit;
+        QJsonObject bitCorr;
+        bitCorr["pairs"]     = double(bit.bitCorrPairs);   // bit-position pairs evaluated
+        bitCorr["failures"]  = double(bit.bitCorrFails);   // pairs correlated past the corrected threshold
+        bitCorr["minPValue"] = bit.bitCorrMinP;            // the most-correlated pair's p-value
+        bitCorr["failed"]    = bit.bitCorrFail;
+        bitObj["bitCorrelation"] = bitCorr;
         QJsonObject two;
         two["chiSquare"] = bit.twoBitChi;
         two["failed"]    = bit.twoBitFail;

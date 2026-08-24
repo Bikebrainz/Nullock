@@ -2002,12 +2002,12 @@
     {
       "area": "sequencer",
       "feature": "Bit-level test: Correlation test (correlation between distinct bit positions, with significance adjusted for interdependence)",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "One lag-1 byte correlation, on a stream where `cat` also concatenates ACROSS token boundaries \u2014 so the sampled pair at each token junction correlates the tail of one token with the head of an unrelated one, injecting noise into the very statistic. Bit-3-vs-bit-47 (truncated-LCG) is invisible. The threshold `max(0.08, 3/sqrt(m))` is a hand-set floor, not a significance level, and no multiple-comparison adjustment exists because there is only one comparison.",
-      "why": "Verified verbatim. Held at partial \u2014 a correlation test exists and is the intended LCG detector, it is just byte-lag-1 rather than all-pairs-of-bit-positions.",
-      "evidence": "sequencer_logic.cpp:410-424: `const qint64 m = qint64(cat.size()) - 1; if (m >= 16) { double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0; for (qint64 i = 0; i < m; ++i) { const double x = double(static_cast<unsigned char>(cat[int(i)])); const double y = double(static_cast<unsigned char>(cat[int(i + 1)])); ... } const double num = double(m) * sxy - sx * sy; ... r.serialR = (den > 1e-9) ? num / den : "
+      "gap": "None -- bitLevelTests now correlates EVERY PAIR of bit positions across the modal-width cohort (not just byte lag-1): for each pair it builds the 2x2 contingency table and computes chi-square (1 dof) = n*phi^2 -> p via chiSquareSurvival, flagging pairs at a Bonferroni-corrected threshold (0.01/pairs) -- the significance adjustment for testing every interdependent pair. A bit-3-vs-bit-47 truncated-LCG relationship (invisible to byte lag-1) is caught, and no junction pairs are involved (it iterates per-token bit columns, not the flattened stream). Reported as bitLevel.bitCorrelation {pairs, failures, minPValue, failed}, folded into anyFail.",
+      "why": "Closed 2026-08-24: added the all-pairs bit-position correlation (phi/chi-square per pair, Bonferroni over all pairs, capped at 1024 positions to bound O(positions^2*n)). The byte lag-1 serial correlation is kept as-is. Mutation-proven: disabling the flag misses a copied-bit pair; using a naive 0.01 (no Bonferroni) false-positives on a clean corpus across the ~8k pairs.",
+      "evidence": "sequencer_logic.cpp bitLevelTests() inter-bit-position correlation block: per-position bit columns over the cohort, 2x2 chi = num*num*N/den (num=both*N-a1*b1), p=chiSquareSurvival(chi,1), `if (p < 0.01/pairs) ++bitCorrFails`. Tests: sequencer_test.cpp -- forcing bit position 40 to equal bit 5 in every token FLAGS bitCorrelation; an independent-bit corpus does not."
     },
     {
       "area": "sequencer",

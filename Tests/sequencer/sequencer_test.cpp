@@ -229,6 +229,40 @@ int main(int argc, char **argv) {
             cc["biased"].toBool() == false && cc["failures"].toInt() == 0);
     }
 
+    // ===== inter-bit-position correlation (roadmap: sequencer) ===========
+    // A pair of bit positions that move together across tokens (one derivable
+    // from the other) reduces real keyspace and is invisible to per-position
+    // tests. Detected pairwise with a Bonferroni-corrected significance.
+    {
+        std::mt19937 gen(2468013);
+        auto randBytes = [&](int nb) { QByteArray b(nb, 0); for (int k = 0; k < nb; ++k) b[k] = char(gen() & 0xff); return b; };
+        auto getBit = [](const QByteArray &b, int pos) {
+            return (static_cast<unsigned char>(b.at(pos / 8)) >> (7 - (pos % 8))) & 1; };
+        auto setBit = [](QByteArray &b, int pos, int v) {
+            unsigned char c = static_cast<unsigned char>(b.at(pos / 8));
+            const unsigned char m = static_cast<unsigned char>(1 << (7 - (pos % 8)));
+            c = v ? (c | m) : (c & ~m);
+            b[pos / 8] = static_cast<char>(c);
+        };
+        // Force bit position 40 to equal bit position 5 in every 16-byte token
+        // (rest random) -- one perfectly-correlated pair among 8128.
+        QStringList corr;
+        for (int i = 0; i < 48; ++i) {
+            QByteArray b = randBytes(16);
+            setBit(b, 40, getBit(b, 5));
+            corr << QString::fromLatin1(b.toHex());
+        }
+        const QJsonObject bc = analyze(corr)["bitLevel"].toObject()["bitCorrelation"].toObject();
+        chk("bit-correlation FLAGS a pair of positions that move together",
+            bc["failed"].toBool() && bc["failures"].toDouble() >= 1.0);
+
+        QStringList clean;
+        for (int i = 0; i < 48; ++i) clean << QString::fromLatin1(randBytes(16).toHex());
+        const QJsonObject bcc = analyze(clean)["bitLevel"].toObject()["bitCorrelation"].toObject();
+        chk("bit-correlation does NOT flag an independent-bit corpus",
+            bcc["failed"].toBool() == false && bcc["failures"].toDouble() == 0.0);
+    }
+
     // ===== #5 base detection: decimal counters (incl. the 9->0 carry) =====
     chk("decimal counter 18..23 -> sequential",
         analyze(L({"18","19","20","21","22","23"}))["sequential"].toObject()["looksSequential"].toBool());

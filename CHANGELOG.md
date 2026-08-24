@@ -37,6 +37,15 @@ developer-facing record.
   generator biased *uniformly* across every column. Reported as
   `positional.charChiSquare`. (Roadmap: sequencer &mdash; "per-position chi-square
   … with a p-value per position".)
+- **Sequencer: inter-bit-position correlation test.** Beyond the byte lag-1
+  serial correlation, analysis now correlates every *pair* of bit positions
+  across tokens (2&times;2 contingency &rarr; chi-square &rarr; p-value), flagging pairs
+  that move together &mdash; one bit derivable from another, i.e. real keyspace
+  smaller than the bit count implies (a truncated-LCG bit-3-vs-bit-47 relationship
+  invisible to any single-position test). A Bonferroni correction over all pairs
+  is the "significance adjusted for interdependence". Reported as
+  `bitLevel.bitCorrelation`. (Roadmap: sequencer &mdash; "correlation between
+  distinct bit positions …".)
 
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**
