@@ -77,7 +77,13 @@ compliance/gate rollups, exposure-scan/service-CVE-correlation/JS-recon/TLS-cert
 inspection/HTTP-3-detection single-target probes, a Port scan -> findings bridge, and a
 Detection templates section running the bundled nuclei-style template library or a
 custom-JSON template against a target URL, and now a CVE overlay section for pushing/syncing
-extra service CVEs into the correlation table). The INSPECTOR tab now
+extra service CVEs into the correlation table). A same-day follow-up added a "Record from
+history" control to the SCANS tab's Request chain section, wiring `/api/chain/record` (the
+"record a macro from captured Proxy history" half of Repeater chains, alongside the
+already-tracked `/api/chain/run`) -- present in the backend since before the last full
+audit but never entered into this file's endpoint census, so it never showed up in the
+"N of 173" counts above even while unwired; noted here as a same-bucket addendum rather than
+rewriting those historical counts. The INSPECTOR tab now
 has a PARSE / JWT TOOLKIT mode toggle — JWT TOOLKIT covers offline analyze/forge plus a live
 acceptance test. The PROBE tab now has GraphQL schema/probe buttons alongside fingerprint/
 header-audit/waf-detect/secret-scan. The SESSIONS tab now has a Cookie Jar section (full
@@ -88,9 +94,10 @@ inject-focused per-host list. SETTINGS' Projects card now offers a template pick
 ## Active vulnerability tests (1 remaining — 24 of the 26 `/<type>/test` family are wired via TESTS, `jwt` via Inspector's JWT TOOLKIT)
 - `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
 
-(`/api/assess`, `/api/audit/run`, `/api/chain/run`, `/api/compliance`, `/api/gate`,
-`/api/inventory`, `/api/paramminer`, `/api/pipeline/run`, `/api/posture` all wired via the
-SCANS tab's Assess & audit section. `/api/headers/audit` wired via PROBE tab.)
+(`/api/assess`, `/api/audit/run`, `/api/chain/run`, `/api/chain/record`, `/api/compliance`,
+`/api/gate`, `/api/inventory`, `/api/paramminer`, `/api/pipeline/run`, `/api/posture` all
+wired via the SCANS tab's Assess & audit / Request chain sections. `/api/headers/audit`
+wired via PROBE tab.)
 
 ## Inspector / decoder / request tools (1)
 - `/api/request/curl` — intentionally left orphaned: functionally superseded by the
