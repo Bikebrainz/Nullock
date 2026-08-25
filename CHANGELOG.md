@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Issue definitions library.** `GET /api/issue-definitions` serves a browsable
+  catalog of every issue KIND the scanner can report (198 at time of writing),
+  independent of whether any has been found &mdash; each with its CWE, OWASP Top 10
+  category, CVSS base score and vector, compliance tags, default confidence, and
+  canonical remediation. It is generated from the SAME hand-curated enrichment
+  table applied to live findings (via a new `FindingEnricher::issueCatalog()`),
+  so the library can never drift from what a real finding is stamped with. This
+  is the "what can this tool find" reference for scoping a test or writing
+  methodology. (Roadmap: target &mdash; Issue definitions; still partial pending
+  an in-app browse UI and Burp-style long-form per-issue background prose.)
 - **Reporting: issue-selection filter (report customisation).** The
   machine-readable reports now take a customisation filter on the query string:
   `GET /api/report/json` and `GET /api/report/xml` accept `minSeverity`,

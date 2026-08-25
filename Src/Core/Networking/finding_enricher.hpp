@@ -7,6 +7,10 @@
 
 #include "passive_scanner.hpp"
 
+#include <QList>
+#include <QString>
+#include <QStringList>
+
 namespace Nullock::Core::FindingEnricher {
 
 // Mutates the finding in place. Safe to call on already-enriched
@@ -26,5 +30,27 @@ bool hasMapping(const QString &kind);
 // enrich() applies this only when the finding didn't already carry a confidence
 // (a scanner that did its own proof can set "confirmed" and we preserve it).
 QString confidenceForKind(const QString &kind);
+
+// --- Issue-definitions library (Burp's browsable "Issue definitions") -----
+// One catalog entry per issue KIND the scanner can report, drawn from the same
+// hand-curated enrichment table enrich() applies -- so the library and live
+// findings always agree. cvssScore is 0.0 for kinds whose score is
+// severity-dependent (informational / context findings); confidence is the
+// kind's default (confirmed/firm/tentative).
+struct IssueDefinition {
+    QString     kind;
+    QString     cwe;
+    QString     owasp;
+    double      cvssScore = 0.0;
+    QString     cvssVector;
+    QStringList compliance;
+    QString     description;   // the canonical one-line detail / remediation
+    QString     confidence;
+};
+
+// Every KIND in the enrichment table, sorted by kind. This is the enumerable
+// set of issue types (the family-prefix and generic fallbacks are for kinds NOT
+// in the table and are intentionally not listed as distinct definitions).
+QList<IssueDefinition> issueCatalog();
 
 } // namespace Nullock::Core::FindingEnricher

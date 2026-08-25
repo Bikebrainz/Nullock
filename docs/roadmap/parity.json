@@ -5376,12 +5376,12 @@
     {
       "area": "target",
       "feature": "Target > Issue definitions: a browsable library of every issue type the scanner can report, independent of whether it has been found",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
       "effort": "days",
-      "gap": "No way to browse 'what can this tool find' when scoping a test or writing methodology. ~150 curated mappings sit one accessor away from being a library.",
-      "why": "Confirmed. I specifically checked whether the enricher table is enumerable anywhere -- it is not; the only exported symbols are per-finding, and no endpoint serves the table.",
-      "evidence": "The enricher's entire public API is per-finding: Src/Core/Networking/finding_enricher.hpp:13-29 `void enrich(Finding &f); bool hasMapping(const QString &kind); QString confidenceForKind(const QString &kind);` -- no listKinds/table accessor. Its only callers are Src/Core/Networking/passive_scanner.cpp:97 and :163. No control endpoint enumerates kinds (`grep -n '\"/api/kinds|/api/detectors|/api/check"
+      "gap": "The library now exists as data + an endpoint: GET /api/issue-definitions serves every issue KIND in the enrichment table (198 at time of writing), sorted, each with its CWE, OWASP category, CVSS base score+vector, compliance tags, default confidence and canonical remediation -- drawn from the SAME table applied to live findings, so the library and findings agree. Still partial: no in-app browse UI yet (ui-v2 can now consume the endpoint), and each entry's 'issue background' is the one-line remediation rather than Burp's multi-paragraph background/remediation prose (tracked as the separate per-issue-definition-content item).",
+      "why": "Implemented + mutation-proven. Added the accessor the prior audit predicted: FindingEnricher::issueCatalog() enumerates the (previously anonymous-namespace) table() into a sorted QList<IssueDefinition>, and /api/issue-definitions serves it (read-allowlisted). The catalog reuses the exact enrichment mapping, so it can never drift from what enrich() stamps on a finding.",
+      "evidence": "Src/Core/Networking/finding_enricher.hpp IssueDefinition + issueCatalog(); finding_enricher.cpp issueCatalog() iterates table(), splits compliance, sets confidenceForKind. control_server.cpp /api/issue-definitions emits {ok,count,definitions[]}. Tests/finding_enricher/finding_enricher_test.cpp (173 pass): non-empty, all-have-cwe+owasp, sorted, missing-csp CWE-1021/firm/2-compliance-tags, and catalog==enrich() agreement; M1 (defeat sort) + M2 (defeat compliance split) each fail only their case. Live: GET /api/issue-definitions -> count 198."
     },
     {
       "area": "target",

@@ -276,6 +276,45 @@ int main(int argc, char **argv) {
         }
     }
 
+    // 6) Issue-definitions library (the browsable catalog of every issue kind).
+    {
+        auto cc = [&](const char *label, bool ok) {
+            if (ok) ++pass;
+            else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; failures << label; }
+        };
+        const QList<FindingEnricher::IssueDefinition> cat = FindingEnricher::issueCatalog();
+        cc("catalog: non-empty (>= 30 issue kinds)", cat.size() >= 30);
+
+        bool allCweOwasp = true, sorted = true;
+        QString prev;
+        FindingEnricher::IssueDefinition csp;
+        bool foundCsp = false;
+        for (const auto &d : cat) {
+            if (d.kind.isEmpty() || d.cwe.isEmpty() || d.owasp.isEmpty()) allCweOwasp = false;
+            if (!prev.isEmpty() && d.kind < prev) sorted = false;
+            prev = d.kind;
+            if (d.kind == QLatin1String("missing-csp")) { csp = d; foundCsp = true; }
+        }
+        cc("catalog: every definition has non-empty kind + CWE + OWASP", allCweOwasp);
+        cc("catalog: entries sorted by kind ascending", sorted);
+        cc("catalog: a known kind (missing-csp) is present", foundCsp);
+        cc("catalog: missing-csp maps to CWE-1021", csp.cwe == QLatin1String("CWE-1021"));
+        cc("catalog: missing-csp confidence is firm", csp.confidence == QLatin1String("firm"));
+        cc("catalog: missing-csp compliance splits into 2 tags (PCI + SOC2)",
+           csp.compliance.size() == 2
+           && csp.compliance.contains(QStringLiteral("PCI-DSS-6.5.7"))
+           && csp.compliance.contains(QStringLiteral("SOC2-CC6.1")));
+        cc("catalog: missing-csp carries a non-empty remediation description",
+           !csp.description.isEmpty());
+        // The library must AGREE with what enrich() applies to a live finding.
+        {
+            Finding f; f.kind = "missing-csp"; f.severity = "medium";
+            FindingEnricher::enrich(f);
+            cc("catalog: definition agrees with enrich() (cwe + owasp)",
+               csp.cwe == f.cwe && csp.owasp == f.owasp);
+        }
+    }
+
     std::fprintf(stderr,
         "\n========================================\n"
         "Finding enricher regression: %d passed, %d failed\n"

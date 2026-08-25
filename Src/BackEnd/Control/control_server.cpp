@@ -71,6 +71,7 @@
 #include "waf_detect.hpp"
 #include "cve_database.hpp"
 #include "request_export.hpp"
+#include "finding_enricher.hpp"
 #include "intruder_engine.hpp"
 #include "networking.hpp"
 #include "passive_scanner.hpp"
@@ -1796,6 +1797,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/compliance"
             || p == "/api/report/json"
             || p == "/api/report/xml"
+            || p == "/api/issue-definitions"
             || p == "/api/cve/overlay"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
@@ -5996,6 +5998,26 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QString generatedIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         const QString xml = ControlLogic::findingsJsonToXml(included, proj, generatedIso);
         return httpResponse(200, "application/xml; charset=utf-8", xml.toUtf8());
+    }
+
+    // GET /api/issue-definitions -- Burp's browsable "Issue definitions"
+    // library: every issue KIND the scanner can report, with its CWE, OWASP
+    // category, CVSS base score+vector, compliance tags, default confidence and
+    // canonical remediation. Drawn from the SAME enrichment table applied to
+    // live findings, so the library and findings always agree. Read-only.
+    if (path == "/api/issue-definitions") {
+        QJsonArray defs;
+        for (const auto &d : Nullock::Core::FindingEnricher::issueCatalog()) {
+            defs.append(QJsonObject{
+                { "kind", d.kind }, { "cwe", d.cwe }, { "owasp", d.owasp },
+                { "cvssScore", d.cvssScore }, { "cvssVector", d.cvssVector },
+                { "compliance", QJsonArray::fromStringList(d.compliance) },
+                { "confidence", d.confidence }, { "description", d.description },
+            });
+        }
+        return httpJson(200, QJsonObject{
+            { "ok", true }, { "count", defs.size() }, { "definitions", defs },
+        });
     }
 
     // ---- Built-in extensions install ---------------------------------

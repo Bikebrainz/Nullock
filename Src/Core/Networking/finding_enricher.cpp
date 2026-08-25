@@ -485,4 +485,28 @@ QString confidenceForKind(const QString &kind) {
     return QStringLiteral("firm");
 }
 
+QList<IssueDefinition> issueCatalog() {
+    const QHash<QString, Mapping> &t = table();
+    QStringList kinds = t.keys();
+    kinds.sort();   // deterministic, browsable order
+    QList<IssueDefinition> out;
+    out.reserve(kinds.size());
+    for (const QString &kind : kinds) {
+        const Mapping &m = t.value(kind);
+        IssueDefinition d;
+        d.kind        = kind;
+        d.cwe         = QString::fromLatin1(m.cwe);
+        d.owasp       = QString::fromLatin1(m.owasp);
+        d.cvssScore   = m.cvssScore;   // 0.0 == severity-dependent (info/context)
+        d.cvssVector  = QString::fromLatin1(m.cvssVector);
+        const QString comp = QString::fromLatin1(m.compliance);
+        if (!comp.isEmpty())
+            d.compliance = comp.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        d.description = QString::fromLatin1(m.fix);
+        d.confidence  = confidenceForKind(kind);
+        out.append(d);
+    }
+    return out;
+}
+
 } // namespace Nullock::Core::FindingEnricher
