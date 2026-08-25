@@ -194,6 +194,12 @@ public:
     void setThrottleMs(int ms);
     int  maxConcurrency() const { return m_maxConcurrency; }
     int  throttleMs() const { return m_throttleMs; }
+    // Burp-parity "retry on network failure": how many times a request is
+    // re-sent after a NETWORK-level failure (connect refused/timeout/reset),
+    // never after an HTTP error status. Clamped (see IntruderPool); 0 = off
+    // (Burp-parity default -- no retry).
+    void setMaxRetries(int n);
+    int  maxRetries() const { return m_maxRetries; }
     // Follow 3xx after each fired request (Burp's "Follow redirections"): the
     // recorded result (status / length / grep) becomes the FINAL hop's. Policy is
     // a RedirectLogic::FollowPolicy (0=never..3=always); processCookies threads
@@ -260,7 +266,7 @@ private:
                    const QStringList &grepMatch,
                    bool grepReflection,
                    const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
-                   int concurrency, int throttleMs,
+                   int concurrency, int throttleMs, int retries,
                    int followPolicy, bool followCookies,
                    std::function<bool(const QString &)> inScope,
                    const RecursiveSpec &recursive);
@@ -285,6 +291,7 @@ private:
     SessionRules *m_sessionRules = nullptr;
     int     m_maxConcurrency = Nullock::Core::IntruderPool::kDefaultConcurrency;
     int     m_throttleMs = 0;                            // inter-dispatch delay
+    int     m_maxRetries = Nullock::Core::IntruderPool::kDefaultRetries; // retries on network failure
     int     m_followPolicy  = 0;                         // RedirectLogic::FollowNever (off, Burp default)
     bool    m_followCookies = true;                      // "Process cookies in redirections"
     std::function<bool(const QString &)> m_inScope;

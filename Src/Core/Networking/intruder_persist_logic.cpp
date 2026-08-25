@@ -111,6 +111,7 @@ QJsonObject toJson(const SavedRun &run) {
         { "grepExtract", grepExtract },
         { "concurrency", c.concurrency },
         { "throttleMs",  c.throttleMs },
+        { "retries",     c.retries },
     };
 
     QJsonArray rows;
@@ -152,6 +153,7 @@ SavedRun fromJson(const QJsonObject &obj) {
 
     c.concurrency = config.value("concurrency").toInt(10);
     c.throttleMs  = config.value("throttleMs").toInt(0);
+    c.retries     = config.value("retries").toInt(0);
 
     for (const QJsonValue &v : obj.value("rows").toArray())
         run.rows.append(rowFromJson(v.toObject()));

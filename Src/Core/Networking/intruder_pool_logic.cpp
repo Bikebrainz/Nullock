@@ -14,6 +14,12 @@ int clampThrottleMs(int ms) {
     return ms;
 }
 
+int clampRetries(int n) {
+    if (n < 0) return 0;
+    if (n > kMaxRetries) return kMaxRetries;
+    return n;
+}
+
 int sleepSliceMs(int remainingMs, int sliceMs) {
     if (remainingMs <= 0 || sliceMs <= 0) return 0;
     return remainingMs < sliceMs ? remainingMs : sliceMs;

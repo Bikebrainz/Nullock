@@ -47,6 +47,17 @@ int main(int argc, char **argv) {
     chk("throttle int-min -> 0",           clampThrottleMs(std::numeric_limits<int>::min()) == 0);
     chk("throttle int-max -> ceiling",     clampThrottleMs(std::numeric_limits<int>::max()) == kMaxThrottleMs);
 
+    // ----- clampRetries: [0, kMaxRetries] -----
+    chk("retries negative -> 0",           clampRetries(-1) == 0);
+    chk("retries 0 -> 0",                  clampRetries(0) == 0);
+    chk("retries 3 -> 3",                  clampRetries(3) == 3);
+    chk("retries at ceiling",              clampRetries(kMaxRetries) == kMaxRetries);
+    chk("retries over ceiling -> ceiling", clampRetries(kMaxRetries + 1) == kMaxRetries);
+    chk("retries int-min -> 0",            clampRetries(std::numeric_limits<int>::min()) == 0);
+    chk("retries int-max -> ceiling",      clampRetries(std::numeric_limits<int>::max()) == kMaxRetries);
+    chk("default retries in range",
+        kDefaultRetries >= 0 && kDefaultRetries <= kMaxRetries);
+
     // ----- rpsToDelayMs: no divide-by-zero, sane spacing -----
     chk("rps 0 -> 0",                      rpsToDelayMs(0) == 0);
     chk("rps negative -> 0",               rpsToDelayMs(-5) == 0);

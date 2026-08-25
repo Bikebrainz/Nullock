@@ -59,6 +59,7 @@ struct RunConfig {
     IntruderGrep::ExtractSpec grepExtract;
     int         concurrency = 10;
     int         throttleMs = 0;
+    int         retries = 0;
 };
 
 // A complete saved attack: format version + config + result rows.

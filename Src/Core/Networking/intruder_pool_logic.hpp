@@ -23,12 +23,22 @@ constexpr int kMaxConcurrency = 64;
 // almost certainly a mistake and would park the whole run.
 constexpr int kMaxThrottleMs = 60000;
 
+// Default number of retries on a network-level failure (connect/timeout/reset)
+// when the operator hasn't chosen one. 0 = Burp-parity default (no retry).
+constexpr int kDefaultRetries = 0;
+// Hard ceiling on retries per request -- above this a target that is simply
+// down turns one attack into an unbounded resend storm against it.
+constexpr int kMaxRetries = 5;
+
 // Clamp a requested concurrency into [1, kMaxConcurrency]. Zero/negative -> 1
 // (fully serial), never 0 (which would wedge a semaphore-bounded dispatcher).
 int clampConcurrency(int n);
 
 // Clamp an inter-dispatch throttle into [0, kMaxThrottleMs]. Negative -> 0.
 int clampThrottleMs(int ms);
+
+// Clamp a requested retry count into [0, kMaxRetries]. Negative -> 0.
+int clampRetries(int n);
 
 // Convert a requests-per-second target into a per-dispatch delay in ms.
 //   rps <= 0      -> 0   (no throttle)

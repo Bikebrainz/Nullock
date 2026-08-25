@@ -1638,6 +1638,7 @@ QByteArray ControlServer::buildSnapshot() const {
         intruder["running"]     = m_wiring.intruder->running();
         intruder["concurrency"] = m_wiring.intruder->maxConcurrency();
         intruder["throttleMs"]  = m_wiring.intruder->throttleMs();
+        intruder["retries"]     = m_wiring.intruder->maxRetries();
         intruder["followRedirects"] = m_wiring.intruder->followRedirects();
         intruder["processCookies"]  = m_wiring.intruder->processCookies();
         intruder["recursiveGrep"]   = m_wiring.intruder->recursiveGrep();
@@ -3669,7 +3670,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             // Request-pool config. "concurrency" = max in-flight requests
             // (clamped 1..64). "throttleMs" = inter-dispatch delay; "rps" is an
             // alternative rate expressed as requests/second (converted to a
-            // per-dispatch delay). Both clamp inside the model.
+            // per-dispatch delay). "retries" = resend count on a NETWORK-level
+            // failure only, never an HTTP error status (clamped 0..5). All
+            // clamp inside the model.
             if (bodyJson.contains("concurrency"))
                 m_wiring.intruder->setMaxConcurrency(bodyJson.value("concurrency").toInt());
             if (bodyJson.contains("throttleMs"))
@@ -3677,6 +3680,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             else if (bodyJson.contains("rps"))
                 m_wiring.intruder->setThrottleMs(
                     Nullock::Core::IntruderPool::rpsToDelayMs(bodyJson.value("rps").toInt()));
+            if (bodyJson.contains("retries"))
+                m_wiring.intruder->setMaxRetries(bodyJson.value("retries").toInt());
             // Burp's "Follow redirections" (0..3) + "Process cookies in redirections".
             if (bodyJson.contains("followRedirects"))
                 m_wiring.intruder->setFollowRedirects(bodyJson.value("followRedirects").toInt());

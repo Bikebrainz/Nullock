@@ -34,6 +34,7 @@ bool sameConfig(const RunConfig &a, const RunConfig &b) {
     if (a.grepExtract.start != b.grepExtract.start) return false;
     if (a.grepExtract.end   != b.grepExtract.end)   return false;
     if (a.concurrency != b.concurrency || a.throttleMs != b.throttleMs) return false;
+    if (a.retries != b.retries) return false;
     if (a.rules.size() != b.rules.size()) return false;
     for (int i = 0; i < a.rules.size(); ++i)
         if (a.rules[i].op != b.rules[i].op || a.rules[i].arg != b.rules[i].arg) return false;
@@ -74,6 +75,7 @@ int main(int argc, char **argv) {
     run.config.grepExtract.end   = QStringLiteral(">>");
     run.config.concurrency = 12;
     run.config.throttleMs = 250;
+    run.config.retries = 3;
 
     ResultRow r1;
     r1.id = 1;
@@ -121,6 +123,7 @@ int main(int argc, char **argv) {
         chk("empty object -> no rows",       empty.rows.isEmpty());
         chk("empty object -> default port",  empty.config.port == 443);
         chk("empty object -> default tls",   empty.config.tls == true);
+        chk("empty object -> default retries", empty.config.retries == 0);
         chk("empty object -> version",       empty.version == kFormatVersion);
     }
     {

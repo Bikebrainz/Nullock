@@ -2300,6 +2300,15 @@ function IntruderTab({ intruder, dispatch }) {
             title="Inter-dispatch delay in milliseconds (0 = as fast as concurrency allows)"
           />
         </div>
+        <div className="fld" style={{ flex: "0 0 92px" }}>
+          <span className="pre">RETRIES</span>
+          <input
+            type="number" min="0" max="5"
+            value={intruder.retries ?? 0}
+            onChange={e => dispatch({ type: "intruder-set", payload: { retries: parseInt(e.target.value, 10) || 0 }})}
+            title="Resend a request on a network-level failure (connect refused/timeout/reset), never on an HTTP error status (backend clamps 0..5)"
+          />
+        </div>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--fz-xs)", letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)" }}
                title="Follow 3xx responses after each fired request, so the graded row (status/length/grep) reflects the FINAL page. On-site: same host only. In-scope: Target scope. Always: any host.">
           FOLLOW

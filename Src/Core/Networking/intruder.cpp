@@ -249,6 +249,10 @@ void Intruder::setThrottleMs(int ms) {
     m_throttleMs = IntruderPool::clampThrottleMs(ms);
 }
 
+void Intruder::setMaxRetries(int n) {
+    m_maxRetries = IntruderPool::clampRetries(n);
+}
+
 void Intruder::setFollowRedirects(int policy) {
     if (policy < RedirectLogic::FollowNever || policy > RedirectLogic::FollowAlways)
         policy = RedirectLogic::FollowNever;
@@ -310,6 +314,7 @@ QByteArray Intruder::saveRun() const {
     c.grepExtract     = m_grepExtract;
     c.concurrency     = m_maxConcurrency;
     c.throttleMs      = m_throttleMs;
+    c.retries         = m_maxRetries;
 
     for (const IntruderAttack *a : m_attacks) {
         IntruderPersist::ResultRow r;
@@ -351,6 +356,7 @@ bool Intruder::loadRun(const QByteArray &bytes) {
     m_grepExtract = c.grepExtract;
     setMaxConcurrency(c.concurrency);
     setThrottleMs(c.throttleMs);
+    setMaxRetries(c.retries);
 
     // Rebuild the result rows.
     beginResetModel();
@@ -485,6 +491,7 @@ void Intruder::start() {
     // so force concurrency 1 for it regardless of the pool setting.
     const int concurrencyCopy = recursive.enabled ? 1 : m_maxConcurrency;
     const int throttleCopy = m_throttleMs;
+    const int retriesCopy = m_maxRetries;
     const int followPolicyCopy = m_followPolicy;
     const bool followCookiesCopy = m_followCookies;
     const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
@@ -493,12 +500,12 @@ void Intruder::start() {
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
-                                  concurrencyCopy, throttleCopy,
+                                  concurrencyCopy, throttleCopy, retriesCopy,
                                   followPolicyCopy, followCookiesCopy, inScopeCopy,
                                   recursiveCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
-                  concurrencyCopy, throttleCopy,
+                  concurrencyCopy, throttleCopy, retriesCopy,
                   followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy);
     });
 }
@@ -510,7 +517,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const QStringList &grepMatch,
                          bool grepReflection,
                          const IntruderGrep::ExtractSpec &grepExtract,
-                         int concurrency, int throttleMs,
+                         int concurrency, int throttleMs, int retries,
                          int followPolicy, bool followCookies,
                          std::function<bool(const QString &)> inScope,
                          const RecursiveSpec &recursive) {
@@ -531,7 +538,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // one instance across tasks. Grep runs here (bounded, off the GUI thread);
     // the queued callback only assigns the finished values.
     auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
-                    grepMatch, grepReflection, grepExtract,
+                    grepMatch, grepReflection, grepExtract, retries,
                     followPolicy, followCookies, inScope](int row, const QStringList &combo) -> QString {
         HttpClient client;
 
@@ -549,6 +556,16 @@ void Intruder::runWorker(const QList<QStringList> &combos,
             m_sessionRules->applyToRequestBytes(reqBytes, host, SessionRulesLogic::ToolIntruder);
         auto result = client.send(host, static_cast<quint16>(port),
                                   useTls, reqBytes);
+        // Resource-pool "retries on network failure" (Burp-parity): only a
+        // NETWORK-level failure (connect refused/timeout/reset -- !result.ok)
+        // is retried, never an HTTP error status (a 500 is a real, meaningful
+        // result, not a transport failure). Each retry gets a fresh HttpClient
+        // send on the SAME thread -- fireOne already runs off the GUI thread,
+        // so this cannot block dispatch of other in-flight requests. Stops
+        // early on m_stopRequested so a cancelled attack doesn't burn through
+        // every retry against a dead target before honoring stop().
+        for (int attempt = 0; !result.ok && attempt < retries && !m_stopRequested; ++attempt)
+            result = client.send(host, static_cast<quint16>(port), useTls, reqBytes);
 
         // Follow 3xx redirects if configured -- the recorded result (status /
         // length / grep) becomes the FINAL hop's, so grep matches the page the

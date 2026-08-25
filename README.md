@@ -102,7 +102,8 @@ Repeater          Multi-tab, send-from-history, edit-and-resend, request chains,
 Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mode picker with a
                   per-position payload-set editor, a live-preview payload generator (numbers/dates/
                   brute-forcer/null/frobber/blocks/casemod/charsub/bitflip), a payload-processing rule chain (prefix/suffix/case/reverse/
-                  match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware,
+                  match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware
+                  (concurrency/throttle plus a configurable retry count on network failure),
                   same FOLLOW/COOKIES redirect-chasing controls as Repeater so a bruteforce behind
                   a login/redirect grades against the real final page instead of a wall of 302s
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched

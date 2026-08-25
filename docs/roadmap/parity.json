@@ -688,12 +688,18 @@
     {
       "area": "intruder",
       "feature": "Resource pool: retries on network failure",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "A failed/timed-out request is not retried; no configurable retry count.",
-      "why": "Re-read fireOne; on failure it records errorMessage and completes the row. The only resend is the 429 Retry-After back-off, not a general retry.",
-      "evidence": "intruder.cpp:466-480 429 back-off only; :481-499 on any other outcome records size/err and marks complete \u2014 no retry counter or pause-on-failure."
+      "gap": "None -- a RETRIES field (0..5, backend-clamped) in the Intruder target row lets the operator configure a resend count for a NETWORK-level failure only (connect refused/timeout/reset); an HTTP error status is never retried since it's a real result, not a transport failure. Resent on the same pool thread so it never blocks other in-flight requests, and stops early on Stop so a cancelled attack doesn't burn through every retry against a dead target first.",
+      "why": "Closed 2026-08-25: added Intruder::setMaxRetries/maxRetries (clamped via a new IntruderPool::clampRetries, 0..kMaxRetries=5) threaded through runWorker/fireOne -- on !result.ok (network failure, not an HTTP status), fireOne re-sends via the same HttpClient up to `retries` more times, checking m_stopRequested between attempts. Wired through /api/intruder/set{retries} and the snapshot's intruder.retries field, a RETRIES number input next to CONC/THROTTLE\u00b7MS in the Intruder target row (ui-v2/tabs.jsx), and saveRun/loadRun (IntruderPersist::RunConfig.retries) so a saved attack round-trips it too.",
+      "evidence": "Src/Core/Networking/intruder_pool_logic.{hpp,cpp} kMaxRetries/clampRetries; Src/Core/Networking/intruder.{hpp,cpp} m_maxRetries/setMaxRetries/maxRetries, runWorker's new `retries` parameter, fireOne's retry loop around client.send, saveRun/loadRun; Src/Core/Networking/intruder_persist_logic.{hpp,cpp} RunConfig.retries; Src/BackEnd/Control/control_server.cpp intruder[\"retries\"] snapshot field + set-handler's bodyJson.contains(\"retries\") branch; ui-v2/tabs.jsx RETRIES field in IntruderTab's pool-config row.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "PENDING",
+        "note": "Intruder resource-pool batch: RETRIES (0..5, network-failure-only resend, HTTP status codes never retried) closes the last 'hours'-effort intruder pool-config gap."
+      }
     },
     {
       "area": "intruder",
