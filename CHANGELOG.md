@@ -11,6 +11,20 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Configuration import/export as JSON.** `GET /api/config/export` emits a
+  portable, versioned document &mdash; `{format:"nullock-config", version,
+  sections}` &mdash; carrying scope (in/out/notes/advanced), match&amp;replace
+  rules, session-handling rules and intercept rules, so a tuned setup can be
+  handed to a teammate or checked into a repo. `POST /api/config/import`
+  validates the envelope (refusing a non-Nullock document and one from a
+  newer major version) and applies each section it carries through the EXACT
+  setters behind the live `/api/scope`, `/api/rules`, `/api/session-rules` and
+  `/api/intercept/rules` editors &mdash; import and the editors are one code
+  path. The envelope logic is pure and mutation-proven (version-gate and
+  format-gate mutants each fail only their targeted case). Still partial vs
+  Burp until a named-preset *configuration library* (a shelf of switchable
+  named configs) is built. (Roadmap: platform &mdash; configuration
+  import/export.)
 - **OAST correlation persists across restarts.** The Collaborator-style OAST
   correlator now saves its token registry (token &rarr; originating row/param/probe)
   and its already-confirmed set to a file under the app data dir (atomic write on

@@ -387,6 +387,44 @@ int main(int argc, char **argv) {
         chk("xml-report: fixed=true surfaces as attribute", fx.contains(" fixed=\"true\""));
     }
 
+    // ===== configuration import/export envelope (roadmap: platform) =====
+    {
+        QJsonObject sections{
+            { "scope", QJsonObject{ { "in", QJsonArray{ "example.test" } } } },
+            { "sessionRules", QJsonArray{ QJsonObject{ { "op", "cookie-jar" } } } },
+        };
+        const QJsonObject doc = buildConfigDocument(sections);
+        chk("config: document carries the format tag",
+            doc.value("format").toString() == "nullock-config");
+        chk("config: document carries the current version",
+            doc.value("version").toInt() == kConfigVersion);
+
+        // Round-trip: a built document validates and its sections extract back.
+        QString err = "x";
+        chk("config: a freshly-built document validates", validateConfigDocument(doc, err) && err.isEmpty());
+        chk("config: section extracts the scope back",
+            configSection(doc, "scope").value("in").toArray().first().toString() == "example.test");
+        chk("config: section names list both sections",
+            configSectionNames(doc).contains("scope") && configSectionNames(doc).contains("sessionRules"));
+        chk("config: an absent section is an empty object",
+            configSection(doc, "nope").isEmpty());
+
+        // Validation rejects: wrong format, no version, a NEWER version, no sections.
+        chk("config: wrong format is rejected",
+            !validateConfigDocument(QJsonObject{ { "format", "burp" }, { "version", 1 },
+                                                 { "sections", QJsonObject{} } }, err));
+        chk("config: missing version is rejected",
+            !validateConfigDocument(QJsonObject{ { "format", "nullock-config" },
+                                                 { "sections", QJsonObject{} } }, err));
+        chk("config: a newer-major version is refused (not half-applied)",
+            !validateConfigDocument(QJsonObject{ { "format", "nullock-config" },
+                                                 { "version", kConfigVersion + 1 },
+                                                 { "sections", QJsonObject{} } }, err));
+        chk("config: missing sections object is rejected",
+            !validateConfigDocument(QJsonObject{ { "format", "nullock-config" },
+                                                 { "version", 1 } }, err));
+    }
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

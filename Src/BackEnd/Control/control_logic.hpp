@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 // Pure pre-dispatch security-gate logic for ControlServer::handle(), split out
 // of control_server.cpp so a unit test can link it against Qt6::Core alone (the
@@ -168,5 +170,18 @@ bool searchTruncated(int scanned, int total);
 // SINGLE confinement guard every attacker-path file op in the control server
 // routes through -- the static file server AND the project-template loader.
 QString safeJoin(const QString &dir, const QString &rel);
+
+// ---- Configuration import/export document envelope (pure) -----------------
+// Portable config document so a tuned setup can be shared with a teammate or
+// checked into a repo. buildConfigDocument wraps a {name -> section-JSON} map
+// with a format tag + version. validateConfigDocument accepts only our format
+// and a version <= the current one (a document from a NEWER major version is
+// refused rather than half-applied). configSection extracts one section (empty
+// object if absent); configSectionNames lists the sections present.
+constexpr int kConfigVersion = 1;
+QJsonObject buildConfigDocument(const QJsonObject &sections);
+bool        validateConfigDocument(const QJsonObject &doc, QString &error);
+QJsonObject configSection(const QJsonObject &doc, const QString &name);
+QStringList configSectionNames(const QJsonObject &doc);
 
 } // namespace Nullock::Control::ControlLogic

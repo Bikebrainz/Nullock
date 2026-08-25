@@ -245,4 +245,48 @@ QString sarifLevelForSeverity(const QString &sev) {
     return QStringLiteral("warning");   // medium / unknown / empty
 }
 
+// ---- Configuration import/export document envelope ------------------------
+QJsonObject buildConfigDocument(const QJsonObject &sections) {
+    return QJsonObject{
+        { QStringLiteral("format"),   QStringLiteral("nullock-config") },
+        { QStringLiteral("version"),  kConfigVersion },
+        { QStringLiteral("sections"), sections },
+    };
+}
+
+bool validateConfigDocument(const QJsonObject &doc, QString &error) {
+    if (doc.value(QStringLiteral("format")).toString() != QLatin1String("nullock-config")) {
+        error = QStringLiteral("not a Nullock configuration file (missing/!= format tag)");
+        return false;
+    }
+    // Absent version = malformed; a version NEWER than we understand is refused
+    // rather than half-applied (forward-incompat safety).
+    const QJsonValue ver = doc.value(QStringLiteral("version"));
+    if (!ver.isDouble()) {
+        error = QStringLiteral("configuration file has no numeric version");
+        return false;
+    }
+    if (ver.toInt() > kConfigVersion) {
+        error = QStringLiteral("configuration is from a newer version of Nullock "
+                               "(v%1 > v%2); upgrade to import it")
+                    .arg(ver.toInt()).arg(kConfigVersion);
+        return false;
+    }
+    if (!doc.value(QStringLiteral("sections")).isObject()) {
+        error = QStringLiteral("configuration file has no sections object");
+        return false;
+    }
+    error.clear();
+    return true;
+}
+
+QJsonObject configSection(const QJsonObject &doc, const QString &name) {
+    return doc.value(QStringLiteral("sections")).toObject()
+              .value(name).toObject();
+}
+
+QStringList configSectionNames(const QJsonObject &doc) {
+    return doc.value(QStringLiteral("sections")).toObject().keys();
+}
+
 } // namespace Nullock::Control::ControlLogic

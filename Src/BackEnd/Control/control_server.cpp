@@ -1775,6 +1775,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/oast/dns/poll"
             || p == "/api/payloads"
             || p == "/api/openapi/export"
+            || p == "/api/config/export"
             || p == "/api/cookies"
             || p == "/api/project/templates"
             || p == "/api/intruder/rule-ops"
@@ -3387,6 +3388,90 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const int to   = bodyJson.value("to").toInt(-1);
         bool ok = m_wiring.projectStore && m_wiring.projectStore->moveRule(from, to);
         return okJson({{ "ok", ok }});
+    }
+
+    // GET /api/config/export -> a portable, versioned config document (scope,
+    // match&replace rules, session-handling rules, intercept rules) a teammate
+    // can import or check into a repo. POST /api/config/import { ...document }
+    // validates and applies the sections it carries. Import reuses the exact
+    // setters behind /api/scope, /api/rules, /api/session-rules and
+    // /api/intercept/rules -- so import and the live editors are one code path.
+    if (path == "/api/config/export") {
+        QJsonObject sections;
+        if (m_wiring.projectStore) {
+            const auto &md = m_wiring.projectStore->metadata();
+            QJsonArray inA, outA;
+            for (const QString &s : md.inScope)    inA.append(s);
+            for (const QString &s : md.outOfScope) outA.append(s);
+            sections["scope"] = QJsonObject{
+                { "in", inA }, { "out", outA }, { "notes", md.notes },
+                { "advanced", m_wiring.projectStore->advancedScope() },
+            };
+            QJsonArray rulesA;
+            for (const auto &r : m_wiring.projectStore->rules())
+                rulesA.append(QJsonObject{
+                    { "enabled", r.enabled }, { "name", r.name }, { "hostGlob", r.hostGlob },
+                    { "section", static_cast<int>(r.section) }, { "find", r.find },
+                    { "replace", r.replace }, { "caseInsensitive", r.caseInsensitive },
+                    { "literal", r.literal }, { "comment", r.comment },
+                });
+            sections["matchReplaceRules"] = rulesA;
+        }
+        if (m_wiring.sessionRules)
+            sections["sessionRules"] =
+                Nullock::Core::sessionRulesToJson(m_wiring.sessionRules->rules());
+        if (m_wiring.intercept)
+            sections["interceptRules"] = Nullock::Proxy::InterceptLogic::interceptRulesToJson(
+                m_wiring.intercept->interceptRules());
+        return httpResponse(200, "application/json; charset=utf-8",
+            QJsonDocument(Nullock::Control::ControlLogic::buildConfigDocument(sections)).toJson());
+    }
+
+    if (path == "/api/config/import") {
+        QString cfgErr;
+        if (!Nullock::Control::ControlLogic::validateConfigDocument(bodyJson, cfgErr))
+            return okJson({{ "ok", false }, { "error", cfgErr }});
+        const QJsonObject secs = bodyJson.value("sections").toObject();
+        QJsonArray applied;
+        const QJsonObject scopeSec = secs.value("scope").toObject();
+        if (!scopeSec.isEmpty() && m_wiring.projectStore) {
+            if (scopeSec.contains("in")) {
+                QStringList in;
+                for (const QJsonValue &v : scopeSec.value("in").toArray()) in << v.toString();
+                m_wiring.projectStore->setInScope(in);
+            }
+            if (scopeSec.contains("out")) {
+                QStringList out;
+                for (const QJsonValue &v : scopeSec.value("out").toArray()) out << v.toString();
+                m_wiring.projectStore->setOutOfScope(out);
+            }
+            if (scopeSec.contains("notes"))
+                m_wiring.projectStore->setNotes(scopeSec.value("notes").toString());
+            if (scopeSec.contains("advanced"))
+                m_wiring.projectStore->setAdvancedScope(scopeSec.value("advanced").toArray());
+            applied.append("scope");
+        }
+        if (secs.contains("matchReplaceRules") && m_wiring.projectStore) {
+            QList<Nullock::Proxy::MatchReplaceRule> mr;
+            for (const QJsonValue &rv : secs.value("matchReplaceRules").toArray())
+                mr.append(ruleFromJson(rv.toObject()));
+            m_wiring.projectStore->setRules(mr);
+            applied.append("matchReplaceRules");
+        }
+        if (secs.contains("sessionRules") && m_wiring.sessionRules) {
+            const QJsonArray a = secs.value("sessionRules").toArray();
+            m_wiring.sessionRules->setRules(Nullock::Core::sessionRulesFromJson(a));
+            if (m_wiring.projectStore) m_wiring.projectStore->setSessionRulesJson(a);
+            applied.append("sessionRules");
+        }
+        if (secs.contains("interceptRules") && m_wiring.intercept) {
+            const QJsonArray a = secs.value("interceptRules").toArray();
+            m_wiring.intercept->setInterceptRules(
+                Nullock::Proxy::InterceptLogic::interceptRulesFromJson(a));
+            if (m_wiring.projectStore) m_wiring.projectStore->setInterceptRules(a);
+            applied.append("interceptRules");
+        }
+        return okJson({{ "ok", true }, { "applied", applied }});
     }
 
     if (path == "/api/repeater/set") {
