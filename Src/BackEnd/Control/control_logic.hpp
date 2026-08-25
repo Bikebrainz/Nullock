@@ -2,6 +2,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -110,6 +111,39 @@ int severityRank(const QString &sev);
 // gate failing on level=="error" catches the MOST severe issues -- a critical
 // must NOT map to "warning"), "note" for low/info, "warning" for medium/unknown.
 QString sarifLevelForSeverity(const QString &sev);
+
+// --- Report customisation: issue-selection filter ------------------------
+// Rank a Burp-style confidence string so a report can be filtered to a minimum
+// confidence. Covers the enriched taxonomy (confirmed > firm > tentative) AND
+// the raw scanner vocabulary (high/medium/low), plus "possible" (== tentative):
+//   confirmed/certain = 4, firm/high = 3, medium = 2,
+//   tentative/possible/low = 1, unknown/empty = 0.
+int confidenceRank(const QString &conf);
+
+// Filter a findings array (the /api/report/json finding shape) down to the
+// issues a report should include -- Burp's "select which issues to include,
+// severity/confidence filter". A finding is KEPT iff ALL hold:
+//   * severityRank(severity)   >= minSeverityRank   (0 keeps everything),
+//   * minConfidenceRank == 0 OR confidenceRank(confidence) >= minConfidenceRank,
+//   * includeKinds is empty OR the finding's kind is in includeKinds,
+//   * the finding's kind is NOT in excludeKinds,
+//   * includeFixed is true OR the finding is not marked "fixed".
+// Pure + deterministic -> unit-tested directly. Order is preserved.
+QJsonArray filterFindings(const QJsonArray &findings,
+                          int minSeverityRank, int minConfidenceRank,
+                          const QSet<QString> &includeKinds,
+                          const QSet<QString> &excludeKinds,
+                          bool includeFixed);
+
+// Parse a report endpoint's query string into filterFindings criteria and apply
+// it. Recognised query items (all optional):
+//   minSeverity=info|low|medium|high|critical    -- keep this severity and above
+//   minConfidence=tentative|firm|confirmed       -- (also low/medium/high)
+//   includeKinds=a,b,c    excludeKinds=x,y        -- comma-separated finding kinds
+//   includeFixed=true|false (default true)        -- drop findings marked fixed
+// Kept in ControlLogic (Qt6::Core-linkable, QUrlQuery is QtCore) so it is
+// unit-tested with the pure filter rather than reasoned about in the server.
+QJsonArray applyReportFilter(const QJsonArray &findings, const class QUrlQuery &q);
 
 // --- Outbound request-builder CR/LF guard --------------------------------
 // A request-line / header component (path, query, param name) built from a

@@ -390,6 +390,13 @@ QJsonObject computeOwaspCoverage(const QList<Nullock::Core::Finding> &findings) 
     };
 }
 
+// Report customisation: apply the issue-selection filter carried by a report
+// endpoint's query string. Recognised (all optional):
+//   minSeverity=info|low|medium|high|critical    -- keep this severity and above
+//   minConfidence=tentative|firm|confirmed       -- (also low/medium/high)
+//   includeKinds=a,b,c    excludeKinds=x,y        -- comma-separated finding kinds
+//   includeFixed=true|false (default true)        -- drop findings marked fixed
+// Delegates to the pure ControlLogic::filterFindings so the rule is unit-tested.
 // Shared "safe identification" battery for one web target: tech fingerprint
 // (+CVE correlation), security-header/CSP audit, HTTP-method audit, and (for
 // https) TLS inspection. Emits each finding into the passive scanner and
@@ -5932,6 +5939,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 { "confidence", f.confidence },
             });
         }
+        // Report customisation: the issue LIST honours the query filter
+        // (minSeverity/minConfidence/includeKinds/excludeKinds/includeFixed),
+        // but posture/coverage/inventory stay over the FULL finding set -- a
+        // report-view filter must not be able to inflate the engagement's grade.
+        const QUrlQuery rq(query);
+        const QJsonArray included = ControlLogic::applyReportFilter(findingsArr, rq);
+        const bool filtered = included.size() != findingsArr.size();
 
         return httpJson(200, QJsonObject{
             { "ok", true },
@@ -5943,8 +5957,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             }},
             { "coverage", computeOwaspCoverage(findings) },
             { "inventory", computeInventory(portResults, findings) },
-            { "findingsTotal", findings.size() },
-            { "findings", findingsArr },
+            { "findingsTotal", included.size() },      // issues INCLUDED after filtering
+            { "findingsTotalAll", findings.size() },   // full engagement finding count
+            { "filtered", filtered },
+            { "findings", included },
         });
     }
 
@@ -5973,8 +5989,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             });
         }
 
+        // Report customisation: XML is a pure issue report, so the same query
+        // filter selects which issues (and thus the issueCount) it carries.
+        const QUrlQuery rq(query);
+        const QJsonArray included = ControlLogic::applyReportFilter(findingsArr, rq);
         const QString generatedIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-        const QString xml = ControlLogic::findingsJsonToXml(findingsArr, proj, generatedIso);
+        const QString xml = ControlLogic::findingsJsonToXml(included, proj, generatedIso);
         return httpResponse(200, "application/xml; charset=utf-8", xml.toUtf8());
     }
 

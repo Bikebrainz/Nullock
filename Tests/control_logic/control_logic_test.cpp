@@ -17,7 +17,9 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
+#include <QUrlQuery>
 
 #include <cstdio>
 
@@ -423,6 +425,108 @@ int main(int argc, char **argv) {
         chk("config: missing sections object is rejected",
             !validateConfigDocument(QJsonObject{ { "format", "nullock-config" },
                                                  { "version", 1 } }, err));
+    }
+
+    // ===== report customisation: issue-selection filter =================
+    {
+        // confidence ranking spans both the enriched (confirmed>firm>tentative)
+        // and raw (high/medium/low) vocabularies, with a clean total order.
+        chk("conf-rank: confirmed > firm > medium > tentative > unknown",
+            confidenceRank("confirmed") > confidenceRank("firm")
+            && confidenceRank("firm") > confidenceRank("medium")
+            && confidenceRank("medium") > confidenceRank("tentative")
+            && confidenceRank("tentative") > confidenceRank("bogus"));
+        chk("conf-rank: certain==confirmed, high==firm, possible==tentative, low==tentative",
+            confidenceRank("certain") == confidenceRank("confirmed")
+            && confidenceRank("high") == confidenceRank("firm")
+            && confidenceRank("possible") == confidenceRank("tentative")
+            && confidenceRank("low") == confidenceRank("tentative"));
+        chk("conf-rank: case-insensitive + empty -> 0",
+            confidenceRank("CONFIRMED") == 4 && confidenceRank("") == 0);
+
+        auto F = [](const char *sev, const char *kind, const char *conf, bool fixed) {
+            return QJsonObject{ { "severity", sev }, { "kind", kind },
+                                { "confidence", conf }, { "fixed", fixed } };
+        };
+        QJsonArray all{
+            F("critical", "sqli",       "confirmed", false),
+            F("high",     "xss",        "firm",      false),
+            F("medium",   "cors",       "tentative", false),
+            F("low",      "cookie",     "firm",      true),
+            F("info",     "server-hdr", "tentative", false),
+        };
+        const QSet<QString> none;
+
+        // No filter -> everything, order preserved.
+        chk("filter: no criteria keeps all findings",
+            filterFindings(all, 0, 0, none, none, true).size() == 5);
+        chk("filter: order preserved (first is the critical sqli)",
+            filterFindings(all, 0, 0, none, none, true)
+                .at(0).toObject().value("kind").toString() == "sqli");
+
+        // Severity floor: medium+ keeps critical/high/medium (3).
+        chk("filter: minSeverity=medium keeps 3 (critical/high/medium)",
+            filterFindings(all, severityRank("medium"), 0, none, none, true).size() == 3);
+        chk("filter: minSeverity=critical keeps only the critical",
+            filterFindings(all, severityRank("critical"), 0, none, none, true).size() == 1);
+
+        // Confidence floor: firm+ drops the two tentative (cors, server-hdr).
+        chk("filter: minConfidence=firm drops tentative findings (keeps 3)",
+            filterFindings(all, 0, confidenceRank("firm"), none, none, true).size() == 3);
+        chk("filter: minConfidence=confirmed keeps only the confirmed",
+            filterFindings(all, 0, confidenceRank("confirmed"), none, none, true).size() == 1);
+
+        // Kind include / exclude.
+        chk("filter: includeKinds={xss,sqli} keeps exactly those two",
+            filterFindings(all, 0, 0, QSet<QString>{ "xss", "sqli" }, none, true).size() == 2);
+        chk("filter: excludeKinds={server-hdr} drops it (keeps 4)",
+            filterFindings(all, 0, 0, none, QSet<QString>{ "server-hdr" }, true).size() == 4);
+        chk("filter: exclude beats include when a kind is in both",
+            filterFindings(all, 0, 0, QSet<QString>{ "xss", "sqli" },
+                           QSet<QString>{ "sqli" }, true).size() == 1);
+
+        // includeFixed=false drops the one fixed finding (the low cookie).
+        chk("filter: includeFixed=false drops the fixed finding (keeps 4)",
+            filterFindings(all, 0, 0, none, none, false).size() == 4);
+        chk("filter: includeFixed=true keeps the fixed finding",
+            filterFindings(all, 0, 0, none, none, true).size() == 5);
+
+        // Combined criteria intersect (AND).
+        chk("filter: high+ AND firm+ AND not-fixed keeps sqli+xss",
+            filterFindings(all, severityRank("high"), confidenceRank("firm"),
+                           none, none, false).size() == 2);
+
+        // applyReportFilter: query-string glue -> the pure filter. Locks the
+        // recognised param NAMES (a rename would break the report endpoints).
+        chk("query: no query items keeps all",
+            applyReportFilter(all, QUrlQuery()).size() == 5);
+        {
+            QUrlQuery q; q.addQueryItem("minSeverity", "medium");
+            chk("query: minSeverity=medium keeps 3", applyReportFilter(all, q).size() == 3);
+        }
+        {
+            QUrlQuery q; q.addQueryItem("minConfidence", "firm");
+            chk("query: minConfidence=firm keeps 3", applyReportFilter(all, q).size() == 3);
+        }
+        {
+            QUrlQuery q; q.addQueryItem("includeKinds", "xss,sqli");
+            chk("query: includeKinds=xss,sqli keeps 2", applyReportFilter(all, q).size() == 2);
+        }
+        {
+            QUrlQuery q; q.addQueryItem("excludeKinds", "server-hdr,cors");
+            chk("query: excludeKinds=server-hdr,cors keeps 3", applyReportFilter(all, q).size() == 3);
+        }
+        {
+            QUrlQuery q; q.addQueryItem("includeFixed", "false");
+            chk("query: includeFixed=false drops the fixed finding (4)",
+                applyReportFilter(all, q).size() == 4);
+        }
+        {
+            QUrlQuery q; q.addQueryItem("minSeverity", "high");
+            q.addQueryItem("includeFixed", "false");
+            chk("query: combined minSeverity=high + includeFixed=false keeps 2",
+                applyReportFilter(all, q).size() == 2);
+        }
     }
 
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);

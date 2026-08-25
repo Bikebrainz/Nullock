@@ -3239,12 +3239,12 @@
     {
       "area": "platform",
       "feature": "Reporting: report customisation (select which issues to include, severity/confidence filter, detail level, custom title/appendix, request-response inclusion)",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "All-or-nothing fixed template. Cannot exclude informational noise, pick issues, set a client name or title, or embed full request/response evidence. Burp's report wizard is a four-step dialog.",
-      "why": "Confirmed by reading the ENTIRE /api/report/html handler (control_server.cpp:5047-5217), not just its head. It reads no bodyJson field and no query parameter anywhere in its body \u2014 the only inputs are the project metadata and the full findings list. The Markdown builder is the same. Confirmed absent.",
-      "evidence": "control_server.cpp:5059 `if (m_wiring.scanner) findings = m_wiring.scanner->findings(0);` (0 = all), and the entire handler through :5217 contains no `bodyJson.value(...)` or `QUrlQuery` read. Markdown builder identical at :4983 `const auto findings = m_wiring.scanner->findings(0);`. Evidence is truncated unconditionally at :5196 `esc(f.evidence.left(300))` \u2014 no full request/response option."
+      "gap": "Issue SELECTION is now done for the machine-readable reports: GET /api/report/json and /api/report/xml take minSeverity, minConfidence, includeKinds, excludeKinds and includeFixed query params and emit only the issues that pass (report/json also reports findingsTotal vs findingsTotalAll + a filtered flag; posture/coverage stay over the full set so a view filter can't inflate the grade). Still partial: the HTML and Markdown report builders don't honour the filter yet, and there is no detail-level toggle, custom title/client-name/appendix, or full request-response evidence embedding.",
+      "why": "Implemented + mutation-proven. The filter is a pure ControlLogic::filterFindings (severity floor via severityRank, confidence floor via a new confidenceRank spanning confirmed/firm/tentative AND high/medium/low, kind include/exclude, includeFixed) plus ControlLogic::applyReportFilter that parses the query string; both live in control_logic so they link Qt6::Core alone and are unit-tested. (The helpers were deliberately kept OUT of control_server.cpp's anonymous namespace: adding them there reproducibly ICE'd MSVC 14.38 (C1001) on the next function.)",
+      "evidence": "control_logic.cpp filterFindings + confidenceRank + applyReportFilter; control_server.cpp /api/report/json and /api/report/xml call ControlLogic::applyReportFilter(findingsArr, QUrlQuery(query)). Tests/control_logic/control_logic_test.cpp (219 pass): severity/confidence floors, include/exclude (exclude beats include), includeFixed, AND-combination, confidence-rank ordering, and the query-param glue names; M1 (defeat exclude) + M2 (defeat includeFixed) each fail only their targeted case. Live e2e: report/json?minSeverity=high -> 718/1000 (filtered=true); report/xml?minSeverity=critical -> issueCount 413."
     },
     {
       "area": "platform",

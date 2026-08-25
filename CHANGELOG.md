@@ -11,6 +11,21 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Reporting: issue-selection filter (report customisation).** The
+  machine-readable reports now take a customisation filter on the query string:
+  `GET /api/report/json` and `GET /api/report/xml` accept `minSeverity`,
+  `minConfidence`, `includeKinds`, `excludeKinds` and `includeFixed`, and emit
+  only the issues that pass &mdash; so a report can drop informational noise or
+  narrow to, say, high-and-above confirmed SQLi. `report/json` additionally
+  reports `findingsTotal` (included) vs `findingsTotalAll` (the full engagement
+  count) and a `filtered` flag, and deliberately keeps posture/coverage/inventory
+  over the FULL finding set so a report-view filter can never inflate the
+  engagement's grade. The filter and its confidence ranking (spanning the
+  enriched `confirmed`/`firm`/`tentative` taxonomy and the raw
+  `high`/`medium`/`low` one) are pure, unit-tested and mutation-proven helpers in
+  `control_logic`. (Roadmap: platform &mdash; report customisation; still partial
+  pending the HTML/Markdown builders honouring the filter, a detail-level toggle,
+  a custom title/appendix, and full request-response evidence embedding.)
 - **Sequencer: analysis summary with a confidence level and amount of data
   analyzed.** Token analysis now emits a `summary` object headlining the result
   the way Burp's Sequencer does: the verdict and score, a **confidence**

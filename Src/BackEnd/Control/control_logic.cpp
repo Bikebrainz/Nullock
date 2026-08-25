@@ -5,6 +5,7 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
+#include <QUrlQuery>
 
 namespace Nullock::Control::ControlLogic {
 
@@ -243,6 +244,59 @@ QString sarifLevelForSeverity(const QString &sev) {
     if (s == QLatin1String("low") || s == QLatin1String("info"))
         return QStringLiteral("note");
     return QStringLiteral("warning");   // medium / unknown / empty
+}
+
+int confidenceRank(const QString &conf) {
+    const QString c = conf.trimmed().toLower();
+    if (c == QLatin1String("confirmed") || c == QLatin1String("certain")) return 4;
+    if (c == QLatin1String("firm")      || c == QLatin1String("high"))    return 3;
+    if (c == QLatin1String("medium"))                                     return 2;
+    if (c == QLatin1String("tentative") || c == QLatin1String("possible")
+        || c == QLatin1String("low"))                                     return 1;
+    return 0;   // unknown / empty
+}
+
+QJsonArray filterFindings(const QJsonArray &findings,
+                          int minSeverityRank, int minConfidenceRank,
+                          const QSet<QString> &includeKinds,
+                          const QSet<QString> &excludeKinds,
+                          bool includeFixed) {
+    QJsonArray out;
+    for (const QJsonValue &v : findings) {
+        const QJsonObject f = v.toObject();
+        if (severityRank(f.value(QLatin1String("severity")).toString()) < minSeverityRank)
+            continue;
+        if (minConfidenceRank > 0
+            && confidenceRank(f.value(QLatin1String("confidence")).toString()) < minConfidenceRank)
+            continue;
+        const QString kind = f.value(QLatin1String("kind")).toString();
+        if (!includeKinds.isEmpty() && !includeKinds.contains(kind)) continue;
+        if (excludeKinds.contains(kind)) continue;
+        if (!includeFixed && f.value(QLatin1String("fixed")).toBool()) continue;
+        out.append(f);
+    }
+    return out;
+}
+
+QJsonArray applyReportFilter(const QJsonArray &findings, const QUrlQuery &q) {
+    const int minSev = q.hasQueryItem(QStringLiteral("minSeverity"))
+        ? severityRank(q.queryItemValue(QStringLiteral("minSeverity"))) : 0;
+    const int minConf = q.hasQueryItem(QStringLiteral("minConfidence"))
+        ? confidenceRank(q.queryItemValue(QStringLiteral("minConfidence"))) : 0;
+    auto toSet = [](const QString &csv) {
+        QSet<QString> s;
+        const QStringList parts = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString k = part.trimmed();
+            if (!k.isEmpty()) s.insert(k);
+        }
+        return s;
+    };
+    const QSet<QString> inc = toSet(q.queryItemValue(QStringLiteral("includeKinds")));
+    const QSet<QString> exc = toSet(q.queryItemValue(QStringLiteral("excludeKinds")));
+    const bool includeFixed = q.queryItemValue(QStringLiteral("includeFixed"))
+                                  .compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
+    return filterFindings(findings, minSev, minConf, inc, exc, includeFixed);
 }
 
 // ---- Configuration import/export document envelope ------------------------
