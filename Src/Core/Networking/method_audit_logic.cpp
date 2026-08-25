@@ -112,4 +112,35 @@ bool traceEchoed(const QString &body, const QString &method) {
         && body.contains(QLatin1String("User-Agent: Nullock/method-audit"), Qt::CaseInsensitive);
 }
 
+QList<Finding> classifyMethods(const QStringList &allowed,
+                               bool traceEcho, bool maxFwdEcho, bool trackEcho) {
+    QList<Finding> out;
+    const QStringList dangerousWrite = dangerousWriteMethods(allowed);
+    const QStringList dangerousDav   = dangerousWebdavMethods(allowed);
+    // Advertised in the Allow header, NOT confirmed callable/unauthenticated
+    // (the probe never issues a mutating method) -> reconnaissance severity.
+    if (!dangerousWrite.isEmpty())
+        out.append({ QStringLiteral("dangerous-http-methods"), QStringLiteral("info"),
+                     QStringLiteral("server advertises write methods in its Allow header (not confirmed "
+                                    "callable/unauthenticated): ") + dangerousWrite.join(QStringLiteral(", ")) });
+    if (!dangerousDav.isEmpty())
+        out.append({ QStringLiteral("webdav-enabled"), QStringLiteral("info"),
+                     QStringLiteral("WebDAV methods advertised in the Allow header (not confirmed functional/"
+                                    "unauthenticated): ") + dangerousDav.join(QStringLiteral(", ")) });
+    // Cross-Site Tracing: the server echoed our request back (readable via script).
+    if (traceEcho || maxFwdEcho) {
+        QStringList via;
+        if (traceEcho)  via << QStringLiteral("TRACE");
+        if (maxFwdEcho) via << QStringLiteral("TRACE Max-Forwards:0 (proxy-side)");
+        out.append({ QStringLiteral("http-trace-enabled"), QStringLiteral("medium"),
+                     QStringLiteral("TRACE is enabled and echoes the request (Cross-Site Tracing / XST) via ")
+                         + via.join(QStringLiteral(", ")) });
+    }
+    if (trackEcho)
+        out.append({ QStringLiteral("http-track-enabled"), QStringLiteral("medium"),
+                     QStringLiteral("TRACK (IIS TRACE alias) is enabled and echoes the request "
+                                    "(Cross-Site Tracing / XST)") });
+    return out;
+}
+
 } // namespace Nullock::Core::MethodAudit

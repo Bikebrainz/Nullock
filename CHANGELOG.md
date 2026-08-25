@@ -10,6 +10,18 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Security
+- **method-audit finding emission locked by tests.** The mapping from an
+  advertised Allow list + the three Cross-Site-Tracing echo probes to the exact
+  findings emitted (`dangerous-http-methods`, `webdav-enabled`,
+  `http-trace-enabled`, `http-track-enabled`) was inline on `audit()`'s network
+  path and therefore untested &mdash; a kind rename or a broken condition would
+  silently stop flagging TRACE/TRACK/WebDAV/dangerous methods. Extracted it into
+  the pure `MethodAudit::classifyMethods()` and locked every input→kind→severity
+  case with mutation-proven unit tests (defeating the write-method branch or
+  mislabelling the TRACK kind now fails only its targeted assertions). No
+  behaviour change.
+
 ### Added
 - **Comparer: exact byte-level diff (Bytes mode).** The Comparer gains a
   binary-safe `bytes` mode: `Compare::diffBytes()` diffs two raw byte buffers

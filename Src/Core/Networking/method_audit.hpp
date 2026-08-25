@@ -63,4 +63,12 @@ QStringList dangerousWriteMethods(const QStringList &allowed);
 QStringList dangerousWebdavMethods(const QStringList &allowed);
 bool traceEchoed(const QString &body, const QString &method = QStringLiteral("TRACE"));
 
+// Pure verdict: given the merged Allow list and the three XST echo results,
+// produce the findings audit() emits (kind + severity + detail), in the order
+// dangerous-write, webdav, trace, track. Isolated from the network path so the
+// which-input-yields-which-finding-KIND mapping is unit-testable (audit() only
+// harvests Allow / runs the echo probes, then calls this).
+QList<Finding> classifyMethods(const QStringList &allowed,
+                               bool traceEcho, bool maxFwdEcho, bool trackEcho);
+
 } // namespace Nullock::Core::MethodAudit

@@ -172,6 +172,59 @@ int main(int argc, char **argv) {
             && hhb.toLower().count(QByteArray("host:")) == 1);
     }
 
+    // ===== classifyMethods: the finding-KIND verdict (input -> which kind) =====
+    // Locks the mapping audit() used to do inline on its network path (untested):
+    // an Allow list + the three XST echo booleans -> the exact findings emitted.
+    {
+        auto kindOf = [](const QList<Finding> &fs, const QString &kind) -> QString {
+            for (const auto &f : fs) if (f.kind == kind) return f.severity;
+            return QStringLiteral("<absent>");
+        };
+        auto has = [&](const QList<Finding> &fs, const QString &kind) {
+            return kindOf(fs, kind) != QLatin1String("<absent>");
+        };
+        // Safe methods, no echoes -> nothing flagged.
+        chk("classify: safe methods + no echo -> no findings",
+            classifyMethods({ "GET", "POST", "HEAD", "OPTIONS" }, false, false, false).isEmpty());
+        // Advertised write methods -> dangerous-http-methods (info).
+        {
+            const auto fs = classifyMethods({ "GET", "PUT", "DELETE" }, false, false, false);
+            chk("classify: write methods -> dangerous-http-methods/info",
+                kindOf(fs, "dangerous-http-methods") == "info");
+            chk("classify: write-only does NOT emit webdav/trace/track",
+                !has(fs, "webdav-enabled") && !has(fs, "http-trace-enabled")
+                && !has(fs, "http-track-enabled"));
+        }
+        // Advertised WebDAV -> webdav-enabled (info).
+        chk("classify: PROPFIND -> webdav-enabled/info",
+            kindOf(classifyMethods({ "GET", "PROPFIND", "MKCOL" }, false, false, false),
+                   "webdav-enabled") == "info");
+        // TRACE echo -> http-trace-enabled (medium); Max-Forwards path too.
+        chk("classify: traceEcho -> http-trace-enabled/medium",
+            kindOf(classifyMethods({ "GET" }, true, false, false), "http-trace-enabled") == "medium");
+        chk("classify: maxFwd-only echo still -> http-trace-enabled",
+            has(classifyMethods({ "GET" }, false, true, false), "http-trace-enabled"));
+        // TRACK echo -> http-track-enabled (medium), distinct from TRACE.
+        {
+            const auto fs = classifyMethods({ "GET" }, false, false, true);
+            chk("classify: trackEcho -> http-track-enabled/medium",
+                kindOf(fs, "http-track-enabled") == "medium");
+            chk("classify: trackEcho does NOT emit http-trace-enabled",
+                !has(fs, "http-trace-enabled"));
+        }
+        // Everything at once: four findings, in order write, dav, trace, track.
+        {
+            const auto fs = classifyMethods({ "PUT", "PROPFIND" }, true, false, true);
+            chk("classify: all conditions -> 4 findings", fs.size() == 4);
+            chk("classify: emission order write, dav, trace, track",
+                fs.size() == 4 && fs[0].kind == "dangerous-http-methods"
+                && fs[1].kind == "webdav-enabled" && fs[2].kind == "http-trace-enabled"
+                && fs[3].kind == "http-track-enabled");
+            chk("classify: trace detail names the Max-Forwards path only when set",
+                !fs[2].detail.contains("Max-Forwards"));
+        }
+    }
+
     std::fprintf(stderr, "method_audit_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

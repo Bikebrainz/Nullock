@@ -60,22 +60,6 @@ Result audit(const Request &reqIn) {
         noteFail("405-harvest", bogus.errorMessage);
     }
 
-    const QStringList dangerousWrite = dangerousWriteMethods(result.allowed);
-    const QStringList dangerousDav   = dangerousWebdavMethods(result.allowed);
-    // These are ADVERTISED in the Allow header (OPTIONS and/or the 405 harvest),
-    // not confirmed callable or unauthenticated -- the probe never issues the
-    // mutating method (by design). Every access-controlled REST/CRUD API
-    // advertises PUT/DELETE, so this is reconnaissance (info), not a confirmed
-    // vuln; the operator confirms intrusively if authorized.
-    if (!dangerousWrite.isEmpty())
-        add("dangerous-http-methods", "info",
-            "server advertises write methods in its Allow header (not confirmed "
-            "callable/unauthenticated): " + dangerousWrite.join(", "));
-    if (!dangerousDav.isEmpty())
-        add("webdav-enabled", "info",
-            "WebDAV methods advertised in the Allow header (not confirmed functional/"
-            "unauthenticated): " + dangerousDav.join(", "));
-
     // Cross-Site Tracing family (all non-mutating): if the server reflects the
     // request back, a scripted client can read otherwise-HttpOnly headers.
     //   TRACE              -- the classic XST loopback.
@@ -97,22 +81,13 @@ Result audit(const Request &reqIn) {
     const bool traceEcho  = echoProbe("TRACE", "TRACE", {});
     const bool maxFwdEcho  = echoProbe("TRACE", "TRACE", { { "Max-Forwards", "0" } });
     const bool trackEcho  = echoProbe("TRACK", "TRACK", {});
+    result.traceEnabled = traceEcho || maxFwdEcho || trackEcho;
 
-    if (traceEcho || maxFwdEcho) {
-        result.traceEnabled = true;
-        QStringList via;
-        if (traceEcho)  via << "TRACE";
-        if (maxFwdEcho) via << "TRACE Max-Forwards:0 (proxy-side)";
-        add("http-trace-enabled", "medium",
-            "TRACE is enabled and echoes the request (Cross-Site Tracing / XST) via "
-            + via.join(", "));
-    }
-    if (trackEcho) {
-        result.traceEnabled = true;
-        add("http-track-enabled", "medium",
-            "TRACK (IIS TRACE alias) is enabled and echoes the request "
-            "(Cross-Site Tracing / XST)");
-    }
+    // The which-input-yields-which-finding decision is the pure, unit-tested
+    // classifyMethods(); audit() only harvested the Allow list + ran the echo
+    // probes above. Emitting in its order: dangerous-write, webdav, trace, track.
+    for (const Finding &f : classifyMethods(result.allowed, traceEcho, maxFwdEcho, trackEcho))
+        add(f.kind, f.severity, f.detail);
 
     // Only a total blackout -- nothing answered any probe -- is a hard error.
     if (!anyResponse) result.error = firstError.isEmpty()
