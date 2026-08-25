@@ -2038,6 +2038,55 @@ function maybeRedact(k, v) {
     ? "<redacted: " + v.length + " chars>" : v;
 }
 
+function xmlEscape(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// UTF-8-safe base64: btoa() throws on any code point above 0xFF, and a
+// captured request/response body is arbitrary bytes (often not even valid
+// UTF-8 by the time it reaches here as a JS string), so encode through
+// TextEncoder rather than btoa(rawString) directly.
+function base64FromText(s) {
+  const bytes = new TextEncoder().encode(String(s == null ? "" : s));
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+// "Save selected items": a Burp-site-map-export-shaped XML of the rows the
+// caller already scoped (single row / branch / host -- see
+// ctxMenuTargetRows). Pure: no DOM/I-O, raw request/response bytes are
+// fetched by the caller and passed in as plain fields on each row.
+function buildSiteMapItemsXml(rowsWithRaw, omittedCount) {
+  const items = rowsWithRaw.map(r => {
+    const proto = r.tls ? "https" : "http";
+    const port = r.port || (r.tls ? 443 : 80);
+    const portStr = (port === 80 || port === 443) ? "" : ":" + port;
+    const path = r.path || "/";
+    const url = proto + "://" + r.host + portStr + path;
+    const req = NL.requestRawById(r.id) || "";
+    const resp = NL.responseRawById(r.id) || "";
+    return "  <item>\n"
+      + "    <url><![CDATA[" + url + "]]></url>\n"
+      + "    <host>" + xmlEscape(r.host) + "</host>\n"
+      + "    <port>" + port + "</port>\n"
+      + "    <protocol>" + proto + "</protocol>\n"
+      + "    <method><![CDATA[" + (r.method || "GET") + "]]></method>\n"
+      + "    <path><![CDATA[" + path + "]]></path>\n"
+      + "    <status>" + (r.status || 0) + "</status>\n"
+      + "    <mimetype>" + xmlEscape(r.mime || "") + "</mimetype>\n"
+      + "    <request base64=\"true\">" + base64FromText(req) + "</request>\n"
+      + "    <response base64=\"true\">" + base64FromText(resp) + "</response>\n"
+      + "  </item>";
+  });
+  const cap = omittedCount > 0
+    ? "<!-- capped at " + rowsWithRaw.length + " items -- " + omittedCount + " more matched the selection and were omitted -->\n"
+    : "";
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + cap
+    + "<items exportedBy=\"Nullock\">\n" + items.join("\n") + "\n</items>\n";
+}
+
 function renderRequestAs(kind, row, raw) {
   const r = parseRawRequest(row, raw);
   const hasBody = r.body && r.body.length > 0;
@@ -2854,7 +2903,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   // whole host (neither set), matching how "Delete branch"/"Save selected
   // items" would scope in Burp. Client-side only: derives URLs from the
   // HTTP history rows already in state, same source SiteMap's own tree uses.
-  const ctxMenuTargetUrls = () => {
+  const ctxMenuTargetRows = () => {
     if (!ctxMenu) return [];
     let target = rows.filter(r => r.host === ctxMenu.host);
     if (ctxMenu.branch) {
@@ -2864,7 +2913,10 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
       });
     }
     if (ctxMenu.rowId != null) target = target.filter(r => r.id === ctxMenu.rowId);
-    const urls = target.map(r => {
+    return target;
+  };
+  const ctxMenuTargetUrls = () => {
+    const urls = ctxMenuTargetRows().map(r => {
       const proto = r.tls ? "https" : "http";
       const port = r.port || (r.tls ? 443 : 80);
       const portStr = (port === 80 || port === 443) ? "" : ":" + port;
@@ -2887,6 +2939,37 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           await navigator.clipboard.writeText(urls.join("\n"));
         }
       } catch (e) { /* clipboard denied/unsupported -- silently no-op like the existing COPY AS copy() */ }
+    }
+    closeRowMenu();
+  };
+
+  // #372 "Save selected items" leg: a Burp-site-map-shaped XML export of the
+  // same host/branch/single-row scope Copy URLs/Links already use, with the
+  // full captured request/response for each row -- base64, so binary bodies
+  // survive round-trip same as Burp's own export. Capped at SAVE_ITEMS_CAP
+  // rows: NL.requestRawById/responseRawById are synchronous XHRs (the same
+  // ones DetailPane/Comparer/COPY AS already call for a single row), so
+  // exporting hundreds of rows in one click would block the tab for however
+  // long that many round-trips take -- the cap keeps a whole-host export
+  // from freezing the UI, and the export says so in a leading XML comment
+  // rather than silently truncating.
+  const SAVE_ITEMS_CAP = 200;
+  const saveCtxMenuItems = () => {
+    const allTarget = ctxMenuTargetRows();
+    const target = allTarget.slice(0, SAVE_ITEMS_CAP);
+    if (target.length) {
+      try {
+        const xml = buildSiteMapItemsXml(target, allTarget.length - target.length);
+        const blob = new Blob([xml], { type: "application/xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "nullock-items.xml";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) { /* download blocked/unsupported -- silently no-op like copyCtxMenuUrls */ }
     }
     closeRowMenu();
   };
@@ -3160,6 +3243,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
               title="Copy as clickable HTML links (pastes into rich-text tools/tickets)"
               onClick={() => copyCtxMenuUrls(true)}
             >🔗 COPY LINKS</div>
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              title={(ctxMenu.rowId != null ? "Save this item" : (ctxMenu.branch ? "Save every item under this branch" : "Save every item under this host"))
+                + " as a Burp-style XML file (request/response, base64) -- capped at " + SAVE_ITEMS_CAP + " items"}
+              onClick={saveCtxMenuItems}
+            >💾 SAVE SELECTED ITEMS</div>
             {ctxMenu.rowId != null && (
               <React.Fragment>
                 <div style={{ borderTop: "1px solid var(--line)", padding: "6px 10px", fontSize: "var(--fz-xs)", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.08em" }}>

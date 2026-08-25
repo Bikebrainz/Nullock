@@ -68,8 +68,9 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   entry renders greyed-out/dashed in the tree ("not sent") to distinguish an
                   unrequested node from real captured traffic; right-click a host, a folder, or
                   a single leaf for COPY URLS (plain-text list) / COPY LINKS (clickable HTML,
-                  pastes into tickets/docs), scoped to whatever was clicked -- the whole host,
-                  just that branch, or one URL;
+                  pastes into tickets/docs) / SAVE SELECTED ITEMS (a Burp-site-map-shaped XML
+                  download with the full captured request/response, base64), scoped to whatever
+                  was clicked -- the whole host, just that branch, or one URL;
                   Settings' CA & TLS card can allow-list a self-signed/expired upstream host
                   (host:port) so it stays interceptable instead of getting permanently blocked
                   on the first bad handshake -- verification only relaxes for listed hosts, and

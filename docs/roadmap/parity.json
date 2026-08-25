@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-08-20",
+  "reconciled_through": "2026-08-25",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -5014,14 +5014,15 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No per-host or per-branch delete, no selective export, no scoped report from a map selection. Copy URLs / Copy links now exist and are scoped (host, branch, or single item).",
-      "why": "Closed the Copy-URLs/Copy-links half (still partial overall -- delete/save/report remain unbuilt). SiteMap's folder rows (ui-v2/proxy.jsx) gained an onContextMenu handler (host rows and leaf rows already had one via #398's scope menu); the shared right-click menu in ProxyTab now carries an optional branch alongside host/rowId and adds two entries -- COPY URLS (plain-text newline list) and COPY LINKS (an HTML anchor-tag list written via a dual text/html+text/plain ClipboardItem so it pastes as clickable links into rich-text tools, falling back to plain writeText when ClipboardItem is unsupported) -- both derived client-side from the same HTTP-history rows the tree itself is built from (no backend change), scoped to exactly what was right-clicked: one URL for a leaf, every URL under that directory for a folder, or the whole host for the host row.",
-      "evidence": "ui-v2/proxy.jsx SiteMap's folder-row onContextMenu now calls onRowContextMenu(entry.host, ev, undefined, folder.fullPath); ProxyTab's ctxMenu state gained a branch field and a ctxMenuTargetUrls()/copyCtxMenuUrls() pair building the scoped URL list from `rows` and writing it via navigator.clipboard.write([new ClipboardItem(...)]) or writeText() fallback. Delete host/branch, Save selected items (Burp XML), and scoped report remain absent -- SiteMapModel's only mutator is still site_map_model.hpp:33 clear() (whole-map only), and no per-selection export/report endpoint exists.",
+      "gap": "No per-host or per-branch delete, no scoped report from a map selection. Copy URLs / Copy links, and now Save selected items (as a Burp-site-map-shaped XML with the full captured request/response, base64), all exist and are scoped (host, branch, or single item).",
+      "why": "Closed the \u201cSave selected items\u201d leg (still partial overall -- delete/report remain unbuilt). Reused the same ctxMenu host/branch/rowId scope Copy URLs/Links already compute (ctxMenuTargetRows, refactored out of the prior ctxMenuTargetUrls so both share one filter). A new \ud83d\udcbe SAVE SELECTED ITEMS entry in the same right-click menu calls NL.requestRawById/responseRawById -- the same synchronous per-row accessors DetailPane, Comparer and COPY AS already call -- for each row in scope, base64-encodes the raw bytes via TextEncoder (not btoa(rawString), which throws on any code point above 0xFF), and downloads a Burp-site-map-export-shaped XML (url/host/port/protocol/method/path/status/mimetype/request/response) via the same Blob+<a download> pattern the Sequencer report export and Save tokens buttons already use. Capped at 200 items (SAVE_ITEMS_CAP) since each row is a blocking synchronous XHR round-trip -- a whole-host export past that count would freeze the tab for as long as that many requests take; a capped export says so in a leading XML comment rather than silently truncating. Delete host/branch (no mutator on SiteMapModel besides whole-map clear()) and a report scoped to a map selection remain genuinely absent -- not attempted here, no backend change made.",
+      "evidence": "ui-v2/proxy.jsx: ctxMenuTargetRows() (shared filter), buildSiteMapItemsXml(rowsWithRaw, omittedCount) -- pure, builds the XML string, called from saveCtxMenuItems() which slices to SAVE_ITEMS_CAP, builds a Blob, and triggers a download identically to app.jsx's existing exportReport()/saveTokens(). xmlEscape()/base64FromText() are new local helpers (proxy.jsx does not share app.jsx's sequencerReportEscape -- each file's export helpers are self-contained, same as the rest of this codebase). Verified with a sandboxed functional test: buildSiteMapItemsXml on 2 synthetic rows with a 3-item cap overflow produces well-formed XML with a correct \"capped at 2 -- 3 more ... omitted\" comment, and base64FromText round-trips a non-ASCII string through Buffer.from(...,'base64').toString('utf8') byte-for-byte.",
       "reconciled": {
-        "date": "2026-08-22",
-        "commit": "4a20310",
-        "note": "Gap-narrowing: Copy URLs / Copy links added to the Site map right-click menu (host/branch/single-item scoped), client-side only. Delete host/branch, Save selected items, and scoped report stay absent -- state stays partial."
-      }
+        "date": "2026-08-25",
+        "commit": "PENDING",
+        "note": "Wave 2 Site-map batch -- \"Save selected items\" (Burp-XML-shaped, request/response base64, host/branch/row scope, 200-item cap) added to the Site map right-click menu, client-side only, reusing the existing NL.requestRawById/responseRawById accessors. Delete host/branch and a selection-scoped report stay absent -- state stays partial."
+      },
+      "audited_state": "partial"
     },
     {
       "area": "target",
