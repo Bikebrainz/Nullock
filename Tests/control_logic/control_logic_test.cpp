@@ -527,6 +527,40 @@ int main(int argc, char **argv) {
             chk("query: combined minSeverity=high + includeFixed=false keeps 2",
                 applyReportFilter(all, q).size() == 2);
         }
+
+        // findingPasses: the shared per-finding predicate (used by the QList<Finding>
+        // report builders) applies the same rule as filterFindings.
+        chk("findingPasses: kept when it clears all criteria",
+            findingPasses("high", "firm", "xss", false,
+                          severityRank("medium"), confidenceRank("firm"), none, none, true));
+        chk("findingPasses: dropped below the severity floor",
+            !findingPasses("low", "firm", "xss", false,
+                           severityRank("high"), 0, none, none, true));
+        chk("findingPasses: dropped by excludeKinds",
+            !findingPasses("critical", "confirmed", "sqli", false,
+                           0, 0, none, QSet<QString>{ "sqli" }, true));
+        chk("findingPasses: fixed dropped when includeFixed=false",
+            !findingPasses("high", "firm", "xss", true, 0, 0, none, none, false));
+
+        // reportFilterFromJson: POST-body criteria (array or CSV kinds, bool/str fixed).
+        {
+            QJsonObject body{
+                { "minSeverity", "medium" }, { "minConfidence", "firm" },
+                { "includeKinds", QJsonArray{ "sqli", "xss", "cors" } },
+                { "excludeKinds", "cors" }, { "includeFixed", false } };
+            const ReportFilterCriteria c = reportFilterFromJson(body);
+            const QJsonArray kept = filterFindings(all, c.minSeverityRank, c.minConfidenceRank,
+                                                   c.includeKinds, c.excludeKinds, c.includeFixed);
+            // all[]: crit/sqli/confirmed, high/xss/firm, medium/cors/tentative,
+            // low/cookie/firm(fixed), info/server-hdr/tentative.
+            // medium+ AND firm+ AND kinds{sqli,xss} (cors excluded) AND not-fixed -> sqli, xss.
+            chk("reportFilterFromJson: parses body criteria -> keeps sqli+xss",
+                kept.size() == 2);
+            chk("reportFilterFromJson: includeFixed=false parsed from bool",
+                c.includeFixed == false);
+            chk("reportFilterFromJson: minSeverity string parsed to rank",
+                c.minSeverityRank == severityRank("medium"));
+        }
     }
 
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);

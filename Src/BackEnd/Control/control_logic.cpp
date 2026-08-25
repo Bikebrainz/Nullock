@@ -256,6 +256,20 @@ int confidenceRank(const QString &conf) {
     return 0;   // unknown / empty
 }
 
+bool findingPasses(const QString &severity, const QString &confidence,
+                   const QString &kind, bool fixed,
+                   int minSeverityRank, int minConfidenceRank,
+                   const QSet<QString> &includeKinds,
+                   const QSet<QString> &excludeKinds,
+                   bool includeFixed) {
+    if (severityRank(severity) < minSeverityRank) return false;
+    if (minConfidenceRank > 0 && confidenceRank(confidence) < minConfidenceRank) return false;
+    if (!includeKinds.isEmpty() && !includeKinds.contains(kind)) return false;
+    if (excludeKinds.contains(kind)) return false;
+    if (!includeFixed && fixed) return false;
+    return true;
+}
+
 QJsonArray filterFindings(const QJsonArray &findings,
                           int minSeverityRank, int minConfidenceRank,
                           const QSet<QString> &includeKinds,
@@ -264,39 +278,75 @@ QJsonArray filterFindings(const QJsonArray &findings,
     QJsonArray out;
     for (const QJsonValue &v : findings) {
         const QJsonObject f = v.toObject();
-        if (severityRank(f.value(QLatin1String("severity")).toString()) < minSeverityRank)
-            continue;
-        if (minConfidenceRank > 0
-            && confidenceRank(f.value(QLatin1String("confidence")).toString()) < minConfidenceRank)
-            continue;
-        const QString kind = f.value(QLatin1String("kind")).toString();
-        if (!includeKinds.isEmpty() && !includeKinds.contains(kind)) continue;
-        if (excludeKinds.contains(kind)) continue;
-        if (!includeFixed && f.value(QLatin1String("fixed")).toBool()) continue;
-        out.append(f);
+        if (findingPasses(f.value(QLatin1String("severity")).toString(),
+                          f.value(QLatin1String("confidence")).toString(),
+                          f.value(QLatin1String("kind")).toString(),
+                          f.value(QLatin1String("fixed")).toBool(),
+                          minSeverityRank, minConfidenceRank,
+                          includeKinds, excludeKinds, includeFixed))
+            out.append(f);
     }
     return out;
 }
 
-QJsonArray applyReportFilter(const QJsonArray &findings, const QUrlQuery &q) {
-    const int minSev = q.hasQueryItem(QStringLiteral("minSeverity"))
-        ? severityRank(q.queryItemValue(QStringLiteral("minSeverity"))) : 0;
-    const int minConf = q.hasQueryItem(QStringLiteral("minConfidence"))
-        ? confidenceRank(q.queryItemValue(QStringLiteral("minConfidence"))) : 0;
-    auto toSet = [](const QString &csv) {
-        QSet<QString> s;
-        const QStringList parts = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
-        for (const QString &part : parts) {
-            const QString k = part.trimmed();
+namespace {
+QSet<QString> csvToSet(const QString &csv) {
+    QSet<QString> s;
+    const QStringList parts = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString k = part.trimmed();
+        if (!k.isEmpty()) s.insert(k);
+    }
+    return s;
+}
+QSet<QString> jsonArrOrCsvToSet(const QJsonValue &v) {
+    QSet<QString> s;
+    if (v.isArray()) {
+        for (const QJsonValue &e : v.toArray()) {
+            const QString k = e.toString().trimmed();
             if (!k.isEmpty()) s.insert(k);
         }
-        return s;
-    };
-    const QSet<QString> inc = toSet(q.queryItemValue(QStringLiteral("includeKinds")));
-    const QSet<QString> exc = toSet(q.queryItemValue(QStringLiteral("excludeKinds")));
-    const bool includeFixed = q.queryItemValue(QStringLiteral("includeFixed"))
-                                  .compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
-    return filterFindings(findings, minSev, minConf, inc, exc, includeFixed);
+    } else if (v.isString()) {
+        s = csvToSet(v.toString());
+    }
+    return s;
+}
+} // namespace
+
+ReportFilterCriteria reportFilterFromQuery(const QUrlQuery &q) {
+    ReportFilterCriteria c;
+    if (q.hasQueryItem(QStringLiteral("minSeverity")))
+        c.minSeverityRank = severityRank(q.queryItemValue(QStringLiteral("minSeverity")));
+    if (q.hasQueryItem(QStringLiteral("minConfidence")))
+        c.minConfidenceRank = confidenceRank(q.queryItemValue(QStringLiteral("minConfidence")));
+    c.includeKinds = csvToSet(q.queryItemValue(QStringLiteral("includeKinds")));
+    c.excludeKinds = csvToSet(q.queryItemValue(QStringLiteral("excludeKinds")));
+    c.includeFixed = q.queryItemValue(QStringLiteral("includeFixed"))
+                         .compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
+    return c;
+}
+
+ReportFilterCriteria reportFilterFromJson(const QJsonObject &body) {
+    ReportFilterCriteria c;
+    if (body.contains(QLatin1String("minSeverity")))
+        c.minSeverityRank = severityRank(body.value(QLatin1String("minSeverity")).toString());
+    if (body.contains(QLatin1String("minConfidence")))
+        c.minConfidenceRank = confidenceRank(body.value(QLatin1String("minConfidence")).toString());
+    c.includeKinds = jsonArrOrCsvToSet(body.value(QLatin1String("includeKinds")));
+    c.excludeKinds = jsonArrOrCsvToSet(body.value(QLatin1String("excludeKinds")));
+    // includeFixed defaults true; only an explicit false (bool or "false") drops fixed.
+    if (body.contains(QLatin1String("includeFixed"))) {
+        const QJsonValue iv = body.value(QLatin1String("includeFixed"));
+        c.includeFixed = iv.isBool() ? iv.toBool()
+                                     : iv.toString().compare(QLatin1String("false"), Qt::CaseInsensitive) != 0;
+    }
+    return c;
+}
+
+QJsonArray applyReportFilter(const QJsonArray &findings, const QUrlQuery &q) {
+    const ReportFilterCriteria c = reportFilterFromQuery(q);
+    return filterFindings(findings, c.minSeverityRank, c.minConfidenceRank,
+                          c.includeKinds, c.excludeKinds, c.includeFixed);
 }
 
 // ---- Configuration import/export document envelope ------------------------

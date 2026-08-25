@@ -54,21 +54,22 @@ developer-facing record.
   is the "what can this tool find" reference for scoping a test or writing
   methodology. (Roadmap: target &mdash; Issue definitions; still partial pending
   an in-app browse UI and Burp-style long-form per-issue background prose.)
-- **Reporting: issue-selection filter (report customisation).** The
-  machine-readable reports now take a customisation filter on the query string:
-  `GET /api/report/json` and `GET /api/report/xml` accept `minSeverity`,
-  `minConfidence`, `includeKinds`, `excludeKinds` and `includeFixed`, and emit
-  only the issues that pass &mdash; so a report can drop informational noise or
-  narrow to, say, high-and-above confirmed SQLi. `report/json` additionally
-  reports `findingsTotal` (included) vs `findingsTotalAll` (the full engagement
-  count) and a `filtered` flag, and deliberately keeps posture/coverage/inventory
-  over the FULL finding set so a report-view filter can never inflate the
-  engagement's grade. The filter and its confidence ranking (spanning the
-  enriched `confirmed`/`firm`/`tentative` taxonomy and the raw
-  `high`/`medium`/`low` one) are pure, unit-tested and mutation-proven helpers in
-  `control_logic`. (Roadmap: platform &mdash; report customisation; still partial
-  pending the HTML/Markdown builders honouring the filter, a detail-level toggle,
-  a custom title/appendix, and full request-response evidence embedding.)
+- **Reporting: report customisation across all four report sinks.** Every report
+  output now honours an issue-selection filter &mdash; `minSeverity`,
+  `minConfidence`, `includeKinds`, `excludeKinds`, `includeFixed` &mdash; through
+  one shared, mutation-proven predicate (`ControlLogic::findingPasses`):
+  `GET /api/report/json` and `GET /api/report/xml` read it from the query string;
+  `POST /api/report/build` (Markdown) and `POST /api/report/html` read it from the
+  JSON body. So a report can drop informational noise or narrow to, say,
+  high-and-above confirmed SQLi. The two human reports also accept a custom
+  `title` and an `appendix`, and print a "showing X of Y (filtered)" note.
+  `report/json` reports `findingsTotal` (included) vs `findingsTotalAll` and a
+  `filtered` flag and keeps posture/coverage over the FULL set (engagement truth),
+  while the standalone HTML/Markdown reports reflect the included set throughout
+  (Burp's report-wizard behaviour). Confidence ranking spans the enriched
+  `confirmed`/`firm`/`tentative` taxonomy and the raw `high`/`medium`/`low` one.
+  (Roadmap: platform &mdash; report customisation; still partial pending a
+  detail-level toggle and full request/response evidence embedding.)
 - **Sequencer: analysis summary with a confidence level and amount of data
   analyzed.** Token analysis now emits a `summary` object headlining the result
   the way Burp's Sequencer does: the verdict and score, a **confidence**

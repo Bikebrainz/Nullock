@@ -128,6 +128,17 @@ int confidenceRank(const QString &conf);
 //   * includeKinds is empty OR the finding's kind is in includeKinds,
 //   * the finding's kind is NOT in excludeKinds,
 //   * includeFixed is true OR the finding is not marked "fixed".
+// The per-finding predicate behind filterFindings, exposed so a caller that
+// holds its own finding objects (the QList<Finding> report builders, not the
+// JSON shape) applies the EXACT same selection rule -- single source of truth.
+// Returns true iff the finding should be KEPT (see filterFindings for the rule).
+bool findingPasses(const QString &severity, const QString &confidence,
+                   const QString &kind, bool fixed,
+                   int minSeverityRank, int minConfidenceRank,
+                   const QSet<QString> &includeKinds,
+                   const QSet<QString> &excludeKinds,
+                   bool includeFixed);
+
 // Pure + deterministic -> unit-tested directly. Order is preserved.
 QJsonArray filterFindings(const QJsonArray &findings,
                           int minSeverityRank, int minConfidenceRank,
@@ -144,6 +155,20 @@ QJsonArray filterFindings(const QJsonArray &findings,
 // Kept in ControlLogic (Qt6::Core-linkable, QUrlQuery is QtCore) so it is
 // unit-tested with the pure filter rather than reasoned about in the server.
 QJsonArray applyReportFilter(const QJsonArray &findings, const class QUrlQuery &q);
+
+// The report-customisation criteria, parsed once from a query string (GET report
+// endpoints) or a JSON body (POST report builders) so every report sink applies
+// one identical selection rule via findingPasses. minSeverityRank/minConfidenceRank
+// are 0 when the corresponding param is absent (no floor).
+struct ReportFilterCriteria {
+    int minSeverityRank = 0;
+    int minConfidenceRank = 0;
+    QSet<QString> includeKinds;
+    QSet<QString> excludeKinds;
+    bool includeFixed = true;
+};
+ReportFilterCriteria reportFilterFromQuery(const class QUrlQuery &q);
+ReportFilterCriteria reportFilterFromJson(const QJsonObject &body);
 
 // --- Outbound request-builder CR/LF guard --------------------------------
 // A request-line / header component (path, query, param name) built from a
