@@ -5019,7 +5019,7 @@
       "evidence": "ui-v2/proxy.jsx: ctxMenuTargetRows() (shared filter), buildSiteMapItemsXml(rowsWithRaw, omittedCount) -- pure, builds the XML string, called from saveCtxMenuItems() which slices to SAVE_ITEMS_CAP, builds a Blob, and triggers a download identically to app.jsx's existing exportReport()/saveTokens(). xmlEscape()/base64FromText() are new local helpers (proxy.jsx does not share app.jsx's sequencerReportEscape -- each file's export helpers are self-contained, same as the rest of this codebase). Verified with a sandboxed functional test: buildSiteMapItemsXml on 2 synthetic rows with a 3-item cap overflow produces well-formed XML with a correct \"capped at 2 -- 3 more ... omitted\" comment, and base64FromText round-trips a non-ASCII string through Buffer.from(...,'base64').toString('utf8') byte-for-byte.",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "PENDING",
+        "commit": "d92b78e",
         "note": "Wave 2 Site-map batch -- \"Save selected items\" (Burp-XML-shaped, request/response base64, host/branch/row scope, 200-item cap) added to the Site map right-click menu, client-side only, reusing the existing NL.requestRawById/responseRawById accessors. Delete host/branch and a selection-scoped report stay absent -- state stays partial."
       },
       "audited_state": "partial"
