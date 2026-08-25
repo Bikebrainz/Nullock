@@ -4161,12 +4161,12 @@
     {
       "area": "repeater",
       "feature": "Comparer: byte-level comparison",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Non-UTF-8 and binary payloads cannot be byte-diffed; they are lossily transcoded through QString first. Burp's Bytes mode is exact. Blocks comparing binary session tokens, serialized objects, images. For pure-ASCII input chars mode is byte-equivalent, which is why this is partial and not absent.",
-      "why": "Verified. 'chars' is a code-point diff, and the transport is QString end-to-end, so raw bytes never reach the differ.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:53-57 `// Cap DURING tokenization (chars mode is one token per CODE POINT). Advance by whole code points so a non-BMP character is ONE token, not two lone surrogates`. Transport: control_server.cpp:9418-9420 `Compare::diff(bodyJson.value(\"mode\").toString(), bodyJson.value(\"a\").toString(), bodyJson.value(\"b\").toString())` \u2014 QJsonValue::toString, so the"
+      "gap": "Exact byte diff implemented: Compare::diffBytes() diffs two raw byte buffers (one 2-hex-char token per octet through the same LCS core), and /api/compare gains a binary-safe path -- mode \"bytes\" with base64 inputs (aBase64/bBase64) is decoded to raw octets before diffing, so non-UTF-8 / binary content (session tokens, serialized objects, images) survives JSON transport and compares exactly instead of being folded through QString. \"bytes\" is also listed in modes().",
+      "why": "Implemented + mutation-proven. Adds tokenizeBytes()/diffBytes() to compare.cpp and a base64 branch to the /api/compare handler; the byte tokens run through the existing budgeted LCS, inheriting its cell cap and truncation semantics. Tests/compare/compare_test.cpp (45 pass) covers identical binary buffers, a single-byte change, side rebuilds, and the key case that 0x80 vs 0x81 (both invalid UTF-8 starts) still differ rather than folding to U+FFFD; M1 (drop the low hex nibble) and M2 (swap the diff sides) each fail only their targeted cases.",
+      "evidence": "compare.cpp tokenizeBytes()/diffBytes() + modes() lists bytes; control_server.cpp /api/compare decodes aBase64/bBase64 for mode bytes and calls Compare::diffBytes. Live: POST mode=bytes for 00ff4180 vs 00ff4280 -> segments [eq 00ff, del 41, ins 42, eq 80], added 1/removed 1. Full gauntlet green (ctest 100/100, probe_smoke 156/156)."
     },
     {
       "area": "repeater",

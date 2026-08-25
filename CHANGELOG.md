@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Comparer: exact byte-level diff (Bytes mode).** The Comparer gains a
+  binary-safe `bytes` mode: `Compare::diffBytes()` diffs two raw byte buffers
+  (one hex token per octet through the existing LCS core), and `POST /api/compare`
+  accepts base64 inputs (`aBase64`/`bBase64`) that are decoded to raw octets
+  before diffing. So binary session tokens, serialized objects and images now
+  diff exactly instead of being folded through UTF-16 &mdash; e.g. the invalid-UTF-8
+  octets `0x80` and `0x81` are reported as different rather than both collapsing
+  to the replacement character. Mutation-proven. (Roadmap: Comparer byte-level
+  comparison &mdash; now at parity.)
 - **Inspector: full body-parameter parsing (JSON / multipart / XML).** The
   request Inspector now populates its params view for every common body type:
   - **JSON** is flattened recursively into Burp-style dotted/bracketed leaves

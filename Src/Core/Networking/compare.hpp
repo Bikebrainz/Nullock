@@ -9,6 +9,7 @@
 // fixed cell budget) because the control handler that calls it runs synchronously
 // on the GUI thread -- an unbounded O(n*m) LCS on a huge input would freeze it.
 
+#include <QByteArray>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -51,5 +52,13 @@ QStringList modes();
 // Diff `a` vs `b` at the given granularity ("words" | "lines" | "chars"; an
 // unknown mode falls back to "words").
 DiffResult diff(const QString &mode, const QString &a, const QString &b);
+
+// EXACT byte-level diff of two raw byte buffers -- Burp's Comparer "Bytes" mode.
+// Unlike the QString-based diff (which transcodes through UTF-16 and would mangle
+// non-UTF-8 / binary content), this compares the raw octets, so binary session
+// tokens, serialized objects and images diff faithfully. Each Segment's `text` is
+// the run rendered as lowercase hex (two chars per byte). Same cell budget and
+// truncation semantics as diff().
+DiffResult diffBytes(const QByteArray &a, const QByteArray &b);
 
 } // namespace Nullock::Core::Compare

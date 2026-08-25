@@ -10402,9 +10402,21 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // POST /api/compare { mode, a, b } -- LCS diff of two blobs (Burp-Comparer
     // style). mode is words|lines|chars. Returns eq/del/ins segments + counts.
     if (path == "/api/compare") {
-        const auto d = Nullock::Core::Compare::diff(bodyJson.value("mode").toString(),
-                                                    bodyJson.value("a").toString(),
-                                                    bodyJson.value("b").toString());
+        const QString cmpMode = bodyJson.value("mode").toString();
+        Nullock::Core::Compare::DiffResult d;
+        // Binary-safe byte diff: when mode is "bytes" and the inputs are carried
+        // as base64 (aBase64/bBase64), decode to raw octets so non-UTF-8 / binary
+        // content survives JSON transport and is compared exactly. Otherwise the
+        // QString path (words/lines/chars, or "bytes" over the UTF-8 encoding).
+        if (cmpMode.trimmed().toLower() == QLatin1String("bytes")
+            && (bodyJson.contains("aBase64") || bodyJson.contains("bBase64"))) {
+            const QByteArray a = QByteArray::fromBase64(bodyJson.value("aBase64").toString().toUtf8());
+            const QByteArray b = QByteArray::fromBase64(bodyJson.value("bBase64").toString().toUtf8());
+            d = Nullock::Core::Compare::diffBytes(a, b);
+        } else {
+            d = Nullock::Core::Compare::diff(cmpMode, bodyJson.value("a").toString(),
+                                             bodyJson.value("b").toString());
+        }
         QJsonArray segs;
         for (const auto &s : d.segments) {
             QJsonObject o;

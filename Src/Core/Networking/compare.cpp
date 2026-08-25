@@ -70,6 +70,23 @@ QStringList tokenizeChars(const QString &s) {
     return out;
 }
 
+// Tokenise raw bytes as one 2-hex-char token per octet, so the LCS core diffs
+// exact bytes (binary-safe) and each coalesced segment's text is a hex run.
+// Capped like the other tokenisers so a huge buffer can't build a giant list.
+QStringList tokenizeBytes(const QByteArray &b) {
+    static const char kHex[] = "0123456789abcdef";
+    QStringList out;
+    out.reserve(qMin<qsizetype>(b.size(), qsizetype(kMaxTokensPerSide) + 1));
+    for (qsizetype i = 0; i < b.size() && out.size() <= kMaxTokensPerSide; ++i) {
+        const unsigned char c = static_cast<unsigned char>(b.at(i));
+        QString hx;
+        hx += QLatin1Char(kHex[c >> 4]);
+        hx += QLatin1Char(kHex[c & 0x0f]);
+        out << hx;
+    }
+    return out;
+}
+
 // Longest-common-subsequence diff over token lists, emitting coalesced segments.
 DiffResult lcsDiff(QStringList a, QStringList b) {
     DiffResult res;
@@ -147,14 +164,20 @@ QPair<qsizetype, qsizetype> budgetedSizes(qsizetype n, qsizetype m) {
 }
 
 QStringList modes() {
-    return { QStringLiteral("words"), QStringLiteral("lines"), QStringLiteral("chars") };
+    return { QStringLiteral("words"), QStringLiteral("lines"),
+             QStringLiteral("chars"), QStringLiteral("bytes") };
 }
 
 DiffResult diff(const QString &mode, const QString &a, const QString &b) {
     const QString m = mode.trimmed().toLower();
     if (m == QLatin1String("lines")) return lcsDiff(tokenizeLines(a), tokenizeLines(b));
     if (m == QLatin1String("chars")) return lcsDiff(tokenizeChars(a), tokenizeChars(b));
+    if (m == QLatin1String("bytes")) return lcsDiff(tokenizeBytes(a.toUtf8()), tokenizeBytes(b.toUtf8()));
     return lcsDiff(tokenizeWords(a), tokenizeWords(b));   // default: words
+}
+
+DiffResult diffBytes(const QByteArray &a, const QByteArray &b) {
+    return lcsDiff(tokenizeBytes(a), tokenizeBytes(b));
 }
 
 } // namespace Nullock::Core::Compare

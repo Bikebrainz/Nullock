@@ -7,6 +7,7 @@
 
 #include "compare.hpp"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QString>
 
@@ -35,7 +36,8 @@ QString rebuild(const DiffResult &d, char side) {
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
-    chk("modes: three", modes().size() == 3);
+    chk("modes: four (words/lines/chars/bytes)",
+        modes().size() == 4 && modes().contains("bytes"));
 
     // ===== identical ===================================================
     {
@@ -163,6 +165,32 @@ int main(int argc, char **argv) {
     {
         const auto d = diff("bogus", "a b", "a c");
         chk("unknown mode -> words fallback works", d.added == 1 && d.removed == 1);
+    }
+
+    // ===== byte-level diff (Comparer "Bytes" mode, binary-safe) ========
+    {
+        QByteArray a;
+        a.append('\x00').append('\xff').append('\x41').append('\x80');   // 00 ff 41 80
+        // Identical binary buffers.
+        const auto same = diffBytes(a, a);
+        chk("bytes: identical binary buffers flagged",
+            same.identical && same.added == 0 && same.removed == 0);
+        chk("bytes: identical eq segment is the full hex run",
+            same.segments.size() == 1 && same.segments.first().text == QLatin1String("00ff4180"));
+        // One byte changed (0x41 -> 0x42): the surrounding bytes stay common.
+        QByteArray b = a; b[2] = '\x42';
+        const auto d = diffBytes(a, b);
+        chk("bytes: one differing byte -> not identical", !d.identical);
+        chk("bytes: one del + one ins byte counted", d.added == 1 && d.removed == 1);
+        chk("bytes: rebuild side A is the original hex", rebuild(d, 'a') == QLatin1String("00ff4180"));
+        chk("bytes: rebuild side B is the modified hex", rebuild(d, 'b') == QLatin1String("00ff4280"));
+        // The whole point of bytes mode: octets that UTF-8 would fold to the same
+        // replacement char (0x80, 0x81 are both invalid UTF-8 starts) still differ.
+        QByteArray x; x.append('\x80');
+        QByteArray y; y.append('\x81');
+        const auto dd = diffBytes(x, y);
+        chk("bytes: invalid-UTF-8 octets 0x80 vs 0x81 differ (not folded to U+FFFD)",
+            dd.common == 0 && dd.added == 1 && dd.removed == 1);
     }
 
     std::fprintf(stderr, "compare_test: %d passed, %d failed\n", pass, fail);
