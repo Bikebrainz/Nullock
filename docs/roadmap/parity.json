@@ -4209,7 +4209,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified verbatim including the tokenizer contract and the UI path.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:135-139 `DiffResult diff(const QString &mode, ...) { ... return lcsDiff(tokenizeWords(a), tokenizeWords(b)); // default: words }`; tokenizer :16-41 `// Each token is a word plus its TRAILING whitespace ... so \"a b\" -> [\"a \", \"b\"]`; token-interned LCS :83-103 `QHash<QString, int> ids; ... cell(i, j) = (ai[i] == bi[j]) ? cell(i + 1, j + 1) + 1 : std::ma"
+      "evidence": "Src/Core/Networking/compare.cpp:171-176 `diff()` default branch `return lcsDiff(tokenizeWords(a), tokenizeWords(b)); // default: words`; tokenizeWords at :18-43 (each token = a word plus its trailing whitespace, or a leading-whitespace run on its own, so joining all tokens reproduces the input); token-interned LCS core at :107-127 (QHash<QString,int> ids assigns integer ids so DP cells compare in O(1)). modes() :166-169 lists \"words\" first / used as default.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -4219,7 +4225,13 @@
       "effort": "days",
       "gap": "Exact byte diff implemented: Compare::diffBytes() diffs two raw byte buffers (one 2-hex-char token per octet through the same LCS core), and /api/compare gains a binary-safe path -- mode \"bytes\" with base64 inputs (aBase64/bBase64) is decoded to raw octets before diffing, so non-UTF-8 / binary content (session tokens, serialized objects, images) survives JSON transport and compares exactly instead of being folded through QString. \"bytes\" is also listed in modes().",
       "why": "Implemented + mutation-proven. Adds tokenizeBytes()/diffBytes() to compare.cpp and a base64 branch to the /api/compare handler; the byte tokens run through the existing budgeted LCS, inheriting its cell cap and truncation semantics. Tests/compare/compare_test.cpp (45 pass) covers identical binary buffers, a single-byte change, side rebuilds, and the key case that 0x80 vs 0x81 (both invalid UTF-8 starts) still differ rather than folding to U+FFFD; M1 (drop the low hex nibble) and M2 (swap the diff sides) each fail only their targeted cases.",
-      "evidence": "compare.cpp tokenizeBytes()/diffBytes() + modes() lists bytes; control_server.cpp /api/compare decodes aBase64/bBase64 for mode bytes and calls Compare::diffBytes. Live: POST mode=bytes for 00ff4180 vs 00ff4280 -> segments [eq 00ff, del 41, ins 42, eq 80], added 1/removed 1. Full gauntlet green (ctest 100/100, probe_smoke 156/156)."
+      "evidence": "Src/Core/Networking/compare.cpp:76-88 `tokenizeBytes(const QByteArray &b)` (one 2-hex-char token per octet through the shared LCS core) and :179-181 `DiffResult diffBytes(const QByteArray &a, const QByteArray &b) { return lcsDiff(tokenizeBytes(a), tokenizeBytes(b)); }`; \"bytes\" listed in modes() :166-169. control_server.cpp:10452-10465 POST /api/compare: when mode == \"bytes\" and the body carries aBase64/bBase64, decodes to raw QByteArray and calls `Nullock::Core::Compare::diffBytes(a, b)` -- binary-safe, bypassing QString entirely. Tests/compare/compare_test.cpp covers identical binary buffers, a single-byte change, side rebuilds, and 0x80 vs 0x81 (both invalid UTF-8 starts) still differing rather than folding to U+FFFD.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -4229,7 +4241,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified; Burp's Comparer offers Words and Bytes only, so a line mode is genuinely extra.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/compare.cpp:43-51 `QStringList tokenizeLines(const QString &s) { ... if (s[i] == QLatin1Char('\\n')) { out << s.mid(start, i - start + 1); start = i + 1; } ... }` selected at :137 `if (m == QLatin1String(\"lines\")) return lcsDiff(tokenizeLines(a), tokenizeLines(b));`, advertised in modes() :131-133, surfaced at ui-v2/app.jsx `<Btn label=\"lines\" primary={mode === \"l"
+      "evidence": "Src/Core/Networking/compare.cpp:45-53 `QStringList tokenizeLines(const QString &s) { ... if (s[i] == QLatin1Char('\\n')) { out << s.mid(start, i - start + 1); start = i + 1; } ... }`, selected at :173 `if (m == QLatin1String(\"lines\")) return lcsDiff(tokenizeLines(a), tokenizeLines(b));`, advertised in modes() :166-169, surfaced at ui-v2/app.jsx:3385 `<Btn label=\"lines\" primary={mode === \"lines\"} onClick={() => setMode(\"lines\")} />`.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -4332,9 +4350,15 @@
       "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Decoding hex that is not valid UTF-8 (the common case when you hex-decode a binary blob) yields U+FFFD replacement characters, not the bytes. Burp's ASCII-hex decode is byte-exact and pairs with a Hex view; there is no hex view here (see B26).",
+      "gap": "Decoding hex that is not valid UTF-8 (the common case when you hex-decode a binary blob) yields U+FFFD replacement characters, not the bytes, because hexDecode returns QString::fromUtf8 over the raw decoded bytes -- the Text/Hex view toggle added 2026-08-09 (see the separate \"Decoder: Text / Hex view toggle per block\" item) can only display what already arrived corrupted from the backend; it does not fix the underlying lossy conversion.",
       "why": "Verified, including the input hygiene. Adding one gap the auditor did not note: decode returns QString::fromUtf8, so non-UTF-8 byte sequences come back as replacement characters.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:98-107 `QString s = in.trimmed(); s.remove(QLatin1Char(' ')).remove(QLatin1Char('\\n')).remove(QLatin1Char('\\t')).remove(QLatin1Char('\\r')); if (s.isEmpty()) return err(...); if (s.size() % 2 != 0) return err(QStringLiteral(\"hex length must be even\")); ... if (s.contains(nonHex)) return err(QStringLiteral(\"contains non-hex characters\")); return ok(QS"
+      "evidence": "Src/Core/Networking/transcode.cpp:95-97 hexEncode `return ok(QString::fromLatin1(in.toUtf8().toHex()));`; :98-107 hexDecode (strip whitespace, require even length + hex-only via QRegularExpression, then `return ok(QString::fromUtf8(QByteArray::fromHex(s.toLatin1())));` -- the fromUtf8 collapses non-UTF-8 bytes to U+FFFD). Registered in operations() :281; dispatched in apply() :302-303. UI list ui-v2/app.jsx:5755 OPS includes \"hex-encode\"/\"hex-decode\".",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -4360,7 +4384,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified end to end: the loop, the no-progress guard, the chain return, the API passing chain through, and the UI rendering it.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:263-285 `Result smartDecode(const QString &input, QStringList *chain) { ... for (int iter = 0; iter < 12; ++iter) { ... jwt -> url -> html -> base64 -> hex ... const Result r = apply(op, cur); if (!r.ok || r.output == cur) break; // failed or made no progress; steps << op; ... } if (chain) *chain = steps;`. Base64 detector guard :209-216 `// Require"
+      "evidence": "Src/Core/Networking/transcode.cpp:323-345 `Result smartDecode(const QString &input, QStringList *chain) { ... for (int iter = 0; iter < 12; ++iter) { ... jwt -> url -> html -> base64 -> hex ... const Result r = apply(op, cur); if (!r.ok || r.output == cur) break; // failed or made no progress; steps << op; ... }`, terminal break on jwt-decode :338, no-progress guard :335, chain returned via out-param and surfaced by the caller. Base64 detector guard :248-265 `looksLikeBase64()` requires >=80% printable decoded bytes so a pure-hex string falls through to hex-decode instead of a false-positive base64 hit. UI: ui-v2/app.jsx:5885 `<Btn label=\"\u2726 smart decode\" primary onClick={() => run(\"smart\")} ...`.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -5019,7 +5049,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Held. Every link in the chain verified end to end; the only correction is the file path (control_server.cpp lives at Src/BackEnd/Control/, not Src/App/).",
-      "evidence": "site_map_model.cpp:9-13 `connect(m_source, &QAbstractItemModel::rowsInserted, this, &SiteMapModel::onSourceRowsInserted);` + `connect(m_source, &QAbstractItemModel::modelReset, this, &SiteMapModel::onSourceModelReset);`. Incremental update at site_map_model.cpp:86-98: `if (existing >= 0) { m_entries[existing].count++; ... emit dataChanged(changed, changed, { CountRole, TlsRole }); } else { beginIn"
+      "evidence": "Src/FrontEnd/GUI/Models/Proxy/site_map_model.cpp:9-12 `connect(m_source, &QAbstractItemModel::rowsInserted, this, &SiteMapModel::onSourceRowsInserted); connect(m_source, &QAbstractItemModel::modelReset, this, &SiteMapModel::onSourceModelReset);`. Incremental update at :79-100 `onSourceRowsInserted`: existing host -> `m_entries[existing].count++` + `emit dataChanged(changed, changed, { CountRole, TlsRole })`; new host -> `beginInsertRows`/`endInsertRows`. control_server.cpp lives at Src/BackEnd/Control/control_server.cpp (not Src/App/).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers/paths that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "target",
