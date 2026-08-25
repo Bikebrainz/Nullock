@@ -3115,12 +3115,12 @@
     {
       "area": "platform",
       "feature": "Collaborator: interaction persistence across restarts",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "An overnight callback is lost across a restart and old hits are silently evicted past kMaxHits. DNS interactions are never stored at all.",
-      "why": "Confirmed by reading the storage sites for both sinks. HTTP hits live in a capped in-RAM ring; DNS hits are not stored at all. I re-grepped project_store.cpp/.hpp for any OAST or findings persistence and got zero hits. Confirmed absent \u2014 and the DNS half is stronger than 'not persisted': it is never retained even in memory.",
-      "evidence": "oast_server.cpp:191-195 `{ QMutexLocker lk(&m_mutex); m_hits.append(hit); while (m_hits.size() > kMaxHits) m_hits.removeFirst(); }` over oast_server.hpp:90 `QList<OastHit> m_hits;          // ring; we cap at kMaxHits`. DNS retains nothing: dns_sink.cpp:114-115 `++m_hitCount; emit hitReceived(hit);`. `grep -n \"findings\" Src/Core/Storage/project_store.cpp Src/Core/Storage/project_store.hpp` \u2192 no out"
+      "gap": "The ACTIONABLE half now persists: OastCorrelator saves its token registry (token -> origin) and already-confirmed set to <appdata>/oast-interactions.json (atomic QSaveFile write on every register / new confirmation) and reloads it on startup, so an overnight callback that lands AFTER a restart still correlates to the token minted before it and emits its confirmed finding, and an interaction already reported is never re-reported. STILL in-memory-only: the raw hit LOG shown by /api/oast/poll (oast_server's capped m_hits ring) and DNS hits (never stored even in RAM) -- those remain lost across a restart.",
+      "why": "Partial-closed 2026-08-24: added OastLogic::serializeState/deserializeState (pure, versioned, Core-only) + OastCorrelator::setPersistPath (loads on set) / saveLocked (atomic write on each change), wired in app.cpp to an AppDataLocation file. This makes the correlation -- the part that turns a callback into a finding -- survive restarts. The raw poll-log ring + DNS-hit retention are a separate, larger change (QtNetwork sink TUs) and remain open.",
+      "evidence": "oast_logic.{hpp,cpp} serializeState/deserializeState (versioned, round-trip unit-tested); oast_origin.hpp (OastOrigin split to a Core-only header); oast_correlator.{hpp,cpp} m_persistPath/setPersistPath/saveLocked, saveLocked() called from registerToken + the onHit new-confirmation branch; app.cpp setPersistPath(AppDataLocation + \"/oast-interactions.json\"). Tests: oast_logic_test round-trip (all origin fields + confirmed set) + version-gate rejects an old/corrupt blob."
     },
     {
       "area": "platform",

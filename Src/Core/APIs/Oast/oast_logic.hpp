@@ -9,6 +9,11 @@
 // 16-hex token (from the subdomain label or the /oast/<token>/ path segment) may
 // ever be accepted -- a looser match would let an attacker forge correlations.
 
+#include "oast_origin.hpp"
+
+#include <QHash>
+#include <QJsonObject>
+#include <QSet>
 #include <QString>
 
 namespace Nullock::Core::OastLogic {
@@ -18,5 +23,18 @@ namespace Nullock::Core::OastLogic {
 // the lowercased token, or an empty string if neither carries an exact-16-hex
 // label. Memory-safe on any input.
 QString extractToken(const QString &hostHeader, const QString &path);
+
+// ---- Correlator persistence (pure serialize / deserialize) ----------------
+// Serialize the correlator's registry (token -> origin) and already-confirmed
+// token set to a JSON object, and parse it back. Kept here (Core-only) so the
+// round-trip is unit-testable without the QtNetwork chain. deserializeState
+// REPLACES the passed containers; a malformed / wrong-version object leaves them
+// empty (a corrupt persistence file must never crash or half-load, only lose the
+// saved state). Round-trip stable: deserialize(serialize(x)) == x.
+QJsonObject serializeState(const QHash<QString, OastOrigin> &tokens,
+                           const QSet<QString> &confirmed);
+void        deserializeState(const QJsonObject &obj,
+                             QHash<QString, OastOrigin> &tokens,
+                             QSet<QString> &confirmed);
 
 } // namespace Nullock::Core::OastLogic

@@ -30,6 +30,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QStandardPaths>
 #include <QThreadPool>
 #include <QEventLoop>
 #include <QFile>
@@ -1173,6 +1174,18 @@ int main(int argc, char *argv[]) {
     oastCorrelator.setScanner(&scanner);
     QObject::connect(&oast, &Nullock::Core::OastServer::hitReceived,
                      &oastCorrelator, &Nullock::Core::OastCorrelator::onHit);
+    // Persist the correlator's registry + confirmed set across restarts, so a
+    // callback that lands AFTER a restart still correlates to a token minted
+    // before it (Burp Collaborator's interaction persistence). Stored under the
+    // app data dir; a missing/corrupt file just starts empty.
+    {
+        const QString oastDir =
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        if (!oastDir.isEmpty()) {
+            QDir().mkpath(oastDir);
+            oastCorrelator.setPersistPath(oastDir + "/oast-interactions.json");
+        }
+    }
     wiring.oastCorrelator = &oastCorrelator;
 
     // DNS sink. Catches the OOB classes the HTTP sink can't see -- a

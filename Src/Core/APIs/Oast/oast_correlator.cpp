@@ -1,9 +1,37 @@
 #include "oast_correlator.hpp"
 #include "finding_sink.hpp"
+#include "oast_logic.hpp"
 
+#include <QJsonDocument>
 #include <QMutexLocker>
+#include <QSaveFile>
+#include <QFile>
 
 namespace Nullock::Core {
+
+void OastCorrelator::setPersistPath(const QString &path) {
+    QMutexLocker lk(&m_mutex);
+    m_persistPath = path;
+    if (m_persistPath.isEmpty()) return;
+    // Load any state a prior run saved, so a callback arriving after a restart
+    // still correlates and an already-reported hit is not re-reported. A missing
+    // or corrupt file simply starts empty (never crash / half-load).
+    QFile f(m_persistPath);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (doc.isObject())
+        OastLogic::deserializeState(doc.object(), m_tokens, m_confirmed);
+}
+
+void OastCorrelator::saveLocked() const {
+    if (m_persistPath.isEmpty()) return;
+    // Atomic write (temp-then-rename) so a crash mid-save never leaves a
+    // truncated/corrupt registry.
+    QSaveFile f(m_persistPath);
+    if (!f.open(QIODevice::WriteOnly)) return;
+    f.write(QJsonDocument(OastLogic::serializeState(m_tokens, m_confirmed)).toJson(QJsonDocument::Compact));
+    f.commit();
+}
 
 void OastCorrelator::registerToken(const QString &token, const OastOrigin &origin) {
     if (token.isEmpty()) return;
@@ -15,6 +43,7 @@ void OastCorrelator::registerToken(const QString &token, const OastOrigin &origi
         m_tokens.clear();
         m_confirmed.clear();
     }
+    saveLocked();
 }
 
 int OastCorrelator::registeredCount() const {
@@ -39,7 +68,7 @@ void OastCorrelator::onHit(const OastHit &hit) {
             origin = *it;
             known = true;
             if (m_confirmed.contains(hit.token)) alreadyDone = true;
-            else m_confirmed.insert(hit.token);
+            else { m_confirmed.insert(hit.token); saveLocked(); }
         }
     }
     // Unknown token = someone hit the sink directly (or a token we never

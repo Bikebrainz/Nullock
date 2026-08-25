@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **OAST correlation persists across restarts.** The Collaborator-style OAST
+  correlator now saves its token registry (token &rarr; originating row/param/probe)
+  and its already-confirmed set to a file under the app data dir (atomic write on
+  every registration and confirmation) and reloads it on startup. So an overnight
+  out-of-band callback that arrives *after* a restart still correlates to the
+  token minted before it &mdash; emitting its confirmed finding instead of being
+  lost &mdash; and an interaction already reported is never re-reported. The
+  serializer is versioned and Core-only unit-tested (a corrupt/old file loads
+  empty rather than half-loading). (Roadmap: platform &mdash; Collaborator
+  interaction persistence; the raw poll-log ring + DNS-hit retention remain
+  in-memory, tracked as the remaining partial.)
 - **Sequencer: per-position effective entropy.** Alongside the global
   bits/char&times;length keyspace estimate, token analysis now reports
   `shannon.perPositionEffectiveBits` &mdash; the sum of log2(observed alphabet

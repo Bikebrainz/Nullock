@@ -19,6 +19,7 @@
 // being free + self-hosted, above) Collaborator.
 
 #include "oast_server.hpp"
+#include "oast_origin.hpp"
 
 #include <QHash>
 #include <QMutex>
@@ -31,15 +32,8 @@
 namespace Nullock::Core {
 
 // See finding_sink.hpp: depending on the interface keeps APIs off Networking.
-
-struct OastOrigin {
-    int     rowId = 0;     // history row that fired the payload (0 = manual)
-    QString host;          // target host the payload was sent to
-    QString param;         // parameter / location the token was embedded in
-    QString url;           // the callback URL we embedded
-    QString kind;          // probe kind, e.g. "ssrf-oast"
-    QString note;          // optional free-text label (manual mints)
-};
+// OastOrigin now lives in oast_origin.hpp (Core-only) so the pure persistence
+// serializer can reach it without the QtNetwork chain.
 
 class OastCorrelator : public QObject {
     Q_OBJECT
@@ -54,6 +48,14 @@ public:
     // workers call this from QtConcurrent threads.
     void registerToken(const QString &token, const OastOrigin &origin);
 
+    // Persistence across restarts: point the correlator at a JSON file. Loads any
+    // saved (token -> origin) registrations and the already-confirmed set on the
+    // spot, so a callback that arrives AFTER a restart still correlates to the
+    // token minted before it, and an interaction already reported is never
+    // re-reported. Subsequent registerToken / confirmed-hit changes are written
+    // back atomically. Passing an empty path disables persistence. Thread-safe.
+    void setPersistPath(const QString &path);
+
     int registeredCount() const;
     int confirmedCount() const;
 
@@ -64,10 +66,15 @@ public slots:
     void onHit(const OastHit &hit);
 
 private:
+    // Write the current registry + confirmed set to m_persistPath (atomic
+    // temp-then-rename). Caller must hold m_mutex.
+    void saveLocked() const;
+
     mutable QMutex              m_mutex;
     QHash<QString, OastOrigin>  m_tokens;      // token -> origin
     QSet<QString>               m_confirmed;   // tokens already reported
     IFindingSink               *m_scanner = nullptr;
+    QString                     m_persistPath; // empty -> persistence disabled
 };
 
 } // namespace Nullock::Core

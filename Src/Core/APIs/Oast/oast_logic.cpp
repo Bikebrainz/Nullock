@@ -1,8 +1,62 @@
 #include "oast_logic.hpp"
 
+#include <QJsonArray>
 #include <QRegularExpression>
 
 namespace Nullock::Core::OastLogic {
+
+namespace {
+constexpr int kStateVersion = 1;
+}
+
+QJsonObject serializeState(const QHash<QString, OastOrigin> &tokens,
+                           const QSet<QString> &confirmed) {
+    QJsonArray toks;
+    for (auto it = tokens.cbegin(); it != tokens.cend(); ++it) {
+        const OastOrigin &o = it.value();
+        toks.append(QJsonObject{
+            { QStringLiteral("token"), it.key() },
+            { QStringLiteral("rowId"), o.rowId },
+            { QStringLiteral("host"),  o.host },
+            { QStringLiteral("param"), o.param },
+            { QStringLiteral("url"),   o.url },
+            { QStringLiteral("kind"),  o.kind },
+            { QStringLiteral("note"),  o.note },
+        });
+    }
+    QJsonArray conf;
+    for (const QString &t : confirmed) conf.append(t);
+    return QJsonObject{
+        { QStringLiteral("version"),   kStateVersion },
+        { QStringLiteral("tokens"),    toks },
+        { QStringLiteral("confirmed"), conf },
+    };
+}
+
+void deserializeState(const QJsonObject &obj,
+                      QHash<QString, OastOrigin> &tokens,
+                      QSet<QString> &confirmed) {
+    tokens.clear();
+    confirmed.clear();
+    if (obj.value(QStringLiteral("version")).toInt() != kStateVersion) return;
+    for (const QJsonValue &v : obj.value(QStringLiteral("tokens")).toArray()) {
+        const QJsonObject e = v.toObject();
+        const QString token = e.value(QStringLiteral("token")).toString();
+        if (token.isEmpty()) continue;
+        OastOrigin o;
+        o.rowId = e.value(QStringLiteral("rowId")).toInt();
+        o.host  = e.value(QStringLiteral("host")).toString();
+        o.param = e.value(QStringLiteral("param")).toString();
+        o.url   = e.value(QStringLiteral("url")).toString();
+        o.kind  = e.value(QStringLiteral("kind")).toString();
+        o.note  = e.value(QStringLiteral("note")).toString();
+        tokens.insert(token, o);
+    }
+    for (const QJsonValue &v : obj.value(QStringLiteral("confirmed")).toArray()) {
+        const QString t = v.toString();
+        if (!t.isEmpty()) confirmed.insert(t);
+    }
+}
 
 QString extractToken(const QString &hostHeader, const QString &path) {
     // The token is exactly 16 lowercase-hex chars. Anchor with \A...\z, NOT ^...$:

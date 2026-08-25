@@ -9,6 +9,7 @@
 #include "oast_logic.hpp"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QString>
 
@@ -89,6 +90,48 @@ int main(int argc, char **argv) {
         }
         chk("fuzz: extractToken survived 8k random host/path (no crash)", true);
         chk("fuzz: any returned token is exactly 16 lowercase-hex", invariant);
+    }
+
+    // ===== correlator persistence round-trip (roadmap: platform) ========
+    // serializeState/deserializeState back the OAST interaction persistence that
+    // lets a callback correlate across a restart. Round-trip must preserve every
+    // origin field + the confirmed set; a corrupt/wrong-version blob loads empty.
+    {
+        using Nullock::Core::OastOrigin;
+        QHash<QString, OastOrigin> toks;
+        OastOrigin o1; o1.rowId = 7; o1.host = "v.example"; o1.param = "q";
+        o1.url = "http://a.oast/abc"; o1.kind = "ssrf-oast"; o1.note = "mint A";
+        OastOrigin o2; o2.rowId = 0; o2.host = "w.example"; o2.param = QString();
+        o2.url = "http://b.oast/def"; o2.kind = "log4shell-oast"; o2.note = QString();
+        toks.insert("aaaaaaaaaaaaaaaa", o1);
+        toks.insert("bbbbbbbbbbbbbbbb", o2);
+        QSet<QString> conf; conf.insert("bbbbbbbbbbbbbbbb");
+
+        QHash<QString, OastOrigin> t2; QSet<QString> c2;
+        deserializeState(serializeState(toks, conf), t2, c2);
+        chk("persist round-trip: token count preserved", t2.size() == 2);
+        chk("persist round-trip: confirmed set preserved",
+            c2.size() == 1 && c2.contains("bbbbbbbbbbbbbbbb"));
+        chk("persist round-trip: all origin fields preserved",
+            t2["aaaaaaaaaaaaaaaa"].rowId == 7 && t2["aaaaaaaaaaaaaaaa"].host == "v.example"
+            && t2["aaaaaaaaaaaaaaaa"].param == "q" && t2["aaaaaaaaaaaaaaaa"].url == "http://a.oast/abc"
+            && t2["aaaaaaaaaaaaaaaa"].kind == "ssrf-oast" && t2["aaaaaaaaaaaaaaaa"].note == "mint A");
+        chk("persist round-trip: empty-field origin preserved",
+            t2["bbbbbbbbbbbbbbbb"].param.isEmpty() && t2["bbbbbbbbbbbbbbbb"].rowId == 0
+            && t2["bbbbbbbbbbbbbbbb"].kind == "log4shell-oast");
+
+        // Corrupt / wrong-version / empty blob -> empty (never half-load or crash).
+        // The wrong-version blob carries real tokens: the version GATE must still
+        // reject it (a future format change never half-loads an old file).
+        QHash<QString, OastOrigin> t3; QSet<QString> c3;
+        deserializeState(QJsonObject{
+            { "version", 999 },
+            { "tokens", QJsonArray{ QJsonObject{ { "token", "cccccccccccccccc" }, { "host", "x" } } } },
+            { "confirmed", QJsonArray{ "cccccccccccccccc" } } }, t3, c3);
+        chk("persist: wrong version loads empty (gate rejects an old format)",
+            t3.isEmpty() && c3.isEmpty());
+        deserializeState(QJsonObject{}, t3, c3);
+        chk("persist: empty object loads empty", t3.isEmpty() && c3.isEmpty());
     }
 
     std::fprintf(stderr, "oast_logic_test: %d passed, %d failed\n", pass, fail);
