@@ -72,7 +72,8 @@ Proxy             HTTP/1.1 + HTTP/2 + WebSocket, native frame visibility, interc
                   download with the full captured request/response, base64) / DELETE HOST or
                   DELETE BRANCH (removes it from the site map, history table, and Compare Hosts
                   alike; a filter-bar chip shows how many are hidden and restores them in one
-                  click), scoped to whatever was clicked -- the whole host, just that branch, or
+                  click) / REPORT ISSUES (a standalone HTML issue report, sorted by severity),
+                  scoped to whatever was clicked -- the whole host, just that branch, or
                   one URL;
                   Settings' CA & TLS card can allow-list a self-signed/expired upstream host
                   (host:port) so it stays interceptable instead of getting permanently blocked

@@ -2125,6 +2125,61 @@ function buildSiteMapItemsXml(rowsWithRaw, omittedCount) {
     + "<items exportedBy=\"Nullock\">\n" + items.join("\n") + "\n</items>\n";
 }
 
+// "Report issues for selected branch" -- the last leg of #372's site-map
+// item actions. Pure: no DOM/I-O. Scopes window.NL.findings (the same array
+// the ISSUES tab already renders) to a host, a directory branch, or a single
+// row's path, matching how Delete/Save/Copy already scope. Path comparison
+// (not an exact-URL-string match against ctxMenuTargetUrls()) because a
+// finding's url and a history row's re-derived url can format the query
+// string differently -- the path is what "branch" actually means here.
+function urlPathname(u) {
+  try { return new URL(u).pathname || "/"; } catch (e) { return null; }
+}
+function findingsForScope(findings, host, branch, rowPath) {
+  return (findings || []).filter(f => {
+    if (f.host !== host) return false;
+    const fPath = urlPathname(f.url);
+    if (fPath == null) return false;
+    if (rowPath != null) return fPath === rowPath.split("?")[0];
+    if (!branch) return true;
+    return fPath === branch || fPath.startsWith(branch + "/");
+  });
+}
+
+// Standalone HTML issue report for the scoped findings above -- same
+// Blob+<a download> pattern buildSiteMapItemsXml's caller uses, self-
+// contained escaping (quotes too, since URLs land in an href attribute).
+function buildBranchIssuesHtml(findings, scopeLabel) {
+  const esc = s => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const sevOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+  const sorted = findings.slice().sort((a, b) => (sevOrder[a.severity] ?? 5) - (sevOrder[b.severity] ?? 5));
+  const rows = sorted.map(f => "  <tr class=\"sev-" + esc(f.severity || "info") + "\">\n"
+    + "    <td>" + esc(f.severity || "info") + "</td>\n"
+    + "    <td>" + esc(f.kind || "") + "</td>\n"
+    + "    <td><a href=\"" + esc(f.url || "") + "\">" + esc(f.url || "") + "</a></td>\n"
+    + "    <td>" + esc(f.summary || "") + "</td>\n"
+    + "    <td>" + esc(f.evidence || "") + "</td>\n"
+    + "    <td>" + esc(f.cwe || "") + "</td>\n"
+    + "  </tr>").join("\n");
+  return "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n"
+    + "<title>Nullock issues - " + esc(scopeLabel) + "</title>\n"
+    + "<style>body{font-family:monospace;background:#0d0f12;color:#d6dee8;padding:20px}"
+    + "table{border-collapse:collapse;width:100%}th,td{border:1px solid #333;padding:6px 8px;"
+    + "text-align:left;vertical-align:top;font-size:12px}th{background:#1a1d22}"
+    + ".sev-critical td:first-child{color:#ff5566}.sev-high td:first-child{color:#ff9955}"
+    + ".sev-medium td:first-child{color:#eecc55}.sev-low td:first-child{color:#77bbee}"
+    + ".sev-info td:first-child{color:#888}</style>\n</head><body>\n"
+    + "<h2>Nullock issues - " + esc(scopeLabel) + "</h2>\n"
+    + "<p>" + findings.length + " issue" + (findings.length === 1 ? "" : "s")
+    + " &middot; generated " + esc(new Date().toISOString()) + "</p>\n"
+    + (findings.length
+        ? "<table><thead><tr><th>Severity</th><th>Kind</th><th>URL</th><th>Summary</th><th>Evidence</th><th>CWE</th></tr></thead><tbody>\n"
+          + rows + "\n</tbody></table>\n"
+        : "<p><em>No matching issues in this scope.</em></p>\n")
+    + "</body></html>\n";
+}
+
 function renderRequestAs(kind, row, raw) {
   const r = parseRawRequest(row, raw);
   const hasBody = r.body && r.body.length > 0;
@@ -3020,6 +3075,32 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     closeRowMenu();
   };
 
+  // #372 "Report issues for selected branch": the last unbuilt leg of the
+  // site-map item-actions set. window.NL.findings is already the full,
+  // live findings array (the ISSUES tab reads the same global) -- no new
+  // endpoint needed, just scope + render + download client-side, same as
+  // Save selected items above.
+  const reportCtxMenuIssues = () => {
+    if (!ctxMenu) return;
+    const allFindings = (window.NL && NL.findings) ? NL.findings : [];
+    const rowPath = ctxMenu.rowId != null ? (ctxMenuTargetRows()[0] || {}).path : null;
+    const scoped = findingsForScope(allFindings, ctxMenu.host, ctxMenu.branch, rowPath);
+    try {
+      const scopeLabel = ctxMenu.host + (ctxMenu.branch ? ctxMenu.branch : (ctxMenu.rowId != null && rowPath ? rowPath : ""));
+      const html = buildBranchIssuesHtml(scoped, scopeLabel);
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nullock-issues-" + ctxMenu.host.replace(/[^a-z0-9.-]/gi, "_") + ".html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) { /* download blocked/unsupported -- silently no-op like saveCtxMenuItems */ }
+    closeRowMenu();
+  };
+
   // #372 "Delete host"/"Delete branch": add a scope to the hide-list (see
   // isRowDeleted's comment). Clears any current selection that falls inside
   // the deleted scope so DetailPane/HistoryTable don't keep pointing at a
@@ -3329,6 +3410,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
                 + " as a Burp-style XML file (request/response, base64) -- capped at " + SAVE_ITEMS_CAP + " items"}
               onClick={saveCtxMenuItems}
             >💾 SAVE SELECTED ITEMS</div>
+            <div
+              className="btn"
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              title={(ctxMenu.rowId != null ? "Report issues for this item" : (ctxMenu.branch ? "Report issues under this branch" : "Report issues for this host"))
+                + " as a standalone HTML file"}
+              onClick={reportCtxMenuIssues}
+            >📋 REPORT ISSUES</div>
             <div style={{ borderTop: "1px solid var(--line)" }} />
             {ctxMenu.branch && (
               <div
