@@ -53,6 +53,7 @@ QStringList L(std::initializer_list<const char *> l) {
 // only sequencer_logic.obj against Qt6::Core -- referencing the QObject would
 // drag in Networking's shared moc compilation and the FrontEndGUI chain.
 QJsonObject analyze(const QStringList &t) { return analyzeTokens(t); }
+QJsonObject analyze(const QStringList &t, double alpha) { return analyzeTokens(t, alpha); }
 } // namespace
 
 int main(int argc, char **argv) {
@@ -684,6 +685,80 @@ int main(int argc, char **argv) {
         // 0 decoded bits (corpus not bit-testable) never spuriously reports FIPS met.
         chk("ssg: 500 tokens, 0 bits -> adequate tokens but FIPS not met",
             !sampleSizeGuidance(500, 0).tooFew && !sampleSizeGuidance(500, 0).fipsBitsMet);
+    }
+
+    // ===== significance-level (alpha) selector (roadmap: sequencer) =======
+    // Every bit-level test is now graded at a chosen significance level, and each
+    // exposes its p-value. Prove the selector actually re-grades: use a test's OWN
+    // reported p-value as the pivot and confirm its failed flag flips as alpha
+    // crosses it -- robust regardless of the exact realized p-value.
+    {
+        auto near = [](double a, double b, double tol) { return (a > b ? a - b : b - a) < tol; };
+        // Corpus with a slight INDEPENDENT per-bit 1-bias (P(1)=0.515): the
+        // aggregate monobit is biased with a moderate (not astronomically tiny)
+        // p-value. Deterministic seed -> stable p-value.
+        std::mt19937 gen(20260825u);
+        static const char HEX2[] = "0123456789abcdef";
+        QStringList biasedCorpus;
+        for (int i = 0; i < 100; ++i) {
+            QString t;
+            for (int nib = 0; nib < 32; ++nib) {          // 32 nibbles = 16 bytes/token
+                int v = 0;
+                for (int b = 0; b < 4; ++b) v = (v << 1) | ((gen() % 1000u) < 515u ? 1 : 0);
+                t += QChar(QLatin1Char(HEX2[v]));
+            }
+            biasedCorpus << t;
+        }
+        const QJsonObject def = analyze(biasedCorpus);    // default alpha 0.01
+        chk("sig: significanceLevel defaults to 0.01",
+            near(def["significanceLevel"].toDouble(), 0.01, 1e-12));
+        const QJsonObject mono = def["bitLevel"].toObject()["monobit"].toObject();
+        const double P = mono["pValue"].toDouble();
+        chk("sig: biased corpus yields a usable monobit p-value in (2e-6, 0.1)",
+            P > 2e-6 && P < 0.1);
+        const bool failAbove = analyze(biasedCorpus, P * 2.0)["bitLevel"].toObject()
+                                  ["monobit"].toObject()["failed"].toBool();
+        const bool failBelow = analyze(biasedCorpus, P * 0.5)["bitLevel"].toObject()
+                                  ["monobit"].toObject()["failed"].toBool();
+        chk("sig: monobit FAILS at alpha just above its p-value", failAbove);
+        chk("sig: monobit PASSES at alpha just below its p-value", !failBelow);
+        chk("sig: monobit.failed == (pValue < 0.01) at the default level",
+            mono["failed"].toBool() == (P < 0.01));
+        // significanceLevel echo + clamping.
+        chk("sig: significanceLevel echoes the requested 0.05",
+            near(analyze(biasedCorpus, 0.05)["significanceLevel"].toDouble(), 0.05, 1e-12));
+        chk("sig: alpha > 0.2 clamps to 0.2",
+            near(analyze(biasedCorpus, 5.0)["significanceLevel"].toDouble(), 0.2, 1e-12));
+        chk("sig: alpha <= 0 falls back to default 0.01",
+            near(analyze(biasedCorpus, 0.0)["significanceLevel"].toDouble(), 0.01, 1e-12));
+        chk("sig: negative alpha falls back to default 0.01",
+            near(analyze(biasedCorpus, -1.0)["significanceLevel"].toDouble(), 0.01, 1e-12));
+        // Monotonicity: a LOOSER alpha can only fail >= as many bit sub-tests.
+        auto failCount = [](const QJsonObject &a) {
+            const QJsonObject b = a["bitLevel"].toObject();
+            int n = 0;
+            for (const char *k : {"monobit","twoBit","serialCorrelation","poker","runs",
+                                  "longRun","runLengths","perBitMonobit","bitCorrelation","compression"})
+                if (b.contains(QLatin1String(k)) && b[QLatin1String(k)].toObject()["failed"].toBool()) ++n;
+            return n;
+        };
+        chk("sig: looser alpha fails >= as many tests as stricter (monotonic)",
+            failCount(analyze(biasedCorpus, 0.05)) >= failCount(analyze(biasedCorpus, 1e-4)));
+        // Exposed p-value is consistent with the statistic it derives from.
+        const QJsonObject two = def["bitLevel"].toObject()["twoBit"].toObject();
+        chk("sig: twoBit.pValue == chiSquareSurvival(chiSquare, 3)",
+            near(two["pValue"].toDouble(), chiSquareSurvival(two["chiSquare"].toDouble(), 3), 1e-9));
+        // A clean random corpus is NOT flagged at the default level (behaviour
+        // preserved) -- its bit-test p-values clear 0.01.
+        std::mt19937 cg(13579u);
+        QStringList clean2;
+        for (int i = 0; i < 100; ++i) {
+            QString t;
+            for (int c = 0; c < 32; ++c) t += QChar(QLatin1Char(HEX2[cg() % 16u]));
+            clean2 << t;
+        }
+        chk("sig: clean corpus monobit passes at default (behaviour preserved)",
+            !analyze(clean2)["bitLevel"].toObject()["monobit"].toObject()["failed"].toBool());
     }
 
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);

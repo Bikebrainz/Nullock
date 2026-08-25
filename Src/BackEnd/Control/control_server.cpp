@@ -5187,15 +5187,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     // ---- Sequencer (token randomness analyzer) -----------------------
-    // POST /api/sequencer/analyze { tokens: [str, str, ...] }
+    // POST /api/sequencer/analyze { tokens: [str, str, ...], significanceLevel?: <double> }
     // Burp's Sequencer equivalent. Statistical tests on a captured
     // corpus of session-style tokens. Returns per-test scores + verdict.
+    // Optional significanceLevel (alpha) re-grades every bit-level test; the
+    // server clamps it to [1e-6, 0.2] and defaults to 0.01 (FIPS/NIST).
     if (path == "/api/sequencer/analyze") {
         QStringList tokens;
         for (const QJsonValue &v : bodyJson.value("tokens").toArray())
             tokens.append(v.toString());
+        const double alpha = bodyJson.contains("significanceLevel")
+            ? bodyJson.value("significanceLevel").toDouble(0.01) : 0.01;
         Nullock::Core::Sequencer seq;
-        return httpJson(200, seq.analyze(tokens));
+        return httpJson(200, seq.analyze(tokens, alpha));
     }
 
     // ---- Sequencer LIVE CAPTURE (long-running job) -------------------

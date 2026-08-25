@@ -506,16 +506,21 @@ struct BitLevelResult {
     double monobitP = 1.0;      // NIST SP 800-22 frequency (monobit) p-value
     bool   monobitFail = false;
     double twoBitChi = 0.0;     // chi-square (3 dof) over non-overlapping bit pairs
+    double twoBitP = 1.0;       // its upper-tail p-value (chiSquareSurvival, 3 dof)
     bool   twoBitFail = false;
     double serialR = 0.0;       // byte-level lag-1 serial correlation coefficient
+    double serialP = 1.0;       // two-sided p-value of r (normal approx, z=r*sqrt(m-1))
     bool   serialFail = false;
     double pokerChi = -1.0;     // FIPS poker chi-square (15 dof); <0 = not computed
+    double pokerP = 1.0;        // its upper-tail p-value (chiSquareSurvival, 15 dof)
     bool   pokerFail = false;
     double runsZ = 0.0;         // Wald-Wolfowitz total-runs z-score
+    double runsP = 1.0;         // two-sided p-value of the runs z-score
     bool   runsFail = false;
     qint64 longestRun = 0;      // longest run of identical bits
     bool   longRunFail = false;
     double runsBucketChi = -1.0;// FIPS run-length (1..6+) chi-square; <0 = not computed
+    double runsBucketP = 1.0;   // its upper-tail p-value (chiSquareSurvival, 5 dof)
     bool   runsBucketFail = false;
     double compRatio = 1.0;     // zlib compressed/original size
     bool   compFail = false;
@@ -756,7 +761,7 @@ SampleSizeGuidance sampleSizeGuidance(int sampleCount, int decodedBits) {
 
 namespace {
 
-BitLevelResult bitLevelTests(const QStringList &tokens) {
+BitLevelResult bitLevelTests(const QStringList &tokens, double alpha) {
     BitLevelResult r;
     if (tokens.size() < kDeepMinN) return r;
 
@@ -782,7 +787,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
         const double s    = double(2 * ones - total);          // (#1 - #0)
         const double sObs = std::fabs(s) / std::sqrt(double(total));
         r.monobitP    = std::erfc(sObs / std::sqrt(2.0));
-        r.monobitFail = r.monobitP < 0.01;
+        r.monobitFail = r.monobitP < alpha;
     }
 
     // Shared modal decoded-byte-width cohort for the per-position bit tests.
@@ -806,11 +811,11 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
     if (modalW > 0 && cohortN >= kDeepMinN) {
         const int positions = modalW * 8;
         r.perBitPositions = positions;
-        // Bonferroni: testing `positions` bits at a naive 0.01 would false-
-        // positive ~positions*0.01 times on RANDOM data. Correct to 0.01/positions
-        // so the family-wise error rate stays ~0.01 -- clean corpus passes, a
+        // Bonferroni: testing `positions` bits at a naive alpha would false-
+        // positive ~positions*alpha times on RANDOM data. Correct to alpha/positions
+        // so the family-wise error rate stays ~alpha -- clean corpus passes, a
         // genuinely stuck bit (p ~ 1e-11) still fails.
-        const double alpha = 0.01 / double(positions);
+        const double alphaBonf = alpha / double(positions);
         for (int pos = 0; pos < positions; ++pos) {
             const int byteIdx = pos / 8;
             const int bitIdx  = 7 - (pos % 8);   // MSB-first, matches the stream tests
@@ -820,7 +825,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
             const double sObs = std::fabs(double(2 * onesP - cohortN)) / std::sqrt(double(cohortN));
             const double p    = std::erfc(sObs / std::sqrt(2.0));
             if (p < r.perBitMinP) r.perBitMinP = p;
-            if (p < alpha) ++r.perBitFails;
+            if (p < alphaBonf) ++r.perBitFails;
         }
         r.perBitFail = r.perBitFails > 0;
     }
@@ -848,7 +853,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
             }
             const qint64 pairs = qint64(positions) * (positions - 1) / 2;
             r.bitCorrPairs = pairs;
-            const double alpha = 0.01 / double(pairs);   // Bonferroni over all pairs
+            const double alphaBonf = alpha / double(pairs);   // Bonferroni over all pairs
             const double N = double(cohortN);
             for (int i = 0; i < positions; ++i) {
                 const int a1 = onesAt[i];
@@ -864,7 +869,7 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
                     const double chi = (num * num) * N / den;   // = n * phi^2, 1 dof
                     const double p = chiSquareSurvival(chi, 1);
                     if (p < r.bitCorrMinP) r.bitCorrMinP = p;
-                    if (p < alpha) ++r.bitCorrFails;
+                    if (p < alphaBonf) ++r.bitCorrFails;
                 }
             }
             r.bitCorrFail = r.bitCorrFails > 0;
@@ -892,7 +897,8 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
                 chi += d * d / exp;
             }
             r.twoBitChi  = chi;
-            r.twoBitFail = chi > 11.345;        // 3 dof, p < 0.01
+            r.twoBitP    = chiSquareSurvival(chi, 3);
+            r.twoBitFail = r.twoBitP < alpha;   // 3 dof (critical 11.345 at alpha=0.01)
         }
     }
 
@@ -909,29 +915,43 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
             const double num = double(m) * sxy - sx * sy;
             const double den = std::sqrt((double(m) * sxx - sx * sx) * (double(m) * syy - sy * sy));
             r.serialR    = (den > 1e-9) ? num / den : 0.0;
-            const double thr = qMax(0.08, 3.0 / std::sqrt(double(m)));
-            r.serialFail = std::fabs(r.serialR) > thr;
+            // Two-sided significance of the correlation (large-sample normal
+            // approx: z = r*sqrt(m-1) ~ N(0,1) under H0 of no correlation).
+            const double z = std::fabs(r.serialR) * std::sqrt(double(m - 1));
+            r.serialP = std::erfc(z / std::sqrt(2.0));
+            // Grade by significance AND an effect-size floor: a razor-thin but
+            // "significant" r on a huge corpus (p tiny, |r|~0.03) is not a
+            // practical predictability signal, so it must clear both. At
+            // alpha=0.01 the floor is the binding constraint (|r|>floor implies
+            // p<0.01 for all m>=16), so this reproduces the prior threshold
+            // exactly; a stricter alpha only tightens it.
+            const double effectFloor = qMax(0.08, 3.0 / std::sqrt(double(m)));
+            r.serialFail = (r.serialP < alpha) && (std::fabs(r.serialR) > effectFloor);
         }
     }
 
     // ---- FIPS 140-2 poker / runs / long-runs (over the same byte stream) ----
     r.pokerChi = fipsPokerChiSquare(cat);
-    r.pokerFail = r.pokerChi >= 0.0 && r.pokerChi > 30.578;   // 15 dof, p < 0.01
+    r.pokerP   = r.pokerChi >= 0.0 ? chiSquareSurvival(r.pokerChi, 15) : 1.0;
+    r.pokerFail = r.pokerChi >= 0.0 && r.pokerP < alpha;      // 15 dof (crit 30.578 at 0.01)
     r.runsZ = fipsRunsZScore(cat);
-    r.runsFail = std::fabs(r.runsZ) > 2.576;                  // p < 0.01
+    r.runsP = std::erfc(std::fabs(r.runsZ) / std::sqrt(2.0)); // two-sided normal
+    r.runsFail = r.runsP < alpha;                            // |z|>2.576 at alpha=0.01
     r.longestRun = longestBitRun(cat);
     {
         // Expected count of a run of length >= L is ~ total * 2^-L; flag the
         // longest run only when even ONE run that long is highly improbable
-        // (<1%) for this many bits. Scales with sample size (FIPS' fixed 26 is
-        // tuned for a 20k-bit sample; this generalises).
-        const double thr = std::log2(double(r.bits > 0 ? r.bits : 1)) + 6.64;  // log2(bits/0.01)
+        // (< alpha) for this many bits. Scales with sample size (FIPS' fixed 26
+        // is tuned for a 20k-bit sample; this generalises) AND with the chosen
+        // significance: thr = log2(bits/alpha) = log2(bits) - log2(alpha).
+        const double thr = std::log2(double(r.bits > 0 ? r.bits : 1)) - std::log2(alpha);
         r.longRunFail = double(r.longestRun) > thr;
     }
 
     // ---- FIPS length-bucketed runs test + compression test ----
     r.runsBucketChi = fipsRunsBucketChi(cat);
-    r.runsBucketFail = r.runsBucketChi >= 0.0 && r.runsBucketChi > 15.086;  // 5 dof, p < 0.01
+    r.runsBucketP   = r.runsBucketChi >= 0.0 ? chiSquareSurvival(r.runsBucketChi, 5) : 1.0;
+    r.runsBucketFail = r.runsBucketChi >= 0.0 && r.runsBucketP < alpha;  // 5 dof (crit 15.086 at 0.01)
     r.compRatio = compressionRatio(cat);
     r.compFail = r.compRatio < 0.85;    // meaningfully compressible -> structure/repetition
 
@@ -943,9 +963,16 @@ BitLevelResult bitLevelTests(const QStringList &tokens) {
 
 } // namespace
 
-QJsonObject analyzeTokens(const QStringList &tokens) {
+QJsonObject analyzeTokens(const QStringList &tokens, double alpha) {
+    // Significance level (alpha) selector: every bit-level statistical test is
+    // graded pass/fail at this level, and the Bonferroni-corrected multi-position
+    // tests use alpha/N. Clamp to a sane band; 0.01 is the FIPS/NIST default and
+    // reproduces the historical hard-coded critical values exactly.
+    if (!(alpha > 0.0)) alpha = 0.01;        // NaN / <= 0 (uninterpretable) -> default
+    alpha = qBound(1e-6, alpha, 0.2);        // any positive value clamps into the band
     QJsonObject result;
     result["n"] = tokens.size();
+    result["significanceLevel"] = alpha;
     result["reliability"] = reliabilityRating(tokens.size());
     if (tokens.isEmpty()) {
         result["verdict"] = "no-data";
@@ -1004,9 +1031,9 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     result["shannon"] = shannon;
 
     // Character class breakdown.
-    qint64 alpha = 0, digit = 0, hex = 0, special = 0, upper = 0, lower = 0;
+    qint64 alphaCount = 0, digit = 0, hex = 0, special = 0, upper = 0, lower = 0;
     for (QChar c : combined) {
-        if (c.isLetter())           ++alpha;
+        if (c.isLetter())           ++alphaCount;
         if (c.isDigit())             ++digit;
         if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
             || (c >= 'A' && c <= 'F')) ++hex;
@@ -1016,7 +1043,7 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     }
     QJsonObject cls;
     if (totalLen > 0) {
-        cls["alphaRatio"]   = double(alpha)   / double(totalLen);
+        cls["alphaRatio"]   = double(alphaCount) / double(totalLen);
         cls["digitRatio"]   = double(digit)   / double(totalLen);
         cls["hexRatio"]     = double(hex)     / double(totalLen);
         cls["upperRatio"]   = double(upper)   / double(totalLen);
@@ -1109,7 +1136,7 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
     posObj["charChiSquare"] = ccObj;
     result["positional"] = posObj;
 
-    const BitLevelResult bit = bitLevelTests(tokens);
+    const BitLevelResult bit = bitLevelTests(tokens, alpha);
     QJsonObject bitObj;
     bitObj["applicable"] = bit.applicable;
     if (bit.applicable) {
@@ -1134,18 +1161,22 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         bitObj["bitCorrelation"] = bitCorr;
         QJsonObject two;
         two["chiSquare"] = bit.twoBitChi;
+        two["pValue"]    = bit.twoBitP;    // upper-tail, 3 dof
         two["failed"]    = bit.twoBitFail;
         bitObj["twoBit"] = two;
         QJsonObject ser;
         ser["r"]      = bit.serialR;
+        ser["pValue"] = bit.serialP;       // two-sided normal approx
         ser["failed"] = bit.serialFail;
         bitObj["serialCorrelation"] = ser;
         QJsonObject poker;
         poker["chiSquare"] = bit.pokerChi;
+        poker["pValue"]    = bit.pokerP;   // upper-tail, 15 dof
         poker["failed"]    = bit.pokerFail;
         bitObj["poker"] = poker;
         QJsonObject runs;
         runs["z"]      = bit.runsZ;
+        runs["pValue"] = bit.runsP;        // two-sided normal
         runs["failed"] = bit.runsFail;
         bitObj["runs"] = runs;
         QJsonObject longRun;
@@ -1154,6 +1185,7 @@ QJsonObject analyzeTokens(const QStringList &tokens) {
         bitObj["longRun"] = longRun;
         QJsonObject runsBucket;
         runsBucket["chiSquare"] = bit.runsBucketChi;
+        runsBucket["pValue"]    = bit.runsBucketP;  // upper-tail, 5 dof
         runsBucket["failed"]    = bit.runsBucketFail;
         bitObj["runLengths"] = runsBucket;
         QJsonObject comp;

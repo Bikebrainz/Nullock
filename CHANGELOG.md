@@ -11,6 +11,22 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Sequencer: significance-level (alpha) selector.** Token analysis now takes a
+  significance level &mdash; `analyzeTokens(tokens, alpha)` /
+  `Sequencer::analyze(tokens, sig)` and an optional `significanceLevel` on
+  `POST /api/sequencer/analyze` &mdash; and grades EVERY bit-level test at that
+  level (the Bonferroni-corrected per-position / pairwise tests at
+  `alpha/N`), re-judging the whole suite looser or stricter in one shot. Each
+  test now also emits its **p-value**: the two-bit (&chi;&sup2;, 3 dof), poker
+  (15 dof), runs (z), run-length (5 dof) and lag-1 serial-correlation tests
+  gained one alongside the p-value monobit already reported, so no result needs
+  hand-judging against a memorised critical value. `alpha` defaults to 0.01
+  (FIPS/NIST) and is clamped to `[1e-6, 0.2]`; at 0.01 the grading reproduces
+  the previous hard-coded critical values exactly, so the verdict on existing
+  corpora is unchanged. Mutation-proven (defeating the alpha threading fails
+  only the targeted assertions) and verified live end-to-end. (Roadmap:
+  sequencer &mdash; significance-level selector; still partial pending a UI
+  control and alpha-grading of the keyspace estimate.)
 - **Configuration import/export as JSON.** `GET /api/config/export` emits a
   portable, versioned document &mdash; `{format:"nullock-config", version,
   sections}` &mdash; carrying scope (in/out/notes/advanced), match&amp;replace

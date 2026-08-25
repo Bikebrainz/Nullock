@@ -8,8 +8,8 @@
 
 namespace Nullock::Core {
 
-QJsonObject Sequencer::analyze(const QStringList &tokens) const {
-    return analyzeTokens(tokens);
+QJsonObject Sequencer::analyze(const QStringList &tokens, double significanceLevel) const {
+    return analyzeTokens(tokens, significanceLevel);
 }
 
 } // namespace Nullock::Core

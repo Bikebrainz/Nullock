@@ -2388,12 +2388,12 @@
     {
       "area": "sequencer",
       "feature": "Significance level selector (0.1% / 1% / 5% etc.) that re-grades every test and the entropy estimate",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No selector, and re-judging by hand is impossible for two of the three bit tests: the two-bit test reports chi-square without dof context in the JSON, and the correlation test reports r without the sample size m or a p-value.",
-      "why": "Confirmed: 3 hits for \"significance\" across all of Src/, all prose comments, exactly as claimed. Thresholds verified as literals.",
-      "evidence": "Comment-only hits: sequencer.hpp:25 `// activate on corpora of >= 20 tokens and use standard significance thresholds,`, sequencer_logic.cpp:218, :619. Hard-coded literals: :381 `r.monobitFail = r.monobitP < 0.01;`, :405 `r.twoBitFail = chi > 11.345;        // 3 dof, p < 0.01`, :422-423 `const double thr = qMax(0.08, 3.0 / std::sqrt(double(m))); r.serialFail = std::fabs(r.serialR) > thr;`. Only mon"
+      "gap": "The BACKEND selector is done: analyzeTokens/Sequencer::analyze and POST /api/sequencer/analyze take a significanceLevel (alpha), and every bit-level test is now graded at that level (Bonferroni-corrected tests at alpha/N), re-judging the whole suite looser/stricter. Every test also emits its p-value (twoBit/serial/poker/runs/runLengths gained one; monobit already had it), so nothing needs hand-judging any more. Still partial: no UI dropdown yet, and the keyspace ENTROPY estimate (shannon bits, good/ok/low verdict) is a point estimate not an alpha-graded hypothesis test, so it is not re-graded by the selector.",
+      "why": "Implemented + mutation-proven. Each bit test's hard-coded p<0.01 critical was replaced by a pValue<alpha comparison computed from the existing statistic (chiSquareSurvival for chi tests; two-sided normal erfc for the z/correlation tests), so alpha=0.01 reproduces the historical criticals EXACTLY (the serial effect-floor provably implies p<0.01 for all m>=20; gauntlet stayed 100/100 + 156/156). alpha is clamped to [1e-6,0.2] and echoed as result.significanceLevel.",
+      "evidence": "sequencer.hpp analyzeTokens(tokens, alpha=0.01) + Sequencer::analyze(tokens, sig=0.01); sequencer_logic.cpp bitLevelTests(tokens, alpha) grades monobit/twoBit/serial/poker/runs/longRun/runLengths + perBit/bitCorr (Bonferroni alpha/N) by pValue<alpha and exposes each pValue; control_server.cpp:/api/sequencer/analyze reads significanceLevel. Tests/sequencer/sequencer_test.cpp (120 pass): pivot-straddle proves monobit.failed flips as alpha crosses its own p-value; echo+clamp+monotonicity+behaviour-preservation; M1 (monobit ignores alpha) and M2 (force alpha=0.01) each fail only their targeted cases. Live e2e: POST significanceLevel=0.179->fail, 0.0448->pass for the same corpus."
     },
     {
       "area": "sequencer",

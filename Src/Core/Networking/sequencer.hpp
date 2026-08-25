@@ -41,7 +41,11 @@ namespace Nullock::Core {
 // The pure analysis (exposed for the unit test; defined in sequencer_logic.cpp).
 // Sequencer::analyze() is a thin Q_INVOKABLE wrapper around this. Returns the
 // JSON shape documented on Sequencer::analyze below.
-QJsonObject analyzeTokens(const QStringList &tokens);
+// `alpha` is the significance level every bit-level statistical test is graded
+// at (Bonferroni-corrected tests use alpha/N). 0.01 is the FIPS/NIST default and
+// reproduces the historical hard-coded critical values; a caller can pass 0.05 /
+// 0.001 to re-grade the whole suite looser/stricter. Clamped to [1e-6, 0.2].
+QJsonObject analyzeTokens(const QStringList &tokens, double alpha = 0.01);
 
 // FIPS 140-2-style bit-level randomness tests over a decoded byte stream
 // (exposed for direct unit testing; used by the bit-level analysis). The
@@ -119,16 +123,22 @@ public:
     //     "positional":{ "applicable": <bool>, "width": <int>, "n": <int>,
     //                    "columnEntropy": [<double>...], "reference": <double>,
     //                    "weakColumns": <int>, "biased": <bool> },
+    //     "significanceLevel": <double>,   // alpha every bit test was graded at
     //     "bitLevel":  { "applicable": <bool>, "scheme": "hex"|"base64",
     //                    "bits": <int>,
     //                    "monobit": { "pValue": <double>, "failed": <bool> },
-    //                    "twoBit":  { "chiSquare": <double>, "failed": <bool> },
-    //                    "serialCorrelation": { "r": <double>, "failed": <bool> },
+    //                    "twoBit":  { "chiSquare": <double>, "pValue": <double>, "failed": <bool> },
+    //                    "serialCorrelation": { "r": <double>, "pValue": <double>, "failed": <bool> },
+    //                    "poker":   { "chiSquare": <double>, "pValue": <double>, "failed": <bool> },
+    //                    "runs":    { "z": <double>, "pValue": <double>, "failed": <bool> },
+    //                    "runLengths": { "chiSquare": <double>, "pValue": <double>, "failed": <bool> },
     //                    "anyFailed": <bool> },
     //     "verdict":   "looks-random" | "may-be-predictable" | "predictable",
     //     "score":     <0-100>
     //   }
-    Q_INVOKABLE QJsonObject analyze(const QStringList &tokens) const;
+    // `significanceLevel` grades every bit-level test (see analyzeTokens); default 0.01.
+    Q_INVOKABLE QJsonObject analyze(const QStringList &tokens,
+                                    double significanceLevel = 0.01) const;
 };
 
 } // namespace Nullock::Core
