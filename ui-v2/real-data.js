@@ -327,7 +327,11 @@
     },
     // Token randomness analyzer (Burp's Sequencer). tokens is a flat array
     // of strings; see sequencer.hpp for the returned JSON shape.
-    sequencerAnalyze(tokens)    { return post("/api/sequencer/analyze", { tokens }).then(r => r.json()); },
+    sequencerAnalyze(tokens, significanceLevel) {
+      const b = { tokens };
+      if (significanceLevel !== undefined && significanceLevel !== null) b.significanceLevel = significanceLevel;
+      return post("/api/sequencer/analyze", b).then(r => r.json());
+    },
     // Sequencer LIVE CAPTURE: fire the same request N times and harvest one
     // token per response (control_server.cpp /api/sequencer/capture/*).
     // req = {host,port,tls,request,extract:{from,key},count,throttleMs}.

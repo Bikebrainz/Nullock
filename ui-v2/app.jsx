@@ -4009,6 +4009,13 @@ function SequencerTab({ sequencer, dispatch }) {
   const [busy, setBusy]   = React.useState(false);
   const [err, setErr]     = React.useState("");
   const fileRef = React.useRef(null);
+  // Significance level (alpha) for the bit-level test suite -- see
+  // sequencer_logic.cpp analyzeTokens(tokens, alpha): every Bonferroni-
+  // corrected bit test is re-graded by pValue<alpha, clamped server-side to
+  // [1e-6, 0.2] and echoed back as result.significanceLevel. Does NOT
+  // re-grade the Shannon entropy estimate (a point estimate, not a
+  // hypothesis test) -- Burp's own significance selector covers both.
+  const [sigLevel, setSigLevel] = React.useState(0.01);
 
   // Live capture -- see control_server.cpp /api/sequencer/capture/{start,
   // stop,clear,tokens}. /tokens returns the progress snapshot AND the
@@ -4149,7 +4156,7 @@ function SequencerTab({ sequencer, dispatch }) {
     if (tokens.length < 2) { setErr("need at least 2 tokens"); return; }
     setBusy(true); setErr(""); setResult(null);
     try {
-      const r = await NL.actions.sequencerAnalyze(tokens);
+      const r = await NL.actions.sequencerAnalyze(tokens, sigLevel);
       if (r && r.error) setErr(r.error);
       else setResult(r);
     } catch (e) { setErr(String(e && e.message ? e.message : e)); }
@@ -4270,7 +4277,7 @@ function SequencerTab({ sequencer, dispatch }) {
             </div>
           ) : <span style={{ color: "var(--dim)", fontSize: "12px" }}>not applicable — needs ≥20 tokens of the same (modal) width</span>}
         </Section>
-        <Section title="Bit-level tests (decodable hex/base64 corpora, n>=20)">
+        <Section title={"Bit-level tests (decodable hex/base64 corpora, n>=20) — graded at alpha=" + (result.significanceLevel != null ? result.significanceLevel : sigLevel)}>
           {bit.applicable ? (
             <div style={row}>
               <span><span style={lbl}>scheme</span>{bit.scheme}</span>
@@ -4312,6 +4319,20 @@ function SequencerTab({ sequencer, dispatch }) {
             seenTokenCountRef.current = sequencer.tokens.length; // don't resurrect cleared tokens on remount
             dispatch({ type: "sequencer-clear-tokens" });
           }}>CLEAR</button>
+          <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text-2)" }}>
+            significance
+            <select
+              value={sigLevel}
+              onChange={e => setSigLevel(parseFloat(e.target.value))}
+              title="alpha for the bit-level test suite (Bonferroni-corrected pValue<alpha); does not re-grade the entropy estimate"
+              style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "3px 4px", fontSize: "11px", fontFamily: "var(--ff-mono)" }}
+            >
+              <option value={0.001}>0.1%</option>
+              <option value={0.01}>1%</option>
+              <option value={0.05}>5%</option>
+              <option value={0.1}>10%</option>
+            </select>
+          </label>
           <button
             onClick={analyze}
             disabled={busy || tokens.length < 2}
