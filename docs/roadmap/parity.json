@@ -5019,7 +5019,7 @@
       "evidence": "ui-v2/proxy.jsx: urlPathname()/findingsForScope() (pure path-prefix scoping, new), buildBranchIssuesHtml() (pure HTML-escaped report builder, new), ProxyTab's reportCtxMenuIssues() handler and a new \ud83d\udccb REPORT ISSUES entry in the ctxMenu JSX (beside \ud83d\udcbe SAVE SELECTED ITEMS). Verified with a sandboxed functional test: whole-host/branch/single-row scoping (including a sibling-prefix false-positive check, /apix vs /api), an unparseable finding.url is skipped rather than throwing, severity sort order in the rendered table, and an XSS payload in a finding's url/summary/evidence is HTML-escaped (quotes too, since the url lands in an href attribute) rather than reaching the downloaded HTML unescaped.",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "PENDING",
+        "commit": "7ae8fa5",
         "note": "Wave 2 Site-map batch, final leg -- \"Report issues for selected branch\" added to the Site map right-click menu as a client-side HTML export of window.NL.findings scoped to the clicked host/branch/row (path-prefix match), reusing the existing findings data with no backend change. Closes the last open leg of this item: partial -> present."
       },
       "audited_state": "present"
