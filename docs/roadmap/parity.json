@@ -274,7 +274,13 @@
       "effort": "hours",
       "gap": "Single boolean 'any hit' column; Burp adds one flag column per configured expression.",
       "why": "Re-read grep + computeGrep + GUI input. Works and is GUI-reachable, but collapses to one boolean column.",
-      "evidence": "intruder_grep.cpp:19-36 grepMatch tries each needle as regex else literal contains(). intruder.cpp:82-83 runs it over headers+decoded body. tabs.jsx:568-576 GREP\u00b7MATCH input; tabs.jsx:749-751 '\u2713' column."
+      "evidence": "intruder_grep.cpp:19-36 grepMatch tries each needle as regex else literal contains(). intruder.cpp:89 computeGrep() runs it over grepScanText(resp) (headers+decoded body). tabs.jsx:2264-2271 GREP\u00b7MATCH input; tabs.jsx:2691-2693 single \u2713/\u00b7 column (r.matched ternary), still one boolean flag, not one column per expression.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -341,7 +347,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read resend(); re-fires the stored combo through the current template on a separate worker. GUI \u21bb button present.",
-      "evidence": "intruder.cpp:537-606 resend(row) re-applies rules to a->m_combo and runs a m_resendWorker send. tabs.jsx:756-763 per-row `\u21bb` button calling NL.actions.intruderResend(i)."
+      "evidence": "intruder.cpp:749-787 Intruder::resend(row) re-applies m_payloadRules to a->m_combo and runs it through m_resendWorker on a QtConcurrent worker. tabs.jsx:2699-2705 per-row \u21bb button calling NL.actions.intruderResend(i).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -865,7 +877,13 @@
       "effort": "days",
       "gap": "Boolean/differential blind SQLi is not implemented (Burp does it). Time-based is opt-in only. Dedicated multi-technique module is API-only; GUI users get single-quote error detection via the probe path only.",
       "why": "Re-read sql_injection.cpp end-to-end. Error-based with balanced-payload corroboration (lines 92-124) and blind time-based per-DBMS SLEEP with SLEEP(0) control (131-175) are real. But BOOLEAN-based (true/false differential) is ABSENT -- no such phase exists in the 185-line file. The claim's 'boolean' sub-claim is false. Also: the dedicated module is only reached via /api/audit/* (no GUI); the GUI '",
-      "evidence": "sql_injection.cpp:123 `result.hits.append({ param, err.first, QStringLiteral(\"error-based\"), ...})`; :173 `QStringLiteral(\"time-based\")`; no 'boolean' technique anywhere in the file. control_server.cpp:676 `srr.timeBased = include.contains(\"blind\")`"
+      "evidence": "sql_injection.cpp is still 185 lines; error-based phase around line 123 (`QStringLiteral(\"error-based\")`), blind time-based SLEEP-per-DBMS with a SLEEP(0) control around lines 131-175 (`QStringLiteral(\"time-based\")`). No 'boolean' technique string or differential true/false phase anywhere in the file -- claim unchanged.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -3511,7 +3529,13 @@
       "effort": "hours",
       "gap": "Not hooked on the --h2-termination browser leg. Desktop QML front end has no response toggle at all (grep 'responsesEnabled' in Src/App/app.qml: zero hits) -- ui-v2/control-API only. serializeResponse also strips Transfer-Encoding and re-adds Content-Length (proxy_server.cpp:889-895), so what the operator edits is a re-framed response, not the wire bytes.",
       "why": "Verified resolveResponseForClient and all three call sites (plaintext, h2-upstream bridge, h1 MITM keep-alive), plus the independent toggle. Confirmed the two stated gaps by my own greps: 'responsesEnabled|interceptResponses' has no hit in Src/App/app.qml, and the h2-termination leg's omission is documented in-code. Present stands.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:913-920 `InterceptResult resolveResponseForClient(...) {\\n        QByteArray bytes = serializeResponse(resp);\\n        auto *ic = m_server->interceptController();\\n        if (ic && inScope && ic->responsesEnabled())\\n            return ic->pendResponse(bytes, host, port, tls);` ; call sites :310-312, :643-645, :733-735. Toggle intercept.hpp:88-89 + control_serve"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:1023-1032 resolveResponseForClient(...) pends through interceptController() when responsesEnabled(); call sites at :365 (plaintext), :743 (h2-upstream bridge, browser leg stays h1), :836 (h1 MITM keep-alive). The h2-terminated browser leg (H2Terminator, browserIsH2 branch ~line 660) still intentionally skips response interception -- now documented in-code with an explicit comment block, matching this item's stated gap verbatim. grep for 'responsesEnabled|interceptResponses' in Src/App/app.qml: still zero hits.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -4258,7 +4282,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Verified. Strict decode + four registered ops including base64url as first-class operations, which Burp does not offer separately.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/transcode.cpp:21-27 `Result base64Decode(const QString &in, bool url) { const auto opt = (url ? QByteArray::Base64UrlEncoding : QByteArray::Base64Encoding) | QByteArray::AbortOnBase64DecodingErrors; const auto res = QByteArray::fromBase64Encoding(in.trimmed().toLatin1(), opt); if (res.decodingStatus != QByteArray::Base64DecodingStatus::Ok) return err(QStringLiter"
+      "evidence": "Src/Core/Networking/transcode.cpp:21-23 `Result base64Decode(const QString &in, bool url) { const auto opt = (url ? QByteArray::Base64UrlEncoding : QByteArray::Base64Encoding) | QByteArray::AbortOnBase64DecodingErrors; ...` -- strict decode plus four registered ops including base64url as a first-class operation (transcode.cpp:295-297), which Burp does not offer separately.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -5123,8 +5153,14 @@
       "impact": "low",
       "effort": "hours",
       "gap": "Burp lets you fire Repeater at anything; Nullock refuses. Safer posture, at the cost that the coarse host-only matcher (item 9) is what gates all of it -- an over-broad glob over-permits, a narrow one blocks the whole host.",
-      "why": "Held, and it is stronger than the first pass described. Beyond the 13 explicit blocksScope() sites there is a declarative kActivePaths set that auto-gates ~40 active endpoints before their handler even runs, so a newly added probe endpoint is scope-gated by listing it rather than by remembering to call the guard.",
-      "evidence": "control_server.cpp:1195-1196 `bool ControlServer::blocksScope(const QString &host) const { return m_wiring.proxy && !host.isEmpty() && !m_wiring.proxy->isInScope(host); }`; 13 call sites (2964, 3088, 3291, 3442, 4573, 6676, 6701, 8969, 9141, 9143, 9275). Repeater: cpp:3088-3090 `if (m_wiring.repeater && blocksScope(m_wiring.repeater->host())) return okJson({{ \"ok\", false }, { \"scopeBlocked\", true "
+      "why": "Held, and it is stronger than the first pass described. Beyond the 11 explicit blocksScope() call sites (re-verified 2026-08-25 -- the prior pass's count of 13 included the function definition and a comment mention) there is a declarative kActivePaths set that auto-gates ~40 active endpoints before their handler even runs, so a newly added probe endpoint is scope-gated by listing it rather than by remembering to call the guard.",
+      "evidence": "control_server.cpp:1241 `bool ControlServer::blocksScope(const QString &host) const` ; 11 explicit call sites (3218, 3506, 3831, 3982, 5135, 7648, 7673, 9998, 10178, 10180, 10312 -- corrected from the prior pass's '13', which counted the definition and a comment mention alongside the real call sites) plus the declarative kActivePaths set (control_server.cpp:3198-3212, ~40 active endpoints) that scope-gates a probe endpoint by listing it rather than by remembering to call the guard. Repeater: control_server.cpp:3506 `if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))`.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-25",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "target",
