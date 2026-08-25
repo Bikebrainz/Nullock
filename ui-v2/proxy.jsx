@@ -96,6 +96,38 @@ function annotationColorHex(key) {
   return c ? c.hex : null;
 }
 
+// Site-map "Delete host" / "Delete branch": Burp deletes items from its
+// live map/history store; SiteMapModel here has no per-host or per-branch
+// mutator (only a whole-map clear()), and control_server.cpp isn't buildable
+// from this environment to add one. This is the same honest trade-off as the
+// annotations layer above -- a client-side-only hide-list, persisted to
+// localStorage by (host, branch|null) scope, filtered out of the rows the
+// site map / history table / compare-hosts views ever see. branch:null means
+// the whole host. Not a true delete (a restarted capture on that host will
+// re-populate history rows that still get filtered out by this same scope
+// until it's cleared), but end to end it's the same "get this branch off my
+// screen" workflow Burp's delete offers.
+const DELETED_SCOPES_STORAGE_KEY = "nl.sitemap.deleted.v1";
+function loadDeletedScopes() {
+  try {
+    const raw = window.localStorage.getItem(DELETED_SCOPES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(s => s && typeof s.host === "string") : [];
+  } catch (e) { return []; }
+}
+function saveDeletedScopes(list) {
+  try { window.localStorage.setItem(DELETED_SCOPES_STORAGE_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
+}
+function isRowDeleted(row, deletedScopes) {
+  for (const s of deletedScopes) {
+    if (s.host !== row.host) continue;
+    if (s.branch == null) return true;
+    const p = (row.path || "/").split("?")[0];
+    if (p === s.branch || p.startsWith(s.branch + "/")) return true;
+  }
+  return false;
+}
+
 // Target Analyzer: attack-surface sizing over a site-map scope (Burp's
 // "counts of static vs dynamic URLs, unique parameter names, and per-URL
 // entry points"). Computed entirely client-side from the HTTP history rows
@@ -449,7 +481,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
   );
 }
 
-function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly, mimeFilter, setMimeFilter, extText, setExtText, extHide, setExtHide, caseSensitive, setCaseSensitive, annotatedOnly, setAnnotatedOnly }) {
+function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, methodFilter, setMethodFilter, search, setSearch, hidden, onClearFilters, onSelectHost, selectedHost, deepSearch, setDeepSearch, deepCount, deepTruncated, paramsOnly, setParamsOnly, hideNotFound, setHideNotFound, inScopeOnly, setInScopeOnly, mimeFilter, setMimeFilter, extText, setExtText, extHide, setExtHide, caseSensitive, setCaseSensitive, annotatedOnly, setAnnotatedOnly, deletedCount, onRestoreDeleted }) {
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH", "WS↑", "WS↓"];
   return (
     <div className="filterbar">
@@ -577,6 +609,12 @@ function FilterBar({ hostFilter, setHostFilter, statusClass, setStatusClass, met
         <div className="chip accent" style={{ height: 22 }}>
           ◉ {selectedHost}
           <span style={{ cursor:"pointer", marginLeft: 8 }} onClick={() => onSelectHost(null)}>×</span>
+        </div>
+      )}
+      {!!deletedCount && (
+        <div className="chip err" style={{ height: 22 }} title="Hosts/branches removed from the site map and history via right-click Delete host/branch">
+          🗑 {deletedCount} deleted
+          <span style={{ cursor:"pointer", marginLeft: 8 }} onClick={onRestoreDeleted} title="Restore all deleted hosts/branches">×</span>
         </div>
       )}
       <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)", letterSpacing: "0.1em", textTransform:"uppercase" }}>
@@ -2837,11 +2875,19 @@ function toHexDump(s) {
 
 function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost, selectedOrigin, scope } = state;
+  // #372 "Delete host"/"Delete branch": client-side hide-list (see
+  // isRowDeleted's comment above) applied before any other view derives from
+  // rows, so the site map, history table, and compare-hosts list all agree.
+  const [deletedScopes, setDeletedScopes] = React.useState(loadDeletedScopes);
+  const visibleRows = React.useMemo(
+    () => deletedScopes.length ? rows.filter(r => !isRowDeleted(r, deletedScopes)) : rows,
+    [rows, deletedScopes]
+  );
   // #495: grouped by full origin (scheme://host[:port]), not NL.sitemap's
   // bare-host entries -- see the SiteMap component's own comment for why.
   const sitemapEntries = React.useMemo(() => {
     const byOrigin = new Map();
-    for (const r of rows) {
+    for (const r of visibleRows) {
       const tls = !!r.tls;
       const port = r.port || (tls ? 443 : 80);
       const key = (tls ? "https" : "http") + "://" + r.host + ":" + port;
@@ -2854,21 +2900,21 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
       e.count++;
     }
     return Array.from(byOrigin.values()).sort((a, b) => a.origin.localeCompare(b.origin));
-  }, [rows]);
+  }, [visibleRows]);
   const compareHosts = React.useMemo(
-    () => Array.from(new Set(rows.map(r => r.host))).sort(),
-    [rows]
+    () => Array.from(new Set(visibleRows.map(r => r.host))).sort(),
+    [visibleRows]
   );
   // Rows scoped to the selected origin node -- exact host+port+tls match,
   // stricter than the host-substring hostFilter/selectedHost text filter.
   const originRows = selectedOrigin
-    ? rows.filter(r => r.host === selectedOrigin.host
+    ? visibleRows.filter(r => r.host === selectedOrigin.host
         && (r.port || (r.tls ? 443 : 80)) === selectedOrigin.port
         && !!r.tls === selectedOrigin.tls
         && (!selectedOrigin.branch
             || r.path.split("?")[0] === selectedOrigin.branch
             || r.path.split("?")[0].startsWith(selectedOrigin.branch + "/")))
-    : rows;
+    : visibleRows;
 
   // #392: site-map / history filter chips (in-scope / parameterized / hide-404).
   const [paramsOnly, setParamsOnly] = React.useState(false);
@@ -2905,7 +2951,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   // HTTP history rows already in state, same source SiteMap's own tree uses.
   const ctxMenuTargetRows = () => {
     if (!ctxMenu) return [];
-    let target = rows.filter(r => r.host === ctxMenu.host);
+    let target = visibleRows.filter(r => r.host === ctxMenu.host);
     if (ctxMenu.branch) {
       target = target.filter(r => {
         const p = (r.path || "/").split("?")[0];
@@ -2973,6 +3019,37 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     }
     closeRowMenu();
   };
+
+  // #372 "Delete host"/"Delete branch": add a scope to the hide-list (see
+  // isRowDeleted's comment). Clears any current selection that falls inside
+  // the deleted scope so DetailPane/HistoryTable don't keep pointing at a
+  // now-hidden row.
+  const deleteHostScope = (host) => {
+    setDeletedScopes(prev => {
+      if (prev.some(s => s.host === host && s.branch == null)) return prev;
+      const next = [...prev.filter(s => s.host !== host), { host, branch: null }];
+      saveDeletedScopes(next);
+      return next;
+    });
+    if (selectedHost === host || (selectedOrigin && selectedOrigin.host === host)) {
+      dispatch({ type: "set", payload: { selectedHost: null, selectedOrigin: null, selectedRowId: null } });
+    }
+    closeRowMenu();
+  };
+  const deleteBranchScope = (host, branch) => {
+    setDeletedScopes(prev => {
+      if (prev.some(s => s.host === host && s.branch === branch)) return prev;
+      const next = [...prev, { host, branch }];
+      saveDeletedScopes(next);
+      return next;
+    });
+    if (selectedOrigin && selectedOrigin.host === host && selectedOrigin.branch
+        && (selectedOrigin.branch === branch || selectedOrigin.branch.startsWith(branch + "/"))) {
+      dispatch({ type: "set", payload: { selectedHost: null, selectedOrigin: null, selectedRowId: null } });
+    }
+    closeRowMenu();
+  };
+  const restoreDeletedScopes = () => { setDeletedScopes([]); saveDeletedScopes([]); };
 
   // #299: highlight colour + comment per history row (client-side, localStorage-persisted).
   const [annotations, setAnnotations] = React.useState(loadAnnotations);
@@ -3066,7 +3143,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
     if (annotatedOnly && !annotations[r.id]) return false;
     return true;
   }).length;
-  const hidden = rows.length - shown;
+  const hidden = visibleRows.length - shown;
 
   // minmax(0, 1fr), NOT 1fr: a bare 1fr track is minmax(auto, 1fr), whose `auto`
   // minimum grows to the pane's content -- a long URL in the history table then
@@ -3081,12 +3158,12 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
       {showSitemap && (
         <SiteMap
           entries={sitemapEntries}
-          rows={rows}
+          rows={visibleRows}
           selectedOrigin={selectedOrigin}
           selectedRowId={selectedRowId}
           onSelect={(e, branch) => dispatch({ type: "set", payload: { selectedHost: e ? e.host : null, selectedOrigin: e ? { ...e, branch: branch || null } : null } })}
           onSelectLeaf={(e, id) => dispatch({ type: "set", payload: { selectedHost: e.host, selectedOrigin: e, selectedRowId: id } })}
-          totalRows={rows.length}
+          totalRows={visibleRows.length}
           onRowContextMenu={openRowMenu}
           annotations={annotations}
           annotatedOnly={annotatedOnly}
@@ -3097,7 +3174,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         <div className="pane-head">
           <span className="ph-corner">▸</span>
           <span>HTTP HISTORY</span>
-          <span className="ph-count">{shown} / {rows.length}</span>
+          <span className="ph-count">{shown} / {visibleRows.length}</span>
           <button onClick={() => { setWsRepeaterInit(null); setWsRepeaterOpen(true); }} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
           <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
@@ -3120,7 +3197,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         {compareOpen && (
           <CompareHostsOverlay
             hosts={compareHosts}
-            rows={rows}
+            rows={visibleRows}
             onClose={() => setCompareOpen(false)}
           />
         )}
@@ -3159,6 +3236,8 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
           setCaseSensitive={setCaseSensitive}
           annotatedOnly={annotatedOnly}
           setAnnotatedOnly={setAnnotatedOnly}
+          deletedCount={deletedScopes.length}
+          onRestoreDeleted={restoreDeletedScopes}
         />
         <div style={{ minHeight: 0, borderBottom: "1px solid var(--line)" }}>
           <HistoryTable
@@ -3250,6 +3329,21 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
                 + " as a Burp-style XML file (request/response, base64) -- capped at " + SAVE_ITEMS_CAP + " items"}
               onClick={saveCtxMenuItems}
             >💾 SAVE SELECTED ITEMS</div>
+            <div style={{ borderTop: "1px solid var(--line)" }} />
+            {ctxMenu.branch && (
+              <div
+                className="btn danger"
+                style={{ display: "block", width: "100%", textAlign: "left" }}
+                title={`Remove every item under ${ctxMenu.branch} from the site map and history (this browser only -- see the deleted-count chip in the filter bar to undo)`}
+                onClick={() => deleteBranchScope(ctxMenu.host, ctxMenu.branch)}
+              >🗑 DELETE BRANCH</div>
+            )}
+            <div
+              className="btn danger"
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              title={`Remove all of ${ctxMenu.host} from the site map and history (this browser only -- see the deleted-count chip in the filter bar to undo)`}
+              onClick={() => deleteHostScope(ctxMenu.host)}
+            >🗑 DELETE HOST</div>
             {ctxMenu.rowId != null && (
               <React.Fragment>
                 <div style={{ borderTop: "1px solid var(--line)", padding: "6px 10px", fontSize: "var(--fz-xs)", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
