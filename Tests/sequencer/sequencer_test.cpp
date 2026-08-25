@@ -761,6 +761,64 @@ int main(int argc, char **argv) {
             !analyze(clean2)["bitLevel"].toObject()["monobit"].toObject()["failed"].toBool());
     }
 
+    // ===== analysis summary: confidence + amount analyzed (roadmap: seq) ==
+    // Confidence is driven by SAMPLE ADEQUACY, not the verdict: low when the
+    // corpus is too small for the deep tests, medium when adequate but under the
+    // FIPS bit sample, high when both are met. The summary also states how much
+    // data backed the estimate.
+    {
+        auto near = [](double a, double b, double tol) { return (a > b ? a - b : b - a) < tol; };
+        std::mt19937 g(4242u);
+        static const char HX[] = "0123456789abcdef";
+        auto cleanHex = [&](int count, int hexLen) {
+            QStringList v;
+            for (int i = 0; i < count; ++i) {
+                QString t;
+                for (int c = 0; c < hexLen; ++c) t += QChar(QLatin1Char(HX[g() % 16u]));
+                v << t;
+            }
+            return v;
+        };
+        auto sumOf = [](const QJsonObject &a) { return a["summary"].toObject(); };
+
+        // low: 10 tokens (below the deep-test floor of 20).
+        chk("summary: 10 tokens -> confidence low",
+            sumOf(analyze(cleanHex(10, 16)))["confidence"].toString() == "low");
+        // low: 20 tokens (estimable but < 100 recommended).
+        chk("summary: 20 tokens -> confidence low (estimable but too few)",
+            sumOf(analyze(cleanHex(20, 16)))["confidence"].toString() == "low");
+        // medium: 150 x 8-hex = 4800 decoded bits (adequate count, under FIPS 20000).
+        {
+            const QJsonObject s = sumOf(analyze(cleanHex(150, 8)));
+            chk("summary: 150x8-hex -> confidence medium (adequate, sub-FIPS)",
+                s["confidence"].toString() == "medium");
+            chk("summary: medium case is not FIPS-sized",
+                s["meetsFipsSample"].toBool() == false && s["meetsRecommendedSample"].toBool() == true);
+        }
+        // high: 200 x 32-hex = 25600 decoded bits (adequate AND FIPS-sized).
+        {
+            const QStringList big = cleanHex(200, 32);
+            const QJsonObject a = analyze(big);
+            const QJsonObject s = sumOf(a);
+            chk("summary: 200x32-hex -> confidence high (adequate + FIPS)",
+                s["confidence"].toString() == "high");
+            chk("summary: high case meets both thresholds",
+                s["meetsFipsSample"].toBool() && s["meetsRecommendedSample"].toBool());
+            // Amount-analyzed fields are tied to the actual corpus + estimate.
+            chk("summary: tokensAnalyzed == corpus size", s["tokensAnalyzed"].toInt() == 200);
+            chk("summary: avgTokenLength == 32", s["avgTokenLength"].toInt() == 32);
+            chk("summary: decodedBits == bitLevel.bits",
+                near(s["decodedBits"].toDouble(),
+                     a["bitLevel"].toObject()["bits"].toDouble(), 0.5));
+            chk("summary: verdict mirrors the top-level verdict",
+                s["verdict"].toString() == a["verdict"].toString());
+            chk("summary: significanceLevel echoes into the summary",
+                near(sumOf(analyze(big, 0.05))["significanceLevel"].toDouble(), 0.05, 1e-12));
+            chk("summary: dataAnalyzed prose names the token count",
+                s["dataAnalyzed"].toString().contains("200 token"));
+        }
+    }
+
     std::fprintf(stderr, "sequencer_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

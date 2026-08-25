@@ -11,6 +11,21 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Sequencer: analysis summary with a confidence level and amount of data
+  analyzed.** Token analysis now emits a `summary` object headlining the result
+  the way Burp's Sequencer does: the verdict and score, a **confidence**
+  (`low`/`medium`/`high`) driven by sample adequacy &mdash; too few tokens or
+  below the deep-test floor is `low`, an adequate token count under the
+  20,000-bit FIPS 140-2 sample is `medium`, and adequate tokens with a
+  FIPS-sized decoded bitstream is `high` &mdash; plus the significance level, the
+  effective-bits-per-token estimate, and an explicit accounting of how much data
+  backed it (`tokensAnalyzed`, `avgTokenLength`, `decodedBits`,
+  `meetsRecommendedSample`, `meetsFipsSample`, and a prose `dataAnalyzed` line
+  tying the sample size to the estimate). Confidence is tied to the data, not to
+  the verdict, so a "looks-random" call on 20 tokens is honestly flagged as
+  low-confidence. Mutation-proven. (Roadmap: sequencer &mdash; analysis summary;
+  still partial pending a per-significance-level entropy curve and per-flag
+  score attribution.)
 - **Sequencer: significance-level (alpha) selector.** Token analysis now takes a
   significance level &mdash; `analyzeTokens(tokens, alpha)` /
   `Sequencer::analyze(tokens, sig)` and an optional `significanceLevel` on

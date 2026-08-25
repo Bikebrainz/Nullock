@@ -1267,6 +1267,48 @@ QJsonObject analyzeTokens(const QStringList &tokens, double alpha) {
     else if (score >= 50) verdict = "may-be-predictable";
     else                  verdict = "predictable";
     result["verdict"] = verdict;
+
+    // ---- Analysis summary: overall result + confidence + amount analyzed ----
+    // Burp's Sequencer headlines a single result with a stated confidence level
+    // and how much data backed it. Confidence is driven by SAMPLE ADEQUACY (the
+    // honest limiter: a "looks-random" verdict on 20 tokens is a guess; on a
+    // FIPS-sized corpus it is a measurement), NOT by the verdict itself:
+    //   low    -- too few tokens (< recommended) or below the deep-test floor,
+    //             so the deep statistical tests are indicative at best;
+    //   medium -- an adequate token count, but the decoded bitstream is under
+    //             the 20,000-bit FIPS 140-2 sample the bit-level tests want;
+    //   high   -- adequate tokens AND a FIPS-sized decoded bitstream.
+    {
+        QString confidence;
+        if (ssg.tooFew || !ssg.estimable) confidence = "low";
+        else if (!ssg.fipsBitsMet)        confidence = "medium";
+        else                              confidence = "high";
+
+        QJsonObject summary;
+        summary["verdict"]                = verdict;
+        summary["score"]                  = score;
+        summary["confidence"]             = confidence;
+        summary["significanceLevel"]      = alpha;
+        summary["effectiveBitsPerToken"]  = effectiveBits;
+        // Amount of data analyzed, tied to the estimate above.
+        summary["tokensAnalyzed"]         = tokens.size();
+        summary["avgTokenLength"]         = avgLen;
+        summary["decodedBits"]            = double(bit.bits);
+        summary["meetsRecommendedSample"] = !ssg.tooFew;
+        summary["meetsFipsSample"]        = ssg.fipsBitsMet;
+
+        const QString pct = QString::number(alpha * 100.0, 'g', 3);
+        QString dataAnalyzed =
+            QStringLiteral("Analyzed %1 token%2 (avg %3 chars")
+                .arg(tokens.size()).arg(tokens.size() == 1 ? "" : "s").arg(avgLen);
+        if (bit.applicable)
+            dataAnalyzed += QStringLiteral(", %1 decoded bits").arg(bit.bits);
+        dataAnalyzed += QStringLiteral(") at the %1%% significance level. ").arg(pct);
+        dataAnalyzed += ssg.note;   // adequacy wording (recommended / FIPS thresholds)
+        summary["dataAnalyzed"] = dataAnalyzed;
+
+        result["summary"] = summary;
+    }
     return result;
 }
 

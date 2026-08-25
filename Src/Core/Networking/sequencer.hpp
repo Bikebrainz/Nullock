@@ -134,7 +134,14 @@ public:
     //                    "runLengths": { "chiSquare": <double>, "pValue": <double>, "failed": <bool> },
     //                    "anyFailed": <bool> },
     //     "verdict":   "looks-random" | "may-be-predictable" | "predictable",
-    //     "score":     <0-100>
+    //     "score":     <0-100>,
+    //     "summary":   { "verdict": "...", "score": <int>,
+    //                    "confidence": "low"|"medium"|"high",  // sample adequacy
+    //                    "significanceLevel": <double>,
+    //                    "effectiveBitsPerToken": <double>,
+    //                    "tokensAnalyzed": <int>, "avgTokenLength": <int>,
+    //                    "decodedBits": <int>, "meetsRecommendedSample": <bool>,
+    //                    "meetsFipsSample": <bool>, "dataAnalyzed": "<prose>" }
     //   }
     // `significanceLevel` grades every bit-level test (see analyzeTokens); default 0.01.
     Q_INVOKABLE QJsonObject analyze(const QStringList &tokens,
