@@ -53,6 +53,11 @@ developer-facing record.
   backend, previously reachable only through the raw HTTP API), dropping it
   straight into the editable steps textarea instead of requiring the steps
   to be hand-written from scratch.
+- **Intruder: "Skip if matches regex" payload-processing rule.** A `skip-if-matches`
+  rule (arg = regex) drops any payload whose transformed-so-far value matches,
+  before the request is fired &mdash; matching Burp's rule. Skipped payloads are
+  filtered out before the result table is built, so counts reflect only what was
+  actually sent. An empty or invalid pattern never skips. (Roadmap: intruder.)
 
 ### Fixed
 - **CSWSH probe: a transient failure on the first Origin aborted the whole sweep.**

@@ -171,10 +171,30 @@ QString applyRule(const QString &value, const Rule &rule, const QString &origina
     return r.ok ? r.output : value;
 }
 
-QString applyRules(const QString &value, const QList<Rule> &rules) {
+QString applyRules(const QString &value, const QList<Rule> &rules, bool *skipped) {
+    if (skipped) *skipped = false;
     QString out = value;
-    for (const Rule &r : rules) out = applyRule(out, r, value);
+    for (const Rule &r : rules) {
+        if (r.op.trimmed().toLower() == QLatin1String("skip-if-matches")) {
+            // Burp's "Skip if matches regex" processing rule: if the running
+            // (transformed-so-far) value matches, the payload is DROPPED. Only
+            // evaluated when the caller can honor a skip (skipped != nullptr);
+            // for a plain transform caller it is a safe no-op so a payload never
+            // silently vanishes on a path that can't drop it. An empty or invalid
+            // pattern is a no-op (never skip on a malformed rule).
+            if (skipped && !r.arg.isEmpty()) {
+                const QRegularExpression re(r.arg);
+                if (re.isValid() && re.match(out).hasMatch()) { *skipped = true; return out; }
+            }
+            continue;
+        }
+        out = applyRule(out, r, value);
+    }
     return out;
+}
+
+QString applyRules(const QString &value, const QList<Rule> &rules) {
+    return applyRules(value, rules, nullptr);
 }
 
 QStringList operations() {
@@ -196,7 +216,7 @@ QStringList operations() {
         QStringLiteral("reverse"), QStringLiteral("match-replace"),
         QStringLiteral("regex-replace"), QStringLiteral("add-raw-payload"),
         QStringLiteral("substring"), QStringLiteral("reverse-substring"),
-        QStringLiteral("url-encode-chars"),
+        QStringLiteral("url-encode-chars"), QStringLiteral("skip-if-matches"),
         QStringLiteral("base64-encode"), QStringLiteral("base64url-encode"),
         QStringLiteral("url-encode"), QStringLiteral("hex-encode"),
         QStringLiteral("html-encode"), QStringLiteral("unicode-escape"),

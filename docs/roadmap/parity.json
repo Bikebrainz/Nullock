@@ -620,12 +620,12 @@
     {
       "area": "intruder",
       "feature": "Processing rule: Skip if matches regex",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "Cannot drop payloads matching a regex before firing.",
-      "why": "Re-read applyRules and generateCombinations \u2014 every rule always returns a value; there is no skip/drop signal and no per-payload filter.",
-      "evidence": "intruder_rules.cpp:49-53 always returns out; intruder_engine.cpp:59-132 generateCombinations has no filtering hook."
+      "gap": "None -- a `skip-if-matches` processing rule (arg = regex) drops any payload whose transformed-so-far value matches, before the request is fired. The skip-aware applyRules(value, rules, bool* skipped) overload signals the drop; Intruder::start() filters skipped combos out before result rows are built, so the sent-request count and the table reflect only surviving payloads (Burp's behaviour). An empty/invalid pattern never skips.",
+      "why": "Closed 2026-08-24: added the skip signal to the rule chain (skip-aware applyRules overload; the 2-arg path is a safe no-op so a payload never vanishes where a caller cannot honour a skip) and the combo filter in Intruder::start(). Advertised in operations() for UI discovery. Mutation-proven.",
+      "evidence": "intruder_rules.cpp applyRules(value,rules,bool*): a `skip-if-matches` rule matching the running value sets *skipped and returns; intruder.cpp Intruder::start() drops combos whose processed payload skips, before beginResetModel/row build. Tests: intruder_rules_test.cpp -- a payload matching the regex is skipped, a non-match is kept, the plain 2-arg path never drops, the match is against the TRANSFORMED value, and empty/invalid patterns never skip."
     },
     {
       "area": "intruder",

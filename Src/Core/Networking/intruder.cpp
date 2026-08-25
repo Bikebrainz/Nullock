@@ -452,6 +452,28 @@ void Intruder::start() {
     }
     if (combos.isEmpty()) return;
 
+    // Payload processing rule "skip if matches regex": drop any combo whose
+    // processed payload matches a skip rule BEFORE rows are built, so the sent-
+    // request count and the result table only ever reflect surviving payloads
+    // (Burp discards skipped payloads from the attack entirely). A null marker
+    // value is a default (never a submitted payload), so it is never skipped.
+    if (!m_payloadRules.isEmpty()) {
+        QList<QStringList> kept;
+        kept.reserve(combos.size());
+        for (const QStringList &combo : combos) {
+            bool skip = false;
+            for (const QString &v : combo) {
+                if (v.isNull()) continue;
+                bool s = false;
+                IntruderRules::applyRules(v, m_payloadRules, &s);
+                if (s) { skip = true; break; }
+            }
+            if (!skip) kept.append(combo);
+        }
+        combos = kept;
+        if (combos.isEmpty()) return;   // every payload was skipped -> nothing to send
+    }
+
     // Build the result rows up front so the table populates immediately and
     // each individual attack just has to fill its slot.
     beginResetModel();

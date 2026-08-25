@@ -205,6 +205,38 @@ int main(int argc, char **argv) {
     chk("operations advertise the propername case rules",
         operations().contains("propername") && operations().contains("propername-keep"));
 
+    // ===== skip-if-matches (roadmap: intruder processing rule) ==========
+    // A skip rule drops the payload when the running value matches its regex --
+    // honored only via the skip-aware overload; a no-op on the plain path.
+    {
+        const QList<Rule> skipDigits { rule("skip-if-matches", "[0-9]+") };
+        bool skipped = false;
+        // Matches -> dropped.
+        applyRules("abc123", skipDigits, &skipped);
+        chk("skip-if-matches: a matching payload is skipped", skipped);
+        // No match -> kept.
+        skipped = true;
+        const QString kept = applyRules("abcdef", skipDigits, &skipped);
+        chk("skip-if-matches: a non-matching payload is NOT skipped", !skipped && kept == "abcdef");
+        // Plain (2-arg) path never drops -- a payload must not vanish where the
+        // caller cannot honor a skip; the value passes through unchanged.
+        chk("skip-if-matches: no-op on the plain transform path",
+            applyRules("abc123", skipDigits) == "abc123");
+        // Evaluated against the TRANSFORMED value: uppercase THEN skip on [A-Z].
+        skipped = false;
+        applyRules("abc", QList<Rule>{ rule("uppercase"), rule("skip-if-matches", "^[A-Z]+$") }, &skipped);
+        chk("skip-if-matches: tested against the transformed value (post-uppercase)", skipped);
+        // Empty / invalid pattern never skips (never drop on a malformed rule).
+        skipped = true;
+        applyRules("anything", QList<Rule>{ rule("skip-if-matches", "") }, &skipped);
+        chk("skip-if-matches: empty pattern never skips", !skipped);
+        skipped = true;
+        applyRules("anything", QList<Rule>{ rule("skip-if-matches", "(unclosed") }, &skipped);
+        chk("skip-if-matches: invalid regex never skips", !skipped);
+        // Advertised for UI discovery.
+        chk("skip-if-matches is an advertised operation", operations().contains("skip-if-matches"));
+    }
+
     std::fprintf(stderr, "intruder_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

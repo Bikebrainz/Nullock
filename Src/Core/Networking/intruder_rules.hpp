@@ -56,10 +56,22 @@ struct Rule {
 QString applyRule(const QString &value, const Rule &rule, const QString &original);
 QString applyRule(const QString &value, const Rule &rule);
 
+//   skip-if-matches -> arg is a regex; if the running (transformed-so-far) value
+//                    matches, the payload is DROPPED from the attack (Burp's
+//                    "Skip if matches regex" rule). Honored only via the
+//                    skip-aware applyRules overload below; on a plain-transform
+//                    path it is a safe no-op. An empty/invalid pattern never skips.
+//
 // Apply an ordered chain, threading each rule's output into the next. Rules see
 // the ORIGINAL, pre-chain value via add-raw-payload regardless of how many
 // earlier rules already transformed the running value.
 QString applyRules(const QString &value, const QList<Rule> &rules);
+
+// Skip-aware chain: identical to applyRules, but if a `skip-if-matches` rule's
+// regex matches the running value, sets *skipped = true and returns early (the
+// caller must drop the payload). *skipped is initialized to false. Pass nullptr
+// to ignore skips (equivalent to the 2-arg overload).
+QString applyRules(const QString &value, const QList<Rule> &rules, bool *skipped);
 
 // The processing ops this engine understands (for UI discovery). Union of the
 // local ops and the Transcode encode/hash ops that make sense as a payload
