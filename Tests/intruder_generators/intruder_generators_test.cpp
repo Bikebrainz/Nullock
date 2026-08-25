@@ -281,6 +281,32 @@ int main(int argc, char **argv) {
     chk("ecb-shuffle: blockSize < 1 -> empty",     ecbBlockShuffle("4142", 0).isEmpty());
     chk("ecb-shuffle: empty input -> empty",       ecbBlockShuffle("", 16).isEmpty());
 
+    // ----- customIterator (custom iterator: positional cartesian product) -----
+    chk("iterator: 2 positions with separator (odometer, last fastest)",
+        customIterator({ QStringList{ "a", "b" }, QStringList{ "1", "2" } }, "-")
+            == (QStringList{ "a-1", "a-2", "b-1", "b-2" }));
+    chk("iterator: no separator concatenates",
+        customIterator({ QStringList{ "a", "b" }, QStringList{ "1", "2" } }, "")
+            == (QStringList{ "a1", "a2", "b1", "b2" }));
+    chk("iterator: single position has no separator applied",
+        customIterator({ QStringList{ "x", "y" } }, "-") == (QStringList{ "x", "y" }));
+    chk("iterator: three positions join with separator between each",
+        customIterator({ QStringList{ "a" }, QStringList{ "b" }, QStringList{ "c" } }, ".")
+            == (QStringList{ "a.b.c" }));
+    chk("iterator: no positions -> empty", customIterator({}, "-").isEmpty());
+    chk("iterator: any empty position (empty factor) -> empty",
+        customIterator({ QStringList{ "a" }, QStringList{} }, "-").isEmpty());
+    // Cap: a product past kMaxCount is truncated in COUNT, every payload COMPLETE.
+    {
+        QStringList big;
+        for (int i = 0; i < 47; ++i) big << QString::number(i);
+        const QStringList r = customIterator({ big, big, big }, "|");  // 47^3 = 103823 > cap
+        chk("iterator: product past kMaxCount is capped at kMaxCount", r.size() == kMaxCount);
+        chk("iterator: every capped payload is a COMPLETE 3-position combination",
+            !r.isEmpty() && r.first().count(QLatin1Char('|')) == 2
+                         && r.last().count(QLatin1Char('|')) == 2);
+    }
+
     // ----- types() -----
     chk("types lists numbers+brute+dates+null+frobber+blocks+casemod+charsub+bitflip+username",
         types().contains("numbers") && types().contains("brute")
@@ -288,7 +314,8 @@ int main(int argc, char **argv) {
         && types().contains("frobber") && types().contains("blocks")
         && types().contains("casemod") && types().contains("charsub")
         && types().contains("bitflip") && types().contains("username")
-        && types().contains("illegal-unicode") && types().contains("ecb-shuffle"));
+        && types().contains("illegal-unicode") && types().contains("ecb-shuffle")
+        && types().contains("iterator"));
 
     std::fprintf(stderr, "intruder_generators_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

@@ -3645,6 +3645,21 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (t == QLatin1String("ecb-shuffle"))
             return IG::ecbBlockShuffle(g.value("ciphertext").toString(),
                                        g.value("blockSize").toInt(16));
+        if (t == QLatin1String("iterator")) {
+            // positions: [[..],[..],..] or [ "a\nb", "1\n2" ] (each a list or a
+            // newline-joined string); separator placed between adjacent positions.
+            QList<QStringList> positions;
+            for (const QJsonValue &pv : g.value("positions").toArray()) {
+                if (pv.isArray()) {
+                    QStringList items;
+                    for (const QJsonValue &v : pv.toArray()) items << v.toString();
+                    positions << items;
+                } else {
+                    positions << pv.toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                }
+            }
+            return IG::customIterator(positions, g.value("separator").toString());
+        }
         return {};
     };
 

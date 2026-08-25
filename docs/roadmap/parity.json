@@ -392,12 +392,12 @@
     {
       "area": "intruder",
       "feature": "Payload type: Custom iterator",
-      "state": "absent",
+      "state": "present",
       "impact": "low",
       "effort": "days",
-      "gap": "No custom iterator for structured/templated token permutations.",
-      "why": "Re-checked generators and engine; no positional-list iterator with separators. Confirmed absent.",
-      "evidence": "intruder_generators.cpp:89-91 types() has none; engine only has the four attack types, no per-position item-list concatenation iterator."
+      "gap": "Implemented as a positional cartesian-product generator: IntruderGenerators::customIterator(positions, separator) emits every combination pos[0][i]+sep+pos[1][j]+... in odometer order (last position varies fastest), reachable via type \"iterator\" on /api/intruder/generate and /api/intruder/set. Matches Burp's core custom-iterator behaviour; the only nicety not carried is a DISTINCT separator per position (one shared between-positions separator instead) -- noted as a possible enhancement, not a gap that blocks the use case.",
+      "why": "Implemented + mutation-proven, following the exact pattern the other 12 payload generators use (all marked present): a pure Qt6::Core-linkable IG function + expandGen dispatch + types() entry. Bounded at kMaxCount by capping the working set after EACH position, so a huge product truncates in COUNT while every emitted payload stays a COMPLETE combination (never a length-truncated fragment) and never OOMs.",
+      "evidence": "intruder_generators.cpp customIterator(); types() now lists \"iterator\"; control_server.cpp expandGen `if (t == \"iterator\")` parses positions (arrays or newline-joined) + separator. Tests/intruder_generators/intruder_generators_test.cpp (106 pass): odometer order + separator, no-separator concat, single-position no-sep, 3-position join, empty/empty-factor -> empty, and 47^3 capped at kMaxCount with every payload complete; M1 (drop separator) + M2 (drop cap) each fail only their targeted case. Live: POST type=iterator positions=[[a,b],[1,2,3]] sep=- -> a-1..b-3 (count 6)."
     },
     {
       "area": "intruder",

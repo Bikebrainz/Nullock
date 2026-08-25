@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder payload type: Custom iterator.** A new `iterator` payload generator
+  produces a positional cartesian product &mdash; give it N positions, each its
+  own list of items, plus a separator, and it emits every combination
+  `pos[0][i] + sep + pos[1][j] + …` in odometer order (last position varies
+  fastest). Reachable via `type: "iterator"` on `POST /api/intruder/generate`
+  (preview) and `/api/intruder/set`. Like the other generators it is a pure,
+  hard-capped `IntruderGenerators::customIterator`: a product past the 100k cap
+  truncates in count while every emitted payload stays a complete combination,
+  so it never OOMs. Mutation-proven. (Roadmap: intruder &mdash; Payload type:
+  Custom iterator, now at parity.)
 - **Issue definitions library.** `GET /api/issue-definitions` serves a browsable
   catalog of every issue KIND the scanner can report (198 at time of writing),
   independent of whether any has been found &mdash; each with its CWE, OWASP Top 10

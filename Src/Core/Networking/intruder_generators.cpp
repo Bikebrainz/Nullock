@@ -311,13 +311,37 @@ QStringList ecbBlockShuffle(const QString &ciphertextHex, int blockSize) {
     return out;
 }
 
+QStringList customIterator(const QList<QStringList> &positions, const QString &separator) {
+    if (positions.isEmpty()) return {};
+    for (const QStringList &p : positions)
+        if (p.isEmpty()) return {};              // empty factor -> empty product
+
+    QStringList out;
+    out.append(QString());                       // seed: one empty combination
+    for (int pos = 0; pos < positions.size(); ++pos) {
+        const QStringList &items = positions.at(pos);
+        QStringList next;
+        bool capped = false;
+        for (const QString &prefix : out) {
+            for (const QString &item : items) {
+                next.append(pos == 0 ? item : (prefix + separator + item));
+                if (next.size() >= kMaxCount) { capped = true; break; }
+            }
+            if (capped) break;
+        }
+        out = next;                              // bounded at kMaxCount each round
+    }
+    return out;
+}
+
 QStringList types() {
     return { QStringLiteral("numbers"), QStringLiteral("brute"),
              QStringLiteral("dates"), QStringLiteral("null"),
              QStringLiteral("frobber"), QStringLiteral("blocks"),
              QStringLiteral("casemod"), QStringLiteral("charsub"),
              QStringLiteral("bitflip"), QStringLiteral("username"),
-             QStringLiteral("illegal-unicode"), QStringLiteral("ecb-shuffle") };
+             QStringLiteral("illegal-unicode"), QStringLiteral("ecb-shuffle"),
+             QStringLiteral("iterator") };
 }
 
 } // namespace Nullock::Core::IntruderGenerators

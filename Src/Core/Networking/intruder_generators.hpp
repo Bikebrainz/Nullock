@@ -7,6 +7,7 @@
 // crash. PURE: no I/O -- links against Qt6::Core alone.
 
 #include <QHash>
+#include <QList>
 #include <QString>
 #include <QStringList>
 
@@ -122,6 +123,17 @@ QStringList illegalUnicode(const QString &base, int minBytes, int maxBytes,
 // DEDUPED (ECB commonly repeats blocks) and capped at kMaxCount. Input must be
 // valid hex and a whole number of blocks (else empty); blockSize < 1 -> empty.
 QStringList ecbBlockShuffle(const QString &ciphertextHex, int blockSize);
+
+// Burp "Custom iterator": a positional cartesian product. Given up to N
+// positions, each its own list of items, emit every combination
+// pos[0][i] + sep + pos[1][j] + sep + ... in ODOMETER order (the LAST position
+// varies fastest), with `separator` placed BETWEEN adjacent positions (not
+// after the last). No positions, or ANY empty position (an empty factor), ->
+// empty. Bounded at kMaxCount: the working set is capped after each position so
+// memory stays bounded AND every emitted payload is a COMPLETE combination
+// (all positions), never a truncated-length fragment -- a huge product yields a
+// truncated-in-COUNT set of full payloads, never OOM.
+QStringList customIterator(const QList<QStringList> &positions, const QString &separator);
 
 // Generator type names this module understands (for UI discovery).
 QStringList types();
