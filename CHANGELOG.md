@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Inspector: nested JSON body parameters.** The request Inspector now flattens
+  a JSON body recursively into Burp-style dotted/bracketed leaves &mdash;
+  `user.name`, `user.addr.city`, `tags[0]`, `items[1].id` &mdash; instead of
+  collapsing a nested object or array to a bare `{…}`/`[…]` placeholder. It also
+  handles a top-level JSON array (`[0].x`) and shows a `{}`/`[]` placeholder for
+  empty containers so a key never silently vanishes. Depth- and count-bounded
+  (maxDepth 64, maxParams 2000) so a deep or huge body can't blow the stack or
+  flood the params view. Mutation-proven. (Roadmap: repeater/Inspector body
+  params; still partial pending multipart and XML body branches.)
 - **Intruder payload type: Custom iterator.** A new `iterator` payload generator
   produces a positional cartesian product &mdash; give it N positions, each its
   own list of items, plus a separator, and it emits every combination

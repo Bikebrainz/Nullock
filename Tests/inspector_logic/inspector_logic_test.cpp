@@ -125,6 +125,41 @@ int main(int argc, char **argv) {
         chk("req json param admin", findVal(r.value("bodyParams").toArray(), "admin") == "true");
     }
 
+    // ----- inspectRequest: NESTED JSON body flattening (Burp-style leaves) -----
+    {
+        const QByteArray raw =
+            "POST /api HTTP/1.1\r\nContent-Type: application/json\r\n\r\n"
+            "{\"user\":{\"name\":\"bob\",\"addr\":{\"city\":\"nyc\"}},"
+            "\"tags\":[\"a\",\"b\"],"
+            "\"items\":[{\"id\":1},{\"id\":2}],"
+            "\"empty\":{},\"none\":[]}";
+        const QJsonArray bp = inspectRequest(raw).value("bodyParams").toArray();
+        chk("json nested: user.name", findVal(bp, "user.name") == "bob");
+        chk("json nested: user.addr.city (2 levels deep)", findVal(bp, "user.addr.city") == "nyc");
+        chk("json array: tags[0]/tags[1]",
+            findVal(bp, "tags[0]") == "a" && findVal(bp, "tags[1]") == "b");
+        chk("json array-of-objects: items[0].id / items[1].id",
+            findVal(bp, "items[0].id") == "1" && findVal(bp, "items[1].id") == "2");
+        chk("json empty object -> {} placeholder leaf", findVal(bp, "empty") == "{}");
+        chk("json empty array -> [] placeholder leaf", findVal(bp, "none") == "[]");
+        // The old shallow parse collapsed a nested object to a bare '{…}' under
+        // the top-level key; that key must no longer appear as a placeholder.
+        chk("json nested: no bare '{…}' collapse under the parent key",
+            findVal(bp, "user") != QStringLiteral("{…}"));
+    }
+
+    // ----- inspectRequest: TOP-LEVEL JSON array body -----
+    {
+        const QByteArray raw =
+            "POST /api HTTP/1.1\r\nContent-Type: application/json\r\n\r\n"
+            "[{\"x\":1},{\"x\":2}]";
+        const QJsonObject r = inspectRequest(raw);
+        chk("json top-level array -> bodyKind json", r.value("bodyKind").toString() == "json");
+        const QJsonArray bp = r.value("bodyParams").toArray();
+        chk("json top-level array: [0].x / [1].x",
+            findVal(bp, "[0].x") == "1" && findVal(bp, "[1].x") == "2");
+    }
+
     // ----- audit-12: a '{'-sniffed body that is NOT json and NOT declared json ----
     // The bodyKind sniff accepts any body starting with '{'. When such a body fails
     // to parse AND the Content-Type never says json, the classifier used to fall out

@@ -2,6 +2,7 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonValue>
 #include <QList>
 #include <QPair>
 #include <QRegularExpression>
@@ -40,6 +41,54 @@ QJsonArray parsePairs(const QString &s, QChar sep = '&', bool formDecode = true)
         else arr.append(nv(urlDecode(part.left(eq), formDecode), urlDecode(part.mid(eq + 1), formDecode)));
     }
     return arr;
+}
+
+// A JSON SCALAR rendered as a parameter value. Preserves exact 64-bit integer
+// text -- a bare QString::number(double) mangles a big ID / epoch into 6-sig-fig
+// scientific notation. Non-scalars are handled by flattenJson, not here.
+QString jsonScalar(const QJsonValue &v) {
+    if (v.isString()) return v.toString();
+    if (v.isBool())   return v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (v.isNull())   return QStringLiteral("null");
+    if (v.isDouble()) {
+        const double d = v.toDouble();
+        const qint64 i = v.toInteger();
+        return (static_cast<double>(i) == d) ? QString::number(i)
+                                             : QString::number(d, 'g', 17);
+    }
+    return QString();
+}
+
+// Recursively flatten a JSON value into Burp-style dotted / bracketed parameter
+// leaves: an object key appends ".key" ("key" at the root), an array element
+// appends "[i]". Each scalar becomes one {name,value} leaf; an EMPTY object or
+// array becomes a single "{}"/"[]" placeholder leaf so a key never silently
+// vanishes. Bounded: at maxDepth a deeper node collapses to a "{…}"/"[…}"
+// placeholder, and the walk stops once `out` reaches maxParams -- so a deeply
+// nested or huge body can neither blow the stack nor flood the output.
+void flattenJson(const QJsonValue &v, const QString &prefix, QJsonArray &out,
+                 int depth, int maxDepth, int maxParams) {
+    if (out.size() >= maxParams) return;
+    if (v.isObject()) {
+        const QJsonObject o = v.toObject();
+        if (o.isEmpty())       { out.append(nv(prefix, QStringLiteral("{}")));  return; }
+        if (depth >= maxDepth) { out.append(nv(prefix, QStringLiteral("{…}"))); return; }
+        for (auto it = o.begin(); it != o.end() && out.size() < maxParams; ++it) {
+            const QString child = prefix.isEmpty() ? it.key()
+                                                   : prefix + QLatin1Char('.') + it.key();
+            flattenJson(it.value(), child, out, depth + 1, maxDepth, maxParams);
+        }
+    } else if (v.isArray()) {
+        const QJsonArray a = v.toArray();
+        if (a.isEmpty())       { out.append(nv(prefix, QStringLiteral("[]")));  return; }
+        if (depth >= maxDepth) { out.append(nv(prefix, QStringLiteral("[…]"))); return; }
+        for (int i = 0; i < a.size() && out.size() < maxParams; ++i) {
+            const QString child = prefix + QLatin1Char('[') + QString::number(i) + QLatin1Char(']');
+            flattenJson(a.at(i), child, out, depth + 1, maxDepth, maxParams);
+        }
+    } else {
+        out.append(nv(prefix, jsonScalar(v)));
+    }
 }
 
 // Split a raw message into (start line, header lines, body). Tolerant of LF-only.
@@ -183,30 +232,19 @@ QJsonObject inspectRequest(const QByteArray &raw) {
     if (ct.contains("application/x-www-form-urlencoded", Qt::CaseInsensitive)) {
         bodyKind = "form";
         bodyParams = parsePairs(QString::fromUtf8(p.body));
-    } else if (ct.contains("application/json", Qt::CaseInsensitive) || p.body.trimmed().startsWith("{")) {
+    } else if (ct.contains("application/json", Qt::CaseInsensitive)
+               || p.body.trimmed().startsWith("{") || p.body.trimmed().startsWith("[")) {
         QJsonParseError pe{};
         const QJsonDocument doc = QJsonDocument::fromJson(p.body, &pe);
-        if (pe.error == QJsonParseError::NoError && doc.isObject()) {
+        if (pe.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray())) {
             bodyKind = "json";
-            const QJsonObject o = doc.object();
-            for (auto it = o.begin(); it != o.end(); ++it) {
-                const QJsonValue v = it.value();
-                QString sval;
-                if      (v.isString()) sval = v.toString();
-                else if (v.isDouble()) {
-                    // Preserve exact integer text -- a bare QString::number(double)
-                    // emits 6-sig-fig scientific notation for 64-bit IDs / epochs.
-                    const double d = v.toDouble();
-                    const qint64 i = v.toInteger();
-                    sval = (static_cast<double>(i) == d) ? QString::number(i)
-                                                         : QString::number(d, 'g', 17);
-                }
-                else if (v.isBool())   sval = v.toBool() ? QStringLiteral("true") : QStringLiteral("false");
-                else if (v.isNull())   sval = QStringLiteral("null");
-                else if (v.isObject()) sval = QStringLiteral("{…}");
-                else if (v.isArray())  sval = QStringLiteral("[…]");
-                bodyParams.append(nv(it.key(), sval));
-            }
+            // Recursively flatten to Burp-style dotted/bracketed leaves so a
+            // nested API body (objects/arrays) is fully visible in the params
+            // view, not collapsed to a bare {…}/[…] placeholder. Handles a
+            // top-level array too. Depth- and count-bounded.
+            const QJsonValue root = doc.isObject() ? QJsonValue(doc.object())
+                                                   : QJsonValue(doc.array());
+            flattenJson(root, QString(), bodyParams, 0, /*maxDepth=*/64, /*maxParams=*/2000);
         } else if (ct.contains("json", Qt::CaseInsensitive)) {
             bodyKind = "json";   // declared JSON but didn't parse as an object
         } else {
