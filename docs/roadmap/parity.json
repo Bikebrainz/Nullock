@@ -278,7 +278,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
@@ -351,7 +351,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
@@ -881,7 +881,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
@@ -3533,7 +3533,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
@@ -4286,7 +4286,7 @@
       "audited_state": "exceeds",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
@@ -5158,7 +5158,7 @@
       "audited_state": "exceeds",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "",
+        "commit": "59650d5",
         "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
       }
     },
