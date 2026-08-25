@@ -5019,7 +5019,7 @@
       "evidence": "ui-v2/proxy.jsx: DELETED_SCOPES_STORAGE_KEY/loadDeletedScopes/saveDeletedScopes/isRowDeleted (pure filter, new), ProxyTab's deletedScopes state + visibleRows memo (replaces rows as the source for sitemapEntries/compareHosts/originRows/ctxMenuTargetRows/SiteMap's totalRows/the shown-hidden header count), deleteHostScope()/deleteBranchScope()/restoreDeletedScopes() handlers, and two new \ud83d\uddd1 DELETE HOST / DELETE BRANCH entries in the ctxMenu JSX (DELETE BRANCH only rendered when ctxMenu.branch is set, matching how the tree's folder-node right-click already supplies branch). FilterBar gets a deletedCount/onRestoreDeleted chip mirroring the existing selectedHost chip. Verified with a sandboxed functional test: isRowDeleted correctly matches a branch-prefix scope (/api matches /api/users, not /apix), a whole-host scope (branch: null), and leaves unrelated hosts alone.",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "PENDING",
+        "commit": "6cfd21f",
         "note": "Wave 2 Site-map batch -- Delete host / Delete branch added to the Site map right-click menu as a client-side hide-list (localStorage), filtering rows out of the site map, history table, and compare-hosts views alike. A selection-scoped issue report stays absent -- state stays partial."
       },
       "audited_state": "partial"
