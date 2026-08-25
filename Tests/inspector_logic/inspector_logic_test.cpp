@@ -160,6 +160,46 @@ int main(int argc, char **argv) {
             findVal(bp, "[0].x") == "1" && findVal(bp, "[1].x") == "2");
     }
 
+    // ----- inspectRequest: multipart/form-data body -----
+    {
+        const QByteArray raw =
+            "POST /upload HTTP/1.1\r\n"
+            "Content-Type: multipart/form-data; boundary=----WebKitABC\r\n"
+            "\r\n"
+            "------WebKitABC\r\n"
+            "Content-Disposition: form-data; name=\"title\"\r\n"
+            "\r\n"
+            "Hello World\r\n"
+            "------WebKitABC\r\n"
+            "Content-Disposition: form-data; name=\"avatar\"; filename=\"pic.png\"\r\n"
+            "Content-Type: image/png\r\n"
+            "\r\n"
+            "\x89PNG\r\n\x1a\n binarybytes\r\n"
+            "------WebKitABC--\r\n";
+        const QJsonObject r = inspectRequest(raw);
+        chk("multipart bodyKind", r.value("bodyKind").toString() == "multipart");
+        const QJsonArray bp = r.value("bodyParams").toArray();
+        chk("multipart text field title=Hello World", findVal(bp, "title") == "Hello World");
+        chk("multipart file field -> [file: pic.png, N bytes] descriptor",
+            findVal(bp, "avatar").startsWith("[file: pic.png,")
+            && findVal(bp, "avatar").endsWith("bytes]"));
+    }
+
+    // ----- inspectRequest: XML body (element-path + attribute params) -----
+    {
+        const QByteArray raw =
+            "POST /soap HTTP/1.1\r\n"
+            "Content-Type: application/xml\r\n"
+            "\r\n"
+            "<order id=\"42\"><item><sku>ABC</sku><qty>3</qty></item></order>";
+        const QJsonObject r = inspectRequest(raw);
+        chk("xml bodyKind", r.value("bodyKind").toString() == "xml");
+        const QJsonArray bp = r.value("bodyParams").toArray();
+        chk("xml leaf element path order.item.sku", findVal(bp, "order.item.sku") == "ABC");
+        chk("xml leaf element path order.item.qty", findVal(bp, "order.item.qty") == "3");
+        chk("xml attribute order@id", findVal(bp, "order@id") == "42");
+    }
+
     // ----- audit-12: a '{'-sniffed body that is NOT json and NOT declared json ----
     // The bodyKind sniff accepts any body starting with '{'. When such a body fails
     // to parse AND the Content-Type never says json, the classifier used to fall out

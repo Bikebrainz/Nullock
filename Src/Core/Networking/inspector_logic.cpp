@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
+#include <QXmlStreamReader>
 #include <QList>
 #include <QPair>
 #include <QRegularExpression>
@@ -88,6 +89,96 @@ void flattenJson(const QJsonValue &v, const QString &prefix, QJsonArray &out,
         }
     } else {
         out.append(nv(prefix, jsonScalar(v)));
+    }
+}
+
+// Extract a `key="value"` / `key=value` parameter from a header value like
+// `form-data; name="file"; filename="a.txt"` (case-insensitive key).
+QString headerParam(const QString &headerVal, const QString &key) {
+    const QRegularExpression re(
+        QRegularExpression::escape(key) + QStringLiteral("\\s*=\\s*(?:\"([^\"]*)\"|([^;]+))"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch m = re.match(headerVal);
+    if (!m.hasMatch()) return QString();
+    return m.captured(1).isNull() ? m.captured(2).trimmed() : m.captured(1);
+}
+
+// The boundary token from a multipart Content-Type (`; boundary=..` quoted or not).
+QByteArray multipartBoundary(const QString &contentType) {
+    return headerParam(contentType, QStringLiteral("boundary")).toUtf8();
+}
+
+// Parse a multipart/form-data body into one param per part: a text field ->
+// name=value (body preview-capped), a file field (has filename=) ->
+// name="[file: <filename>, <N> bytes]" so an upload is visible without echoing
+// the bytes. Operates on RAW bytes so a binary part is never transcode-mangled.
+// Bounded at maxParams; a malformed body yields whatever parts parsed.
+QJsonArray parseMultipart(const QByteArray &body, const QByteArray &boundary, int maxParams) {
+    QJsonArray out;
+    if (boundary.isEmpty()) return out;
+    const QByteArray delim = "--" + boundary;
+    int pos = body.indexOf(delim);
+    if (pos < 0) return out;
+    pos += delim.size();
+    while (out.size() < maxParams) {
+        if (body.mid(pos, 2) == "--") break;                 // closing delimiter --boundary--
+        int hstart = pos;
+        if (body.mid(hstart, 2) == "\r\n")      hstart += 2;  // CRLF after the delimiter
+        else if (body.mid(hstart, 1) == "\n")   hstart += 1;
+        const int next = body.indexOf(delim, hstart);
+        if (next < 0) break;
+        QByteArray part = body.mid(hstart, next - hstart);
+        if (part.endsWith("\r\n"))    part.chop(2);          // CRLF before the next delimiter
+        else if (part.endsWith("\n")) part.chop(1);
+        int hb = part.indexOf("\r\n\r\n"); int hblen = 4;
+        if (hb < 0) { hb = part.indexOf("\n\n"); hblen = 2; }
+        const QByteArray phead = hb < 0 ? part : part.left(hb);
+        const QByteArray pbody = hb < 0 ? QByteArray() : part.mid(hb + hblen);
+        QString cd;
+        for (const QByteArray &rawLine : phead.split('\n')) {
+            QByteArray h = rawLine;
+            if (h.endsWith('\r')) h.chop(1);
+            if (QString::fromUtf8(h).startsWith(QLatin1String("Content-Disposition"), Qt::CaseInsensitive))
+                cd = QString::fromUtf8(h);
+        }
+        const QString name = headerParam(cd, QStringLiteral("name"));
+        const QString filename = headerParam(cd, QStringLiteral("filename"));
+        if (!filename.isEmpty())
+            out.append(nv(name, QStringLiteral("[file: %1, %2 bytes]").arg(filename).arg(pbody.size())));
+        else
+            out.append(nv(name, QString::fromUtf8(pbody.left(kBodyPreview))));
+        pos = next + delim.size();
+    }
+    return out;
+}
+
+// Flatten an XML body into dotted element-path params: leaf element text ->
+// path=value (e.g. order.item.qty), and each attribute -> path@attr=value.
+// Text is reset at every element boundary, so a data-XML leaf reports its value
+// and a container element (whitespace-only text) reports none. Bounded at
+// maxParams; a malformed document yields whatever parsed before the error.
+void flattenXml(const QByteArray &body, QJsonArray &out, int maxParams) {
+    QXmlStreamReader xml(body);
+    QStringList path;
+    QString text;
+    while (!xml.atEnd() && out.size() < maxParams) {
+        xml.readNext();
+        if (xml.isStartElement()) {
+            path << xml.name().toString();
+            const QString here = path.join(QLatin1Char('.'));
+            for (const QXmlStreamAttribute &a : xml.attributes()) {
+                if (out.size() >= maxParams) break;
+                out.append(nv(here + QLatin1Char('@') + a.name().toString(), a.value().toString()));
+            }
+            text.clear();
+        } else if (xml.isCharacters() && !xml.isWhitespace()) {
+            text += xml.text().toString();
+        } else if (xml.isEndElement()) {
+            const QString t = text.trimmed();
+            if (!t.isEmpty() && out.size() < maxParams) out.append(nv(path.join(QLatin1Char('.')), t));
+            if (!path.isEmpty()) path.removeLast();
+            text.clear();
+        }
     }
 }
 
@@ -232,6 +323,9 @@ QJsonObject inspectRequest(const QByteArray &raw) {
     if (ct.contains("application/x-www-form-urlencoded", Qt::CaseInsensitive)) {
         bodyKind = "form";
         bodyParams = parsePairs(QString::fromUtf8(p.body));
+    } else if (ct.contains("multipart/form-data", Qt::CaseInsensitive)) {
+        bodyKind = "multipart";
+        bodyParams = parseMultipart(p.body, multipartBoundary(ct), /*maxParams=*/2000);
     } else if (ct.contains("application/json", Qt::CaseInsensitive)
                || p.body.trimmed().startsWith("{") || p.body.trimmed().startsWith("[")) {
         QJsonParseError pe{};
@@ -257,6 +351,16 @@ QJsonObject inspectRequest(const QByteArray &raw) {
             // because its first byte happened to be '{'.
             bodyKind = "other";
         }
+    } else if (ct.contains("xml", Qt::CaseInsensitive) || p.body.trimmed().startsWith("<")) {
+        // application/xml, text/xml, application/soap+xml, or a sniffed '<' body.
+        // Flatten to element-path params; a sniffed-but-unparseable '<' body that
+        // yields nothing is just an opaque body (bodyKind "other"), mirroring the
+        // JSON sniff's fall-through so a stray '<' never masquerades as XML.
+        QJsonArray xmlParams;
+        flattenXml(p.body, xmlParams, /*maxParams=*/2000);
+        if (!xmlParams.isEmpty()) { bodyKind = "xml"; bodyParams = xmlParams; }
+        else if (ct.contains("xml", Qt::CaseInsensitive)) bodyKind = "xml";
+        else bodyKind = "other";
     } else if (!p.body.isEmpty()) {
         bodyKind = "other";
     }
