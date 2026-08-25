@@ -697,7 +697,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-25",
-        "commit": "PENDING",
+        "commit": "935d094",
         "note": "Intruder resource-pool batch: RETRIES (0..5, network-failure-only resend, HTTP status codes never retried) closes the last 'hours'-effort intruder pool-config gap."
       }
     },
