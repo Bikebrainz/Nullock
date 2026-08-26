@@ -17,6 +17,7 @@ ExtractFrom parseExtractFrom(const QString &s) {
     if (t == "json")   return FromJson;
     if (t == "regex")  return FromRegex;
     if (t == "status") return FromStatus;
+    if (t == "delimiter" || t == "delim") return FromDelimiter;
     return FromHeader;   // unknown/empty -> header, matching ChainRunner's default
 }
 
@@ -45,6 +46,22 @@ QString extractToken(int from, const QString &key, int statusCode,
         }
         case FromStatus:
             return QString::number(statusCode);
+        case FromDelimiter: {
+            // key = "<start>\x1f<end>": return the substring between the FIRST
+            // occurrence of <start> and the NEXT <end> after it. An empty start
+            // means "from the beginning"; an empty end means "to the end".
+            const int sep = key.indexOf(QChar(0x1f));
+            if (sep < 0) return {};                       // malformed key
+            const QString start = key.left(sep);
+            const QString end   = key.mid(sep + 1);
+            const QString buf = QString::fromUtf8(body.left(1 * 1024 * 1024));
+            const int s = start.isEmpty() ? 0 : buf.indexOf(start);
+            if (s < 0) return {};
+            const int from = s + start.size();
+            const int e = end.isEmpty() ? buf.size() : buf.indexOf(end, from);
+            if (e < 0) return {};
+            return buf.mid(from, e - from);
+        }
     }
     return {};
 }

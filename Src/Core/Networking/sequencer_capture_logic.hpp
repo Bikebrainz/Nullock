@@ -26,6 +26,7 @@ enum ExtractFrom {
     FromJson   = 2,
     FromRegex  = 3,
     FromStatus = 4,
+    FromDelimiter = 5,   // literal start/end delimiters; key = "<start>\x1f<end>"
 };
 
 // Parse the wire string ("header"/"cookie"/"json"/"regex"/"status", any case)

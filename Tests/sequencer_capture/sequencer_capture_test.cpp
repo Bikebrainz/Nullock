@@ -35,6 +35,8 @@ int main(int argc, char **argv) {
     chk("parse: json",    parseExtractFrom("json")   == FromJson);
     chk("parse: regex",   parseExtractFrom("regex")  == FromRegex);
     chk("parse: status",  parseExtractFrom("status") == FromStatus);
+    chk("parse: delimiter", parseExtractFrom("delimiter") == FromDelimiter);
+    chk("parse: delim alias", parseExtractFrom("delim") == FromDelimiter);
     chk("parse: case-insensitive", parseExtractFrom("COOKIE") == FromCookie);
     chk("parse: whitespace trimmed", parseExtractFrom("  json ") == FromJson);
     chk("parse: unknown -> header (default)", parseExtractFrom("nonsense") == FromHeader);
@@ -166,6 +168,30 @@ int main(int argc, char **argv) {
     chk("scope: non-empty + host in scope -> allow", scopeAllows(false, true));
     chk("scope: non-empty + host NOT in scope -> refuse", !scopeAllows(false, false));
     chk("scope: empty + not-in-scope -> refuse", !scopeAllows(true, false));
+
+    // ===== extractToken: Delimiter (key = "<start>\x1f<end>") ============
+    {
+        auto k = [](const QString &start, const QString &end) {
+            return start + QChar(0x1f) + end;
+        };
+        const QByteArray body = QByteArray("prefix<<TOKEN=abc123>>suffix");
+        chk("delim: between << and >>",
+            extractToken(FromDelimiter, k("<<TOKEN=", ">>"), 200, {}, body) == "abc123");
+        chk("delim: empty start -> from beginning",
+            extractToken(FromDelimiter, k("", "<<"), 200, {}, body) == "prefix");
+        chk("delim: empty end -> to end",
+            extractToken(FromDelimiter, k(">>", ""), 200, {}, body) == "suffix");
+        chk("delim: absent start -> empty",
+            extractToken(FromDelimiter, k("NOPE", ">>"), 200, {}, body).isEmpty());
+        chk("delim: absent end -> empty",
+            extractToken(FromDelimiter, k("<<TOKEN=", "###"), 200, {}, body).isEmpty());
+        chk("delim: malformed key (no separator) -> empty",
+            extractToken(FromDelimiter, "no-separator-here", 200, {}, body).isEmpty());
+        // end is searched AFTER start, so a start-substring appearing in the tail
+        // doesn't confuse the second boundary.
+        chk("delim: end sought after start",
+            extractToken(FromDelimiter, k("a", "a"), 200, {}, QByteArray("XaYaZ")) == "Y");
+    }
 
     std::fprintf(stderr, "sequencer_capture_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;

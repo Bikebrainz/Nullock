@@ -92,6 +92,13 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Sequencer live capture: literal start/end-delimiter token extraction.** The
+  capture extractor gains a `FromDelimiter` mode alongside header/cookie/json/
+  regex/status: `parseExtractFrom` accepts `"delimiter"`/`"delim"`, and
+  `extractToken` returns the substring between the first `<start>` and the next
+  `<end>` (empty start = from the beginning, empty end = to the end; key encoded
+  as `<start>\x1f<end>`). Pure, mutation-proven. (Roadmap: live-capture custom
+  location; still partial pending the ui-v2 delimiter fields.)
 - **Session rules: custom URL include/exclude scope.** A `SessionRule` now carries
   `includeUrls`/`excludeUrls` glob lists (JSON round-tripped via
   `/api/session-rules`), and rule matching consults the pure, mutation-proven

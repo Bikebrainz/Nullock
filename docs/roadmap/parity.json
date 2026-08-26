@@ -2379,7 +2379,7 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "The regex half is fully wired end-to-end and now UI-reachable (extract-from select's Regex option + a key field for the pattern, first capture group or whole match over the body). The literal 'start/end delimiters' mode named by this item is still absent at every layer -- both existing extractors (session rules, chain runner, and now sequencer capture) are capture-group regex only, never a delimiter pair.",
+      "gap": "Both extraction modes now exist in the backend: the regex half was already wired UI-reachable, and the literal start/end-delimiter mode is now implemented -- SequencerCaptureLogic gains a FromDelimiter ExtractFrom (parseExtractFrom accepts 'delimiter'/'delim'; extractToken returns the substring between the first <start> and the next <end>, with empty-start=from-beginning and empty-end=to-end, key encoded as '<start>\\x1f<end>'). Stays partial only for the ui-v2 delimiter input (two fields feeding the encoded key), the extract-from select's Delimiter option in the other developer's lane.",
       "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave closed the backend regex-extraction half; this wave adds its UI. The delimiter-pair variant remains a separate, unbuilt extraction mode.",
       "evidence": "ui-v2/app.jsx SequencerTab's SEQ_CAPTURE_EXTRACT_FROM select (value='regex') + capExtractKey text input; Src/Core/Networking/sequencer_capture_logic.cpp FromRegex branch (unchanged, capture-group only).",
       "audited_state": "absent",
