@@ -92,6 +92,15 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Session rules: custom URL include/exclude scope.** A `SessionRule` now carries
+  `includeUrls`/`excludeUrls` glob lists (JSON round-tripped via
+  `/api/session-rules`), and rule matching consults the pure, mutation-proven
+  `SessionRulesLogic::urlScopeMatches` (globs matched against `host`+path with the
+  query stripped; empty include = all URLs; a matching exclude rejects, so exclude
+  beats include). This makes "everything except /logout" expressible &mdash;
+  `include=[*]`, `exclude=[*/logout*]` &mdash; which a single host+path glob could
+  not. (Roadmap: session-rule URL scope; still partial pending "use suite scope"
+  and protocol/port matching.)
 - **CA certificate DER export.** `GET /ca.der` (and Burp's `/cert` alias) now
   serves the MITM root CA as `application/pkix-cert` for clients that import DER
   only, converting the existing PEM via the pure, OpenSSL-free

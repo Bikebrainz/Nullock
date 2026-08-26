@@ -219,6 +219,32 @@ int main(int argc, char **argv) {
             injectIntoNonFormBody("[{{v}}]", "X", "v", "9", false) == "[9]");
     }
 
+    // ===== urlScopeMatches: include/exclude URL globs =====================
+    {
+        const QStringList none;
+        chk("urlScope: both empty -> all URLs", urlScopeMatches("x.com", "/a", none, none));
+        // "everything except /logout": include=[*], exclude=[*/logout*]
+        chk("urlScope: include=[*] exclude=[*/logout*] rejects /logout",
+            !urlScopeMatches("x.com", "/logout", QStringList{ "*" }, QStringList{ "*/logout*" }));
+        chk("urlScope: include=[*] exclude=[*/logout*] accepts /home",
+            urlScopeMatches("x.com", "/home", QStringList{ "*" }, QStringList{ "*/logout*" }));
+        // include list gates: only a matching URL passes.
+        chk("urlScope: include list admits a match",
+            urlScopeMatches("api.x.com", "/v2/users", QStringList{ "api.x.com/v2/*" }, none));
+        chk("urlScope: include list rejects a non-match",
+            !urlScopeMatches("api.x.com", "/v1/users", QStringList{ "api.x.com/v2/*" }, none));
+        // exclude beats include when BOTH match.
+        chk("urlScope: exclude beats include",
+            !urlScopeMatches("x.com", "/logout", QStringList{ "*" }, QStringList{ "*logout*" }));
+        // empty include with an exclude present: all-but-excluded.
+        chk("urlScope: empty include + exclude -> everything but the exclude",
+            urlScopeMatches("x.com", "/a", none, QStringList{ "*/logout*" })
+            && !urlScopeMatches("x.com", "/logout", none, QStringList{ "*/logout*" }));
+        // query is stripped before matching (an exclude on a query token doesn't fire).
+        chk("urlScope: query stripped before matching",
+            urlScopeMatches("x.com", "/p?next=logout", QStringList{ "*" }, QStringList{ "*next*" }));
+    }
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

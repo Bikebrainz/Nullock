@@ -163,4 +163,16 @@ QByteArray injectIntoNonFormBody(const QByteArray &body, const QString &injectKe
     return b;
 }
 
+bool urlScopeMatches(const QString &host, const QString &path,
+                     const QStringList &includeGlobs, const QStringList &excludeGlobs) {
+    if (includeGlobs.isEmpty() && excludeGlobs.isEmpty()) return true;   // no URL scope
+    const QString target = host + stripQuery(path);
+    for (const QString &ex : excludeGlobs)
+        if (!ex.isEmpty() && globToRx(ex).match(target).hasMatch()) return false;  // exclude wins
+    if (includeGlobs.isEmpty()) return true;
+    for (const QString &in : includeGlobs)
+        if (!in.isEmpty() && globToRx(in).match(target).hasMatch()) return true;
+    return false;
+}
+
 } // namespace Nullock::Core::SessionRulesLogic

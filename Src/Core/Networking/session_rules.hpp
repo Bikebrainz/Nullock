@@ -77,6 +77,12 @@ struct SessionRule {
     // (Proxy|Repeater|Intruder|Scanner). 0 = ALL tools, so a rule authored before
     // scoping existed keeps applying everywhere (backward-compatible).
     int     tools = 0;
+    // URL scope (Burp "Rule scope > URL scope > custom include/exclude list").
+    // Globs matched against "host/path" (query stripped). includeUrls empty =>
+    // all URLs; a match in excludeUrls REJECTS (exclude beats include), so
+    // "everything except /logout" is include=[*], exclude=[*/logout*].
+    QStringList includeUrls;
+    QStringList excludeUrls;
 };
 
 // A named session-acquisition MACRO (#10/#11): a recorded login sequence

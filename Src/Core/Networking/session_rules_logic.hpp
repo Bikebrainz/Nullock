@@ -97,4 +97,13 @@ bool responseIsLoggedOut(int status, const QString &bodyText,
 QByteArray injectIntoNonFormBody(const QByteArray &body, const QString &injectKey,
                                  const QString &variable, const QString &value, bool isJson);
 
+// Rule URL-scope decision (globs matched against "host" + stripQuery(path)):
+//   * both lists empty  -> true (no URL scope; the rule's host/path globs govern);
+//   * a match in excludeGlobs -> false (exclude beats include);
+//   * includeGlobs empty (but excludes present, none matched) -> true;
+//   * else true iff SOME includeGlob matches.
+// This makes "everything except /logout" expressible (include=[*], exclude=[*/logout*]).
+bool urlScopeMatches(const QString &host, const QString &path,
+                     const QStringList &includeGlobs, const QStringList &excludeGlobs);
+
 } // namespace Nullock::Core::SessionRulesLogic

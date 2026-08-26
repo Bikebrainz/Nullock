@@ -81,7 +81,9 @@ QJsonArray sessionRulesToJson(const QList<SessionRule> &rules) {
             { "extractFrom", r.extractFrom }, { "extractKey", r.extractKey },
             { "variable", r.variable },
             { "injectInto", r.injectInto }, { "injectKey", r.injectKey },
-            { "injectTemplate", r.injectTemplate }, { "tools", r.tools } });
+            { "injectTemplate", r.injectTemplate }, { "tools", r.tools },
+            { "includeUrls", QJsonArray::fromStringList(r.includeUrls) },
+            { "excludeUrls", QJsonArray::fromStringList(r.excludeUrls) } });
     return arr;
 }
 
@@ -101,6 +103,10 @@ QList<SessionRule> sessionRulesFromJson(const QJsonArray &arr) {
         r.injectKey      = o.value("injectKey").toString();
         r.injectTemplate = o.value("injectTemplate").toString();
         r.tools          = o.value("tools").toInt(0);   // 0 = all tools
+        for (const QJsonValue &u : o.value("includeUrls").toArray())
+            if (!u.toString().isEmpty()) r.includeUrls << u.toString();
+        for (const QJsonValue &u : o.value("excludeUrls").toArray())
+            if (!u.toString().isEmpty()) r.excludeUrls << u.toString();
         rules.append(r);
     }
     return rules;
@@ -161,8 +167,10 @@ bool SessionRules::matches(const SessionRule &r,
     };
     // Match the pathGlob against the path component only -- req.path carries the
     // "?query", so an exact glob would otherwise never match a query-bearing req.
+    // The optional URL include/exclude scope is an ADDITIONAL filter on top.
     return resolve(r.hostGlob).match(host).hasMatch()
-        && resolve(r.pathGlob).match(stripQuery(path)).hasMatch();
+        && resolve(r.pathGlob).match(stripQuery(path)).hasMatch()
+        && SessionRulesLogic::urlScopeMatches(host, path, r.includeUrls, r.excludeUrls);
 }
 
 QString SessionRules::substitute(const QString &templ,
