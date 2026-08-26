@@ -5588,17 +5588,17 @@
     {
       "area": "target",
       "feature": "Content discovery: file-extension bruteforce (probe each word against a list of extensions) and filename mutation rules",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Filename-mutation rules are now BUILT (backend): ContentDiscovery::mutateFilenames expands each candidate to word~, word.bak/.old/.orig/.save/.tmp/.1 and a directory-aware vim swap .<leaf>.swp, wired into discover() after the extension expansion (bounded by maxRequests) and exposed via a `mutations` boolean on POST /api/content/discover. The extension-bruteforce half already ships with its DiscoverTab GUI field. Stays partial only for the ui-v2 `mutations` checkbox (the sibling of the extensions field), which is the other developer's frontend lane.",
-      "why": "mutateFilenames is pure, unit-tested and mutation-proven (Tests/content_discovery: 9 variants per word incl. the dir-aware swap; dropping the swap emission fails only its cases). Wired end-to-end (content_discovery.cpp discover() + the /api/content/discover mutations flag). Held partial rather than present ONLY because the ui-v2 mutations toggle isn't added yet -- matching how the extension-bruteforce half was held partial until its GUI field shipped.",
-      "evidence": "ui-v2/app.jsx DiscoverTab extensionsText -> parsed to an array -> NL.actions.discoverContent opts.extensions -> control_server.cpp:9098-9099 cr.extensions -> ContentDiscovery::expandWithExtensions (content_logic.cpp).",
-      "audited_state": "partial",
+      "gap": "None -- filename-mutation rules are built end-to-end: ContentDiscovery::mutateFilenames (content_logic.cpp) expands each candidate to word~, word.bak/.old/.orig/.save/.tmp/.1 and a dir-aware .leaf.swp, wired into discover() via req.mutations, exposed as a `mutations` boolean on POST /api/content/discover (control_server.cpp:9518), and now toggled from a \"filename mutations\" checkbox in ui-v2 DiscoverTab (sibling of the extensions field). The extension-bruteforce half already had its GUI field.",
+      "why": "CONFIRMED end-to-end. Backend: content_discovery.hpp Request::mutations (default false); content_discovery.cpp:101 `words = mutateFilenames(words, req.mutations)`; control_server.cpp:9518 `cr.mutations = bodyJson.value(\"mutations\").toBool(false)`. Frontend: ui-v2/app.jsx DiscoverTab now has a `mutations` boolean state + checkbox next to the extensions field, threaded through NL.actions.discoverContent(url, max, {..., mutations}) -> real-data.js POST body `mutations`. Both touched ui-v2 files transform cleanly under the bundled babel.",
+      "evidence": "ui-v2/app.jsx DiscoverTab `mutations` checkbox -> NL.actions.discoverContent opts.mutations; ui-v2/real-data.js discoverContent() posts `mutations`; control_server.cpp:9518 cr.mutations; content_discovery.cpp:101 mutateFilenames(words, req.mutations); content_discovery.hpp:51 bool mutations = false.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-19",
-        "commit": "7f992c3",
-        "note": "Discovery config wave: extensions field added to DiscoverTab, closing the ui-v2 follow-on noted in 0cd5f40. Filename-mutation rules (beyond suffix-append) remain a separate, unbuilt backend gap."
+        "date": "2026-08-26",
+        "commit": "PENDING",
+        "note": "Wave 2 frontend wiring: added the ui-v2 `mutations` checkbox (DiscoverTab) that was the sole remaining gap on this item, closing it to present."
       }
     },
     {

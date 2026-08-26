@@ -4701,6 +4701,7 @@ function DiscoverTab() {
   // accepts (concurrency/throttle) that had no UI.
   const [wordlistText, setWordlistText]         = React.useState("");
   const [extensionsText, setExtensionsText]     = React.useState("");
+  const [mutations, setMutations]               = React.useState(false);
   const [maxRequests, setMaxRequests]           = React.useState(300);
   const [discConcurrency, setDiscConcurrency]   = React.useState(10);
   const [discThrottleMs, setDiscThrottleMs]     = React.useState(0);
@@ -4750,7 +4751,7 @@ function DiscoverTab() {
       const wordlist = wordlistText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
       const extensions = extensionsText.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
       const r = await NL.actions.discoverContent(url, maxRequests, {
-        wordlist, extensions, concurrency: discConcurrency, throttleMs: discThrottleMs,
+        wordlist, extensions, mutations, concurrency: discConcurrency, throttleMs: discThrottleMs,
       });
       if (r && r.ok === false && r.error) { setErr(r.error); setRes(null); }
       else setRes(r);
@@ -4883,6 +4884,10 @@ function DiscoverTab() {
           extensions (backup sweep — comma or newline separated)
           <input value={extensionsText} onChange={e => setExtensionsText(e.target.value)} placeholder=".php, .bak, .old, .zip"
                  style={{ width: 200, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "11px", fontFamily: "var(--ff-mono)" }} spellCheck={false} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }} title="Also probe backup/temp/editor variants of each candidate: word~, word.bak/.old/.orig/.save/.tmp/.1, and .word.swp">
+          <input type="checkbox" checked={mutations} onChange={e => setMutations(e.target.checked)} />
+          filename mutations (~, .bak, .old, .swp, …)
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: "var(--dim)" }}>
           max requests

@@ -356,6 +356,7 @@
         url, max: max || undefined,
         wordlist: opts.wordlist && opts.wordlist.length ? opts.wordlist : undefined,
         extensions: opts.extensions && opts.extensions.length ? opts.extensions : undefined,
+        mutations: opts.mutations || undefined,
         concurrency: opts.concurrency || undefined,
         throttleMs: opts.throttleMs || undefined,
       }).then(r => r.json());
