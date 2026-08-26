@@ -706,13 +706,173 @@ function RepeaterSelectionReadout({ sel }) {
 // Repeater pane it is mounted in and re-runs whenever that pane's text
 // changes (debounced so keystrokes in the request editor don't spam the
 // backend).
+// [B27] Inspector: automatic multi-step decode chain. Inspector values
+// (inspector_logic.cpp) are decoded exactly once server-side -- this adds a
+// second, purely client-side pass on top of that single decode, re-trying
+// url/base64/html decoding layer by layer until nothing further is
+// detected. Each auto-detector is gated (must actually look like that
+// encoding and produce a materially different, mostly-printable result)
+// so a plain value shows no chain at all; a manual override bypasses the
+// gate entirely -- the user asked for that interpretation, so it is shown
+// even if it produces garbage, matching Burp's own "let the user force a
+// layer" behaviour.
+function decodeChainGateUrl(s) {
+  if (!/%[0-9A-Fa-f]{2}/.test(s) && s.indexOf("+") < 0) return null;
+  try {
+    const out = decodeURIComponent(s.replace(/\+/g, " "));
+    return out === s ? null : out;
+  } catch (e) { return null; }
+}
+function decodeChainGateBase64(s) {
+  const t = s.trim();
+  if (t.length < 4 || t.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(t)) return null;
+  let bin;
+  try { bin = atob(t); } catch (e) { return null; }
+  if (!bin.length) return null;
+  let printable = 0;
+  for (let i = 0; i < bin.length; i++) {
+    const c = bin.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c < 127)) printable++;
+  }
+  return (printable / bin.length) >= 0.85 ? bin : null;
+}
+function decodeChainRawUrl(s) {
+  try { return decodeURIComponent(s.replace(/\+/g, " ")); } catch (e) { return null; }
+}
+function decodeChainRawBase64(s) {
+  try { return atob(s.trim()); } catch (e) { return null; }
+}
+function decodeChainRawHtml(s) {
+  const entities = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+  return s.replace(/&(#\d+|#x[0-9A-Fa-f]+|[a-zA-Z][a-zA-Z0-9]*);/g, (m, body) => {
+    if (body[0] === "#") {
+      const isHex = body[1] === "x" || body[1] === "X";
+      const code = isHex ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+    }
+    return Object.prototype.hasOwnProperty.call(entities, body) ? entities[body] : m;
+  });
+}
+function decodeChainGateHtml(s) {
+  if (!/&(#\d+|#x[0-9A-Fa-f]+|[a-zA-Z][a-zA-Z0-9]*);/.test(s)) return null;
+  const out = decodeChainRawHtml(s);
+  return out === s ? null : out;
+}
+const DECODE_CHAIN_TECHNIQUES = [
+  { id: "url", label: "URL-decode", gate: decodeChainGateUrl, raw: decodeChainRawUrl },
+  { id: "base64", label: "Base64-decode", gate: decodeChainGateBase64, raw: decodeChainRawBase64 },
+  { id: "html", label: "HTML-decode", gate: decodeChainGateHtml, raw: decodeChainRawHtml },
+];
+function decodeChainTechLabel(id) {
+  const t = DECODE_CHAIN_TECHNIQUES.find(x => x.id === id);
+  return t ? t.label : id;
+}
+function decodeChainAutoStep(text) {
+  for (let i = 0; i < DECODE_CHAIN_TECHNIQUES.length; i++) {
+    const t = DECODE_CHAIN_TECHNIQUES[i];
+    const out = t.gate(text);
+    if (out != null && out !== text) return { technique: t.id, output: out };
+  }
+  return null;
+}
+// overrides: { [stepIndex]: techniqueId } -- forces that step's technique
+// (ungated) instead of auto-detection; clearing overrides beyond a changed
+// step happens in the caller, not here.
+function buildDecodeChain(text, overrides, maxSteps) {
+  const cap = maxSteps || 6;
+  const ov = overrides || {};
+  const steps = [];
+  const seen = new Set([text]);
+  let current = text;
+  for (let i = 0; i < cap; i++) {
+    const forced = ov[i];
+    let technique, output;
+    if (forced) {
+      const t = DECODE_CHAIN_TECHNIQUES.find(x => x.id === forced);
+      if (!t) break;
+      technique = forced;
+      output = t.raw(current);
+      if (output == null) { steps.push({ input: current, technique, output: null, error: true }); break; }
+    } else {
+      const auto = decodeChainAutoStep(current);
+      if (!auto) break;
+      technique = auto.technique;
+      output = auto.output;
+    }
+    if (seen.has(output)) break;
+    steps.push({ input: current, technique, output });
+    seen.add(output);
+    current = output;
+  }
+  return steps;
+}
+
+function DecodeChainValue({ value }) {
+  const [open, setOpen] = React.useState(false);
+  const [overrides, setOverrides] = React.useState({});
+  const text = value == null ? "" : String(value);
+  const chain = React.useMemo(() => buildDecodeChain(text, overrides), [text, overrides]);
+  const canExtend = chain.length < 6 && (!chain.length || !chain[chain.length - 1].error);
+
+  const setStepTechnique = (i, id) => {
+    setOverrides(o => {
+      const next = {};
+      Object.keys(o).forEach(k => { if (Number(k) < i) next[Number(k)] = o[k]; });
+      if (id !== "auto") next[i] = id;
+      return next;
+    });
+  };
+
+  const selectStyle = { fontSize: "10px", background: "var(--pane)", color: "var(--text)", border: "1px solid var(--line)", marginRight: 4, fontFamily: "var(--ff-mono)" };
+  const chipStyle = { fontSize: "9.5px", background: "transparent", color: "var(--accent)", border: "1px solid var(--line)", borderRadius: 3, cursor: "pointer", padding: "0 4px", fontFamily: "var(--ff-mono)" };
+
+  return (
+    <span>
+      {text}
+      {(chain.length > 0 || open) && (
+        <button onClick={() => setOpen(o => !o)} title="decode chain" style={{ ...chipStyle, marginLeft: 6 }}>
+          {open ? "▾" : "⛓"}{chain.length ? " " + chain.length : ""}
+        </button>
+      )}
+      {open && (
+        <div style={{ marginTop: 4, marginBottom: 2, padding: "6px 8px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4 }}>
+          {chain.length === 0 ? (
+            <div style={{ color: "var(--dim)", fontSize: "10.5px", marginBottom: 4 }}>no encoding auto-detected</div>
+          ) : chain.map((s, i) => (
+            <div key={i} style={{ fontSize: "10.5px", marginBottom: 3 }}>
+              <span style={{ color: "var(--dim)" }}>{(i === 0 ? "value" : "step " + i) + " → "}</span>
+              <select value={overrides[i] || "auto"} onChange={e => setStepTechnique(i, e.target.value)} style={selectStyle}>
+                <option value="auto">{"auto (" + decodeChainTechLabel(s.technique) + ")"}</option>
+                {DECODE_CHAIN_TECHNIQUES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+              {s.error ? (
+                <span style={{ color: "var(--err)" }}>decode failed</span>
+              ) : (
+                <span style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{s.output}</span>
+              )}
+            </div>
+          ))}
+          {canExtend && (
+            <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--dim)", fontSize: "10px" }}>add step:</span>
+              {DECODE_CHAIN_TECHNIQUES.map(t => (
+                <button key={t.id} onClick={() => setStepTechnique(chain.length, t.id)} style={chipStyle}>{t.label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function repeaterInspectorKV(rows) {
   const th = { textAlign: "left", color: "var(--dim)", fontWeight: 500, padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top" };
   const td = { padding: "2px 8px 2px 0", wordBreak: "break-all", color: "var(--text)" };
   return (
     <table style={{ borderCollapse: "collapse", fontSize: "11.5px", fontFamily: "var(--ff-mono)", width: "100%" }}>
       <tbody>{(rows || []).map((r, i) => (
-        <tr key={i}><td style={th}>{r.name}</td><td style={td}>{String(r.value == null ? "" : r.value)}</td></tr>
+        <tr key={i}><td style={th}>{r.name}</td><td style={td}><DecodeChainValue value={r.value} /></td></tr>
       ))}</tbody>
     </table>
   );

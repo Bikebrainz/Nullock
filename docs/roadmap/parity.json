@@ -5014,12 +5014,18 @@
     {
       "area": "repeater",
       "feature": "Inspector: automatic multi-step decoding of values (HTML/URL/Base64) with a visible, revisable decode chain per item",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Burp shows each decoding step it applied and lets you change the sequence per item. Two components in this repo would compose into that and are not connected \u2014 but the Inspector has no UI to display a chain in either way (B27).",
-      "why": "Confirmed. Inspector values are decoded exactly once and the two components that would compose into this really are unconnected \u2014 inspector_logic.cpp does not include transcode.hpp.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:19-23 `QString urlDecode(const QString &s, bool formDecode = true) { QString t = s; if (formDecode) t.replace('+', ' '); return QUrl::fromPercentEncoding(t.toUtf8()); }` \u2014 one layer, no chain output. Its include list (:3-10) is QJsonArray/QJsonDocument/QList/QPair/QRegularExpression/QString/QStringList/QUrl \u2014 no transcode.hpp. The recursive ma"
+      "gap": "Every Inspector KV row (Status/Request line, Headers, Cookies, Query params, Body params) -- in both the standalone INSPECTOR tab and Repeater's docked Inspector panel -- now runs a client-side, gated auto-detector (url/base64/html, each requiring the value actually look like that encoding and decode to something materially different and mostly-printable) that builds a chain up to 6 layers deep, and a per-step <select> lets the user retarget any step's technique by hand (ungated, so a forced choice is shown even if it produces garbage), which also re-derives every step after it. Remaining gap versus Burp: this is scoped to the Inspector's already-parsed structured fields, not a live decode of an arbitrary highlighted byte range anywhere in the raw request/response editor (Burp's Inspector chain follows the text selection itself, not named fields) -- and only url/base64/html are covered (Burp's Inspector also offers e.g. gzip/hex/ASCII-hex layers).",
+      "why": "Closed 2026-08-26: the backend still decodes each Inspector value exactly once (inspector_logic.cpp unchanged, confirmed by re-reading it), so this is a second, purely client-side pass on top of that single decode -- ui-v2/tabs.jsx's repeaterInspectorKV() and ui-v2/app.jsx's InspectorTab KV() (used by every Status/Request-line/Headers/Cookies/Query/Body-params row in both surfaces) now route each row's value through one new shared component instead of a raw String() cast.",
+      "evidence": "ui-v2/tabs.jsx DecodeChainValue (new) plus its pure helpers decodeChainGateUrl/decodeChainGateBase64/decodeChainGateHtml (auto-detection gates), decodeChainRawUrl/decodeChainRawBase64/decodeChainRawHtml (ungated manual-override decoders), and buildDecodeChain(text, overrides, maxSteps) (chain builder, cycle-guarded via a `seen` Set, capped at 6 steps) -- defined once in tabs.jsx (loaded before app.jsx in ui-v2/Nullock.html) and consumed from both repeaterInspectorKV() (tabs.jsx) and InspectorTab's KV() (app.jsx:3464-3471), the only two Inspector-value KV renderers in the app. No backend touched; inspector_logic.cpp's urlDecode() (still one layer) is unrelated and unread by this change's own decode paths.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Inspector decode-chain wave: a shared, gated auto-detect + per-step revisable decode chain (url/base64/html, up to 6 layers) is wired into every Inspector KV row in both the standalone INSPECTOR tab and Repeater's docked Inspector panel. Stays honestly partial -- it operates on parsed field values, not an arbitrary highlighted text selection in the raw editor, and covers only the three encodings this item names, not Burp's fuller decode-type list."
+      }
     },
     {
       "area": "repeater",

@@ -216,6 +216,9 @@ Inspector         Structured view of any request/response -- headers, cookies, q
                   docked live in Repeater, Proxy history, and Intruder's template editor, not just its own tab.
                   A Selection widget section shows highlighted-text character count and the first byte's
                   decimal/hex value, labelling non-printing bytes (\n/\t/\r/space) instead of hiding them.
+                  Every header/cookie/query/body-param value gets an automatic, revisable multi-step
+                  decode chain (URL/Base64/HTML, up to 6 layers, gated auto-detection with a per-step
+                  override select) in both the standalone tab and Repeater's docked panel.
                   JWT TOOLKIT mode: offline decode/weakness-analyze/HS*-secret-brute-force, alg:none and
                   HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a
                   target -- active JWT auth-bypass testing Burp only offers via a paid extension

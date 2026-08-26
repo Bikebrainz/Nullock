@@ -3461,10 +3461,13 @@ function InspectorTab() {
       {children}
     </div>
   );
+  // [B27] Multi-step decode chain per value -- DecodeChainValue is defined
+  // in tabs.jsx (loaded before this file) and shared with Repeater's own
+  // docked Inspector panel so both surfaces gain it from one implementation.
   const KV = ({ rows }) => (
     <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
       <tbody>{(rows || []).map((r, i) => (
-        <tr key={i}><td style={th}>{r.name}</td><td style={td}>{String(r.value == null ? "" : r.value)}</td></tr>
+        <tr key={i}><td style={th}>{r.name}</td><td style={td}><DecodeChainValue value={r.value} /></td></tr>
       ))}</tbody>
     </table>
   );
