@@ -228,6 +228,8 @@ Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xx
                   captured history row with params or a body, throttled, off the UI thread
 CSRF PoC          One-click auto-submitting CSRF PoC generator for any captured request --
                   download or copy from Proxy history / Site map to host on an attacker page
+Clickjack PoC     One-click clickjacking PoC generator (invisible framed iframe over a decoy
+                  button) for any captured request -- download from Proxy history / Site map
 Authz test        Multi-identity replay from Proxy history / Site map -- define named identities
                   (header overlays), replay a captured request as each, and see a per-identity
                   status/size table with a divergence flag (BOLA / horizontal / vertical

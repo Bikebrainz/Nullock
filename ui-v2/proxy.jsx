@@ -1098,6 +1098,20 @@ function DetailPane({ row, onSendRepeater, onSendIntruder, onSendComparer, onSen
             alert("CSRF PoC error: " + e);
           }
         }} title="Generate an auto-submitting CSRF proof-of-concept HTML page for this request (CWE-352)">⚔ CSRF POC</button>
+        <button onClick={() => {
+          try {
+            const r = parseRawRequest(row, req);
+            const html = buildClickjackPoc(r.fullUrl);
+            setOverlay({
+              title: "CLICKJACK POC · " + r.fullUrl,
+              body: html,
+              note: "Frames the target URL invisibly over a decoy button. Confirms only that the browser is willing to frame it -- check X-Frame-Options / frame-ancestors in the response headers to know whether it actually would.",
+              downloadName: "clickjack-poc-row-" + row.id + ".html",
+            });
+          } catch (e) {
+            alert("Clickjack PoC error: " + e);
+          }
+        }} title="Generate a clickjacking proof-of-concept HTML page framing this request's URL (CWE-1021)">🖱 CLICKJACK POC</button>
         <button onClick={() => setAuthzOpen(true)}
                 title="Replay this request as multiple identities and flag divergent responses (BOLA / horizontal / vertical privilege, CWE-863)">⚖ AUTHZ TEST</button>
         {diffMark === null && (
@@ -2055,6 +2069,33 @@ function parseRawRequest(row, raw) {
     out.headers.push([k, v]);
   }
   return out;
+}
+// Auto-submitting clickjacking PoC: an invisible iframe framing the
+// target URL over a decoy "click me" button (CWE-1021). Client-side only
+// -- unlike CSRF POC (/api/csrf/poc) this needs no server-side replay,
+// just the row's own URL, so no backend endpoint exists or is needed.
+function buildClickjackPoc(fullUrl) {
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return "<!DOCTYPE html>\n"
+       + "<html>\n<head>\n<title>Clickjacking PoC</title>\n<style>\n"
+       + "  body { font-family: sans-serif; }\n"
+       + "  iframe {\n"
+       + "    width: 1000px; height: 700px;\n"
+       + "    position: absolute; top: 0; left: 0;\n"
+       + "    opacity: 0.0001; z-index: 2;\n"
+       + "  }\n"
+       + "  .decoy {\n"
+       + "    position: absolute; top: 250px; left: 400px; z-index: 1;\n"
+       + "    padding: 16px 32px; font-size: 20px;\n"
+       + "  }\n"
+       + "</style>\n</head>\n<body>\n"
+       + "<h2>This is a clickjacking proof-of-concept for:<br>" + esc(fullUrl) + "</h2>\n"
+       + "<p>If the target sets X-Frame-Options / a frame-ancestors CSP that blocks this origin, the\n"
+       + "browser refuses to render the iframe below and this PoC does not demonstrate anything --\n"
+       + "check the response headers server-side; framing succeeding here is what confirms the gap.</p>\n"
+       + "<button class=\"decoy\">Click me</button>\n"
+       + "<iframe src=\"" + esc(fullUrl) + "\"></iframe>\n"
+       + "</body>\n</html>\n";
 }
 
 // Bash/sh single-quote escape: any ' becomes '\''.

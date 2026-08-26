@@ -3430,12 +3430,18 @@
     {
       "area": "platform",
       "feature": "Clickbandit (clickjacking PoC generator) and Burp Infiltrator",
-      "state": "absent",
+      "state": "partial",
       "impact": "low",
-      "effort": "days",
-      "gap": "No clickjacking PoC generation. Infiltrator is effectively deprecated in current Burp, so that half is not worth building.",
-      "why": "Confirmed. Grepped clickbandit and infiltrator case-insensitively across Src, ui-v2 and extensions \u2014 zero hits. Clickjacking exists only as a passive header check, which is detection, not PoC generation. Note the codebase DOES have a PoC generator for CSRF (request_export.cpp), so the machinery for building an HTML PoC exists and is not being reused here.",
-      "evidence": "`grep -rani \"clickbandit|infiltrator\" Src ui-v2 extensions` \u2192 no output. Detection only: Src/Core/Networking/header_logic.cpp:344-346 `add(\"clickjacking-missing\", \"medium\", \"No effective clickjacking defense\", ...)`. Comparable PoC machinery that exists for CSRF: Src/Core/Networking/request_export.cpp:50 `QString csrfPoc(const QString &methodIn, const QString &url, ...)`."
+      "effort": "hours",
+      "gap": "A CLICKJACK POC button next to CSRF POC in Proxy history / Site map's DetailPane now generates a standalone HTML page (invisible iframe framing the row's URL over a decoy button, HTML-escaped) and offers it for download -- the actual PoC-generation half this item names. Still missing versus Burp's Clickbandit specifically: the interactive in-browser tool where you drag/resize the target's live rendered elements under the decoy overlay and it records your clicks as you place them; this is a static one-shot template instead. Infiltrator remains out of scope (deprecated in current Burp, not worth building, per prior audit).",
+      "why": "Closed 2026-08-26: added buildClickjackPoc() (ui-v2/proxy.jsx) reusing the same parseRawRequest()-derived fullUrl the existing COPY AS / CSRF POC machinery already builds, and a CLICKJACK POC button wired to the shared CodecOverlay (title/body/note/downloadName) -- the same pattern CSRF POC already uses, so no backend endpoint was needed (framing a URL client-side requires no server-side replay). Client-only, matching how COPY AS already generates curl/wget/etc without a round trip.",
+      "evidence": "ui-v2/proxy.jsx buildClickjackPoc() (escapes the URL into an <iframe src> under a positioned decoy <button>) and the CLICKJACK POC button in DetailPane calling parseRawRequest(row, req) for fullUrl then setOverlay({title, body, note, downloadName}) -- rendered by the existing CodecOverlay (proxy.jsx:2555). No backend change; Src/Core/Networking/request_export.cpp's csrfPoc() is untouched and unrelated.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Clickjacking PoC generator wave: client-side CLICKJACK POC button (DetailPane, Proxy history / Site map) closes the PoC-generation gap this item names; Clickbandit's interactive drag-placement UX and Infiltrator remain out of scope, so state moves absent -> partial rather than -> present."
+      }
     },
     {
       "area": "platform",

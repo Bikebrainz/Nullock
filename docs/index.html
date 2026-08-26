@@ -167,6 +167,10 @@
         <p>Generate an auto-submitting CSRF proof-of-concept page for any captured request, one click from Proxy history or the site map — form-based for urlencoded/multipart bodies, a credentialed fetch() PoC otherwise. Download or copy to host on an attacker-controlled page.</p>
       </div>
       <div class="card">
+        <h3>Clickjack PoC</h3>
+        <p>Generate a clickjacking proof-of-concept page for any captured request, one click from Proxy history or the site map — frames the request's URL in an invisible iframe over a decoy button. Download to host on an attacker-controlled page; check X-Frame-Options / frame-ancestors on the response to know whether a real browser would allow the framing.</p>
+      </div>
+      <div class="card">
         <h3>Authz test</h3>
         <p>Multi-identity replay for a captured request — define named identities as header overlays (session cookie, bearer token, ...), replay the same request as each, and see a per-identity status/size table with a divergence flag. Divergent responses hint at BOLA / horizontal / vertical privilege issues and also file a finding in Issues, one click from Proxy history or the site map.</p>
       </div>
