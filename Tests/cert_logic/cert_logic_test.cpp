@@ -111,6 +111,37 @@ int main(int argc, char **argv) {
     chk("SAN: over-range dotted-quad is treated as DNS (not IP)",
         sanEntryForHost("1.2.3.999") == "DNS:1.2.3.999");
 
+    // ===== isIpv6Literal: strict textual IPv6 ============================
+    chk("ipv6: loopback ::1",            isIpv6Literal("::1"));
+    chk("ipv6: all-zeros ::",            isIpv6Literal("::"));
+    chk("ipv6: full 8 groups",           isIpv6Literal("2001:db8:0:0:0:0:0:1"));
+    chk("ipv6: compressed",              isIpv6Literal("2001:db8::1"));
+    chk("ipv6: link-local fe80::1",      isIpv6Literal("fe80::1"));
+    chk("ipv6: leading 1::",             isIpv6Literal("1::"));
+    chk("ipv6: embedded IPv4 ::ffff:192.0.2.1", isIpv6Literal("::ffff:192.0.2.1"));
+    chk("ipv6: full + embedded IPv4",    isIpv6Literal("1:2:3:4:5:6:192.0.2.1"));
+    chk("ipv6: uppercase hex",           isIpv6Literal("2001:DB8::AbCd"));
+    // rejections
+    chk("ipv6: NOT a bare IPv4",         !isIpv6Literal("192.0.2.1"));
+    chk("ipv6: NOT a hostname",          !isIpv6Literal("example.com"));
+    chk("ipv6: reject a 5-hex group",    !isIpv6Literal("12345::1"));
+    chk("ipv6: reject non-hex",          !isIpv6Literal("gggg::1"));
+    chk("ipv6: reject two '::'",         !isIpv6Literal("1::2::3"));
+    chk("ipv6: reject zone id",          !isIpv6Literal("fe80::1%eth0"));
+    chk("ipv6: reject a lone leading ':'", !isIpv6Literal(":1:2:3:4:5:6:7"));
+    chk("ipv6: reject 7 uncompressed groups", !isIpv6Literal("1:2:3:4:5:6:7"));
+    chk("ipv6: reject 9 groups",         !isIpv6Literal("1:2:3:4:5:6:7:8:9"));
+    chk("ipv6: reject empty group 1::2::", !isIpv6Literal("2001::db8::1"));
+
+    // ===== IPv6 flows through isValidHostForCert + an IP: SAN =============
+    chk("valid: an IPv6 literal is cert-eligible", isValidHostForCert("2001:db8::1"));
+    chk("valid: ::1 is cert-eligible",             isValidHostForCert("::1"));
+    chk("cert: a non-IPv6 host with ':' is still rejected", !isValidHostForCert("evil:8080"));
+    chk("san: IPv6 -> IP: SAN",     sanEntryForHost("2001:db8::1") == "IP:2001:db8::1");
+    chk("san: ::1 -> IP: SAN",      sanEntryForHost("::1") == "IP:::1");
+    chk("san: IPv4 -> IP: SAN (unchanged)", sanEntryForHost("10.0.0.1") == "IP:10.0.0.1");
+    chk("san: a hostname -> DNS: SAN (unchanged)", sanEntryForHost("example.com") == "DNS:example.com");
+
     std::fprintf(stderr, "cert_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

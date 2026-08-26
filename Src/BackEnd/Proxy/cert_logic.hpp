@@ -38,6 +38,12 @@ QString sanitize(const QString &host);
 // leaf-file naming too.)
 bool isIpv4Literal(const QString &host);
 
+// Strict textual IPv6 literal (Qt6::Core only; no QHostAddress). Accepts full and
+// "::"-compressed forms, an embedded IPv4 tail (::ffff:192.0.2.1), and "::";
+// rejects a zone id (%eth0), a second "::", and empty/oversize/non-hex groups. A
+// valid IPv6 becomes an "IP:" SAN and is accepted by isValidHostForCert.
+bool isIpv6Literal(const QString &host);
+
 // The subjectAltName entry for a leaf minted for `host`: "IP:<addr>" for an IPv4
 // literal, else "DNS:<host>". `host` is assumed already isValidHostForCert-clean
 // (so it is safe to embed verbatim in the openssl SAN extension file).

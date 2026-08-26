@@ -92,6 +92,14 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **MITM leaf certs for IPv6 targets (IP SANs).** A strict, Qt6::Core-only
+  `CertLogic::isIpv6Literal` (full / `::`-compressed / embedded-IPv4 forms;
+  rejects zone ids, a second `::`, and malformed groups) is now consulted by
+  `sanEntryForHost` (emitting an `IP:<addr>` SAN) and `isValidHostForCert` (which
+  previously rejected the `:` in an IPv6 literal, so `https://[v6]/` targets never
+  minted a leaf and fell through to a blind tunnel). Mutation-proven. (Roadmap:
+  proxy &mdash; per-host IP/IPv6 leaf certs; still partial pending multi/wildcard
+  SANs and the socket-level MITM handshake.)
 - **Content discovery: filename-mutation rules.** `POST /api/content/discover`
   gains a `mutations` flag: when set, each (extension-expanded) candidate is also
   probed as its common backup/temp/editor artifacts &mdash; `word~`,
