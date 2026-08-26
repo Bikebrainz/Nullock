@@ -4551,19 +4551,36 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         };
         QMap<QString, Bucket> buckets;
         const auto findings = m_wiring.scanner->findings(0);
+        // Honour operator triage (same marks the snapshot path applies): a
+        // suppressed kind, a false-positive key, or a soft-deleted key drops OUT
+        // of the rollup, and a severity override replaces the scanner's severity.
+        namespace FT = Nullock::Core::FindingTriageLogic;
+        const QStringList suppressedKinds =
+            m_wiring.projectStore ? m_wiring.projectStore->suppressedKinds() : QStringList();
+        const QStringList falsePositiveKeys =
+            m_wiring.projectStore ? m_wiring.projectStore->falsePositiveKeys() : QStringList();
+        const QStringList deletedKeys =
+            m_wiring.projectStore ? m_wiring.projectStore->deletedKeys() : QStringList();
+        const QJsonArray severityOverrides =
+            m_wiring.projectStore ? m_wiring.projectStore->severityOverrides() : QJsonArray();
         const QHash<QString, int> sevOrder = {
             {"info",0},{"low",1},{"medium",2},{"high",3},{"critical",4}
         };
         for (const auto &f : findings) {
+            const QString fkey = FT::findingKey(f.kind, f.host, f.url, f.summary);
+            if (FT::kindSuppressed(f.kind, suppressedKinds)) continue;
+            if (FT::keyIsFalsePositive(fkey, falsePositiveKeys)) continue;
+            if (FT::keyIsFalsePositive(fkey, deletedKeys)) continue;   // soft-delete
+            const QString sev = FT::effectiveSeverity(fkey, f.severity, severityOverrides);
             const QString k = f.kind + "|" + f.host;
             Bucket &b = buckets[k];
             if (b.kind.isEmpty()) {
                 b.kind = f.kind; b.host = f.host;
                 b.summary = f.summary; b.cwe = f.cwe; b.owasp = f.owasp;
-                b.fix = f.fixSummary; b.severity = f.severity;
+                b.fix = f.fixSummary; b.severity = sev;
             }
-            if (sevOrder.value(f.severity, -1) > sevOrder.value(b.severity, -1))
-                b.severity = f.severity;
+            if (sevOrder.value(sev, -1) > sevOrder.value(b.severity, -1))
+                b.severity = sev;
             if (f.cvssScore > b.cvssMax) b.cvssMax = f.cvssScore;
             ++b.instances;
             if (b.sampleRowIds.size() < 5) b.sampleRowIds.append(f.rowId);

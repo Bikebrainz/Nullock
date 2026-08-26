@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **`/api/findings/grouped` ignored operator triage.** The grouped findings
+  rollup read the raw scanner findings and applied none of the triage marks the
+  snapshot path honours — so a finding the operator had suppressed, marked
+  false-positive, or soft-deleted still appeared in the grouped view, at its
+  un-overridden severity. It now runs the same `FindingTriageLogic` predicates:
+  suppressed-kind / false-positive / deleted findings drop out, and a severity
+  override replaces the scanner's severity. Verified live (suppressing a kind
+  removes its group).
 - **Decoder/Workbench decoding lost binary bytes to U+FFFD.** The
   `base64`/`hex`/`octal`/`binary` decoders returned `QString::fromUtf8` over the
   raw decoded bytes, so any non-UTF-8 octet (the common case when decoding a
