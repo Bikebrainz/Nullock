@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Decoder/Workbench decoding lost binary bytes to U+FFFD.** The
+  `base64`/`hex`/`octal`/`binary` decoders returned `QString::fromUtf8` over the
+  raw decoded bytes, so any non-UTF-8 octet (the common case when decoding a
+  binary blob) was silently replaced with the U+FFFD replacement character
+  before the response was even built. The decoders now preserve the exact octets
+  (`Transcode::Result::outputBytes`), and `POST /api/transcode` emits them as an
+  additive base64 field (`outputBase64`) so a Hex view / binary round-trip is
+  lossless. Mutation-proven. (Removes the backend blocker on the Decoder
+  Text/Hex view item.)
 - **Session-handling rules reserialized requests they didn't touch.** A rule
   that matched and produced a value flipped an internal `modified` flag *before*
   the inject switch, so an `InjectIntoBody` rule whose `{{placeholder}}` was

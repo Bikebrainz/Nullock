@@ -8,15 +8,21 @@
 // Qt6::Core alone and is fully unit-testable. Everything an operator does here is
 // a deterministic function of (operation, input).
 
+#include <QByteArray>
 #include <QString>
 #include <QStringList>
 
 namespace Nullock::Core::Transcode {
 
 struct Result {
-    QString output;
-    bool    ok = false;
-    QString error;
+    QString    output;       // best-effort text view (non-UTF-8 bytes -> U+FFFD)
+    bool       ok = false;
+    QString    error;
+    // Raw decoded octets for the byte-yielding decoders (base64/hex/octal/binary).
+    // `output` folds non-UTF-8 bytes to the replacement char for DISPLAY, which is
+    // lossy; a caller wanting the exact bytes (a Hex view, a binary round-trip)
+    // must read outputBytes. Empty for text-only ops.
+    QByteArray outputBytes;
 };
 
 // All direct operation ids in stable display order (for the UI + validation).

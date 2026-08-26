@@ -12,6 +12,10 @@ namespace {
 
 Result ok(const QString &out)  { Result r; r.ok = true;  r.output = out; return r; }
 Result err(const QString &e)   { Result r; r.ok = false; r.error  = e;   return r; }
+// A byte-yielding decode: keep the exact octets AND a best-effort text view.
+Result okBytes(const QByteArray &raw) {
+    Result r; r.ok = true; r.output = QString::fromUtf8(raw); r.outputBytes = raw; return r;
+}
 
 Result base64Encode(const QString &in, bool url) {
     const auto opt = url ? (QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals)
@@ -24,7 +28,7 @@ Result base64Decode(const QString &in, bool url) {
     const auto res = QByteArray::fromBase64Encoding(in.trimmed().toLatin1(), opt);
     if (res.decodingStatus != QByteArray::Base64DecodingStatus::Ok)
         return err(QStringLiteral("not valid base64"));
-    return ok(QString::fromUtf8(res.decoded));
+    return okBytes(res.decoded);
 }
 
 Result urlEncode(const QString &in) {
@@ -103,7 +107,7 @@ Result hexDecode(const QString &in) {
     if (s.size() % 2 != 0) return err(QStringLiteral("hex length must be even"));
     static const QRegularExpression nonHex(QStringLiteral("[^0-9a-fA-F]"));
     if (s.contains(nonHex)) return err(QStringLiteral("contains non-hex characters"));
-    return ok(QString::fromUtf8(QByteArray::fromHex(s.toLatin1())));
+    return okBytes(QByteArray::fromHex(s.toLatin1()));
 }
 
 Result unicodeEscape(const QString &in) {
@@ -195,7 +199,7 @@ Result octalDecode(const QString &in) {
         if (!okp || v > 255) return err(QStringLiteral("invalid octal byte: %1").arg(p));
         out.append(char(uchar(v)));
     }
-    return ok(QString::fromUtf8(out));
+    return okBytes(out);
 }
 Result binaryEncode(const QString &in) {
     const QByteArray b = in.toUtf8();
@@ -223,7 +227,7 @@ Result binaryDecode(const QString &in) {
         for (int j = 0; j < 8; ++j) v = (v << 1) | (s.at(i + j) == QLatin1Char('1') ? 1 : 0);
         out.append(char(uchar(v)));
     }
-    return ok(QString::fromUtf8(out));
+    return okBytes(out);
 }
 
 // --- smart-decode detectors ---

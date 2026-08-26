@@ -10426,6 +10426,12 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         } else {
             const auto r = Nullock::Core::Transcode::apply(op, input);
             root["ok"] = r.ok; root["output"] = r.output; root["error"] = r.error;
+            // Binary-safe view: the byte-yielding decoders (base64/hex/octal/binary)
+            // return the EXACT octets. `output` above folds non-UTF-8 bytes to U+FFFD
+            // for display; expose the raw bytes as base64 so a Hex view / binary
+            // round-trip is lossless. Additive -- absent for text-only ops.
+            if (!r.outputBytes.isEmpty())
+                root["outputBase64"] = QString::fromLatin1(r.outputBytes.toBase64());
         }
         return httpJson(200, root);
     }

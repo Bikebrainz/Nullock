@@ -146,6 +146,29 @@ int main(int argc, char **argv) {
     chk("identify bcrypt", identifyHash("$2b$12$abcdefghijklmnopqrstuv").contains("bcrypt"));
     chk("identify non-hash -> empty", identifyHash("hello world").isEmpty());
 
+    // ===== binary-safe decode: raw octets preserved, not folded to U+FFFD ===
+    // The `output` QString view folds non-UTF-8 bytes to the replacement char;
+    // outputBytes holds the EXACT octets a Hex view / binary round-trip needs.
+    {
+        QByteArray b00ff; b00ff.append(char(0x00)); b00ff.append(char(0xFF));
+        chk("hex-decode outputBytes preserves 0x00 0xFF (no U+FFFD loss)",
+            apply("hex-decode", "00ff").outputBytes == b00ff);
+        chk("binary-decode outputBytes preserves 0x00 0xFF",
+            apply("binary-decode", "0000000011111111").outputBytes == b00ff);
+        QByteArray b8081; b8081.append(char(0x80)); b8081.append(char(0x81));
+        const QString b64 = QString::fromLatin1(b8081.toBase64());
+        chk("base64-decode outputBytes preserves invalid-UTF-8 0x80 0x81",
+            apply("base64-decode", b64).outputBytes == b8081);
+        chk("octal-decode outputBytes preserves bytes",
+            apply("octal-decode", "000 377").outputBytes == b00ff);
+        // ASCII decode: exact bytes + a matching text view.
+        chk("hex-decode ASCII: outputBytes == \"Hi\"",
+            apply("hex-decode", "4869").outputBytes == QByteArray("Hi"));
+        // Additive-field contract: a text-only op leaves outputBytes empty.
+        chk("text op (url-encode) has empty outputBytes",
+            apply("url-encode", "a b").outputBytes.isEmpty());
+    }
+
     std::fprintf(stderr, "transcode_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }
