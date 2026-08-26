@@ -67,6 +67,15 @@ int main(int argc, char **argv) {
         chk("req method", r.value("method").toString() == "POST");
         chk("req path", r.value("path").toString() == "/search");
         chk("req version", r.value("version").toString() == "HTTP/1.1");
+        // HTTP/2 pseudo-header projection.
+        {
+            const QJsonArray ph = r.value("pseudoHeaders").toArray();
+            chk("req :method pseudo-header", findVal(ph, ":method") == "POST");
+            chk("req :path pseudo-header (full target)",
+                findVal(ph, ":path") == "/search?q=hello+world&n=2");
+            chk("req :authority pseudo-header = Host", findVal(ph, ":authority") == "example.com");
+            chk("req :scheme pseudo-header defaults to https", findVal(ph, ":scheme") == "https");
+        }
         chk("req query param decoded (+->space)",
             findVal(r.value("queryParams").toArray(), "q") == "hello world");
         chk("req query param n", findVal(r.value("queryParams").toArray(), "n") == "2");

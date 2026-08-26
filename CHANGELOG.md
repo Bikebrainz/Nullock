@@ -92,6 +92,11 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Inspector: HTTP/2 pseudo-header projection.** `inspectRequest` now emits a
+  `pseudoHeaders` array (`:method`, `:path`, `:authority` from the Host header,
+  `:scheme` defaulting to `https`) so the Inspector can show the h2 view of any
+  request. (Roadmap: Inspector h2 pseudo-headers &mdash; display half; editing,
+  the h1↔h2 toggle, and on-wire emission remain.)
 - **MITM leaf certs for IPv6 targets (IP SANs).** A strict, Qt6::Core-only
   `CertLogic::isIpv6Literal` (full / `::`-compressed / embedded-IPv4 forms;
   rejects zone ids, a second `::`, and malformed groups) is now consulted by

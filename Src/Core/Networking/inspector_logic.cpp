@@ -307,6 +307,17 @@ QJsonObject inspectRequest(const QByteArray &raw) {
     out["query"] = query;
     out["queryParams"] = parsePairs(query);
 
+    // HTTP/2 pseudo-header projection of the request line + authority. Lets the
+    // Inspector show the h2 view (:method/:path/:authority/:scheme) of a request
+    // regardless of the wire protocol. :scheme defaults to https (the MITM'd
+    // case) since a raw HTTP/1 request line carries no scheme.
+    out["pseudoHeaders"] = QJsonArray{
+        nv(QStringLiteral(":method"),    sl.size() > 0 ? sl[0] : QString()),
+        nv(QStringLiteral(":path"),      target),
+        nv(QStringLiteral(":authority"), headerValue(p.headers, QStringLiteral("Host"))),
+        nv(QStringLiteral(":scheme"),    QStringLiteral("https")),
+    };
+
     out["headers"] = headersJson(p.headers);
 
     // Cookies from the Cookie header. RFC 6265 cookie values are opaque octets --

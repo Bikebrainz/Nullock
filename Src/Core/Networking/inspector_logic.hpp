@@ -22,6 +22,7 @@ constexpr int kBodyPreview = 8 * 1024;
 
 // Parse a raw HTTP/1.x REQUEST. Shape:
 //   { method, target, path, version, query, queryParams:[{name,value}],
+//     pseudoHeaders:[{name,value}] (:method/:path/:authority/:scheme),
 //     headers:[{name,value}], cookies:[{name,value}], contentType,
 //     bodyKind: "form"|"json"|"multipart"|"xml"|"other"|"", bodyParams:[{name,value}],
 //     bodySize, jwts:[{source, where, alg, typ, header, payload}] }

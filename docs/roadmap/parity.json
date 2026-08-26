@@ -5046,11 +5046,11 @@
     {
       "area": "repeater",
       "feature": "Inspector: HTTP/2 pseudo-header display and editing (:method, :path, :authority, :scheme) and HTTP/1\u2194HTTP/2 protocol toggle",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "weeks",
-      "gap": "Burp calls this out as enabling injections not possible via the message editor. Nullock cannot construct malformed h2 pseudo-headers from any manual tool despite shipping an nghttp2 client in the proxy layer.",
-      "why": "Confirmed. The start-line parser is strictly METHOD TARGET VERSION and there is no pseudo-header handling anywhere in inspector_logic.cpp; Repeater has no protocol field and writes HTTP/1 bytes.",
+      "gap": "The DISPLAY half now ships: inspectRequest emits a pseudoHeaders array (:method from the request line, :path from the full target, :authority from the Host header, :scheme defaulting to https), reachable via /api/inspect. Still partial for the interactive half: EDITING a pseudo-header, the HTTP/1<->HTTP/2 protocol toggle, and actually EMITTING malformed h2 pseudo-headers on the wire (Repeater has no protocol field and writes HTTP/1 bytes) -- ui-v2 + a Repeater-h2 socket path outside headless verification.",
+      "why": "Pure addition to inspector_logic.cpp (out[\"pseudoHeaders\"]) mutation-proven in inspector_logic_test (the four pseudo-headers for a sample POST; flipping the :scheme default fails only its case). The start-line was previously parsed strictly METHOD/TARGET/VERSION with no pseudo-header view; that display gap is closed. Held partial for the editing/toggle/emit legs, which are ui-v2 + a socket-level h2 write.",
       "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:158-162 `const QStringList sl = p.start.split(' ', Qt::SkipEmptyParts); out[\"method\"] = sl.size() > 0 ? sl[0] : QString(); const QString target = sl.size() > 1 ? sl[1] : QString(); out[\"target\"] = target; out[\"version\"] = sl.size() > 2 ? sl[2] : QString();` \u2014 `grep -n ':method|:authority|pseudo' inspector_logic.cpp` returns nothing. Repeater: "
     },
     {
