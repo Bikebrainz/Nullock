@@ -391,7 +391,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read fire loop; no time-throttle unless the user sets one, concurrency defaults to 10 and dispatches immediately. Genuinely beats Burp Community's deliberate rate limit.",
-      "evidence": "intruder.cpp:512-519 dispatch loop fires immediately; throttle only applied `if(throttleMs>0)`. intruder_pool_logic.cpp default kDefaultConcurrency=10 (hpp). No artificial per-request delay."
+      "evidence": "intruder.cpp:724-730 dispatch loop fires each combo via QtConcurrent::run immediately; throttle only applied `if (throttleMs > 0) interruptibleSleep(...)`. intruder_pool_logic.hpp:18 kDefaultConcurrency=10. No artificial per-request delay unless the user sets one.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -401,7 +407,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read stop(), the sliced sleeps, and the destructor join. All confirmed.",
-      "evidence": "intruder.cpp:360-363 stop() sets m_stopRequested; :512-515 dispatcher checks before and after acquire; :93-101 interruptibleSleep slices the wait; :108-122 ~Intruder sets stop then waitForFinished on worker+resend+pool before qDeleteAll."
+      "evidence": "intruder.cpp:419-422 stop() sets m_stopRequested; :724-727 dispatcher checks before and after acquire; :110-118 interruptibleSleep slices the wait; :125-139 ~Intruder sets stop then waitForFinished on worker+resend+pool before qDeleteAll.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -421,7 +433,13 @@
       "effort": "days",
       "gap": "Implemented as a positional cartesian-product generator: IntruderGenerators::customIterator(positions, separator) emits every combination pos[0][i]+sep+pos[1][j]+... in odometer order (last position varies fastest), reachable via type \"iterator\" on /api/intruder/generate and /api/intruder/set. Matches Burp's core custom-iterator behaviour; the only nicety not carried is a DISTINCT separator per position (one shared between-positions separator instead) -- noted as a possible enhancement, not a gap that blocks the use case.",
       "why": "Implemented + mutation-proven, following the exact pattern the other 12 payload generators use (all marked present): a pure Qt6::Core-linkable IG function + expandGen dispatch + types() entry. Bounded at kMaxCount by capping the working set after EACH position, so a huge product truncates in COUNT while every emitted payload stays a COMPLETE combination (never a length-truncated fragment) and never OOMs.",
-      "evidence": "intruder_generators.cpp customIterator(); types() now lists \"iterator\"; control_server.cpp expandGen `if (t == \"iterator\")` parses positions (arrays or newline-joined) + separator. Tests/intruder_generators/intruder_generators_test.cpp (106 pass): odometer order + separator, no-separator concat, single-position no-sep, 3-position join, empty/empty-factor -> empty, and 47^3 capped at kMaxCount with every payload complete; M1 (drop separator) + M2 (drop cap) each fail only their targeted case. Live: POST type=iterator positions=[[a,b],[1,2,3]] sep=- -> a-1..b-3 (count 6)."
+      "evidence": "intruder_generators.cpp:314 customIterator(); types() (:344) lists \"iterator\"; control_server.cpp:3648 expandGen `if (t == \"iterator\")` parses positions (arrays or newline-joined) + separator. Tests/intruder_generators/intruder_generators_test.cpp (107 pass): odometer order + separator, no-separator concat, single-position no-sep, 3-position join, empty/empty-factor -> empty, and 47^3 capped at kMaxCount with every payload complete; M1 (drop separator) + M2 (drop cap) each fail only their targeted case. Live: POST type=iterator positions=[[a,b],[1,2,3]] sep=- -> a-1..b-3 (count 6).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -649,7 +667,13 @@
       "effort": "hours",
       "gap": "None -- a `skip-if-matches` processing rule (arg = regex) drops any payload whose transformed-so-far value matches, before the request is fired. The skip-aware applyRules(value, rules, bool* skipped) overload signals the drop; Intruder::start() filters skipped combos out before result rows are built, so the sent-request count and the table reflect only surviving payloads (Burp's behaviour). An empty/invalid pattern never skips.",
       "why": "Closed 2026-08-24: added the skip signal to the rule chain (skip-aware applyRules overload; the 2-arg path is a safe no-op so a payload never vanishes where a caller cannot honour a skip) and the combo filter in Intruder::start(). Advertised in operations() for UI discovery. Mutation-proven.",
-      "evidence": "intruder_rules.cpp applyRules(value,rules,bool*): a `skip-if-matches` rule matching the running value sets *skipped and returns; intruder.cpp Intruder::start() drops combos whose processed payload skips, before beginResetModel/row build. Tests: intruder_rules_test.cpp -- a payload matching the regex is skipped, a non-match is kept, the plain 2-arg path never drops, the match is against the TRANSFORMED value, and empty/invalid patterns never skip."
+      "evidence": "intruder_rules.cpp:174-195 applyRules(value,rules,bool*): a `skip-if-matches` rule (op registered :219) matching the running value sets *skipped and returns; intruder.cpp:460-475 Intruder::start() drops combos whose processed payload skips, before beginResetModel (:479)/row build. Tests: intruder_rules_test.cpp:208-237 -- a payload matching the regex is skipped, a non-match is kept, the plain 2-arg path never drops, the match is against the TRANSFORMED value, and empty/invalid patterns never skip.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -991,7 +1015,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read control_server.cpp:704-714 (SsrfScan::test, ssrf-cloud-metadata escalated to critical) and the GUI probe SSRF at :2181-2274 (6 cloud-metadata probes with shaped controls + OAST token minting/correlation). Present and strong on both surfaces.",
-      "evidence": "control_server.cpp:708 `const auto res = Nullock::Core::SsrfScan::test(srr);`; :2231 GUI probe reports ssrf-cloud-metadata; :2249-2266 OAST token registerToken+fire"
+      "evidence": "control_server.cpp:725 `const auto res = Nullock::Core::SsrfScan::test(srr);`; :2426-2486 GUI probe (6 cloud-metadata endpoints with shaped-control suppression) reports critical ssrf-cloud-metadata; :2494-2512 OAST mintToken/registerToken+fire-and-forget.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -1091,7 +1121,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read control_server.cpp:575-592 (OpenRedirect::test, header-confirmed high / client-side medium) and GUI probe open-redirect at :2156-2179 (external-host canary in Location). Present on both surfaces.",
-      "evidence": "control_server.cpp:580 `const auto res = Nullock::Core::OpenRedirect::test(orq);`; :2173 GUI probe emits open-redirect on Location match"
+      "evidence": "control_server.cpp:592-609 (OpenRedirect::test, header-confirmed high / client-side medium); :2401-2424 GUI probe emits open-redirect on external-canary Location match.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
