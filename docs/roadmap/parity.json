@@ -4981,7 +4981,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "065eecb",
         "note": "Wave 2: DecoderTab's output hex view now consumes /api/transcode's outputBase64 field via a new hexDumpBytes(bytes) helper, closing the frontend-only gap the prior register correction (663a1f2) left open -- no backend change."
       }
     },
