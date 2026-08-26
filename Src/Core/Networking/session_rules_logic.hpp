@@ -89,4 +89,12 @@ bool ruleAppliesToTool(int toolsMask, int tool);
 bool responseIsLoggedOut(int status, const QString &bodyText,
                          const QString &statusList, const QString &bodyRegex);
 
+// Body-inject transform for the JSON/other (non-form) content-type path: replace
+// every literal "{{injectKey}}" (and "{{variable}}" when variable is non-empty)
+// in `body` with `value` (JSON-escaped when isJson). Returns the transformed
+// body; it is byte-for-byte EQUAL to the input when no placeholder was present --
+// so the caller can detect a no-op inject and avoid a needless reserialization.
+QByteArray injectIntoNonFormBody(const QByteArray &body, const QString &injectKey,
+                                 const QString &variable, const QString &value, bool isJson);
+
 } // namespace Nullock::Core::SessionRulesLogic

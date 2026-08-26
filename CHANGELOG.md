@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Session-handling rules reserialized requests they didn't touch.** A rule
+  that matched and produced a value flipped an internal `modified` flag *before*
+  the inject switch, so an `InjectIntoBody` rule whose `{{placeholder}}` was
+  absent from a non-form body (a no-op) still forced `applyToRequestBytes` to
+  reparse and reserialize the whole request — reordering headers and recomputing
+  Content-Length on a hand-crafted request no rule really changed. The body
+  transform is now the pure, mutation-proven `injectIntoNonFormBody`, and
+  `modified` is set only when an injection actually changes the request.
 - **Intruder save/resume dropped request-shaping config.** `saveRun()`/`loadRun()`
   round-tripped through `RunConfig`, which omitted `globalEncodeChars`
   ("URL-encode these characters"), the recursive-grep settings

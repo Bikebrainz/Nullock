@@ -198,6 +198,27 @@ int main(int argc, char **argv) {
     chk("placeholder: substitute fully resolves a present var -> none",
         !hasUnresolvedPlaceholder(substitute("id={{v}}", { { "v", "42" } })));
 
+    // ===== injectIntoNonFormBody: no-op when the placeholder is absent =====
+    // The body-inject path must leave the body byte-for-byte identical when its
+    // {{placeholder}} isn't present, so applyToRequest doesn't flag `modified`
+    // (and needlessly reserialize) on a request no rule really touched.
+    {
+        const QByteArray json = "{\"a\":1}";
+        chk("bodyInject: absent placeholder -> body unchanged (no-op)",
+            injectIntoNonFormBody(json, "X", "", "v", true) == json);
+        const QByteArray withPh = "{\"t\":\"{{X}}\"}";
+        chk("bodyInject: present placeholder -> replaced",
+            injectIntoNonFormBody(withPh, "X", "", "v", true) == "{\"t\":\"v\"}");
+        // JSON value is escaped so a quote can't break the document.
+        chk("bodyInject: JSON value is escaped",
+            injectIntoNonFormBody("{\"t\":\"{{X}}\"}", "X", "", "a\"b", true) == "{\"t\":\"a\\\"b\"}");
+        // Non-JSON body: value inserted raw, and still a no-op without the token.
+        chk("bodyInject: non-JSON raw value inserted",
+            injectIntoNonFormBody("val={{X}}", "X", "", "a\"b", false) == "val=a\"b");
+        chk("bodyInject: {{variable}} form is also replaced",
+            injectIntoNonFormBody("[{{v}}]", "X", "v", "9", false) == "[9]");
+    }
+
     std::fprintf(stderr, "session_rules_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

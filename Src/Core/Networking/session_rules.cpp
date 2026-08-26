@@ -265,7 +265,12 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
         // (its variable was never captured) -- injecting the raw "{{token}}" would
         // be garbage. A fully-static template passes through and injects.
         if (value.isEmpty() || SessionRulesLogic::hasUnresolvedPlaceholder(value)) continue;
-        modified = true;   // a rule matched + produced a value -> it injects below
+        // `modified` is set per-case below, ONLY when the injection actually
+        // changes the request. In particular an InjectIntoBody replace whose
+        // {{placeholder}} is absent from the body is a no-op and must NOT flip
+        // modified -- otherwise applyToRequestBytes needlessly reserializes a
+        // request no rule really touched (reordering headers / recomputing
+        // Content-Length), corrupting a hand-crafted request on the wire.
 
         switch (r.injectInto) {
             case SessionRule::InjectIntoHeader: {
@@ -282,6 +287,7 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
                 }
                 if (!replaced)
                     req.headers.append({ r.injectKey, hv });
+                modified = true;   // header set/appended -> request changed
                 break;
             }
             case SessionRule::InjectIntoCookie: {
@@ -310,6 +316,7 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
                 const QString joined = parts.join("; ");
                 if (idx >= 0) req.headers[idx].second = joined;
                 else          req.headers.append({ "Cookie", joined });
+                modified = true;   // cookie set/appended -> request changed
                 break;
             }
             case SessionRule::InjectIntoBody: {
@@ -322,17 +329,18 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
                     b.append('=');
                     b.append(QUrl::toPercentEncoding(value));
                     req.body = b;
+                    modified = true;   // form param appended -> request changed
                 } else {
-                    // JSON / other: replace literal "{{name}}" tokens. JSON-escape
-                    // the value when the body is JSON so a value containing a quote
-                    // or backslash can't break/forge the JSON.
+                    // JSON / other: replace literal "{{name}}" tokens via the pure,
+                    // unit-tested helper (JSON-escapes the value when the body is
+                    // JSON so a quote/backslash can't break the document).
                     const bool isJson = contentType.contains("json", Qt::CaseInsensitive);
-                    const QString sub = isJson ? jsonEscapeInner(value) : value;
-                    QByteArray b = req.body;
-                    b.replace(QString("{{%1}}").arg(r.injectKey).toUtf8(), sub.toUtf8());
-                    if (!r.variable.isEmpty())
-                        b.replace(QString("{{%1}}").arg(r.variable).toUtf8(), sub.toUtf8());
-                    req.body = b;
+                    const QByteArray nb = SessionRulesLogic::injectIntoNonFormBody(
+                        req.body, r.injectKey, r.variable, value, isJson);
+                    // Only flag modified if a placeholder was actually present and
+                    // replaced -- otherwise this is a no-op and must not force a
+                    // reserialization (the bug this guards).
+                    if (nb != req.body) { req.body = nb; modified = true; }
                 }
                 break;
             }
@@ -344,6 +352,7 @@ bool SessionRules::applyToRequest(Nullock::Proxy::HttpRequest &req, int tool) co
                                        .arg(QString::fromUtf8(QUrl::toPercentEncoding(value)));
                 req.path   = p;
                 req.target = p;
+                modified = true;   // URL param appended -> request changed
                 break;
             }
         }

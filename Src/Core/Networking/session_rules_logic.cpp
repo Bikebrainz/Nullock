@@ -153,4 +153,14 @@ bool responseIsLoggedOut(int status, const QString &bodyText,
     return false;
 }
 
+QByteArray injectIntoNonFormBody(const QByteArray &body, const QString &injectKey,
+                                 const QString &variable, const QString &value, bool isJson) {
+    const QString sub = isJson ? jsonEscapeInner(value) : value;
+    QByteArray b = body;
+    b.replace(QStringLiteral("{{%1}}").arg(injectKey).toUtf8(), sub.toUtf8());
+    if (!variable.isEmpty())
+        b.replace(QStringLiteral("{{%1}}").arg(variable).toUtf8(), sub.toUtf8());
+    return b;
+}
+
 } // namespace Nullock::Core::SessionRulesLogic
