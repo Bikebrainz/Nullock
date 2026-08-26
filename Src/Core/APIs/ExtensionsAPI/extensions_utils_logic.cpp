@@ -62,15 +62,20 @@ QString htmlDecode(const QString &s) {
         // A bare '&' with no terminating ';' within a short window is literal.
         if (semi < 0 || semi - i > 32) { out += s[i++]; continue; }
         const QString ent = s.mid(i + 1, semi - i - 1);   // between & and ;
-        QChar decoded;
+        QString decoded;   // QString, not QChar: a numeric entity can name a
+                           // supplementary-plane code point (up to U+10FFFF) that
+                           // needs a surrogate PAIR -- a 16-bit QChar would truncate.
         bool ok = false;
         if (ent.startsWith(QLatin1Char('#'))) {
             const bool hex = ent.size() > 1
                              && (ent[1] == QLatin1Char('x') || ent[1] == QLatin1Char('X'));
             const QString digits = ent.mid(hex ? 2 : 1);
             uint code = digits.toUInt(&ok, hex ? 16 : 10);
-            if (ok && code > 0 && code <= 0x10FFFF) decoded = QChar(code);
-            else ok = false;
+            // Reject the surrogate range too (not valid scalar values).
+            if (ok && code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF)) {
+                const char32_t cp = static_cast<char32_t>(code);
+                decoded = QString::fromUcs4(&cp, 1);   // emits a surrogate pair when needed
+            } else ok = false;
         } else {
             static const QMap<QString, QChar> named = {
                 { QStringLiteral("amp"),  QLatin1Char('&')  },

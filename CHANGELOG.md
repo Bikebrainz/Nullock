@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Fixed
+- **Extension utils `htmlDecode` truncated supplementary-plane entities.** A
+  numeric HTML entity naming a code point above U+FFFF (e.g. `&#128512;` 😀) was
+  assigned into a 16-bit `QChar`, silently truncating U+1F600 to a wrong BMP
+  character (U+F600). It now decodes via UCS-4 (emitting the correct surrogate
+  pair), and a surrogate-range entity (`&#xD800;`) is rejected as a non-scalar
+  value and kept literal. (Surfaced by an adversarial audit sweep.)
+
 ### Security
 - **method-audit finding emission locked by tests.** The mapping from an
   advertised Allow list + the three Cross-Site-Tracing echo probes to the exact

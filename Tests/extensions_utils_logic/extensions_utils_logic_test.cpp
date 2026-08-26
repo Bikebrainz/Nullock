@@ -50,6 +50,20 @@ int main(int argc, char **argv) {
     eq("htmlDecode bare & is literal", htmlDecode("a & b"), "a & b");
     eq("htmlDecode unknown entity kept", htmlDecode("&bogus;"), "&bogus;");
     chk("html round-trips", htmlDecode(htmlEncode("<b>\"it's\" & <c>")) == "<b>\"it's\" & <c>");
+    // A supplementary-plane numeric entity must decode to its true code point
+    // (a surrogate PAIR), not truncate to a wrong BMP char. U+1F600 GRINNING FACE.
+    {
+        const char32_t grin = 0x1F600;
+        chk("htmlDecode supplementary-plane &#128512; -> U+1F600 (not truncated)",
+            htmlDecode("&#128512;") == QString::fromUcs4(&grin, 1));
+        chk("htmlDecode supplementary-plane hex &#x1F600; -> U+1F600",
+            htmlDecode("&#x1F600;") == QString::fromUcs4(&grin, 1));
+        const QList<uint> cps = htmlDecode("&#128512;").toUcs4();
+        chk("htmlDecode &#128512; yields exactly one code point 0x1F600",
+            cps.size() == 1 && cps.at(0) == 0x1F600u);
+        // A surrogate-range entity is not a valid scalar value -> kept literal.
+        eq("htmlDecode surrogate &#xD800; kept literal", htmlDecode("&#xD800;"), "&#xD800;");
+    }
 
     // ===== hashes (known vectors for "abc") ===========================
     eq("sha256 abc", sha256Hex("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
