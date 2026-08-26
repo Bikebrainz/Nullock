@@ -112,8 +112,12 @@ Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mo
                   same FOLLOW/COOKIES redirect-chasing controls as Repeater so a bruteforce behind
                   a login/redirect grades against the real final page instead of a wall of 302s
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
-Findings          ISSUES tab: flat or grouped-by-kind+host view (instance count, max CVSS, CWE/
-                  OWASP rollup); a Baseline bar saves/diffs/clears a findings snapshot for
+Findings          ISSUES tab: flat, grouped-by-kind+host (instance count, max CVSS, CWE/
+                  OWASP rollup), or Definitions view -- a browsable, filterable library of
+                  every issue kind the scanner can report (CWE/OWASP/CVSS/compliance/
+                  confidence/remediation) independent of whether it has been found yet,
+                  drawn from the same enrichment table applied to live findings so the two
+                  can never drift apart; a Baseline bar saves/diffs/clears a findings snapshot for
                   scan-to-scan delta (new vs fixed vs unchanged); a per-finding Triage button asks
                   a local Ollama model (falls back to a heuristic verdict) for impact/fix/
                   false-positive assessment -- all three were API-only before this; clicking a

@@ -1658,10 +1658,33 @@ function IssuesTab({ dispatch }) {
     try { setGrouped(await NL.actions.findingsGrouped()); }
     finally { setGroupedLoading(false); }
   }, []);
+  // Issue definitions library (/api/issue-definitions) -- Burp's Target >
+  // Issue definitions: every issue KIND the scanner can report, independent
+  // of whether it has been found yet, drawn from the same enrichment table
+  // applied to live findings so the library and findings can never drift
+  // apart. Fetched lazily when the DEFINITIONS view is selected.
+  const [defs, setDefs] = React.useState(null);
+  const [defsLoading, setDefsLoading] = React.useState(false);
+  const [defsQuery, setDefsQuery] = React.useState("");
+  const loadDefs = React.useCallback(async () => {
+    setDefsLoading(true);
+    try {
+      const r = await NL.actions.issueDefinitions();
+      setDefs((r && r.ok) ? r.definitions : []);
+    } finally { setDefsLoading(false); }
+  }, []);
   const switchView = (v) => {
     setView(v);
     if (v === "grouped" && !grouped) loadGrouped();
+    if (v === "definitions" && !defs) loadDefs();
   };
+  const visibleDefs = (defs || []).filter(d => {
+    if (!defsQuery) return true;
+    const q = defsQuery.toLowerCase();
+    return d.kind.toLowerCase().includes(q)
+        || (d.cwe || "").toLowerCase().includes(q)
+        || (d.owasp || "").toLowerCase().includes(q);
+  });
 
   // Scan-to-scan baseline delta (/api/baseline/*): save a snapshot of the
   // current findings, diff later to see what's NEW vs FIXED since.
@@ -1784,7 +1807,9 @@ function IssuesTab({ dispatch }) {
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>
           {total} total · showing {view === "grouped"
             ? (grouped ? grouped.groups.length + " groups" : "…")
-            : visible.length}
+            : view === "definitions"
+              ? (defs ? visibleDefs.length + " of " + defs.length + " definitions" : "…")
+              : visible.length}
         </span>
         <button onClick={() => switchView("flat")}
           style={{
@@ -1802,6 +1827,15 @@ function IssuesTab({ dispatch }) {
             fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
             letterSpacing: "0.05em", textTransform: "uppercase",
           }}>Grouped</button>
+        <button onClick={() => switchView("definitions")}
+          title="Browse every issue kind the scanner can report, independent of whether it has been found yet"
+          style={{
+            background: view === "definitions" ? "var(--accent)" : "transparent",
+            color: view === "definitions" ? "var(--bg)" : "var(--text-2)",
+            border: "1px solid var(--accent)", padding: "3px 10px",
+            fontSize: "10.5px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>Definitions</button>
         <button onClick={() => setShowHidden(h => !h)}
           title={showHidden ? "Hide deleted / muted findings again" : "Show findings marked deleted or from a muted kind"}
           style={{
@@ -1992,11 +2026,67 @@ function IssuesTab({ dispatch }) {
         </React.Fragment>
       )}
 
+      {view === "definitions" && (
+        <input
+          value={defsQuery}
+          onChange={(e) => setDefsQuery(e.target.value)}
+          placeholder="filter by kind / CWE / OWASP…"
+          style={{
+            background: "var(--pane)", color: "var(--text)",
+            border: "1px solid var(--line)", borderRadius: 4,
+            padding: "5px 8px", fontSize: "11px", fontFamily: "var(--ff-mono)",
+          }}
+        />
+      )}
+
       <div style={{
         background: "var(--pane)", border: "1px solid var(--line)",
         borderRadius: 4, flex: 1, minHeight: 0, overflow: "auto",
       }}>
-        {view === "flat" ? (
+        {view === "definitions" ? (
+          <React.Fragment>
+            {defsLoading && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+                loading issue definitions…
+              </div>
+            )}
+            {!defsLoading && defs && visibleDefs.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+                {defs.length === 0 ? "no issue definitions available" : "no definitions match this filter"}
+              </div>
+            )}
+            {!defsLoading && visibleDefs.map((d, i) => (
+              <div key={d.kind || i} style={{
+                display: "grid",
+                gridTemplateColumns: "180px 90px 110px 70px 1fr",
+                gap: 8, padding: "6px 12px",
+                borderBottom: "1px solid var(--line-soft)",
+                alignItems: "baseline",
+                fontSize: "12px", fontFamily: "var(--ff-mono)",
+              }}>
+                <span style={{ color: "var(--accent)", overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {d.kind}
+                </span>
+                <span style={{ color: "var(--text-2)" }}>{d.cwe || "—"}</span>
+                <span style={{ color: "var(--text-2)", overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {d.owasp || "—"}
+                </span>
+                <span style={{ color: "var(--dim)", fontSize: "10.5px" }}>
+                  {d.cvssScore ? "cvss " + d.cvssScore.toFixed(1) : "—"}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span style={{ color: "var(--text)" }}>{d.description || "—"}</span>
+                  <span style={{ color: "var(--dim)", fontSize: "10.5px" }}>
+                    confidence: {d.confidence || "—"}
+                    {d.compliance && d.compliance.length ? " · " + d.compliance.join(", ") : ""}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </React.Fragment>
+        ) : view === "flat" ? (
           <React.Fragment>
             {visible.length === 0 && (
               <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>

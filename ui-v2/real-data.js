@@ -475,6 +475,11 @@
     // Findings bucketed by kind+host (count, max severity/CVSS, sample row ids)
     // -- the "group similar issues" view Burp does automatically.
     findingsGrouped()  { return fetch("/api/findings/grouped").then(r => r.json()); },
+    // Browsable library of every issue KIND the scanner can report,
+    // independent of whether it has been found yet (Burp's Target > Issue
+    // definitions). Drawn from the same enrichment table applied to live
+    // findings, so it can never drift from what a finding actually shows.
+    issueDefinitions() { return fetch("/api/issue-definitions").then(r => r.json()); },
     // Save/compare a findings snapshot across engagements (scan-to-scan delta).
     // save/clear mutate a project-local baseline.json; status/diff are read-only.
     baselineSave()   { return post("/api/baseline/save").then(r => r.json()); },
