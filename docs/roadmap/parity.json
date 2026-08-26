@@ -3505,7 +3505,7 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No DER export, no PKCS#12 of cert+key (so no sharing one CA across a team and no loading Burp's CA), no CA import, no regenerate. Recovery from a compromised or expired CA is 'delete ca.pem/ca.key by hand and restart'.",
+      "gap": "DER export now ships: GET /ca.der (and Burp's /cert alias) serves the CA as application/pkix-cert, converting the PEM via the pure ControlLogic::pemCertToDer (no OpenSSL). Still partial for PKCS#12 export/import of cert+key (share one CA across a team / load Burp's CA) and CA regenerate (recovery from a compromised/expired CA is still delete-ca.pem/ca.key-by-hand-and-restart) -- both need OpenSSL pkcs12 + swapping the live CA/leaf cache.",
       "why": "Re-ran the greps myself: `pkcs12|PKCS12|\\.pfx` returns ZERO hits across all of Src, ui-v2 and browser-ext. The /ca.pem handler is real and is the only export. Confirmed partial (PEM download exists and is UI-linked).",
       "evidence": "Src/BackEnd/Control/control_server.cpp:1150-1165 `} else if (path == \"/ca.pem\" || path == \"/ca.crt\") { ... hdr += \"Content-Type: application/x-x509-ca-cert\\r\\n\";\\n                hdr += \"Content-Disposition: attachment; filename=\\\"nullock-ca.crt\\\"\\r\\n\";`. CertAuthority's whole public surface is cert_authority.hpp:26-33 (`ensureCa`, `caCertPath`, `caDir`, `hasOpenssl`, `leafCertFor`) -- no import, "
     },

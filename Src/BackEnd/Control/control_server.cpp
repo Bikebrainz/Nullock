@@ -1214,6 +1214,28 @@ void ControlServer::handle(QTcpSocket *socket) {
                 response = hdr + body;
             }
         }
+    } else if (path == "/ca.der" || path == "/cert") {
+        // DER-encoded CA cert (Burp's http://burp/cert). Some clients import DER
+        // only. Converts the same PEM file via the pure ControlLogic::pemCertToDer
+        // (no OpenSSL). /cert is Burp's well-known alias.
+        if (!m_wiring.ca || m_wiring.ca->caCertPath().isEmpty()) {
+            response = httpResponse(404, "text/plain", "CA not initialized");
+        } else {
+            QFile f(m_wiring.ca->caCertPath());
+            const QByteArray der = f.open(QIODevice::ReadOnly)
+                ? ControlLogic::pemCertToDer(f.readAll()) : QByteArray();
+            if (der.isEmpty()) {
+                response = httpResponse(500, "text/plain", "could not read/convert CA");
+            } else {
+                QByteArray hdr;
+                hdr += "HTTP/1.1 200 OK\r\n";
+                hdr += "Content-Type: application/pkix-cert\r\n";
+                hdr += "Content-Disposition: attachment; filename=\"nullock-ca.der\"\r\n";
+                hdr += "Connection: close\r\n";
+                hdr += "Content-Length: " + QByteArray::number(der.size()) + "\r\n\r\n";
+                response = hdr + der;
+            }
+        }
     } else {
         const QString rel = (path == "/" || path.isEmpty())
                               ? QStringLiteral("Nullock.html")

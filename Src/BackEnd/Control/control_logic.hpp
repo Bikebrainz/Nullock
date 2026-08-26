@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
@@ -107,6 +108,13 @@ QString findingsJsonToXml(const QJsonArray &findings, const QString &project,
 // Rank a severity string (critical>high>medium>low>info>unknown=0) so the worst
 // of several probe severities can be selected deterministically.
 int severityRank(const QString &sev);
+
+// --- CA certificate DER export (Burp's http://burp/cert) -----------------
+// Convert a PEM certificate to its raw DER bytes: find the first
+// "-----BEGIN CERTIFICATE-----" / "-----END CERTIFICATE-----" block, strip all
+// whitespace inside, and base64-decode the body. Returns empty on a missing
+// block or a base64 error (no OpenSSL -- Qt6::Core only). Pure + unit-tested.
+QByteArray pemCertToDer(const QByteArray &pem);
 // SARIF result level for a finding severity: "error" for critical/high (so a CI
 // gate failing on level=="error" catches the MOST severe issues -- a critical
 // must NOT map to "warning"), "note" for low/info, "warning" for medium/unknown.

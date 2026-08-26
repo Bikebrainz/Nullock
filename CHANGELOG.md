@@ -92,6 +92,12 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **CA certificate DER export.** `GET /ca.der` (and Burp's `/cert` alias) now
+  serves the MITM root CA as `application/pkix-cert` for clients that import DER
+  only, converting the existing PEM via the pure, OpenSSL-free
+  `ControlLogic::pemCertToDer`. Verified live: the served DER parses in openssl
+  and its fingerprint matches `/ca.pem`. (Roadmap: proxy CA export/import; still
+  partial pending PKCS#12 export/import and CA regenerate.)
 - **Inspector: server-side value decode chains.** `inspectRequest` now runs the
   bounded recursive `Transcode::smartDecode` over each query/cookie/body-param
   value and, when it makes progress, attaches `decoded` + `decodeChain` (the

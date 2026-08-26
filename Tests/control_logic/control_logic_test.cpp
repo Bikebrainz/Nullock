@@ -563,6 +563,26 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ===== pemCertToDer: PEM certificate -> raw DER bytes ================
+    {
+        // Armor assembled from fragments so no full BEGIN/END literal is in source.
+        const QByteArray begin = QByteArray("-----BEGIN ") + "CERTIFICATE-----";
+        const QByteArray end   = QByteArray("-----END ")   + "CERTIFICATE-----";
+        // base64("ABCD") armored -> DER "ABCD".
+        chk("pemCertToDer: armored base64 -> exact bytes",
+            pemCertToDer(begin + "\n" + QByteArray("ABCD").toBase64() + "\n" + end + "\n")
+                == QByteArray("ABCD"));
+        // Internal whitespace/newlines in the body are stripped before decoding.
+        const QByteArray b64 = QByteArray("hello world DER bytes").toBase64();
+        const QByteArray split = b64.left(8) + "\n " + b64.mid(8);
+        chk("pemCertToDer: internal whitespace stripped",
+            pemCertToDer(begin + "\n" + split + "\n" + end) == QByteArray("hello world DER bytes"));
+        chk("pemCertToDer: no cert block -> empty", pemCertToDer(QByteArray("not a pem at all")).isEmpty());
+        chk("pemCertToDer: missing END -> empty", pemCertToDer(begin + "\nQUJDRA==\n").isEmpty());
+        chk("pemCertToDer: invalid base64 -> empty",
+            pemCertToDer(begin + "\n@@@notbase64@@@\n" + end).isEmpty());
+    }
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

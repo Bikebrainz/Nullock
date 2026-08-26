@@ -246,6 +246,24 @@ QString sarifLevelForSeverity(const QString &sev) {
     return QStringLiteral("warning");   // medium / unknown / empty
 }
 
+QByteArray pemCertToDer(const QByteArray &pem) {
+    const QString s = QString::fromLatin1(pem);
+    static const QString kBegin = QStringLiteral("-----BEGIN CERTIFICATE-----");
+    static const QString kEnd   = QStringLiteral("-----END CERTIFICATE-----");
+    const int b = s.indexOf(kBegin);
+    if (b < 0) return {};
+    const int bodyStart = b + kBegin.size();
+    const int e = s.indexOf(kEnd, bodyStart);
+    if (e < 0) return {};
+    QString b64 = s.mid(bodyStart, e - bodyStart);
+    b64.remove(QRegularExpression(QStringLiteral("\\s")));   // strip newlines/spaces
+    if (b64.isEmpty()) return {};
+    const auto res = QByteArray::fromBase64Encoding(
+        b64.toLatin1(), QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+    if (res.decodingStatus != QByteArray::Base64DecodingStatus::Ok) return {};
+    return res.decoded;
+}
+
 int confidenceRank(const QString &conf) {
     const QString c = conf.trimmed().toLower();
     if (c == QLatin1String("confirmed") || c == QLatin1String("certain")) return 4;
