@@ -43,6 +43,31 @@ QStringList expandWithExtensions(const QStringList &wordlist, const QStringList 
     return out;
 }
 
+QStringList mutateFilenames(const QStringList &wordlist, bool enabled) {
+    if (!enabled) return wordlist;
+    // Common backup / temp / editor artifacts left next to a live file.
+    static const QStringList kSuffix = {
+        QStringLiteral("~"),     QStringLiteral(".bak"), QStringLiteral(".old"),
+        QStringLiteral(".orig"), QStringLiteral(".save"), QStringLiteral(".tmp"),
+        QStringLiteral(".1"),
+    };
+    QStringList out;
+    out.reserve(wordlist.size() * (2 + kSuffix.size()));
+    for (const QString &w : wordlist) {
+        out.append(w);                              // the bare word first
+        for (const QString &sfx : kSuffix) out.append(w + sfx);
+        // vim swap file: a dotfile of the LEAF alongside the same directory,
+        // i.e. "dir/.leaf.swp" (not ".dir/leaf.swp").
+        const int slash = w.lastIndexOf(QLatin1Char('/'));
+        const QString leaf = slash >= 0 ? w.mid(slash + 1) : w;
+        if (!leaf.isEmpty()) {
+            const QString dir = slash >= 0 ? w.left(slash + 1) : QString();
+            out.append(dir + QLatin1Char('.') + leaf + QStringLiteral(".swp"));
+        }
+    }
+    return out;
+}
+
 // Canonicalise a response body so a REFLECTIVE / templated soft-404 -- one that
 // echoes the requested path ("The page /nl404abc was not found") and/or carries
 // per-request noise (timestamps, hit counters, request ids) -- collapses to a

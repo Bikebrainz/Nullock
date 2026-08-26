@@ -5591,8 +5591,8 @@
       "state": "partial",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Filename-mutation rules (word~, .word.swp, word.orig, case flips -- richer than a plain suffix append) are still not built. The extension-bruteforce half now has a GUI: an extensions field in DiscoverTab feeds the existing server-side word x extension expansion.",
-      "why": "0cd5f40 built the backend expansion but flagged the ui-v2 extensions input as a follow-on; this wave adds it (comma/newline-separated field, results readout shows wordsTried/wordsTotal proving the expansion). Mutation rules beyond suffix-append remain unbuilt, so the item stays partial rather than present.",
+      "gap": "Filename-mutation rules are now BUILT (backend): ContentDiscovery::mutateFilenames expands each candidate to word~, word.bak/.old/.orig/.save/.tmp/.1 and a directory-aware vim swap .<leaf>.swp, wired into discover() after the extension expansion (bounded by maxRequests) and exposed via a `mutations` boolean on POST /api/content/discover. The extension-bruteforce half already ships with its DiscoverTab GUI field. Stays partial only for the ui-v2 `mutations` checkbox (the sibling of the extensions field), which is the other developer's frontend lane.",
+      "why": "mutateFilenames is pure, unit-tested and mutation-proven (Tests/content_discovery: 9 variants per word incl. the dir-aware swap; dropping the swap emission fails only its cases). Wired end-to-end (content_discovery.cpp discover() + the /api/content/discover mutations flag). Held partial rather than present ONLY because the ui-v2 mutations toggle isn't added yet -- matching how the extension-bruteforce half was held partial until its GUI field shipped.",
       "evidence": "ui-v2/app.jsx DiscoverTab extensionsText -> parsed to an array -> NL.actions.discoverContent opts.extensions -> control_server.cpp:9098-9099 cr.extensions -> ContentDiscovery::expandWithExtensions (content_logic.cpp).",
       "audited_state": "partial",
       "reconciled": {

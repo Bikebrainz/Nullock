@@ -43,6 +43,12 @@ struct Request {
     // instead of pre-multiplying the wordlist client-side. Each suffix carries its
     // own leading dot (or none, for a plain suffix). Empty => words probed as-is.
     QStringList extensions;
+    // Filename-mutation rules (Burp-parity): when true, each (extension-expanded)
+    // candidate is ALSO probed as its common backup/temp/editor artifacts
+    // (word~, word.bak/.old/.orig/.save/.tmp/.1 and a dir-aware vim swap
+    // .<leaf>.swp) -- the "someone left a backup of the live file" sweep. Bounded
+    // by maxRequests like the extension expansion.
+    bool    mutations = false;
     int     maxRequests = 300;                   // cap on TOTAL candidates probed (post-expansion)
     // Resource-pool controls (Burp-parity): how many wordlist probes run
     // concurrently, and an optional pause between dispatches (rate limit).
@@ -123,6 +129,12 @@ QString normBase(const QString &p);
 // Empty extensions -> the wordlist unchanged. Pure; the cap in discover() is
 // applied AFTER this so it bounds the total candidate count.
 QStringList expandWithExtensions(const QStringList &wordlist, const QStringList &extensions);
+
+// Filename-mutation expansion: when enabled, each word is kept AND expanded to
+// its common backup/temp/editor variants (word~, word.bak/.old/.orig/.save/.tmp/
+// .1, and a dir-aware vim swap ".<leaf>.swp"). enabled=false -> wordlist
+// unchanged. Pure; the total is bounded by discover()'s maxRequests cap.
+QStringList mutateFilenames(const QStringList &wordlist, bool enabled);
 QString canonicalizeBody(const QString &body, const QString &probePath);
 quint64 bodyFingerprint(const QString &canonicalBody);
 // classify(): candBodyHash/candHasHash carry the candidate's path-masked body

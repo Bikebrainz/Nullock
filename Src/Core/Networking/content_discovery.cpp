@@ -98,6 +98,7 @@ Result discover(const Request &reqIn) {
     // File-extension bruteforce: expand each word with the configured suffixes
     // BEFORE the cap, so maxRequests bounds the total candidate set (bare + variants).
     words = expandWithExtensions(words, req.extensions);
+    words = mutateFilenames(words, req.mutations);   // backup/temp variants (bounded below)
     result.wordsTotal = words.size();
     // maxRequests <= 0 means "no cap" -- normalise so the cap AND the loop budget
     // agree on it (previously 0 skipped the cap but made the loop break fire

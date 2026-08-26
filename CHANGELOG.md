@@ -92,6 +92,15 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Content discovery: filename-mutation rules.** `POST /api/content/discover`
+  gains a `mutations` flag: when set, each (extension-expanded) candidate is also
+  probed as its common backup/temp/editor artifacts &mdash; `word~`,
+  `word.bak`/`.old`/`.orig`/`.save`/`.tmp`/`.1`, and a directory-aware vim swap
+  `.<leaf>.swp` &mdash; the "someone left a backup of the live file" sweep. Pure,
+  mutation-proven `ContentDiscovery::mutateFilenames`, bounded by the same
+  `maxRequests` cap as the extension expansion. (Roadmap: target &mdash; content
+  discovery extension bruteforce + mutation rules; still partial pending the
+  ui-v2 mutations checkbox.)
 - **Comparer: exact byte-level diff (Bytes mode).** The Comparer gains a
   binary-safe `bytes` mode: `Compare::diffBytes()` diffs two raw byte buffers
   (one hex token per octet through the existing LCS core), and `POST /api/compare`

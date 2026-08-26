@@ -200,6 +200,25 @@ int main(int argc, char **argv) {
         chk("expand: bare word retained", e4.contains("a") && e4.contains("b"));
     }
 
+    // ===== mutateFilenames: backup/temp/editor variants per word ==============
+    {
+        chk("mutate: disabled -> wordlist unchanged",
+            mutateFilenames(QStringList{ "admin", "config" }, false)
+                == (QStringList{ "admin", "config" }));
+        const QStringList m = mutateFilenames(QStringList{ "admin" }, true);
+        chk("mutate: bare word kept first", !m.isEmpty() && m.first() == "admin");
+        chk("mutate: emits ~ / .bak / .old / .orig / .save / .tmp / .1",
+            m.contains("admin~") && m.contains("admin.bak") && m.contains("admin.old")
+            && m.contains("admin.orig") && m.contains("admin.save")
+            && m.contains("admin.tmp") && m.contains("admin.1"));
+        chk("mutate: emits vim swap .admin.swp", m.contains(".admin.swp"));
+        chk("mutate: exactly 9 variants (bare + 7 suffix + swap)", m.size() == 9);
+        // Directory-aware: the swap dotfile stays in the same directory as the leaf.
+        const QStringList md = mutateFilenames(QStringList{ "api/config" }, true);
+        chk("mutate: dir-aware swap is api/.config.swp", md.contains("api/.config.swp"));
+        chk("mutate: dir word.bak is api/config.bak", md.contains("api/config.bak"));
+    }
+
     std::fprintf(stderr, "content_discovery_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

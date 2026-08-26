@@ -9514,6 +9514,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         // as-is and with each extension appended (bounded by max, post-expansion).
         for (const QJsonValue &v : bodyJson.value("extensions").toArray())
             if (!v.toString().isEmpty()) cr.extensions.append(v.toString());
+        // Filename-mutation rules: probe each candidate's backup/temp variants too.
+        cr.mutations = bodyJson.value("mutations").toBool(false);
         const QJsonObject chdrs = bodyJson.value("headers").toObject();
         for (auto it = chdrs.begin(); it != chdrs.end(); ++it)
             cr.headers.append({ it.key(), it.value().toString() });
