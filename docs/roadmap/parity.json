@@ -5023,7 +5023,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "",
+        "commit": "f362996",
         "note": "Inspector decode-chain wave: a shared, gated auto-detect + per-step revisable decode chain (url/base64/html, up to 6 layers) is wired into every Inspector KV row in both the standalone INSPECTOR tab and Repeater's docked Inspector panel. Stays honestly partial -- it operates on parsed field values, not an arbitrary highlighted text selection in the raw editor, and covers only the three encodings this item names, not Burp's fuller decode-type list."
       }
     },
