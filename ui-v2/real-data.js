@@ -407,6 +407,15 @@
     sessionRemoveCookie(host, name) { return post("/api/sessions/removeCookie", { host, name }); },
     sessionRulesSet(rules)      { return post("/api/session-rules/set",        { rules }); },
     sessionRulesClearVars()     { return post("/api/session-rules/clear-vars", {}); },
+    // Named login macros (a recorded ChainRunner step sequence + optional
+    // logged-out auto-re-auth condition). GET-style call (empty payload)
+    // returns the current set without replacing it; passing `macros`
+    // replaces the whole list -- same upsert-the-whole-array contract as
+    // sessionRulesSet above. /api/session-macros/run dispatches a named
+    // macro off the control thread (blocking login I/O).
+    sessionMacrosGet()          { return post("/api/session-macros", {}).then(r => r.json()); },
+    sessionMacrosSet(macros)    { return post("/api/session-macros", { macros }).then(r => r.json()); },
+    sessionMacrosRun(name)      { return post("/api/session-macros/run", { name }).then(r => r.json()); },
     ruleAdd(rule)           { return post("/api/rules/add",    rule).then(r => r.json()); },
     ruleUpdate(index, rule) { return post("/api/rules/update", Object.assign({ index }, rule)); },
     ruleRemove(index)       { return post("/api/rules/remove", { index }); },

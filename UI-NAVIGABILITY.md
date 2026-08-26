@@ -215,3 +215,11 @@ Interactions table/detail-pane alongside HTTP hits.
 `/api/session-macros` + `/api/session-macros/run` (the named-macro store) remain the one
 confirmed real gap left over from this pass -- parity.json already tracks it accurately ("a
 visual macro editor is the remaining UI follow-on").
+
+A 2026-08-26 follow-up closed that gap: the SESSIONS tab gains a Login macros section wiring
+both `/api/session-macros` (get/set) and `/api/session-macros/run` -- a form (name, session
+host, comma logged-out-status list, logged-out body regex), a "Record from history" button
+that reuses the existing `chainRecord` action to prefill a steps JSON textarea (same pattern
+as the SCANS tab's Request chain section), and a saved-macro list with Run/Edit/Del. True
+orphaned count returns to 3 of 203 (1%), all three intentional
+(`/api/cache/poison`, `/api/request/curl`, `/api/intruder/multi`).

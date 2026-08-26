@@ -181,7 +181,11 @@ Session rules     Auto-extract CSRF/JWT/nonces and re-inject (Burp macros equiva
                   (host/path glob, extract-from header/cookie/JSON-path/regex, inject-into
                   header/cookie/body/URL) alongside the captured variable bag, plus a
                   Proxy/Repeater/Intruder/Scanner tools-scope checkbox row per rule
-                  (Burp's "Tools scope"; enforced for Proxy, Repeater, and Intruder)
+                  (Burp's "Tools scope"; enforced for Proxy, Repeater, and Intruder). A
+                  companion Login macros section on the same tab names a recorded login
+                  sequence (record steps straight from Proxy history), runs it on demand,
+                  and auto-re-runs it when a logged-out status/body-regex condition matches
+                  a live response -- Burp's "run a macro" rule action.
 Sequencer         Statistical randomness analysis of session tokens (Burp Sequencer equivalent);
                   in-app SEQUENCER tab -- paste/load-from-file/clipboard manual load with a
                   pre-analysis sample summary, full results (entropy, char class, hamming, LCS,

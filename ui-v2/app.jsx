@@ -6600,6 +6600,89 @@ function SessionsTab() {
   };
   const srStartEdit = (i) => { setSrDraft({ ...SR_DEFAULT, ...sessionRules[i] }); setSrEditingIndex(i); };
 
+  // Named login macros -- not part of the snapshot poll (like the cookie
+  // jar above), so fetched on mount via their own GET-style call.
+  const [macros, setMacros] = React.useState([]);
+  const loadMacros = React.useCallback(async () => {
+    try { const r = await NL.actions.sessionMacrosGet(); setMacros((r && r.macros) || []); }
+    catch (e) { /* leave prior list on transient failure */ }
+  }, []);
+  React.useEffect(() => { loadMacros(); }, [loadMacros]);
+
+  const MACRO_DEFAULT = { name: "", sessionHost: "", loggedOutStatus: "", loggedOutBodyRegex: "" };
+  const [macroDraft, setMacroDraft] = React.useState(MACRO_DEFAULT);
+  const [macroEditingIndex, setMacroEditingIndex] = React.useState(-1);
+  const [macroStepsText, setMacroStepsText] = React.useState("[]");
+  const [macroRecordIds, setMacroRecordIds] = React.useState("");
+  const [macroMsg, setMacroMsg] = React.useState("");
+  const [macroRunMsg, setMacroRunMsg] = React.useState({});
+  const setMacroK = (k, v) => setMacroDraft(d => ({ ...d, [k]: v }));
+  const macroReset = () => {
+    setMacroDraft(MACRO_DEFAULT); setMacroEditingIndex(-1);
+    setMacroStepsText("[]"); setMacroMsg("");
+  };
+  const macroStartEdit = (i) => {
+    const m = macros[i];
+    setMacroDraft({
+      name: m.name || "", sessionHost: m.sessionHost || "",
+      loggedOutStatus: m.loggedOutStatus || "", loggedOutBodyRegex: m.loggedOutBodyRegex || "",
+    });
+    setMacroStepsText(JSON.stringify(m.steps || [], null, 2));
+    setMacroEditingIndex(i);
+    setMacroMsg("");
+  };
+  const doMacroRecord = async () => {
+    const rowIds = macroRecordIds.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(n => Number.isInteger(n) && n > 0);
+    if (!rowIds.length) { setMacroMsg("enter one or more Proxy history row IDs (comma or space separated)"); return; }
+    setMacroMsg("recording…");
+    try {
+      const r = await NL.actions.chainRecord(rowIds);
+      if (r && r.ok === false) { setMacroMsg(r.error || "chain record failed"); return; }
+      setMacroStepsText(JSON.stringify(r.steps || [], null, 2));
+      setMacroMsg("recorded " + (r.steps || []).length + " of " + rowIds.length + " step(s)"
+        + (r.skipped ? " (" + r.skipped + " skipped -- not in the history index)" : ""));
+    } catch (e) { setMacroMsg(String(e && e.message ? e.message : e)); }
+  };
+  const macroSubmit = async () => {
+    if (!macroDraft.name.trim() || !macroDraft.sessionHost.trim()) {
+      setMacroMsg("name and session host are required"); return;
+    }
+    let steps;
+    try { steps = JSON.parse(macroStepsText || "[]"); }
+    catch (e) { setMacroMsg("steps must be valid JSON: " + (e && e.message ? e.message : e)); return; }
+    if (!Array.isArray(steps) || !steps.length) {
+      setMacroMsg("record at least one step from Proxy history above"); return;
+    }
+    const entry = {
+      name: macroDraft.name.trim(), sessionHost: macroDraft.sessionHost.trim(),
+      loggedOutStatus: macroDraft.loggedOutStatus, loggedOutBodyRegex: macroDraft.loggedOutBodyRegex,
+      steps,
+    };
+    const next = macros.slice();
+    if (macroEditingIndex >= 0) next[macroEditingIndex] = entry; else next.push(entry);
+    setMacroMsg("saving…");
+    try {
+      const r = await NL.actions.sessionMacrosSet(next);
+      setMacros((r && r.macros) || next);
+      macroReset();
+    } catch (e) { setMacroMsg(String(e && e.message ? e.message : e)); }
+  };
+  const macroDelete = async (i) => {
+    if (!confirm("Delete macro \"" + (macros[i].name || "(unnamed)") + "\"?")) return;
+    const next = macros.slice(); next.splice(i, 1);
+    try {
+      const r = await NL.actions.sessionMacrosSet(next);
+      setMacros((r && r.macros) || next);
+    } catch (e) { setMacroMsg(String(e && e.message ? e.message : e)); }
+  };
+  const macroRun = async (name) => {
+    setMacroRunMsg(m => ({ ...m, [name]: "dispatching…" }));
+    try {
+      await NL.actions.sessionMacrosRun(name);
+      setMacroRunMsg(m => ({ ...m, [name]: "dispatched " + new Date().toLocaleTimeString() }));
+    } catch (e) { setMacroRunMsg(m => ({ ...m, [name]: String(e && e.message ? e.message : e) })); }
+  };
+
   const Btn = ({ label, onClick, danger, primary, disabled, title, size }) => (
     <button onClick={onClick} disabled={disabled} title={title}
       style={{
@@ -6999,6 +7082,117 @@ function SessionsTab() {
           ))}
         </div>
       )}
+
+      {/* LOGIN MACROS -- named recorded login sequences (/api/session-macros),
+          runnable on demand and auto-re-run by a matching session rule's
+          logged-out condition. Burp's "run a macro" rule action, made
+          reachable from the GUI: record steps from Proxy history (same
+          recorder as the Request chain section), name the macro, save. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 6 }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>Login macros</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+          {macros.length} macro{macros.length === 1 ? "" : "s"} · named login sequences,
+          run on demand or auto-re-run on session expiry
+        </span>
+      </div>
+
+      {(() => {
+        const macroInputStyle = {
+          background: "var(--bg-deep)", color: "var(--text)",
+          border: "1px solid var(--line)", padding: "4px 6px",
+          fontSize: "12px", fontFamily: "var(--ff-mono)",
+        };
+        return (
+          <div style={{
+            background: "var(--pane)", border: "1px solid var(--line)",
+            padding: 12, borderRadius: 4, display: "flex",
+            flexDirection: "column", gap: 8,
+          }}>
+            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 120px 1fr", gap: 8, alignItems: "center" }}>
+              <label style={{ fontSize: "11px", color: "var(--dim)" }}>Name</label>
+              <input style={macroInputStyle} value={macroDraft.name}
+                     placeholder="login"
+                     onChange={e => setMacroK("name", e.target.value)} />
+              <label style={{ fontSize: "11px", color: "var(--dim)" }}>Session host</label>
+              <input style={macroInputStyle} value={macroDraft.sessionHost}
+                     placeholder="app.example.com"
+                     onChange={e => setMacroK("sessionHost", e.target.value)} />
+
+              <label style={{ fontSize: "11px", color: "var(--dim)" }}>Logged-out status</label>
+              <input style={macroInputStyle} value={macroDraft.loggedOutStatus}
+                     placeholder="401,403 (blank = never auto-re-auth)"
+                     onChange={e => setMacroK("loggedOutStatus", e.target.value)} />
+              <label style={{ fontSize: "11px", color: "var(--dim)" }}>Logged-out body regex</label>
+              <input style={macroInputStyle} value={macroDraft.loggedOutBodyRegex}
+                     placeholder="Please log in (optional, in addition to status)"
+                     onChange={e => setMacroK("loggedOutBodyRegex", e.target.value)} />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input value={macroRecordIds} onChange={e => setMacroRecordIds(e.target.value)}
+                     placeholder="Proxy history row IDs, e.g. 12, 13, 14"
+                     style={{ ...macroInputStyle, flex: 1 }} />
+              <Btn label="Record from history" onClick={doMacroRecord} />
+            </div>
+            <textarea value={macroStepsText} onChange={e => setMacroStepsText(e.target.value)}
+                      placeholder="[] (record from Proxy history above, or paste chain steps)"
+                      rows={5} style={{ ...macroInputStyle, resize: "vertical" }} spellCheck={false} />
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <Btn label={macroEditingIndex >= 0 ? "Update macro" : "Add macro"}
+                   primary onClick={macroSubmit}
+                   disabled={!macroDraft.name.trim() || !macroDraft.sessionHost.trim()} />
+              {macroEditingIndex >= 0 && <Btn label="Cancel" onClick={macroReset} />}
+              <span style={{ flex: 1 }} />
+              {macroMsg && <span style={{ color: "var(--dim)", fontSize: "11px" }}>{macroMsg}</span>}
+            </div>
+          </div>
+        );
+      })()}
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        borderRadius: 4,
+      }}>
+        {macros.length === 0 && (
+          <div style={{ padding: 16, textAlign: "center", color: "var(--dim)", fontSize: "12px" }}>
+            No login macros saved yet. Record steps from Proxy history above
+            (e.g. the login POST) and name them to run on demand or wire a
+            logged-out condition for automatic re-authentication.
+          </div>
+        )}
+        {macros.map((m, i) => (
+          <div key={i} style={{
+            display: "grid",
+            gridTemplateColumns: "140px 1fr 90px 1fr 160px",
+            gap: 6, padding: "6px 10px", alignItems: "center",
+            fontSize: "11.5px", fontFamily: "var(--ff-mono)",
+            borderBottom: "1px solid var(--line-soft)",
+          }}>
+            <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.name || <span style={{ color: "var(--dim)" }}>(unnamed)</span>}
+            </span>
+            <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {(m.steps || []).length} step{(m.steps || []).length === 1 ? "" : "s"} &rarr; {m.sessionHost}
+            </span>
+            <span style={{ color: "var(--dim)" }}>
+              {m.loggedOutStatus ? "auto" : "manual"}
+            </span>
+            <span style={{ color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={macroRunMsg[m.name] || ""}>
+              {macroRunMsg[m.name] || ""}
+            </span>
+            <span style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+              <Btn label="Run" size="sm" onClick={() => macroRun(m.name)} />
+              <Btn label="Edit" size="sm" onClick={() => macroStartEdit(i)} />
+              <Btn label="Del" size="sm" danger onClick={() => macroDelete(i)} />
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
