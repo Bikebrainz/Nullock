@@ -1301,7 +1301,9 @@ QByteArray serializeRequestForOrigin(const HttpRequest &req) {
     out += req.method.toLatin1() + " " + req.path.toLatin1() + " "
          + req.httpVersion.toLatin1() + "\r\n";
     for (const auto &h : req.headers) {
-        if (h.first.compare("Proxy-Connection", Qt::CaseInsensitive) == 0) continue;
+        // Never forward proxy-hop headers to the origin -- Proxy-Connection AND
+        // Proxy-Authorization (the latter leaks the client's proxy credentials).
+        if (HttpLogic::isProxyHopRequestHeader(h.first)) continue;
         out += h.first.toLatin1() + ": " + h.second.toLatin1() + "\r\n";
     }
     out += "\r\n";

@@ -27,6 +27,14 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Proxy credentials no longer leaked to the origin.** When the proxy
+  re-serialized a request for the upstream origin
+  (`serializeRequestForOrigin`), it stripped only `Proxy-Connection` and
+  forwarded `Proxy-Authorization` verbatim — leaking the client's credentials
+  for *the proxy* to every target it connected to. Both proxy-hop headers are now
+  stripped via a pure, mutation-proven `HttpLogic::isProxyHopRequestHeader`
+  predicate (ordinary `Authorization` is still forwarded). This also covers the
+  Repeater/Intruder send paths, which reuse the same serializer.
 - **method-audit finding emission locked by tests.** The mapping from an
   advertised Allow list + the three Cross-Site-Tracing echo probes to the exact
   findings emitted (`dangerous-http-methods`, `webdav-enabled`,

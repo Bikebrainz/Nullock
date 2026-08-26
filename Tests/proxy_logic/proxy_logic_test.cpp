@@ -241,6 +241,23 @@ int main(int argc, char **argv) {
         chk("fuzz: isFramingSafe(safe) => no CR/LF/NUL survives in any name/value", invariantHeld);
     }
 
+    // ===== proxy-hop request headers must not reach the origin ============
+    {
+        // Proxy-Authorization carries the client's credentials for THIS proxy;
+        // forwarding it to the origin leaks the proxy password. Both it and
+        // Proxy-Connection are proxy-hop-scoped and must be stripped.
+        chk("hop: Proxy-Connection stripped", isProxyHopRequestHeader("Proxy-Connection"));
+        chk("hop: Proxy-Authorization stripped (credential leak)",
+            isProxyHopRequestHeader("Proxy-Authorization"));
+        chk("hop: case-insensitive", isProxyHopRequestHeader("proxy-authorization")
+            && isProxyHopRequestHeader("PROXY-CONNECTION"));
+        chk("hop: ordinary Authorization is FORWARDED (not proxy-scoped)",
+            !isProxyHopRequestHeader("Authorization"));
+        chk("hop: Connection / Host / Cookie are forwarded",
+            !isProxyHopRequestHeader("Connection") && !isProxyHopRequestHeader("Host")
+            && !isProxyHopRequestHeader("Cookie"));
+    }
+
     std::fprintf(stderr, "proxy_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

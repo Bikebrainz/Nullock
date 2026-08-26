@@ -145,4 +145,9 @@ ChunkResult decodeChunkedAvailable(QByteArray &buffer, QByteArray &decoded) {
     }
 }
 
+bool isProxyHopRequestHeader(const QString &name) {
+    return name.compare(QLatin1String("Proxy-Connection"), Qt::CaseInsensitive) == 0
+        || name.compare(QLatin1String("Proxy-Authorization"), Qt::CaseInsensitive) == 0;
+}
+
 } // namespace Nullock::Proxy::HttpLogic

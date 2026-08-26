@@ -49,4 +49,10 @@ bool isFramingSafe(const QList<QPair<QString, QString>> &headers, bool isRequest
 enum class ChunkResult { Complete, NeedMore, Error };
 ChunkResult decodeChunkedAvailable(QByteArray &buffer, QByteArray &decoded);
 
+// A REQUEST header the proxy must NOT forward to the ORIGIN because it is scoped
+// to the proxy hop: Proxy-Connection (hop-by-hop control) and Proxy-Authorization
+// (the CLIENT's credentials for THIS proxy -- forwarding them to the target leaks
+// the proxy password to the origin). Case-insensitive.
+bool isProxyHopRequestHeader(const QString &name);
+
 } // namespace Nullock::Proxy::HttpLogic
