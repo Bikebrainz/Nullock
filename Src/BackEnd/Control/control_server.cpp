@@ -1913,22 +1913,13 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     // (proxy history, Repeater tabs, issues) so the excerpt logic +
                     // limit are IDENTICAL across them. `id` is the store's own row /
                     // tab / finding id; `source` labels which tool it came from.
+                    // Positive-match excerpt builder (per text). Negate is handled
+                    // whole-item by negateItem below -- NOT per text -- so a
+                    // where="both" item isn't double-counted or half-matched.
                     auto addHits = [&](const QString &source, int id,
                                        const QString &whereLabel, const QString &text) {
                         if (hits.size() >= limit) return;
                         auto it = rx.globalMatch(text);
-                        // Negative match: this item is a hit iff the pattern is ABSENT
-                        // ("find items that do NOT contain X"); nothing matched, so no
-                        // excerpts. Positive match keeps the excerpt behaviour below.
-                        if (negate) {
-                            if (it.hasNext()) return;   // pattern present -> not a negate hit
-                            hits.append(QJsonObject{
-                                { "source",   source },
-                                { "id",       id },
-                                { "where",    whereLabel },
-                                { "excerpts", QJsonArray() } });
-                            return;
-                        }
                         if (!it.hasNext()) return;
                         // Pull at most 3 line-excerpts per hit so the response stays small.
                         QStringList excerpts;
@@ -1950,6 +1941,22 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                             { "where",    whereLabel },
                             { "excerpts", QJsonArray::fromStringList(excerpts) } });
                     };
+                    // Negate is a WHOLE-ITEM concept: the item is a hit iff the
+                    // pattern is ABSENT from EVERY in-scope text (req AND resp for
+                    // where="both"), reported ONCE. Doing this per-text (as the old
+                    // addHits did) double-counted a row absent in both and wrongly
+                    // flagged a row that carried the pattern in only one of them.
+                    auto negateItem = [&](const QString &source, int id,
+                                          const QString &whereLabel, const QStringList &texts) {
+                        if (hits.size() >= limit) return;
+                        for (const QString &t : texts)
+                            if (!t.isEmpty() && rx.match(t).hasMatch()) return;  // present -> not a hit
+                        hits.append(QJsonObject{
+                            { "source",   source },
+                            { "id",       id },
+                            { "where",    whereLabel },
+                            { "excerpts", QJsonArray() } });
+                    };
                     QElapsedTimer searchTimer;
                     searchTimer.start();
                     // Scan newest-first (iteration 0 -> row n-1) so a
@@ -1966,18 +1973,28 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         const QModelIndex ridx = m_wiring.history->index(row, 0);
                         const int rid = m_wiring.history->data(ridx,
                             Nullock::FrontEnd::ProxyModel::IdRole).toInt();
-                        if (where == "req" || where == "both") {
-                            QString t = m_wiring.history->requestRawAt(row);
-                            if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
-                            if (!t.isEmpty()) addHits("proxy", rid, "req", t);
-                        }
-                        // Hit limit reached mid-row: this row is only partially
-                        // examined, so it does NOT count toward `scanned`.
-                        if (hits.size() >= limit) break;
-                        if (where == "resp" || where == "both") {
-                            QString t = m_wiring.history->responseRawAt(row);
-                            if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
-                            if (!t.isEmpty()) addHits("proxy", rid, "resp", t);
+                        if (negate) {
+                            // Gather every in-scope text and decide once (whole-item).
+                            QStringList texts;
+                            if (where == "req" || where == "both")
+                                texts << m_wiring.history->requestRawAt(row).left(kSearchBodyCap);
+                            if (where == "resp" || where == "both")
+                                texts << m_wiring.history->responseRawAt(row).left(kSearchBodyCap);
+                            negateItem("proxy", rid, where == "both" ? "item" : where, texts);
+                        } else {
+                            if (where == "req" || where == "both") {
+                                QString t = m_wiring.history->requestRawAt(row);
+                                if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
+                                if (!t.isEmpty()) addHits("proxy", rid, "req", t);
+                            }
+                            // Hit limit reached mid-row: this row is only partially
+                            // examined, so it does NOT count toward `scanned`.
+                            if (hits.size() >= limit) break;
+                            if (where == "resp" || where == "both") {
+                                QString t = m_wiring.history->responseRawAt(row);
+                                if (t.size() > kSearchBodyCap) t = t.left(kSearchBodyCap);
+                                if (!t.isEmpty()) addHits("proxy", rid, "resp", t);
+                            }
                         }
                         ++scanned;
                         lastScannedRow = row;   // oldest fully-scanned row so far
@@ -2006,11 +2023,20 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         for (int ti = 0; ti < tabs.size() && hits.size() < limit; ++ti) {
                             if (searchTimer.elapsed() > kSearchBudgetMs) { truncated = true; break; }
                             const auto &tab = tabs[ti];
-                            if ((where == "req" || where == "both") && !tab.requestText.isEmpty())
-                                addHits("repeater", ti, "req", tab.requestText.left(kSearchBodyCap));
-                            if (hits.size() >= limit) break;
-                            if ((where == "resp" || where == "both") && !tab.responseText.isEmpty())
-                                addHits("repeater", ti, "resp", tab.responseText.left(kSearchBodyCap));
+                            if (negate) {
+                                QStringList texts;
+                                if (where == "req" || where == "both")
+                                    texts << tab.requestText.left(kSearchBodyCap);
+                                if (where == "resp" || where == "both")
+                                    texts << tab.responseText.left(kSearchBodyCap);
+                                negateItem("repeater", ti, where == "both" ? "item" : where, texts);
+                            } else {
+                                if ((where == "req" || where == "both") && !tab.requestText.isEmpty())
+                                    addHits("repeater", ti, "req", tab.requestText.left(kSearchBodyCap));
+                                if (hits.size() >= limit) break;
+                                if ((where == "resp" || where == "both") && !tab.responseText.isEmpty())
+                                    addHits("repeater", ti, "resp", tab.responseText.left(kSearchBodyCap));
+                            }
                         }
                     }
                     if (m_wiring.scanner && where == "both" && hits.size() < limit
@@ -2023,7 +2049,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                             const QString blob = f.summary + '\n' + f.evidence + '\n'
                                                + f.url + '\n' + f.host + '\n'
                                                + f.kind + '\n' + f.severity;
-                            addHits("issue", f.id, "issue", blob.left(kSearchBodyCap));
+                            if (negate)
+                                negateItem("issue", f.id, "issue",
+                                           QStringList{ blob.left(kSearchBodyCap) });
+                            else
+                                addHits("issue", f.id, "issue", blob.left(kSearchBodyCap));
                         }
                     }
                 } else {

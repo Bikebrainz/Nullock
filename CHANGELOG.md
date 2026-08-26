@@ -11,6 +11,15 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Global search negate mode double-counted / mis-matched `where=both`.** A
+  negative search ("find items that do NOT contain X") is a whole-item concept,
+  but the match ran per text: with `where=both`, a proxy row or Repeater tab was
+  checked for the request AND the response independently, so a row that carried
+  the pattern in its request but not its response was still reported as a
+  "does-not-contain" hit, and a row absent from both was reported twice. Negate
+  now evaluates every in-scope text of an item together and emits one hit only
+  when the pattern is absent from all of them (`where: "item"`). Verified live
+  (no duplicate ids).
 - **`/api/findings/grouped` ignored operator triage.** The grouped findings
   rollup read the raw scanner findings and applied none of the triage marks the
   snapshot path honours — so a finding the operator had suppressed, marked
