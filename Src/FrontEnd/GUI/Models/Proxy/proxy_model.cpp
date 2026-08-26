@@ -111,6 +111,29 @@ QString ProxyModel::responseRawById(int id) const {
     return responseRawAt(idx);
 }
 
+// host/port/tls resolved by stable finding ID (not window row index). The window
+// evicts oldest rows and advances m_firstId, so id-1 is NOT the row index once
+// anything has been evicted -- callers that hold an ID (e.g. "send to Repeater")
+// must use these, mirroring requestRawById.
+QString ProxyModel::hostById(int id) const {
+    if (id < m_firstId) return {};
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return {};
+    return hostAt(idx);
+}
+int ProxyModel::portById(int id) const {
+    if (id < m_firstId) return 0;
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return 0;
+    return portAt(idx);
+}
+bool ProxyModel::tlsById(int id) const {
+    if (id < m_firstId) return false;
+    const int idx = id - m_firstId;
+    if (idx < 0 || idx >= m_entries.size()) return false;
+    return tlsAt(idx);
+}
+
 namespace {
 
 constexpr int kMaxBodyPreviewBytes = 64 * 1024;

@@ -157,6 +157,9 @@ public:
     // through addTabFromHistory so a fresh tab opens automatically.
     Q_INVOKABLE int  addTab(const QString &name = QString());
     Q_INVOKABLE int  addTabFromHistory(int row);
+    // Same, but by STABLE history id (eviction-safe -- see the .cpp note). Prefer
+    // this from any caller that holds a row.id rather than a live window index.
+    Q_INVOKABLE int  addTabFromHistoryById(int id);
     Q_INVOKABLE bool closeTab(int index);
     Q_INVOKABLE bool setActiveTab(int index);
     Q_INVOKABLE bool renameTab(int index, const QString &name);

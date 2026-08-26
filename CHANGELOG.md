@@ -11,6 +11,17 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **"Send to Repeater" could load the wrong request after history eviction.**
+  `/api/repeater/tab/addFromHistory` treated its argument as a live window index,
+  and the UI passes `row.id - 1` — which equals the index only until the bounded
+  in-memory history window starts evicting older rows (then `firstId > 1`). Past
+  that point it silently loaded a DIFFERENT row's request (or none). Added
+  window-eviction-safe `ProxyModel::hostById/portById/tlsById` and
+  `Repeater::addTabFromHistoryById(id)` (mirroring the existing `requestRawById`
+  id→index mapping), plus a `POST /api/repeater/tab/addFromHistoryId` endpoint
+  that resolves the source row by its stable id. Verified live (valid id → tab
+  created, bogus id → rejected). (ui-v2 switching the button to the id endpoint
+  is the remaining frontend step.)
 - **Global search negate mode double-counted / mis-matched `where=both`.** A
   negative search ("find items that do NOT contain X") is a whole-item concept,
   but the match ran per text: with `where=both`, a proxy row or Repeater tab was

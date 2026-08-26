@@ -397,6 +397,27 @@ int Repeater::addTabFromHistory(int row) {
     return m_active;
 }
 
+int Repeater::addTabFromHistoryById(int id) {
+    // Resolve by STABLE finding id, not a window row index: after the in-memory
+    // window evicts old rows, id-1 no longer equals the row index, so the
+    // index-based path silently loads the WRONG row (or none). Uses the *ById
+    // accessors which map id -> current index via m_firstId.
+    if (!m_model) return -1;
+    const QString host = m_model->hostById(id);
+    if (host.isEmpty()) return -1;
+
+    RepeaterTab t;
+    t.host        = host;
+    t.port        = m_model->portById(id);
+    t.useTls      = m_model->tlsById(id);
+    t.requestText = m_model->requestRawById(id);
+    t.name        = autoTabName(t.host, t.requestText);
+    m_tabs.append(t);
+    m_active = m_tabs.size() - 1;
+    emitAllSlots();
+    return m_active;
+}
+
 bool Repeater::closeTab(int index) {
     if (index < 0 || index >= m_tabs.size()) return false;
     // Keep at least one tab around -- if the user closes the last one

@@ -48,6 +48,10 @@ public:
     const Nullock::Proxy::HttpResponse *responseById(int id) const;
     QString requestRawById(int id) const;
     QString responseRawById(int id) const;
+    // host/port/tls by stable ID (window-eviction-safe; see the .cpp note).
+    QString hostById(int id) const;
+    int     portById(int id) const;
+    bool    tlsById(int id) const;
 
 public slots:
     void addResponse(const Nullock::Proxy::HttpRequest &request,

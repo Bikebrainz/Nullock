@@ -3560,6 +3560,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             idx = m_wiring.repeater->addTabFromHistory(bodyJson.value("row").toInt(-1));
         return okJson({{ "index", idx }});
     }
+    // Eviction-safe variant: resolve the source row by its STABLE history id
+    // (accepts {"id":...}), so "send to Repeater" loads the correct request even
+    // after the in-memory window has evicted older rows. Prefer this over
+    // /addFromHistory, which treats its argument as a live window index.
+    if (path == "/api/repeater/tab/addFromHistoryId") {
+        int idx = -1;
+        if (m_wiring.repeater)
+            idx = m_wiring.repeater->addTabFromHistoryById(bodyJson.value("id").toInt(-1));
+        return okJson({{ "index", idx }});
+    }
     if (path == "/api/repeater/tab/close") {
         bool ok = m_wiring.repeater
                && m_wiring.repeater->closeTab(bodyJson.value("index").toInt(-1));
