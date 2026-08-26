@@ -5597,7 +5597,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "d2dae7e",
         "note": "Wave 2 frontend wiring: added the ui-v2 `mutations` checkbox (DiscoverTab) that was the sole remaining gap on this item, closing it to present."
       }
     },
