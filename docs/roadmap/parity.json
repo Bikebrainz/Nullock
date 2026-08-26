@@ -3304,7 +3304,7 @@
       "evidence": "control_server.cpp:3399 `/api/config/export` (aggregates 4 sections via ControlLogic::buildConfigDocument) + :3430 `/api/config/import` (ControlLogic::validateConfigDocument then per-section apply reusing setInScope/setOutOfScope/setNotes/setAdvancedScope/setRules/sessionRules->setRules/intercept->setInterceptRules). Envelope logic pure + mutation-proven in Tests/control_logic/control_logic_test.cpp (buildConfigDocument/validateConfigDocument/configSection/configSectionNames; M1 version-gate + M2 format-gate proven). Live e2e: export \u2192 4 sections {scope,matchReplaceRules,sessionRules,interceptRules}; import scope{in,out,notes} \u2192 round-trips exactly; v999 refused; wrong-format refused.",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "4b19da8",
         "note": "Register-accuracy correction + UI closure: a fresh grep found /api/config/export and /api/config/import had NO ui-v2 caller at all, despite this item being marked partial with a gap description that only mentioned the missing preset library -- the missing GUI path went unrecorded. Added Settings' Project card: \"Export config\" (downloads the versioned JSON document as a Blob) and \"Import config\" (file picker, POSTs the parsed document, alerts the applied section list or the validation error), same pattern as the existing Export/Import HAR controls. NL.actions.configExport/configImport in real-data.js. Preset-library gap unchanged."
       }
     },
@@ -5518,7 +5518,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "4b19da8",
         "note": "Follow-up to 9ebecdb: built the ui-v2 editor this item's reconciled note called out as the remaining UI piece. SCOPE tab gains an \"Advanced scope control\" section -- a per-rule row (enabled checkbox, include/exclude select, protocol select, host-regex/port-from/port-to/file-regex inputs, remove) plus +RULE/SAVE, whole-list-replacing via NL.actions.scopeSetAdvanced -> POST /api/scope/advanced, synced from the live snapshot's scope.advanced. Field names verified against scope_logic.cpp's rulesFromJson/rulesToJson (enabled/include/protocol/host/portFrom/portTo/file) so the editor cannot round-trip something the backend doesn't accept. STILL PARTIAL: the ~10 non-proxy tool gates (item's own prior note) remain host-only."
       }
     },
@@ -5680,7 +5680,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "4b19da8",
         "note": "Wired the previously-orphaned /api/payloads/generate (AI payload mutation via local Ollama) into the PAYLOADS tab: a count field + AI GENERATE button, rendering the model's variants or the deterministic seed-list fallback with a distinct badge."
       }
     }
