@@ -3439,7 +3439,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "",
+        "commit": "b5eda0c",
         "note": "Clickjacking PoC generator wave: client-side CLICKJACK POC button (DetailPane, Proxy history / Site map) closes the PoC-generation gap this item names; Clickbandit's interactive drag-placement UX and Infiltrator remain out of scope, so state moves absent -> partial rather than -> present."
       }
     },
