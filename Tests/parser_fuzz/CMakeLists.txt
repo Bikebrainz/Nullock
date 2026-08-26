@@ -4,6 +4,7 @@ add_executable(parser_fuzz_test
     parser_fuzz_test.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/nuclei_yaml_logic.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/inspector_logic.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/transcode.cpp   # smartDecode for value decode-chains
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/template_engine_logic.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/template_request_logic.cpp
 )
