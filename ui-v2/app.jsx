@@ -5824,6 +5824,7 @@ async function gzipDecodeText(b64) {
 function DecoderTab({ decoder }) {
   const [input, setInput]   = React.useState("");
   const [output, setOutput] = React.useState("");
+  const [outputB64, setOutputB64] = React.useState("");
   const [activeOp, setOp]   = React.useState("");
   const [err, setErr]       = React.useState("");
   const [chain, setChain]   = React.useState([]);
@@ -5837,7 +5838,7 @@ function DecoderTab({ decoder }) {
   React.useEffect(() => {
     if (!seedNonce) return;
     setInput(decoder.seedText || "");
-    setOutput(""); setOp(""); setErr(""); setChain([]);
+    setOutput(""); setOutputB64(""); setOp(""); setErr(""); setChain([]);
   }, [seedNonce]);
   // Per-block Text/Hex view (#358): flip either pane to a hex dump without
   // mutating the underlying value, so a non-printing or non-ASCII byte in
@@ -5870,7 +5871,7 @@ function DecoderTab({ decoder }) {
   const ASYNC_CLIENT_OPS = { "gzip-encode": gzipEncodeText, "gzip-decode": gzipDecodeText };
 
   const run = async (operation) => {
-    setOp(operation); setErr(""); setChain([]);
+    setOp(operation); setErr(""); setChain([]); setOutputB64("");
     if (CLIENT_ONLY_OPS[operation]) {
       try { setOutput(runCodec(operation, input)); }
       catch (e) { setErr(String(e && e.message ? e.message : e)); }
@@ -5884,6 +5885,11 @@ function DecoderTab({ decoder }) {
     try {
       const r = await NL.actions.transcode(operation, input);
       setOutput(r.output || "");
+      // #358 follow-up: a decode op that yielded non-UTF-8 bytes carries the
+      // exact octets as base64 (outputBase64) alongside the lossy `output`
+      // text -- the hex view below reads this when present instead of
+      // re-encoding the already-mangled string.
+      setOutputB64(r.outputBase64 || "");
       if (r.chain && r.chain.length) setChain(r.chain);
       if (!r.ok) setErr(r.error || "failed");
     } catch (e) { setErr(String(e && e.message ? e.message : e)); }
@@ -5892,7 +5898,12 @@ function DecoderTab({ decoder }) {
   const copy = () => {
     try { navigator.clipboard?.writeText(output); setCopied(true); setTimeout(() => setCopied(false), 1000); } catch (e) {}
   };
-  const useOutputAsInput = () => { setInput(output); setOutput(""); setChain([]); setErr(""); };
+  const useOutputAsInput = () => { setInput(output); setOutput(""); setOutputB64(""); setChain([]); setErr(""); };
+  const outputHex = React.useMemo(() => {
+    if (!outputB64) return toHexDump(output);
+    try { return hexDumpBytes(base64ToBytes(outputB64)); }
+    catch (e) { return toHexDump(output); }
+  }, [outputB64, output]);
 
   const Btn = ({ label, onClick, primary, disabled, title }) => (
     <button onClick={onClick} disabled={disabled} title={title}
@@ -5968,7 +5979,7 @@ function DecoderTab({ decoder }) {
                  onClick={useOutputAsInput} disabled={!output} />
           </div>
           {outputView === "hex" ? (
-            <textarea style={{ ...hexArea, color: "var(--dim)" }} value={toHexDump(output)} readOnly spellCheck={false} />
+            <textarea style={{ ...hexArea, color: "var(--dim)" }} value={outputHex} readOnly spellCheck={false} />
           ) : (
             <textarea style={{ ...area, color: err ? "var(--err)" : "var(--text)" }}
                       value={err ? (output ? output + "\n\n[" + err + "]" : "[" + err + "]") : output}

@@ -4972,17 +4972,17 @@
     {
       "area": "repeater",
       "feature": "Decoder: Text / Hex view toggle per block",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "The backend blocker is now removed: Transcode::Result carries the exact decoded octets (outputBytes) and /api/transcode emits them as an additive base64 field (outputBase64), so a Hex view can render the TRUE bytes rather than the U+FFFD-folded text. The Text/Hex ViewToggle already exists in ui-v2's DecoderTab. Stays partial only for the ui-v2 wiring: the hex view must read outputBase64 (not the lossy `output` string) -- a frontend change in the other developer's lane.",
-      "why": "The underlying lossy conversion (transcode.cpp base64Decode/hexDecode/octalDecode/binaryDecode all returned QString::fromUtf8(bytes), collapsing non-UTF-8 bytes to U+FFFD before the response was even built) is FIXED: those decoders now return okBytes(raw) which preserves the exact octets, and the endpoint exposes them as outputBase64 (additive, absent for text-only ops). Mutation-proven in transcode_test (a lossy decoder fails the outputBytes assertions), gauntlet green, live: hex-decode 00ff41 -> outputBase64 decodes to bytes [0,255,65]. Only the ui-v2 hex-view consumption of outputBase64 remains.",
-      "evidence": "ui-v2/app.jsx DecoderTab: ViewToggle component (view/onChange), inputView/outputView React.useState(\"text\"), toHexDump(input)/toHexDump(output) rendered read-only when the toggle is set to hex. Src/Core/Networking/transcode.cpp:27 base64Decode `return ok(QString::fromUtf8(res.decoded));`; :106 hexDecode `return ok(QString::fromUtf8(QByteArray::fromHex(s.toLatin1())));` -- both collapse non-UTF-8 bytes to U+FFFD server-side.",
-      "audited_state": "partial",
+      "gap": "None -- the output hex view now reads the backend's outputBase64 field (raw octets) when present, instead of re-encoding the already-UTF-8-mangled `output` string.",
+      "why": "Wave 2 (2026-08-26): wired the remaining ui-v2 half. DecoderTab now tracks the transcode response's outputBase64 in its own state (outputB64), reset alongside output on every run/seed/use-as-input, and derives the output hex view from hexDumpBytes(base64ToBytes(outputB64)) -- the exact decoded bytes -- falling back to the prior toHexDump(output) only when outputBase64 is absent (encode ops / text-only ops carry no outputBytes server-side). hexDumpBytes is a new byte-array-taking function factored out of proxy.jsx's toHexDump(string), which now just UTF-8-encodes its input and delegates -- no behavior change for its other callers (input hex view, proxy/repeater raw-view hex mode, the gzip-decode fallback). Verified functionally: hex-decode of 00ff41 -> outputBase64 \"AP9B\" -> hexDumpBytes(base64ToBytes(...)) reproduces \"00 ff 41\" exactly, where the old toHexDump(output) path produced \"00 ef bf bd 41\" (the UTF-8 encoding of the U+FFFD that had already swallowed the 0xff byte server-side).",
+      "evidence": "ui-v2/proxy.jsx hexDumpBytes(bytes) (new, hoisted out of toHexDump); toHexDump(s) now `return hexDumpBytes(new TextEncoder().encode(s));`. ui-v2/app.jsx DecoderTab: outputB64 state set from r.outputBase64 in run(), cleared in the seedNonce effect and useOutputAsInput; outputHex = React.useMemo reading hexDumpBytes(base64ToBytes(outputB64)) when outputB64 is truthy, else toHexDump(output); output hex-view textarea now renders outputHex. Src/BackEnd/Control/control_server.cpp:10514-10515 already emitted outputBase64 = r.outputBytes.toBase64() when outputBytes is non-empty.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-19",
-        "commit": "663a1f2",
-        "note": "register correction -- stale why/evidence text fixed, state unchanged (partial)"
+        "date": "2026-08-26",
+        "commit": "PENDING",
+        "note": "Wave 2: DecoderTab's output hex view now consumes /api/transcode's outputBase64 field via a new hexDumpBytes(bytes) helper, closing the frontend-only gap the prior register correction (663a1f2) left open -- no backend change."
       }
     },
     {

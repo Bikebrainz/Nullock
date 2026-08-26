@@ -2953,10 +2953,8 @@ function renderView(raw, view) {
   return raw;
 }
 
-function toHexDump(s) {
-  if (!s) return "";
-  // Treat input as UTF-8 bytes for the dump.
-  const bytes = new TextEncoder().encode(s);
+function hexDumpBytes(bytes) {
+  if (!bytes || !bytes.length) return "";
   const lines = [];
   for (let i = 0; i < bytes.length; i += 16) {
     const chunk = bytes.slice(i, i + 16);
@@ -2967,6 +2965,11 @@ function toHexDump(s) {
     if (i > 64 * 1024) { lines.push("... [truncated at 64 KiB]"); break; }
   }
   return lines.join("\n");
+}
+function toHexDump(s) {
+  if (!s) return "";
+  // Treat input as UTF-8 bytes for the dump.
+  return hexDumpBytes(new TextEncoder().encode(s));
 }
 
 function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
