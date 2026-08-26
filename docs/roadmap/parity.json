@@ -2697,7 +2697,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-26",
-        "commit": "PENDING",
+        "commit": "4300b81",
         "note": "ui-v2/app.jsx SessionsTab: a Login macros section wires the previously-orphaned named-macro store (/api/session-macros set/get, /api/session-macros/run) -- form fields for name/sessionHost/loggedOutStatus/loggedOutBodyRegex, a 'Record from history' button reusing NL.actions.chainRecord to prefill a steps JSON textarea (same pattern as the SCANS tab's Request chain section), and a saved-macro list with Run/Edit/Del. ui-v2/real-data.js gains sessionMacrosGet/sessionMacrosSet/sessionMacrosRun actions matching the endpoint's exact wire contract (session_rules.cpp sessionMacrosToJson/FromJson). PARTIAL unchanged: the full response-viewer / 2 KiB StepResult.responsePreview cap is a separate, still-open gap."
       },
       "gap": "Recording and a visual macro editor are both done -- POST /api/chain/record turns selected history rows into a replayable macro, and the SESSIONS tab's new Login macros section (name/session host/logged-out condition fields, Record from history, save/edit/delete/run) lets a tester build, name, and run one without hand-writing JSON. Remaining: a full (untruncated) response viewer; StepResult.responsePreview is still capped at 2 KiB (chain_runner.hpp:51).",
