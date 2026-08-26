@@ -3,6 +3,7 @@
 add_executable(inspector_logic_test
     inspector_logic_test.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/inspector_logic.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/transcode.cpp   # smartDecode for value decode-chains
 )
 
 target_link_libraries(inspector_logic_test PRIVATE

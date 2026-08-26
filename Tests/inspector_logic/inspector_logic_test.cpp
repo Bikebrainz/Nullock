@@ -329,6 +329,32 @@ int main(int argc, char **argv) {
         chk("huge body: preview capped", r.value("bodyPreview").toString().size() <= kBodyPreview);
     }
 
+    // ----- inspectRequest: multi-step value decode chains -----
+    {
+        auto paramObj = [](const QJsonArray &a, const QString &name) {
+            for (const QJsonValue &v : a)
+                if (v.toObject().value("name").toString() == name) return v.toObject();
+            return QJsonObject();
+        };
+        // tok = base64("hello"), URL-encoded '=' -> parsePairs url-decodes to
+        // "aGVsbG8=", then smartDecode reveals the base64.
+        const QByteArray raw =
+            "GET /?tok=aGVsbG8%3D&name=alice HTTP/1.1\r\nHost: h\r\n\r\n";
+        const QJsonArray qp = inspectRequest(raw).value("queryParams").toArray();
+        const QJsonObject tok = paramObj(qp, "tok");
+        chk("decode: base64 value revealed", tok.value("decoded").toString() == "hello");
+        chk("decode: chain records base64-decode",
+            tok.value("decodeChain").toArray().contains("base64-decode"));
+        // a plain, non-encoded value must NOT get a (false) decode chain.
+        const QJsonObject name = paramObj(qp, "name");
+        chk("decode: a plain value has no decodeChain", !name.contains("decodeChain"));
+        // cookies decode too (session tokens are often base64/jwt).
+        const QByteArray craw =
+            "GET / HTTP/1.1\r\nHost: h\r\nCookie: sess=aGVsbG8=\r\n\r\n";
+        const QJsonObject sess = paramObj(inspectRequest(craw).value("cookies").toArray(), "sess");
+        chk("decode: cookie base64 value revealed", sess.value("decoded").toString() == "hello");
+    }
+
     std::fprintf(stderr, "inspector_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

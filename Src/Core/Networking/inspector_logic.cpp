@@ -1,5 +1,7 @@
 #include "inspector_logic.hpp"
 
+#include "transcode.hpp"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
@@ -42,6 +44,26 @@ QJsonArray parsePairs(const QString &s, QChar sep = '&', bool formDecode = true)
         else arr.append(nv(urlDecode(part.left(eq), formDecode), urlDecode(part.mid(eq + 1), formDecode)));
     }
     return arr;
+}
+
+// For each {name,value} param, run the bounded recursive Transcode::smartDecode
+// over the value; when it makes progress (e.g. a URL-then-base64-encoded token),
+// attach `decoded` (the final value) and `decodeChain` (the ordered ops) to that
+// param so the Inspector can reveal what an encoded value really is. Params that
+// don't decode are left untouched. Bounded: smartDecode itself caps at 12 steps.
+void attachDecodeChains(QJsonArray &params) {
+    for (int i = 0; i < params.size(); ++i) {
+        QJsonObject o = params[i].toObject();
+        const QString v = o.value(QStringLiteral("value")).toString();
+        if (v.size() < 4) continue;                       // too short to be an encoded value
+        QStringList chain;
+        const Transcode::Result r = Transcode::smartDecode(v, &chain);
+        if (r.ok && !chain.isEmpty()) {
+            o[QStringLiteral("decoded")]     = r.output;
+            o[QStringLiteral("decodeChain")] = QJsonArray::fromStringList(chain);
+            params[i] = o;
+        }
+    }
 }
 
 // A JSON SCALAR rendered as a parameter value. Preserves exact 64-bit integer
@@ -305,7 +327,9 @@ QJsonObject inspectRequest(const QByteArray &raw) {
     out["path"]  = q < 0 ? target : target.left(q);
     const QString query = q < 0 ? QString() : target.mid(q + 1);
     out["query"] = query;
-    out["queryParams"] = parsePairs(query);
+    QJsonArray queryParams = parsePairs(query);
+    attachDecodeChains(queryParams);          // reveal URL/base64/hex/jwt-encoded values
+    out["queryParams"] = queryParams;
 
     // HTTP/2 pseudo-header projection of the request line + authority. Lets the
     // Inspector show the h2 view (:method/:path/:authority/:scheme) of a request
@@ -322,7 +346,9 @@ QJsonObject inspectRequest(const QByteArray &raw) {
 
     // Cookies from the Cookie header. RFC 6265 cookie values are opaque octets --
     // '+' is literal (do NOT form-decode it to a space, which corrupts base64).
-    out["cookies"] = parsePairs(headerValue(p.headers, "Cookie"), ';', /*formDecode=*/false);
+    QJsonArray cookies = parsePairs(headerValue(p.headers, "Cookie"), ';', /*formDecode=*/false);
+    attachDecodeChains(cookies);              // session tokens are often base64/jwt
+    out["cookies"] = cookies;
 
     const QString ct = headerValue(p.headers, "Content-Type");
     out["contentType"] = ct;
@@ -376,6 +402,7 @@ QJsonObject inspectRequest(const QByteArray &raw) {
         bodyKind = "other";
     }
     out["bodyKind"] = bodyKind;
+    attachDecodeChains(bodyParams);           // form/json body values may be encoded too
     out["bodyParams"] = bodyParams;
 
     QJsonArray jwts;

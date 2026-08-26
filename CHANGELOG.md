@@ -92,6 +92,13 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Inspector: server-side value decode chains.** `inspectRequest` now runs the
+  bounded recursive `Transcode::smartDecode` over each query/cookie/body-param
+  value and, when it makes progress, attaches `decoded` + `decodeChain` (the
+  ordered ops) to that param &mdash; covering url/base64/html **and** hex/jwt. So
+  a CLI/report/API consumer of `/api/inspect` sees what an encoded token really
+  is, not only the ui-v2 client detector (which covers url/base64/html). A plain
+  value gets no chain. Mutation-proven.
 - **Inspector: HTTP/2 pseudo-header projection.** `inspectRequest` now emits a
   `pseudoHeaders` array (`:method`, `:path`, `:authority` from the Host header,
   `:scheme` defaulting to `https`) so the Inspector can show the h2 view of any
