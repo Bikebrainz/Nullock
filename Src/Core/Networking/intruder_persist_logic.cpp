@@ -112,6 +112,12 @@ QJsonObject toJson(const SavedRun &run) {
         { "concurrency", c.concurrency },
         { "throttleMs",  c.throttleMs },
         { "retries",     c.retries },
+        { "globalEncodeChars",  c.globalEncodeChars },
+        { "recursiveGrep",      c.recursiveGrep },
+        { "recursiveGrepSeed",  c.recursiveGrepSeed },
+        { "recursiveGrepCount", c.recursiveGrepCount },
+        { "followPolicy",       c.followPolicy },
+        { "followCookies",      c.followCookies },
     };
 
     QJsonArray rows;
@@ -154,6 +160,12 @@ SavedRun fromJson(const QJsonObject &obj) {
     c.concurrency = config.value("concurrency").toInt(10);
     c.throttleMs  = config.value("throttleMs").toInt(0);
     c.retries     = config.value("retries").toInt(0);
+    c.globalEncodeChars  = config.value("globalEncodeChars").toString();
+    c.recursiveGrep      = config.value("recursiveGrep").toBool(false);
+    c.recursiveGrepSeed  = config.value("recursiveGrepSeed").toString();
+    c.recursiveGrepCount = config.value("recursiveGrepCount").toInt(10);
+    c.followPolicy       = config.value("followPolicy").toInt(0);
+    c.followCookies      = config.value("followCookies").toBool(true);
 
     for (const QJsonValue &v : obj.value("rows").toArray())
         run.rows.append(rowFromJson(v.toObject()));

@@ -11,6 +11,14 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Intruder save/resume dropped request-shaping config.** `saveRun()`/`loadRun()`
+  round-tripped through `RunConfig`, which omitted `globalEncodeChars`
+  ("URL-encode these characters"), the recursive-grep settings
+  (`recursiveGrep`/`Seed`/`Count`) and the redirect policy
+  (`followPolicy`/`followCookies`) — so a reloaded attack silently reset those to
+  defaults and fired **materially different requests** than the one that was
+  saved (no URL-encode safety net, redirect-follow off, recursive-grep off). All
+  six fields now round-trip; mutation-proven in `intruder_persist_logic_test`.
 - **Extension utils `htmlDecode` truncated supplementary-plane entities.** A
   numeric HTML entity naming a code point above U+FFFF (e.g. `&#128512;` 😀) was
   assigned into a 16-bit `QChar`, silently truncating U+1F600 to a wrong BMP

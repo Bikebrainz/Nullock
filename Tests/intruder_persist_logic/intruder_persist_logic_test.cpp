@@ -35,6 +35,12 @@ bool sameConfig(const RunConfig &a, const RunConfig &b) {
     if (a.grepExtract.end   != b.grepExtract.end)   return false;
     if (a.concurrency != b.concurrency || a.throttleMs != b.throttleMs) return false;
     if (a.retries != b.retries) return false;
+    // Request-shaping fields (their omission was the persistence bug).
+    if (a.globalEncodeChars != b.globalEncodeChars) return false;
+    if (a.recursiveGrep != b.recursiveGrep) return false;
+    if (a.recursiveGrepSeed != b.recursiveGrepSeed) return false;
+    if (a.recursiveGrepCount != b.recursiveGrepCount) return false;
+    if (a.followPolicy != b.followPolicy || a.followCookies != b.followCookies) return false;
     if (a.rules.size() != b.rules.size()) return false;
     for (int i = 0; i < a.rules.size(); ++i)
         if (a.rules[i].op != b.rules[i].op || a.rules[i].arg != b.rules[i].arg) return false;
@@ -76,6 +82,13 @@ int main(int argc, char **argv) {
     run.config.concurrency = 12;
     run.config.throttleMs = 250;
     run.config.retries = 3;
+    // Request-shaping fields, set to NON-default values so their round-trip is exercised.
+    run.config.globalEncodeChars = QStringLiteral("&=#");
+    run.config.recursiveGrep = true;
+    run.config.recursiveGrepSeed = QStringLiteral("seed-token-0");
+    run.config.recursiveGrepCount = 25;
+    run.config.followPolicy = 3;      // FollowAlways (non-default)
+    run.config.followCookies = false; // non-default
 
     ResultRow r1;
     r1.id = 1;

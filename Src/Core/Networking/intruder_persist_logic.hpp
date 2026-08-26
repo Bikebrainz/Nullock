@@ -60,6 +60,14 @@ struct RunConfig {
     int         concurrency = 10;
     int         throttleMs = 0;
     int         retries = 0;
+    // Fields that materially change the bytes each request sends -- omitting them
+    // meant a reloaded/resumed attack fired DIFFERENT requests than the one saved.
+    QString     globalEncodeChars;                   // Burp "URL-encode these characters" (empty=off)
+    bool        recursiveGrep = false;               // recursive-grep chained-payload mode
+    QString     recursiveGrepSeed;                   // first request's payload
+    int         recursiveGrepCount = 10;             // number of chained requests
+    int         followPolicy = 0;                    // RedirectLogic::FollowNever default
+    bool        followCookies = true;                // process cookies in redirections
 };
 
 // A complete saved attack: format version + config + result rows.

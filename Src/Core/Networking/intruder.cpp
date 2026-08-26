@@ -315,6 +315,12 @@ QByteArray Intruder::saveRun() const {
     c.concurrency     = m_maxConcurrency;
     c.throttleMs      = m_throttleMs;
     c.retries         = m_maxRetries;
+    c.globalEncodeChars  = m_globalEncodeChars;
+    c.recursiveGrep      = m_recursiveGrep;
+    c.recursiveGrepSeed  = m_recursiveGrepSeed;
+    c.recursiveGrepCount = m_recursiveGrepCount;
+    c.followPolicy       = m_followPolicy;
+    c.followCookies      = m_followCookies;
 
     for (const IntruderAttack *a : m_attacks) {
         IntruderPersist::ResultRow r;
@@ -357,6 +363,12 @@ bool Intruder::loadRun(const QByteArray &bytes) {
     setMaxConcurrency(c.concurrency);
     setThrottleMs(c.throttleMs);
     setMaxRetries(c.retries);
+    m_globalEncodeChars  = c.globalEncodeChars;
+    m_recursiveGrep      = c.recursiveGrep;
+    m_recursiveGrepSeed  = c.recursiveGrepSeed;
+    m_recursiveGrepCount = c.recursiveGrepCount;
+    m_followPolicy       = c.followPolicy;
+    m_followCookies      = c.followCookies;
 
     // Rebuild the result rows.
     beginResetModel();
