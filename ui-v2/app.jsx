@@ -1125,6 +1125,46 @@ function SettingsTab() {
               }}
             />
           </label>
+          <Btn label="Export config" title="Download a portable JSON document: scope, match-and-replace rules, session-handling rules, intercept rules"
+               onClick={async () => {
+                 try {
+                   const doc = await NL.actions.configExport();
+                   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+                   const a = document.createElement("a");
+                   a.href = URL.createObjectURL(blob);
+                   a.download = "nullock-config.json";
+                   document.body.appendChild(a); a.click(); a.remove();
+                 } catch (err) {
+                   alert("Config export failed: " + err);
+                 }
+               }} />
+          <label style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            background: "transparent", color: "var(--accent)",
+            border: "1px solid var(--accent)", padding: "4px 10px",
+            fontSize: "11px", fontFamily: "var(--ff-mono)", cursor: "pointer",
+            letterSpacing: "0.05em", textTransform: "uppercase",
+          }}>
+            Import config
+            <input
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                try {
+                  const doc = JSON.parse(await f.text());
+                  const res = await NL.actions.configImport(doc);
+                  if (res && res.ok) alert("Imported: " + (res.applied || []).join(", "));
+                  else alert("Config import failed: " + (res && res.error ? res.error : "unknown error"));
+                } catch (err) {
+                  alert("Config import failed: " + err);
+                }
+                e.target.value = "";
+              }}
+            />
+          </label>
           <Btn label="Clear history" onClick={() => NL.actions.clearHistory()} danger />
         </div>
       </Card>
@@ -5430,6 +5470,7 @@ function CollaboratorTab() {
   const [err, setErr]           = React.useState("");
   const [copied, setCopied]     = React.useState("");
   const sinceRef = React.useRef(0);
+  const dnsSinceRef = React.useRef(0);
 
   // Blast: the multi-vector SSRF/XXE/blind-RCE/Log4Shell spray. Distinct from
   // mint-and-watch — this fires a battery of OOB probes at one target in one
@@ -5447,15 +5488,25 @@ function CollaboratorTab() {
   const poll = React.useCallback(async () => {
     try {
       const r = await NL.actions.oastPoll(sinceRef.current);
-      if (!r) return;
-      setRunning(!!r.running);
-      setBaseHost(r.baseHost || "");
-      setPort(r.port || 0);
-      if (r.hits && r.hits.length) {
-        sinceRef.current = r.hits.reduce((m, h) => Math.max(m, h.id), sinceRef.current);
-        setHits(prev => [...r.hits.slice().reverse(), ...prev].slice(0, 500));
+      if (r) {
+        setRunning(!!r.running);
+        setBaseHost(r.baseHost || "");
+        setPort(r.port || 0);
+        if (r.hits && r.hits.length) {
+          sinceRef.current = r.hits.reduce((m, h) => Math.max(m, h.id), sinceRef.current);
+          const tagged = r.hits.map(h => ({ ...h, kind: "http" }));
+          setHits(prev => [...tagged.slice().reverse(), ...prev].slice(0, 500));
+        }
       }
     } catch (e) { /* transient network blip; next tick retries */ }
+    try {
+      const d = await NL.actions.oastDnsPoll(dnsSinceRef.current);
+      if (d && d.hits && d.hits.length) {
+        dnsSinceRef.current = d.hits.reduce((m, h) => Math.max(m, h.id), dnsSinceRef.current);
+        const tagged = d.hits.map(h => ({ ...h, kind: "dns" }));
+        setHits(prev => [...tagged.slice().reverse(), ...prev].slice(0, 500));
+      }
+    } catch (e) { /* DNS sink may be absent/disabled; HTTP hits still work */ }
   }, []);
 
   React.useEffect(() => {
@@ -5605,25 +5656,28 @@ function CollaboratorTab() {
         )}
       </Section>
 
-      <Section title={"Interactions (" + hits.length + ")"} hint="HTTP callbacks only — DNS-only interactions aren't retained by the DNS sink yet, so pure-DNS confirmations stay invisible here">
+      <Section title={"Interactions (" + hits.length + ")"} hint="HTTP + DNS callbacks merged — a DNS-only hit (e.g. Log4Shell/blind-SSRF where only name resolution escapes an egress firewall) shows type DNS with the queried name in place of a path">
         <div style={{ display: "flex", gap: 12, minHeight: 0, flex: 1 }}>
           <div style={{ flex: "1 1 55%", overflow: "auto", maxHeight: 320 }}>
             {hits.length === 0
               ? <div style={{ color: "var(--dim)", fontSize: "12px" }}>no interactions yet</div>
               : (
                 <table style={{ borderCollapse: "collapse", fontSize: "12px", fontFamily: "var(--ff-mono)", width: "100%" }}>
-                  <thead><tr>{["time", "method", "path", "source", "bytes"].map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
+                  <thead><tr>{["time", "type", "path / qname", "source", "bytes"].map((c, i) => <th key={i} style={th}>{c}</th>)}</tr></thead>
                   <tbody>
-                    {hits.map((h) => (
-                      <tr key={h.id} onClick={() => setSelected(h)}
-                          style={{ cursor: "pointer", background: selected && selected.id === h.id ? "var(--bg-deep)" : "transparent" }}>
-                        <td style={td}>{fmtTime(h.atMs)}</td>
-                        <td style={td}>{h.method}</td>
-                        <td style={{ ...td, wordBreak: "break-all" }}>{h.path}</td>
-                        <td style={td}>{h.sourceIp}</td>
-                        <td style={td}>{h.bodyBytes}</td>
-                      </tr>
-                    ))}
+                    {hits.map((h) => {
+                      const key = h.kind + h.id;
+                      return (
+                        <tr key={key} onClick={() => setSelected(h)}
+                            style={{ cursor: "pointer", background: selected && selected.kind === h.kind && selected.id === h.id ? "var(--bg-deep)" : "transparent" }}>
+                          <td style={td}>{fmtTime(h.atMs)}</td>
+                          <td style={td}>{h.kind === "dns" ? "DNS" : h.method}</td>
+                          <td style={{ ...td, wordBreak: "break-all" }}>{h.kind === "dns" ? h.qname : h.path}</td>
+                          <td style={td}>{h.sourceIp}</td>
+                          <td style={td}>{h.kind === "dns" ? "—" : h.bodyBytes}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -5636,11 +5690,21 @@ function CollaboratorTab() {
                   <div><span style={{ color: "var(--dim)" }}>token</span> {selected.token}</div>
                   <div><span style={{ color: "var(--dim)" }}>time</span> {fmtTime(selected.atMs)}</div>
                   <div><span style={{ color: "var(--dim)" }}>source ip</span> {selected.sourceIp}</div>
-                  <div><span style={{ color: "var(--dim)" }}>method</span> {selected.method}</div>
-                  <div><span style={{ color: "var(--dim)" }}>host header</span> {selected.hostHeader}</div>
-                  <div style={{ wordBreak: "break-all" }}><span style={{ color: "var(--dim)" }}>path</span> {selected.path}</div>
-                  <div><span style={{ color: "var(--dim)" }}>user agent</span> {selected.userAgent}</div>
-                  <div><span style={{ color: "var(--dim)" }}>body bytes</span> {selected.bodyBytes}</div>
+                  {selected.kind === "dns" ? (
+                    <React.Fragment>
+                      <div><span style={{ color: "var(--dim)" }}>type</span> DNS</div>
+                      <div style={{ wordBreak: "break-all" }}><span style={{ color: "var(--dim)" }}>qname</span> {selected.qname}</div>
+                      <div><span style={{ color: "var(--dim)" }}>qtype</span> {selected.qtype}</div>
+                    </React.Fragment>
+                  ) : (
+                    <React.Fragment>
+                      <div><span style={{ color: "var(--dim)" }}>method</span> {selected.method}</div>
+                      <div><span style={{ color: "var(--dim)" }}>host header</span> {selected.hostHeader}</div>
+                      <div style={{ wordBreak: "break-all" }}><span style={{ color: "var(--dim)" }}>path</span> {selected.path}</div>
+                      <div><span style={{ color: "var(--dim)" }}>user agent</span> {selected.userAgent}</div>
+                      <div><span style={{ color: "var(--dim)" }}>body bytes</span> {selected.bodyBytes}</div>
+                    </React.Fragment>
+                  )}
                   {selected.bodyPreview && (
                     <div>
                       <div style={{ color: "var(--dim)", marginTop: 4 }}>body preview</div>
@@ -6011,6 +6075,35 @@ function PayloadsTab() {
   const [err, setErr]         = React.useState("");
   const [copied, setCopied]   = React.useState(-1);
 
+  // AI payload generator (Ollama-backed; falls back to a deterministic seed
+  // list when Ollama is unreachable). See NL.actions.aiGeneratePayloads.
+  const [aiCount, setAiCount]     = React.useState(10);
+  const [aiData, setAiData]       = React.useState(null);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiErr, setAiErr]         = React.useState("");
+  const [aiCopied, setAiCopied]   = React.useState(-1);
+
+  const aiCopy = (text, i) => {
+    try {
+      navigator.clipboard?.writeText(text);
+      setAiCopied(i);
+      setTimeout(() => setAiCopied(-1), 1000);
+    } catch (e) {}
+  };
+
+  const aiGenerate = async () => {
+    setAiLoading(true);
+    setAiErr("");
+    try {
+      const kind = technique === "all" ? "xss" : technique;
+      const r = await NL.actions.aiGeneratePayloads(kind, aiCount);
+      setAiData(r);
+    } catch (e) {
+      setAiErr(String(e && e.message ? e.message : e));
+    }
+    setAiLoading(false);
+  };
+
   const copy = (text, i) => {
     try {
       navigator.clipboard?.writeText(text);
@@ -6084,6 +6177,63 @@ function PayloadsTab() {
           <span>OAST: {data.oastDomain
             ? <span style={{ color: "var(--text)" }}>{data.oastDomain}</span>
             : <span style={{ color: "var(--err)" }}>offline — OOB payloads omitted</span>}</span>
+        </div>
+      ) : null}
+
+      <div style={{
+        background: "var(--pane)", border: "1px solid var(--line)",
+        padding: 12, borderRadius: 4, display: "flex", gap: 8,
+        alignItems: "center", flexWrap: "wrap",
+      }}>
+        <span style={{
+          fontSize: "11px", color: "var(--accent)", textTransform: "uppercase",
+          letterSpacing: "0.06em", fontWeight: 600,
+        }}>AI generate</span>
+        <span style={{ color: "var(--dim)", fontSize: "10.5px" }}>
+          local Ollama mutates the {technique === "all" ? "xss" : technique} seed set into novel variants
+        </span>
+        <input type="number" min={1} max={50} value={aiCount}
+          onChange={e => setAiCount(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 10)))}
+          style={{
+            width: 48, background: "var(--bg-deep)", color: "var(--text)",
+            border: "1px solid var(--line)", padding: "3px 6px", fontSize: "11px",
+            fontFamily: "var(--ff-mono)",
+          }} />
+        <Btn label={aiLoading ? "generating…" : "ai generate"} disabled={aiLoading}
+             onClick={aiGenerate} primary />
+        {aiData ? (
+          <span style={{ color: "var(--dim)", fontSize: "11px" }}>
+            {aiData.fallback ? (
+              <span style={{ color: "var(--err)" }}>ollama unreachable — seed list ({(aiData.payloads || []).length})</span>
+            ) : (
+              (aiData.payloads || []).length + " ai payloads · " + aiData.model)}
+          </span>
+        ) : null}
+        {aiErr ? <span style={{ color: "var(--err)", fontSize: "11px" }}>{aiErr}</span> : null}
+      </div>
+
+      {aiData && (aiData.payloads || []).length ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6,
+                      maxHeight: 160, overflow: "auto" }}>
+          {aiData.payloads.map((p, i) => (
+            <div key={i} style={{
+              background: "var(--pane)", border: "1px solid var(--line)",
+              borderRadius: 4, padding: "6px 8px", display: "flex",
+              alignItems: "center", gap: 8,
+            }}>
+              <span style={{
+                fontSize: "9px", color: "var(--bg)", background: "var(--accent)",
+                borderRadius: 3, padding: "1px 5px", textTransform: "uppercase",
+              }}>ai</span>
+              <pre style={{
+                margin: 0, flex: 1, minWidth: 0, overflow: "auto",
+                fontSize: "11.5px", fontFamily: "var(--ff-mono)", color: "var(--text)",
+                whiteSpace: "pre-wrap", wordBreak: "break-all",
+              }}>{p}</pre>
+              <Btn label={aiCopied === i ? "copied" : "copy"}
+                   onClick={() => aiCopy(p, i)} />
+            </div>
+          ))}
         </div>
       ) : null}
 

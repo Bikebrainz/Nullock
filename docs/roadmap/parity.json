@@ -3299,9 +3299,14 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Import/export of a portable JSON config now exists, so a tuned setup can be shared with a teammate or checked into a repo. Still partial only because there is no named/saved config-preset LIBRARY (Burp's 'configuration library' where you keep a shelf of named presets and switch between them) \u2014 one document round-trips at a time.",
+      "gap": "No named/saved config-preset LIBRARY (Burp's \"configuration library\" where you keep a shelf of named presets and switch between them) -- one document round-trips at a time. (Corrected here: this item's prior text implied the feature was fully reachable, but ui-v2 had zero references to /api/config/export or /api/config/import -- the only path to the endpoints was a raw HTTP call. That gap is now closed; the preset-library gap is not.)",
       "why": "Implemented. GET /api/config/export + POST /api/config/import move a versioned {format:'nullock-config',version,sections} document carrying scope (in/out/notes/advanced), match&replace rules, session-handling rules and intercept rules. Import reuses the EXACT setters behind /api/scope, /api/rules, /api/session-rules and /api/intercept/rules, so a re-imported config and the live editors are one code path; the envelope refuses a newer-major-version document and a non-Nullock document. Partial only because the named-preset config LIBRARY is not built yet.",
-      "evidence": "control_server.cpp:3399 `/api/config/export` (aggregates 4 sections via ControlLogic::buildConfigDocument) + :3430 `/api/config/import` (ControlLogic::validateConfigDocument then per-section apply reusing setInScope/setOutOfScope/setNotes/setAdvancedScope/setRules/sessionRules->setRules/intercept->setInterceptRules). Envelope logic pure + mutation-proven in Tests/control_logic/control_logic_test.cpp (buildConfigDocument/validateConfigDocument/configSection/configSectionNames; M1 version-gate + M2 format-gate proven). Live e2e: export \u2192 4 sections {scope,matchReplaceRules,sessionRules,interceptRules}; import scope{in,out,notes} \u2192 round-trips exactly; v999 refused; wrong-format refused."
+      "evidence": "control_server.cpp:3399 `/api/config/export` (aggregates 4 sections via ControlLogic::buildConfigDocument) + :3430 `/api/config/import` (ControlLogic::validateConfigDocument then per-section apply reusing setInScope/setOutOfScope/setNotes/setAdvancedScope/setRules/sessionRules->setRules/intercept->setInterceptRules). Envelope logic pure + mutation-proven in Tests/control_logic/control_logic_test.cpp (buildConfigDocument/validateConfigDocument/configSection/configSectionNames; M1 version-gate + M2 format-gate proven). Live e2e: export \u2192 4 sections {scope,matchReplaceRules,sessionRules,interceptRules}; import scope{in,out,notes} \u2192 round-trips exactly; v999 refused; wrong-format refused.",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "PENDING",
+        "note": "Register-accuracy correction + UI closure: a fresh grep found /api/config/export and /api/config/import had NO ui-v2 caller at all, despite this item being marked partial with a gap description that only mentioned the missing preset library -- the missing GUI path went unrecorded. Added Settings' Project card: \"Export config\" (downloads the versioned JSON document as a Blob) and \"Import config\" (file picker, POSTs the parsed document, alerts the applied section list or the validation error), same pattern as the existing Export/Import HAR controls. NL.actions.configExport/configImport in real-data.js. Preset-library gap unchanged."
+      }
     },
     {
       "area": "platform",
@@ -5507,14 +5512,14 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Cannot scope by protocol, port, IP range, or path. On a shared host, an app behind a path prefix, or a URL-subtree engagement, scope is unusable -- and because it gates every active tool (item 15), you either over-permit the whole host or block it entirely.",
+      "gap": "Editor UI now exists (SCOPE tab's \"Advanced scope control\" section: per-rule enabled/include-exclude/protocol/host-regex/port-range/file-regex, add/remove, whole-list save). Remaining: the ~10 tool gates besides the proxy hot path (Repeater, Intruder, chain runner, active-test callers, etc.) still check host-only scope rather than the full-URL decision, so an advanced rule scoped by port/path/protocol is enforced in the proxy but not yet in those tools.",
       "why": "Confirmed, and the strongest single piece of evidence is one the first pass found and I re-verified: the one caller that HAS scheme and port explicitly discards them, with a comment saying why.",
       "evidence": "There is no rule struct -- project_store.hpp:17-18 `QStringList inScope; QStringList outOfScope;`. The matcher's signature is the proof: proxy_server.cpp:1329 `bool ProxyServer::isInScope(const QString &host) const {` -- scheme and port are not parameters. Src/App/app.cpp:935-940 `crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) { // The project scope",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "9ebecdb",
-        "note": "Built (backend + API): advanced include/exclude scope RULES over protocol / host-regex / port-range / file-regex, COMPOSED on top of the existing host-glob scope (never replacing it -- with no enabled advanced rule the decision is byte-identical, and a lone exclude can't widen scope to allow-all; deny wins across both layers). The proxy hot path matches the FULL URL (ProxyServer::isUrlInScope at the request/M&R/cookie sites), so a path/port exclude actually filters; host-only callers fail closed. ReDoS-safe (user regex validated + size-capped + matched outside m_scopeMutex; port is a numeric range not a regex). Pure scope_logic unit-tested (42 cases) + mutation-proven (deny-wins, compose-not-replace). Rules persist in project.json (advancedScope) + /api/scope/advanced + snapshot scope.advanced. Verified e2e (an exclude on /admin filters it in the proxy while /home passes; persists across restart; OFF unchanged). PARTIAL: the advanced-scope editor UI (ui-v2) + upgrading the ~10 tool gates from host-only to full-URL blocksUrl (safe fail-closed today) are the follow-ons."
+        "date": "2026-08-26",
+        "commit": "PENDING",
+        "note": "Follow-up to 9ebecdb: built the ui-v2 editor this item's reconciled note called out as the remaining UI piece. SCOPE tab gains an \"Advanced scope control\" section -- a per-rule row (enabled checkbox, include/exclude select, protocol select, host-regex/port-from/port-to/file-regex inputs, remove) plus +RULE/SAVE, whole-list-replacing via NL.actions.scopeSetAdvanced -> POST /api/scope/advanced, synced from the live snapshot's scope.advanced. Field names verified against scope_logic.cpp's rulesFromJson/rulesToJson (enabled/include/protocol/host/portFrom/portTo/file) so the editor cannot round-trip something the backend doesn't accept. STILL PARTIAL: the ~10 non-proxy tool gates (item's own prior note) remain host-only."
       }
     },
     {
@@ -5662,6 +5667,22 @@
       "gap": "Real, but the same flat host list and host-glob scope as ui-v2 -- no tree, no per-node issues, no context menu, no annotations. The misleading part is the repo layout, not the capability: the four blank Components files read as an unfinished Target UI while the finished one lives in app.qml. Also carries the relative-path load bug for installed builds.",
       "why": "UPGRADED, and this is the first pass's largest error. It read the four 8-line placeholder .qml files and concluded the Qt Target UI is blank. Those files are dead scaffolding -- registered in the QML module but never instantiated. The QML the app actually LOADS is Src/App/app.qml, which contains a working Site Map pane bound to the siteMap model and a complete Scope tab with both lists and add/rem",
       "evidence": "The loaded file: Src/App/app.cpp:1159-1161 `// run from project root so this relative path resolves to Nullock/Src/App/app.qml` / `const QUrl url(QStringLiteral(\"./Src/App/app.qml\")); engine.load(url);`. Working site map, app.qml:159-193: `HeaderCell { text: \"Site Map (\" + siteMap.rowCount() + \")\"; ... }` then `ListView { id: siteMapList; ... model: siteMap; ... delegate: Rectangle { ... MouseArea"
+    },
+    {
+      "area": "platform",
+      "feature": "AI payload generator (local Ollama mutates a seed payload set into novel-but-shaped variants on demand) -- Burp has no equivalent, an extension is required for any AI payload assist",
+      "state": "present",
+      "impact": "medium",
+      "effort": "hours",
+      "gap": "None -- the PAYLOADS tab's AI GENERATE control (count field + button) calls the endpoint and renders the returned payloads (or the seed-list fallback with a clear \"ollama unreachable\" badge) alongside the existing static Payload Forge list.",
+      "why": "The backend endpoint (control_server.cpp /api/payloads/generate) existed but had no ui-v2 caller anywhere -- confirmed by grep across ui-v2/*.jsx and real-data.js before this change. Closed by wiring it: NL.actions.aiGeneratePayloads(kind, count) in real-data.js, and an AI generate section in PayloadsTab (app.jsx) that reuses the technique already selected for the static forge, shows the model name on success, and distinguishes the deterministic fallback (ok:false, fallback:true) from a genuine model response.",
+      "evidence": "ui-v2/real-data.js aiGeneratePayloads() -> POST /api/payloads/generate {kind,count}; ui-v2/app.jsx PayloadsTab's aiGenerate()/aiData state + render block reading aiData.payloads/model/fallback, matching control_server.cpp's response shape verbatim ({ok,model,payloads} or {ok:false,fallback:true,model,payloads,error}).",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-26",
+        "commit": "PENDING",
+        "note": "Wired the previously-orphaned /api/payloads/generate (AI payload mutation via local Ollama) into the PAYLOADS tab: a count field + AI GENERATE button, rendering the model's variants or the deterministic seed-list fallback with a distinct badge."
+      }
     }
   ]
 }

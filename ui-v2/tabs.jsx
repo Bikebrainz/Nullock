@@ -98,6 +98,116 @@ function ScopeColumn({ label, colorVar, list, kind, dispatch, includeSubdomains 
   );
 }
 
+// Advanced scope rules editor (Burp-parity "Use advanced scope control"):
+// include/exclude rules over protocol/host-regex/port-range/file-regex,
+// composed on top of the simple glob scope above -- see scope_logic.hpp.
+// Wire shape per rule: { enabled, include, protocol(0=any/1=http/2=https),
+// host, portFrom, portTo, file }. Whole-list replace via
+// NL.actions.scopeSetAdvanced; the proxy re-applies live on every save.
+const ADV_PROTOCOLS = [{ v: 0, label: "ANY" }, { v: 1, label: "HTTP" }, { v: 2, label: "HTTPS" }];
+
+function blankAdvRule() {
+  return { enabled: true, include: true, protocol: 0, host: "", portFrom: 0, portTo: 0, file: "" };
+}
+
+function AdvancedScopeSection({ advanced }) {
+  const [rules, setRules] = React.useState(() => (advanced || []).map(r => ({ ...blankAdvRule(), ...r })));
+  const [dirty, setDirty] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  // Stay in sync with the snapshot except while there are unsaved local edits.
+  React.useEffect(() => {
+    if (!dirty) setRules((advanced || []).map(r => ({ ...blankAdvRule(), ...r })));
+  }, [advanced, dirty]);
+
+  const update = (i, patch) => {
+    setRules(rs => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setDirty(true);
+  };
+  const removeRule = i => { setRules(rs => rs.filter((_, idx) => idx !== i)); setDirty(true); };
+  const addRule = () => { setRules(rs => [...rs, blankAdvRule()]); setDirty(true); };
+
+  const save = async () => {
+    setSaving(true);
+    setErr("");
+    try {
+      const r = await NL.actions.scopeSetAdvanced(rules);
+      if (r && r.rules) setRules(r.rules.map(x => ({ ...blankAdvRule(), ...x })));
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1400);
+    } catch (e) {
+      setErr(String(e && e.message ? e.message : e));
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ padding: "8px 10px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="ph-corner">▸</span>
+        <span style={{ fontSize: "var(--fz-xs)", letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)" }}>
+          Advanced scope control
+        </span>
+        <span style={{ color: "var(--dim)", fontSize: "var(--fz-xs)" }}>
+          composes on top of the glob scope above -- protocol / host-regex / port-range / file-regex, deny wins
+        </span>
+        <span style={{ flex: 1 }} />
+        {dirty && <span style={{ fontSize: "var(--fz-xs)", color: "var(--accent)" }}>unsaved</span>}
+        {err && <span style={{ fontSize: "var(--fz-xs)", color: "var(--err)" }}>{err}</span>}
+        <button className="btn" onClick={addRule}>+ RULE</button>
+        <button className="btn" disabled={!dirty || saving} onClick={save}>
+          {saving ? "SAVING…" : saved ? "✓ SAVED" : "SAVE"}
+        </button>
+      </div>
+      {rules.length === 0 ? (
+        <div style={{ padding: 10, color: "var(--dim)", fontSize: "var(--fz-sm)" }}>
+          no advanced rules -- scope is governed by the glob lists above
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {rules.map((r, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+              border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px",
+              background: "var(--pane)",
+            }}>
+              <input type="checkbox" checked={r.enabled} title="enabled"
+                onChange={e => update(i, { enabled: e.target.checked })} />
+              <select value={r.include ? "1" : "0"}
+                onChange={e => update(i, { include: e.target.value === "1" })}
+                style={{ background: "var(--bg-deep)", color: r.include ? "var(--ok)" : "var(--err)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)" }}>
+                <option value="1">INCLUDE</option>
+                <option value="0">EXCLUDE</option>
+              </select>
+              <select value={r.protocol}
+                onChange={e => update(i, { protocol: parseInt(e.target.value, 10) })}
+                style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)" }}>
+                {ADV_PROTOCOLS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+              </select>
+              <input placeholder="host regex (blank = any)" value={r.host}
+                onChange={e => update(i, { host: e.target.value })}
+                style={{ flex: "1 1 140px", minWidth: 100, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)", padding: "3px 5px" }} />
+              <input placeholder="port from" type="number" min={0} value={r.portFrom}
+                onChange={e => update(i, { portFrom: parseInt(e.target.value, 10) || 0 })}
+                style={{ width: 64, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)", padding: "3px 5px" }} />
+              <input placeholder="port to" type="number" min={0} value={r.portTo}
+                onChange={e => update(i, { portTo: parseInt(e.target.value, 10) || 0 })}
+                style={{ width: 64, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)", padding: "3px 5px" }} />
+              <input placeholder="file/path regex (blank = any)" value={r.file}
+                onChange={e => update(i, { file: e.target.value })}
+                style={{ flex: "1 1 160px", minWidth: 110, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", fontSize: "var(--fz-xs)", padding: "3px 5px" }} />
+              <span className="rm" title="remove rule" onClick={() => removeRule(i)}>×</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScopeTab({ scope, dispatch, bootInfo, logOutOfScope, onCopyCa }) {
   const [includeSubdomains, setIncludeSubdomains] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
@@ -120,7 +230,7 @@ function ScopeTab({ scope, dispatch, bootInfo, logOutOfScope, onCopyCa }) {
   };
 
   return (
-    <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
+    <div className="tab-body" style={{ gridTemplateRows: "auto auto auto minmax(120px, 1fr) auto" }}>
       <div className="ca-card">
         <div className="ca-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -189,6 +299,8 @@ function ScopeTab({ scope, dispatch, bootInfo, logOutOfScope, onCopyCa }) {
         <ScopeColumn label="IN-SCOPE GLOBS" colorVar="--ok" list={scope.in} kind="in" dispatch={dispatch} includeSubdomains={includeSubdomains} />
         <ScopeColumn label="OUT-OF-SCOPE GLOBS" colorVar="--err" list={scope.out} kind="out" dispatch={dispatch} includeSubdomains={includeSubdomains} />
       </div>
+
+      <AdvancedScopeSection advanced={scope.advanced} />
     </div>
   );
 }

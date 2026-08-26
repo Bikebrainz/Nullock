@@ -193,3 +193,25 @@ findings list, idempotent on re-post.)
 card, next to the existing "Reload" button -- copies the extensions shipped with the repo into
 the user's extensions dir and reloads, removing the "go find the file in github and copy it
 yourself" onboarding step.)
+
+A 2026-08-26 pass re-grepped every `path == "/api/..."` literal in control_server.cpp (203 found,
+up from the 173 in this file's original census -- confirming, as the chain/record precedent above
+already noted, that new endpoints keep landing without an entry here) against ui-v2/*.jsx +
+real-data.js. Four were genuinely unwired and NOT among the three intentional orphans this file
+already tracked: `/api/payloads/generate` (an AI payload-mutation endpoint via local Ollama, no
+UI caller at all -- now wired into the PAYLOADS tab as an "AI generate" section alongside the
+existing static Payload Forge list), `/api/scope/advanced` (the advanced scope-control backend
+parity.json already flagged as carrying an "editor UI" follow-on -- now wired as a new "Advanced
+scope control" section on the SCOPE tab: per-rule enabled/include-exclude/protocol/host-regex/
+port-range/file-regex rows, add/remove, whole-list save), and `/api/config/export` +
+`/api/config/import` (the portable config-document endpoints parity.json's own gap text never
+mentioned lacked a UI at all -- now wired as "Export config" / "Import config" controls in
+Settings' Project card, mirroring the existing Export/Import HAR pattern). Also corrected in the
+same pass: the COLLABORATOR tab's Interactions section carried a hint claiming "DNS-only
+interactions aren't retained by the DNS sink yet" -- false; `/api/oast/dns/poll` has existed and
+retained DNS-sink hits all along, just never polled from ui-v2. The tab's poll loop now also
+calls `oastDnsPoll` and merges DNS hits (tagged `kind:"dns"`, its own id space) into the same
+Interactions table/detail-pane alongside HTTP hits.
+`/api/session-macros` + `/api/session-macros/run` (the named-macro store) remain the one
+confirmed real gap left over from this pass -- parity.json already tracks it accurately ("a
+visual macro editor is the remaining UI follow-on").

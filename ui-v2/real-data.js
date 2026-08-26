@@ -161,6 +161,10 @@
     scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob }); },
     scopeRemoveOut(glob)    { return post("/api/scope/out/remove", { glob }); },
     scopeSetNotes(notes)    { return post("/api/scope/notes",      { notes }); },
+    // Advanced scope rules: whole-list replace of the include/exclude rules
+    // (protocol/host-regex/port-range/file-regex), composed on top of the
+    // simple glob scope above. See scope_logic.hpp for the exact semantics.
+    scopeSetAdvanced(rules) { return post("/api/scope/advanced",   { rules }).then(r => r.json()); },
     repeaterSet(payload)    { return post("/api/repeater/set",     payload); },
     repeaterSend()          { return post("/api/repeater/send"); },
     repeaterClear()         { return post("/api/repeater/clear"); },
@@ -210,6 +214,12 @@
     exportHar(opts)          { return post("/api/har/export", opts || {}).then(r => r.json()); },
     importHarPath(path)     { return post("/api/har/import", { path }).then(r => r.json()); },
     importHar(harObject)    { return post("/api/har/import", { har: harObject }).then(r => r.json()); },
+    // Portable config document (scope/match-replace/session-rules/intercept
+    // rules) a teammate can import or check into a repo. Import reuses the
+    // exact setters behind the live editors, so it's one code path.
+    // See control_server.cpp /api/config/export|import.
+    configExport()          { return fetch("/api/config/export").then(r => r.json()); },
+    configImport(doc)       { return post("/api/config/import", doc).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     // Pre-add a host to the TLS pass-through (blind-tunnel) list, or remove
@@ -304,6 +314,16 @@
     reconStop()                 { return post("/api/recon/stop"); },
     reconClear()                { return post("/api/recon/clear"); },
     forgePayloads(technique)    { return fetch("/api/payloads?technique=" + encodeURIComponent(technique || "all")).then(r => r.json()); },
+    // AI payload generator: asks a local Ollama model to mutate the seed
+    // set into novel-but-shaped variants for the target at hand. Falls
+    // back to a deterministic seed list (ok:false, fallback:true) when
+    // Ollama is unreachable -- see control_server.cpp /api/payloads/generate.
+    aiGeneratePayloads(kind, count, model, ollama) {
+      const body = { kind: kind || "xss", count: count || 10 };
+      if (model)  body.model  = model;
+      if (ollama) body.ollama = ollama;
+      return post("/api/payloads/generate", body).then(r => r.json());
+    },
     transcode(op, input)        { return post("/api/transcode", { op, input }).then(r => r.json()); },
     compareBlobs(mode, a, b)    { return post("/api/compare", { mode, a, b }).then(r => r.json()); },
     processPayload(payload)     { return post("/api/process", { payload }).then(r => r.json()); },
@@ -429,6 +449,10 @@
     // Poll for HTTP callbacks landed since hit id `since` (0 = all). Also
     // carries live server status (running/port/baseHost) in every response.
     oastPoll(since) { return fetch("/api/oast/poll?since=" + encodeURIComponent(since || 0)).then(r => r.json()); },
+    // Poll for DNS-only callbacks (Log4Shell/blind-SSRF/XXE where only name
+    // resolution escapes, e.g. an egress-firewalled LDAP leg). Its own
+    // monotonic id space, separate from the HTTP sink above.
+    oastDnsPoll(since) { return fetch("/api/oast/dns/poll?since=" + encodeURIComponent(since || 0)).then(r => r.json()); },
     // Spray OOB payloads (SSRF param battery + optional XXE/RCE/log4shell)
     // at one target URL; each vector gets its own registered token.
     oastBlast(payload) { return post("/api/oast/blast", payload).then(r => r.json()); },
