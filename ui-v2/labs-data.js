@@ -1132,6 +1132,30 @@
       "Confirm success: log in once (note the issued session id N), then GET /whoami with Cookie: session=<N+1> -- a session you never logged in for, but the server accepts it anyway because it's the next predictable value. Then GET /flag -- solved only once an unissued, merely-predicted session was actually accepted, proving hijack via prediction rather than just observing one token's low entropy."
     ],
     "fix": "Fix: generate session IDs from a CSPRNG (secrets.token_urlsafe(32)); never derive them from a counter, timestamp, or user data."
+  },
+  {
+    "slug": "51-jwt-alg-confusion",
+    "num": "51",
+    "title": "JWT algorithm confusion (RS256 -> HS256)",
+    "vuln": "RS256 token forged as HS256 using the pubkey PEM",
+    "port": "5051",
+    "category": "Authentication",
+    "difficulty": "Hard",
+    "desc": "The API signs tokens with RS256 and publishes the RSA PUBLIC key at /pubkey, as any real RS256 API must. The verifier trusts the token's own `alg` header to pick a path: RS256 checks against the public key as normal, but an HS256 token is \"verified\" by HMAC-SHA256 over that same public key's PEM bytes. Anyone who fetched /pubkey can forge an HS256 token with a signature the server will accept.",
+    "hints": [
+      "This API signs with RSA (RS256) and also publishes its public key -- what is that key normally used for, and could it double as something else?",
+      "The verifier decides how to check a token's signature based on a field inside the token itself. What if you changed that field?",
+      "Re-sign a tampered token as HS256, using the raw bytes of the published public key PEM as the HMAC secret -- the verifier accepts it."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5051/*",
+      "GET /login -- a JWT (role=user, RS256-signed). GET /pubkey -- the RSA public key PEM the server verifies against.",
+      "POST /api/jwt/forge {\"token\": <the RS256 token>, \"attack\": \"hs256\", \"secret\": <the /pubkey PEM text, verbatim>, \"claims\": {\"role\": \"admin\"}} -- the forge endpoint's own doc names this exact move: \"hs256 -> re-sign with `secret` (also the RS256->HS256 confusion primitive: pass the server's PEM public key as secret)\". (Or by hand: header {\"alg\":\"HS256\"}, signature = HMAC-SHA256(header + \".\" + payload, pubkey_pem).)",
+      "GET /admin with Authorization: Bearer <forged token> -- 200.",
+      "Confirm success: GET /flag with the same header -- hands back the flag once role==\"admin\" checks out against a token nobody with only the public key could legitimately produce.",
+      "`nullock jwt test http://localhost:5051/flag <token>` runs this exact confusion attack (plus alg:none and weak-HMAC-secret) and confirms acceptance automatically."
+    ],
+    "fix": "Fix: pin one expected algorithm (`algorithms=[\"RS256\"]` only) server-side -- never let the token's own alg header pick the verification key."
   }
 ];
   window.NULLOCK_LABS_XP = {

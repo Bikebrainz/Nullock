@@ -93,6 +93,19 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Lab 51: JWT algorithm confusion (RS256 -> HS256).** A new teaching lab
+  (`labs/51-jwt-alg-confusion/`) alongside the existing 50, past the v4
+  roadmap's original 50-lab goal. The app signs with RS256 and publishes its
+  RSA public key at `/pubkey`; the verifier dispatches on the token's own
+  `alg` header and, for `HS256`, HMAC-verifies against that public key's PEM
+  bytes -- so anyone who fetched `/pubkey` can forge an admin token, the
+  exact primitive `/api/jwt/forge`'s `attack: "hs256"` documents ("pass the
+  server's PEM public key as secret"). Solved only by a token forged that
+  way, not a legitimately-issued one (`/login` never issues `role: admin`).
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`),
+  and its own hardcoded lab-count strings (footer, hero, meta description)
+  are now derived from the live lab list instead of a fixed "50"/"Fifty" so
+  they can't drift again the next time a lab is added.
 - **Sequencer live capture: literal start/end-delimiter token extraction.** The
   capture extractor gains a `FromDelimiter` mode alongside header/cookie/json/
   regex/status: `parseExtractFrom` accepts `"delimiter"`/`"delim"`, and

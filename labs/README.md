@@ -2,7 +2,9 @@
 
 Intentionally-vulnerable apps for practicing with Nullock. Each lab is
 self-contained: one Python file + one walkthrough, runs on `localhost`,
-no external dependencies beyond Flask + requests.
+with no dependencies beyond Flask (plus `requests`, `pyjwt`, or
+`cryptography` for the handful of labs that need them -- see "Run"
+below).
 
 ```
 labs/
@@ -56,13 +58,15 @@ labs/
   48-sensitive-file-exposure/ # .env / .git / *.bak served from web root      (5048)
   49-robots-disclosure/    # robots.txt Disallow maps hidden attack surface   (5049)
   50-predictable-session-token/ # sequential session ids (sequencer verdict)  (5050)
+  51-jwt-alg-confusion/    # RS256 token forged as HS256 using the pubkey PEM (5051)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
-`cors`, `nosqli`, `massassign`, `xxe`, `crlf`, `verbtamper`, ...), so you
-learn the bug class *and* how to confirm it with the tool. This hits the
-v4 roadmap goal of a 50-lab Web Security Academy clone -- every lab here
-is verified end-to-end against its Nullock detector.
+`cors`, `nosqli`, `massassign`, `xxe`, `crlf`, `verbtamper`, `jwt`, ...),
+so you learn the bug class *and* how to confirm it with the tool. This
+passed the v4 roadmap goal of a 50-lab Web Security Academy clone and
+keeps growing -- every lab here is verified end-to-end against its
+Nullock detector.
 
 ## Why labs?
 
@@ -83,7 +87,7 @@ Each lab is its own `app.py` on a fixed port (`50NN` for lab NN, e.g. lab 43
 is on `5043`). From the lab dir:
 
 ```sh
-pip install flask          # + requests for the few labs that need it
+pip install flask          # + requests / pyjwt / cryptography for the labs that need them -- check the lab's docstring
 python app.py
 ```
 

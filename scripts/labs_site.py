@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the static Labs site under docs/labs/ from the labs/ directory.
 
-Nullock Labs are 50 intentionally-vulnerable apps for practicing with the tool.
+Nullock Labs are intentionally-vulnerable apps for practicing with the tool.
 This builds a browsable catalog + a per-lab walkthrough page, generated so every
 field (all of it authored in the repo, but still) is HTML-escaped once at build
 time -- same no-runtime-string-to-HTML guarantee the marketplace and roadmap
@@ -127,6 +127,7 @@ DIFFICULTY = {
     "48-sensitive-file-exposure": "Easy",
     "49-robots-disclosure": "Easy",
     "50-predictable-session-token": "Medium",
+    "51-jwt-alg-confusion": "Hard",
 }
 
 
@@ -392,6 +393,11 @@ HINTS = {
         "Do they look random, or is there an obvious pattern between them?",
         "Feed a batch of captured session ids into Nullock's Sequencer -- a low-entropy, sequential verdict confirms they're guessable.",
     ],
+    "51-jwt-alg-confusion": [
+        "This API signs with RSA (RS256) and also publishes its public key -- what is that key normally used for, and could it double as something else?",
+        "The verifier decides how to check a token's signature based on a field inside the token itself. What if you changed that field?",
+        "Re-sign a tampered token as HS256, using the raw bytes of the published public key PEM as the HMAC secret -- the verifier accepts it.",
+    ],
 }
 
 
@@ -533,18 +539,19 @@ def nav(active):
 </nav>"""
 
 
-FOOTER = """<footer class="footer">
+def footer(n_labs):
+    return """<footer class="footer">
   <div class="f-links">
     <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
     <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
     <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
     <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
   </div>
-  <div>nul&middot;lock &#9656; 50 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
-</footer>"""
+  <div>nul&middot;lock &#9656; %d intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>""" % n_labs
 
 
-def page(title, desc, active, body):
+def page(title, desc, active, body, n_labs):
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -562,7 +569,7 @@ def page(title, desc, active, body):
 %s
 </body>
 </html>
-""" % (E(title), E(desc), nav(active), body, FOOTER)
+""" % (E(title), E(desc), nav(active), body, footer(n_labs))
 
 
 def build_index(labs):
@@ -576,13 +583,13 @@ def build_index(labs):
     hero = """<header class="glow-bg" style="border-bottom:1px solid var(--divider);">
   <div class="wrap-wide" style="padding:60px var(--pad-x) 36px;">
     <p class="eyebrow" style="margin:0 0 16px;">// nullock labs</p>
-    <h1 class="h1-hero grad-text" style="max-width:18ch;">Fifty bugs to break, on your own machine.</h1>
+    <h1 class="h1-hero grad-text" style="max-width:18ch;">%d bugs to break, on your own machine.</h1>
     <p class="lead" style="margin-top:20px;max-width:64ch;">Each lab is one self-contained Python app with a known vulnerability and a walkthrough that ends in a Nullock finding. Run it on localhost, point Nullock at it, and confirm the bug with the same probe you would use on a real target.</p>
     <div class="labs-start mono">
       <span class="dim">$</span> git clone the repo &middot; <span class="dim">$</span> pip install flask &middot; <span class="dim">$</span> python labs/&lt;slug&gt;/app.py
     </div>
   </div>
-</header>"""
+</header>""" % len(labs)
 
     controls = """<div class="labs-progress">
     <div class="labs-progress-track"><div class="labs-progress-fill" id="labs-progress-fill" style="width:0%%;"></div></div>
@@ -691,10 +698,12 @@ def build_index(labs):
 </script>""" % payload
 
     body = hero + '\n<main class="wrap-wide" style="padding:34px var(--pad-x) 72px;">\n' + controls + "\n" + script + "\n</main>"
-    return page("Labs — Nullock", "Fifty intentionally-vulnerable apps for practicing with Nullock. Run them on localhost and confirm each bug with the tool.", "labs", body)
+    return page("Labs — Nullock",
+                "%d intentionally-vulnerable apps for practicing with Nullock. Run them on localhost and confirm each bug with the tool." % len(labs),
+                "labs", body, len(labs))
 
 
-def build_detail(l):
+def build_detail(l, n_labs):
     steps = l.get("steps", [])
     steps_html = ""
     if steps:
@@ -809,7 +818,7 @@ def build_detail(l):
 })();
 </script>""" % json.dumps(l["slug"])
     return page("%s — Nullock Labs" % (l.get("title", "") or l["slug"]),
-                (l.get("vuln", "") or "")[:180], "labs", body)
+                (l.get("vuln", "") or "")[:180], "labs", body, n_labs)
 
 
 def build_app_data(labs):
@@ -856,7 +865,7 @@ def generate():
     labs = load()
     files = {os.path.join(OUT, "index.html"): build_index(labs)}
     for l in labs:
-        files[os.path.join(OUT, l["slug"] + ".html")] = build_detail(l)
+        files[os.path.join(OUT, l["slug"] + ".html")] = build_detail(l, len(labs))
     files[APP_DATA] = build_app_data(labs)
     return files, labs
 

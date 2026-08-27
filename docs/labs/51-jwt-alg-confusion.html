@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Predictable session tokens — Nullock Labs</title>
-<meta name="description" content="sequential session ids (sequencer verdict)">
+<title>JWT algorithm confusion (RS256 -&gt; HS256) — Nullock Labs</title>
+<meta name="description" content="RS256 token forged as HS256 using the pubkey PEM">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">50</span>
+    <span class="labs-num mono">51</span>
     <span class="labs-cat mono">Authentication</span>
-    <span class="labs-diff labs-diff-medium">Medium</span>
-    <span class="labs-port mono">localhost:5050</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5051</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">Predictable session tokens</h1>
-  <p class="lead" style="margin-top:12px;">Session IDs are a simple incrementing counter, so once you observe one you can predict (and hijack) every other user&#x27;s session. Nullock&#x27;s sequencer scores the randomness of a captured corpus of tokens. In Nullock: 1. nullock scope add http://localhost:5050/* 2. Collect a handful of session cookies (log in repeatedly, or replay in Repeater), then: nullock sequencer analyze &lt;tok1&gt; &lt;tok2&gt; ... -- the verdict comes back &quot;predictable&quot; (sequential, low entropy). 3. Confirm success: log in once (note the issued session id N), then GET /whoami with Cookie: session=&lt;N+1&gt; -- a session you never logged in for, but the server accepts it anyway because it&#x27;s the next predictable value. Then GET /flag -- solved only once an unissued, merely-predicted session was actually accepted, proving hijack via prediction rather than just observing one token&#x27;s low entropy. Fix: generate session IDs from a CSPRNG (secrets.token_urlsafe(32)); never derive them from a counter, timestamp, or user data.</p>
+  <h1 class="h1-page" style="margin-top:14px;">JWT algorithm confusion (RS256 -&gt; HS256)</h1>
+  <p class="lead" style="margin-top:12px;">The API signs tokens with RS256 and publishes the RSA PUBLIC key at /pubkey, as any real RS256 API must. The verifier trusts the token&#x27;s own `alg` header to pick a path: RS256 checks against the public key as normal, but an HS256 token is &quot;verified&quot; by HMAC-SHA256 over that same public key&#x27;s PEM bytes. Anyone who fetched /pubkey can forge an HS256 token with a signature the server will accept.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/50-predictable-session-token/app.py
-# then open http://localhost:5050/</code></pre>
+python labs/51-jwt-alg-confusion/app.py
+# then open http://localhost:5051/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5050/*</code><code class="inline">http://127.0.0.1:5050/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5051/*</code><code class="inline">http://127.0.0.1:5051/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Log in a couple of times and collect a few session ids.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Do they look random, or is there an obvious pattern between them?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Feed a batch of captured session ids into Nullock&#x27;s Sequencer -- a low-entropy, sequential verdict confirms they&#x27;re guessable.</p></details></div>
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This API signs with RSA (RS256) and also publishes its public key -- what is that key normally used for, and could it double as something else?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The verifier decides how to check a token&#x27;s signature based on a field inside the token itself. What if you changed that field?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Re-sign a tampered token as HS256, using the raw bytes of the published public key PEM as the HMAC secret -- the verifier accepts it.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5050/*</li><li>Collect a handful of session cookies (log in repeatedly, or replay in Repeater), then: nullock sequencer analyze &lt;tok1&gt; &lt;tok2&gt; ... -- the verdict comes back &quot;predictable&quot; (sequential, low entropy).</li><li>Confirm success: log in once (note the issued session id N), then GET /whoami with Cookie: session=&lt;N+1&gt; -- a session you never logged in for, but the server accepts it anyway because it&#x27;s the next predictable value. Then GET /flag -- solved only once an unissued, merely-predicted session was actually accepted, proving hijack via prediction rather than just observing one token&#x27;s low entropy.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5051/*</li><li>GET /login -- a JWT (role=user, RS256-signed). GET /pubkey -- the RSA public key PEM the server verifies against.</li><li>POST /api/jwt/forge {&quot;token&quot;: &lt;the RS256 token&gt;, &quot;attack&quot;: &quot;hs256&quot;, &quot;secret&quot;: &lt;the /pubkey PEM text, verbatim&gt;, &quot;claims&quot;: {&quot;role&quot;: &quot;admin&quot;}} -- the forge endpoint&#x27;s own doc names this exact move: &quot;hs256 -&gt; re-sign with `secret` (also the RS256-&gt;HS256 confusion primitive: pass the server&#x27;s PEM public key as secret)&quot;. (Or by hand: header {&quot;alg&quot;:&quot;HS256&quot;}, signature = HMAC-SHA256(header + &quot;.&quot; + payload, pubkey_pem).)</li><li>GET /admin with Authorization: Bearer &lt;forged token&gt; -- 200.</li><li>Confirm success: GET /flag with the same header -- hands back the flag once role==&quot;admin&quot; checks out against a token nobody with only the public key could legitimately produce.</li><li>`nullock jwt test http://localhost:5051/flag &lt;token&gt;` runs this exact confusion attack (plus alg:none and weak-HMAC-secret) and confirms acceptance automatically.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: generate session IDs from a CSPRNG (secrets.token_urlsafe(32)); never derive them from a counter, timestamp, or user data.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: pin one expected algorithm (`algorithms=[&quot;RS256&quot;]` only) server-side -- never let the token&#x27;s own alg header pick the verification key.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/50-predictable-session-token/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "50-predictable-session-token";
+  var SLUG = "51-jwt-alg-confusion";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {
