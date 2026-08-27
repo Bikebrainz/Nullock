@@ -65,7 +65,7 @@ function reducer(state, action) {
       // Spawn a *new* tab on the backend so we don't trample whatever the
       // user has open. The snapshot poll will fill in the populated tab
       // shortly; show the row's content optimistically in the meantime.
-      act("repeaterTabAddFromHistory", row.id - 1);
+      act("repeaterTabAddFromHistoryId", row.id);
       return {
         ...state,
         tab: "repeater",

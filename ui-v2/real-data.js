@@ -170,6 +170,11 @@
     repeaterClear()         { return post("/api/repeater/clear"); },
     repeaterTabAdd(name)            { return post("/api/repeater/tab/add", { name }); },
     repeaterTabAddFromHistory(row)  { return post("/api/repeater/tab/addFromHistory", { row }); },
+    // Eviction-safe variant: resolves the source row by its STABLE history id
+    // (not a live window index), so "send to Repeater" still loads the right
+    // request after the in-memory history window has evicted older rows.
+    // Prefer this over repeaterTabAddFromHistory everywhere a row.id is held.
+    repeaterTabAddFromHistoryId(id) { return post("/api/repeater/tab/addFromHistoryId", { id }); },
     repeaterTabClose(index)         { return post("/api/repeater/tab/close",    { index }); },
     repeaterTabActivate(index)      { return post("/api/repeater/tab/activate", { index }); },
     repeaterTabRename(index, name)  { return post("/api/repeater/tab/rename",   { index, name }); },

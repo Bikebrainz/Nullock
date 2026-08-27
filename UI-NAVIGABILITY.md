@@ -223,3 +223,14 @@ that reuses the existing `chainRecord` action to prefill a steps JSON textarea (
 as the SCANS tab's Request chain section), and a saved-macro list with Run/Edit/Del. True
 orphaned count returns to 3 of 203 (1%), all three intentional
 (`/api/cache/poison`, `/api/request/curl`, `/api/intruder/multi`).
+
+A 2026-08-27 pass re-ran the literal-grep census fresh (203 endpoints, unchanged) and found a
+fourth real, previously-untracked orphan: `/api/repeater/tab/addFromHistoryId`, added in
+a0dad05 (2026-08-26) as the eviction-safe replacement for `/api/repeater/tab/addFromHistory`
+-- that commit's own message flagged "the ui-v2 button switching to the id endpoint" as the
+remaining frontend step, but this file's census was never updated to list it as orphaned in
+the meantime. Closed here: `real-data.js` gained `repeaterTabAddFromHistoryId(id)`, and
+`app.jsx`'s `send-to-repeater` reducer case now calls it with the row's stable `id` directly
+instead of `repeaterTabAddFromHistory(row.id - 1)` (the index-based call that silently loads
+the wrong request once the in-memory history window evicts old rows). True orphaned count
+holds at 3 of 203 (1%), all three intentional as listed above.

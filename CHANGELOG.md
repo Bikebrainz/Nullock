@@ -20,8 +20,9 @@ developer-facing record.
   `Repeater::addTabFromHistoryById(id)` (mirroring the existing `requestRawById`
   id→index mapping), plus a `POST /api/repeater/tab/addFromHistoryId` endpoint
   that resolves the source row by its stable id. Verified live (valid id → tab
-  created, bogus id → rejected). (ui-v2 switching the button to the id endpoint
-  is the remaining frontend step.)
+  created, bogus id → rejected). ui-v2's "send to Repeater" now calls
+  `repeaterTabAddFromHistoryId(row.id)` instead of the index-based action, so
+  the fix is reachable from the GUI.
 - **Global search negate mode double-counted / mis-matched `where=both`.** A
   negative search ("find items that do NOT contain X") is a whole-item concept,
   but the match ran per text: with `where=both`, a proxy row or Repeater tab was
