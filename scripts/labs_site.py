@@ -47,7 +47,7 @@ XP_BY_DIFFICULTY = {"Easy": 10, "Medium": 20, "Hard": 30}
 CATEGORY_RULES = [
     ("Injection", ("sqli", "ssti", "command-injection", "nosql", "xxe",
                    "crlf", "csv-injection", "graphql", "deserialization",
-                   "prototype-pollution", "param-pollution")),
+                   "prototype-pollution", "param-pollution", "ldap-injection")),
     ("Access control", ("idor", "broken-access", "mass-assignment",
                         "verb-tamper", "2fa", "dangerous-http-methods")),
     ("Authentication", ("jwt", "oauth", "session-fixation", "user-enumeration",
@@ -128,6 +128,7 @@ DIFFICULTY = {
     "49-robots-disclosure": "Easy",
     "50-predictable-session-token": "Medium",
     "51-jwt-alg-confusion": "Hard",
+    "52-ldap-injection": "Medium",
 }
 
 
@@ -397,6 +398,11 @@ HINTS = {
         "This API signs with RSA (RS256) and also publishes its public key -- what is that key normally used for, and could it double as something else?",
         "The verifier decides how to check a token's signature based on a field inside the token itself. What if you changed that field?",
         "Re-sign a tampered token as HS256, using the raw bytes of the published public key PEM as the HMAC secret -- the verifier accepts it.",
+    ],
+    "52-ldap-injection": [
+        "The directory search builds a filter string directly from your input -- what happens if you send a stray parenthesis?",
+        "Separately, the app blocks searching for the literal word \"admin\" -- does that block survive a wildcard that still resolves to it?",
+        "cn=*)( breaks the filter's syntax (a python-ldap-style error leaks); cn=admi* returns the admin record without ever typing \"admin\".",
     ],
 }
 

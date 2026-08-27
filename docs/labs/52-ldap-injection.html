@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Missing security headers — Nullock Labs</title>
-<meta name="description" content="no CSP / nosniff / framing protections">
+<title>LDAP injection (filter metacharacter injection + wildcard bypass) — Nullock Labs</title>
+<meta name="description" content="filter metachar breaks the query, wildcard bypasses a blocklist">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">39</span>
-    <span class="labs-cat mono">Client-side</span>
-    <span class="labs-diff labs-diff-easy">Easy</span>
-    <span class="labs-port mono">localhost:5039</span>
+    <span class="labs-num mono">52</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5052</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">Missing security headers</h1>
-  <p class="lead" style="margin-top:12px;">/ serves an app with NO Content-Security-Policy, Strict-Transport-Security, or X-Content-Type-Options -- leaving it open to XSS escalation, TLS stripping, and MIME sniffing. In Nullock: 1. nullock scope add http://localhost:5039/* 2. nullock headeraudit http://localhost:5039/ -- raises csp-missing, xcto-missing, clickjacking-missing (and more). Note: hsts-missing does NOT fire here -- that check only applies to an https response, and this lab deliberately runs over plain http. 3. Confirm success: GET /flag?findings=csp-missing,xcto-missing -- solved only after visiting / and naming findings that genuinely fire on this plain-http response (submitting hsts-missing, which can never fire here, fails the check). Fix: send Content-Security-Policy, Strict-Transport-Security (long max-age + includeSubDomains), and X-Content-Type-Options: nosniff on every response.</p>
+  <h1 class="h1-page" style="margin-top:14px;">LDAP injection (filter metacharacter injection + wildcard bypass)</h1>
+  <p class="lead" style="margin-top:12px;">A staff directory search (/search?cn=...) builds an LDAP-style search filter by string concatenation, mirroring how the classic Java/JNDI and python-ldap bugs actually happen. A single unescaped filter metacharacter in the value either breaks the filter&#x27;s syntax (a distinctive backend error leaks) or -- with a well-formed wildcard -- widens the match past what a literal-string blocklist expects, bypassing it entirely.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/39-missing-security-headers/app.py
-# then open http://localhost:5039/</code></pre>
+python labs/52-ldap-injection/app.py
+# then open http://localhost:5052/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5039/*</code><code class="inline">http://127.0.0.1:5039/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5052/*</code><code class="inline">http://127.0.0.1:5052/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the full set of response headers on the main page.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Compare them against the standard defensive header set (CSP, X-Content-Type-Options, X-Frame-Options, etc.).</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Nullock&#x27;s passive audit already flags every missing header -- open Findings/Probe and read the list.</p></details></div>
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The directory search builds a filter string directly from your input -- what happens if you send a stray parenthesis?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Separately, the app blocks searching for the literal word &quot;admin&quot; -- does that block survive a wildcard that still resolves to it?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>cn=*)( breaks the filter&#x27;s syntax (a python-ldap-style error leaks); cn=admi* returns the admin record without ever typing &quot;admin&quot;.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5039/*</li><li>nullock headeraudit http://localhost:5039/ -- raises csp-missing, xcto-missing, clickjacking-missing (and more). Note: hsts-missing does NOT fire here -- that check only applies to an https response, and this lab deliberately runs over plain http.</li><li>Confirm success: GET /flag?findings=csp-missing,xcto-missing -- solved only after visiting / and naming findings that genuinely fire on this plain-http response (submitting hsts-missing, which can never fire here, fails the check).</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5052/*</li><li>GET /search?cn=alice -- one matching entry, no error: this is the baseline. GET /search?cn=admin -- 403 &quot;restricted entry&quot;: the app blocklists that literal name so casual browsing can&#x27;t find it.</li><li>GET /search?cn=admi* -- 200, and the admin record (with its internal &quot;notes&quot; field) comes back anyway: the blocklist only ever compared the raw string, but the filter&#x27;s own wildcard semantics matched &quot;admin&quot; without ever typing it.</li><li>GET /search?cn=*)( -- 500, with a python-ldap-shaped error (ldap.FILTER_ERROR: unbalanced parentheses): the concatenated value broke the filter&#x27;s syntax outright. Run the active probe (ldapi) against /search -- the filter-breaking probes it sends reproduce this exact error and it flags the cn param.</li><li>Confirm success: GET /flag?cn=admi* -- solved only by a query that resolves to the admin entry without the literal string &quot;admin&quot;.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: send Content-Security-Policy, Strict-Transport-Security (long max-age + includeSubDomains), and X-Content-Type-Options: nosniff on every response.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never concatenate user input into an LDAP filter -- escape per RFC 4515 (or use a filter-builder API) before it reaches the query, and don&#x27;t rely on a literal-string blocklist for access control.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/39-missing-security-headers/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "39-missing-security-headers";
+  var SLUG = "52-ldap-injection";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {

@@ -93,6 +93,23 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Lab 52: LDAP injection (filter metacharacter injection + wildcard
+  bypass).** A new teaching lab (`labs/52-ldap-injection/`) alongside the
+  existing 51. A staff-directory search builds an LDAP-style filter by
+  string concatenation; a filter-breaking value (`*)(`, `)(`, etc.) leaks a
+  python-ldap-shaped `ldap.FILTER_ERROR` -- exactly the error-based
+  detection the existing `ldapi` active probe (`Src/Core/Networking/
+  ldap_injection.cpp`) already sends and fingerprints, so `nullock ldapi`
+  confirms the bug automatically. Separately, a well-formed wildcard
+  (`cn=admi*`) resolves to the `admin` entry without ever matching the
+  app's literal-string `"admin"` blocklist, demonstrating the semantic
+  (non-error) half of LDAP injection alongside the syntax-breaking half.
+  Verified end-to-end: baseline and a benign value never error, all five
+  of the probe's filter-breaker payloads reproduce the 500 consistently,
+  and `/flag` solves only via the wildcard bypass, not the blocked literal
+  query. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`); README.md and docs/index.html's 51->52 lab-count
+  strings updated alongside.
 - **Lab 51: JWT algorithm confusion (RS256 -> HS256).** A new teaching lab
   (`labs/51-jwt-alg-confusion/`) alongside the existing 50, past the v4
   roadmap's original 50-lab goal. The app signs with RS256 and publishes its

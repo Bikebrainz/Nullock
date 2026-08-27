@@ -1156,6 +1156,29 @@
       "`nullock jwt test http://localhost:5051/flag <token>` runs this exact confusion attack (plus alg:none and weak-HMAC-secret) and confirms acceptance automatically."
     ],
     "fix": "Fix: pin one expected algorithm (`algorithms=[\"RS256\"]` only) server-side -- never let the token's own alg header pick the verification key."
+  },
+  {
+    "slug": "52-ldap-injection",
+    "num": "52",
+    "title": "LDAP injection (filter metacharacter injection + wildcard bypass)",
+    "vuln": "filter metachar breaks the query, wildcard bypasses a blocklist",
+    "port": "5052",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "A staff directory search (/search?cn=...) builds an LDAP-style search filter by string concatenation, mirroring how the classic Java/JNDI and python-ldap bugs actually happen. A single unescaped filter metacharacter in the value either breaks the filter's syntax (a distinctive backend error leaks) or -- with a well-formed wildcard -- widens the match past what a literal-string blocklist expects, bypassing it entirely.",
+    "hints": [
+      "The directory search builds a filter string directly from your input -- what happens if you send a stray parenthesis?",
+      "Separately, the app blocks searching for the literal word \"admin\" -- does that block survive a wildcard that still resolves to it?",
+      "cn=*)( breaks the filter's syntax (a python-ldap-style error leaks); cn=admi* returns the admin record without ever typing \"admin\"."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5052/*",
+      "GET /search?cn=alice -- one matching entry, no error: this is the baseline. GET /search?cn=admin -- 403 \"restricted entry\": the app blocklists that literal name so casual browsing can't find it.",
+      "GET /search?cn=admi* -- 200, and the admin record (with its internal \"notes\" field) comes back anyway: the blocklist only ever compared the raw string, but the filter's own wildcard semantics matched \"admin\" without ever typing it.",
+      "GET /search?cn=*)( -- 500, with a python-ldap-shaped error (ldap.FILTER_ERROR: unbalanced parentheses): the concatenated value broke the filter's syntax outright. Run the active probe (ldapi) against /search -- the filter-breaking probes it sends reproduce this exact error and it flags the cn param.",
+      "Confirm success: GET /flag?cn=admi* -- solved only by a query that resolves to the admin entry without the literal string \"admin\"."
+    ],
+    "fix": "Fix: never concatenate user input into an LDAP filter -- escape per RFC 4515 (or use a filter-builder API) before it reaches the query, and don't rely on a literal-string blocklist for access control."
   }
 ];
   window.NULLOCK_LABS_XP = {
