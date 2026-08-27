@@ -49,7 +49,7 @@ struct StepResult {
     int                    responseSize = 0;
     QString                error;
     QHash<QString, QString> extracted;   // vars pulled from THIS step
-    QByteArray             responsePreview;  // first 2 KiB of the response
+    QByteArray             responsePreview;  // full raw response, untruncated
 };
 
 struct Result {

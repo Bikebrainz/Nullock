@@ -2428,6 +2428,7 @@ function ScansTab() {
   const [chainRes, setChainRes]         = React.useState(null);
   const [chainRecordIds, setChainRecordIds] = React.useState("");
   const [chainRecordMsg, setChainRecordMsg] = React.useState("");
+  const [chainOpenStep, setChainOpenStep] = React.useState(-1);
 
   const [exposureUrl, setExposureUrl] = React.useState("");
   const [exposureRes, setExposureRes] = React.useState(null);
@@ -2512,6 +2513,7 @@ function ScansTab() {
     let steps;
     try { steps = JSON.parse(chainSteps); } catch (e) { setErr2("steps must be valid JSON: " + (e && e.message ? e.message : e)); return; }
     if (!Array.isArray(steps) || !steps.length) { setErr2("steps must be a non-empty JSON array"); return; }
+    setChainOpenStep(-1);
     runBusy2("chain", setChainRes, () => NL.actions.chainRun(steps, chainContinue));
   };
 
@@ -3004,6 +3006,35 @@ function ScansTab() {
         {chainRes && chainRes.ok !== false && (
           <div style={{ fontSize: "12px", color: "var(--text-2)" }}>
             ran {chainRes.ran} step(s) · vars: {Object.keys(chainRes.vars || {}).join(", ") || "—"}
+          </div>
+        )}
+        {chainRes && Array.isArray(chainRes.steps) && chainRes.steps.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {chainRes.steps.map((st, i) => (
+              <div key={i} style={{ border: "1px solid var(--line)" }}>
+                <div onClick={() => setChainOpenStep(chainOpenStep === i ? -1 : i)}
+                     style={{
+                       display: "flex", gap: 10, alignItems: "center", padding: "4px 8px",
+                       cursor: "pointer", fontSize: "11px", background: "var(--bg-deep)",
+                       color: st.ok ? "var(--text)" : "var(--err, #f88)",
+                     }}>
+                  <span>{chainOpenStep === i ? "▾" : "▸"}</span>
+                  <span style={{ fontWeight: 600 }}>{st.name || `step ${i + 1}`}</span>
+                  <span>{st.ok ? `HTTP ${st.status}` : (st.error || "failed")}</span>
+                  <span style={{ color: "var(--dim)" }}>{st.ms}ms · {st.responseSize}b</span>
+                  {Object.keys(st.extracted || {}).length > 0 && (
+                    <span style={{ color: "var(--dim)" }}>extracted: {Object.keys(st.extracted).join(", ")}</span>
+                  )}
+                </div>
+                {chainOpenStep === i && (
+                  <pre style={{
+                    margin: 0, padding: 8, background: "var(--bg-deep)", borderTop: "1px solid var(--line)",
+                    fontSize: "11px", maxHeight: 320, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all",
+                    color: "var(--text-2)",
+                  }}>{st.responsePreview || "(no response body captured)"}</pre>
+                )}
+              </div>
+            ))}
           </div>
         )}
         <RawResult res={chainRes} />

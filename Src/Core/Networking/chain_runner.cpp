@@ -82,7 +82,7 @@ Result run(const QList<Step> &steps, bool continueOnError) {
         sr.ok = true;
         sr.status = res.parsed.statusCode;
         sr.responseSize = static_cast<int>(res.parsed.body.size());
-        sr.responsePreview = res.rawResponse.left(2 * 1024);
+        sr.responsePreview = res.rawResponse;
 
         // Extract variables from this response into the bag. SANITIZE first: the
         // value is target-controlled and gets substituted into the next on-the-wire
