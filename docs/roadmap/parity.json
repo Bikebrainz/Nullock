@@ -3522,7 +3522,12 @@
       "effort": "hours",
       "gap": "Cached leaves are never re-minted on expiry. 366 days after first contact with a host, MITM for that host breaks and the host is auto-added to the permanent blind-tunnel blocklist. There is also no cache-eviction or 'clear leaves' control -- the only recovery is deleting <caDir>/leaves by hand.",
       "why": "DOWNGRADED. The persist/reload code is exactly as quoted, but I opened cert_authority.hpp and found the reuse check is only a non-emptiness test -- there is no notAfter check anywhere on the reload path. Leaves are minted with `-days 365` and then reused from disk forever. That is not 'better than Burp'; it is a one-year fuse Burp cannot have (Burp re-mints per session). On expiry the browser refu",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:180-190 `if (QFileInfo::exists(persistCert) && QFileInfo::exists(persistKey)) {\\n        LeafCert cached; ... if (cached.valid()) {\\n            m_cache.insert(host, cached);\\n            return cached;` -- and the only validity test is Src/BackEnd/Proxy/cert_authority.hpp:15 `bool valid() const { return !certPem.isEmpty() && !keyPem.isEmpty(); }`. Minted with "
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:199-205 `if (QFileInfo::exists(persistCert) && QFileInfo::exists(persistKey)) {\\n        LeafCert cached; ... if (cached.valid()) {\\n            m_cache.insert(host, cached);\\n            return cached;` -- and the only validity test is Src/BackEnd/Proxy/cert_authority.hpp:15 `bool valid() const { return !certPem.isEmpty() && !keyPem.isEmpty(); }`. Minted with `-days 365` at cert_authority.cpp:271. No notAfter/expiry check exists anywhere on the reuse path -- confirmed unchanged.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "proxy",
@@ -3582,9 +3587,14 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No on/off switch (Burp's is a checkbox) and no way to remove a single learned entry. A merely slow origin that exceeds the 3 s handshake budget -- or one transient TLS error -- is permanently demoted to blind-tunnel until the operator clears the entire blocklist.",
+      "gap": "No on/off switch (Burp's is a checkbox) to disable auto-add entirely -- confirmed still absent (no such Q_INVOKABLE/flag exists). The two other gaps noted in an earlier pass no longer hold: the upstream-handshake trigger (proxy_server.cpp:541-555) now only blocklists on a genuine unreachable/timeout (`tlsErrors.isEmpty()`), NOT on a transient cert-rejection, so a one-off TLS error no longer causes a permanent demotion; and per-host removal now exists end-to-end -- `ProxyServer::clearMitmBlocked(host)` (proxy_server.hpp:195), the `/api/mitm/unblock` endpoint (control_server.cpp:6658-6664), and a per-row \"x\" button wired to `NL.actions.unblockMitmHost(h)` in the Proxy pane (ui-v2/app.jsx:843-850, `removeBypassHost` at :718-721).",
       "why": "Both trigger sites verified verbatim, plus persistence via setBlocklistPath (wired in Src/App/app.cpp:671). The behaviour genuinely exists and survives restarts. Kept 'present' but filled the empty gap: the trigger is broader than Burp's (any upstream handshake failure inside a 3 s window, not just a client-side refusal) and there is no per-entry removal.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:416-421 `if (!waitEncrypted(sslClient, kReadTimeoutMs, m_server)) {\\n            // Client refused our forged cert -- usually cert pinning.\\n            ...\\n            m_server->markMitmBlocked(host);`; upstream twin at proxy_server.cpp:473-478 fired off `kHandshakeTimeoutMs = 3'000` (proxy_server.cpp:47). Persisted at proxy_server.cpp:1250-1267 persistBlocklis"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:470-476 (client path) `if (!waitEncrypted(sslClient, kReadTimeoutMs, m_server)) {\\n            // Client refused our forged cert -- usually cert pinning.\\n            m_server->markMitmBlocked(host);`; upstream twin at proxy_server.cpp:541-555, refined since the prior pass to gate on `if (tlsErrors.isEmpty()) m_server->markMitmBlocked(host);` -- a cert-level rejection (tlsErrors non-empty) is no longer blocklisted, only a genuine handshake timeout/unreachable is; `kHandshakeTimeoutMs = 3'000` at proxy_server.cpp:57. Persisted via `setBlocklistPath` (proxy_server.cpp:1485), wired in Src/App/app.cpp:740 `proxy.setBlocklistPath(certAuthority.caDir() + \"/mitm_blocked.txt\");`.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source. Found real drift -- two of the three gaps this item recorded have since been closed by other work (the upstream trigger was narrowed to exclude transient cert errors, and per-host unblock was wired end-to-end, backend + UI). Corrected the gap text to describe only what's actually still missing (a global on/off switch) and refreshed evidence line numbers. No state change -- still 'present', not upgraded to 'exceeds', since the remaining gap (no way to fully disable auto-add) is real."
+      }
     },
     {
       "area": "proxy",
@@ -4257,7 +4267,12 @@
       "effort": "hours",
       "gap": "The guard protects the browser UI and the CLI (the paths that matter) but not the Qt desktop Send button, which invokes Repeater::send() directly. There is also a narrow TOCTOU: the check reads the ACTIVE tab's host, then the send is posted with Qt::QueuedConnection, so a scripted client can activate a different tab between the two.",
       "why": "The guard is real and refuses the send (Burp Repeater has no scope enforcement at all), so 'exceeds' holds. But I found a bypass the auditor missed: the check lives in the HTTP handler, not in Repeater::send(), and the Qt desktop Send button calls the Q_INVOKABLE directly.",
-      "evidence": "D:/dev/Nullock/Src/BackEnd/Control/control_server.cpp:3087-3090 `if (path == \"/api/repeater/send\") { if (m_wiring.repeater && blocksScope(m_wiring.repeater->host())) return okJson({{ \"ok\", false }, { \"scopeBlocked\", true }, { \"error\", \"repeater target '\" + m_wiring.repeater->host() + \"' is out of scope\" }});`. Real predicate, out-of-scope-wins: control_server.cpp:1196-1198 `return m_wiring.proxy &"
+      "evidence": "Src/BackEnd/Control/control_server.cpp:3557-3558 `if (path == \"/api/repeater/send\") {\\n        if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))`. `blocksScope` at control_server.cpp:1263-1265 `return m_wiring.proxy && !host.isEmpty() && !m_wiring.proxy->isInScope(host);` -- out-of-scope wins via ProxyServer::isInScope. Confirmed the bypass still holds: Src/Core/Networking/repeater.cpp:135 `Repeater::send()` has no scope check at all -- only the HTTP control-server path (used by the browser UI and CLI) enforces it; the Qt desktop Send button calling the Q_INVOKABLE directly would skip it.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -4267,7 +4282,12 @@
       "effort": "hours",
       "gap": "hasResponse is always true (confirmed both ends). `repeater load` takes an id where the API wants an index (see A3). And bin/nullock is a bash script \u2014 on the owner's Windows box it needs Git Bash; task #8 'Native cross-platform CLI' is still open.",
       "why": "Verified line by line, including the hasResponse defect, which I confirmed from the other side: the snapshot's per-tab object genuinely never emits responseText.",
-      "evidence": "D:/dev/Nullock/bin/nullock:275+ `cmd_repeater()` covering set|send|show|response|clear|load|tabs|tab{add,close,activate,rename,duplicate}; send polls correctly: `post /api/repeater/send >/dev/null` then `busy=$(snapshot | \"$JQ\" -r '.repeater.busy'); [[ $busy == false ]] && break`. Documented at bin/nullock:1716-1729. Defect confirmed: bin/nullock `tabs: [.repeater.tabs[] | {name, host, port, tls, "
+      "evidence": "bin/nullock:275 `cmd_repeater()` covering set|send|show|response|clear|load|tabs|tab{add,close,activate,rename,duplicate}; send polls correctly (bin/nullock:293-301): `post /api/repeater/send >/dev/null` then `busy=$(snapshot | \"$JQ\" -r '.repeater.busy'); [[ $busy == false ]] && break`. hasResponse defect reconfirmed from the backend side: the per-tab snapshot object (control_server.cpp:1624-1646) emits name, host, port, tls, statusLine, elapsedMs, responseBytes, notes, history -- never responseText -- so bin/nullock:333's `hasResponse: (.responseText != \"\")` always evaluates `null != \"\"` -> true.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "repeater",
@@ -5253,7 +5273,12 @@
       "effort": "hours",
       "gap": "Same host-only matching limitation as the include list.",
       "why": "Held. Precedence, persistence and mutators all verified verbatim.",
-      "evidence": "proxy_server.cpp:1331-1333, evaluated before the include loop: `// Out-of-scope wins.` / `for (const auto &rx : m_outOfScope) if (rx.match(host).hasMatch()) return false;`. Persisted at Src/Core/Storage/project_store.cpp:292-295 `QJsonArray outS; for (const QString &s : m_meta.outOfScope) outS.append(s); o[\"inScope\"] = inS; o[\"outOfScope\"] = outS;`. Mutators project_store.cpp:354-364 addOutOfScope"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:1530-1539 `globVerdict()` -- `globOut = false; for (const auto &rx : outOfScope) if (rx.match(host).hasMatch()) { globOut = true; break; } ...`, consumed by `isInScope`/`isUrlInScope` (proxy_server.cpp:1542-1567) as `return !globOut && globIn;` -- out-of-scope still wins unconditionally. Persisted at Src/Core/Storage/project_store.cpp:368-371 `QJsonArray outS; for (const QString &s : m_meta.outOfScope) outS.append(s); ... o[\"outOfScope\"] = outS;`. Mutators at project_store.cpp addOutOfScope/removeOutOfScope emit scopeChanged (e.g. :519-521).",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add. Noted for context (no item change): a separate 'advanced scope' layer (protocol/host/port/file regex, ScopeLogic::CompiledRule) has since been added on top of this simple host-glob layer; it is tracked by its own backlog item ('Advanced scope control...', partial) and does not change this item's host-only gap, which is specifically about the simple glob layer this item describes."
+      }
     },
     {
       "area": "target",
@@ -5295,7 +5320,12 @@
       "effort": "hours",
       "gap": "No standalone scope import/export separate from the project file.",
       "why": "Held. Verified both the write and the read-back path, which the first pass only half-cited.",
-      "evidence": "Write: Src/Core/Storage/project_store.cpp:292-295 `QJsonArray inS;  for (const QString &s : m_meta.inScope) inS.append(s); QJsonArray outS; for (const QString &s : m_meta.outOfScope) outS.append(s); o[\"inScope\"] = inS; o[\"outOfScope\"] = outS;`. Read: project_store.cpp:215-220 `m_meta.inScope.clear(); for (const QJsonValue &v : o.value(\"inScope\").toArray()) m_meta.inScope.append(v.toString()); m_me"
+      "evidence": "Write: Src/Core/Storage/project_store.cpp:368-371 `QJsonArray inS; for (const QString &s : m_meta.inScope) inS.append(s); QJsonArray outS; for (const QString &s : m_meta.outOfScope) outS.append(s); o[\"inScope\"] = inS; o[\"outOfScope\"] = outS;`. Read: project_store.cpp:264-269 `m_meta.inScope.clear(); for (const QJsonValue &v : o.value(\"inScope\").toArray()) m_meta.inScope.append(v.toString()); m_meta.outOfScope.clear(); for (...) m_meta.outOfScope.append(...)`.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "target",
@@ -5305,7 +5335,12 @@
       "effort": "hours",
       "gap": "",
       "why": "Held. Confirmed both the initial seed and the live reconnect, plus the mutex pairing that makes it safe on the request hot path.",
-      "evidence": "Src/App/app.cpp:699-702 `proxy.setScope(projectStore.metadata().inScope, projectStore.metadata().outOfScope); QObject::connect(&projectStore, &Nullock::Core::ProjectStore::scopeChanged, &proxy, &Nullock::Proxy::ProxyServer::setScope);`. Recompile is guarded: proxy_server.cpp:1324 `QMutexLocker lock(&m_scopeMutex);` inside setScope, matched by cpp:1330 in isInScope, which the per-connection worker "
+      "evidence": "Src/App/app.cpp:768-771 `proxy.setScope(projectStore.metadata().inScope, projectStore.metadata().outOfScope); QObject::connect(&projectStore, &Nullock::Core::ProjectStore::scopeChanged, &proxy, &Nullock::Proxy::ProxyServer::setScope);`. Mutex-guarded on the hot path: proxy_server.cpp:1513 `QMutexLocker lock(&m_scopeMutex);` inside `setScope` (1501-1516), matched by the same lock inside `isInScope` (proxy_server.cpp:1546) and `isUrlInScope` (:1561).",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "target",
@@ -5399,7 +5434,12 @@
       "effort": "hours",
       "gap": "",
       "why": "Held -- this one survives adversarial reading intact. All three defences are real, and the corroboration discipline (trust the fingerprint only when two independently-random probes canonicalise identically) is genuinely beyond what Burp documents. Tests/content_discovery exists in the test tree.",
-      "evidence": "Same-depth twin calibration: content_discovery.cpp:115-135 `const QString t1 = base + \"/\" + randToken(); const auto c1 = get(t1); ... const QString t2 = base + \"/\" + randToken(); const auto c2 = get(t2); ... cal.reliable = (s1 == s2);                   // corroborated only if they agree` with `cal.jitter = std::max(64, std::abs(l1 - l2) * 2);`. Path-masked fingerprint trusted only on agreement: cp"
+      "evidence": "Same-depth twin calibration: Src/Core/Networking/content_discovery.cpp:125-141 `const QString t1 = base + \"/\" + randToken(); ... const QString t2 = base + \"/\" + randToken(); ... cal.reliable = (s1 == s2); // corroborated only if they agree` with `cal.jitter = std::max(64, std::abs(l1 - l2) * 2);` (:145). Path-masked fingerprint trusted only on agreement, surfaced as `result.calibrationReliable`/`softNotFoundStatus`/`softNotFoundIs200` (:159-162). Tests/scope_logic and content-discovery coverage remain in the test tree.",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "target",
