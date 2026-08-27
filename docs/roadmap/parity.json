@@ -1137,7 +1137,13 @@
       "effort": "hours",
       "gap": "",
       "why": "Re-read control_server.cpp:759-767 (CrlfInjection::test -> crlf-injection high). GUI probe also has a CRLF marker probe (control_server.cpp:2341+). Present.",
-      "evidence": "control_server.cpp:763 `const auto res = Nullock::Core::CrlfInjection::test(cir);`"
+      "evidence": "control_server.cpp:780 `const auto res = Nullock::Core::CrlfInjection::test(cir);` (deep-audit path, note(\"crlf\", ...) -> \"high\"/\"crlf-injection\"); :2645-2663 GUI probe injects `x%0d%0aX-Nullock-Inject:%20<tag>` and reports high crlf-injection when the header is reflected verbatim in the response.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "scanner",
@@ -2157,7 +2163,13 @@
       "effort": "hours",
       "gap": "The grading is genuine but unlabelled: `effectiveBitsPerToken` is emitted, the 60/124 thresholds are not, the standard is not, and the score blends the keyspace verdict with six unrelated deductions so the user cannot recover \"this token is below the 128-bit target\" from the output. Add an explicit `keyspaceGrade` field and this becomes a true exceed.",
       "why": "DOWNGRADED exceeds -> present. The code is verbatim as quoted and the capability is real and genuinely absent from Burp \u2014 but \"exceeds\" overstates it. There is no stated grade against a named standard anywhere in the OUTPUT: SP 800-63B appears only in a source comment at :583-585. The user receives an unlabelled 0-100 score in which the keyspace deduction is indistinguishable from the six other de",
-      "evidence": "sequencer_logic.cpp:594-598 verbatim: `if      (effectiveBits < 60)  score -= 55;   // brute-forceable keyspace / else if (effectiveBits < 124) score -= 15;   // below the 128-bit target / ... if (combinedBits < 2.0) score -= 25;` and :604 `if (lcs.size() > varLen / 2 && varLen > 8) score -= 30;`. The standard is named only in a comment: :583-585 `// forceable however uniform its characters, while"
+      "evidence": "sequencer_logic.cpp:1010 `shannon[\"effectiveBitsPerToken\"] = effectiveBits;`; score deductions at :1227-1237 (`if (effectiveBits < 60) score -= 55; else if (effectiveBits < 124) score -= 15;` ... `if (combinedBits < 2.0) score -= 25;` ... `if (lcs.size() > varLen / 2 && varLen > 8) score -= 30;`); the 128-bit target and NIST SP 800-63B are named only in a code comment at :1216-1218, not emitted in the JSON output -- no `keyspaceGrade` field exists.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "sequencer",
@@ -2271,7 +2283,13 @@
       "effort": "hours",
       "gap": "None on the injection path \u2014 a host-A secret cannot be injected into a host-B request. Caveat: `variables()` deliberately flattens every host's bag into one namespace for the snapshot, so a same-named variable from a different host overwrites in the READ view and all captured secrets appear together in the polled snapshot JSON. Isolation is enforced where it matters (egress) but is not maintained in the introspection surface.",
       "why": "Verified verbatim on both the store and read sides, plus the declared member. The isolation on the INJECT path is genuine and is a real security property Burp's global macro bag does not have. Held at exceeds \u2014 but with a caveat the first pass missed: the same class has a deliberately flattened cross-host reader that is published in the snapshot.",
-      "evidence": "session_rules.cpp:139-142 verbatim: `// ONLY variables captured from THIS request's host -- a secret extracted // from another host must never ride along cross-origin. vars = m_varsByHost.value(req.host);`; store side :126-128 `auto &hostVars = m_varsByHost[req.host]; for (auto it = newVars.cbegin(); it != newVars.cend(); ++it) hostVars.insert(it.key(), it.value());`; member session_rules.hpp:108 "
+      "evidence": "session_rules.cpp:236-240 store side verbatim: `// Store under the HOST the value was extracted from -- never inject a // host-A secret into a host-B request. auto &hostVars = m_varsByHost[req.host]; for (auto it = newVars.cbegin(); it != newVars.cend(); ++it) hostVars.insert(it.key(), it.value());`; read side :251-253 `// ONLY variables captured from THIS request's host -- a secret extracted // from another host must never ride along cross-origin. vars = m_varsByHost.value(req.host);`; member session_rules.hpp:192 `QHash<QString, QHash<QString, QString>> m_varsByHost;`. Flattened read view confirmed at session_rules.cpp:133-141 `variables()` (later host wins on a name collision) -- the caveat still holds.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "sequencer",
@@ -2281,7 +2299,13 @@
       "effort": "hours",
       "gap": "None on the sanitisation itself. Adjacent weakness (tracked under item 15): the same function leaves an UNRESOLVED `{{var}}` in the output string, which is then injected verbatim because it is non-empty \u2014 sanitisation is sound, resolution is not.",
       "why": "Every cited line verified verbatim: CR/LF plus C0 stripping, ';' stripping for cookies, JSON-context escaping, and the single-pass substitution that blocks a captured value from expanding into another placeholder. This is a genuine hardening layer Burp does not have. Held at exceeds.",
-      "evidence": "session_rules_logic.cpp:98-111 verbatim: `QString sanitizeHeaderValue(const QString &v) { QString out = v; out.remove('\\r').remove('\\n'); QString clean; clean.reserve(out.size()); for (const QChar c : out) if (c.unicode() >= 0x20 || c == '\\t') clean.append(c); return clean; } QString sanitizeCookieValue(const QString &v) { return sanitizeHeaderValue(v).remove(';'); }`; JSON escape :113-121 `jsonEs"
+      "evidence": "session_rules_logic.cpp:105-114 verbatim: `QString sanitizeHeaderValue(const QString &v) { QString out = v; out.remove('\\r').remove('\\n'); QString clean; clean.reserve(out.size()); for (const QChar c : out) if (c.unicode() >= 0x20 || c == '\\t') clean.append(c); return clean; }`; :116-118 `sanitizeCookieValue` strips ';' on top; JSON escape :120-128 `jsonEscapeInner` (serialize-then-unwrap for a correctly escaped inner literal); single-pass substitute() at :76.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "sequencer",
@@ -3009,7 +3033,13 @@
       "effort": "days",
       "gap": "Single shared bearer token rather than multiple revocable named keys; no self-describing OpenAPI/Swagger for its own endpoints (it can generate OpenAPI for targets, not for itself).",
       "why": "Verified the security-critical half by reading app.cpp directly rather than trusting the quote. The token plumbing, the off-loopback refusal, the read/write method split and the CSRF guard are all real and correctly ordered (token check precedes CSRF, so scripted clients with a bearer token bypass the browser-only guard). The endpoint surface is genuinely far larger than Burp's /v0.1. 'exceeds' st",
-      "evidence": "Src/App/app.cpp:983-985 `QString apiToken = qEnvironmentVariable(\"NULLOCK_API_TOKEN\"); if (apiToken.isEmpty()) apiToken = flagValue(argc, argv, \"--api-token\"); controlServer.setApiToken(apiToken);`; :1002-1013 `if (!ctlLoopback && apiToken.isEmpty()) { ... \"FATAL: --listen=\" << listenArg << \" binds the control API off loopback, which requires a token ... Refusing to start.\\n\"; return 1; }`. Method"
+      "evidence": "Src/App/app.cpp:1308-1310 `QString apiToken = qEnvironmentVariable(\"NULLOCK_API_TOKEN\"); if (apiToken.isEmpty()) apiToken = flagValue(argc, argv, \"--api-token\"); controlServer.setApiToken(apiToken);`; :1326-1338 off-loopback bind without a token refuses to start (`FATAL: --listen=... binds the control API off loopback, which requires a token ... Refusing to start.`). Ordering verified in control_server.cpp:1108-1115 (bearer-token check) precedes the CSRF guard at :1143-1160 (`if (!tokenValid && !ControlLogic::isRequestAuthorized(...))`) -- a valid token skips the CSRF/Origin check entirely, confirming scripted clients bypass the browser-only guard via the token alone.",
+      "audited_state": "exceeds",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
@@ -3474,9 +3504,15 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "Leaf carries exactly one DNS SAN and a /CN=<host> subject. Burp clones the upstream cert's subject/SAN set; Nullock does not, so a client that pins on issuer-independent fields (multi-SAN, OU, serial) still breaks. No IP SAN (see Group B #6). Whole path is gated on an external openssl binary (item 6).",
+      "gap": "Leaf carries a single SAN (DNS:<host> for a normal hostname target, or IP:<addr> for an IPv4/IPv6 literal target via CertLogic::sanEntryForHost -- see item #286 for that IP-SAN work's own state). Burp clones the upstream cert's full subject/SAN set; Nullock does not, so a client pinning on issuer-independent fields (multi-SAN, OU, serial) still breaks -- multi-SAN/wildcard leaves and the live-handshake forged-leaf path are #286's tracked remainder. Whole path is gated on an external openssl binary (item 6).",
       "why": "Verified verbatim -- the openssl req/x509 pair and the SAN/EKU ext file are exactly as quoted, and the leaf is installed on the client leg. Kept 'present'. Re-rated user_impact from 'blocker' to 'medium': the mechanism works, so the number should describe the residual gap (single DNS SAN, no upstream-cert cloning), not the importance of the feature.",
-      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:223-246 `\"req\", \"-new\", \"-nodes\", \"-newkey\", \"rsa:2048\", ... \"-subj\", \"/CN=\" + host` then `\"x509\", \"-req\", ... \"-CA\", m_caCertPath, \"-CAkey\", m_caKeyPath, \"-CAcreateserial\", \"-days\", \"365\", ... \"-extfile\", extPath`; ext file at cert_authority.cpp:215-219 `\"subjectAltName = DNS:%1\\n\" \"basicConstraints = critical, CA:FALSE\\n\"`. Installed at proxy_server.cpp:404-4"
+      "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:246-250 `subjectAltName = %1` now built from `CertLogic::sanEntryForHost(host)` (dynamic DNS:/IP: SAN, not a hardcoded DNS: literal); :254-263 `\"req\", \"-new\", \"-nodes\", \"-newkey\", \"rsa:2048\", ... \"-subj\", \"/CN=\" + host`; :265-277 `\"x509\", \"-req\", ... \"-CA\", m_caCertPath, \"-CAkey\", m_caKeyPath, \"-CAcreateserial\", \"-days\", \"365\", ... \"-extfile\", extPath`. Installed at proxy_server.cpp:459 `cfg.setLocalCertificate(cert);`.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-27",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source. Found real drift: the gap text's \"No IP SAN (see Group B #6)\" claim is now STALE -- 983fca1 (2026-08-26, closed the same day as this parity.json entry's last touch, but this item itself was never revisited) made subjectAltName dynamic via CertLogic::sanEntryForHost, which emits an IP: SAN for both IPv4 and IPv6 literal hosts (cert_logic.cpp:98-101) instead of always DNS:<host>. Item #286 (\"Per-host leaf certificates for IP-address and IPv6 targets\") already tracks the IP-SAN work accurately as partial (multi-SAN/wildcard + live-handshake MITM socket path remain) -- corrected this item's gap text to stop duplicating a now-false claim and point at #286 instead. No state change (present is still correct for the DNS-SAN leaf-minting mechanism this item describes); refreshed evidence line numbers."
+      }
     },
     {
       "area": "proxy",
