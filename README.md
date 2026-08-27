@@ -200,8 +200,8 @@ Sequencer         Statistical randomness analysis of session tokens (Burp Sequen
                   the current analysis (client-generated, not yet wired into cmd_report or the
                   findings/baseline store); a Live capture panel drives the token-harvest engine
                   directly (host/port/TLS + a raw request template, extract-from header/cookie/
-                  JSON-path/regex/status, shot count + throttle, START/STOP/CLEAR with a live
-                  progress readout) -- harvested tokens flow straight into the manual-load corpus
+                  JSON-path/regex/status/start-end-delimiters, shot count + throttle, START/STOP/CLEAR
+                  with a live progress readout) -- harvested tokens flow straight into the manual-load corpus
                   above, ready for analysis, Copy, Save, or export; in Cookie mode a "cookies seen
                   so far" dropdown auto-populates from the distinct Set-Cookie names the capture
                   has actually observed in responses, so the extraction key can be picked instead

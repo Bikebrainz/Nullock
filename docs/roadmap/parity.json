@@ -2376,17 +2376,17 @@
     {
       "area": "sequencer",
       "feature": "Live capture token location: Custom location (define start/end delimiters or a regex extraction rule on the response)",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Both extraction modes now exist in the backend: the regex half was already wired UI-reachable, and the literal start/end-delimiter mode is now implemented -- SequencerCaptureLogic gains a FromDelimiter ExtractFrom (parseExtractFrom accepts 'delimiter'/'delim'; extractToken returns the substring between the first <start> and the next <end>, with empty-start=from-beginning and empty-end=to-end, key encoded as '<start>\\x1f<end>'). Stays partial only for the ui-v2 delimiter input (two fields feeding the encoded key), the extract-from select's Delimiter option in the other developer's lane.",
-      "why": "Narrowed 2026-08-23 (partial -> partial, gap-narrowing not a state flip): the 2026-08-17 wave closed the backend regex-extraction half; this wave adds its UI. The delimiter-pair variant remains a separate, unbuilt extraction mode.",
-      "evidence": "ui-v2/app.jsx SequencerTab's SEQ_CAPTURE_EXTRACT_FROM select (value='regex') + capExtractKey text input; Src/Core/Networking/sequencer_capture_logic.cpp FromRegex branch (unchanged, capture-group only).",
-      "audited_state": "absent",
+      "gap": "None -- both extraction modes are now GUI-reachable in the SEQUENCER tab's live-capture panel. SEQ_CAPTURE_EXTRACT_FROM gains a 'delimiter' option; picking it swaps the single key input for two fields (start/end delimiter) that encode to SequencerCaptureLogic's '<start>\\x1f<end>' key format at capture-start time. The regex mode (closed 2026-08-17) already had its UI.",
+      "why": "Closed 2026-08-27: added the delimiter-mode UI (ui-v2/app.jsx SequencerTab) -- capDelimStart/capDelimEnd state, a start/end-delimiter option in the extract-from select, and encoding to the backend's FromDelimiter key format on captureStart(). The backend half (FromDelimiter, parseExtractFrom) was already implemented and unchanged by this wave.",
+      "evidence": "ui-v2/app.jsx SEQ_CAPTURE_EXTRACT_FROM 'delimiter' option + capDelimStart/capDelimEnd inputs, encoded as capDelimStart + \"\\x1f\" + capDelimEnd in captureStart(); Src/Core/Networking/sequencer_capture_logic.cpp FromDelimiter branch (unchanged) already decodes that exact format.",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "f910a9e",
-        "note": "The regex half of the custom token-location is wired: capture with extract:{from:'regex',key:'<pattern>'} harvests the first capture group (or whole match) from each response body (bounded at 1 MiB, DotMatchesEverythingOption). Remaining: the start/end-delimiter variant and its UI."
+        "date": "2026-08-27",
+        "commit": "PENDING",
+        "note": "Wired the delimiter-mode UI onto the already-implemented FromDelimiter backend, closing the last open gap on this item (regex mode was closed 2026-08-17)."
       }
     },
     {

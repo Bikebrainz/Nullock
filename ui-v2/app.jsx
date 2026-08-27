@@ -4190,6 +4190,11 @@ function SequencerTab({ sequencer, dispatch }) {
   const [capRequest, setCapRequest]   = React.useState("GET / HTTP/1.1\nHost: \n\n");
   const [capExtractFrom, setCapExtractFrom] = React.useState("header");
   const [capExtractKey, setCapExtractKey]   = React.useState("");
+  // "delimiter" mode encodes its key as "<start>\x1f<end>" (matching
+  // SequencerCaptureLogic::extractToken's FromDelimiter branch) rather
+  // than reusing capExtractKey's single free-text field.
+  const [capDelimStart, setCapDelimStart]   = React.useState("");
+  const [capDelimEnd, setCapDelimEnd]       = React.useState("");
   const [capCount, setCapCount]       = React.useState(200);
   const [capThrottleMs, setCapThrottleMs] = React.useState(0);
   const [capSnapshot, setCapSnapshot] = React.useState(null);
@@ -4222,9 +4227,12 @@ function SequencerTab({ sequencer, dispatch }) {
   async function captureStart() {
     setCapErr(""); setCapBusy(true);
     try {
+      const extractKey = capExtractFrom === "delimiter"
+        ? capDelimStart + "\x1f" + capDelimEnd
+        : capExtractKey;
       const r = await NL.actions.sequencerCaptureStart({
         host: capHost.trim(), port: capPort, tls: capTls, request: capRequest,
-        extract: { from: capExtractFrom, key: capExtractKey },
+        extract: { from: capExtractFrom, key: extractKey },
         count: capCount, throttleMs: capThrottleMs,
       });
       if (r && r.ok === false) setCapErr(r.error || "capture failed to start");
@@ -4544,14 +4552,30 @@ function SequencerTab({ sequencer, dispatch }) {
                   style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }}>
             {SEQ_CAPTURE_EXTRACT_FROM.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <input placeholder="header/cookie name, JSON path, or regex (blank for status)" value={capExtractKey}
-                 onChange={e => setCapExtractKey(e.target.value)}
-                 style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          {capExtractFrom === "delimiter" ? (
+            <div style={{ display: "flex", gap: 6 }}>
+              <input placeholder="start delimiter" value={capDelimStart}
+                     onChange={e => setCapDelimStart(e.target.value)}
+                     style={{ flex: 1, minWidth: 0, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+              <input placeholder="end delimiter" value={capDelimEnd}
+                     onChange={e => setCapDelimEnd(e.target.value)}
+                     style={{ flex: 1, minWidth: 0, background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+            </div>
+          ) : (
+            <input placeholder="header/cookie name, JSON path, or regex (blank for status)" value={capExtractKey}
+                   onChange={e => setCapExtractKey(e.target.value)}
+                   style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
+          )}
           <input type="number" title="shots" value={capCount} onChange={e => setCapCount(parseInt(e.target.value, 10) || 0)}
                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
           <input type="number" title="throttle (ms)" value={capThrottleMs} onChange={e => setCapThrottleMs(parseInt(e.target.value, 10) || 0)}
                  style={{ background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 4, padding: "5px 8px", fontSize: "12px", fontFamily: "var(--ff-mono)" }} />
         </div>
+        {capExtractFrom === "delimiter" && (
+          <div style={{ fontSize: "10.5px", color: "var(--dim)" }}>
+            extracts the substring between the first occurrence of the start delimiter and the next end delimiter in the response body — leave start blank to match from the beginning, end blank to match to the end
+          </div>
+        )}
         {capExtractFrom === "cookie" && (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span style={{ fontSize: "10.5px", color: "var(--dim)" }}>cookies seen so far:</span>
@@ -6553,6 +6577,7 @@ const SEQ_CAPTURE_EXTRACT_FROM = [
   { value: "json",   label: "JSON path" },
   { value: "regex",  label: "Regex (body, 1st group)" },
   { value: "status", label: "Status code" },
+  { value: "delimiter", label: "Start/end delimiters" },
 ];
 const INJECT_INTO_LABEL  = ["Header", "Cookie", "Body ({{var}})", "URL query"];
 
