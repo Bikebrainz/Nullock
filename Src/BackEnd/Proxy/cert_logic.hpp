@@ -32,10 +32,9 @@ QString sanitize(const QString &host);
 // decides the SAN TYPE when minting a forged leaf: a client verifying an IP-literal
 // host requires an iPAddress SAN (RFC 6125), so a "DNS:<ip>" SAN is rejected -- and
 // in this proxy a rejected forged leaf then auto-blocklists the host, making every
-// https://<ip>/ target un-interceptable. Pure. (IPv6 literals are a separate,
-// tracked remainder: isValidHostForCert still rejects ':' as an injection guard, so
-// an IPv6 target never reaches minting; relaxing that safely needs collision-proof
-// leaf-file naming too.)
+// https://<ip>/ target un-interceptable. Pure. (IPv6 literals get the same
+// iPAddress-SAN treatment via isIpv6Literal below and isValidHostForCert now
+// accepts them too; multi-SAN and wildcard-SAN leaves remain a tracked remainder.)
 bool isIpv4Literal(const QString &host);
 
 // Strict textual IPv6 literal (Qt6::Core only; no QHostAddress). Accepts full and
@@ -44,8 +43,8 @@ bool isIpv4Literal(const QString &host);
 // valid IPv6 becomes an "IP:" SAN and is accepted by isValidHostForCert.
 bool isIpv6Literal(const QString &host);
 
-// The subjectAltName entry for a leaf minted for `host`: "IP:<addr>" for an IPv4
-// literal, else "DNS:<host>". `host` is assumed already isValidHostForCert-clean
+// The subjectAltName entry for a leaf minted for `host`: "IP:<addr>" for an IPv4 OR
+// IPv6 literal, else "DNS:<host>". `host` is assumed already isValidHostForCert-clean
 // (so it is safe to embed verbatim in the openssl SAN extension file).
 QString sanEntryForHost(const QString &host);
 
