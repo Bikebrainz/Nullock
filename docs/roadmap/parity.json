@@ -2385,7 +2385,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-27",
-        "commit": "PENDING",
+        "commit": "4ea3ffc",
         "note": "Wired the delimiter-mode UI onto the already-implemented FromDelimiter backend, closing the last open gap on this item (regex mode was closed 2026-08-17)."
       }
     },
