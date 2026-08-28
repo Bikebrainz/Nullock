@@ -649,6 +649,40 @@ function SettingsTab() {
   // when handing a HAR to a colleague who needs to reproduce the bug.
   const [harUnredacted, setHarUnredacted] = React.useState(false);
 
+  // Named config-preset library (Burp: "configuration library") -- a global
+  // shelf of saved config-export documents you switch between, distinct from
+  // the one-shot Export/Import config file above.
+  const [presets, setPresets]         = React.useState([]);
+  const [presetName, setPresetName]   = React.useState("");
+  const [presetSel, setPresetSel]     = React.useState("");
+  const refreshPresets = React.useCallback(async () => {
+    try {
+      const r = await NL.actions.configPresetsList();
+      setPresets(r.presets || []);
+    } catch {}
+  }, []);
+  React.useEffect(() => { refreshPresets(); }, [refreshPresets]);
+  const savePreset = async () => {
+    const n = presetName.trim();
+    if (!n) return;
+    const r = await NL.actions.configPresetsSave(n);
+    if (!r || r.ok === false) { alert("Save preset failed: " + (r && r.error ? r.error : "unknown error")); return; }
+    setPresetName("");
+    await refreshPresets();
+  };
+  const loadPreset = async () => {
+    if (!presetSel) return;
+    const r = await NL.actions.configPresetsLoad(presetSel);
+    if (!r || r.ok === false) alert("Load preset failed: " + (r && r.error ? r.error : "unknown error"));
+    else alert("Loaded preset '" + presetSel + "': " + (r.applied || []).join(", "));
+  };
+  const deletePreset = async () => {
+    if (!presetSel) return;
+    await NL.actions.configPresetsDelete(presetSel);
+    setPresetSel("");
+    await refreshPresets();
+  };
+
   // Reload themes from disk -- picks up user-added/edited JSON theme files
   // in the themes dir without an app restart.
   const [themesReloaded, setThemesReloaded] = React.useState(false);
@@ -1166,6 +1200,32 @@ function SettingsTab() {
             />
           </label>
           <Btn label="Clear history" onClick={() => NL.actions.clearHistory()} danger />
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}
+             title="Named config presets: save/load/delete a full config snapshot (scope, match-and-replace, session rules, intercept rules) under a name, stored globally across projects">
+          <span style={{ minWidth: 110, color: "var(--dim)", fontSize: "12px" }}>Config presets</span>
+          <input
+            value={presetName}
+            onChange={e => setPresetName(e.target.value)}
+            placeholder="preset name"
+            style={{
+              background: "var(--bg-deep)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 6px",
+              fontSize: "12px", fontFamily: "var(--ff-mono)", width: 140,
+            }}
+          />
+          <Btn label="Save" onClick={savePreset} disabled={!presetName.trim()} />
+          <select value={presetSel} onChange={e => setPresetSel(e.target.value)}
+            style={{
+              background: "var(--bg-deep)", color: "var(--text)",
+              border: "1px solid var(--line)", padding: "4px 6px",
+              fontSize: "12px", fontFamily: "var(--ff-mono)", minWidth: 140,
+            }}>
+            <option value="">-- saved presets ({presets.length}) --</option>
+            {presets.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <Btn label="Load" onClick={loadPreset} disabled={!presetSel} />
+          <Btn label="Delete" onClick={deletePreset} disabled={!presetSel} danger />
         </div>
       </Card>
 

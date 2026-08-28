@@ -225,6 +225,13 @@
     // See control_server.cpp /api/config/export|import.
     configExport()          { return fetch("/api/config/export").then(r => r.json()); },
     configImport(doc)       { return post("/api/config/import", doc).then(r => r.json()); },
+    // Named configuration-preset library -- save/load/delete a byte-for-byte
+    // config-export document under a name, stored globally (survives across
+    // projects). See control_server.cpp /api/config/presets*.
+    configPresetsList()        { return fetch("/api/config/presets").then(r => r.json()); },
+    configPresetsSave(name)    { return post("/api/config/presets/save",   { name }).then(r => r.json()); },
+    configPresetsLoad(name)    { return post("/api/config/presets/load",   { name }).then(r => r.json()); },
+    configPresetsDelete(name)  { return post("/api/config/presets/delete", { name }).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     // Pre-add a host to the TLS pass-through (blind-tunnel) list, or remove

@@ -247,7 +247,10 @@ Authz test        Multi-identity replay from Proxy history / Site map -- define 
                   privilege, CWE-863); divergent runs also file a finding in Issues
 Protocol detect   gRPC + GraphQL endpoints flagged in passive scan (fingerprint, not a full decoder)
 Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR, XML issue report
-                  (Burp-style, GET /api/report/xml)
+                  (Burp-style, GET /api/report/xml); a portable config document (scope,
+                  match-and-replace rules, session-handling rules, intercept rules) exports/
+                  imports as one JSON file, or saves/loads/deletes under a name in a global
+                  config-preset library (Settings' Project card) that survives across projects
 SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
