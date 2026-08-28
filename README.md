@@ -233,7 +233,9 @@ Inspector         Structured view of any request/response -- headers, cookies, q
 GraphQL toolkit   In-app PROBE tab: schema introspection with dangerous-mutation + sensitive-field
                   flagging, plus an active probe suite (introspection/field-suggestion/alias-amplification/
                   depth-bypass/batch-bypass) -- findings feed Issues like every other active test
-Active tests      25 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app, findings feed Issues
+Active tests      25 on-demand checks (SQLi/XSS/SSRF/SSTI/IDOR/XXE/...) launchable per-URL from the app,
+                  plus a dedicated web cache poisoning panel (free-form unkeyed-header injection,
+                  confirmed/cacheable/unkeyed severity ladder) -- findings feed Issues
 Deep audit sweep  One-click "Deep audit all rows" runs the full battery (cmdi/xxe/ldap/xpath/
                   smuggle/hostheader/cache-poison/deser/nosql/mass-assign/cors) against every
                   captured history row with params or a body, throttled, off the UI thread

@@ -407,6 +407,16 @@
       if (method) b.method = method;
       return post("/api/" + type + "/test", b).then(r => r.json());
     },
+    // Web cache poisoning has a distinct request shape from the uniform
+    // {url,param?,method?} test contract above -- it needs an explicit set
+    // of unkeyed headers to inject, so it gets its own action + panel
+    // instead of a TEST_TYPES entry.
+    cachePoisonTest(url, method, headers) {
+      const b = { url };
+      if (method)  b.method  = method;
+      if (headers) b.headers = headers;
+      return post("/api/cache/poison", b).then(r => r.json());
+    },
     sessionAutoInject(host, on) { return post("/api/sessions/autoInject", { host, on }); },
     sessionClearHost(host)      { return post("/api/sessions/clear",      { host }); },
     sessionClearAll()           { return post("/api/sessions/clear",      {}); },

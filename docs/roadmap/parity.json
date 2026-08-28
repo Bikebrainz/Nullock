@@ -1103,14 +1103,14 @@
       "state": "present",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No longer API-only: the full CachePoison::test confirmed/cacheable/unkeyed severity ladder is reachable from the GUI via 'Deep audit all rows' (default sweep). The per-row live probe still only fires the narrower X-Forwarded-Host variant.",
+      "gap": "Fully GUI-reachable: the default sweep ('Deep audit all rows') still runs the narrower X-Forwarded-Host variant per row, and the TESTS tab now also has a dedicated Web cache poisoning panel wiring the full CachePoison::test single-target probe directly (/api/cache/poison) with a free-form custom-header editor -- the confirmed/cacheable/unkeyed severity ladder, baseline status, and request count are all rendered.",
       "why": "Re-read control_server.cpp:594-607: CachePoison::test with severity ladder confirmed(critical)/cacheable(high)/unkeyed(low). Present but API-only.",
       "evidence": "control_server.cpp:599 `const auto res = Nullock::Core::CachePoison::test(cpr);` :601-604 sev/kind ladder",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-09",
-        "commit": "52cf31e",
-        "note": "Closed via the shared 'Deep audit all rows' button (auditAll action, POST /api/audit/all default sweep)."
+        "date": "2026-08-28",
+        "commit": "PENDING",
+        "note": "Wired the previously-orphaned /api/cache/poison endpoint into a dedicated Web cache poisoning panel on the TESTS tab (custom-header textarea + URL/method + confirmed/cacheable hit table), closing the last GUI-reachability gap UI-NAVIGABILITY.md tracked for this endpoint."
       }
     },
     {

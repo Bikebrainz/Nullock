@@ -5852,7 +5852,8 @@ function TestsTab() {
   // Unified launcher for the active-vulnerability arsenal: 24 /api/<type>/test
   // backends that existed with no UI (of the 26 in the family, jwt needs a
   // token field this uniform form can't provide -- see Inspector's JWT
-  // toolkit -- and cache/poison has a distinct request shape entirely).
+  // toolkit -- and cache/poison has a distinct request shape entirely, so it
+  // gets its own dedicated panel below the uniform runner instead).
   // Uniform {url, param?, method?} request; results (hits/findings) render
   // generically and also flow to Issues.
   const [url, setUrl]     = React.useState("");
@@ -5884,6 +5885,40 @@ function TestsTab() {
   // test; render each item's scalar fields generically so one view fits all 26.
   const items = res ? (res.hits || res.findings || res.detections || res.results || []) : [];
   const isVuln = res && (res.vulnerable === true || items.length > 0);
+
+  // Cache poisoning: distinct request shape (explicit unkeyed headers to
+  // inject, not the uniform {url,param?,method?} contract) so it gets its
+  // own mini-panel below the generic runner instead of a TEST_TYPES entry.
+  const [cpUrl, setCpUrl] = React.useState("");
+  const [cpMethod, setCpMethod] = React.useState("");
+  const [cpHeaders, setCpHeaders] = React.useState("X-Forwarded-Host: evil.example\nX-Original-URL: /\nX-Forwarded-Scheme: http");
+  const [cpRes, setCpRes] = React.useState(null);
+  const [cpBusy, setCpBusy] = React.useState(false);
+  const [cpErr, setCpErr] = React.useState("");
+
+  const parseHeaderLines = (text) => {
+    const out = {};
+    text.split("\n").forEach(line => {
+      const i = line.indexOf(":");
+      if (i <= 0) return;
+      const k = line.slice(0, i).trim();
+      const v = line.slice(i + 1).trim();
+      if (k) out[k] = v;
+    });
+    return out;
+  };
+
+  const runCachePoison = async () => {
+    if (!cpUrl) { setCpErr("enter a target URL"); return; }
+    setCpErr(""); setCpBusy(true); setCpRes(null);
+    try {
+      const headers = parseHeaderLines(cpHeaders);
+      const r = await NL.actions.cachePoisonTest(cpUrl, cpMethod, headers);
+      if (r && r.ok === false && r.error) { setCpErr(r.error); setCpRes(null); }
+      else setCpRes(r);
+    } catch (e) { setCpErr(String(e && e.message ? e.message : e)); }
+    finally { setCpBusy(false); }
+  };
 
   const inp = {
     background: "var(--bg-deep)", color: "var(--text)", border: "1px solid var(--line)",
@@ -5940,6 +5975,52 @@ function TestsTab() {
           </div>
         )}
       </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Web cache poisoning</span>
+        <span style={{ color: "var(--dim)", fontSize: "11px" }}>injects unkeyed headers, then re-requests with none — a sentinel served from cache proves poisoning end to end</span>
+      </div>
+      <div style={{ background: "var(--pane)", border: "1px solid var(--line)", padding: 10, borderRadius: 4, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <input value={cpUrl} onChange={e => setCpUrl(e.target.value)} placeholder="https://target/path"
+               onKeyDown={e => { if (e.key === "Enter") runCachePoison(); }}
+               style={{ ...inp, flex: "1 1 300px", minWidth: 200 }} spellCheck={false} />
+        <select value={cpMethod} onChange={e => setCpMethod(e.target.value)} style={{ ...inp, flex: "0 0 90px" }}>
+          <option value="">auto</option><option value="GET">GET</option><option value="POST">POST</option>
+        </select>
+        <textarea value={cpHeaders} onChange={e => setCpHeaders(e.target.value)} spellCheck={false}
+                  placeholder="Header: value (one per line)"
+                  style={{ ...inp, flex: "1 1 260px", minWidth: 220, height: 60, resize: "vertical" }} />
+        <button onClick={runCachePoison} disabled={cpBusy} style={{
+          background: "var(--accent)", color: cpBusy ? "var(--dim)" : "var(--bg)",
+          border: "1px solid var(--accent)", padding: "5px 14px", fontSize: "11px",
+          fontFamily: "var(--ff-mono)", cursor: cpBusy ? "wait" : "pointer",
+          letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600,
+        }}>{cpBusy ? "running…" : "▶ run"}</button>
+        <span style={{ color: "var(--err)", fontSize: "11px" }}>{cpErr}</span>
+      </div>
+      {cpRes && (
+        <div style={{ background: "var(--pane)", border: "1px solid var(--line)", borderRadius: 4, padding: 12, fontSize: "12px", fontFamily: "var(--ff-mono)" }}>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ color: cpRes.anyConfirmed ? "var(--err)" : cpRes.anyCacheable ? "#ea580c" : "var(--ok, #6c8)", fontWeight: 600 }}>
+              {cpRes.anyConfirmed ? "CONFIRMED POISONED" : cpRes.anyCacheable ? "cacheable, unconfirmed" : "no poisoning evidence"}
+            </span>
+            <span style={{ color: "var(--dim)" }}>{"  · baseline " + cpRes.baselineStatus + "  · " + cpRes.requestsSent + " requests  · " + cpRes.hitCount + " hit" + (cpRes.hitCount === 1 ? "" : "s")}</span>
+          </div>
+          {(cpRes.hits || []).map((h, i) => (
+            <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 10, padding: "1px 0" }}>
+                <span style={{ color: "var(--dim)", minWidth: 90 }}>header</span>
+                <span style={{ color: h.cacheConfirmed ? "var(--err)" : h.cacheable ? "#ea580c" : "var(--text)", wordBreak: "break-all" }}>{h.header}</span>
+              </div>
+              {["sentValue", "where", "reflected", "cacheable", "cacheConfirmed"].map(k => (
+                <div key={k} style={{ display: "flex", gap: 10, padding: "1px 0" }}>
+                  <span style={{ color: "var(--dim)", minWidth: 90 }}>{k}</span>
+                  <span style={{ color: "var(--text)", wordBreak: "break-all" }}>{String(h[k])}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

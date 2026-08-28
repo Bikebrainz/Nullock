@@ -91,8 +91,14 @@ per-host inventory: Path/Expires + httpOnly/secure/sameSite coverage percentages
 inject-focused per-host list. SETTINGS' Projects card now offers a template picker and a
 "Create from template" button.
 
-## Active vulnerability tests (1 remaining — 24 of the 26 `/<type>/test` family are wired via TESTS, `jwt` via Inspector's JWT TOOLKIT)
-- `/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract)
+## Active vulnerability tests (0 remaining — 24 of the 26 `/<type>/test` family are wired via TESTS, `jwt` via Inspector's JWT TOOLKIT, `cache/poison` via TESTS' own dedicated panel)
+
+(`/api/cache/poison` — distinct shape from the `/api/<type>/test` family (not covered by the TESTS
+tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract) — now wired via a dedicated
+"Web cache poisoning" panel below the uniform runner on the TESTS tab: URL/method fields plus a
+free-form `Header: value`-per-line textarea for the unkeyed headers to inject, rendering
+baselineStatus/requestsSent/anyConfirmed/anyCacheable and the per-header hit table
+(sentValue/where/reflected/cacheable/cacheConfirmed).)
 
 (`/api/assess`, `/api/audit/run`, `/api/chain/run`, `/api/chain/record`, `/api/compliance`,
 `/api/gate`, `/api/inventory`, `/api/paramminer`, `/api/pipeline/run`, `/api/posture` all
@@ -241,3 +247,17 @@ delta being `/api/config/presets`, `/api/config/presets/save`, `/api/config/pres
 last census) -- all four already GUI-reachable via Settings' preset switcher, so this is a
 count-only correction with no new gap. True orphaned count holds at 3 of 207 (1%), all three
 intentional as listed above.
+
+A same-day follow-up reconsidered one of those three "intentional" orphans: `/api/cache/poison`
+had been left unwired because its request shape (explicit unkeyed headers to inject) doesn't
+fit the TESTS tab's uniform `{url,param?,method?}` -> `/api/<type>/test` contract -- but unlike
+`/api/request/curl` (superseded by an existing client-side exporter) and `/api/intruder/multi`
+(a redundant sync duplicate of the already-wired async Intruder flow), there was no existing
+GUI path offering this endpoint's specific capability: a single-target probe with fully
+user-controlled headers, distinct from the default sweep's fixed X-Forwarded-Host-only variant.
+Closed: `real-data.js` gained `cachePoisonTest(url, method, headers)`, and the TESTS tab gained
+a dedicated "Web cache poisoning" panel below the uniform runner (URL/method fields + a
+`Header: value`-per-line textarea) rendering baselineStatus/requestsSent/anyConfirmed/
+anyCacheable and the per-header hit table (sentValue/where/reflected/cacheable/cacheConfirmed).
+True orphaned count corrected 3 -> 2 of 207 (1%), the remaining two
+(`/api/request/curl`, `/api/intruder/multi`) still intentional for the reasons above.
