@@ -35,6 +35,12 @@ int main(int argc, char **argv) {
     // ---- branded fingerprints fire -------------------------------------
     chk("fp: GitHub Pages", hits("<html>There isn't a GitHub Pages site here.</html>", "GitHub Pages"));
     chk("fp: S3 NoSuchBucket", hits("<Error><Code>NoSuchBucket</Code></Error>", "AWS/S3"));
+    // The AWS/S3 fingerprint has a SECOND alternative -- the human-readable
+    // message a dangling bucket surfaces without the <Code>NoSuchBucket</Code>
+    // element. The case above only exercises the first; pin the message form so
+    // corrupting/dropping it (a silent loss of message-only S3 takeover) is caught.
+    chk("fp: S3 message-only alternative",
+        hits("<Error><Message>The specified bucket does not exist</Message></Error>", "AWS/S3"));
     chk("fp: Fastly", hits("Fastly error: unknown domain: foo.example.com", "Fastly"));
     chk("fp: Pantheon", hits("The gods are wise, but do not know of the site which you seek", "Pantheon"));
     chk("fp: Cargo branded kept", hits("If you're moving your domain away from Cargo, ...", "Cargo"));

@@ -110,6 +110,14 @@ int main(int argc, char **argv) {
         Request badQuery = req; badQuery.query = "q=x\r\nX: y";
         chk("build: CRLF query -> empty",  buildRequest(badQuery, "victim.tld", QString(), QString()).isEmpty());
         chk("build: CRLF hostLine -> empty", buildRequest(req, "victim.tld\r\nX: y", QString(), QString()).isEmpty());
+        // The hostLine guard is `contains('\r') || contains('\n')`, but the only
+        // case above carries BOTH chars, so each HALF of the OR was individually
+        // unpinned -- dropping either disjunct would survive. A lone LF (or CR) on
+        // the Host line is a real header/line splice on lenient parsers.
+        chk("build: bare-LF hostLine -> empty",
+            buildRequest(req, "victim.tld\nEvil: 1", QString(), QString()).isEmpty());
+        chk("build: bare-CR hostLine -> empty",
+            buildRequest(req, "victim.tld\rEvil: 1", QString(), QString()).isEmpty());
     }
 
     // ---- classifyHostReflection: the per-probe verdict (was untested) ----

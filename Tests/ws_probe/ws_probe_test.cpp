@@ -191,6 +191,13 @@ int main(int argc, char **argv) {
             !hasCredential(stripCredentials(h)));
         chk("stripCredentials: case-insensitive (COOKIE dropped)",
             stripCredentials(HL{{"COOKIE", "s=1"}}).isEmpty());
+        // The Cookie name match is pinned case-folded above, but the sibling
+        // Authorization match was not: a lowercase `authorization` (HTTP/2 header
+        // casing) must ALSO be dropped from the credential-stripped baseline --
+        // else it survives, the "no-credential" shot stays authorized, and a
+        // CONFIRMED CSWSH is silently downgraded to a mere lead (false negative).
+        chk("stripCredentials: case-insensitive (lowercase authorization dropped)",
+            stripCredentials(HL{{"authorization", "Bearer x"}}).isEmpty());
     }
 
     // ===== schemePortVariants (scheme/port-confusion bypass) ============

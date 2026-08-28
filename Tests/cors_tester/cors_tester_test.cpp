@@ -51,6 +51,14 @@ int main(int argc, char **argv) {
     chk("reg: api.target.co.uk -> target.co.uk", registrableDomain("api.target.co.uk") == "target.co.uk");
     chk("reg: shop.example.com.au -> example.com.au",
         registrableDomain("shop.example.com.au") == "example.com.au");
+    // Only co.uk / com.au of the ~50-entry kTwoLabelSuffixes set were pinned; a
+    // typo'd/dropped sibling silently collapses that TLD's targets to the bare
+    // suffix and emits a useless https://attacker-<suffix> probe (a dropped CORS
+    // endsWith-bypass probe for every target under it). Pin one per major family.
+    chk("reg: api.target.co.jp -> target.co.jp", registrableDomain("api.target.co.jp") == "target.co.jp");
+    chk("reg: api.target.com.br -> target.com.br", registrableDomain("api.target.com.br") == "target.com.br");
+    chk("reg: api.target.co.za -> target.co.za", registrableDomain("api.target.co.za") == "target.co.za");
+    chk("reg: api.target.com.cn -> target.com.cn", registrableDomain("api.target.com.cn") == "target.com.cn");
     chk("reg: bare co.uk -> co.uk (no eTLD+1)",  registrableDomain("co.uk") == "co.uk");
     // No registrable domain to attack: IPs, single-label, empty.
     chk("reg: IPv4 -> empty",                    registrableDomain("127.0.0.1").isEmpty());

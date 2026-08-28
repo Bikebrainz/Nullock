@@ -73,6 +73,11 @@ int main(int argc, char **argv) {
         chk("guard: CR/LF in basePath -> empty", buildRequest(r, QString()).isEmpty());
     }
     { Request r = baseReq(); r.basePath = "/a\nb"; chk("guard: bare LF in basePath -> empty", buildRequest(r, QString()).isEmpty()); }
+    // basePath's guard is `contains('\r') || contains('\n')`; the CR/LF and bare-LF
+    // cases above both carry '\n', so the bare-CR HALF of the OR was unpinned
+    // (host pins both halves at 83/84, basePath only the LF half). A lone CR is a
+    // real request-line splice on lenient parsers.
+    { Request r = baseReq(); r.basePath = "/a\rb"; chk("guard: bare CR in basePath -> empty", buildRequest(r, QString()).isEmpty()); }
     {
         // THE FIX: host is written into the Host header and must be guarded too.
         Request r = baseReq(); r.host = "target.example\r\nX-Injected: 1";

@@ -73,6 +73,30 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Six more detector checks locked by mutation-proven tests (no behaviour
+  change).** A fourth adversarial coverage audit over ssrf/cors/host_header/
+  takeover/deser/ws_probe found six low-level checks whose silent breakage no
+  test would catch, each verified by mutating the source and confirming only the
+  targeted case fails: (1) `cors_origin` — of the ~50-entry multi-label public-
+  suffix set, only `co.uk`/`com.au` were pinned; a typo'd/dropped sibling
+  silently collapses that TLD's targets to the bare suffix and emits a useless
+  probe origin, dropping the CORS eTLD-bypass probe for every target under it
+  (pinned `co.jp`/`com.br`/`co.za`/`com.cn`). (2) `takeover_logic` — the AWS/S3
+  fingerprint's second alternative (the human-readable "The specified bucket does
+  not exist" message, no `<Code>` element) was never exercised. (3) `deser_logic`
+  — Ruby's bare `marshal data too short` alternative (a Rails/Sinatra body with
+  no `ArgumentError:` class prefix) was masked by the catch-all sibling. (4)
+  `ws_logic` — `stripCredentials`'s **Authorization** name match was
+  case-sensitivity-unpinned (only Cookie was), so a lowercase `authorization`
+  would survive the credential-stripped baseline and downgrade a confirmed CSWSH
+  to a mere lead. (5,6) `ssrf_logic` + `host_header_logic` — a `contains('\r') ||
+  contains('\n')` request-line guard whose only bad-input test carried BOTH
+  chars, leaving each half of the OR individually unpinned (a lone CR or LF still
+  splices on lenient parsers); pinned the bare-CR basePath and bare-CR/LF hostLine
+  cases. (path_traversal's win.ini signature surfaced too but its test exercises
+  a mirror regex, not the private source table, so it is not unit-lockable and
+  was left alone rather than add a false-confidence test.) Gauntlet green (ctest
+  100/100, probe_smoke 158/158). Test-only.
 - **Four more probe request-builder invariants locked by mutation-proven tests
   (no behaviour change).** A third adversarial coverage audit over the
   redirect/smuggling/CRLF/prototype-pollution probes found four checks whose

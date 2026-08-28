@@ -40,6 +40,12 @@ int main(int argc, char **argv) {
     chk("sig: PHP offset", matches("unserialize(): Error at offset 0 of 11 bytes", "PHP"));
     chk("sig: Python UnpicklingError", matches("_pickle.UnpicklingError: truncated", "Python"));
     chk("sig: Ruby marshal too short", matches("ArgumentError: marshal data too short", "Ruby"));
+    // The case above carries the `ArgumentError:` class prefix, so it matches the
+    // 4th Ruby alternative (ArgumentError[^\n]*marshal); the FIRST alternative
+    // (bare `marshal data too short`, as a Rails/Sinatra body rendering only the
+    // exception message with no class prefix) is otherwise unexercised.
+    chk("sig: Ruby bare marshal-too-short (no ArgumentError prefix)",
+        matches("marshal data too short", "Ruby"));
     chk("sig: .NET SerializationException",
         matches("System.Runtime.Serialization.SerializationException: End of Stream encountered", ".NET"));
     // Each signature is an alternation; pin the branches that had no positive so a
