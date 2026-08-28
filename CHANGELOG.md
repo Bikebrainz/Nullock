@@ -304,6 +304,25 @@ developer-facing record.
   (`docs/labs/`, `ui-v2/labs-data.js`, new `ognl` Injection-category
   keyword and a curated `Medium` difficulty entry); README.md and
   docs/index.html's 54->55 lab-count strings updated alongside.
+- **Lab 56: cross-site WebSocket hijacking (CSWSH) on a notifications
+  feed.** A new teaching lab (`labs/56-cswsh-notifications/`) pairing with
+  the active `cswsh` WS-probe: a private notifications WebSocket
+  authenticates the caller via a `session` cookie -- the ambient
+  credential a browser attaches on every handshake, same-origin or not --
+  but never validates the handshake's `Origin` header, so any foreign
+  page that gets a logged-in victim's browser to open the socket rides
+  the victim's session in. Verified end-to-end by replicating
+  `ws_probe.cpp`'s own RFC 6455 handshake + grading logic against a real
+  `flask` + `flask-sock` run of the lab: a cross-origin handshake carrying
+  a valid session cookie completes (101 + valid `Sec-WebSocket-Accept`),
+  while Nullock's re-issued baseline -- same handshake, cookie stripped --
+  is refused (401, no upgrade at all), which is exactly what
+  `wsConfirmsHijack()` requires to grade CONFIRMED rather than a mere
+  Origin-not-validated lead; `/flag` only solves once that hijack actually
+  happened. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, new `cswsh` Client-side-category keyword and a
+  curated `Hard` difficulty entry); README.md and docs/index.html's
+  55->56 lab-count strings updated alongside.
 - **Active OGNL / Apache-Struts2 injection detection.** The SSTI active
   tester's two-expression arithmetic proof gained the `%{ }` delimiter family
   — the syntax Apache Struts2 evaluates as OGNL and the classic S2-045 /
