@@ -95,6 +95,8 @@ int main(int argc, char **argv) {
 
         Request badMethod = req;
         chk("build: CRLF method -> empty", buildRequest(badMethod, "GET\r\nX: y", {}).isEmpty());
+        // guard-half: the CR/LF cases all carry BOTH chars, so the LF half is unpinned.
+        chk("build: bare-LF method -> empty", buildRequest(badMethod, "GET\nX: y", {}).isEmpty());
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildRequest(badHost, "GET", {}).isEmpty());
         Request badPath = req; badPath.basePath = "/admin\r\nX: y";

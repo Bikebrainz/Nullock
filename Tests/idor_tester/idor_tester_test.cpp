@@ -114,6 +114,10 @@ int main(int argc, char **argv) {
 
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "/x").isEmpty());
+        // guard-half: the CR/LF cases all carry BOTH chars, so the LF half is unpinned.
+        Request badMethodLF = req; badMethodLF.method = "GET\nX: y";
+        chk("build: bare-LF method -> empty", buildRequest(badMethodLF, "/x").isEmpty());
+        chk("build: bare-LF path -> empty", buildRequest(req, "/x\nX-Smuggled: 1").isEmpty());
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildRequest(badHost, "/x").isEmpty());
         chk("build: CRLF path -> empty", buildRequest(req, "/x\r\nX-Smuggled: 1").isEmpty());

@@ -73,6 +73,17 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Exhaustive guard-half + Set-Cookie coverage pass (no behaviour change).**
+  Completing the mutation-survivability audit, six previously-noted checks were
+  pinned with mutation-proven tests: the bare-LF half of the `contains('\r') ||
+  contains('\n')` request-line smuggling guard in five more request builders
+  (`cache_deception`, `verb_tamper`, `idor`, `race`, `exposure` — every existing
+  bad-input test carried both chars, so a lone LF still split a request line on
+  lenient parsers), and `sequencer_capture`'s `FromCookie` Set-Cookie name match
+  (case-sensitivity-unpinned, so a lowercase HTTP/2 `set-cookie` would silently
+  yield no captured token). Each verified by mutating the source and confirming
+  only the targeted case fails. Gauntlet green (ctest 100/100, probe_smoke
+  158/158). Test-only.
 - **HTTP/3 Alt-Svc parser: escaped-quote handling locked by a mutation-proven
   test (no behaviour change).** `splitAltSvcEntries`' backslash-escape branch —
   which keeps a `\"`-escaped quote inside an Alt-Svc authority as *data* so a

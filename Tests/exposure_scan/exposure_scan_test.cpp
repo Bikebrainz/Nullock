@@ -113,6 +113,9 @@ int main(int argc, char **argv) {
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildGet(badHost, "/.env").isEmpty());
         chk("build: CRLF path -> empty", buildGet(req, "/.env\r\nX: y").isEmpty());
+        // guard-half: the path guard is `contains('\r') || contains('\n')` but the
+        // case above carries BOTH chars, so the LF half is unpinned.
+        chk("build: bare-LF path -> empty", buildGet(req, "/.env\nX: y").isEmpty());
         // The custom-header loop (Host-skip + per-header CR/LF drop) was untested --
         // no test populated req.headers, though that is where attacker-influenced
         // auth/cookie values arrive. Lock all three behaviors.

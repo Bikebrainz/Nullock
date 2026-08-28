@@ -91,6 +91,10 @@ int main(int argc, char **argv) {
         chk("build: CRLF host -> empty", buildGet(badHost, "/account").isEmpty());
         chk("build: CRLF path -> empty",
             buildGet(req, "/account\r\nX-Smuggled: 1").isEmpty());
+        // The guard is `contains('\r') || contains('\n')` but every bad case above
+        // carries BOTH chars, leaving the LF half unpinned -- a bare LF still splits
+        // a request line on lenient parsers.
+        chk("build: bare-LF path -> empty", buildGet(req, "/account\nX-Smuggled2: 1").isEmpty());
 
         // A carried Accept-Encoding must be dropped so line 48's forced "identity"
         // stands alone -- else the server gzips, the body-length similarity compares

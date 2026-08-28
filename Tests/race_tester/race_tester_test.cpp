@@ -77,6 +77,9 @@ int main(int argc, char **argv) {
         chk("build: drops CRLF carried header", !buildRequest(injHdr).contains("X-Smuggled"));
         Request badMethod = req; badMethod.method = "POST\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod).isEmpty());
+        // guard-half: the CR/LF cases all carry BOTH chars, so the LF half is unpinned.
+        Request badMethodLF = req; badMethodLF.method = "POST\nX: y";
+        chk("build: bare-LF method -> empty", buildRequest(badMethodLF).isEmpty());
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("build: CRLF host -> empty", buildRequest(badHost).isEmpty());
         Request badPath = req; badPath.basePath = "/redeem\r\nX: y";

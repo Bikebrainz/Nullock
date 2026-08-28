@@ -55,6 +55,12 @@ int main(int argc, char **argv) {
         const Hdrs h = { { "Set-Cookie", "sid=REALTOKEN; Path=/; HttpOnly" },
                          { "Set-Cookie", "other=zzz" } };
         chk("cookie: value of named cookie", extractToken(FromCookie, "sid", 200, h, {}) == "REALTOKEN");
+        // The Set-Cookie name match is case-INSENSITIVE: HTTP/2 lowercases header
+        // names, so a lowercase `set-cookie` on the capture response must still be
+        // matched -- else the sequencer silently captures no token from an h2 origin.
+        const Hdrs hLc = { { "set-cookie", "sid=H2TOKEN; Path=/" } };
+        chk("cookie: lowercase 'set-cookie' (HTTP/2) still matched",
+            extractToken(FromCookie, "sid", 200, hLc, {}) == "H2TOKEN");
         chk("cookie: an ATTRIBUTE name is not a value (Path)",
             extractToken(FromCookie, "Path", 200, h, {}).isEmpty());
         chk("cookie: a second Set-Cookie's cookie is found",
