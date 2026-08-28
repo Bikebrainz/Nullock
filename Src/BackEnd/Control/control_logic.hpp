@@ -115,6 +115,14 @@ int severityRank(const QString &sev);
 // whitespace inside, and base64-decode the body. Returns empty on a missing
 // block or a base64 error (no OpenSSL -- Qt6::Core only). Pure + unit-tested.
 QByteArray pemCertToDer(const QByteArray &pem);
+
+// --- Named configuration-preset library ----------------------------------
+// A preset library is a JSON object { "<name>": <config-document>, ... }. A
+// valid preset name is 1-64 chars of letters/digits/space and - _ . only (no
+// path separators / control chars), so it is a safe map key and display label.
+bool presetNameValid(const QString &name);
+// The preset names present in `library`, sorted (for a stable listing).
+QStringList presetNames(const QJsonObject &library);
 // SARIF result level for a finding severity: "error" for critical/high (so a CI
 // gate failing on level=="error" catches the MOST severe issues -- a critical
 // must NOT map to "warning"), "note" for low/info, "warning" for medium/unknown.

@@ -583,6 +583,33 @@ int main(int argc, char **argv) {
             pemCertToDer(begin + "\n@@@notbase64@@@\n" + end).isEmpty());
     }
 
+    // ===== named config-preset library: name validation + listing =======
+    {
+        // Valid names: letters/digits/space and - _ . (1..64 chars).
+        chk("presetName: simple word ok",        presetNameValid("prod"));
+        chk("presetName: spaces + digits ok",    presetNameValid("Staging config 2"));
+        chk("presetName: dashes/underscores/dot ok", presetNameValid("ci_smoke-1.cfg"));
+        chk("presetName: 64 chars ok",           presetNameValid(QString(64, 'a')));
+        // Invalid.
+        chk("presetName: empty rejected",        !presetNameValid(""));
+        chk("presetName: 65 chars rejected",     !presetNameValid(QString(65, 'a')));
+        chk("presetName: slash rejected",        !presetNameValid("a/b"));       // path sep
+        chk("presetName: backslash rejected",    !presetNameValid("a\\b"));      // win path sep
+        chk("presetName: newline rejected",      !presetNameValid("a\nb"));      // control char
+        chk("presetName: colon rejected",        !presetNameValid("a:b"));       // win ADS / drive
+        chk("presetName: dot-only rejected",     !presetNameValid("."));         // fs hazard
+        chk("presetName: dotdot rejected",       !presetNameValid(".."));        // traversal
+        // presetNames: sorted keys of the {name: doc} library object.
+        QJsonObject lib;
+        lib.insert("zeta", QJsonObject{});
+        lib.insert("alpha", QJsonObject{});
+        lib.insert("mike", QJsonObject{});
+        const QStringList got = presetNames(lib);
+        chk("presetNames: returns all keys sorted",
+            got == QStringList({"alpha", "mike", "zeta"}));
+        chk("presetNames: empty library -> empty list", presetNames(QJsonObject{}).isEmpty());
+    }
+
     std::fprintf(stderr, "control_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

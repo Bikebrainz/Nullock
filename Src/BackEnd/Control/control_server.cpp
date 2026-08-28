@@ -93,6 +93,8 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QFile>
 #include <QSaveFile>
+#include <QDir>
+#include <QStandardPaths>
 #include <QHostAddress>
 #include <QThread>
 #include <QRandomGenerator>
@@ -1806,6 +1808,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/payloads"
             || p == "/api/openapi/export"
             || p == "/api/config/export"
+            || p == "/api/config/presets"
             || p == "/api/cookies"
             || p == "/api/project/templates"
             || p == "/api/intruder/rule-ops"
@@ -3457,7 +3460,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // validates and applies the sections it carries. Import reuses the exact
     // setters behind /api/scope, /api/rules, /api/session-rules and
     // /api/intercept/rules -- so import and the live editors are one code path.
-    if (path == "/api/config/export") {
+    //
+    // captureConfigSections()/applyConfigSections() are shared verbatim with the
+    // named-preset library (/api/config/presets/*) below, so export/import and
+    // save/load a preset are the SAME capture+apply code.
+    auto captureConfigSections = [this]() -> QJsonObject {
         QJsonObject sections;
         if (m_wiring.projectStore) {
             const auto &md = m_wiring.projectStore->metadata();
@@ -3484,15 +3491,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.intercept)
             sections["interceptRules"] = Nullock::Proxy::InterceptLogic::interceptRulesToJson(
                 m_wiring.intercept->interceptRules());
-        return httpResponse(200, "application/json; charset=utf-8",
-            QJsonDocument(Nullock::Control::ControlLogic::buildConfigDocument(sections)).toJson());
-    }
-
-    if (path == "/api/config/import") {
-        QString cfgErr;
-        if (!Nullock::Control::ControlLogic::validateConfigDocument(bodyJson, cfgErr))
-            return okJson({{ "ok", false }, { "error", cfgErr }});
-        const QJsonObject secs = bodyJson.value("sections").toObject();
+        return sections;
+    };
+    auto applyConfigSections = [this, &ruleFromJson](const QJsonObject &secs) -> QJsonArray {
         QJsonArray applied;
         const QJsonObject scopeSec = secs.value("scope").toObject();
         if (!scopeSec.isEmpty() && m_wiring.projectStore) {
@@ -3532,7 +3533,91 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (m_wiring.projectStore) m_wiring.projectStore->setInterceptRules(a);
             applied.append("interceptRules");
         }
+        return applied;
+    };
+
+    if (path == "/api/config/export") {
+        return httpResponse(200, "application/json; charset=utf-8",
+            QJsonDocument(Nullock::Control::ControlLogic::buildConfigDocument(
+                captureConfigSections())).toJson());
+    }
+
+    if (path == "/api/config/import") {
+        QString cfgErr;
+        if (!Nullock::Control::ControlLogic::validateConfigDocument(bodyJson, cfgErr))
+            return okJson({{ "ok", false }, { "error", cfgErr }});
+        const QJsonArray applied = applyConfigSections(bodyJson.value("sections").toObject());
         return okJson({{ "ok", true }, { "applied", applied }});
+    }
+
+    // --- Named configuration-preset library ---------------------------------
+    // Burp's "configuration library" is a global shelf of named presets you
+    // switch between. We persist it to a single JSON object { name: document }
+    // in the user's app-data dir (global, so a preset survives across projects).
+    //   POST /api/config/presets/save   { name }  -> snapshot live config
+    //   GET  /api/config/presets                  -> list preset names
+    //   POST /api/config/presets/load   { name }  -> apply a preset to live editors
+    //   POST /api/config/presets/delete { name }  -> remove a preset
+    // save/load reuse captureConfigSections()/applyConfigSections() above, so a
+    // preset is byte-for-byte an export document.
+    auto presetsPath = []() -> QString {
+        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+               + "/config-presets.json";
+    };
+    auto loadPresets = [&presetsPath]() -> QJsonObject {
+        QFile f(presetsPath());
+        if (!f.open(QIODevice::ReadOnly)) return {};
+        const QJsonDocument d = QJsonDocument::fromJson(f.readAll());
+        return d.isObject() ? d.object() : QJsonObject{};
+    };
+    auto savePresets = [&presetsPath](const QJsonObject &lib) -> bool {
+        const QString p = presetsPath();
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QSaveFile f(p);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        f.write(QJsonDocument(lib).toJson(QJsonDocument::Indented));
+        return f.commit();
+    };
+
+    if (path == "/api/config/presets" && method == "GET") {
+        const QJsonObject lib = loadPresets();
+        QJsonArray names;
+        for (const QString &n : Nullock::Control::ControlLogic::presetNames(lib)) names.append(n);
+        return okJson({{ "ok", true }, { "presets", names }});
+    }
+    if (path == "/api/config/presets/save") {
+        const QString name = bodyJson.value("name").toString();
+        if (!Nullock::Control::ControlLogic::presetNameValid(name))
+            return okJson({{ "ok", false }, { "error", "invalid preset name (1-64 chars: letters, "
+                                                       "digits, space and - _ . only)" }});
+        const QJsonObject doc =
+            Nullock::Control::ControlLogic::buildConfigDocument(captureConfigSections());
+        QJsonObject lib = loadPresets();
+        lib.insert(name, doc);
+        if (!savePresets(lib))
+            return okJson({{ "ok", false }, { "error", "could not write the preset library file" }});
+        return okJson({{ "ok", true }, { "name", name }, { "count", lib.size() }});
+    }
+    if (path == "/api/config/presets/load") {
+        const QString name = bodyJson.value("name").toString();
+        const QJsonObject lib = loadPresets();
+        if (!lib.contains(name))
+            return okJson({{ "ok", false }, { "error", "no preset named '" + name + "'" }});
+        const QJsonObject doc = lib.value(name).toObject();
+        QString cfgErr;
+        if (!Nullock::Control::ControlLogic::validateConfigDocument(doc, cfgErr))
+            return okJson({{ "ok", false }, { "error", "preset is corrupt: " + cfgErr }});
+        const QJsonArray applied = applyConfigSections(doc.value("sections").toObject());
+        return okJson({{ "ok", true }, { "name", name }, { "applied", applied }});
+    }
+    if (path == "/api/config/presets/delete") {
+        const QString name = bodyJson.value("name").toString();
+        QJsonObject lib = loadPresets();
+        const bool existed = lib.contains(name);
+        lib.remove(name);
+        if (existed && !savePresets(lib))
+            return okJson({{ "ok", false }, { "error", "could not write the preset library file" }});
+        return okJson({{ "ok", true }, { "removed", existed }, { "count", lib.size() }});
     }
 
     if (path == "/api/repeater/set") {

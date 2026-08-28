@@ -93,6 +93,26 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Named configuration-preset library (Burp's "configuration library").**
+  A global shelf of named config presets you save the current setup into and
+  switch between later, persisted to `AppData/config-presets.json` as a
+  `{name: document}` map so a preset survives across projects. Four endpoints:
+  `POST /api/config/presets/save` (snapshots the live config), `GET
+  /api/config/presets` (lists names), `POST /api/config/presets/load` (applies
+  a preset to the live editors) and `POST /api/config/presets/delete`. It is
+  built directly on the existing config export/import: `save` captures live
+  state with the SAME code `/api/config/export` uses and `load` applies with
+  the SAME per-section code `/api/config/import` uses (both extracted into
+  shared `captureConfigSections()`/`applyConfigSections()` lambdas), so a
+  preset is byte-for-byte an export document. Preset names are validated
+  (`ControlLogic::presetNameValid`: 1-64 chars of letters/digits/space and
+  `- _ .` only — path separators, control chars and dot-only names rejected)
+  and listed sorted (`ControlLogic::presetNames`); both are pure and
+  mutation-proven in `Tests/control_logic/control_logic_test.cpp`. Verified
+  live end-to-end (14/14): add a scope marker, save a preset, remove the
+  marker, load the preset back and confirm the marker returns (the apply path),
+  then list/delete; invalid names and a missing-preset load are rejected. The
+  ui-v2 preset switcher is not built yet, so the roadmap item stays partial.
 - **Lab 54: XPath injection (error-based confirm + boolean login
   bypass).** A new teaching lab (`labs/54-xpath-injection/`) alongside the
   existing 53. A staff login endpoint builds an XPath filter against an

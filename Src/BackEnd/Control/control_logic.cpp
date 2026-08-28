@@ -264,6 +264,27 @@ QByteArray pemCertToDer(const QByteArray &pem) {
     return res.decoded;
 }
 
+bool presetNameValid(const QString &name) {
+    if (name.isEmpty() || name.size() > 64) return false;
+    for (const QChar c : name) {
+        if (c.isLetterOrNumber()) continue;
+        const ushort u = c.unicode();
+        if (u == ' ' || u == '-' || u == '_' || u == '.') continue;
+        return false;   // path separators, control chars, punctuation -> reject
+    }
+    // A name that is only dots (".", "..") would be a filesystem hazard if ever
+    // used as a path component, and is meaningless as a label.
+    for (const QChar c : name)
+        if (c != QLatin1Char('.')) return true;
+    return false;
+}
+
+QStringList presetNames(const QJsonObject &library) {
+    QStringList names = library.keys();   // QJsonObject::keys() is already sorted
+    names.sort();                         // ...but be explicit and locale-stable
+    return names;
+}
+
 int confidenceRank(const QString &conf) {
     const QString c = conf.trimmed().toLower();
     if (c == QLatin1String("confirmed") || c == QLatin1String("certain")) return 4;
