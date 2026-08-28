@@ -161,6 +161,23 @@ int main(int argc, char **argv) {
         Request bc = mk(); bc.method = "POST"; bc.body = "{\"x\":1}";
         bc.contentType = "application/json\r\nX-Smuggled: 1";
         chk("build: CR/LF contentType -> abort {}", buildRequest(bc, "TOK").isEmpty());
+        // A carried header rides through as "<name>: <value>\r\n", so a CR/LF in
+        // either the NAME or the VALUE would splice an attacker-chosen header into
+        // EVERY probe shot -- making the scanner itself a header-injection /
+        // request-smuggling vector. Unlike the host/token/carrier guards above
+        // (which abort the whole shot to {}), these two guards just DROP the one
+        // header (continue), so the shot stays non-empty; the discriminator is
+        // the ABSENCE of the injected line, not isEmpty().
+        Request hv = mk();
+        hv.headers.append(qMakePair(QString("X-Reflected"),
+                                    QString("v\r\nX-Injected: 1")));
+        chk("build: CR/LF in carried header VALUE is not spliced in",
+            !buildRequest(hv, "TOK").contains("X-Injected: 1"));
+        Request hn = mk();
+        hn.headers.append(qMakePair(QString("X-Evil\r\nX-NameInjected: 1"),
+                                    QString("v")));
+        chk("build: CR/LF in carried header NAME is not spliced in",
+            !buildRequest(hn, "TOK").contains("X-NameInjected: 1"));
 
         // Carried framing/encoding headers must be dropped so the ones this builder
         // forces stand alone -- else body-length grading is corrupted or the scanner

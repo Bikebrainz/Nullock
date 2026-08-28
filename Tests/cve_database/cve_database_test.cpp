@@ -365,6 +365,30 @@ int main(int argc, char **argv) {
             !hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.1.0"), "CVE-2099-0001", cv));
     }
 
+    // ---- runtime overlay: the '<=' INCLUSIVE-upper-bound operator ------
+    // The static table and the overlay block above use only '<', '>=' and bare
+    // exacts, so the range engine's '<=' branch (an inclusive upper bound -- a
+    // NVD versionEndIncluding range) had ZERO coverage. Silently making it
+    // exclusive (c<=0 -> c<0) would miss a host on the EXACT last-affected
+    // version: an off-by-one false negative at every inclusive boundary. The
+    // 4.2.7 boundary case is the discriminator (c==0).
+    {
+        CveDatabase::clearOverlay();
+        QList<CveDatabase::OverlayCve> ov;
+        ov.append({ "cms-joomla", "CVE-2099-9998", 9.8,
+                    "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                    "<=4.2.7", "4.2.8", "inclusive-upper-bound affected range", "https://x" });
+        CveDatabase::setOverlay(ov);
+        double cv;
+        chk("overlay <=4.2.7: boundary host 4.2.7 IS flagged (inclusive)",
+            hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.2.7"), "CVE-2099-9998", cv));
+        chk("overlay <=4.2.7: a lower host 4.2.6 is flagged",
+            hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.2.6"), "CVE-2099-9998", cv));
+        chk("overlay <=4.2.7: host 4.2.8 past the bound is NOT flagged",
+            !hasCve(CveDatabase::lookup("cms-joomla", "Joomla 4.2.8"), "CVE-2099-9998", cv));
+        CveDatabase::clearOverlay();
+    }
+
     std::fprintf(stderr,
         "\n========================================\n"
         "CVE database regression: %d passed, %d failed\n"

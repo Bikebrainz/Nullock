@@ -13,7 +13,10 @@
 
 #include "jwt_tool.hpp"
 
+#include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QMessageAuthenticationCode>
 
 #include <cstdio>
 
@@ -197,6 +200,28 @@ int main(int argc, char **argv) {
         const auto d = decode(mkToken("{\"alg\":\"RS256\"}", "{\"sub\":\"x\"}"));
         chk("bruteHmac: refuses a non-HS (RS256) token",
             bruteHmac(d, QStringList{ "anything", "x" }).isEmpty());
+    }
+    {
+        // HS384 / HS512 digest selection (hashForAlg). Sign the token's signature
+        // DIRECTLY via QMessageAuthenticationCode -- NOT signHmac, which routes
+        // through the same hashForAlg and would stay self-consistent under a
+        // digest-branch regression, hiding the bug. If the HS384 branch silently
+        // fell back to SHA256, bruteHmac would compute the wrong digest and fail
+        // to recover a secret that IS in the wordlist -- a silent "found nothing"
+        // a caller cannot distinguish from an exhausted list.
+        const QByteArray pl = "{\"sub\":\"x\"}";
+        const QString si384 = b64u("{\"alg\":\"HS384\"}") + "." + b64u(pl);
+        const QString sig384 = b64u(QMessageAuthenticationCode::hash(
+            si384.toUtf8(), QByteArray("s3cr3t"), QCryptographicHash::Sha384));
+        chk("bruteHmac: recovers an HS384 secret (Sha384 digest branch)",
+            bruteHmac(decode(si384 + "." + sig384),
+                      QStringList{ "wrong", "s3cr3t", "other" }) == "s3cr3t");
+        const QString si512 = b64u("{\"alg\":\"HS512\"}") + "." + b64u(pl);
+        const QString sig512 = b64u(QMessageAuthenticationCode::hash(
+            si512.toUtf8(), QByteArray("s3cr3t"), QCryptographicHash::Sha512));
+        chk("bruteHmac: recovers an HS512 secret (Sha512 digest branch)",
+            bruteHmac(decode(si512 + "." + sig512),
+                      QStringList{ "wrong", "s3cr3t", "other" }) == "s3cr3t");
     }
 
     // ===== forgeNone: byte-faithful payload (no key reorder) ============

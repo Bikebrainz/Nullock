@@ -73,6 +73,29 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Six security-critical detector checks locked by mutation-proven tests
+  (no behaviour change).** An adversarial coverage audit found six specific
+  branches/regexes/thresholds whose silent breakage no existing test would
+  catch — each a real regression that would stop detecting an attack/leak or
+  fabricate a finding. Discriminating cases were added and each was verified by
+  mutating the source and confirming only the targeted case fails: (1)
+  `secret_logic` **private-key-block** — the scanner's *only* `critical`
+  pattern was tested for the RSA header alone; the OPENSSH and unprefixed
+  PKCS#8 header forms are now pinned (dropping the OPENSSH alternative, or
+  forcing the algorithm prefix, is caught). (2) `jwt_probe_logic` **buildRequest
+  CR/LF guards** on carried header names *and* values — untested, so a silent
+  removal would turn the JWT probe itself into a header-injection / request-
+  smuggling vector; both now pinned. (3) `jwt_tool` **hashForAlg HS384/HS512
+  digest selection** — a regressed branch silently HMAC-SHA256s an HS384/512
+  token so secret recovery quietly fails; pinned with tokens signed
+  independently of `hashForAlg`. (4) `cve_database` **inclusive-upper-bound
+  `<=`** — the `versionEndIncluding` boundary (a host on the exact last-affected
+  version) had zero coverage; pinned. (5) `method_audit_logic` **traceEchoed's
+  User-Agent conjunct** — the second half of the XST proof was unpinned, so a
+  405 page that merely echoes the request line could be mis-reported as
+  cross-site-tracing; pinned. (6) `transcode` **looksLikeBase64 printable-ratio
+  threshold** — the hex-vs-base64 disambiguator was never exercised; pinned.
+  Gauntlet green (ctest 100/100, probe_smoke 158/158). Test-only.
 - **Proxy credentials no longer leaked to the origin.** When the proxy
   re-serialized a request for the upstream origin
   (`serializeRequestForOrigin`), it stripped only `Proxy-Connection` and

@@ -128,6 +128,20 @@ int main(int argc, char **argv) {
     }
     {
         QStringList chain;
+        // "deadbeef" is 8 chars, 4-aligned and passes the base64 charset gate, but
+        // it base64-DECODES to mostly-binary bytes -- so looksLikeBase64's ">=80%
+        // printable" threshold rejects it and smartDecode falls through to
+        // hex-decode. The pure-hex case above ("48656c6c6f", 10 chars) is rejected
+        // by the size%4 gate BEFORE the printable check ever runs, so it does NOT
+        // exercise this disambiguator. Dropping the ratio (e.g. *8 -> *0) would
+        // classify this (and any hex-looking payload) as base64 and decode it into
+        // garbage instead of hex.
+        const Result r = smartDecode("deadbeef", &chain);
+        chk("smart: base64-charset but binary-decoding 'deadbeef' -> hex-decode",
+            r.ok && chain.size() >= 1 && chain.at(0) == "hex-decode");
+    }
+    {
+        QStringList chain;
         const Result r = smartDecode("just plain text", &chain);
         chk("smart: plain text -> nothing detected", !r.ok && chain.isEmpty());
     }

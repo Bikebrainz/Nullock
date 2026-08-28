@@ -116,6 +116,18 @@ int main(int argc, char **argv) {
         chk("private-key-block flagged",
             flagged(QStringLiteral("-----") + "BEGIN " + "RSA " + "PRIVATE KEY-----",
                     "private-key-block"));
+        // private-key-block is the ONLY 'critical' pattern; its RSA form above was
+        // the sole coverage. The regex's optional-prefix group also accepts the
+        // OPENSSH alternative and the bare (unprefixed PKCS#8) header -- pin both
+        // so silently dropping the OPENSSH alt, or forcing the prefix (deleting
+        // the trailing '?'), which would stop flagging modern ssh-keygen keys and
+        // PKCS#8 keys, is caught. (Headers assembled from fragments -- synthetic.)
+        chk("private-key-block OPENSSH form flagged",
+            flagged(QStringLiteral("-----") + "BEGIN " + "OPENSSH " + "PRIVATE KEY-----",
+                    "private-key-block"));
+        chk("private-key-block bare PKCS#8 form flagged",
+            flagged(QStringLiteral("-----") + "BEGIN " + "PRIVATE KEY-----",
+                    "private-key-block"));
 
         // length discriminator: a 35-char github-token body is not a match.
         chk("github-token one char short -> NOT flagged",

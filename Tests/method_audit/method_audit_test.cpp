@@ -116,6 +116,18 @@ int main(int argc, char **argv) {
         !traceEchoed("<pre>Request was: TRACE / HTTP/1.1 User-Agent: Nullock/method-audit</pre>"));
     chk("trace: gateway lower-cased the echoed UA header -> still confirmed (FN fix)",
         traceEchoed("TRACE / HTTP/1.1\r\nuser-agent: Nullock/method-audit\r\n\r\n"));
+    // XST requires BOTH conjuncts: the request line at offset 0 AND our
+    // distinctive User-Agent echoed back. Every negative above fails the FIRST
+    // conjunct (body doesn't start with the verb token), so none pinned the
+    // SECOND. These do: the body BEGINS with the request line but our UA is
+    // absent -- a canned 405 page or a header-stripping proxy that reflects the
+    // request line only. Without the UA conjunct these would be mis-reported as
+    // XST-enabled, so a real cross-site-tracing finding is fabricated.
+    chk("trace: 405 page echoes the request line but NOT our UA -> NOT confirmed",
+        !traceEchoed("TRACE / HTTP/1.1\r\nHost: x\r\nContent-Type: text/html\r\n\r\n"
+                     "<h1>405 Method Not Allowed</h1>"));
+    chk("trace: a benign status page beginning with 'TRACE ' (no UA) -> NOT confirmed",
+        !traceEchoed("TRACE flag set; diagnostics enabled here"));
 
     // generalized verb token: TRACK (IIS alias) and Max-Forwards:0 (echoes TRACE)
     chk("track echo: TRACK loopback with our UA -> XST confirmed (IIS alias)",
