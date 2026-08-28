@@ -4,7 +4,10 @@
 // Special Elements Used in a Template Engine). When user input reaches a
 // server-side template -- Jinja2, Twig, Freemarker, ERB, Smarty, Razor,
 // ... -- an attacker controls template syntax, which is very frequently a
-// straight line to RCE. We confirm injection the unambiguous way: inject
+// straight line to RCE. The same two-expression arithmetic proof also covers
+// OGNL/Apache-Struts2 (the %{...} family), so this doubles as the active
+// EL/OGNL injection audit, not just template engines. We confirm injection the
+// unambiguous way: inject
 // an arithmetic expression wrapped in each engine's delimiter family and
 // check whether the server returned the *product* (evaluated) while NOT
 // echoing the literal expression (which would just be reflection). The

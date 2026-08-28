@@ -24,6 +24,12 @@ const QList<Family> &families() {
         { "{{",   "}}",  "Jinja2, Twig, Nunjucks, Liquid, Pebble" },
         { "${{",  "}}",  "Tornado" },
         { "${",    "}",  "Freemarker, JSP EL, Mako, Thymeleaf" },
+        // OGNL: Apache Struts2 evaluates %{...} as an OGNL expression wherever
+        // user input reaches an OGNL-parsed sink (the S2-0xx / CVE-2017-5638
+        // class). No other engine here uses the %{ } pair, so a confirmed hit
+        // fingerprints OGNL/Struts specifically -- the active probe the roadmap
+        // wanted beyond version-based CVE correlation.
+        { "%{",    "}",  "OGNL (Apache Struts2)" },
         { "<%= ", " %>", "ERB, EJS" },
         { "#{",    "}",  "Ruby (#{}), JSF EL, Slim" },
         { "*{",    "}",  "Thymeleaf" },

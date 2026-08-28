@@ -1061,9 +1061,9 @@
       "state": "partial",
       "impact": "low",
       "effort": "weeks",
-      "gap": "No generic server-side code-eval or EL/OGNL injection beyond template-engine SSTI; OGNL relies on version-based CVE correlation only.",
-      "why": "Re-read control_server.cpp:786-801 (SSTI covers template engines) and grep for ognl/expression-language returns only cve_database.cpp static strings. No generic EL/OGNL active probe. Claim holds.",
-      "evidence": "grep 'ognl|expression.?language' Src/ -> only cve_database.cpp; control_server.cpp SSTI is the only code-eval probe"
+      "gap": "OGNL/Struts2 is now ACTIVELY probed (no longer CVE-correlation-only): the SSTI tester's two-expression arithmetic proof gained the %{ } delimiter family, which only OGNL/Apache-Struts2 evaluates, so an OGNL-parsed sink is confirmed and fingerprinted as Struts2. Remaining gap: generic non-arithmetic server-side code-eval -- SpEL class access (T(java.lang.Runtime)...), raw eval() APIs, and OGNL member-access chains beyond infix math -- is still not actively probed.",
+      "why": "Extended the proven SSTI engine rather than duplicating it: added { \"%{\", \"}\", \"OGNL (Apache Struts2)\" } to ssti_tester.cpp families(). The existing polyglot sends pre%{a*b}sep%{c*d}suf and confirmsArithmetic() requires BOTH products with the literal separator preserved and neither raw expression echoed -- so a Struts2 OGNL sink confirms while pure reflection / a single-expression calculator do not. No other family uses %{ }, so the hit's engine string uniquely fingerprints OGNL.",
+      "evidence": "ssti_tester.cpp families() now includes the %{ } OGNL family; hpp doc updated (\"...also covers OGNL/Apache-Struts2\"). Live-proven in scripts/probe_smoke.sh: a new ssti-ognl mock evaluates ONLY %{N*N} (not Jinja {{ }}), and /api/ssti/test confirms it with engines containing 'OGNL' AND not 'Jinja2' (2 new cases). Mutation-proven: deleting the %{ } family drops that case to confirmed:false/hits:[] while ssti-vuln/safe/calc stay correct. Gauntlet: ctest 100/100, probe_smoke 158/158."
     },
     {
       "area": "scanner",

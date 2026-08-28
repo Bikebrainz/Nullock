@@ -93,6 +93,22 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Active OGNL / Apache-Struts2 injection detection.** The SSTI active
+  tester's two-expression arithmetic proof gained the `%{ }` delimiter family
+  — the syntax Apache Struts2 evaluates as OGNL and the classic S2-045 /
+  CVE-2017-5638 injection vector. Previously OGNL was only inferred from
+  version-based CVE correlation; now an OGNL-parsed sink is *actively confirmed*
+  the same unambiguous way every other engine is: `pre%{a*b}sep%{c*d}suf` is
+  injected and `confirmsArithmetic()` requires both products with the literal
+  separator preserved and neither raw expression echoed, so a real Struts2 sink
+  confirms while pure reflection or a single-expression calculator do not. No
+  other family uses `%{ }`, so a hit uniquely fingerprints OGNL/Struts2. Added
+  one row to `ssti_tester.cpp` `families()` (reusing the proven engine, not a
+  parallel probe). Live-proven in `scripts/probe_smoke.sh` by a new `ssti-ognl`
+  mock that evaluates only `%{N*N}` (not Jinja `{{ }}`): `/api/ssti/test`
+  confirms it with `engines` containing `OGNL` and not `Jinja2`, and deleting
+  the family drops the case to `confirmed:false` while the other SSTI cases
+  stay correct (mutation-proven). Gauntlet: ctest 100/100, probe_smoke 158/158.
 - **Named configuration-preset library (Burp's "configuration library").**
   A global shelf of named config presets you save the current setup into and
   switch between later, persisted to `AppData/config-presets.json` as a

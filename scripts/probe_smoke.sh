@@ -884,6 +884,13 @@ def make(mode):
                 if mode == 'ssti-vuln':
                     val = re.sub(r'\{\{\s*(\d+)\s*\*\s*(\d+)\s*\}\}',
                                  lambda m: str(int(m.group(1)) * int(m.group(2))), val)
+                elif mode == 'ssti-ognl':
+                    # Apache Struts2 / OGNL: evaluates ONLY the %{N*N} family, NOT
+                    # Jinja {{ }}. A confirmed SSTI hit here therefore proves the
+                    # OGNL %{ } delimiter family specifically (regression: it was
+                    # absent before, so an OGNL-only sink went undetected).
+                    val = re.sub(r'%\{\s*(\d+)\s*\*\s*(\d+)\s*\}',
+                                 lambda m: str(int(m.group(1)) * int(m.group(2))), val)
                 elif mode == 'ssti-calc':
                     # A calculator / inline-math endpoint (NOT a template engine):
                     # substitutes the FIRST N*N it finds with the product. The old
@@ -1007,7 +1014,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        pathtrav-vuln pathtrav-safe pathtrav-template
        cors-vuln cors-safe
        verb-vuln verb-safe verb-case
-       ssti-vuln ssti-safe ssti-calc
+       ssti-vuln ssti-safe ssti-calc ssti-ognl
        cmdi-vuln cmdi-safe cmdi-arith
        nosqli-vuln nosqli-safe nosqli-namedeny
        idor-vuln idor-safe idor-ctrlfail idor-padded
@@ -1158,6 +1165,8 @@ echo "== SSTI (core) =="
 chk "ssti vulnerable -> confirmed"      "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-vuln]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed')"
 chk "ssti safe -> not confirmed"        "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-safe]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
 chk "ssti calculator -> NOT confirmed (FP fix)" "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-calc]} '?q=x')\",\"param\":\"q\"}")" "d.get('ok') and not d.get('confirmed')"
+chk "ssti OGNL %{} -> confirmed as Struts2/OGNL" "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-ognl]} '?q=x')\",\"param\":\"q\"}")" "d.get('confirmed') and any('OGNL' in h.get('engines','') for h in d.get('hits',[]))"
+chk "ssti OGNL mock does NOT fire Jinja {{}}" "$(post /api/ssti/test "{\"url\":\"$(url ${P[ssti-ognl]} '?q=x')\",\"param\":\"q\"}")" "all('Jinja2' not in h.get('engines','') for h in d.get('hits',[]))"
 
 echo "== OS command injection (core) =="
 chk "cmdi vulnerable -> confirmed"      "$(post /api/cmdi/test "{\"url\":\"$(url ${P[cmdi-vuln]} '?cmd=test')\",\"param\":\"cmd\"}")" "d.get('vulnerable')"
