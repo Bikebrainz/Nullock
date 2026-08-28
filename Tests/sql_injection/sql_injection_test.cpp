@@ -79,8 +79,15 @@ int main(int argc, char **argv) {
     chk("block: 403", isBlockStatus(403));
     chk("block: 429", isBlockStatus(429));
     chk("block: 503", isBlockStatus(503));
+    // 406/451/501 were disjuncts in isBlockStatus but never asserted -- dropping
+    // any one would let a generic-family match on that block status through as a
+    // false SQLi confirmation. Pin all three (and a nearby non-block negative).
+    chk("block: 406 (Not Acceptable / WAF)", isBlockStatus(406));
+    chk("block: 451 (Unavailable For Legal Reasons / WAF)", isBlockStatus(451));
+    chk("block: 501 (Not Implemented / edge)", isBlockStatus(501));
     chk("block: 200 not", !isBlockStatus(200));
     chk("block: 500 not (real backend error)", !isBlockStatus(500));
+    chk("block: 404 not", !isBlockStatus(404));
 
     // ---- buildRequest: CR/LF guards -------------------------------------
     {
