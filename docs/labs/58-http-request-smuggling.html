@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTTP request smuggling (CL.TE desync) — Nullock Labs</title>
+<meta name="description" content="CL.TE desync -- backend blocks on a dangling chunk">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">58</span>
+    <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5058</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">HTTP request smuggling (CL.TE desync)</h1>
+  <p class="lead" style="margin-top:12px;">A front-end proxy frames each request by Content-Length; the backend behind it frames by Transfer-Encoding instead. A request carrying both headers, with a body the two disagree about, splits their view of where one request ends and the next begins -- CWE-444, Inconsistent Interpretation of HTTP Requests -- the exact class Nullock&#x27;s active `smuggle` probe times out to confirm: forward only the Content-Length-declared prefix of a chunked body and the backend blocks reading a chunk continuation that will never arrive. In Nullock: 1. nullock scope add http://localhost:5058/* 2. nullock smuggle http://localhost:5058/ -- times a CL.TE and a TE.CL desync probe against a baseline. The CL.TE probe&#x27;s dangling chunk (forwarded whole by Content-Length, parsed short by Transfer-Encoding) leaves the backend blocked mid-read; Nullock reports it CONFIRMED once the delay reproduces on a resend with the connection held open and silent, not reset. 3. Turn the confirmed desync into a real response-queue-poisoning hijack. Send one raw request whose declared Content-Length covers a complete (empty) chunked body PLUS a second, fully-formed request for /admin-secret -- a path the front-end&#x27;s own allow-list would otherwise refuse outright, since it only ever inspects the request line of the ONE request it thinks it is forwarding: python3 -c &quot; import socket tail = b&#x27;GET /admin-secret HTTP/1.1\r\nHost: x\r\n\r\n&#x27; body = b&#x27;0\r\n\r\n&#x27; + tail req = (b&#x27;POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: &#x27; + str(len(body)).encode() + b&#x27;\r\nTransfer-Encoding: chunked\r\n\r\n&#x27; + body) c = socket.create_connection((&#x27;127.0.0.1&#x27;, 5058)) c.sendall(req); c.close()&quot; The backend answers the visible request fast and normally -- then, still on that same pooled backend connection, answers the smuggled /admin-secret request too. Nobody has claimed that second response. 4. Open a brand new connection and send any ordinary request (even a plain GET /). It reuses that same pooled backend connection and receives the QUEUED response meant for the smuggled request instead of its own -- the flag surfaces on a request that never asked for it: curl -s http://127.0.0.1:5058/ (run right after step 3). 5. Confirm success: GET /flag -- solved only once the backend itself recorded serving /admin-secret from a request it parsed out of another connection&#x27;s forwarded body, never one the front-end&#x27;s allow-list saw and let through directly. Fix: never let a front-end and back-end disagree on request framing -- reject any request carrying both Content-Length and Transfer-Encoding (RFC 7230 3.3.3), or terminate and completely re-frame every request at the edge instead of tunneling raw bytes through to a pooled backend connection.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/58-http-request-smuggling/app.py
+# then open http://localhost:5058/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5058/*</code><code class="inline">http://127.0.0.1:5058/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This site is really two servers, a front-end and a backend -- and they don&#x27;t agree on how to tell where one request ends and the next begins when a request carries both Content-Length and Transfer-Encoding.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Run Nullock&#x27;s smuggle probe first to confirm which framing disagreement exists here, then think about what happens to the LEFTOVER bytes when one server reads a shorter body than the other expects.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Send a chunked body that terminates itself early (a zero-length chunk) followed by a whole second HTTP request in the same payload -- the front-end forwards it as one blob it never re-parses, but the backend, and whatever pooled connection serves the next visitor, sees two.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5058/*</li><li>nullock smuggle http://localhost:5058/ -- times a CL.TE and a TE.CL desync probe against a baseline. The CL.TE probe&#x27;s dangling chunk (forwarded whole by Content-Length, parsed short by Transfer-Encoding) leaves the backend blocked mid-read; Nullock reports it CONFIRMED once the delay reproduces on a resend with the connection held open and silent, not reset.</li><li>Turn the confirmed desync into a real response-queue-poisoning hijack. Send one raw request whose declared Content-Length covers a complete (empty) chunked body PLUS a second, fully-formed request for /admin-secret -- a path the front-end&#x27;s own allow-list would otherwise refuse outright, since it only ever inspects the request line of the ONE request it thinks it is forwarding: python3 -c &quot; import socket tail = b&#x27;GET /admin-secret HTTP/1.1\r\nHost: x\r\n\r\n&#x27; body = b&#x27;0\r\n\r\n&#x27; + tail req = (b&#x27;POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: &#x27; + str(len(body)).encode() + b&#x27;\r\nTransfer-Encoding: chunked\r\n\r\n&#x27; + body) c = socket.create_connection((&#x27;127.0.0.1&#x27;, 5058)) c.sendall(req); c.close()&quot; The backend answers the visible request fast and normally -- then, still on that same pooled backend connection, answers the smuggled /admin-secret request too. Nobody has claimed that second response.</li><li>Open a brand new connection and send any ordinary request (even a plain GET /). It reuses that same pooled backend connection and receives the QUEUED response meant for the smuggled request instead of its own -- the flag surfaces on a request that never asked for it: curl -s http://127.0.0.1:5058/ (run right after step 3).</li><li>Confirm success: GET /flag -- solved only once the backend itself recorded serving /admin-secret from a request it parsed out of another connection&#x27;s forwarded body, never one the front-end&#x27;s allow-list saw and let through directly.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never let a front-end and back-end disagree on request framing -- reject any request carrying both Content-Length and Transfer-Encoding (RFC 7230 3.3.3), or terminate and completely re-frame every request at the edge instead of tunneling raw bytes through to a pooled backend connection.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "58-http-request-smuggling";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 58 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

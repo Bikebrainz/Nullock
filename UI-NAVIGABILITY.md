@@ -234,3 +234,10 @@ the meantime. Closed here: `real-data.js` gained `repeaterTabAddFromHistoryId(id
 instead of `repeaterTabAddFromHistory(row.id - 1)` (the index-based call that silently loads
 the wrong request once the in-memory history window evicts old rows). True orphaned count
 holds at 3 of 203 (1%), all three intentional as listed above.
+
+A 2026-08-28 pass re-ran the literal-grep census fresh: 207 endpoints now (up from 203), the
+delta being `/api/config/presets`, `/api/config/presets/save`, `/api/config/presets/load`, and
+`/api/config/presets/delete` (the named-configuration-preset-library feature landing since the
+last census) -- all four already GUI-reachable via Settings' preset switcher, so this is a
+count-only correction with no new gap. True orphaned count holds at 3 of 207 (1%), all three
+intentional as listed above.

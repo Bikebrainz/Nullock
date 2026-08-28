@@ -339,6 +339,27 @@ developer-facing record.
   `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`,
   a curated `Easy` difficulty entry); README.md and docs/index.html's
   56->57 lab-count strings updated alongside.
+- **Lab 58: HTTP request smuggling (CL.TE desync).** The last active
+  `/<type>/test` probe with no matching teaching lab now has one
+  (`labs/58-http-request-smuggling/`): a from-scratch front-end/backend
+  pair (stdlib sockets, no Flask) where the front-end frames each request
+  by Content-Length and the backend frames by Transfer-Encoding, pooling
+  its backend connections like a real reverse proxy. Nullock's `smuggle`
+  probe confirms the CL.TE desync (and correctly does *not* flag TE.CL,
+  since this pairing has no TE.CL-class disagreement) by replicating
+  `smuggling_logic.cpp`'s exact probe bytes and timing/outcome gate
+  end-to-end against a live run of the lab. The walkthrough's manual
+  follow-on demonstrates real response-queue poisoning: a CL.TE payload
+  smuggles a second, fully-formed request for `/admin-secret` (a path the
+  front-end's own allow-list would otherwise 403) past the front-end
+  entirely; the backend answers it on the shared pooled connection, and
+  the next, unrelated request on that connection receives the queued
+  answer instead of its own — `/flag` only solves once the backend itself
+  recorded serving `/admin-secret` from a request parsed out of another
+  connection's body. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, new `smuggl` Client-side-category keyword and a
+  curated `Hard` difficulty entry); README.md and docs/index.html's
+  57->58 lab-count strings updated alongside.
 - **Active OGNL / Apache-Struts2 injection detection.** The SSTI active
   tester's two-expression arithmetic proof gained the `%{ }` delimiter family
   — the syntax Apache Struts2 evaluates as OGNL and the classic S2-045 /

@@ -57,7 +57,8 @@ CATEGORY_RULES = [
     ("SSRF & fetch", ("ssrf",)),
     ("Client-side", ("xss", "csrf", "clickjacking", "cors", "open-redirect",
                      "cache-deception", "cache-poisoning", "host-header",
-                     "insecure-cookie", "missing-security-headers", "cswsh")),
+                     "insecure-cookie", "missing-security-headers", "cswsh",
+                     "smuggl")),
     ("Info disclosure", ("secret-exposure", "verbose-errors", "directory-listing",
                          "sensitive-file", "robots", "file-upload")),
     ("Business logic", ("race-condition", "business-logic")),
@@ -135,6 +136,7 @@ DIFFICULTY = {
     "55-ognl-struts-injection": "Medium",
     "56-cswsh-notifications": "Hard",
     "57-subdomain-takeover": "Easy",
+    "58-http-request-smuggling": "Hard",
 }
 
 
@@ -429,6 +431,11 @@ HINTS = {
         "This host is meant to be a subdomain the company still owns -- but what does the page it actually serves look like?",
         "The error page names a specific third-party platform by brand, not a generic 404 -- that's the tell that the DNS record still points at a service nobody claims anymore.",
         "Run Nullock's subdomain-takeover probe against the host: it fetches the page and matches that branded 'no site here' text at a genuine error status, flagging a dangling CNAME candidate.",
+    ],
+    "58-http-request-smuggling": [
+        "This site is really two servers, a front-end and a backend -- and they don't agree on how to tell where one request ends and the next begins when a request carries both Content-Length and Transfer-Encoding.",
+        "Run Nullock's smuggle probe first to confirm which framing disagreement exists here, then think about what happens to the LEFTOVER bytes when one server reads a shorter body than the other expects.",
+        "Send a chunked body that terminates itself early (a zero-length chunk) followed by a whole second HTTP request in the same payload -- the front-end forwards it as one blob it never re-parses, but the backend, and whatever pooled connection serves the next visitor, sees two.",
     ],
 }
 
