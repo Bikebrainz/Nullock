@@ -65,6 +65,12 @@ int main(int argc, char **argv) {
         find(detectFromHeaders(H({{"Server", "AkamaiGHost"}})), "Akamai") != nullptr);
     chk("x-amz-cf-id -> AWS CloudFront",
         find(detectFromHeaders(H({{"x-amz-cf-id", "abc=="}})), "AWS CloudFront") != nullptr);
+    // AWS CloudFront has a SECOND signature row: a `Server: CloudFront` value
+    // substring. The case above only exercises the x-amz-cf-id presence row, so
+    // corrupting the Server-value needle would silently drop that detection path.
+    chk("Server: CloudFront -> AWS CloudFront (value-needle sibling)",
+        [](){ const Detection *d = find(detectFromHeaders(H({{"Server", "CloudFront"}})), "AWS CloudFront");
+              return d && d->kind == "cdn"; }());
 
     // ---- vendor-unique additions (this tick) ----------------------------
     chk("AWSALB cookie -> AWS ELB/ALB (lb)",

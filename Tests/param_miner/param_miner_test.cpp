@@ -94,6 +94,15 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Tok"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, {}).contains("X-Smuggled"));
+        // The guard is `contains('\r') || contains('\n')`, but every bad case here
+        // carries BOTH chars, leaving the LF HALF unpinned -- a bare LF still splits
+        // a request line / header on lenient servers. Pin the LF half at both sites
+        // (header drop @66, and the request-line return-empty @29).
+        Request injLF = req;
+        injLF.headers.append(qMakePair(QString("X-Tok"), QString("a\nX-Smuggled2: 1")));
+        chk("build: drops bare-LF carried header", !buildRequest(injLF, {}).contains("X-Smuggled2"));
+        Request badMethodLF = req; badMethodLF.method = "GET\nX: y";
+        chk("build: bare-LF method -> empty", buildRequest(badMethodLF, {}).isEmpty());
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, {}).isEmpty());
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";

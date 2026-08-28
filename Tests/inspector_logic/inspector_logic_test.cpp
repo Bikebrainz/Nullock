@@ -118,6 +118,20 @@ int main(int argc, char **argv) {
         chk("jwt payload:null: valid header + non-JSON payload -> one jwt, alg=none, payload null",
             j2.size() == 1 && j2[0].toObject().value("alg").toString() == "none"
             && j2[0].toObject().value("payload").isNull());
+
+        // (c) EMPTY signature (the classic alg:none forgery, 'header.payload.'):
+        // the compact-form regex's 3rd segment is '*' (may be empty) while the
+        // first two are '+', so an unsigned token MUST still be recognized. Every
+        // other JWT here ends in a non-empty '.sig_abc123', so tightening '*'->'+'
+        // (silently dropping the alg:none-forgery detection) would slip through.
+        const QString emptySig =
+            b64url(QJsonDocument(QJsonObject{{"alg", "none"}, {"typ", "JWT"}}).toJson(QJsonDocument::Compact)) + "."
+          + b64url(QJsonDocument(QJsonObject{{"sub", "x"}}).toJson(QJsonDocument::Compact)) + ".";
+        const QByteArray raw3 =
+            ("GET / HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + emptySig + "\r\n\r\n").toUtf8();
+        const QJsonArray j3 = inspectRequest(raw3).value("jwts").toArray();
+        chk("jwt empty-sig: unsigned 'header.payload.' (alg:none) is still recognized",
+            j3.size() == 1 && j3[0].toObject().value("alg").toString() == "none");
     }
 
     // ----- inspectRequest: JSON body -----

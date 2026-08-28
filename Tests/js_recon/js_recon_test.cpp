@@ -209,6 +209,17 @@ int main(int argc, char **argv) {
         // type char must be one of [baprs]: 'z' is not.
         chk("secret: xoxz- -> NOT slack-token",
             !hasKind(secrets("const t=\"" + QString("xox") + "z-" + "0123456789ab\""), "slack-token"));
+        // The [baprs] type-prefix class covers Slack's five token families; only
+        // xoxb above was exercised, so dropping a sibling from the class silently
+        // stops detecting that family's tokens. Pin the other four (fragment-built).
+        chk("secret: slack xoxp- (user) detected",
+            hasKind(secrets("const t=\"" + QString("xox") + "p-" + "0123456789ab\""), "slack-token"));
+        chk("secret: slack xoxa- (app) detected",
+            hasKind(secrets("const t=\"" + QString("xox") + "a-" + "0123456789ab\""), "slack-token"));
+        chk("secret: slack xoxr- (refresh) detected",
+            hasKind(secrets("const t=\"" + QString("xox") + "r-" + "0123456789ab\""), "slack-token"));
+        chk("secret: slack xoxs- (workspace) detected",
+            hasKind(secrets("const t=\"" + QString("xox") + "s-" + "0123456789ab\""), "slack-token"));
     }
     chk("secret: a clean bundle yields no secrets",
         secrets("function add(a,b){return a+b;} const x=fetch('/api/x');").isEmpty());

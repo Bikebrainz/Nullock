@@ -100,6 +100,15 @@ int main(int argc, char **argv) {
         has(csp("script-src 'unsafe-inline'; script-src 'self'"), "csp-unsafe-inline"));
     chk("script-src ajax.googleapis.com -> csp-bypassable-host",
         has(csp("script-src https://ajax.googleapis.com"), "csp-bypassable-host"));
+    // The gadget-host allow-list has ~15 entries but only ajax.googleapis.com was
+    // exercised; a dropped/typo'd sibling silently stops flagging that CDN as a
+    // CSP script-gadget bypass. Pin a few more of the distinct entries.
+    chk("script-src cdn.jsdelivr.net -> csp-bypassable-host",
+        has(csp("script-src https://cdn.jsdelivr.net"), "csp-bypassable-host"));
+    chk("script-src unpkg.com -> csp-bypassable-host",
+        has(csp("script-src https://unpkg.com"), "csp-bypassable-host"));
+    chk("script-src cdnjs.cloudflare.com -> csp-bypassable-host",
+        has(csp("script-src https://cdnjs.cloudflare.com"), "csp-bypassable-host"));
 
     // ===== #3/#7 HSTS max-age semantics ===================================
     chk("HSTS max-age=0 -> hsts-disabled (not the 'short' low)",

@@ -72,6 +72,10 @@ int main(int argc, char **argv) {
     chk("hit: Age zero still counts", cacheHitSignal(H({{"Age", "0"}})));
     chk("hit: X-Cache HIT", cacheHitSignal(H({{"X-Cache", "HIT"}})));
     chk("hit: CF-Cache-Status hit", cacheHitSignal(H({{"CF-Cache-Status", "hit"}})));
+    // X-Cache-Status (nginx $upstream_cache_status) is one of the four cache-front
+    // signature headers cacheHitSignal joins, but it was never exercised; dropping
+    // its term would blind the detector to every nginx-fronted cache.
+    chk("hit: X-Cache-Status HIT (nginx)", cacheHitSignal(H({{"X-Cache-Status", "HIT"}})));
     chk("hit: X-Cache MISS -> no signal", !cacheHitSignal(H({{"X-Cache", "MISS"}})));
     chk("hit: none -> no signal", !cacheHitSignal(H({{"Server", "nginx"}})));
 

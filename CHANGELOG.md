@@ -73,6 +73,29 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Six more signature/guard checks locked by mutation-proven tests (no
+  behaviour change).** A fifth adversarial coverage audit over waf_detect/
+  js_recon/cache_poison/param_miner/header_audit/inspector found six low-level
+  checks whose silent breakage no test would catch, each verified by mutating the
+  source and confirming only the targeted case fails: (1) `js_recon_logic` — the
+  Slack-token pattern's `[baprs]` type-prefix class was exercised through only the
+  `xoxb` branch, so a dropped sibling silently stops detecting that Slack token
+  family (pinned `xoxp`/`xoxa`/`xoxr`/`xoxs`). (2) `header_logic` — the CSP
+  script-gadget allow-list has ~15 host entries but only `ajax.googleapis.com` was
+  exercised through the real `analyze()` path, so any other CDN entry could be
+  dropped without notice (pinned `cdn.jsdelivr.net`/`unpkg.com`/
+  `cdnjs.cloudflare.com`). (3) `waf_detect_logic` — AWS CloudFront's `Server:
+  CloudFront` value-needle signature (the sibling of the only-tested `x-amz-cf-id`
+  branch) was unpinned. (4) `cache_poison_logic` — `cacheHitSignal` joins four
+  cache-front headers but `X-Cache-Status` (nginx `$upstream_cache_status`) was
+  never exercised, so dropping it would blind the detector to nginx-fronted
+  caches. (5) `inspector_logic` — the compact-JWT regex's third segment is `*`
+  (may be empty) precisely to recognize the unsigned `header.payload.` alg:none
+  forgery, but every test token ended in a non-empty signature, so tightening it
+  to `+` (dropping alg:none detection) would slip through. (6) `param_logic` — the
+  same guard-half gap as ssrf/host_header: a `contains('\r') || contains('\n')`
+  smuggling guard whose only bad-input tests carried both chars, leaving the LF
+  half unpinned. Gauntlet green (ctest 100/100, probe_smoke 158/158). Test-only.
 - **Six more detector checks locked by mutation-proven tests (no behaviour
   change).** A fourth adversarial coverage audit over ssrf/cors/host_header/
   takeover/deser/ws_probe found six low-level checks whose silent breakage no
