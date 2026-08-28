@@ -98,6 +98,16 @@ int main(int argc, char **argv) {
         chk("pollute: carried Content-Type dropped (own json wins, exactly one)",
             pc.count("Content-Type:") == 1 && pc.contains("Content-Type: application/json\r\n")
             && !pc.contains("text/xml"));
+        // The Content-Length drop must be case-INSENSITIVE: buildPollute appends its
+        // OWN computed Content-Length, so a surviving carried lowercase
+        // 'content-length' (HTTP/2 casing) means TWO framing headers -> CL.CL desync
+        // on the prototype-pollution write. Discriminator is the leaked lowercase line.
+        Request dupCl = req;
+        dupCl.headers.append(qMakePair(QString("content-length"), QString("999")));
+        const QByteArray pcl = buildPollute(dupCl, "/api/merge", body);
+        chk("pollute: carried lowercase content-length dropped (case-insensitive framing)",
+            !pcl.contains("content-length: 999")
+            && pcl.count("Content-Length: " + QByteArray::number(body.size()) + "\r\n") == 1);
 
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";
         chk("get: CRLF host -> empty", buildGet(badHost, "/api/me", QString()).isEmpty());

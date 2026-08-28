@@ -121,6 +121,15 @@ int main(int argc, char **argv) {
         chk("caller Connection is dropped -> exactly one Connection: close (safety intact)",
             !p3.contains("keep-alive") && p3.count("Connection:") == 1
             && p3.contains("Connection: close\r\n"));
+        // The Connection drop must be case-INSENSITIVE: HTTP/2 mandates lowercase
+        // header names, so a caller "connection: keep-alive" must ALSO be stripped
+        // -- else it survives and defeats the fail-safe teardown (stranded
+        // smuggling bytes could desync into a real user's request).
+        Request r3lc = mk();
+        r3lc.headers.append({QStringLiteral("connection"), QStringLiteral("keep-alive")});
+        const QByteArray p3lc = clteProbe(r3lc);
+        chk("caller lowercase connection also dropped (case-insensitive safety)",
+            !p3lc.contains("keep-alive") && p3lc.count("Connection: close\r\n") == 1);
 
         // A caller Transfer-Encoding must be dropped so ONLY the probe's own deliberate
         // "Transfer-Encoding: chunked" (its load-bearing CL.TE payload) remains -- a

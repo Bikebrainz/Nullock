@@ -73,6 +73,26 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Four more probe request-builder invariants locked by mutation-proven tests
+  (no behaviour change).** A third adversarial coverage audit over the
+  redirect/smuggling/CRLF/prototype-pollution probes found four checks whose
+  silent breakage no test would catch, each verified by mutating the source and
+  confirming only the targeted case fails: (1) `smuggling_logic` — the caller
+  **Connection** drop's case-insensitivity was unpinned; a lowercase
+  `connection: keep-alive` (HTTP/2) would survive and defeat the fail-safe
+  connection teardown that keeps stranded smuggling bytes from desyncing into a
+  real user's request. (2) `crlf_logic` — the `buildHeaderProbe` (opt-in
+  raw-send path) carried-header **name** CR/LF guard was untested (only the value
+  guard was), so the CRLF probe could itself splice an attacker header. (3)
+  `proto_pollution_logic` — the carried **Content-Length** drop's
+  case-insensitivity was unpinned; a lowercase `content-length` would coexist
+  with the computed one → two framing headers (CL.CL desync) on the pollute
+  write. (4) `redirect_logic` — `mergeSetCookies`'s **Set-Cookie** name match was
+  case-sensitivity-unpinned; a lowercase `set-cookie` on a redirect hop would be
+  dropped, silently losing the session cookie during redirect following. (The
+  Accept-Encoding case-flag is the same class as items already locked in
+  xxe/ldap and is intentionally represented by those, not replicated further.)
+  Gauntlet green (ctest 100/100, probe_smoke 158/158). Test-only.
 - **Seven more injection-detector checks locked by mutation-proven tests
   (no behaviour change).** A second adversarial coverage audit over the classic
   injection probes found seven low-level checks whose silent breakage no test

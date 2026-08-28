@@ -105,6 +105,13 @@ int main(int argc, char **argv) {
         // a later hop overwrites an earlier cookie of the same name
         mergeSetCookies(jar, Hdrs{ { "Set-Cookie", "sid=REFRESHED; Path=/" } });
         chk("cookies: later Set-Cookie overwrites", jar.value("sid") == "REFRESHED");
+        // The Set-Cookie name match must be case-INSENSITIVE: HTTP/2 mandates
+        // lowercase header names, so a lowercase 'set-cookie' on a redirect hop must
+        // still be captured -- else the session cookie is silently dropped during
+        // redirect following and session-handling breaks.
+        QHash<QString, QString> jarLc;
+        mergeSetCookies(jarLc, Hdrs{ { "set-cookie", "sid=abc; Path=/" } });
+        chk("cookies: lowercase set-cookie (HTTP/2) captured", jarLc.value("sid") == "abc");
     }
     chk("cookies: empty jar -> empty header", renderCookieHeader({}).isEmpty());
 

@@ -227,6 +227,13 @@ int main(int argc, char **argv) {
         Request oc = req; oc.headers.append({QStringLiteral("X-Other"), QStringLiteral("ok\r\nEvil: 1")});
         chk("hdr-probe: OTHER carried CRLF header still dropped",
             !buildHeaderProbe(oc, "Referer", "x").contains("Evil: 1"));
+        // ...and the carried-header NAME guard is separate from the value guard
+        // above (clean value here, CR/LF only in the NAME): dropping it would let
+        // this opt-in raw-send probe splice an attacker header -- the CRLF probe
+        // must not itself become a CRLF-injection vector.
+        Request ocn = req; ocn.headers.append({QStringLiteral("X-A\r\nEvil"), QStringLiteral("1")});
+        chk("hdr-probe: carried CRLF in header NAME still dropped",
+            !buildHeaderProbe(ocn, "Referer", "x").contains("\r\nEvil: 1"));
         // A carried Accept-Encoding / Connection is dropped on this body-less probe too:
         // it forces "Accept-Encoding: identity" and "Connection: close", so a surviving
         // carried copy would defeat the forced value (same hygiene as buildRequest).
