@@ -169,6 +169,18 @@ int main(int argc, char **argv) {
         bool anyH3 = false;
         for (const auto &p : ps) if (p.isHttp3) anyH3 = true;
         chk("alt: quoted-comma value advertises NO http3", !anyH3);
+        // ...and a BACKSLASH-ESCAPED quote inside the authority must be skipped so
+        // the quote stays OPEN (the escaped '"' is data, not a delimiter). Without
+        // the escape-skip, the \" closes the string, the following comma splits at
+        // top level, and the tail forges a phantom h3 -- the same false verdict the
+        // quoted-comma guard above prevents, via a different (previously untested)
+        // branch. Wire value: h2="a\",h3=:443"
+        {
+            const auto psE = parseAltSvc("h2=\"a\\\",h3=:443\"");
+            chk("alt: escaped quote keeps authority quoted (comma stays data)", psE.size() == 1);
+            chk("alt: no phantom h3 forged across an escaped quote",
+                psE.size() == 1 && psE[0].id == "h2" && !psE[0].isHttp3);
+        }
         // A genuine two-entry value with a real h3 still parses as before.
         const auto ok = parseAltSvc("h2=\"alt.example.com:443\", h3=\":443\"");
         chk("alt: a real top-level comma still splits", ok.size() == 2 && ok[1].isHttp3);

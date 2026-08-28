@@ -73,6 +73,20 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **HTTP/3 Alt-Svc parser: escaped-quote handling locked by a mutation-proven
+  test (no behaviour change).** `splitAltSvcEntries`' backslash-escape branch —
+  which keeps a `\"`-escaped quote inside an Alt-Svc authority as *data* so a
+  following comma does not split the entry — had no test, even though the
+  adjacent quoted-comma guard did. Breaking it silently re-forges the exact
+  phantom-`h3` (false "HTTP/3 supported") verdict that guard exists to prevent,
+  via the untested branch. Pinned with an escaped-quote value (`h2="a\",h3=:443"`
+  → one `h2` entry, no h3); mutation-proved. Gauntlet green (ctest 100/100,
+  probe_smoke 158/158). Test-only. (This closes the mutation-survivability audit
+  campaign: a sixth round over cache_deception/verb_tamper/idor/race/exposure/
+  sequencer returned almost entirely *replicas* of the guard-half and Set-Cookie
+  case-flag classes already representatively locked above — so only this one
+  genuinely-distinct finding was pinned, rather than padding with near-identical
+  tests.)
 - **Six more signature/guard checks locked by mutation-proven tests (no
   behaviour change).** A fifth adversarial coverage audit over waf_detect/
   js_recon/cache_poison/param_miner/header_audit/inspector found six low-level
