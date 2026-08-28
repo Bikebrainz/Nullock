@@ -60,6 +60,7 @@ labs/
   50-predictable-session-token/ # sequential session ids (sequencer verdict)  (5050)
   51-jwt-alg-confusion/    # RS256 token forged as HS256 using the pubkey PEM (5051)
   52-ldap-injection/  # filter metachar breaks the query, wildcard bypasses a blocklist (5052)
+  53-jwt-kid-injection/    # kid path-traversal points HMAC verify at an empty key file (5053)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

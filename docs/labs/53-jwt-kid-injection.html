@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JWT `kid` header injection (path traversal -&gt; empty-key forgery) — Nullock Labs</title>
+<meta name="description" content="kid path-traversal points HMAC verify at an empty key file">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">53</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5053</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">JWT `kid` header injection (path traversal -&gt; empty-key forgery)</h1>
+  <p class="lead" style="margin-top:12px;">The API signs session tokens with HMAC and names which on-disk key file to verify against via the JWT header&#x27;s own `kid` field -- a real pattern for services that rotate or multi-tenant their signing keys. The verifier joins `kid` onto a fixed keys/ directory with no traversal check, so a `kid` that escapes that directory can point the HMAC lookup at /dev/null, a file guaranteed to be empty -- sign a token with an empty key and the server accepts it. A single non-recursive `kid.replace(&quot;../&quot;, &quot;&quot;)` filter blocks the obvious repeated &quot;../../.../dev/null&quot; attempt (it strips clean down to a harmless &quot;dev/null&quot;), but doesn&#x27;t stop a doubled-dot kid or a bare absolute path from getting there anyway.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/53-jwt-kid-injection/app.py
+# then open http://localhost:5053/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5053/*</code><code class="inline">http://127.0.0.1:5053/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The token&#x27;s header names which key file the server should verify against -- what happens if that name is a path instead of a plain filename?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>os.path.join has a quirk with absolute paths: what does joining a fixed base directory onto &quot;/dev/null&quot; actually produce?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>kid=&quot;/dev/null&quot; (or enough doubled &quot;....//&quot; dots to survive a single-pass &quot;../&quot; strip) points the HMAC check at a guaranteed-empty file -- sign your forged token with an empty key.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5053/*</li><li>GET /login -- an HS256 JWT with kid=&quot;hmac.key&quot;, signed with a real secret generated fresh at startup. GET /account with it -- 200, role=user.</li><li>Forge a token: header {&quot;alg&quot;:&quot;HS256&quot;,&quot;kid&quot;:&quot;/dev/null&quot;}, payload {&quot;role&quot;:&quot;admin&quot;, &quot;sub&quot;:&quot;alice&quot;}, HMAC-signed with an EMPTY key. Send it to /account -- 200, role=admin: os.path.join(KEYS_DIR, &quot;/dev/null&quot;) returns &quot;/dev/null&quot; outright, since an absolute second argument overrides the base entirely -- the &quot;safe&quot; keys/ fence never even applies.</li><li>Same idea, blocked-then-bypassed: kid=&quot;../../../../../../../../../../dev/null&quot; gets 401 (the filter strips every &quot;../&quot; down to &quot;dev/null&quot;, a file that doesn&#x27;t exist inside keys/) but kid made of twenty &quot;....//&quot; segments followed by &quot;dev/null&quot; gets 200 -- one non-recursive `.replace(&quot;../&quot;, &quot;&quot;)` pass only removes what it sees on the first scan, and the doubled dots leave behind twenty fresh, unscanned &quot;../&quot; runs that walk past the filesystem root and back down to the null device.</li><li>`nullock jwt test http://localhost:5053/account &lt;the /login token&gt;` finds this on its own -- the kid-injection probe tries exactly this traversal family (plain /dev/null, repeated and doubled &quot;../&quot;), differentially, across every HS alg.</li><li>Confirm success: GET /flag with the forged admin token.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never let request-controlled input choose a filesystem path for a signing key. Look keys up by an opaque id against a fixed allow-list / in-memory table instead of joining a raw filename onto a directory, and reject any `kid` that isn&#x27;t in that table before it ever reaches a filesystem call.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "53-jwt-kid-injection";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 53 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

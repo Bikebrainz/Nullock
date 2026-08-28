@@ -1179,6 +1179,30 @@
       "Confirm success: GET /flag?cn=admi* -- solved only by a query that resolves to the admin entry without the literal string \"admin\"."
     ],
     "fix": "Fix: never concatenate user input into an LDAP filter -- escape per RFC 4515 (or use a filter-builder API) before it reaches the query, and don't rely on a literal-string blocklist for access control."
+  },
+  {
+    "slug": "53-jwt-kid-injection",
+    "num": "53",
+    "title": "JWT `kid` header injection (path traversal -> empty-key forgery)",
+    "vuln": "kid path-traversal points HMAC verify at an empty key file",
+    "port": "5053",
+    "category": "Authentication",
+    "difficulty": "Hard",
+    "desc": "The API signs session tokens with HMAC and names which on-disk key file to verify against via the JWT header's own `kid` field -- a real pattern for services that rotate or multi-tenant their signing keys. The verifier joins `kid` onto a fixed keys/ directory with no traversal check, so a `kid` that escapes that directory can point the HMAC lookup at /dev/null, a file guaranteed to be empty -- sign a token with an empty key and the server accepts it. A single non-recursive `kid.replace(\"../\", \"\")` filter blocks the obvious repeated \"../../.../dev/null\" attempt (it strips clean down to a harmless \"dev/null\"), but doesn't stop a doubled-dot kid or a bare absolute path from getting there anyway.",
+    "hints": [
+      "The token's header names which key file the server should verify against -- what happens if that name is a path instead of a plain filename?",
+      "os.path.join has a quirk with absolute paths: what does joining a fixed base directory onto \"/dev/null\" actually produce?",
+      "kid=\"/dev/null\" (or enough doubled \"....//\" dots to survive a single-pass \"../\" strip) points the HMAC check at a guaranteed-empty file -- sign your forged token with an empty key."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5053/*",
+      "GET /login -- an HS256 JWT with kid=\"hmac.key\", signed with a real secret generated fresh at startup. GET /account with it -- 200, role=user.",
+      "Forge a token: header {\"alg\":\"HS256\",\"kid\":\"/dev/null\"}, payload {\"role\":\"admin\", \"sub\":\"alice\"}, HMAC-signed with an EMPTY key. Send it to /account -- 200, role=admin: os.path.join(KEYS_DIR, \"/dev/null\") returns \"/dev/null\" outright, since an absolute second argument overrides the base entirely -- the \"safe\" keys/ fence never even applies.",
+      "Same idea, blocked-then-bypassed: kid=\"../../../../../../../../../../dev/null\" gets 401 (the filter strips every \"../\" down to \"dev/null\", a file that doesn't exist inside keys/) but kid made of twenty \"....//\" segments followed by \"dev/null\" gets 200 -- one non-recursive `.replace(\"../\", \"\")` pass only removes what it sees on the first scan, and the doubled dots leave behind twenty fresh, unscanned \"../\" runs that walk past the filesystem root and back down to the null device.",
+      "`nullock jwt test http://localhost:5053/account <the /login token>` finds this on its own -- the kid-injection probe tries exactly this traversal family (plain /dev/null, repeated and doubled \"../\"), differentially, across every HS alg.",
+      "Confirm success: GET /flag with the forged admin token."
+    ],
+    "fix": "Fix: never let request-controlled input choose a filesystem path for a signing key. Look keys up by an opaque id against a fixed allow-list / in-memory table instead of joining a raw filename onto a directory, and reject any `kid` that isn't in that table before it ever reaches a filesystem call."
   }
 ];
   window.NULLOCK_LABS_XP = {

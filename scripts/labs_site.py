@@ -129,6 +129,7 @@ DIFFICULTY = {
     "50-predictable-session-token": "Medium",
     "51-jwt-alg-confusion": "Hard",
     "52-ldap-injection": "Medium",
+    "53-jwt-kid-injection": "Hard",
 }
 
 
@@ -403,6 +404,11 @@ HINTS = {
         "The directory search builds a filter string directly from your input -- what happens if you send a stray parenthesis?",
         "Separately, the app blocks searching for the literal word \"admin\" -- does that block survive a wildcard that still resolves to it?",
         "cn=*)( breaks the filter's syntax (a python-ldap-style error leaks); cn=admi* returns the admin record without ever typing \"admin\".",
+    ],
+    "53-jwt-kid-injection": [
+        "The token's header names which key file the server should verify against -- what happens if that name is a path instead of a plain filename?",
+        "os.path.join has a quirk with absolute paths: what does joining a fixed base directory onto \"/dev/null\" actually produce?",
+        "kid=\"/dev/null\" (or enough doubled \"....//\" dots to survive a single-pass \"../\" strip) points the HMAC check at a guaranteed-empty file -- sign your forged token with an empty key.",
     ],
 }
 

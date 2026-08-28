@@ -93,6 +93,27 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Lab 53: JWT `kid` header injection (path traversal -> empty-key
+  forgery).** A new teaching lab (`labs/53-jwt-kid-injection/`) alongside
+  the existing 52. The token's own `kid` header names which on-disk key
+  file the server HMAC-verifies against; the lookup joins `kid` onto a
+  fixed `keys/` directory with no traversal check, so `kid="/dev/null"`
+  (an absolute path drops the base directory outright -- a real
+  `os.path.join` gotcha) or twenty doubled `....//` segments (surviving a
+  naive single-pass `kid.replace("../", "")` filter that a plain repeated
+  `../` gets caught by) point the check at a guaranteed-empty file --
+  sign the forged token with an empty key and it verifies. This is the
+  exact primitive `Src/Core/Networking/jwt_probe_logic.cpp`'s
+  `kidInjectionVariants()` already probes for (plain `/dev/null`, the
+  Windows `NUL` device, and both plain and doubled-dot traversals,
+  differentially against a blank-secret baseline so it isn't
+  double-counted as a plain empty-secret finding). Verified end-to-end:
+  the real per-run key logs in normally, the blocked repeated-`../` kid
+  gets 401, the absolute-path and doubled-dot kids both forge an
+  admin token, and `/flag` only solves off one of those two working
+  forgeries. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`); README.md and docs/index.html's 52->53 lab-count
+  strings updated alongside.
 - **Lab 52: LDAP injection (filter metacharacter injection + wildcard
   bypass).** A new teaching lab (`labs/52-ldap-injection/`) alongside the
   existing 51. A staff-directory search builds an LDAP-style filter by
