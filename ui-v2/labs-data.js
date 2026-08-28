@@ -1226,6 +1226,26 @@
       "Confirm success: GET /flag?username=admin&password=' or 1=1 or 'a'='a"
     ],
     "fix": "Fix: never concatenate user input into an XPath expression -- parameterize the query (e.g. an XPath variable binding) or escape per the same untrusted-input discipline as SQL, and never let credential-check success alone decide identity -- verify the returned node actually IS the account being logged into."
+  },
+  {
+    "slug": "55-ognl-struts-injection",
+    "num": "55",
+    "title": "OGNL / Apache Struts2 expression injection (S2-045 / CVE-2017-5638 class)",
+    "vuln": "%{ } OGNL expression evaluated server-side (S2-045 class)",
+    "port": "5055",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "A Struts2-style greeting banner renders user input through an OGNL `%{...}` expression tag -- Struts2's own templating syntax for binding a value expression into markup -- by string concatenation instead of passing `name` as a bound variable. Anything the attacker wraps in `%{ }` gets evaluated server-side, from harmless arithmetic all the way up to the `@java.lang.Runtime@getRuntime().exec(...)` OGNL gadget real Struts2 CVEs use for RCE. This lab's toy evaluator only understands two OGNL-shaped forms (arithmetic and a `@exec(...)` call) -- enough to prove the same injection class without needing a real JVM/OGNL stack -- and, just as importantly, does NOT evaluate `{{ }}` (Jinja/Twig-style) syntax, so a hit here fingerprints the OGNL/Struts2 family specifically rather than generic SSTI.",
+    "hints": [],
+    "steps": [
+      "nullock scope add http://localhost:5055/*",
+      "Browse /greet?name=world -- \"hello, world!\".",
+      "Send to Repeater. Change name to: %{7*7} Response: \"hello, 49!\" -- the expression was evaluated, not echoed.",
+      "Run the active probe (ssti) against /greet with param=name: it sends the polyglot pre%{a*b}sep%{c*d}suf, sees both products with the literal separator preserved and neither raw expression echoed, and confirms with engines containing \"OGNL (Apache Struts2)\" -- and NOT \"Jinja2\", proving the %{ } family fingerprints this engine uniquely.",
+      "Escalate to the real-world impact: name to %{@exec('id')} -- the response includes the output of `id`, the same class of gadget CVE-2017-5638 walks via @java.lang.Runtime@getRuntime().exec() to get RCE from a Struts2 Content-Type header, just reached through a friendlier syntax here.",
+      "Confirm success: GET /flag?name=%{@exec('echo $NULLOCK_FLAG')} -- the flag lives only in the app's process environment, unreachable except by getting the expression to actually execute a command; same concatenation /greet uses."
+    ],
+    "fix": "Fix: never concatenate user input into an OGNL/EL expression string. Bind it as a plain value (Struts2: `<s:property value=\"name\"/>` with `name` pushed onto the value stack, never into the expression source itself), and keep the interpreter's reachable object graph away from user control (Struts2's own fix line for this CVE class: sandbox/allowlist OGNL's static-method-access to close the Runtime/ProcessBuilder gadgets off)."
   }
 ];
   window.NULLOCK_LABS_XP = {

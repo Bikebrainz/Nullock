@@ -1,0 +1,6 @@
+{
+  "name": "Lab 55 -- OGNL / Apache Struts2 expression injection (S2-045 / CVE-2017-5638 class).",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5055/*", "http://127.0.0.1:5055/*"],
+  "outOfScope": []
+}

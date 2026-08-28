@@ -48,7 +48,7 @@ CATEGORY_RULES = [
     ("Injection", ("sqli", "ssti", "command-injection", "nosql", "xxe",
                    "crlf", "csv-injection", "graphql", "deserialization",
                    "prototype-pollution", "param-pollution", "ldap-injection",
-                   "xpath-injection")),
+                   "xpath-injection", "ognl")),
     ("Access control", ("idor", "broken-access", "mass-assignment",
                         "verb-tamper", "2fa", "dangerous-http-methods")),
     ("Authentication", ("jwt", "oauth", "session-fixation", "user-enumeration",
@@ -132,6 +132,7 @@ DIFFICULTY = {
     "52-ldap-injection": "Medium",
     "53-jwt-kid-injection": "Hard",
     "54-xpath-injection": "Medium",
+    "55-ognl-struts-injection": "Medium",
 }
 
 

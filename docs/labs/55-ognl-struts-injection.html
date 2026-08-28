@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Missing security headers — Nullock Labs</title>
-<meta name="description" content="no CSP / nosniff / framing protections">
+<title>OGNL / Apache Struts2 expression injection (S2-045 / CVE-2017-5638 class) — Nullock Labs</title>
+<meta name="description" content="%{ } OGNL expression evaluated server-side (S2-045 class)">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">39</span>
-    <span class="labs-cat mono">Client-side</span>
-    <span class="labs-diff labs-diff-easy">Easy</span>
-    <span class="labs-port mono">localhost:5039</span>
+    <span class="labs-num mono">55</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5055</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">Missing security headers</h1>
-  <p class="lead" style="margin-top:12px;">/ serves an app with NO Content-Security-Policy, Strict-Transport-Security, or X-Content-Type-Options -- leaving it open to XSS escalation, TLS stripping, and MIME sniffing. In Nullock: 1. nullock scope add http://localhost:5039/* 2. nullock headeraudit http://localhost:5039/ -- raises csp-missing, xcto-missing, clickjacking-missing (and more). Note: hsts-missing does NOT fire here -- that check only applies to an https response, and this lab deliberately runs over plain http. 3. Confirm success: GET /flag?findings=csp-missing,xcto-missing -- solved only after visiting / and naming findings that genuinely fire on this plain-http response (submitting hsts-missing, which can never fire here, fails the check). Fix: send Content-Security-Policy, Strict-Transport-Security (long max-age + includeSubDomains), and X-Content-Type-Options: nosniff on every response.</p>
+  <h1 class="h1-page" style="margin-top:14px;">OGNL / Apache Struts2 expression injection (S2-045 / CVE-2017-5638 class)</h1>
+  <p class="lead" style="margin-top:12px;">A Struts2-style greeting banner renders user input through an OGNL `%{...}` expression tag -- Struts2&#x27;s own templating syntax for binding a value expression into markup -- by string concatenation instead of passing `name` as a bound variable. Anything the attacker wraps in `%{ }` gets evaluated server-side, from harmless arithmetic all the way up to the `@java.lang.Runtime@getRuntime().exec(...)` OGNL gadget real Struts2 CVEs use for RCE. This lab&#x27;s toy evaluator only understands two OGNL-shaped forms (arithmetic and a `@exec(...)` call) -- enough to prove the same injection class without needing a real JVM/OGNL stack -- and, just as importantly, does NOT evaluate `{{ }}` (Jinja/Twig-style) syntax, so a hit here fingerprints the OGNL/Struts2 family specifically rather than generic SSTI.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/39-missing-security-headers/app.py
-# then open http://localhost:5039/</code></pre>
+python labs/55-ognl-struts-injection/app.py
+# then open http://localhost:5055/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5039/*</code><code class="inline">http://127.0.0.1:5039/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5055/*</code><code class="inline">http://127.0.0.1:5055/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the full set of response headers on the main page.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Compare them against the standard defensive header set (CSP, X-Content-Type-Options, X-Frame-Options, etc.).</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Nullock&#x27;s passive audit already flags every missing header -- open Findings/Probe and read the list.</p></details></div>
+  
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5039/*</li><li>nullock headeraudit http://localhost:5039/ -- raises csp-missing, xcto-missing, clickjacking-missing (and more). Note: hsts-missing does NOT fire here -- that check only applies to an https response, and this lab deliberately runs over plain http.</li><li>Confirm success: GET /flag?findings=csp-missing,xcto-missing -- solved only after visiting / and naming findings that genuinely fire on this plain-http response (submitting hsts-missing, which can never fire here, fails the check).</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5055/*</li><li>Browse /greet?name=world -- &quot;hello, world!&quot;.</li><li>Send to Repeater. Change name to: %{7*7} Response: &quot;hello, 49!&quot; -- the expression was evaluated, not echoed.</li><li>Run the active probe (ssti) against /greet with param=name: it sends the polyglot pre%{a*b}sep%{c*d}suf, sees both products with the literal separator preserved and neither raw expression echoed, and confirms with engines containing &quot;OGNL (Apache Struts2)&quot; -- and NOT &quot;Jinja2&quot;, proving the %{ } family fingerprints this engine uniquely.</li><li>Escalate to the real-world impact: name to %{@exec(&#x27;id&#x27;)} -- the response includes the output of `id`, the same class of gadget CVE-2017-5638 walks via @java.lang.Runtime@getRuntime().exec() to get RCE from a Struts2 Content-Type header, just reached through a friendlier syntax here.</li><li>Confirm success: GET /flag?name=%{@exec(&#x27;echo $NULLOCK_FLAG&#x27;)} -- the flag lives only in the app&#x27;s process environment, unreachable except by getting the expression to actually execute a command; same concatenation /greet uses.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: send Content-Security-Policy, Strict-Transport-Security (long max-age + includeSubDomains), and X-Content-Type-Options: nosniff on every response.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never concatenate user input into an OGNL/EL expression string. Bind it as a plain value (Struts2: `&lt;s:property value=&quot;name&quot;/&gt;` with `name` pushed onto the value stack, never into the expression source itself), and keep the interpreter&#x27;s reachable object graph away from user control (Struts2&#x27;s own fix line for this CVE class: sandbox/allowlist OGNL&#x27;s static-method-access to close the Runtime/ProcessBuilder gadgets off).</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/39-missing-security-headers/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "39-missing-security-headers";
+  var SLUG = "55-ognl-struts-injection";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {

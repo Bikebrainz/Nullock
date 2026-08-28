@@ -220,6 +220,26 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Lab 55: OGNL / Apache Struts2 expression injection (S2-045 /
+  CVE-2017-5638 class).** A new teaching lab (`labs/55-ognl-struts-injection/`)
+  pairing with the active OGNL/Struts2 detector added below: a Struts2-style
+  greeting banner renders user input through an OGNL `%{ }` expression tag by
+  string concatenation instead of binding it as a plain value. `%{7*7}`
+  evaluates to `49` server-side (the exact `pre%{a*b}sep%{c*d}suf` polyglot
+  the `ssti` active probe sends and confirms as `OGNL (Apache Struts2)`, and
+  *not* `Jinja2`, since the lab's toy evaluator never touches `{{ }}`
+  syntax); a `%{@exec('...')}` gadget stands in for the real
+  `@java.lang.Runtime@getRuntime().exec()` chain CVE-2017-5638 uses for RCE,
+  escalating the arithmetic proof to actual command execution. Verified
+  end-to-end against a real Flask run: baseline and a benign value pass
+  through unevaluated, `{{ }}` syntax is never evaluated (fingerprint stays
+  OGNL-specific), the arithmetic and `@exec` payloads both fire correctly,
+  and `/flag` only solves when the flag -- held only in the process
+  environment -- comes back via an actually-executed command (typing the
+  flag literally into `name` stays 403). `scripts/labs_site.py` regenerated
+  (`docs/labs/`, `ui-v2/labs-data.js`, new `ognl` Injection-category
+  keyword and a curated `Medium` difficulty entry); README.md and
+  docs/index.html's 54->55 lab-count strings updated alongside.
 - **Active OGNL / Apache-Struts2 injection detection.** The SSTI active
   tester's two-expression arithmetic proof gained the `%{ }` delimiter family
   — the syntax Apache Struts2 evaluates as OGNL and the classic S2-045 /

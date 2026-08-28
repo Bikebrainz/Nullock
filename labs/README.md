@@ -62,6 +62,7 @@ labs/
   52-ldap-injection/  # filter metachar breaks the query, wildcard bypasses a blocklist (5052)
   53-jwt-kid-injection/    # kid path-traversal points HMAC verify at an empty key file (5053)
   54-xpath-injection/ # concatenated XPath filter -- error leak + and/or-precedence login bypass (5054)
+  55-ognl-struts-injection/ # %{ } OGNL expression evaluated server-side (S2-045 class)       (5055)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
