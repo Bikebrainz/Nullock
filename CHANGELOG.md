@@ -11,6 +11,31 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Three dead passive-scanner detectors that could never fire (silent misses).**
+  A dedicated dead-detector hunt (trace a realistic input that *should* trigger a
+  detector, confirm it doesn't) found three: (1) **CVE correlation never ran for
+  WordPress** and six other stacks. The correlation loop gated each kind on its
+  vendor token literally appearing in a fingerprint field (`bodyVersion` is
+  digits-only; `xGenerator`/`xPoweredBy`/`server` are headers), but WordPress's
+  tell is a body `<meta generator>` / `/wp-content/` marker, never a header — so a
+  fingerprinted WordPress 6.4 host was silently *not* checked against
+  CVE-2024-31210 (WP < 6.4.3 RCE, CVSS 8.8). Also killed `cms-magento`/`sitecore`/
+  `confluence`/`jira` and `fw-spring`/`aspnet`/`nextjs`; only `cms-drupal` (via
+  X-Generator) and `fw-express` (via X-Powered-By) passed. Replaced the broken
+  vendor-substring proxy with a per-row emitted-kind set (exact, and it preserves
+  the version scoping a bare gate-removal would lose). (2) **Backup files never
+  detected.** The `/.bak` needle required a slash right before `bak`, but a real
+  backup's `.bak` follows the stem (`config.php.bak`), so it only matched a
+  stemless `.bak` dotfile — never a real backup. Now matched as a filename suffix
+  (`.bak`/`.old`/`.orig`/`.save`/`.swp`/`~`). (3) **`takeover-fastly` never fired.**
+  The subdomain-takeover block was gated to 404/503, but Fastly's "unknown domain"
+  page ships **HTTP 500** — so a real Fastly takeover was silently missed. Widened
+  to `>=400,<600` (matching the active scanner); FP-safe because every needle is a
+  branded provider string. All three fixes locked with scanner_regression tests
+  and bug-proved (the test fails on the old code, passes on the fix). The whole
+  CVE-correlation feature was previously untested in scanner_regression, which is
+  why the WordPress miss went unnoticed. Gauntlet green (ctest 100/100,
+  probe_smoke 158/158; scanner_regression 288→291).
 - **"Send to Repeater" could load the wrong request after history eviction.**
   `/api/repeater/tab/addFromHistory` treated its argument as a live window index,
   and the UI passes `row.id - 1` — which equals the index only until the bounded

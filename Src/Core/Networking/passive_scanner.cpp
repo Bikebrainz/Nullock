@@ -730,14 +730,35 @@ void PassiveScanner::checkResponse(int rowId,
             "/wp-config.php", "/config.yml", "/config.yaml",
             "/database.yml", "/credentials.yml",
             "/backup.zip", "/backup.tar", "/backup.sql",
-            "/dump.sql", "/.bak", "/phpinfo.php",
+            "/dump.sql", "/phpinfo.php",
         };
+        bool exposedFired = false;
         for (const QString &p : kExposedPaths) {
             if (req.path.contains(p, Qt::CaseInsensitive)) {
                 addFinding(rowId, req, resp, "high", "exposed-dev-file",
                            "Sensitive dev / VCS file accessible (" + p + ")",
                            "path: " + req.path);
+                exposedFired = true;
                 break;
+            }
+        }
+        // A backup / editor-swap artifact of a real file (config.php.bak, app.js~,
+        // .env.old, index.php.swp) leaks source or secrets. The extension is a
+        // SUFFIX of the real filename, so the old "/.bak" needle above was DEAD --
+        // a "/.bak" substring requires a slash right before "bak", which a real
+        // <stem>.bak never has (the '.' follows the stem's last char). endsWith is
+        // the right test. Only when no exposed-path already fired, to avoid a dup.
+        if (!exposedFired) {
+            static const QStringList kBackupSuffixes = {
+                ".bak", ".old", ".orig", ".save", ".swp", "~",
+            };
+            for (const QString &suf : kBackupSuffixes) {
+                if (req.path.endsWith(suf, Qt::CaseInsensitive)) {
+                    addFinding(rowId, req, resp, "high", "exposed-dev-file",
+                               "Backup / editor-swap file accessible (" + suf + ")",
+                               "path: " + req.path);
+                    break;
+                }
             }
         }
     }
@@ -1332,9 +1353,15 @@ void PassiveScanner::checkResponse(int rowId,
     }
 
     // ---- Subdomain takeover indicators (passive) ----------------------
-    // 404 / 503 response bodies with vendor-specific error pages
-    // suggest a CNAME pointing at an unclaimed cloud resource.
-    if (resp.statusCode == 404 || resp.statusCode == 503) {
+    // 4xx/5xx response bodies with vendor-specific error pages suggest a CNAME
+    // pointing at an unclaimed cloud resource. The status range matches the active
+    // scanner's isTakeoverErrorStatus (>=400,<600): the old 404/503-only gate was
+    // dead for Fastly, whose "unknown domain" page ships HTTP 500 (and for any
+    // other provider that answers an unclaimed host with a different 4xx/5xx). This
+    // stays FP-safe because every needle below is a BRANDED, provider-specific
+    // string -- a generic 4xx/5xx body carries none of them (the ubiquitous
+    // "404 Not Found" cargo needle was already removed for exactly that reason).
+    if (resp.statusCode >= 400 && resp.statusCode < 600) {
         const QString body = QString::fromUtf8(scanBody.left(32 * 1024));
         struct STPat { const char *kind; const char *label; const char *needle; };
         static const STPat kSTs[] = {
@@ -1693,16 +1720,25 @@ void PassiveScanner::checkResponse(int rowId,
             "fw-spring",   "fw-aspnet", "fw-express", "fw-nextjs",
             "fw-laravel",  "fw-django", "fw-symfony",
         };
+        // Correlate CVEs only for kinds we ACTUALLY fingerprinted on THIS row,
+        // read back from the emitted findings. The prior gate demanded the kind's
+        // vendor token literally appear in a fingerprint FIELD (bodyVersion is
+        // digits-only; xGenerator/xPoweredBy/server are headers) -- which is dead
+        // for every kind whose tell is a body/path marker rather than one of those
+        // headers: WordPress (generator is a <meta> tag, not X-Generator; version
+        // is digits-only), and likewise cms-magento/sitecore/confluence/jira and
+        // fw-spring/aspnet/nextjs. Their CVE lookup NEVER ran (only cms-drupal via
+        // X-Generator and fw-express via X-Powered-By passed). A per-row
+        // emitted-kind set is exact AND keeps the per-kind version scoping a bare
+        // gate-removal would lose to cross-kind bleed from the shared fp.bodyVersion.
+        QSet<QString> emittedKinds;
+        {
+            QMutexLocker lock(&m_mutex);
+            for (const Finding &f : m_findings)
+                if (f.rowId == rowId) emittedKinds.insert(f.kind);
+        }
         for (const QString &kind : cveKinds) {
-            // Did we actually fire a finding of this kind on this
-            // row? Cheap check: see if any pending finding in this
-            // batch matches. We don't have a per-row index here,
-            // so we just attempt the lookup whenever the
-            // fingerprint sources mention the kind's vendor.
-            const QString vendor = kind.section('-', 1, 1);
-            const QString hay = (fp.bodyVersion + " " + fp.xGenerator + " "
-                                 + fp.xPoweredBy + " " + fp.server).toLower();
-            if (!hay.contains(vendor)) continue;
+            if (!emittedKinds.contains(kind)) continue;
             const auto hits = CveDatabase::lookupByFingerprint(kind, fp);
             for (const auto &h : hits) {
                 // Severity from CVSS base score -- but only for a version-CONFIRMED

@@ -508,6 +508,13 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "cdn.example.test", "/"),
         makeResp(404, "text/plain",
                  "Fastly error: unknown domain: cdn.example.test") });
+    // Fastly's REAL unknown-domain page ships HTTP 500, which the old 404/503-only
+    // gate excluded -- so the branded needle could never fire on an actual Fastly
+    // takeover. The gate now matches the active scanner's range (>=400,<600).
+    tc.append({ "Fastly unknown domain at 500 -> takeover-fastly", "takeover-fastly", false,
+        makeReq("GET", "cdn2.example.test", "/"),
+        makeResp(500, "text/plain",
+                 "Fastly error: unknown domain: cdn2.example.test") });
 
     tc.append({ "Shopify shop unavailable 404 -> takeover-shopify", "takeover-shopify", false,
         makeReq("GET", "shop.example.test", "/"),
@@ -1306,6 +1313,18 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/.env"),
         makeResp(200, "text/plain", "AWS_SECRET=...\n") });
 
+    // A <stem>.bak backup leaks source/creds, but the old "/.bak" substring needle
+    // was dead (a real backup's '.bak' follows the stem, never a slash). Now matched
+    // as a filename SUFFIX.
+    tc.append({ "exposed config.php.bak -> exposed-dev-file (was gate-dead)",
+                "exposed-dev-file", false,
+        makeReq("GET", "example.test", "/config.php.bak"),
+        makeResp(200, "text/plain", "<?php $conf = 'redacted';\n") });
+    tc.append({ "exposed index.php.swp (vim swap) -> exposed-dev-file",
+                "exposed-dev-file", false,
+        makeReq("GET", "example.test", "/index.php.swp"),
+        makeResp(200, "application/octet-stream", "b0VIM 8.0") });
+
     tc.append({ "normal /api/users -> no exposed-dev finding",
                 "exposed-dev-file", true,
         makeReq("GET", "example.test", "/api/users"),
@@ -1614,6 +1633,17 @@ QList<TestCase> buildCorpus() {
     tc.append({ "WordPress via wp-content", "cms-wordpress", false,
         makeReq("GET", "blog.example.test", "/"),
         makeResp(200, "text/html",
+                 "<link rel='stylesheet' href='/wp-content/themes/twentytwentyfour/style.css'>") });
+
+    // CVE correlation: a fingerprinted WordPress 6.4 (in range for CVE-2024-31210,
+    // WP < 6.4.3 RCE) must produce a cve-correlated finding. This was gate-dead:
+    // the correlation loop demanded "wordpress" appear in a fingerprint field, but
+    // WP's version comes from a body <meta>/wp-content marker, never a header, so
+    // the lookup never ran. The generator meta gives bodyVerRx "6.4".
+    tc.append({ "WordPress 6.4 -> cve-correlated (CVE-2024-31210)", "cve-correlated", false,
+        makeReq("GET", "blog.example.test", "/"),
+        makeResp(200, "text/html",
+                 "<meta name='generator' content='WordPress 6.4'>"
                  "<link rel='stylesheet' href='/wp-content/themes/twentytwentyfour/style.css'>") });
 
     tc.append({ "Drupal via X-Generator", "cms-drupal", false,
