@@ -247,6 +247,14 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html",
                  "<html><script>win.postMessage(payload, '*');</script></html>") });
+    // Regression: the very common postMessage(JSON.stringify(x), '*') was MISSED --
+    // the old first-arg pattern [^,)]+ stopped at the ')' of stringify(x). Now one
+    // level of balanced () in the first arg is allowed.
+    tc.append({ "postMessage(JSON.stringify(x), '*') -> dom-postmessage-wildcard",
+                "dom-postmessage-wildcard", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>win.postMessage(JSON.stringify(data), '*');</script></html>") });
 
     tc.append({ "eval(xhr.responseText) -> dom-eval-of-fetch",
                 "dom-eval-of-fetch", false,
@@ -1278,7 +1286,7 @@ QList<TestCase> buildCorpus() {
         const QByteArray a36(36, 'a'), a35(35, 'a'), a40(40, 'a'),
                          a22(22, 'a'), a43(43, 'a'), a20(20, 'a');
         auto j = [](const QByteArray &v) { return QByteArray("{\"k\":\"") + v + "\"}"; };
-        const QByteArray us("_"), dot(".");
+        const QByteArray us("_"), dot("."), dash("-");
         tc.append({ "leaked GitHub App token", "leaked-gh-app", false,
             makeReq("GET", "example.test", "/"),
             makeResp(200, "application/json", j(QByteArray("ghs") + us + a36)) });
@@ -1294,6 +1302,16 @@ QList<TestCase> buildCorpus() {
         tc.append({ "leaked Google API key", "leaked-google-api", false,
             makeReq("GET", "example.test", "/"),
             makeResp(200, "application/json", j(QByteArray("AI") + "za" + a35)) });
+        // Regression: a key whose LAST char is '-' (in the key charset) broke the
+        // trailing \b -- a fixed-length {35}/{43} key can't backtrack past it, so a
+        // real leaked key ending in '-' went undetected (~1/64 of keys). Now
+        // end-anchored via a negative lookahead.
+        tc.append({ "leaked Google API key ending in '-'", "leaked-google-api", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("AI") + "za" + a35.left(34) + dash)) });
+        tc.append({ "leaked SendGrid API key ending in '-'", "leaked-sendgrid", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json", j(QByteArray("SG") + dot + a22 + dot + a43.left(42) + dash)) });
         tc.append({ "leaked PEM private key block", "leaked-private-key", false,
             makeReq("GET", "example.test", "/"),
             makeResp(200, "text/plain",

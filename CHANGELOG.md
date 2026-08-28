@@ -11,6 +11,20 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Three passive-scanner false-negatives (real detections silently missed).**
+  Runner-ups from the dead-detector hunt, each a genuine miss, now fixed +
+  regression-tested + bug-proved: (1) **`dom-postmessage-wildcard` missed the
+  common `postMessage(JSON.stringify(x), '*')`** — the first-arg pattern `[^,)]+`
+  stopped at the `)` inside `stringify(x)`, so a wildcard-origin postMessage whose
+  payload is a call (the usual case) was never flagged; now allows one level of
+  balanced `()` in the first arg. (2,3) **`leaked-google-api` / `leaked-sendgrid`
+  missed keys ending in `-`.** Both use a fixed-length body (`{35}` / `{43}`) with
+  a trailing `\b`, but `-` is in the key charset, and a fixed-length key ending in
+  `-` can't backtrack past it — so `\b` (which needs a word char on one side)
+  never matched a real key whose last character is `-` (~1/64 of keys). Replaced
+  the trailing `\b` with a negative lookahead that end-anchors regardless of the
+  final character. Gauntlet green (ctest 100/100, probe_smoke 158/158;
+  scanner_regression 291→294).
 - **Three dead passive-scanner detectors that could never fire (silent misses).**
   A dedicated dead-detector hunt (trace a realistic input that *should* trigger a
   detector, confirm it doesn't) found three: (1) **CVE correlation never ran for

@@ -647,11 +647,16 @@ void PassiveScanner::checkResponse(int rowId,
             { "leaked-stripe", "Stripe Secret/Live Key",
               QRegularExpression(R"(\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b)") },
             { "leaked-sendgrid", "SendGrid API Key",
-              QRegularExpression(R"(\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b)") },
+              // End-anchor with a negative lookahead, NOT \b: the key's charset
+              // includes '-', and a fixed-length {43} key ending in '-' can't
+              // backtrack past it, so a trailing '-' breaks \b -> a real key missed.
+              QRegularExpression(R"(\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]))") },
             { "leaked-mapbox", "Mapbox token",
               QRegularExpression(R"(\bpk\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b)") },
             { "leaked-google-api", "Google API Key",
-              QRegularExpression(R"(\bAIza[0-9A-Za-z_-]{35}\b)") },
+              // Negative lookahead not \b: a fixed-length {35} key ending in '-'
+              // (in its own charset) can't backtrack past it, so \b would miss it.
+              QRegularExpression(R"(\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-]))") },
             { "leaked-private-key", "PEM private key block",
               QRegularExpression(R"(-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----)") },
         };
@@ -1181,7 +1186,10 @@ void PassiveScanner::checkResponse(int rowId,
                   R"((?:eval|setTimeout|setInterval|Function)\s*\(\s*(?:location|document\.referrer|window\.name))") },
             { "dom-postmessage-wildcard",
               "postMessage with '*' target origin",
-              QRegularExpression(R"(postMessage\s*\([^,)]+,\s*['"]\*['"]\s*\))") },
+              // The first arg may itself be a call with parens/commas -- the very
+              // common postMessage(JSON.stringify(x), '*'). `[^,)]+` stopped at the
+              // first ')' and missed it; allow one level of balanced () in the arg.
+              QRegularExpression(R"(postMessage\s*\([^,)]*(?:\([^)]*\)[^,)]*)*,\s*['"]\*['"]\s*\))") },
             { "dom-eval-of-fetch",
               "eval of fetch / XHR response text",
               QRegularExpression(R"(eval\s*\(\s*\w+\.responseText)") },
