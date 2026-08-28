@@ -231,6 +231,20 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Passive Spring Boot framework fingerprint (`fw-spring`).** The passive
+  scanner emitted a framework finding for every major stack — Express, ASP.NET,
+  Next.js, Nuxt, Angular, React, Vue, Rails, Laravel, Django, Symfony — but *not*
+  Spring Boot, one of the most common Java web frameworks. Worse, `fw-spring` was
+  already listed in the scanner's CVE-correlation `cveKinds` set (whose comment
+  requires each kind to "match a kind we emitted"), so the invariant was
+  quietly broken. Added the detector keyed on `X-Application-Context` (Spring
+  Boot's default management header, Spring-Boot-specific, low-FP). Locked with a
+  scanner_regression positive + an FP control; mutation-proved (typo the header →
+  the positive fails, the control stays green). Verified end-to-end (ctest
+  100/100, probe_smoke 158/158). (The Whitelabel error page is Spring's other
+  tell, but it only renders on 4xx/5xx and the framework-fingerprint block is
+  gated to 2xx–3xx — a dead signal there — so detection is header-only; the test
+  caught the dead branch before it shipped.)
 - **Lab 55: OGNL / Apache Struts2 expression injection (S2-045 /
   CVE-2017-5638 class).** A new teaching lab (`labs/55-ognl-struts-injection/`)
   pairing with the active OGNL/Struts2 detector added below: a Struts2-style

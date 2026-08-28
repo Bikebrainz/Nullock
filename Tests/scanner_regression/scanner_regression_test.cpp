@@ -1732,6 +1732,13 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html", "<html>x</html>", {{"X-Debug-Token", "a1b2c3"}}) });
 
+    tc.append({ "Spring Boot via X-Application-Context -> fw-spring", "fw-spring", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>", {{"X-Application-Context", "application:8080"}}) });
+    tc.append({ "plain page must NOT fire fw-spring", "fw-spring", true,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html", "<html>x</html>") });
+
     tc.append({ "Inlined initial-state JSON -> fw-spa-state-leak", "fw-spa-state-leak", false,
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html",

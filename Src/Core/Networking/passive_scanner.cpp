@@ -1647,6 +1647,18 @@ void PassiveScanner::checkResponse(int rowId,
                        "Detected: Symfony",
                        "X-Debug-Token header");
         }
+        // Spring Boot: X-Application-Context is its default management header
+        // (Boot 1.x), Spring-Boot-specific and low-FP. fw-spring was already in the
+        // CVE-correlation cveKinds list below but was never EMITTED, so a Spring
+        // Boot host got no framework finding (unlike every peer framework) and the
+        // correlation's "must match an emitted kind" invariant was unmet. (The
+        // Whitelabel error page is Spring's other tell but only shows on 4xx/5xx,
+        // which this 2xx-3xx-gated fingerprint block never sees -- so header-only.)
+        if (!headerOf(resp.headers, "X-Application-Context").isEmpty()) {
+            addFinding(rowId, req, resp, "info", "fw-spring",
+                       "Detected: Spring Boot",
+                       "X-Application-Context header");
+        }
         if (bodyHead.contains("__INITIAL_STATE__") || bodyHead.contains("__APOLLO_STATE__")) {
             addFinding(rowId, req, resp, "info", "fw-spa-state-leak",
                        "Initial-state JSON inlined in HTML (review for PII)",
