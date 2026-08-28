@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Weak / predictable password-reset tokens — Nullock Labs</title>
-<meta name="description" content="reset token = md5(username), predictable">
+<title>Cross-site WebSocket hijacking (CSWSH) on a notifications feed — Nullock Labs</title>
+<meta name="description" content="WS upgrade trusts the session cookie, never checks Origin">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">33</span>
-    <span class="labs-cat mono">Authentication</span>
-    <span class="labs-diff labs-diff-medium">Medium</span>
-    <span class="labs-port mono">localhost:5033</span>
+    <span class="labs-num mono">56</span>
+    <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5056</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">Weak / predictable password-reset tokens</h1>
-  <p class="lead" style="margin-top:12px;">/forgot issues a reset token that is a pure function of the (public) username -- md5(&quot;reset-&quot; + user) -- so anyone can recompute a victim&#x27;s token and reset their password. In Nullock: 1. nullock scope add http://localhost:5033/* 2. POST /forgot user=victim -- note the token. 3. The token == md5(&quot;reset-victim&quot;); GET /reset?user=victim&amp;token=&lt;that&gt; succeeds for anyone who knows the username. 4. Confirm success: compute md5(&quot;reset-admin&quot;) YOURSELF -- do not POST /forgot for &quot;admin&quot; -- then GET /reset?user=admin&amp;token=&lt;that computed value&gt;. Only a reset that succeeds for a user whose token was never once requested from the server proves the token is a pure, predictable function of the username, not a per-request secret. Then GET /flag. Fix: generate tokens with a CSPRNG (secrets.token_urlsafe), bind them to the account with a short expiry, and store only a hash.</p>
+  <h1 class="h1-page" style="margin-top:14px;">Cross-site WebSocket hijacking (CSWSH) on a notifications feed</h1>
+  <p class="lead" style="margin-top:12px;">The private notifications WebSocket authenticates the caller with a `session` cookie -- the ambient credential a browser attaches on every same-origin AND cross-origin request/handshake alike -- but never checks the handshake&#x27;s `Origin` header. Any page, on any origin, that gets a logged-in victim&#x27;s browser to open a WebSocket to this endpoint rides the victim&#x27;s session cookie in and receives their private notification feed: CWE-1385, the same class Nullock&#x27;s active `cswsh` probe fingerprints.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/33-weak-reset-token/app.py
-# then open http://localhost:5033/</code></pre>
+python labs/56-cswsh-notifications/app.py
+# then open http://localhost:5056/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5033/*</code><code class="inline">http://127.0.0.1:5033/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5056/*</code><code class="inline">http://127.0.0.1:5056/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Trigger a password reset and look closely at the token in the link.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Is that token random, or could it be derived from something public, like the username?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>The token is md5(username) -- compute it yourself for any known username to forge a valid reset link.</p></details></div>
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The WebSocket endpoint checks who you are via the session cookie your browser attaches automatically -- but does it check the page you&#x27;re connecting FROM?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Send the upgrade with a completely made-up Origin header (a domain this app has never heard of) alongside a valid session cookie, and compare against the same request with the cookie removed.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Foreign Origin + valid cookie completes the upgrade (101); the exact same request with the cookie stripped gets refused (401) -- the socket trusts any Origin as long as the session rides along, which is CSWSH.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5033/*</li><li>POST /forgot user=victim -- note the token.</li><li>The token == md5(&quot;reset-victim&quot;); GET /reset?user=victim&amp;token=&lt;that&gt; succeeds for anyone who knows the username.</li><li>Confirm success: compute md5(&quot;reset-admin&quot;) YOURSELF -- do not POST /forgot for &quot;admin&quot; -- then GET /reset?user=admin&amp;token=&lt;that computed value&gt;. Only a reset that succeeds for a user whose token was never once requested from the server proves the token is a pure, predictable function of the username, not a per-request secret. Then GET /flag.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5056/*</li><li>POST /login (form field &quot;user&quot;, default alice) -- note the Set-Cookie: session=... in the response (curl -i -X POST -d user=alice http://127.0.0.1:5056/login).</li><li>POST /api/cswsh/test { &quot;url&quot;: &quot;ws://127.0.0.1:5056/notifications/ws&quot;, &quot;origin&quot;: &quot;https://nullock-cswsh.test&quot;, &quot;headers&quot;: {&quot;Cookie&quot;: &quot;session=&lt;the cookie from step 2&gt;&quot;} } -- a foreign Origin Nullock made up, never one this app owns.</li><li>The handshake completes (101 + valid Sec-WebSocket-Accept) despite the foreign Origin. Nullock then re-issues the SAME handshake with the Cookie stripped: that one gets refused (401, no upgrade at all) -- proving the socket actually gates on the session rather than being a public feed -- and grades the finding CONFIRMED (`vulnerable: true`), not just an Origin-not-validated lead.</li><li>Confirm success: GET /flag with that same session cookie -- solved only once this lab&#x27;s own WS server has recorded a completed upgrade that carried a valid session cookie alongside a foreign (non-app-origin) Origin header, i.e. an actual cross-origin hijack, not merely typing the flag text in.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: generate tokens with a CSPRNG (secrets.token_urlsafe), bind them to the account with a short expiry, and store only a hash.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: validate `Origin` on every WebSocket upgrade against an allow-list of the app&#x27;s own origins -- refuse the handshake itself (before upgrading, never accept-then-disconnect) -- in addition to the session-cookie check. Better still, don&#x27;t rely on ambient cookies to authenticate a WebSocket at all: pass a short-lived, per-connection token in the handshake URL or first message instead, the same principle a CSRF token applies to forms.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/33-weak-reset-token/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "33-weak-reset-token";
+  var SLUG = "56-cswsh-notifications";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {

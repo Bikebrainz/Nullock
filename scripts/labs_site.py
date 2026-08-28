@@ -57,7 +57,7 @@ CATEGORY_RULES = [
     ("SSRF & fetch", ("ssrf",)),
     ("Client-side", ("xss", "csrf", "clickjacking", "cors", "open-redirect",
                      "cache-deception", "cache-poisoning", "host-header",
-                     "insecure-cookie", "missing-security-headers")),
+                     "insecure-cookie", "missing-security-headers", "cswsh")),
     ("Info disclosure", ("secret-exposure", "verbose-errors", "directory-listing",
                          "sensitive-file", "robots", "file-upload")),
     ("Business logic", ("race-condition", "business-logic")),
@@ -133,6 +133,7 @@ DIFFICULTY = {
     "53-jwt-kid-injection": "Hard",
     "54-xpath-injection": "Medium",
     "55-ognl-struts-injection": "Medium",
+    "56-cswsh-notifications": "Hard",
 }
 
 
@@ -417,6 +418,11 @@ HINTS = {
         "The login query is built by pasting your username/password straight into an XPath filter string -- what happens if one of those values contains a quote?",
         "XPath's `and` binds tighter than `or`. A standalone `1=1` term OR'd in at the top level makes the whole predicate true no matter what the rest of the filter says.",
         "password=' or 1=1 or 'a'='a with username=admin: the filter matches every user, and the app logs you in as whichever username you typed -- no correct password needed.",
+    ],
+    "56-cswsh-notifications": [
+        "The WebSocket endpoint checks who you are via the session cookie your browser attaches automatically -- but does it check the page you're connecting FROM?",
+        "Send the upgrade with a completely made-up Origin header (a domain this app has never heard of) alongside a valid session cookie, and compare against the same request with the cookie removed.",
+        "Foreign Origin + valid cookie completes the upgrade (101); the exact same request with the cookie stripped gets refused (401) -- the socket trusts any Origin as long as the session rides along, which is CSWSH.",
     ],
 }
 

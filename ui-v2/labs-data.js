@@ -1246,6 +1246,29 @@
       "Confirm success: GET /flag?name=%{@exec('echo $NULLOCK_FLAG')} -- the flag lives only in the app's process environment, unreachable except by getting the expression to actually execute a command; same concatenation /greet uses."
     ],
     "fix": "Fix: never concatenate user input into an OGNL/EL expression string. Bind it as a plain value (Struts2: `<s:property value=\"name\"/>` with `name` pushed onto the value stack, never into the expression source itself), and keep the interpreter's reachable object graph away from user control (Struts2's own fix line for this CVE class: sandbox/allowlist OGNL's static-method-access to close the Runtime/ProcessBuilder gadgets off)."
+  },
+  {
+    "slug": "56-cswsh-notifications",
+    "num": "56",
+    "title": "Cross-site WebSocket hijacking (CSWSH) on a notifications feed",
+    "vuln": "WS upgrade trusts the session cookie, never checks Origin",
+    "port": "5056",
+    "category": "Client-side",
+    "difficulty": "Hard",
+    "desc": "The private notifications WebSocket authenticates the caller with a `session` cookie -- the ambient credential a browser attaches on every same-origin AND cross-origin request/handshake alike -- but never checks the handshake's `Origin` header. Any page, on any origin, that gets a logged-in victim's browser to open a WebSocket to this endpoint rides the victim's session cookie in and receives their private notification feed: CWE-1385, the same class Nullock's active `cswsh` probe fingerprints.",
+    "hints": [
+      "The WebSocket endpoint checks who you are via the session cookie your browser attaches automatically -- but does it check the page you're connecting FROM?",
+      "Send the upgrade with a completely made-up Origin header (a domain this app has never heard of) alongside a valid session cookie, and compare against the same request with the cookie removed.",
+      "Foreign Origin + valid cookie completes the upgrade (101); the exact same request with the cookie stripped gets refused (401) -- the socket trusts any Origin as long as the session rides along, which is CSWSH."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5056/*",
+      "POST /login (form field \"user\", default alice) -- note the Set-Cookie: session=... in the response (curl -i -X POST -d user=alice http://127.0.0.1:5056/login).",
+      "POST /api/cswsh/test { \"url\": \"ws://127.0.0.1:5056/notifications/ws\", \"origin\": \"https://nullock-cswsh.test\", \"headers\": {\"Cookie\": \"session=<the cookie from step 2>\"} } -- a foreign Origin Nullock made up, never one this app owns.",
+      "The handshake completes (101 + valid Sec-WebSocket-Accept) despite the foreign Origin. Nullock then re-issues the SAME handshake with the Cookie stripped: that one gets refused (401, no upgrade at all) -- proving the socket actually gates on the session rather than being a public feed -- and grades the finding CONFIRMED (`vulnerable: true`), not just an Origin-not-validated lead.",
+      "Confirm success: GET /flag with that same session cookie -- solved only once this lab's own WS server has recorded a completed upgrade that carried a valid session cookie alongside a foreign (non-app-origin) Origin header, i.e. an actual cross-origin hijack, not merely typing the flag text in."
+    ],
+    "fix": "Fix: validate `Origin` on every WebSocket upgrade against an allow-list of the app's own origins -- refuse the handshake itself (before upgrading, never accept-then-disconnect) -- in addition to the session-cookie check. Better still, don't rely on ambient cookies to authenticate a WebSocket at all: pass a short-lived, per-connection token in the handshake URL or first message instead, the same principle a CSRF token applies to forms."
   }
 ];
   window.NULLOCK_LABS_XP = {
