@@ -1109,7 +1109,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-28",
-        "commit": "PENDING",
+        "commit": "e66faf8",
         "note": "Wired the previously-orphaned /api/cache/poison endpoint into a dedicated Web cache poisoning panel on the TESTS tab (custom-header textarea + URL/method + confirmed/cacheable hit table), closing the last GUI-reachability gap UI-NAVIGABILITY.md tracked for this endpoint."
       }
     },
