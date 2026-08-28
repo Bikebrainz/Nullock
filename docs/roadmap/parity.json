@@ -3334,7 +3334,7 @@
       "evidence": "control_server.cpp `/api/config/export`+`/api/config/import` (now sharing captureConfigSections()/applyConfigSections()) + the preset library `/api/config/presets/save|load|delete` and GET `/api/config/presets` (persisted to AppData/config-presets.json as {name:document}; name-validated via ControlLogic::presetNameValid, listed via ControlLogic::presetNames). Envelope + preset logic pure + mutation-proven in Tests/control_logic/control_logic_test.cpp (buildConfigDocument/validateConfigDocument M1 version-gate + M2 format-gate; presetNameValid M_A char-allowlist + M_B dot-only, presetNames sorted-keys). Live e2e 14/14 (scripts scratchpad preset_verify): add scope marker \u2192 save preset \u2192 remove marker \u2192 load preset restores the marker (apply path proven) \u2192 list shows it \u2192 delete removes it; invalid names (bad/name, '..', empty) rejected; missing-preset load \u2192 ok:false; real project.json + config-presets.json snapshot-restored. ui-v2/app.jsx SettingsTab (presets state + Config presets row in the Project card); ui-v2/real-data.js NL.actions.configPresetsList/Save/Load/Delete. Verified: bundled-babel transform of both touched files; a 13-assertion Node functional test (fake fetch, minimal browser-global shims) confirming each action hits the correct path/method and carries the correct {name} body against control_server.cpp's actual /api/config/presets* contract.",
       "reconciled": {
         "date": "2026-08-28",
-        "commit": "PENDING",
+        "commit": "9f5dab3",
         "note": "Preset-library gap closed: wired the ui-v2 SWITCHER this item's own prior wave flagged as the sole remaining piece. absent->partial->present."
       },
       "audited_state": "partial"
