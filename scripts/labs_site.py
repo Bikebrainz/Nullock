@@ -134,6 +134,7 @@ DIFFICULTY = {
     "54-xpath-injection": "Medium",
     "55-ognl-struts-injection": "Medium",
     "56-cswsh-notifications": "Hard",
+    "57-subdomain-takeover": "Easy",
 }
 
 
@@ -423,6 +424,11 @@ HINTS = {
         "The WebSocket endpoint checks who you are via the session cookie your browser attaches automatically -- but does it check the page you're connecting FROM?",
         "Send the upgrade with a completely made-up Origin header (a domain this app has never heard of) alongside a valid session cookie, and compare against the same request with the cookie removed.",
         "Foreign Origin + valid cookie completes the upgrade (101); the exact same request with the cookie stripped gets refused (401) -- the socket trusts any Origin as long as the session rides along, which is CSWSH.",
+    ],
+    "57-subdomain-takeover": [
+        "This host is meant to be a subdomain the company still owns -- but what does the page it actually serves look like?",
+        "The error page names a specific third-party platform by brand, not a generic 404 -- that's the tell that the DNS record still points at a service nobody claims anymore.",
+        "Run Nullock's subdomain-takeover probe against the host: it fetches the page and matches that branded 'no site here' text at a genuine error status, flagging a dangling CNAME candidate.",
     ],
 }
 

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRLF injection / HTTP response splitting — Nullock Labs</title>
-<meta name="description" content="redirect param splits the Location header (CWE-113)">
+<title>Subdomain takeover via a dangling GitHub Pages CNAME — Nullock Labs</title>
+<meta name="description" content="dangling CNAME still serves the GitHub Pages &quot;no site&quot; 404">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">44</span>
-    <span class="labs-cat mono">Injection</span>
-    <span class="labs-diff labs-diff-medium">Medium</span>
-    <span class="labs-port mono">localhost:5044</span>
+    <span class="labs-num mono">57</span>
+    <span class="labs-cat mono">Other</span>
+    <span class="labs-diff labs-diff-easy">Easy</span>
+    <span class="labs-port mono">localhost:5057</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">CRLF injection / HTTP response splitting</h1>
-  <p class="lead" style="margin-top:12px;">A redirect parameter is copied straight into the Location response header with no CR/LF stripping, so an attacker can smuggle extra headers (or a whole second response) into the reply -- header injection, cookie fixation, reflected XSS via an injected body, cache poisoning. In Nullock: 1. nullock scope add http://localhost:5044/* 2. nullock crlf http://localhost:5044/ -- injects %0d%0a&lt;header&gt; into the redirect params; Nullock confirms when its marker header appears as a real header in the response. 3. Confirm success: GET /?url=/x%0d%0aX-Pwned:%20proof -- the injected &quot;X-Pwned: proof&quot; line lands as a genuine second response header, not just text inside Location. Then GET /flag -- solved only once that exact injected header was observed by the server-side handler, proving the CRLF actually split the response. Fix: never put raw user input in a header; strip/reject CR and LF, or use a framework API that rejects them. (Modern WSGI servers reject newlines in headers -- this lab uses the stdlib http.server precisely because it does NOT, so the classic bug is reproducible.)</p>
+  <h1 class="h1-page" style="margin-top:14px;">Subdomain takeover via a dangling GitHub Pages CNAME</h1>
+  <p class="lead" style="margin-top:12px;">status.techcorp.example used to be a GitHub Pages status dashboard. The team retired it and deleted the GitHub Pages project, but nobody removed the DNS CNAME record pointing status.techcorp.example -&gt; techcorp.github.io. GitHub Pages now serves its &quot;no site here&quot; error for that hostname -- and anyone can register a repo named techcorp.github.io on GitHub, publish a Pages site under it, and instantly serve their own content on the company&#x27;s own subdomain: CWE-284, the same class Nullock&#x27;s active `takeover` probe fingerprints (a dangling-service body match against a curated table of branded error pages). This lab app IS that dangling endpoint (in reality a separate subdomain and host; collapsed to one process here) -- every path returns the exact page GitHub Pages serves for an unclaimed custom domain.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/44-crlf-injection/app.py
-# then open http://localhost:5044/</code></pre>
+python labs/57-subdomain-takeover/app.py
+# then open http://localhost:5057/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5044/*</code><code class="inline">http://127.0.0.1:5044/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5057/*</code><code class="inline">http://127.0.0.1:5057/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Find a redirect parameter that gets dropped straight into a Location header.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>What happens if your input contains a raw CR/LF sequence?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>%0d%0a in the redirect target can split the header and inject an extra header (or even a body) of your choosing.</p></details></div>
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>This host is meant to be a subdomain the company still owns -- but what does the page it actually serves look like?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The error page names a specific third-party platform by brand, not a generic 404 -- that&#x27;s the tell that the DNS record still points at a service nobody claims anymore.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Run Nullock&#x27;s subdomain-takeover probe against the host: it fetches the page and matches that branded &#x27;no site here&#x27; text at a genuine error status, flagging a dangling CNAME candidate.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5044/*</li><li>nullock crlf http://localhost:5044/ -- injects %0d%0a&lt;header&gt; into the redirect params; Nullock confirms when its marker header appears as a real header in the response.</li><li>Confirm success: GET /?url=/x%0d%0aX-Pwned:%20proof -- the injected &quot;X-Pwned: proof&quot; line lands as a genuine second response header, not just text inside Location. Then GET /flag -- solved only once that exact injected header was observed by the server-side handler, proving the CRLF actually split the response.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5057/*</li><li>POST /api/takeover/test {&quot;url&quot;: &quot;http://127.0.0.1:5057/&quot;} -- fetches the host and matches its body against Nullock&#x27;s curated dangling- service fingerprint table (subjack/nuclei-style detection).</li><li>The response comes back with a GitHub Pages hit (&quot;There isn&#x27;t a GitHub Pages site here.&quot;) at &quot;high&quot; confidence, graded on the 404 status the fingerprint policy requires for a real candidate (a branded phrase quoted on a live 2xx page is demoted instead).</li><li>Confirm success: GET /flag -- solved only once this lab&#x27;s own root route has actually served that fingerprint body to a request carrying Nullock&#x27;s real takeover-probe User-Agent (`Nullock/takeover`, set by the probe&#x27;s own request builder), i.e. genuine tool-driven detection, not just opening the page in a browser.</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never put raw user input in a header; strip/reject CR and LF, or use a framework API that rejects them. (Modern WSGI servers reject newlines in headers -- this lab uses the stdlib http.server precisely because it does NOT, so the classic bug is reproducible.)</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: whenever a service backing a CNAME/DNS record is decommissioned, remove the DNS record in the SAME change; track third-party DNS records in an inventory and alert when their target stops resolving or starts serving an unclaimed-resource page; periodically re-scan owned domains for dangling-service fingerprints.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/44-crlf-injection/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "44-crlf-injection";
+  var SLUG = "57-subdomain-takeover";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {

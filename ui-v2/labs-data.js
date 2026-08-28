@@ -1269,6 +1269,28 @@
       "Confirm success: GET /flag with that same session cookie -- solved only once this lab's own WS server has recorded a completed upgrade that carried a valid session cookie alongside a foreign (non-app-origin) Origin header, i.e. an actual cross-origin hijack, not merely typing the flag text in."
     ],
     "fix": "Fix: validate `Origin` on every WebSocket upgrade against an allow-list of the app's own origins -- refuse the handshake itself (before upgrading, never accept-then-disconnect) -- in addition to the session-cookie check. Better still, don't rely on ambient cookies to authenticate a WebSocket at all: pass a short-lived, per-connection token in the handshake URL or first message instead, the same principle a CSRF token applies to forms."
+  },
+  {
+    "slug": "57-subdomain-takeover",
+    "num": "57",
+    "title": "Subdomain takeover via a dangling GitHub Pages CNAME",
+    "vuln": "dangling CNAME still serves the GitHub Pages \"no site\" 404",
+    "port": "5057",
+    "category": "Other",
+    "difficulty": "Easy",
+    "desc": "status.techcorp.example used to be a GitHub Pages status dashboard. The team retired it and deleted the GitHub Pages project, but nobody removed the DNS CNAME record pointing status.techcorp.example -> techcorp.github.io. GitHub Pages now serves its \"no site here\" error for that hostname -- and anyone can register a repo named techcorp.github.io on GitHub, publish a Pages site under it, and instantly serve their own content on the company's own subdomain: CWE-284, the same class Nullock's active `takeover` probe fingerprints (a dangling-service body match against a curated table of branded error pages). This lab app IS that dangling endpoint (in reality a separate subdomain and host; collapsed to one process here) -- every path returns the exact page GitHub Pages serves for an unclaimed custom domain.",
+    "hints": [
+      "This host is meant to be a subdomain the company still owns -- but what does the page it actually serves look like?",
+      "The error page names a specific third-party platform by brand, not a generic 404 -- that's the tell that the DNS record still points at a service nobody claims anymore.",
+      "Run Nullock's subdomain-takeover probe against the host: it fetches the page and matches that branded 'no site here' text at a genuine error status, flagging a dangling CNAME candidate."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5057/*",
+      "POST /api/takeover/test {\"url\": \"http://127.0.0.1:5057/\"} -- fetches the host and matches its body against Nullock's curated dangling- service fingerprint table (subjack/nuclei-style detection).",
+      "The response comes back with a GitHub Pages hit (\"There isn't a GitHub Pages site here.\") at \"high\" confidence, graded on the 404 status the fingerprint policy requires for a real candidate (a branded phrase quoted on a live 2xx page is demoted instead).",
+      "Confirm success: GET /flag -- solved only once this lab's own root route has actually served that fingerprint body to a request carrying Nullock's real takeover-probe User-Agent (`Nullock/takeover`, set by the probe's own request builder), i.e. genuine tool-driven detection, not just opening the page in a browser."
+    ],
+    "fix": "Fix: whenever a service backing a CNAME/DNS record is decommissioned, remove the DNS record in the SAME change; track third-party DNS records in an inventory and alert when their target stops resolving or starts serving an unclaimed-resource page; periodically re-scan owned domains for dangling-service fingerprints."
   }
 ];
   window.NULLOCK_LABS_XP = {

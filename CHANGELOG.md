@@ -323,6 +323,22 @@ developer-facing record.
   `ui-v2/labs-data.js`, new `cswsh` Client-side-category keyword and a
   curated `Hard` difficulty entry); README.md and docs/index.html's
   55->56 lab-count strings updated alongside.
+- **Lab 57: subdomain takeover via a dangling GitHub Pages CNAME.** A new
+  teaching lab (`labs/57-subdomain-takeover/`) pairing with the active
+  `takeover` probe: the lab simulates a decommissioned GitHub Pages status
+  page whose DNS CNAME record was never cleaned up, so every path on that
+  "subdomain" now serves GitHub Pages' own branded, vendor-specific
+  unclaimed-custom-domain 404 page — the exact dangling-service fingerprint
+  class `Src/Core/Networking/takeover_logic.cpp`'s curated table matches,
+  demoted to a lead rather than a false positive precisely because the page
+  is served at a genuine error status. Verified end-to-end against a real
+  `flask` run: a plain request gets the 404 body, and `/flag` only solves
+  once a request carrying the takeover probe's own `Nullock/takeover`
+  User-Agent (set by `buildGet()`) actually hit the host — proving
+  detection happened through the real probe, not by eyeballing the page.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`,
+  a curated `Easy` difficulty entry); README.md and docs/index.html's
+  56->57 lab-count strings updated alongside.
 - **Active OGNL / Apache-Struts2 injection detection.** The SSTI active
   tester's two-expression arithmetic proof gained the `%{ }` delimiter family
   — the syntax Apache Struts2 evaluates as OGNL and the classic S2-045 /
