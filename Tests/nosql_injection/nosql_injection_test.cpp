@@ -88,6 +88,13 @@ int main(int argc, char **argv) {
     // always-true ops flip status (302) vs the literal (200) -> a real injection.
     chk("confirm: status-only divergence (lengths equal) -> YES (groupsDiffer status half)",
         confirmsInjection(520,200, 520,200, 520,302, 520,302));
+    // trueGroupAgrees STATUS half (neStatus == gtStatus): the two ALWAYS-TRUE ops
+    // have SIMILAR length but only $gt status-flips (302) -- a router/WAF keyed on
+    // the $gt operator name, not a datastore over-match. They do NOT agree, so this
+    // must NOT confirm. Every prior trueGroup FP diverged by LENGTH (lines 64/74/77),
+    // so this status conjunct was unpinned; dropping it fabricates the finding.
+    chk("confirm: only $gt status-flips (lengths similar) -> NO (trueGroup status half)",
+        !confirmsInjection(520,200, 520,200, 1000,200, 1000,302));
 
     // ---- buildRequest: CR/LF guards -------------------------------------
     {

@@ -76,6 +76,15 @@ int main(int argc, char **argv) {
         Request injHdr = req;
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF header", !buildRequest(injHdr, "cmd=x").contains("X-Smuggled"));
+        // The above covers only the VALUE CR/LF guard (clean name, tainted value).
+        // A CR/LF in the header NAME is a separate guard and was untested -- its
+        // removal would splice an attacker header into every probe shot (the probe
+        // becomes a request-smuggling vector). Clean value, so this isolates the
+        // name guard.
+        Request injName = req;
+        injName.headers.append(qMakePair(QString("X-Foo\r\nX-NameSmuggled: 1"), QString("1")));
+        chk("build: drops CRLF in header NAME",
+            !buildRequest(injName, "cmd=x").contains("X-NameSmuggled"));
         // Positive coverage for the emit + Host-dedup paths (only the CR/LF-drop was
         // tested): a clean carried header IS emitted, and a carried Host is dropped
         // in favor of the one canonical Host. A regression dropping benign headers

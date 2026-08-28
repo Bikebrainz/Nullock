@@ -31,6 +31,18 @@ int main(int argc, char **argv) {
 
     // ---- matchError: DBMS-specific (trusted on any status) ---------------
     chk("sig: MySQL", dbms("You have an error in your SQL syntax; ... your MySQL server version") == "MySQL");
+    // The MySQL signature had FOUR untested driver/class alternatives -- only the
+    // "SQL syntax .. MySQL" prose (above) was exercised. These three fingerprint
+    // .NET Connector/NET and Java stack-trace errors; each body deliberately has
+    // no "SQL syntax .. MySQL" prose and no generic phrasing, so it can ONLY match
+    // via its own alternative. Silently corrupting any of them would stop
+    // fingerprinting that whole error class.
+    chk("sig: MySQL .NET MySqlException class",
+        dbms("MySql.Data.MySqlClient.MySqlException: Fatal error encountered") == "MySQL");
+    chk("sig: MySQL JDBC driver package",
+        dbms("at com.mysql.jdbc.Driver during statement execution") == "MySQL");
+    chk("sig: MySQL JDBC syntax-error class",
+        dbms("Caused by: MySQLSyntaxErrorException near line 1") == "MySQL");
     chk("sig: PostgreSQL", dbms("PostgreSQL query failed: ERROR: syntax error") == "PostgreSQL");
     chk("sig: MSSQL", dbms("Microsoft SQL Server ... Unclosed quotation mark") == "MSSQL");
     chk("sig: Oracle", dbms("ORA-00933: SQL command not properly ended") == "Oracle");

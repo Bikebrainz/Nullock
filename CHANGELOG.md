@@ -73,6 +73,29 @@ developer-facing record.
   value and kept literal. (Surfaced by an adversarial audit sweep.)
 
 ### Security
+- **Seven more injection-detector checks locked by mutation-proven tests
+  (no behaviour change).** A second adversarial coverage audit over the classic
+  injection probes found seven low-level checks whose silent breakage no test
+  would catch — each verified by mutating the source and confirming only the
+  targeted case fails: (1) `xss_logic` — the standard HTML comment terminator
+  `-->` close was never exercised (the one comment positive closed via the rare
+  bogus `--!>` form), so breaking it would silently suppress every reflection
+  after a normal HTML comment. (2) `sql_logic` — the MySQL error signature's
+  `MySqlException` / `com.mysql.jdbc` / `MySQLSyntaxErrorException` driver/class
+  alternatives (all the .NET/Java stack-trace forms) were untested; only the
+  `SQL syntax…MySQL` prose branch was. (3) `cmd_injection_logic` — the
+  buildRequest CR/LF guard on carried header **names** was untested (only the
+  value guard was), so its removal would splice an attacker header into every
+  probe shot. (4,5) `xxe_logic` + `ldap_logic` — the carried-Accept-Encoding
+  drop's case-**insensitivity** was unpinned, so a lowercase `accept-encoding`
+  (HTTP/2 / HAR imports) would survive, the server would gzip, and the file-read
+  / error fingerprint would be scanned over compressed bytes → a real hit reads
+  clean. (6) `xpath_logic` — the Java signature's bare `XPathExpressionException`
+  class-name alternative was never exercised in isolation (the Java case matched
+  via the `javax.xml.xpath` prefix). (7) `nosql_logic` — `trueGroupAgrees`'s
+  status-equality conjunct (`neStatus == gtStatus`) was unpinned, so an operator-
+  keyed status flip could fabricate a NoSQL-injection finding. Gauntlet green
+  (ctest 100/100, probe_smoke 158/158). Test-only.
 - **Six security-critical detector checks locked by mutation-proven tests
   (no behaviour change).** An adversarial coverage audit found six specific
   branches/regexes/thresholds whose silent breakage no existing test would

@@ -31,6 +31,13 @@ int main(int argc, char **argv) {
 
     // ---- matchError: engine-specific (trusted on any status) -------------
     chk("sig: Java",    eng("javax.xml.xpath.XPathExpressionException: bad") == "Java");
+    // Symmetric to the bare-.NET case below: the Java case above matches via the
+    // "javax.xml.xpath" package prefix, so the bare "XPathExpressionException"
+    // class-name alternative (Java's distinctive form, a substring of NOTHING in
+    // the .NET sig) is otherwise unexercised. Removing it drops a bare Java XPath
+    // stack trace to an empty (unattributed) hit -> a real injection reads clean.
+    chk("sig: bare Java XPathExpressionException (no javax prefix)",
+        eng("Caused by: XPathExpressionException: unexpected token") == "Java");
     chk("sig: .NET",    eng("System.Xml.XPath.XPathException") == ".NET");
     // The bare ".NET" class name "XPathException" (Java's distinctive form is the
     // longer XPathExpressionException) must attribute to .NET on its own -- the case

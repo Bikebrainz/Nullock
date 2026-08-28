@@ -106,6 +106,14 @@ int main(int argc, char **argv) {
         chk("build: carried Accept-Encoding dropped -> exactly one, identity",
             aeb.count("Accept-Encoding:") == 1
             && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
+        // The drop is case-INSENSITIVE, and that flag was unpinned: HTTP/2 mandates
+        // lowercase header names (and HAR imports carry them), so a lowercase
+        // 'accept-encoding' must be dropped too -- else it survives, the server
+        // gzips, matchSig scans compressed bytes and the XXE read reports CLEAN.
+        Request aeLc = req;
+        aeLc.headers.append(qMakePair(QString("accept-encoding"), QString("gzip, deflate, br")));
+        chk("build: lowercase accept-encoding is also dropped (case-insensitive)",
+            !buildRequest(aeLc, "<r>x</r>").contains("gzip"));
     }
 
     std::fprintf(stderr, "xxe_injection_test: %d passed, %d failed\n", pass, fail);

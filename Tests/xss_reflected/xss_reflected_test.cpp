@@ -67,6 +67,14 @@ int main(int argc, char **argv) {
         runs("<script>a</script ><div><nlk0a1b2c3d></div>"));
     chk("comment closed by bogus '--!>' -> following content runs",
         runs("<!-- note --!><div><nlk0a1b2c3d></div>"));
+    // The STANDARD HTML5 comment close '-->' (the common case) was never
+    // exercised -- the positive above closes via the rare bogus '--!>' form and
+    // both comment negatives put the marker INSIDE the comment (so the scan
+    // stops before reaching '-->'). Breaking the '-->' branch would leave every
+    // comment open forever and silently suppress EVERY reflection after a normal
+    // HTML comment.
+    chk("comment closed by standard '-->' -> following content runs",
+        runs("<!-- note --><div><nlk0a1b2c3d></div>"));
     // FN fix: a "<!...":  markup declaration that is NOT "<!--" is a BOGUS COMMENT
     // -- it ends at the very next '>' with NO attribute quote-tracking. Routing it
     // through the tag branch let a '"' inside open a fake quoted value that
