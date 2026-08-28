@@ -93,6 +93,31 @@ developer-facing record.
   behaviour change.
 
 ### Added
+- **Lab 54: XPath injection (error-based confirm + boolean login
+  bypass).** A new teaching lab (`labs/54-xpath-injection/`) alongside the
+  existing 53. A staff login endpoint builds an XPath filter against an
+  in-memory XML user store by plain string concatenation -- the same bug
+  class as SQLi, against `lxml`/libxml2 instead of a SQL engine. A lone
+  quote in the `username` field breaks the expression's syntax outright
+  and a real `lxml.etree.XPathEvalError: Invalid predicate` leaks back --
+  exactly the error-based fingerprint `Src/Core/Networking/xpath_logic.cpp`'s
+  engine-signature matcher and the `xpathi` active probe
+  (`Src/Core/Networking/xpath_injection.cpp`) already send and detect
+  (`username` sits in the probe's default param list, so no manual param
+  hint is even needed). Separately, a well-formed boolean payload
+  (`password=' or 1=1 or 'a'='a`) exploits XPath's `and`-binds-tighter-
+  than-`or` precedence to make the predicate true regardless of the real
+  password -- the match count jumps from the at-most-one a legitimate
+  login produces to all three directory entries, and the app trusts the
+  *typed* username for identity, logging the attacker in as admin with no
+  correct password. Verified end-to-end against a real Flask+lxml run:
+  baseline and a benign value never error, the quote breaker reproduces
+  the exact `XPathEvalError`, the boolean payload logs in as admin with
+  `matchCount:3`, and `/flag` only solves via that genuine multi-match
+  bypass (a wrong password without injection stays 403).
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`,
+  new `xpath-injection` Injection-category keyword); README.md and
+  docs/index.html's 53->54 lab-count strings updated alongside.
 - **Lab 53: JWT `kid` header injection (path traversal -> empty-key
   forgery).** A new teaching lab (`labs/53-jwt-kid-injection/`) alongside
   the existing 52. The token's own `kid` header names which on-disk key

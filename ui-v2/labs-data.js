@@ -1203,6 +1203,29 @@
       "Confirm success: GET /flag with the forged admin token."
     ],
     "fix": "Fix: never let request-controlled input choose a filesystem path for a signing key. Look keys up by an opaque id against a fixed allow-list / in-memory table instead of joining a raw filename onto a directory, and reject any `kid` that isn't in that table before it ever reaches a filesystem call."
+  },
+  {
+    "slug": "54-xpath-injection",
+    "num": "54",
+    "title": "XPath injection (error-based confirm + boolean login bypass)",
+    "vuln": "concatenated XPath filter -- error leak + and/or-precedence login bypass",
+    "port": "5054",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "A staff login endpoint builds an XPath query against an in-memory XML user store by plain string concatenation -- the same class of bug as SQLi, just against `lxml`/libxml2 instead of a SQL engine. A single unescaped quote in either field breaks the expression's syntax outright (a real `XPathEvalError` leaks back), and a well-formed boolean payload widens the predicate past what the credential check was supposed to require.",
+    "hints": [
+      "The login query is built by pasting your username/password straight into an XPath filter string -- what happens if one of those values contains a quote?",
+      "XPath's `and` binds tighter than `or`. A standalone `1=1` term OR'd in at the top level makes the whole predicate true no matter what the rest of the filter says.",
+      "password=' or 1=1 or 'a'='a with username=admin: the filter matches every user, and the app logs you in as whichever username you typed -- no correct password needed."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5054/*",
+      "GET /login?username=alice&password=wrong -- 401, no match: this is the baseline (no XPath error, just \"invalid credentials\").",
+      "GET /login?username=alice'&password=x -- 400, with a real `lxml.etree.XPathEvalError: Invalid predicate` echoed back: the lone quote in `username` closes the string literal early and the rest of the expression no longer parses. Run the active probe (xpathi) against /login -- its expression-breaker probes reproduce this exact error on the `username` param (it's in the probe's default param list) and it flags the finding, corroborated against a benign value that does NOT error.",
+      "Exploit the same class of bug for a login bypass: GET /login?username=admin&password=' or 1=1 or 'a'='a -- 200, logged in as admin. The query becomes `//user[username/text()='admin' and password/text()='' or 1=1 or 'a'='a']` and XPath's `and` binds tighter than `or`, so the standalone `1=1` term makes the whole predicate true regardless of the real password -- the match count jumps from the at-most-one a legitimate login ever produces to all three directory entries, and the app trusts the *typed* username for who got logged in.",
+      "Confirm success: GET /flag?username=admin&password=' or 1=1 or 'a'='a"
+    ],
+    "fix": "Fix: never concatenate user input into an XPath expression -- parameterize the query (e.g. an XPath variable binding) or escape per the same untrusted-input discipline as SQL, and never let credential-check success alone decide identity -- verify the returned node actually IS the account being logged into."
   }
 ];
   window.NULLOCK_LABS_XP = {

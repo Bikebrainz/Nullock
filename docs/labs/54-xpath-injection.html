@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mass assignment / over-posting — Nullock Labs</title>
-<meta name="description" content="over-post is_admin/role onto the profile">
+<title>XPath injection (error-based confirm + boolean login bypass) — Nullock Labs</title>
+<meta name="description" content="concatenated XPath filter -- error leak + and/or-precedence login bypass">
 <meta name="theme-color" content="#0a0a0f">
 <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
 <link rel="stylesheet" href="../assets/nullock.css">
@@ -35,30 +35,30 @@
 <main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
   <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
   <div class="labs-detail-head">
-    <span class="labs-num mono">18</span>
-    <span class="labs-cat mono">Access control</span>
+    <span class="labs-num mono">54</span>
+    <span class="labs-cat mono">Injection</span>
     <span class="labs-diff labs-diff-medium">Medium</span>
-    <span class="labs-port mono">localhost:5018</span>
+    <span class="labs-port mono">localhost:5054</span>
     <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
   </div>
-  <h1 class="h1-page" style="margin-top:14px;">Mass assignment / over-posting</h1>
-  <p class="lead" style="margin-top:12px;">PATCH /api/profile updates the profile object by blindly merging every key in the request body -- including privileged fields the UI never exposes, like &quot;role&quot; or &quot;is_admin&quot;. An attacker adds those keys to escalate. In Nullock: 1. nullock scope add http://localhost:5018/* 2. PATCH /api/profile  body {&quot;name&quot;:&quot;alice&quot;}   -&gt; is_admin stays false 3. Send to Repeater, body:  {&quot;name&quot;:&quot;alice&quot;,&quot;is_admin&quot;:true,&quot;role&quot;:&quot;admin&quot;} 4. The response shows is_admin: true -- privilege escalated. 5. Run the active probe (mass-assignment): it tries a battery of privileged field names and flags any that stick. 6. Confirm success: GET /flag -- returns the flag once is_admin AND role have actually flipped to admin, which no allow-listed field could ever do. Fix: bind only an explicit allow-list of fields; never merge the raw request body into your model/object.</p>
+  <h1 class="h1-page" style="margin-top:14px;">XPath injection (error-based confirm + boolean login bypass)</h1>
+  <p class="lead" style="margin-top:12px;">A staff login endpoint builds an XPath query against an in-memory XML user store by plain string concatenation -- the same class of bug as SQLi, just against `lxml`/libxml2 instead of a SQL engine. A single unescaped quote in either field breaks the expression&#x27;s syntax outright (a real `XPathEvalError` leaks back), and a well-formed boolean payload widens the predicate past what the credential check was supposed to require.</p>
 
   <div class="code" style="margin-top:26px;">
     <div class="code-head"><span class="mono">start the lab</span></div>
     <pre><code>pip install flask
-python labs/18-mass-assignment/app.py
-# then open http://localhost:5018/</code></pre>
+python labs/54-xpath-injection/app.py
+# then open http://localhost:5054/</code></pre>
   </div>
 
-  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5018/*</code><code class="inline">http://127.0.0.1:5018/*</code></div>
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5054/*</code><code class="inline">http://127.0.0.1:5054/*</code></div>
 
-  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Look at the fields the profile-update form actually submits.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The backend probably accepts a JSON/form body directly onto the model -- what fields does it NOT show you but might still accept?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Add an extra field like is_admin=true or role=admin to the update request body and see if it sticks.</p></details></div>
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The login query is built by pasting your username/password straight into an XPath filter string -- what happens if one of those values contains a quote?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>XPath&#x27;s `and` binds tighter than `or`. A standalone `1=1` term OR&#x27;d in at the top level makes the whole predicate true no matter what the rest of the filter says.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>password=&#x27; or 1=1 or &#x27;a&#x27;=&#x27;a with username=admin: the filter matches every user, and the app logs you in as whichever username you typed -- no correct password needed.</p></details></div>
 
   <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
-  <ol class="labs-steps"><li>nullock scope add http://localhost:5018/*</li><li>PATCH /api/profile  body {&quot;name&quot;:&quot;alice&quot;}   -&gt; is_admin stays false</li><li>Send to Repeater, body:  {&quot;name&quot;:&quot;alice&quot;,&quot;is_admin&quot;:true,&quot;role&quot;:&quot;admin&quot;}</li><li>The response shows is_admin: true -- privilege escalated.</li><li>Run the active probe (mass-assignment): it tries a battery of privileged field names and flags any that stick.</li><li>Confirm success: GET /flag -- returns the flag once is_admin AND role have actually flipped to admin, which no allow-listed field could ever do.</li></ol>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5054/*</li><li>GET /login?username=alice&amp;password=wrong -- 401, no match: this is the baseline (no XPath error, just &quot;invalid credentials&quot;).</li><li>GET /login?username=alice&#x27;&amp;password=x -- 400, with a real `lxml.etree.XPathEvalError: Invalid predicate` echoed back: the lone quote in `username` closes the string literal early and the rest of the expression no longer parses. Run the active probe (xpathi) against /login -- its expression-breaker probes reproduce this exact error on the `username` param (it&#x27;s in the probe&#x27;s default param list) and it flags the finding, corroborated against a benign value that does NOT error.</li><li>Exploit the same class of bug for a login bypass: GET /login?username=admin&amp;password=&#x27; or 1=1 or &#x27;a&#x27;=&#x27;a -- 200, logged in as admin. The query becomes `//user[username/text()=&#x27;admin&#x27; and password/text()=&#x27;&#x27; or 1=1 or &#x27;a&#x27;=&#x27;a&#x27;]` and XPath&#x27;s `and` binds tighter than `or`, so the standalone `1=1` term makes the whole predicate true regardless of the real password -- the match count jumps from the at-most-one a legitimate login ever produces to all three directory entries, and the app trusts the *typed* username for who got logged in.</li><li>Confirm success: GET /flag?username=admin&amp;password=&#x27; or 1=1 or &#x27;a&#x27;=&#x27;a</li></ol>
 
-  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: bind only an explicit allow-list of fields; never merge the raw request body into your model/object.</p></div>
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never concatenate user input into an XPath expression -- parameterize the query (e.g. an XPath variable binding) or escape per the same untrusted-input discipline as SQL, and never let credential-check success alone decide identity -- verify the returned node actually IS the account being logged into.</p></div>
 
   <div class="labs-note">
     <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
@@ -71,7 +71,7 @@ python labs/18-mass-assignment/app.py
   // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
   // client-side only, no backend concept of lab progress. Separate origins
   // so the two never actually share storage; kept identical for consistency.
-  var SLUG = "18-mass-assignment";
+  var SLUG = "54-xpath-injection";
   var KEY = "nullock:labs:completed";
   function getSolved() {
     try {

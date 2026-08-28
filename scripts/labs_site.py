@@ -47,7 +47,8 @@ XP_BY_DIFFICULTY = {"Easy": 10, "Medium": 20, "Hard": 30}
 CATEGORY_RULES = [
     ("Injection", ("sqli", "ssti", "command-injection", "nosql", "xxe",
                    "crlf", "csv-injection", "graphql", "deserialization",
-                   "prototype-pollution", "param-pollution", "ldap-injection")),
+                   "prototype-pollution", "param-pollution", "ldap-injection",
+                   "xpath-injection")),
     ("Access control", ("idor", "broken-access", "mass-assignment",
                         "verb-tamper", "2fa", "dangerous-http-methods")),
     ("Authentication", ("jwt", "oauth", "session-fixation", "user-enumeration",
@@ -130,6 +131,7 @@ DIFFICULTY = {
     "51-jwt-alg-confusion": "Hard",
     "52-ldap-injection": "Medium",
     "53-jwt-kid-injection": "Hard",
+    "54-xpath-injection": "Medium",
 }
 
 
@@ -409,6 +411,11 @@ HINTS = {
         "The token's header names which key file the server should verify against -- what happens if that name is a path instead of a plain filename?",
         "os.path.join has a quirk with absolute paths: what does joining a fixed base directory onto \"/dev/null\" actually produce?",
         "kid=\"/dev/null\" (or enough doubled \"....//\" dots to survive a single-pass \"../\" strip) points the HMAC check at a guaranteed-empty file -- sign your forged token with an empty key.",
+    ],
+    "54-xpath-injection": [
+        "The login query is built by pasting your username/password straight into an XPath filter string -- what happens if one of those values contains a quote?",
+        "XPath's `and` binds tighter than `or`. A standalone `1=1` term OR'd in at the top level makes the whole predicate true no matter what the rest of the filter says.",
+        "password=' or 1=1 or 'a'='a with username=admin: the filter matches every user, and the app logs you in as whichever username you typed -- no correct password needed.",
     ],
 }
 
