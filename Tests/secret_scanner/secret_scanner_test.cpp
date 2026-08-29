@@ -105,6 +105,12 @@ int main(int argc, char **argv) {
             flagged(QStringLiteral("github") + "_pat_" + ent.left(22), "github-pat"));
         chk("google-api-key flagged",
             flagged(QStringLiteral("AI") + "za" + ent.left(35), "google-api-key"));
+        // A key whose 35th char is '-' (in the key charset) must STILL flag: the
+        // old trailing \b couldn't hold a boundary after '-' and the fixed {35}
+        // count can't backtrack, so ~1/64 of real keys were dropped. (Mutation:
+        // revert the tail to \b and this case goes absent.)
+        chk("google-api-key ending in '-' flagged",
+            flagged(QStringLiteral("AI") + "za" + ent.left(34) + "-", "google-api-key"));
         chk("stripe-secret-key flagged",
             flagged(QStringLiteral("sk") + "_live_" + ent.left(24), "stripe-secret-key"));
         chk("slack-token flagged",

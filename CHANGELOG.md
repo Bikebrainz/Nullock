@@ -151,6 +151,32 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Google API keys ending in `-` were silently missed by two more secret
+  detectors.** A second dead-detector hunt found the same trailing-`\b` boundary
+  bug (already fixed once in the passive scanner) in `secret_logic.cpp` and
+  `js_recon_logic.cpp`: the key charset includes `-`, but a real 39-char key
+  whose 35th char is `-` ends on a non-word char and the fixed `{35}` count can't
+  backtrack, so `\b` can't hold — dropping ~1/64 of keys (and, on the JS-recon
+  path, a URL `?key=…-` leak is covered by nothing else). Both now use a negative
+  lookahead `(?![0-9A-Za-z_-])`, matching the passive scanner. Mutation-proven in
+  the js_recon and secret_scanner suites.
+- **Three dead / degraded native detectors surfaced by an adversarially-verified
+  hunt over the C++ detection logic.** Each was reproduced against a realistic
+  vulnerable input before fixing. (1) **Symfony verbose-error page** — the
+  `verbose-debug-page` signature `"<title>Symfony Exception"` matched *no* real
+  Symfony page: the dev exception page renders `<title>{exception message}</title>`,
+  and the words "Symfony Exception" appear only in the `<h1 class="logo">` banner,
+  so an `APP_DEBUG=1` stack-trace leak (a real production misconfig) was silently
+  missed. The needle now keys off the h1 text (still gated to 4xx/5xx).
+  (2) **`dom-postmessage-wildcard`** — the regex anchored the `'*'` targetOrigin
+  with a trailing `\)`, so the 3-argument transfer-list form
+  `postMessage(msg, '*', [port])` (a `,` follows the `*`) was missed; the anchor
+  now accepts `[,)]`. (3) **SSRF `internal-consul`** — the confirm signature
+  `"Consul"` never appears in a real Consul `/v1/agent/self` response (the marker
+  is the lowercase Stats key `"consul"` / the `Member.Tags` role value; the
+  capital-C tokens are `"ConsulCoordinate…"` DebugConfig keys), so an SSRF reaching
+  an internal Consul agent could never be confirmed. Signature corrected to
+  `"consul"`; a realistic Consul target added to the SSRF probe smoke corpus.
 - **Three more dead detectors in the built-in JS extension detectors.** A second
   node-verified dead-detector hunt (dom_taint / ouchie / crumbs) found three
   checks that could never fire on the vulnerable response they were meant to

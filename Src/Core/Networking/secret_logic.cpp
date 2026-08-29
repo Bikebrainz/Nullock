@@ -33,7 +33,12 @@ const QList<Pattern> &patterns() {
         { "aws-access-key-id", "high",
           QRegularExpression("\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b"), 0, false },
         { "google-api-key", "high",
-          QRegularExpression("\\bAIza[0-9A-Za-z_\\-]{35}\\b"), 0, false },
+          // Negative lookahead, NOT a trailing \b: a real 39-char Google key
+          // whose final char is '-' (in the key's own charset) can't hold a word
+          // boundary there, and the fixed {35} count can't backtrack, so \b made
+          // ~1/64 of keys (dash-terminated) undetectable. The lookahead still
+          // rejects an over-long run. (Same fix as passive_scanner/js_recon.)
+          QRegularExpression("\\bAIza[0-9A-Za-z_\\-]{35}(?![0-9A-Za-z_\\-])"), 0, false },
         { "stripe-secret-key", "high",
           QRegularExpression("\\b(?:sk|rk)_live_[0-9a-zA-Z]{16,}\\b"), 0, false },
         { "github-token", "high",

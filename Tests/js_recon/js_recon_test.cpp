@@ -196,6 +196,17 @@ int main(int argc, char **argv) {
         // one char short of the {35} tail -> not a google key.
         chk("secret: AIza too short -> NOT google-api-key",
             !hasKind(secrets("var k=\"" + QString("AI") + "za" + "0123456789abcdefghij\";"), "google-api-key"));
+        // A real 39-char key whose final (35th) char is '-' (in the key's own
+        // charset) must STILL fire. The old trailing \b couldn't hold a boundary
+        // after '-', and the fixed {35} count can't backtrack, so ~1/64 of keys
+        // (dash-terminated) were silently dropped. (Mutation: revert the tail to
+        // \b and this case goes absent.)
+        const QString gd = QString("AI") + "za" + "0123456789abcdefghijABCDEFGHIJ1234" + "-"; // AIza + 34 + '-'
+        chk("secret: google-api-key ending in '-' still detected",
+            hasKind(secrets("var k=\"" + gd + "\";"), "google-api-key"));
+        // ...but AIza followed by 36 charset chars is an over-long run, not a key.
+        chk("secret: AIza + 36 charset chars -> NOT google-api-key (over-long)",
+            !hasKind(secrets("var k=\"" + QString("AI") + "za" + "0123456789abcdefghijABCDEFGHIJ12345" + "6\";"), "google-api-key"));
     }
     {
         const QString gl = QString("glp") + "at-" + "0123456789abcdefABCD";  // glpat- + 20

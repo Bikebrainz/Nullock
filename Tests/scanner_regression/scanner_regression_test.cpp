@@ -255,6 +255,15 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "example.test", "/"),
         makeResp(200, "text/html",
                  "<html><script>win.postMessage(JSON.stringify(data), '*');</script></html>") });
+    // Regression: the 3-argument transfer-list form postMessage(msg, '*', [port])
+    // puts a ',' after the '*', which a trailing `\)`-only anchor rejected --
+    // silently missing a wildcard-origin postMessage. The anchor now allows [,)].
+    tc.append({ "postMessage(msg, '*', [transfer]) -> dom-postmessage-wildcard",
+                "dom-postmessage-wildcard", false,
+        makeReq("GET", "example.test", "/"),
+        makeResp(200, "text/html",
+                 "<html><script>ch.port1.start(); w.postMessage(data, '*', "
+                 "[ch.port2]);</script></html>") });
 
     tc.append({ "eval(xhr.responseText) -> dom-eval-of-fetch",
                 "dom-eval-of-fetch", false,
@@ -422,9 +431,22 @@ QList<TestCase> buildCorpus() {
         makeReq("GET", "api.example.test", "/x"),
         makeResp(404, "text/html", "<h1>Whoops! There was an error.</h1>") });
 
-    tc.append({ "Symfony exception page 404 -> verbose-debug-page", "verbose-debug-page", false,
+    // REALISTIC Symfony dev-exception body: <title> is the exception MESSAGE,
+    // and "Symfony Exception" sits in the <h1 class="logo"> banner -- exactly
+    // where the real error-handler template puts it. The old "<title>Symfony
+    // Exception" needle matched NO real Symfony page (dead); the "Symfony
+    // Exception" h1 needle fires here. (Reverting the source needle to the
+    // <title>-anchored form makes this case go absent -- the mutation proof.)
+    tc.append({ "Symfony exception page 500 (realistic body) -> verbose-debug-page",
+                "verbose-debug-page", false,
         makeReq("GET", "api.example.test", "/x"),
-        makeResp(404, "text/html", "<title>Symfony Exception</title>") });
+        makeResp(500, "text/html",
+                 "<!doctype html><html><head><title>Attempted to load class "
+                 "&quot;Foo&quot; from namespace &quot;App&quot; (500 Internal "
+                 "Server Error)</title></head><body><header><h1 class=\"logo\">"
+                 "<svg viewBox=\"0 0 24 24\"></svg> Symfony Exception</h1></header>"
+                 "<div class=\"trace\">RuntimeException at /var/www/src/X.php line 42"
+                 "</div></body></html>") });
 
     // Per-needle status policy (Q3 fix). SQL-error signatures are specific
     // enough to flag on ANY status: an app that catches the DB error and echoes

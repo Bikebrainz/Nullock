@@ -1203,7 +1203,10 @@ void PassiveScanner::checkResponse(int rowId,
               // The first arg may itself be a call with parens/commas -- the very
               // common postMessage(JSON.stringify(x), '*'). `[^,)]+` stopped at the
               // first ')' and missed it; allow one level of balanced () in the arg.
-              QRegularExpression(R"(postMessage\s*\([^,)]*(?:\([^)]*\)[^,)]*)*,\s*['"]\*['"]\s*\))") },
+              // Trailing [,)] not just ): the wildcard origin may be followed by a
+              // third `transfer` argument -- postMessage(data, '*', [port]) -- which
+              // put a ',' after the '*' and defeated a `\)`-only anchor.
+              QRegularExpression(R"(postMessage\s*\([^,)]*(?:\([^)]*\)[^,)]*)*,\s*['"]\*['"]\s*[,)])") },
             { "dom-eval-of-fetch",
               "eval of fetch / XHR response text",
               QRegularExpression(R"(eval\s*\(\s*\w+\.responseText)") },
@@ -1260,7 +1263,12 @@ void PassiveScanner::checkResponse(int rowId,
             { "verbose-php-err",      "Notice: " },
             { "verbose-debug-page",   "Werkzeug Debugger" },
             { "verbose-debug-page",   "Whoops! There was an error" },
-            { "verbose-debug-page",   "<title>Symfony Exception" },
+            // The Symfony dev exception page renders <title>{exception message}</title>
+            // (the message, never the literal "Symfony Exception"); the words
+            // "Symfony Exception" appear only in the <h1 class="logo">…Symfony
+            // Exception</h1> banner. So "<title>Symfony Exception" occurs in ZERO
+            // real Symfony pages -- the needle was dead. Key off the h1 text.
+            { "verbose-debug-page",   "Symfony Exception" },
         };
         const auto eligible = [&](const char *kind) -> bool {
             if (QLatin1String(kind) == QLatin1String("verbose-sql-err"))

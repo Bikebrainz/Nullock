@@ -81,9 +81,14 @@ const Probe kProbes[] = {
     { "http://127.0.0.1:2375/version",
       "http://127.0.0.1:2375/nullock-ssrf-zq9x1k7p",
       "\"ApiVersion\"", "internal-docker", "high", "ssrf-internal" },
+    // /v1/agent/self reliably carries the lowercase Stats key "consul" (and the
+    // Member.Tags role value "consul"). It never carries the bare quoted token
+    // "Consul" -- the capital-C DebugConfig keys are "ConsulCoordinate…"/…
+    // (a letter, not a quote, follows) -- so the old "\"Consul\"" needle was
+    // dead on every real Consul agent. Case-sensitive still (fixed lowercase).
     { "http://127.0.0.1:8500/v1/agent/self",
       "http://127.0.0.1:8500/nullock-ssrf-zq9x1k7p",
-      "\"Consul\"", "internal-consul", "high", "ssrf-internal" },
+      "\"consul\"", "internal-consul", "high", "ssrf-internal" },
 };
 
 } // namespace

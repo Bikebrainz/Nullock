@@ -164,7 +164,10 @@ void extractSecrets(const QString &js, QList<JsSecret> &out) {
     static const QString gitlab = QStringLiteral("(") + "glpat" + "-" + "[0-9A-Za-z_-]{20})";
     static const QList<Pat> pats = {
         { "aws-access-key", "high",     QRegularExpression(R"(\b(AKIA[0-9A-Z]{16})\b)") },
-        { "google-api-key", "high",     QRegularExpression(R"(\b(AIza[0-9A-Za-z_\-]{35})\b)") },
+        // Negative lookahead, not trailing \b: a dash-terminated Google key (the
+        // '-' is in the charset) can't satisfy \b and {35} can't backtrack, so
+        // \b silently dropped ~1/64 of real keys. (Matches passive_scanner/secret_logic.)
+        { "google-api-key", "high",     QRegularExpression(R"(\b(AIza[0-9A-Za-z_\-]{35})(?![0-9A-Za-z_\-]))") },
         { "github-pat",     "high",     QRegularExpression(R"(\b(ghp_[0-9A-Za-z]{36})\b)") },
         { "gitlab-pat",     "high",     QRegularExpression(gitlab) },
         { "stripe-secret",  "critical", QRegularExpression(stripe) },

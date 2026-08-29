@@ -541,6 +541,10 @@ def make(mode):
                     # The fetcher reaches an internal Elasticsearch on loopback.
                     if '127.0.0.1:9200' in val and ctl not in val:
                         body = b'{"name":"node-1","cluster_name":"nullock-es"}'
+                    # Consul agent on :8500. Real /v1/agent/self carries lowercase
+                    # Stats key "consul" / Member.Tags role, never bare "Consul".
+                    elif '127.0.0.1:8500' in val and ctl not in val:
+                        body = b'{"Config":{"NodeName":"n1"},"Member":{"Tags":{"role":"consul"}},"Stats":{"consul":{"leader":"true"}}}'
                 # ssrf-safe falls through to the static home page.
                 self._send(200, body); return
             if mode.startswith('deser-cookie'):
@@ -1203,6 +1207,7 @@ chk "ssrf safe -> no fetch"               "$(post /api/ssrf/test "{\"url\":\"$(u
 chk "ssrf shaped-control -> FP suppressed" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-fp]} '?url=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "ssrf decimal-IP bypass -> caught"    "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-bypass]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aws-imds-decimal' for h in d.get('hits',[]))"
 chk "ssrf internal service -> caught"     "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-internal]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('kind')=='ssrf-internal' for h in d.get('hits',[]))"
+chk "ssrf internal Consul -> caught (was Consul dead)" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-internal]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='internal-consul' for h in d.get('hits',[]))"
 chk "ssrf Alibaba IMDS -> caught (was ami-id dead)" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-vuln]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aliyun-imds' for h in d.get('hits',[]))"
 
 echo "== insecure deserialization (core) =="
