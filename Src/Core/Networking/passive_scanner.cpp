@@ -661,23 +661,37 @@ void PassiveScanner::checkResponse(int rowId,
               QRegularExpression(R"(-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----)") },
         };
         for (const auto &p : kSecretPatterns) {
-            const auto m = p.rx.match(body);
-            if (!m.hasMatch()) continue;
             // AWS Secret pattern (40 b64 chars) has too many false positives
             // standing alone -- require an "aws" / "secret" / "access" context
-            // word within 80 chars.
+            // word within 80 chars of the match.
             //
             // "access" and not the looser "key" on purpose: the real credential
             // sits next to aws_secret_access_key, which "access" already
             // catches, whereas a bare "key" is one of the most common words in
             // any JSON document. Accepting it would flag every 40-character
             // base64 blob that happens to follow a "key" field.
+            //
+            // Scan ALL matches (globalMatch), not just the first: a context-LESS
+            // 40-char blob earlier in the body (a hash, a nonce, an id) must NOT
+            // shadow a real secret that DOES have context later -- the old
+            // single-match+continue silently missed exactly that.
             if (QString::fromLatin1(p.kind) == "leaked-aws-secret") {
-                const int start = qMax(0, m.capturedStart() - 80);
-                const QString ctx = body.mid(start, 160).toLower();
-                if (!ctx.contains("aws") && !ctx.contains("secret")
-                    && !ctx.contains("access")) continue;
+                auto it = p.rx.globalMatch(body);
+                while (it.hasNext()) {
+                    const auto m = it.next();
+                    const int start = qMax(0, m.capturedStart() - 80);
+                    const QString ctx = body.mid(start, 160).toLower();
+                    if (!ctx.contains("aws") && !ctx.contains("secret")
+                        && !ctx.contains("access")) continue;
+                    addFinding(rowId, req, resp, "high", p.kind,
+                               QString("%1 found in response body").arg(p.label),
+                               "match: " + m.captured().left(60) + "...");
+                    break;   // one finding per response for this kind
+                }
+                continue;
             }
+            const auto m = p.rx.match(body);
+            if (!m.hasMatch()) continue;
             addFinding(rowId, req, resp, "high", p.kind,
                        QString("%1 found in response body").arg(p.label),
                        "match: " + m.captured().left(60) + "...");

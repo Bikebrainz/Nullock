@@ -1320,6 +1320,32 @@ QList<TestCase> buildCorpus() {
             makeReq("GET", "example.test", "/"),
             makeResp(200, "application/json",
                      QByteArray("{\"aws_secret_access_key\":\"") + a40 + "\"}") });
+        // A context-LESS 40-char blob (a hash/nonce/id) EARLIER in the body must not
+        // shadow a real AWS secret that DOES have context later. The old code matched
+        // only the FIRST 40-char run, found no context, and `continue`d -- silently
+        // missing the real key. globalMatch now scans for a context-bearing match.
+        // (The "note" prose has no 40-char alnum run, so the only matches are the
+        // decoy and the real value.) The decoy sits at the body start, so its context
+        // window `body.mid(capturedStart-80, 160)` clamps to [0,160); the note is
+        // padded long enough (>100 chars) that "aws_secret_access_key" lands past
+        // char 160 -- i.e. OUTSIDE the decoy's context window -- so a single-match
+        // scanner sees the decoy, finds no context, and misses the real key.
+        tc.append({ "AWS secret after a context-less decoy blob -> still found",
+                    "leaked-aws-secret", false,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json",
+                     QByteArray("{\"id\":\"") + QByteArray(40, 'b')
+                     + "\",\"note\":\"lorem ipsum dolor sit amet consectetur adipiscing elit "
+                     + "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua ut "
+                     + "enim ad minim veniam quis nostrud exercitation ullamco laboris\","
+                     + "\"aws_secret_access_key\":\"" + a40 + "\"}") });
+        // ...but a body with ONLY a context-less 40-char blob (no aws/secret/access
+        // anywhere) must still NOT fire -- the FP guard the context check exists for.
+        tc.append({ "context-less 40-char blob alone -> NOT an AWS secret (FP guard)",
+                    "leaked-aws-secret", true,
+            makeReq("GET", "example.test", "/"),
+            makeResp(200, "application/json",
+                     QByteArray("{\"id\":\"") + QByteArray(40, 'b') + "\"}") });
     }
 
     // ---- Exposed dev files --------------------------------------------

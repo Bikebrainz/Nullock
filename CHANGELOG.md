@@ -75,6 +75,16 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Leaked AWS secret key missed when a context-less blob appears first in the
+  response body.** The passive scanner's leaked-secret loop only inspected the
+  *first* 40-character base64 run for the required `aws`/`secret`/`access`
+  context word, then `continue`d to the next pattern. So a context-less 40-char
+  blob earlier in the body — a hash, nonce, or opaque id — shadowed a real
+  `aws_secret_access_key` that *did* carry context later, and the finding was
+  silently dropped. The check now scans **all** matches (`globalMatch`) and fires
+  on the first context-bearing one; a lone context-less blob still doesn't fire
+  (the false-positive guard is preserved). Mutation-proven in the scanner
+  regression suite.
 - **Three false-negatives in the built-in JS extension detectors.** A
   node-verified dead-detector hunt over the BApp-style extensions found three
   cases where a genuinely vulnerable response was silently missed: (1) **Jelly**
