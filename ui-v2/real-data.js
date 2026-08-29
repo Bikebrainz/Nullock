@@ -232,6 +232,12 @@
     configPresetsSave(name)    { return post("/api/config/presets/save",   { name }).then(r => r.json()); },
     configPresetsLoad(name)    { return post("/api/config/presets/load",   { name }).then(r => r.json()); },
     configPresetsDelete(name)  { return post("/api/config/presets/delete", { name }).then(r => r.json()); },
+    // Diagnostics: CrashReporter's on-disk crash/non-fatal report directory,
+    // read-only. Nothing here is ever uploaded automatically -- listing and
+    // fetching a report are both plain GETs the user triggers themselves.
+    // See control_server.cpp /api/diagnostics[/report].
+    diagnosticsList()          { return fetch("/api/diagnostics").then(r => r.json()); },
+    diagnosticsReport(name)    { return fetch("/api/diagnostics/report?name=" + encodeURIComponent(name)).then(r => r.json()); },
     clearHistory()          { return post("/api/clear-history"); },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     // Pre-add a host to the TLS pass-through (blind-tunnel) list, or remove

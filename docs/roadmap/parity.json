@@ -3118,12 +3118,18 @@
     {
       "area": "platform",
       "feature": "Diagnostics / crash reporting for support",
-      "state": "partial",
+      "state": "present",
       "impact": "low",
       "effort": "hours",
-      "gap": "No diagnostics view and no in-app path to the crash directory; the only notice is an fprintf to stderr, invisible in the GUI-subsystem build. recordNonFatal() is never called by anything.",
-      "why": "DOWNGRADED. The crash handler itself is exactly as described \u2014 I read it and both platform paths, the symbolisation and the context capture are real, and SA_RESETHAND + re-raise means a core file is still produced. But I then grepped the whole repo for CrashReporter/crashDir/recordNonFatal and found ONE reference outside the module: the install() call. Nothing surfaces crashDir() to the user, no U",
-      "evidence": "Handler real: crash_reporter.cpp:145-158 `SetUnhandledExceptionFilter(seFilter);` / `for (int s : { SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS }) sigaction(s, &sa, nullptr);`; symbolisation at :70-104; :67 `\"We never upload these automatically. Review before sharing.\"`. Isolation: `grep -rn \"crashDir\\|CrashReporter\\|recordNonFatal\" --include=*.cpp --include=*.hpp --include=*.jsx --include=*.js --inc"
+      "gap": "GUI-reachable now: a Diagnostics card in Settings lists crash/non-fatal reports (GET /api/diagnostics) and lets you view one before filing an issue (GET /api/diagnostics/report?name=), and recordNonFatal() is now actually called (extension-load failure, onUnload handler throw) instead of being dead code. Remaining short of a full support pipeline: still local-only, no upload/telemetry (a deliberate privacy choice, not a gap) and no in-app 'File a GitHub issue' deep link with the report pre-attached.",
+      "why": "Closed 2026-08-29: added GET /api/diagnostics (+ /report) surfacing CrashReporter::crashDir()'s report listing/content, a Settings > Diagnostics card consuming it, and wired recordNonFatal() into extensions_api.cpp's two real error sites so the mechanism the header doc always described actually produces a report.",
+      "evidence": "control_server.cpp /api/diagnostics + /api/diagnostics/report handlers; ui-v2/app.jsx Diagnostics() card (Settings tab); extensions_api.cpp recordNonFatal() calls at the evaluate()-error and onUnload-error sites.",
+      "audited_state": "present",
+      "reconciled": {
+        "date": "2026-08-29",
+        "commit": "PENDING",
+        "note": "Diagnostics view wave: GET /api/diagnostics[/report] + Settings Diagnostics card + recordNonFatal() wired into its first two real call sites."
+      }
     },
     {
       "area": "platform",

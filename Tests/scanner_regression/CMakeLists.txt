@@ -17,6 +17,8 @@ target_link_libraries(scanner_regression_test PRIVATE
                       # Src/Core/APIs/CMakeLists.txt): APIs no longer links
                       # Networking, and FrontEndGUI above already resolves any
                       # ProxyModel symbols Networking's Repeater/Intruder need.
+    Utils             # extensions_api.o (pulled in via the chain above) calls
+                      # CrashReporter::recordNonFatal() on a load/onUnload error.
 )
 
 target_include_directories(scanner_regression_test PRIVATE

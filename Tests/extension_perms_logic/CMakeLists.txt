@@ -32,10 +32,12 @@ target_link_libraries(extensions_api_grant_test PRIVATE
     Qt6::Network
     Qt6::Qml
     APIs
+    Utils
 )
 target_include_directories(extensions_api_grant_test PRIVATE
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/ExtensionsAPI
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking
+    ${CMAKE_SOURCE_DIR}/Src/Core/Utils
 )
 add_test(NAME extensions_api_grant COMMAND extensions_api_grant_test)
 

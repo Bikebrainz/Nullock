@@ -36,6 +36,10 @@ target_link_libraries(proxy_shutdown_test PRIVATE
     Qt6::Network
     Proxy
     APIs
+    # extensions_api.o (pulled in via Proxy -> ExtensionsApi::applyRequest/
+    # applyResponse) calls CrashReporter::recordNonFatal() on a load/onUnload
+    # error.
+    Utils
 )
 
 target_include_directories(proxy_shutdown_test PRIVATE

@@ -620,6 +620,91 @@ function Marketplace({ Card, Btn }) {
   );
 }
 
+// Diagnostics card: read-only view of CrashReporter's on-disk crash / non-
+// fatal report directory (Src/Core/Utils/crash_reporter.cpp). Previously
+// this was invisible outside an fprintf to stderr, which nobody sees in the
+// GUI-subsystem build -- there was no in-app path to "where did that crash
+// report go?" at all. Nothing here is uploaded; a report is read only when
+// the user explicitly clicks View, mirroring the backend's own "we never
+// upload these automatically" policy.
+function Diagnostics({ Card, Btn }) {
+  const [state, setState] = React.useState({ status: "idle", crashDir: "", reports: [] });
+  const [viewing, setViewing] = React.useState(null); // { name, content } | null
+
+  const load = React.useCallback(async () => {
+    setState(s => ({ ...s, status: "loading" }));
+    try {
+      const r = await NL.actions.diagnosticsList();
+      setState({ status: "ready", crashDir: r.crashDir || "", reports: r.reports || [] });
+    } catch (e) {
+      setState({ status: "error", crashDir: "", reports: [], error: String(e) });
+    }
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const view = async (name) => {
+    const r = await NL.actions.diagnosticsReport(name);
+    if (!r || r.ok === false) { alert("Could not read report: " + (r && r.error ? r.error : "unknown error")); return; }
+    setViewing({ name, content: r.content || "" });
+  };
+
+  const kindColor = (kind) => kind === "crash" ? "var(--warn, #d0a03a)" : "var(--dim)";
+
+  return (
+    <Card title={"Diagnostics (" + state.reports.length + ")"}
+          action={<Btn label="Refresh" onClick={load} />}>
+      <div style={{ fontSize: "11px", color: "var(--dim)", marginBottom: 6 }}>
+        Crash and non-fatal-error reports Nullock writes locally. Nothing here is uploaded
+        automatically -- review a report before pasting it into a GitHub issue.
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11.5px" }}>
+        <span style={{ minWidth: 90, color: "var(--dim)" }}>Report folder</span>
+        <span style={{ fontFamily: "var(--ff-mono)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {state.crashDir || "(unknown)"}
+        </span>
+      </div>
+      {state.status === "ready" && state.reports.length === 0 && (
+        <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: 6 }}>
+          No crash or non-fatal reports on disk.
+        </div>
+      )}
+      {state.reports.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+          {state.reports.map(rep => (
+            <div key={rep.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "11px" }}>
+              <span style={{
+                fontSize: "9.5px", textTransform: "uppercase", letterSpacing: "0.06em",
+                border: "1px solid " + kindColor(rep.kind), color: kindColor(rep.kind),
+                padding: "1px 5px", borderRadius: 2, fontFamily: "var(--ff-mono)", whiteSpace: "nowrap",
+              }}>{rep.kind}</span>
+              <span style={{ fontFamily: "var(--ff-mono)", color: "var(--text)", flex: 1,
+                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rep.name}</span>
+              <span style={{ color: "var(--dim)", fontFamily: "var(--ff-mono)" }}>{rep.size}B</span>
+              <Btn label="View" onClick={() => view(rep.name)} />
+            </div>
+          ))}
+        </div>
+      )}
+      {viewing && (
+        <div style={{
+          marginTop: 8, padding: 8, background: "var(--bg-deep)",
+          border: "1px solid var(--line-soft)", borderRadius: 3,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span style={{ fontFamily: "var(--ff-mono)", fontSize: "11px", flex: 1 }}>{viewing.name}</span>
+            <Btn label="Close" onClick={() => setViewing(null)} />
+          </div>
+          <pre style={{
+            margin: 0, fontFamily: "var(--ff-mono)", fontSize: "10.5px",
+            color: "var(--text-2)", whiteSpace: "pre-wrap", wordBreak: "break-word",
+            maxHeight: 260, overflow: "auto",
+          }}>{viewing.content}</pre>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SettingsTab() {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -1354,6 +1439,8 @@ function SettingsTab() {
           </Card>
         );
       })()}
+
+      <Diagnostics Card={Card} Btn={Btn} />
     </div>
   );
 }

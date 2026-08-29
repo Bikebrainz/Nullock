@@ -53,4 +53,5 @@ target_include_directories(APIs PUBLIC
 )
 target_include_directories(APIs PRIVATE
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking
+    ${CMAKE_SOURCE_DIR}/Src/Core/Utils
 )

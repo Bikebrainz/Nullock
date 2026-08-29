@@ -275,6 +275,9 @@ Project templates  Start a new project pre-seeded with scope + notes from a bund
 Cookie jar         Full per-host cookie inventory (Path, resolved Expires/session state, plus
                   httpOnly/Secure/SameSite coverage percentages) with Add/Edit/Del per cookie --
                   SESSIONS tab, alongside the existing inject-focused per-host list
+Diagnostics        Settings card lists on-disk crash / non-fatal reports (path + name/kind/
+                  size/mtime) with a one-click View before you paste one into a GitHub
+                  issue -- nothing is ever uploaded automatically
 Update check       Dismissible in-app banner surfaces new-release availability + release notes
 Command palette    Ctrl/Cmd+K (or the title bar's ⌘K button) fuzzy-searches every tab plus
                     intercept/tweaks/CA-path toggles; Ctrl/Cmd+1-9 jump straight to the first

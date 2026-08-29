@@ -824,6 +824,24 @@ developer-facing record.
   and mapping host-not-found to `filtered` would brand a dead host "up but
   firewalled". Behaviour unchanged.
 
+### Added
+- **Diagnostics view: an in-app path to crash / non-fatal reports.**
+  `Src/Core/Utils/crash_reporter.cpp` has written signal-handler crash reports
+  and `recordNonFatal()` reports to `<app-data>/crashes/` since it was added,
+  but there was no in-app way to see them (the only notice was an `fprintf` to
+  stderr, invisible in the GUI-subsystem build) and `recordNonFatal()` was
+  never actually called by anything. New read-only `GET /api/diagnostics`
+  (crash directory path + a listing of `.txt` reports: name/kind/size/mtime)
+  and `GET /api/diagnostics/report?name=` (fetches one report's content,
+  filename-only — no path separators or `..` accepted, so it can only resolve
+  inside the crash directory) back a new Diagnostics card in Settings that
+  lists reports and lets you view one before deciding whether to paste it into
+  a GitHub issue; nothing is ever uploaded automatically. Also wired
+  `recordNonFatal()` into its first two real call sites — an extension that
+  fails to `evaluate()` on load, and an `onUnload` handler that throws — so
+  the mechanism the doc comment always described actually produces a report
+  now instead of only ever being reachable from a crash signal.
+
 ## [3.8.0] — 2026-08-20
 
 This release folds in a large security-and-correctness pass: a whole-codebase

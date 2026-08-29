@@ -3,6 +3,7 @@
 #include "extensions_utils_logic.hpp"
 #include "oast_server.hpp"   // OastServer + OastHit (same APIs lib)
 #include "dns_sink.hpp"      // DnsSink
+#include "crash_reporter.hpp"
 
 #include <QDateTime>
 #include <QUrl>
@@ -338,10 +339,13 @@ void ExtensionsApi::runUnloadHandlers() {
     for (QJSValue &fn : m_onUnloadHandlers) {
         if (!fn.isCallable()) continue;
         const QJSValue r = fn.call();
-        if (r.isError())
-            appendLog(QString("[ext] onUnload handler error: %1 at line %2")
-                          .arg(r.toString())
-                          .arg(r.property("lineNumber").toInt()));
+        if (r.isError()) {
+            const QString msg = QString("onUnload handler error: %1 at line %2")
+                                     .arg(r.toString())
+                                     .arg(r.property("lineNumber").toInt());
+            appendLog("[ext] " + msg);
+            Nullock::Core::CrashReporter::recordNonFatal("extension", msg);
+        }
     }
 }
 
@@ -414,10 +418,12 @@ void ExtensionsApi::loadAll() {
         m_scriptGrants.insert(fi.fileName(), QStringList(m_currentGrants.begin(), m_currentGrants.end()));
         const QJSValue result = m_engine->evaluate(source, fi.fileName());
         if (result.isError()) {
-            appendLog(QString("[ext] %1: %2 at line %3")
-                          .arg(fi.fileName())
-                          .arg(result.toString())
-                          .arg(result.property("lineNumber").toInt()));
+            const QString msg = QString("%1: %2 at line %3")
+                                     .arg(fi.fileName())
+                                     .arg(result.toString())
+                                     .arg(result.property("lineNumber").toInt());
+            appendLog("[ext] " + msg);
+            Nullock::Core::CrashReporter::recordNonFatal("extension-load", msg);
             continue;
         }
         m_loadedScripts.append(fi.fileName());

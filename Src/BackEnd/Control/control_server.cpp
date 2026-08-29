@@ -39,6 +39,7 @@
 #include "ssti_tester.hpp"
 #include "cache_poison.hpp"
 #include "proto_pollution.hpp"
+#include "crash_reporter.hpp"
 #include "host_header.hpp"
 #include "http3_detect.hpp"
 #include "content_discovery.hpp"
@@ -1826,6 +1827,8 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/cve/overlay"
             || p == "/api/baseline/diff"
             || p == "/api/baseline/status"
+            || p == "/api/diagnostics"
+            || p == "/api/diagnostics/report"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
@@ -3618,6 +3621,46 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (existed && !savePresets(lib))
             return okJson({{ "ok", false }, { "error", "could not write the preset library file" }});
         return okJson({{ "ok", true }, { "removed", existed }, { "count", lib.size() }});
+    }
+
+    // Diagnostics: surfaces CrashReporter's on-disk crash/non-fatal report
+    // directory (previously invisible outside an fprintf to stderr, which
+    // never appears in the GUI-subsystem build). List-only + explicit fetch
+    // of one named report, both read-only -- this never uploads anything.
+    if (path == "/api/diagnostics") {
+        const QString dir = Nullock::Core::CrashReporter::crashDir();
+        QJsonArray reports;
+        QDir d(dir);
+        if (d.exists()) {
+            const QFileInfoList entries =
+                d.entryInfoList(QStringList{"*.txt"}, QDir::Files, QDir::Time);
+            for (const QFileInfo &fi : entries) {
+                const QString name = fi.fileName();
+                const QString kind = name.startsWith("non-fatal-") ? "non-fatal"
+                                    : name.startsWith("crash-")     ? "crash"
+                                                                     : "other";
+                reports.append(QJsonObject{
+                    { "name", name },
+                    { "kind", kind },
+                    { "size", static_cast<int>(fi.size()) },
+                    { "mtime", fi.lastModified().toUTC().toString(Qt::ISODate) },
+                });
+            }
+        }
+        return okJson({{ "crashDir", dir }, { "reports", reports }});
+    }
+    if (path == "/api/diagnostics/report") {
+        const QUrlQuery q(query);
+        const QString name = q.queryItemValue("name");
+        // No path separators or traversal tokens -- this must stay a bare
+        // filename resolved directly inside crashDir(), never able to walk
+        // out of it.
+        if (name.isEmpty() || name.contains('/') || name.contains('\\') || name.contains(".."))
+            return okJson({{ "ok", false }, { "error", "invalid report name" }});
+        QFile f(QDir(Nullock::Core::CrashReporter::crashDir()).filePath(name));
+        if (!f.open(QIODevice::ReadOnly))
+            return okJson({{ "ok", false }, { "error", "report not found" }});
+        return okJson({{ "name", name }, { "content", QString::fromUtf8(f.readAll()) }});
     }
 
     if (path == "/api/repeater/set") {
