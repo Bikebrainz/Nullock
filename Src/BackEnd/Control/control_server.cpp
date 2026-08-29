@@ -4024,6 +4024,16 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         if (m_wiring.intruder) m_wiring.intruder->start();
         return okJson();
     }
+    // POST /api/intruder/resume -- re-fire only the never-completed rows of a
+    // restored (loaded) attack. Same scope guard as start(); ok:false if it
+    // can't resume (running / no rows / recursive-grep / already complete).
+    if (path == "/api/intruder/resume") {
+        if (m_wiring.intruder && blocksScope(m_wiring.intruder->host()))
+            return okJson({{ "ok", false }, { "scopeBlocked", true },
+                { "error", "intruder target '" + m_wiring.intruder->host() + "' is out of scope" }});
+        bool ok = m_wiring.intruder && m_wiring.intruder->resume();
+        return okJson({{ "ok", ok }});
+    }
     if (path == "/api/intruder/stop") {
         if (m_wiring.intruder) m_wiring.intruder->stop();
         return okJson();

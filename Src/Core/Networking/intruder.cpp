@@ -4,6 +4,7 @@
 
 #include "intruder_engine.hpp"
 #include "intruder_pool_logic.hpp"
+#include "intruder_persist_logic.hpp"
 #include "Proxy/proxy_model.hpp"
 
 #include <QElapsedTimer>
@@ -530,18 +531,83 @@ void Intruder::start() {
     const bool followCookiesCopy = m_followCookies;
     const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
     const RecursiveSpec recursiveCopy = recursive;
+    const QSet<int> skipRowsCopy;   // fresh start: fire every row
 
     m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                                   concurrencyCopy, throttleCopy, retriesCopy,
                                   followPolicyCopy, followCookiesCopy, inScopeCopy,
-                                  recursiveCopy]() {
+                                  recursiveCopy, skipRowsCopy]() {
         runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                   concurrencyCopy, throttleCopy, retriesCopy,
-                  followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy);
+                  followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy,
+                  skipRowsCopy);
     });
+}
+
+bool Intruder::resume() {
+    if (m_running) return false;
+    if (m_host.isEmpty() || m_template.isEmpty()) return false;
+    if (m_attacks.isEmpty()) return false;
+
+    // PURE decision: resumable? and which rows to skip (already complete).
+    QList<bool> rowComplete;
+    rowComplete.reserve(m_attacks.size());
+    for (const IntruderAttack *a : m_attacks) rowComplete.append(a->m_complete);
+    const IntruderPersist::ResumePlan plan =
+        IntruderPersist::planResume(m_recursiveGrep, rowComplete);
+    if (!plan.canResume) return false;
+
+    // Combos come from the RESTORED rows (index-aligned with m_attacks). The
+    // skipped rows keep their existing results; only the never-completed rows
+    // are re-sent. m_completedCount already reflects the completed rows.
+    QList<QStringList> combos;
+    combos.reserve(m_attacks.size());
+    for (const IntruderAttack *a : m_attacks) combos.append(a->m_combo);
+    const QSet<int> skip(plan.skipRows.begin(), plan.skipRows.end());
+
+    m_running = true;
+    m_stopRequested = false;
+    emit runningChanged();
+    emit progressChanged();
+
+    const QString templateCopy = m_template;
+    const QString hostCopy = m_host;
+    const int portCopy = m_port;
+    const bool tlsCopy = m_useTls;
+    const QList<QStringList> combosCopy = combos;
+    QList<IntruderRules::Rule> rulesCopy = m_payloadRules;
+    if (!m_globalEncodeChars.isEmpty())
+        rulesCopy.append({ QStringLiteral("url-encode-chars"), m_globalEncodeChars });
+    const QStringList grepMatchCopy = m_grepMatch;
+    const IntruderGrep::ExtractSpec grepExtractCopy = m_grepExtract;
+    const bool grepReflectionCopy = m_grepPayloadReflection;
+    // Resume is never recursive (planResume rejects recursive-grep runs), so the
+    // pool runs at the configured concurrency.
+    const int concurrencyCopy = m_maxConcurrency;
+    const int throttleCopy = m_throttleMs;
+    const int retriesCopy = m_maxRetries;
+    const int followPolicyCopy = m_followPolicy;
+    const bool followCookiesCopy = m_followCookies;
+    const auto inScopeCopy = m_inScope;
+    const RecursiveSpec recursiveCopy{ false, QString(), 0 };
+    const QSet<int> skipRowsCopy = skip;
+
+    m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
+                                  portCopy, tlsCopy, rulesCopy,
+                                  grepMatchCopy, grepReflectionCopy, grepExtractCopy,
+                                  concurrencyCopy, throttleCopy, retriesCopy,
+                                  followPolicyCopy, followCookiesCopy, inScopeCopy,
+                                  recursiveCopy, skipRowsCopy]() {
+        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
+                  rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
+                  concurrencyCopy, throttleCopy, retriesCopy,
+                  followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy,
+                  skipRowsCopy);
+    });
+    return true;
 }
 
 void Intruder::runWorker(const QList<QStringList> &combos,
@@ -554,7 +620,8 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          int concurrency, int throttleMs, int retries,
                          int followPolicy, bool followCookies,
                          std::function<bool(const QString &)> inScope,
-                         const RecursiveSpec &recursive) {
+                         const RecursiveSpec &recursive,
+                         const QSet<int> &skipRows) {
     // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
     // size the owned pool. `concurrency` is the max number of requests in flight
     // at once; `throttleMs` an optional pause between dispatches (rate limit).
@@ -735,6 +802,9 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // Row index i maps 1:1 to m_attacks[i] regardless of completion order.
     for (int i = 0; i < combos.size(); ++i) {
         if (m_stopRequested) break;
+        // Resume: rows that already completed keep their results -- only the
+        // never-fired rows are (re-)sent. skipRows is empty for a fresh start().
+        if (skipRows.contains(i)) continue;
         inFlight.acquire();
         if (m_stopRequested) { inFlight.release(); break; }
         const QStringList combo = combos[i];

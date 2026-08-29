@@ -10,6 +10,7 @@
 #include <QAbstractListModel>
 #include <QFuture>
 #include <QList>
+#include <QSet>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -232,6 +233,12 @@ public:
     Q_INVOKABLE QByteArray saveRun() const;
     Q_INVOKABLE bool       loadRun(const QByteArray &bytes);
     Q_INVOKABLE void start();
+    // The "Resume" half of save/resume: after loadRun repopulates a partially-
+    // fired attack, re-fire ONLY the rows that never completed (already-complete
+    // rows keep their results). Reuses the normal worker, skipping the completed
+    // indices. No-ops (returns false) if an attack is running, there are no rows,
+    // the run is recursive-grep (unresumable), or every row is already complete.
+    Q_INVOKABLE bool resume();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clear();
     // Re-fires a single result row with its existing payload combination
@@ -269,7 +276,8 @@ private:
                    int concurrency, int throttleMs, int retries,
                    int followPolicy, bool followCookies,
                    std::function<bool(const QString &)> inScope,
-                   const RecursiveSpec &recursive);
+                   const RecursiveSpec &recursive,
+                   const QSet<int> &skipRows);
 
     Nullock::FrontEnd::ProxyModel *m_model;
 

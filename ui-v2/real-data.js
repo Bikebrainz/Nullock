@@ -192,6 +192,10 @@
     },
     intruderSet(payload)    { return post("/api/intruder/set",     payload); },
     intruderStart()         { return post("/api/intruder/start"); },
+    // Resume the "remaining" rows of a restored attack -- re-fires only the rows
+    // that never completed. Returns { ok } (ok:false if it can't resume: running,
+    // no rows, recursive-grep, or already complete).
+    intruderResume()        { return post("/api/intruder/resume").then(r => r.json()); },
     intruderStop()          { return post("/api/intruder/stop"); },
     intruderClear()         { return post("/api/intruder/clear"); },
     intruderResend(row)     { return post("/api/intruder/resend", { row }); },

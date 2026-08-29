@@ -83,4 +83,18 @@ QByteArray  toBytes(const SavedRun &run);            // compact JSON bytes
 SavedRun    fromJson(const QJsonObject &obj);        // default-safe
 SavedRun    fromBytes(const QByteArray &bytes);      // default-safe (bad JSON -> empty run)
 
+// Resume decision (PURE): the "Resume" half of Burp's save/resume attack. Given
+// whether the run is recursive-grep and each row's completion flag, decide
+// whether the attack can be resumed and which row indices to SKIP (already
+// complete -> must not re-fire). A recursive-grep run can't be resumed (each
+// request's payload is chained from the prior response, and that walk state
+// isn't restored); a run whose rows are ALL complete has nothing to resume.
+struct ResumePlan {
+    bool       canResume = false;
+    QList<int> skipRows;         // indices already complete -> do NOT re-fire
+    int        toFireCount = 0;  // count of incomplete rows that WILL be re-fired
+    QString    reason;           // human-readable "why not" when canResume is false
+};
+ResumePlan planResume(bool recursiveGrep, const QList<bool> &rowComplete);
+
 } // namespace Nullock::Core::IntruderPersist

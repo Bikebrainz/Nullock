@@ -2480,6 +2480,15 @@ function IntruderTab({ intruder, dispatch }) {
     };
     reader.readAsText(file);
   };
+  // Resume a loaded, partially-completed attack: re-fires only the rows that
+  // never completed (the completed rows keep their results).
+  const doResume = () => {
+    NL.actions.intruderResume().then(res => {
+      if (res && res.ok === false)
+        alert("Nothing to resume -- load a partially-completed attack first "
+            + "(recursive-grep attacks can't be resumed, and a finished attack has nothing left).");
+    }).catch(() => alert("Resume failed"));
+  };
 
   return (
     <div className="tab-body" style={{ gridTemplateRows: "auto auto auto 1fr" }}>
@@ -2602,6 +2611,7 @@ function IntruderTab({ intruder, dispatch }) {
         </label>
         <button className="btn" onClick={doExport} title="Save this attack (config + results) to a JSON file">⭳ SAVE</button>
         <button className="btn" onClick={() => fileRef.current && fileRef.current.click()} title="Load a saved attack from JSON (refused while running)">⭱ LOAD</button>
+        <button className="btn" onClick={doResume} disabled={!!intruder.running} title="Resume a loaded attack -- re-fires only the rows that never completed">▷ RESUME</button>
         <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }}
                onChange={e => { const f = e.target.files && e.target.files[0]; if (f) doLoad(f); e.target.value = ""; }} />
       </div>

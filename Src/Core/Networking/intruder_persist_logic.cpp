@@ -181,4 +181,30 @@ SavedRun fromBytes(const QByteArray &bytes) {
     return fromJson(doc.object());
 }
 
+ResumePlan planResume(bool recursiveGrep, const QList<bool> &rowComplete) {
+    ResumePlan plan;
+    if (rowComplete.isEmpty()) {
+        plan.reason = QStringLiteral("no saved attack rows to resume");
+        return plan;
+    }
+    if (recursiveGrep) {
+        // Each recursive-grep request's payload is extracted from the PRIOR
+        // response; that chain walk isn't part of the saved per-row state, so a
+        // partial recursive attack can't be picked up mid-chain.
+        plan.reason = QStringLiteral("recursive-grep attacks can't be resumed");
+        return plan;
+    }
+    for (int i = 0; i < rowComplete.size(); ++i) {
+        if (rowComplete[i]) plan.skipRows.append(i);
+        else ++plan.toFireCount;
+    }
+    if (plan.toFireCount == 0) {
+        plan.skipRows.clear();
+        plan.reason = QStringLiteral("attack already complete -- nothing to resume");
+        return plan;
+    }
+    plan.canResume = true;
+    return plan;
+}
+
 } // namespace Nullock::Core::IntruderPersist

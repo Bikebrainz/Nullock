@@ -160,6 +160,35 @@ int main(int argc, char **argv) {
         chk("empty run round-trip", back.rows.isEmpty() && back.version == kFormatVersion);
     }
 
+    // ----- planResume: the "Resume" decision -----
+    {
+        // No rows -> nothing to resume.
+        const ResumePlan none = planResume(false, {});
+        chk("resume: no rows -> not resumable", !none.canResume && none.toFireCount == 0);
+
+        // A partially-fired attack: rows 0 and 2 complete, 1 and 3 pending.
+        const ResumePlan part = planResume(false, {true, false, true, false});
+        chk("resume: partial -> resumable", part.canResume);
+        chk("resume: partial -> skip the completed rows",
+            part.skipRows == QList<int>({0, 2}));
+        chk("resume: partial -> re-fire the pending rows", part.toFireCount == 2);
+
+        // Nothing fired yet -> resumable, fire every row (skip none).
+        const ResumePlan fresh = planResume(false, {false, false, false});
+        chk("resume: none complete -> resumable, skip none",
+            fresh.canResume && fresh.skipRows.isEmpty() && fresh.toFireCount == 3);
+
+        // Every row complete -> nothing left to resume.
+        const ResumePlan done = planResume(false, {true, true, true});
+        chk("resume: all complete -> not resumable",
+            !done.canResume && done.toFireCount == 0 && done.skipRows.isEmpty());
+
+        // Recursive-grep runs are unresumable regardless of completion state.
+        const ResumePlan rec = planResume(true, {true, false, false});
+        chk("resume: recursive-grep -> not resumable (even with pending rows)",
+            !rec.canResume && !rec.reason.isEmpty());
+    }
+
     std::fprintf(stderr, "intruder_persist_logic_test: %d passed, %d failed\n", pass, fail);
     return fail == 0 ? 0 : 1;
 }

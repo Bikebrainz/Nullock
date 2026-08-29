@@ -11,6 +11,16 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Intruder: Resume attack.** Completes Burp's save/resume — the "resume" half
+  that was missing. After you load a saved attack (which already round-trips the
+  target, config, and every result row incl. its raw payload combo), the new
+  **▷ RESUME** button re-fires only the rows that never completed; the
+  already-completed rows keep their results. Exposed as `Q_INVOKABLE resume()`,
+  `POST /api/intruder/resume`, and the ui-v2 button. The resume decision
+  (`IntruderPersist::planResume` — recursive-grep runs are unresumable, an
+  all-complete attack has nothing to resume, otherwise the completed row indices
+  are skipped) is unit-tested and mutation-proven; the firing reuses the existing
+  attack worker, so a resumed run behaves exactly like the original.
 - **Lab 65: SSRF via a report's image-embedding export feature.** A new
   teaching lab (`labs/65-ssrf-image-embed-export/`) built around a
   second outbound-fetch path the app's existing guard never covers:
