@@ -75,6 +75,28 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Three more dead detectors in the built-in JS extension detectors.** A second
+  node-verified dead-detector hunt (dom_taint / ouchie / crumbs) found three
+  checks that could never fire on the vulnerable response they were meant to
+  catch; each fix was bug-proved in node (finding absent on the old code,
+  present on the new, benign inputs still clean). (1) **DOM Taint** — the entire
+  `postMessage` source class was dead: the source patterns match the message
+  *listener registration* (`addEventListener('message'` / `onmessage`), but the
+  value that reaches a sink is `event.data`, which never contains that token, so
+  no `postMessage -> innerHTML/eval` flow was ever connected. The handler's event
+  parameter is now seeded into the taint map as origin `postMessage` before the
+  dataflow passes, so `el.innerHTML = e.data` (and one-hop `var d = e.data; …`)
+  fire. (2) **Ouchie** — the `.NET stack trace` signature `at <method> in
+  <path>:line N` could never match a real frame, because a genuine frame is
+  always `at <method>(<params>) in …` and the method-name character class
+  excludes `(`, so ` in ` was never reached; a trace-only leak (no
+  `System.*Exception:` header, which is all the other .NET signature covers) was
+  silently missed. The regex now matches the parameter list. (3) **Crumbs** — an
+  `XMLHttpRequest.open(method, url)` endpoint whose URL carries a query string
+  was dropped entirely: the `.open` extractor captured the first quoted token
+  (the HTTP *method*), and the plain-path pattern's charset excludes `?=&#`. A
+  dedicated two-argument `.open` pattern now captures the URL (single-arg
+  `window.open("…")` still works).
 - **Leaked AWS secret key missed when a context-less blob appears first in the
   response body.** The passive scanner's leaked-secret loop only inspected the
   *first* 40-character base64 run for the required `aws`/`secret`/`access`

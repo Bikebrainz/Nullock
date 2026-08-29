@@ -16,7 +16,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/dom_taint.js",
-      "sha256": "47607f68394fea784b90f1f6475f0b93d484f87c69767593a3a342dc41485108",
+      "sha256": "2d5e756d52dfc0d5c89efc109e88cd1e38eb1b4aea86fead5b30c49377a27fa9",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -273,7 +273,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/crumbs.js",
-      "sha256": "ec59d813b97aa9e284d2eeedee697a223432a5e67c7418fd2b4f3f5caa60a36e",
+      "sha256": "231e52217d0aa5e87c8605858eaa34f166e1a62386eef875b83d086ead64171c",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -294,7 +294,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/ouchie.js",
-      "sha256": "f56f06dae7fe11524c750913c1706a7c77ea4721fc0c0cc97958b8ef894d92a5",
+      "sha256": "f8e8d0bc4f1feb8eed4827439d8b71dc5ece683a1c1edb9ef2c8a9fee57a2b1d",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"

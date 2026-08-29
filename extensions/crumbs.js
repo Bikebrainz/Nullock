@@ -60,8 +60,18 @@ function extract(code) {
     // Quoted absolute-path or URL literals: "/api/v2/users", 'https://x/y'
     re = /["'`](https?:\/\/[^"'`\s]{4,180}|\/[A-Za-z0-9_~%\-./]{2,180})["'`]/g;
     while ((m = re.exec(code)) !== null) add(m[1]);
-    // fetch("...") / axios.get("...") / .open(method, "...") targets
+    // fetch("...") / axios.get("...") targets, and window.open("...") whose URL
+    // is the FIRST argument. (`.open` stays here so single-arg window.open is
+    // still caught; for XHR its first arg is the method, harmlessly rejected by
+    // add().)
     re = /(?:fetch|axios(?:\.\w+)?|\.open|url\s*[:=]|href\s*[:=]|api\s*[:=])\s*\(?\s*["'`]([^"'`]{2,180})["'`]/g;
+    while ((m = re.exec(code)) !== null) add(m[1]);
+    // XMLHttpRequest.open(method, url): the URL is the SECOND argument. The
+    // pattern above captures the FIRST quoted token (the HTTP method) and add()
+    // drops it; pattern-1 can't rescue a query-bearing URL because its path
+    // charset excludes ?=&#. So capture the 2nd arg explicitly, or a query-
+    // string endpoint referenced only via xhr.open is silently missed.
+    re = /\.open\s*\(\s*["'`][^"'`]*["'`]\s*,\s*["'`]([^"'`]{2,180})["'`]/g;
     while ((m = re.exec(code)) !== null) add(m[1]);
     var out = Object.keys(found);
     // Drop obvious non-endpoints: pure "//", protocol-relative junk, regexes.

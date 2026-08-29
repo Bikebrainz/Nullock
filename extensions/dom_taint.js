@@ -126,6 +126,19 @@ function sinkRegion(code, afterIdx) {
 // taint[varName] = originSourceName. Two passes to catch `y = x` chains.
 function collectTaint(code) {
     var taint = {};
+    // Seed a message handler's event parameter as origin "postMessage" BEFORE
+    // the propagation passes. The postMessage SOURCES above only match the
+    // listener REGISTRATION token (`addEventListener('message'` / `onmessage`),
+    // which never appears in a sink region or an assignment RHS -- the value
+    // that actually reaches a sink is `e.data`. So the source, on its own, could
+    // never connect to a sink and the whole postMessage class was dead. Binding
+    // the handler's parameter name to the origin lets the existing dataflow do
+    // the rest: `el.innerHTML = e.data` fires via taintedVarIn (`e` is a whole
+    // identifier there), and a `var d = e.data; box.innerHTML = d` chain is
+    // caught by the second pass -- hence seeding here, ahead of both passes.
+    var pmRe = /(?:addEventListener\s*\(\s*['"]message['"]\s*,\s*|(?:\bonmessage\b|\.onmessage)\s*=\s*)(?:function\b[^(]*)?\(?\s*([A-Za-z_$][\w$]*)/g;
+    var pm;
+    while ((pm = pmRe.exec(code)) !== null) taint[pm[1]] = "postMessage";
     var assignRe = /(?:\bvar\b|\blet\b|\bconst\b)?\s*([A-Za-z_$][\w$]*)\s*=\s*([^;\n]{0,240})/g;
     for (var pass = 0; pass < 2; pass++) {
         assignRe.lastIndex = 0;

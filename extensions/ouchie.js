@@ -55,7 +55,13 @@ var TRACES = [
     { re: /Exception in thread \"|caused by:.*Exception/i, name: "Java exception dump" },
     { re: /org\.springframework[\w.]*Exception|Whitelabel Error Page/, name: "Spring error" },
     { re: /Server Error in '\/?' Application|\[[A-Za-z]*Exception:|Microsoft\.[\w.]+Exception|System\.[\w.]+Exception:/, name: ".NET / ASP.NET error" },
-    { re: /at [\w.<>$]+ in [A-Za-z]:\\[^\n]+:line \d+/, name: ".NET stack trace" },
+    // Real .NET frames are `at <Method>(<ParamList>) in <File>:line <N>` -- the
+    // method name is ALWAYS followed by a parenthesised argument list ('()' for
+    // a parameterless method, '<Foo>d__6.MoveNext()' for async). The method-name
+    // class excludes '(', so without matching the '(...)' the required literal
+    // ' in ' is never reached and this signature was dead on every genuine
+    // trace. Match the arg list; also allow '[' ']' ',' for generic methods.
+    { re: /at [\w.<>$\[\],]+\([^)]*\) in [A-Za-z]:\\[^\n]+:line \d+/, name: ".NET stack trace" },
     { re: /(?:Fatal error|Parse error|Warning|Notice)\s*:\s*.+ in \/?[\w./-]+\.php on line \d+/i, name: "PHP error with path" },
     { re: /#\d+ \/[\w./-]+\(\d+\):|Stack trace:\s*#0/, name: "PHP stack trace" },
     { re: /(?:app\/controllers\/|\/gems\/|activerecord|actionpack)[\w./-]*\.rb:\d+/, name: "Ruby / Rails trace" },
