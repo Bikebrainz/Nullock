@@ -1336,6 +1336,29 @@
       "Confirm success: POST /flag {\"code\": \"<the leaked REFUND_CODE>\"} -- solved only by submitting the actual leaked code, proving the injection (not a guess) recovered it."
     ],
     "fix": "Fix: never concatenate untrusted user input into the same context as privileged instructions or secrets. Enforce role separation the model can't be talked out of (a real system/developer channel, not a string the user's turn gets appended next to), keep secrets out of the prompt entirely (call a separate authorized function instead), and filter output for known secret patterns before it reaches the user."
+  },
+  {
+    "slug": "60-dom-xss",
+    "num": "60",
+    "title": "DOM-based XSS via a location-derived innerHTML sink",
+    "vuln": "location.hash -> innerHTML, sink only fires in a real browser",
+    "port": "5060",
+    "category": "Client-side",
+    "difficulty": "Medium",
+    "desc": "The landing page reads the URL fragment (everything after `#`) entirely in client-side JavaScript and writes it straight into the DOM with `.innerHTML` -- no escaping, and the value never touches the server at all (a fragment is never sent in the HTTP request). The HTTP response is byte-identical no matter what the fragment holds, so a passive check that only greps the response body for a reflected payload finds nothing; the sink only fires once a real browser parses and runs the inline script. In Nullock: 1. nullock scope add http://localhost:5060/* 2. Fetch / through the Proxy -- the passive scanner's DOM-XSS sink check flags it anyway: it reads the inline script source itself and matches the `.innerHTML = ...location...` pattern, no execution needed. That confirms the sink exists; it does not yet prove it is exploitable, since not every match is (the pattern also fires on code that already sanitizes first). 3. Read the flagged script: it takes `location.hash`, strips a `#name=` prefix, and assigns the decoded remainder to `innerHTML` -- no escaping. That's a real sink. 4. Craft http://localhost:5060/#name=<img src=x onerror=\"fetch('/pwn')\"> and open it in an actual browser (the fragment never leaves the browser, so this step can't be driven through Repeater alone) -- the onerror handler fires and pings /pwn, proving the injected markup executed inside the page's own origin and session. 5. Confirm success: GET /flag using the SAME session cookie the browser used for step 4. Fix: never build DOM content from an untrusted string with innerHTML -- use textContent, or an HTML-sanitizing library, for anything derived from the URL (search, hash, referrer), postMessage, or any other client-controlled source.",
+    "hints": [
+      "Fetch the page and look at the inline script -- does the HTML actually change if you vary a query parameter? If not, where else could untrusted input be coming from?",
+      "A URL fragment (after `#`) is never sent to the server, only read by client-side JavaScript -- check what the script does with `location.hash` before it lands in the DOM.",
+      "Open http://localhost:5060/#name=<img src=x onerror=\"fetch('/pwn')\"> in a real browser, then GET /flag with the same session cookie -- the onerror firing is what proves the sink actually executes script."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5060/*",
+      "Fetch / through the Proxy -- the passive scanner's DOM-XSS sink check flags it anyway: it reads the inline script source itself and matches the `.innerHTML = ...location...` pattern, no execution needed. That confirms the sink exists; it does not yet prove it is exploitable, since not every match is (the pattern also fires on code that already sanitizes first).",
+      "Read the flagged script: it takes `location.hash`, strips a `#name=` prefix, and assigns the decoded remainder to `innerHTML` -- no escaping. That's a real sink.",
+      "Craft http://localhost:5060/#name=<img src=x onerror=\"fetch('/pwn')\"> and open it in an actual browser (the fragment never leaves the browser, so this step can't be driven through Repeater alone) -- the onerror handler fires and pings /pwn, proving the injected markup executed inside the page's own origin and session.",
+      "Confirm success: GET /flag using the SAME session cookie the browser used for step 4."
+    ],
+    "fix": "Fix: never build DOM content from an untrusted string with innerHTML -- use textContent, or an HTML-sanitizing library, for anything derived from the URL (search, hash, referrer), postMessage, or any other client-controlled source."
   }
 ];
   window.NULLOCK_LABS_XP = {

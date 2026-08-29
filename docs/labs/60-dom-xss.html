@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DOM-based XSS via a location-derived innerHTML sink — Nullock Labs</title>
+<meta name="description" content="location.hash -&gt; innerHTML, sink only fires in a real browser">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">60</span>
+    <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5060</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">DOM-based XSS via a location-derived innerHTML sink</h1>
+  <p class="lead" style="margin-top:12px;">The landing page reads the URL fragment (everything after `#`) entirely in client-side JavaScript and writes it straight into the DOM with `.innerHTML` -- no escaping, and the value never touches the server at all (a fragment is never sent in the HTTP request). The HTTP response is byte-identical no matter what the fragment holds, so a passive check that only greps the response body for a reflected payload finds nothing; the sink only fires once a real browser parses and runs the inline script. In Nullock: 1. nullock scope add http://localhost:5060/* 2. Fetch / through the Proxy -- the passive scanner&#x27;s DOM-XSS sink check flags it anyway: it reads the inline script source itself and matches the `.innerHTML = ...location...` pattern, no execution needed. That confirms the sink exists; it does not yet prove it is exploitable, since not every match is (the pattern also fires on code that already sanitizes first). 3. Read the flagged script: it takes `location.hash`, strips a `#name=` prefix, and assigns the decoded remainder to `innerHTML` -- no escaping. That&#x27;s a real sink. 4. Craft http://localhost:5060/#name=&lt;img src=x onerror=&quot;fetch(&#x27;/pwn&#x27;)&quot;&gt; and open it in an actual browser (the fragment never leaves the browser, so this step can&#x27;t be driven through Repeater alone) -- the onerror handler fires and pings /pwn, proving the injected markup executed inside the page&#x27;s own origin and session. 5. Confirm success: GET /flag using the SAME session cookie the browser used for step 4. Fix: never build DOM content from an untrusted string with innerHTML -- use textContent, or an HTML-sanitizing library, for anything derived from the URL (search, hash, referrer), postMessage, or any other client-controlled source.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/60-dom-xss/app.py
+# then open http://localhost:5060/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5060/*</code><code class="inline">http://127.0.0.1:5060/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Fetch the page and look at the inline script -- does the HTML actually change if you vary a query parameter? If not, where else could untrusted input be coming from?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>A URL fragment (after `#`) is never sent to the server, only read by client-side JavaScript -- check what the script does with `location.hash` before it lands in the DOM.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Open http://localhost:5060/#name=&lt;img src=x onerror=&quot;fetch(&#x27;/pwn&#x27;)&quot;&gt; in a real browser, then GET /flag with the same session cookie -- the onerror firing is what proves the sink actually executes script.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5060/*</li><li>Fetch / through the Proxy -- the passive scanner&#x27;s DOM-XSS sink check flags it anyway: it reads the inline script source itself and matches the `.innerHTML = ...location...` pattern, no execution needed. That confirms the sink exists; it does not yet prove it is exploitable, since not every match is (the pattern also fires on code that already sanitizes first).</li><li>Read the flagged script: it takes `location.hash`, strips a `#name=` prefix, and assigns the decoded remainder to `innerHTML` -- no escaping. That&#x27;s a real sink.</li><li>Craft http://localhost:5060/#name=&lt;img src=x onerror=&quot;fetch(&#x27;/pwn&#x27;)&quot;&gt; and open it in an actual browser (the fragment never leaves the browser, so this step can&#x27;t be driven through Repeater alone) -- the onerror handler fires and pings /pwn, proving the injected markup executed inside the page&#x27;s own origin and session.</li><li>Confirm success: GET /flag using the SAME session cookie the browser used for step 4.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never build DOM content from an untrusted string with innerHTML -- use textContent, or an HTML-sanitizing library, for anything derived from the URL (search, hash, referrer), postMessage, or any other client-controlled source.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "60-dom-xss";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 60 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

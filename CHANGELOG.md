@@ -11,6 +11,25 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 60: DOM-based XSS via a location-derived innerHTML sink.** A new
+  teaching lab (`labs/60-dom-xss/`) distinct from the existing reflected
+  (Lab 1) and stored (Lab 27) XSS labs: the vulnerable page's inline script
+  reads `location.hash` — a URL fragment, never sent to the server — and
+  writes it straight into the DOM with `.innerHTML`. The HTTP response is
+  byte-identical no matter what the fragment holds, so a response-body grep
+  finds nothing; Nullock's existing passive `dom-xss-innerhtml-location`
+  sink-pattern check (`passive_scanner.cpp`) flags the inline script anyway,
+  by reading the source rather than the traffic — but since a static match
+  isn't proof of exploitability, actually solving the lab requires opening a
+  crafted fragment URL in a real browser and confirming the sink executed
+  script (a genuine gap for any proxy-only tool, tracked honestly under the
+  DOM Invader parity item). Verified end-to-end with a Flask test client:
+  the passive-scanner regex matches the served page, `/flag` refuses before
+  the sink fires and succeeds only after `/pwn` is reached the way the
+  injected `onerror` handler would reach it. `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium`
+  difficulty + 3 hints); README.md and docs/index.html's 59->60 lab-count
+  strings updated alongside.
 - **Lab 59: LLM prompt injection (system-prompt / secret disclosure).** A new
   teaching lab (`labs/59-llm-prompt-injection/`) covering OWASP LLM01: a
   mock customer-support chatbot hands the raw user message straight into the
