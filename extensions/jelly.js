@@ -73,6 +73,20 @@ nullock.onResponse(function(entry) {
         // JSONP: leading `name(` wrapper.
         var wrap = head.match(/^([A-Za-z_$][\w$.\[\]'"]{0,120})\s*\(/);
         var cbVal = queryParam(url, CALLBACK_PARAMS);
+        // Reflected-XSS via the callback runs INDEPENDENTLY of the wrapper-name gate
+        // below: a real payload (<script>alert(1)</script>, <img src=x onerror=...>)
+        // makes the body start with '<', which fails the wrapper-name charset
+        // [A-Za-z_$...] so `wrap` is null and the gated block never sees it -- the
+        // canonical JSONP reflected-XSS was therefore silently missed. The callback
+        // value echoed VERBATIM at the body start AND carrying an HTML/JS metachar
+        // IS the reflected XSS, regardless of the wrapper shape. (report()'s key
+        // dedups against the wrapper-gated high report below.)
+        if (cbVal && head.indexOf(cbVal) === 0 && /[<>"'();=\s]/.test(cbVal)) {
+            report("high", "jsonp-callback-xss",
+                "JSONP callback reflected verbatim with JS/HTML metacharacters -- reflected XSS via the callback parameter",
+                "callback=" + clip(cbVal, 80) + "  ->  body starts: " + clip(head, 80), url,
+                "cbxss|" + url.split("?")[0]);
+        }
         if (wrap && (isJsCt || cbVal)) {
             var fn = wrap[1];
             var reflected = cbVal && head.indexOf(cbVal) === 0;   // callback value drives the wrapper name

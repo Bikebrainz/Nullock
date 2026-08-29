@@ -74,7 +74,11 @@ nullock.onResponse(function(entry) {
         var ct = headerVal(entry.headers, "Content-Type").toLowerCase();
         if (ct && ct.indexOf("html") < 0) return entry;
         var body = entry.bodyText || entry.bodyPreview || "";
-        if (!body || body.indexOf("<form") < 0) return entry;
+        // Case-INSENSITIVE prefilter to match the /gi extraction regex below: a
+        // literal lowercase indexOf("<form") dropped valid uppercase/mixed-case
+        // forms (<FORM METHOD="POST">, classic ASP/ColdFusion/older JSP output),
+        // so a genuinely CSRF-vulnerable uppercase POST form was silently skipped.
+        if (!body || !/<form\b/i.test(body)) return entry;
 
         var url = entry.url || "";
         var host = "";

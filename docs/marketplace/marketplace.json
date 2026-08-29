@@ -169,7 +169,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/waltz.js",
-      "sha256": "ea4e66f7a16b61388092250e2c70c94800a023638e121b331f63c94c2d8163f7",
+      "sha256": "341a5cf0a9eb0ffd0baca02fdf90bba53f396cf8d90f05dd480879b770ba89e2",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -252,7 +252,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/hallpass.js",
-      "sha256": "8895d630fd2df2e98b9cafe9211a53dc2d1247175bb5ebd67de99b54603ca3a8",
+      "sha256": "73b4b5be17e1e3950519f36352ce78a120690865a8a6f72289fb45fa96c7e3cb",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"
@@ -336,7 +336,7 @@
         "passive"
       ],
       "url": "https://raw.githubusercontent.com/Bikebrainz/Nullock/Nullock/extensions/jelly.js",
-      "sha256": "9d3b48d1365382357e4fd87a082df680244fdb03c756c326eb963e5f2daa4423",
+      "sha256": "4af5cb80b625dab46770bfc6d936694946ff60af189eb332f73102f015dbc35f",
       "hooks": [
         "nullock.onResponse",
         "nullock.reportFinding"

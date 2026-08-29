@@ -109,7 +109,12 @@ function auditAuthorize(url, q) {
             "authorize request, client_id=" + cid + ", response_type=" + rt, url,
             "pkce|" + splitUrl(url).base + "|" + cid);
     }
-    if (/^http:\/\//i.test(ruri) && (/\btoken\b/.test(rt) || rt.indexOf("code") >= 0)) {
+    // Include the OIDC implicit `id_token` flow, matching the implicit-flow check
+    // above: /\btoken\b/ can't match "id_token" (the '_' is a word char, so there's
+    // no word boundary before "token"), so an id_token implicit flow over a
+    // cleartext http:// redirect_uri -- which leaks the token on the callback --
+    // was silently missed.
+    if (/^http:\/\//i.test(ruri) && (/\btoken\b/.test(rt) || rt.indexOf("id_token") >= 0 || rt.indexOf("code") >= 0)) {
         report("medium", "oauth-cleartext-redirect-uri",
             "OAuth redirect_uri is cleartext http:// -- credentials/code exposed on the callback",
             "redirect_uri=" + clip(ruri, 80), url,

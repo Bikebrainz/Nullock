@@ -75,6 +75,25 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Three false-negatives in the built-in JS extension detectors.** A
+  node-verified dead-detector hunt over the BApp-style extensions found three
+  cases where a genuinely vulnerable response was silently missed: (1) **Jelly**
+  — the HIGH `jsonp-callback-xss` finding was *unreachable* for real HTML-injection
+  payloads, because it ran only inside a JSONP wrapper-name gate whose charset
+  (`[A-Za-z_$…]`) excludes the `<`/`>` a reflected `?callback=<script>…` starts
+  with. The reflected-XSS check now runs independently of the wrapper gate. (2)
+  **Hallpass** — a case-sensitive `indexOf("<form")` prefilter dropped
+  uppercase/mixed-case forms (`<FORM METHOD="POST">`, classic ASP/ColdFusion/older
+  JSP output) that its own `/gi` extractor would have scanned, so a CSRF-vulnerable
+  uppercase POST form was skipped; the prefilter is now `/​<form\b/i`. (3) **Waltz**
+  — the cleartext `redirect_uri` check used `/\btoken\b/` which can't match
+  `id_token` (the `_` blocks the word boundary) and omitted the `id_token` clause
+  its sibling implicit-flow check has, so an OIDC `response_type=id_token` flow
+  leaking its token over an `http://` callback was missed. Each fix was verified in
+  node against a realistic vulnerable response *and* a benign one (no new false
+  positives), and bug-proved (the finding is absent on the old code). Manifest
+  hashes + marketplace pages regenerated. (Four other extensions —
+  peekaboo/sammy/sniffy/mappy — were audited and came back sound.)
 - **Request-smuggling missed every delayed-but-answered desync.** The CL.TE/TE.CL
   timing probe's transport gate required BOTH confirming sends to end in an
   open-silent read Timeout (past the 15s window). But a real desync commonly
