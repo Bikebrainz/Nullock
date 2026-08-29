@@ -142,6 +142,7 @@ DIFFICULTY = {
     "61-second-order-sqli": "Hard",
     "62-graphql-batching-ratelimit-bypass": "Medium",
     "63-hidden-param-admin-bypass": "Medium",
+    "64-ssrf-redirect-bypass": "Medium",
 }
 
 
@@ -466,6 +467,11 @@ HINTS = {
         "/admin always 403s and nothing on the site -- the page, its JS, robots.txt -- ever mentions any other parameter for it. Reading the site harder won't help; this isn't a linked feature.",
         "Run Nullock's parameter miner (SCANS tab's Assess & audit -> param-miner) against GET /admin -- it brute-forces a wordlist of candidate query parameter names and watches for a response STATUS FLIP away from the 403 baseline.",
         "The miner isolates \"bypass\" as the one name that flips /admin to 200. GET /admin?bypass=1 (any non-empty value works) returns the admin panel with the flag.",
+    ],
+    "64-ssrf-redirect-bypass": [
+        "/fetch?url=http://127.0.0.1:5064/internal gets blocked outright -- the filter clearly checks the URL string for a handful of substrings. What does it NOT check?",
+        "The blocklist only ever looks at the URL you submit, never where the request actually ends up. /goto?b64=<base64> is an open redirector on this same app -- and `requests` follows redirects by default.",
+        "Base64-encode http://127.0.0.1:5064/internal, then GET /fetch?url=http://localhost:5064/goto?b64=<that>. Neither \"127.0.0.1\" nor \"/internal\" appears in the URL the filter checks, so it sails through, /goto 302s straight at the real target, and /fetch follows the redirect. GET /flag once that response comes back.",
     ],
 }
 

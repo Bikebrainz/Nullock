@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF blocklist bypass via a same-app HTTP redirect — Nullock Labs</title>
+<meta name="description" content="substring blocklist beaten by a same-app redirect hop">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">64</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5064</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF blocklist bypass via a same-app HTTP redirect</h1>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... blocks any URL whose STRING contains &quot;127.0.0.1&quot;, &quot;169.254.169.254&quot;, or &quot;/internal&quot; -- a naive substring blocklist plenty of real apps ship. It only ever inspects the URL the client submitted; it never looks at where the outbound request actually ends up, and `requests` follows redirects by default. So the blocklist stops a direct hit but does nothing once a redirect is involved. The app also exposes an innocuous-looking /goto?b64=&lt;base64&gt; link redirector (think a &quot;share this link&quot; / URL-shortener feature that nobody thought to connect to the SSRF fix). Base64-encoding the real target hides the blocked substrings from /fetch&#x27;s filter; /fetch happily requests /goto, which 302s straight at the forbidden 127.0.0.1 /internal endpoint, and the outbound client silently follows it there. In Nullock: 1. nullock scope add http://localhost:5064/* 2. /fetch?url=http://127.0.0.1:5064/internal -- 400 &quot;blocked host&quot;: the naive filter works against a direct hit. 3. Base64-encode the real target yourself (or note the one below) and request /fetch?url=http://localhost:5064/goto?b64=&lt;that&gt; instead -- 200, the internal secret comes back. The blocklist never saw &quot;127.0.0.1&quot; or &quot;/internal&quot; anywhere in the URL it checked. 4. Confirm success: GET /flag -- solved only once /fetch&#x27;s own outbound request followed the redirect and read the internal secret back (browsing /internal directly does not solve it -- the point is the SSRF pivot through /fetch, not the endpoint existing). Fix: validate the FINAL destination after following every redirect (or set allow_redirects=False and re-check each hop yourself) -- never trust a blocklist that only ever looks at the string the client sent. (Needs `requests`, like the labs&#x27; other SSRF entries.)</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/64-ssrf-redirect-bypass/app.py
+# then open http://localhost:5064/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5064/*</code><code class="inline">http://127.0.0.1:5064/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>/fetch?url=http://127.0.0.1:5064/internal gets blocked outright -- the filter clearly checks the URL string for a handful of substrings. What does it NOT check?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The blocklist only ever looks at the URL you submit, never where the request actually ends up. /goto?b64=&lt;base64&gt; is an open redirector on this same app -- and `requests` follows redirects by default.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Base64-encode http://127.0.0.1:5064/internal, then GET /fetch?url=http://localhost:5064/goto?b64=&lt;that&gt;. Neither &quot;127.0.0.1&quot; nor &quot;/internal&quot; appears in the URL the filter checks, so it sails through, /goto 302s straight at the real target, and /fetch follows the redirect. GET /flag once that response comes back.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5064/*</li><li>/fetch?url=http://127.0.0.1:5064/internal -- 400 &quot;blocked host&quot;: the naive filter works against a direct hit.</li><li>Base64-encode the real target yourself (or note the one below) and request /fetch?url=http://localhost:5064/goto?b64=&lt;that&gt; instead -- 200, the internal secret comes back. The blocklist never saw &quot;127.0.0.1&quot; or &quot;/internal&quot; anywhere in the URL it checked.</li><li>Confirm success: GET /flag -- solved only once /fetch&#x27;s own outbound request followed the redirect and read the internal secret back (browsing /internal directly does not solve it -- the point is the SSRF pivot through /fetch, not the endpoint existing).</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: validate the FINAL destination after following every redirect (or set allow_redirects=False and re-check each hop yourself) -- never trust a blocklist that only ever looks at the string the client sent.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "64-ssrf-redirect-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 64 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 64: SSRF blocklist bypass via a same-app HTTP redirect.** A new
+  teaching lab (`labs/64-ssrf-redirect-bypass/`) distinct from the
+  existing unfiltered-SSRF labs (Lab 5, Lab 40): `/fetch?url=...` rejects
+  any URL string containing `127.0.0.1`, `169.254.169.254`, or
+  `/internal` outright, but the filter only ever inspects the literal
+  string the client submitted -- never where the outbound request
+  actually lands, and `requests` follows redirects by default. The app's
+  own `/goto?b64=<base64>` open redirector (an innocuous "share a link"
+  feature) 302s wherever its base64 blob decodes to with no validation,
+  so base64-encoding the blocked target hides it from the substring
+  filter entirely: `/fetch` accepts the `/goto` URL, follows the
+  redirect, and lands on the forbidden `/internal` endpoint anyway.
+  Verified end-to-end over HTTP (curl): a direct hit to `/internal` 400s
+  ("blocked host"), `GET /flag` is unsolved beforehand, browsing
+  `/internal` directly does NOT solve it (the point is the SSRF pivot,
+  not the endpoint's existence), and the base64-redirect bypass through
+  `/fetch` returns the internal secret and flips `/flag` to
+  `solved:true`. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, a curated `Medium` difficulty + 3 hints);
+  README.md and docs/index.html's 63->64 lab-count strings updated
+  alongside.
 - **Lab 63: A hidden parameter unlocks the admin panel, found only by
   parameter mining.** A new teaching lab
   (`labs/63-hidden-param-admin-bypass/`) built around Nullock's parameter

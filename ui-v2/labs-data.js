@@ -1431,6 +1431,28 @@
       "Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter."
     ],
     "fix": "Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter."
+  },
+  {
+    "slug": "64-ssrf-redirect-bypass",
+    "num": "64",
+    "title": "SSRF blocklist bypass via a same-app HTTP redirect",
+    "vuln": "substring blocklist beaten by a same-app redirect hop",
+    "port": "5064",
+    "category": "SSRF & fetch",
+    "difficulty": "Medium",
+    "desc": "/fetch?url=... blocks any URL whose STRING contains \"127.0.0.1\", \"169.254.169.254\", or \"/internal\" -- a naive substring blocklist plenty of real apps ship. It only ever inspects the URL the client submitted; it never looks at where the outbound request actually ends up, and `requests` follows redirects by default. So the blocklist stops a direct hit but does nothing once a redirect is involved. The app also exposes an innocuous-looking /goto?b64=<base64> link redirector (think a \"share this link\" / URL-shortener feature that nobody thought to connect to the SSRF fix). Base64-encoding the real target hides the blocked substrings from /fetch's filter; /fetch happily requests /goto, which 302s straight at the forbidden 127.0.0.1 /internal endpoint, and the outbound client silently follows it there. In Nullock: 1. nullock scope add http://localhost:5064/* 2. /fetch?url=http://127.0.0.1:5064/internal -- 400 \"blocked host\": the naive filter works against a direct hit. 3. Base64-encode the real target yourself (or note the one below) and request /fetch?url=http://localhost:5064/goto?b64=<that> instead -- 200, the internal secret comes back. The blocklist never saw \"127.0.0.1\" or \"/internal\" anywhere in the URL it checked. 4. Confirm success: GET /flag -- solved only once /fetch's own outbound request followed the redirect and read the internal secret back (browsing /internal directly does not solve it -- the point is the SSRF pivot through /fetch, not the endpoint existing). Fix: validate the FINAL destination after following every redirect (or set allow_redirects=False and re-check each hop yourself) -- never trust a blocklist that only ever looks at the string the client sent. (Needs `requests`, like the labs' other SSRF entries.)",
+    "hints": [
+      "/fetch?url=http://127.0.0.1:5064/internal gets blocked outright -- the filter clearly checks the URL string for a handful of substrings. What does it NOT check?",
+      "The blocklist only ever looks at the URL you submit, never where the request actually ends up. /goto?b64=<base64> is an open redirector on this same app -- and `requests` follows redirects by default.",
+      "Base64-encode http://127.0.0.1:5064/internal, then GET /fetch?url=http://localhost:5064/goto?b64=<that>. Neither \"127.0.0.1\" nor \"/internal\" appears in the URL the filter checks, so it sails through, /goto 302s straight at the real target, and /fetch follows the redirect. GET /flag once that response comes back."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5064/*",
+      "/fetch?url=http://127.0.0.1:5064/internal -- 400 \"blocked host\": the naive filter works against a direct hit.",
+      "Base64-encode the real target yourself (or note the one below) and request /fetch?url=http://localhost:5064/goto?b64=<that> instead -- 200, the internal secret comes back. The blocklist never saw \"127.0.0.1\" or \"/internal\" anywhere in the URL it checked.",
+      "Confirm success: GET /flag -- solved only once /fetch's own outbound request followed the redirect and read the internal secret back (browsing /internal directly does not solve it -- the point is the SSRF pivot through /fetch, not the endpoint existing)."
+    ],
+    "fix": "Fix: validate the FINAL destination after following every redirect (or set allow_redirects=False and re-check each hop yourself) -- never trust a blocklist that only ever looks at the string the client sent."
   }
 ];
   window.NULLOCK_LABS_XP = {
