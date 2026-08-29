@@ -74,8 +74,14 @@ QList<QPair<QString, QString>> originSpecs(const QString &host, bool tls) {
     if (!reg.isEmpty())
         specs << qMakePair("https://attacker-" + reg, QStringLiteral("suffix-domain"));
     // FQDN root-dot: a host parser that strips the trailing dot before its
-    // allow-list check, then reflects our raw dotted origin.
-    specs << qMakePair(QStringLiteral("https://attacker.example."),
+    // allow-list check, then reflects our raw dotted origin. The probe MUST be the
+    // TARGET's OWN origin with a trailing dot -- after the server's dot-strip that
+    // matches the allow-list, so the raw dotted value is reflected (an exploitable
+    // credentialed cross-origin read from https://<target>. which resolves to the
+    // same host). The old attacker.example. needle strips to attacker.example,
+    // never allow-listed, so it could never exercise this normalization class --
+    // only a reflect-all server, which the 'arbitrary' probe already flags critical.
+    specs << qMakePair((tls ? QStringLiteral("https://") : QStringLiteral("http://")) + target + QStringLiteral("."),
                        QStringLiteral("trailing-dot"));
     // The site's OWN host over the other scheme. NOT attacker-controlled, so
     // reflecting it is only exploitable from a network (MITM) position --

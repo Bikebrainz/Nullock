@@ -11,6 +11,19 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **CORS trailing-dot origin-normalization bypass was undetectable.** The active
+  CORS tester's `trailing-dot` probe (for a server that strips an FQDN root dot
+  before its allow-list check, then reflects the raw dotted origin) sent an
+  *attacker* origin, `https://attacker.example.` — which strips to
+  `attacker.example`, never in any allow-list, so a server vulnerable *only* to
+  dot-normalization never reflected it and was reported clean. The probe now
+  sends the **target's own** origin with a trailing dot (`https://<target>.`),
+  which the server's dot-strip matches against the allow-list and reflects — the
+  exact normalization class the probe is named for; the (already-tested)
+  `classifyCorsProbe` then raises it as `cors-origin-normalization`. Bug-proved
+  and gauntlet green (ctest 100/100, probe_smoke 159/159). (Six other probes —
+  nosqli/ldap/crlf/open_redirect/host_header/jwt — were audited and came back
+  sound.)
 - **Three active-probe false-negatives (a genuinely vulnerable target read
   clean).** A dead-detector hunt over the active-scan probes found three, each
   fixed + regression-tested + bug-proved: (1) **SQL injection missed MariaDB.**

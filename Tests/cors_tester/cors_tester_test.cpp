@@ -87,10 +87,16 @@ int main(int argc, char **argv) {
             chk("specs: suffix endsWith bare reg",  o.endsWith("target.com"));
             chk("specs: suffix !endsWith .reg",     !o.endsWith(".target.com"));
         }
-        // The trailing-dot (FQDN root) probe.
+        // The trailing-dot (FQDN root) probe MUST present the TARGET's OWN origin
+        // with a trailing dot -- so a server that strips the dot before its
+        // allow-list check matches it and reflects the raw dotted value. The old
+        // needle was an ATTACKER origin (attacker.example.), which strips to a
+        // never-allow-listed host and so could NEVER exercise the normalization
+        // class this probe is named for (only a reflect-all server, already caught
+        // by 'arbitrary').
         chk("specs: trailing-dot present", hasLabel(specs, "trailing-dot"));
-        chk("specs: trailing-dot origin",
-            originForLabel(specs, "trailing-dot") == "https://attacker.example.");
+        chk("specs: trailing-dot is the target's own origin + '.'",
+            originForLabel(specs, "trailing-dot") == "https://api.target.com.");
         // scheme-swap flips https->http for a TLS target.
         chk("specs: scheme-swap is http",
             originForLabel(specs, "scheme-swap") == "http://api.target.com");
