@@ -17,12 +17,20 @@ bool confirmsSmuggle(int d1Ms, Nullock::Core::SocketOutcome d1Out,
     if (d1Ms - baselineMs < kDelayThresholdMs) return false;   // not a candidate
     if (d2Ms - baselineMs < kDelayThresholdMs) return false;   // didn't reproduce
     if (controlSlow) return false;                             // tarpit veto
-    // Transport gate (the false-positive fix): a genuine desync leaves the
-    // socket open and silent -> our read times out; a hold-then-RST quarantine
-    // mimics the delay but ends in a reset. Grade only the timeout shape, on
-    // BOTH confirming sends.
+    // Transport gate: a genuine desync leaves both confirming sends in a DESYNC
+    // SHAPE -- the socket stayed open and either (a) timed out, open-silent, past
+    // our read window (Timeout), OR (b) the back-end eventually answered after
+    // stalling on the bytes that never came (a completed response, Ok) -- the
+    // common case when the back-end's OWN read timeout fires before our 15s
+    // window. A hold-then-RST / ConnectError quarantine mimics the delay but ends
+    // in a reset; if EITHER send ends that way it is not graded. (The prior gate
+    // required Timeout on BOTH sends and so silently dropped every delayed-but-
+    // answered desync; the delay-threshold, reproduce and controlSlow gates above
+    // remain the primary discriminators, so accepting Ok does not open the
+    // quarantine FP this gate was added for.)
     const auto TO = Nullock::Core::SocketOutcome::Timeout;
-    return d1Out == TO && d2Out == TO;
+    const auto OK = Nullock::Core::SocketOutcome::Ok;
+    return (d1Out == TO || d1Out == OK) && (d2Out == TO || d2Out == OK);
 }
 
 namespace {

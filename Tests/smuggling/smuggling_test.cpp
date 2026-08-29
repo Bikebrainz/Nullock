@@ -187,14 +187,29 @@ int main(int argc, char **argv) {
         // tarpit veto: a reliably-slow control means the delay isn't a desync.
         chk("verdict: controlSlow -> NO (tarpit veto)",
             !confirmsSmuggle(slow, SO::Timeout, slow, SO::Timeout, true, base));
-        // transport gate: a hold-then-RST quarantine (Reset/ConnectError) mimics
-        // the delay but is NOT the open-silent desync shape -> not graded.
-        chk("verdict: d1 ends in Reset (not Timeout) -> NO (transport gate)",
+        // transport gate: a hold-then-RST / ConnectError quarantine mimics the
+        // delay but is NOT a desync shape; if EITHER confirming send ends that way
+        // it is not graded (the delay/reproduce/controlSlow gates already ran).
+        chk("verdict: d1 ends in Reset -> NO (quarantine veto)",
             !confirmsSmuggle(slow, SO::Reset, slow, SO::Timeout, false, base));
-        chk("verdict: d2 ends in ConnectError -> NO (transport gate)",
+        chk("verdict: d2 ends in ConnectError -> NO (quarantine veto)",
             !confirmsSmuggle(slow, SO::Timeout, slow, SO::ConnectError, false, base));
-        chk("verdict: both Ok (fast socket) -> NO",
-            !confirmsSmuggle(slow, SO::Ok, slow, SO::Ok, false, base));
+        chk("verdict: one Ok + one Reset -> NO (quarantine veto on either send)",
+            !confirmsSmuggle(slow, SO::Ok, slow, SO::Reset, false, base));
+        // A delayed-but-ANSWERED desync: the back-end's own read timeout fires
+        // before our 15s window, so the socket completes with Ok (not an
+        // open-silent Timeout). When both sends are slow and the control is fast,
+        // that is still a real desync -- the old Timeout-on-both gate MISSED this
+        // common shape entirely (a permanent false negative for CL.TE/TE.CL
+        // desyncs against back-ends with a sub-15s read timeout).
+        chk("verdict: both slow + both Ok (delayed completed) -> CONFIRM",
+            confirmsSmuggle(slow, SO::Ok, slow, SO::Ok, false, base));
+        chk("verdict: Timeout + Ok (mixed desync shapes) -> CONFIRM",
+            confirmsSmuggle(slow, SO::Timeout, slow, SO::Ok, false, base));
+        // ...but a delayed-Ok that did NOT reproduce (2nd send fast) is still
+        // rejected by the reproduce gate -- Ok didn't weaken it.
+        chk("verdict: delayed-Ok that didn't reproduce (2nd fast) -> NO",
+            !confirmsSmuggle(slow, SO::Ok, fast, SO::Ok, false, base));
     }
 
     std::fprintf(stderr, "smuggling_test: %d passed, %d failed\n", pass, fail);

@@ -52,6 +52,19 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Request-smuggling missed every delayed-but-answered desync.** The CL.TE/TE.CL
+  timing probe's transport gate required BOTH confirming sends to end in an
+  open-silent read Timeout (past the 15s window). But a real desync commonly
+  yields a *completed* response instead — the back-end's own read timeout (often
+  <15s) fires on the bytes that never came, so the socket completes with `Ok`, not
+  `Timeout`. Those desyncs were silently dropped. The gate now accepts either
+  desync shape (`Timeout` **or** `Ok`) on both sends while still vetoing a
+  hold-then-`Reset`/`ConnectError` quarantine on *either* send — so it catches the
+  delayed-response desync without reopening the quarantine false positive the gate
+  was added for (the delay-threshold, reproduce, and control-slow gates remain the
+  primary discriminators). Bug-proved (the delayed-`Ok` cases fail on the old gate;
+  the quarantine-veto and both-`Timeout` cases stay green). Gauntlet green (ctest
+  100/100, probe_smoke 159/159).
 - **Server-side prototype pollution missed against array-response endpoints.**
   The `json spaces` gadget reformats *every* `res.json()` response, but the
   confirmation signal (`indentedByN`) anchored only on an object root (`{` +
