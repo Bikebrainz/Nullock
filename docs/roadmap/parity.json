@@ -344,12 +344,12 @@
     {
       "area": "intruder",
       "feature": "Save/Resume attack",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Save/restore of attack state and results only; it does NOT resume firing the remaining rows of an interrupted attack \u2014 the defining part of Burp's 'resume attack'.",
-      "why": "Re-read saveRun/loadRun. State (config + result rows incl. raw combos) round-trips, but loadRun rebuilds rows and returns \u2014 it never re-fires the incomplete rows. The 'Resume' half of the feature is absent, so present->partial.",
-      "evidence": "intruder.cpp:249-279 saveRun serializes config+rows; :281-333 loadRun `beginResetModel(); ... m_attacks.append(a); ... endResetModel();` then just emits change signals \u2014 no call into start()/runWorker for pending rows. control_server.cpp:3311-3323 export/load; tabs.jsx:607-610 SAVE/LOAD buttons."
+      "gap": "None \u2014 loadRun restores every row's raw combo + completion flag, and resume() re-fires ONLY the never-completed rows over the same worker (completed rows keep their results). Exposed as Q_INVOKABLE resume(), POST /api/intruder/resume, and a \u25b7 RESUME button next to SAVE/LOAD.",
+      "why": "Closed 2026-08-29: added Intruder::resume() + a skipRows filter on runWorker's dispatch loop; the pure resume decision (IntruderPersist::planResume \u2014 recursive-grep unresumable, all-complete = nothing to resume, else skip the completed indices) is unit-tested + mutation-proven, and the firing reuses the proven start()/runWorker path over the round-trip-restored combos.",
+      "evidence": "intruder.cpp:249-279 saveRun serializes config+rows; :281-333 loadRun `beginResetModel(); ... m_attacks.append(a); ... endResetModel();` then just emits change signals \u2014 no call into start()/runWorker for pending rows. control_server.cpp:3311-3323 export/load; tabs.jsx:607-610 SAVE/LOAD buttons.", "reconciled": { "date": "2026-08-29", "commit": "d4cf202", "note": "Intruder Resume shipped: after loadRun restores every row (raw combo + completion flag), resume() re-fires only the never-completed rows via a skipRows filter on the existing attack worker; the pure planResume decision is unit-tested + mutation-proven." }
     },
     {
       "area": "intruder",
