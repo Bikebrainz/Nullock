@@ -151,6 +151,17 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **GraphQL depth-limit probe could never confirm a missing depth limit.** The
+  active `graphql-depth-bypass` probe sent a 10-level query built from a
+  fabricated field (`{a{a{…{__typename}}}}`), but GraphQL validates field
+  existence *before* applying any depth rule, so every real server — with or
+  without a depth limit — rejected it with `Cannot query field "a"…`, which was
+  the probe's own negative marker → the finding was suppressed on the exact
+  misconfiguration it targets. The probe now sends a schema-valid deep query
+  built from the self-recursive `__Type.ofType` introspection chain: a server
+  with no depth limit answers it (`"data"` present → fires), while a
+  depth-limited or introspection-disabled server returns errors with no `"data"`
+  and stays silent. (Marker logic node-verified against realistic responses.)
 - **Google API keys ending in `-` were silently missed by two more secret
   detectors.** A second dead-detector hunt found the same trailing-`\b` boundary
   bug (already fixed once in the passive scanner) in `secret_logic.cpp` and

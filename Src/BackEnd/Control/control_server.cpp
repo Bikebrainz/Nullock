@@ -7546,10 +7546,22 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             },
             {
                 "depth-bypass",
-                R"({"query":"{a{a{a{a{a{a{a{a{a{a{__typename}}}}}}}}}}}"})",
-                "\"data\"", "Cannot query field",
+                // A deep query built from the ALWAYS-VALID self-recursive
+                // __Type.ofType introspection chain (depth ~11). The old probe
+                // nested a fabricated field `a` 10 deep -- but GraphQL validates
+                // field existence BEFORE any depth rule, so every real server
+                // (depth-limited or not) rejected it with "Cannot query field",
+                // which was this probe's own missMarker -> the finding was
+                // suppressed on the exact misconfiguration (no depth limit) it
+                // targets. With a schema-valid deep query, a server WITHOUT a
+                // depth limit answers it ({"data":{"__schema":...}}) and fires,
+                // while a depth-limited (or introspection-disabled) server
+                // returns errors with no "data" and stays silent -- no bogus
+                // "Cannot query field" miss to swallow, so the missMarker drops.
+                R"({"query":"{__schema{types{ofType{ofType{ofType{ofType{ofType{ofType{ofType{ofType{name}}}}}}}}}}}"})",
+                "\"data\"", "",
                 "medium", "graphql-depth-bypass",
-                "GraphQL allows 10-level deep nested query (no depth limit)",
+                "GraphQL answers a deep (10+ level) nested query (no depth limit)",
                 "set max query depth (graphql-depth-limit etc.)",
             },
             {
