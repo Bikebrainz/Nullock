@@ -41,6 +41,18 @@ int main(int argc, char **argv) {
     // A run of 7 spaces inside a string value must NOT match (no { newline anchor).
     chk("indent: 7 spaces inside a value -> no (FP guard)",
         !indentedByN(QByteArray("{\"note\":\"a       b\"}"), 7));
+    // A top-level ARRAY reformatted with our injected 7-space indent must confirm
+    // too: an array-response observation endpoint was silently unconfirmable
+    // though the gate admits it. Elements sit at 7 (the object anchor above misses
+    // them -- their keys are at 14).
+    chk("indent: array-of-objects 7-space -> yes",
+        indentedByN(QByteArray("[\n       {\n              \"user\":1}]"), 7));
+    chk("indent: array-of-strings 7-space (LF) -> yes",
+        indentedByN(QByteArray("[\n       \"a\",\n       \"b\"]"), 7));
+    chk("indent: array-of-strings 7-space (CRLF) -> yes",
+        indentedByN(QByteArray("[\r\n       \"a\"]"), 7));
+    chk("indent: array indented 14 (deeper level) -> no",
+        !indentedByN(QByteArray("[\n              {\"x\":1}]"), 7));
 
     // ---- looksJsonObject ------------------------------------------------
     chk("json: leading brace", looksJsonObject(QByteArray("  \n {\"a\":1}")));

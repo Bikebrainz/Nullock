@@ -44,7 +44,22 @@ bool indentedByN(const QByteArray &body, int n) {
     // spaces inside a string value from matching. Handles LF and CRLF.
     const QByteArray sp(n, ' ');
     return body.indexOf(QByteArray("{\n")   + sp + "\"") >= 0
-        || body.indexOf(QByteArray("{\r\n") + sp + "\"") >= 0;
+        || body.indexOf(QByteArray("{\r\n") + sp + "\"") >= 0
+        // ...or a top-level ARRAY reformatted the same way. An array-response
+        // observation endpoint (a list of records/strings) indents its elements by
+        // exactly n; the object anchor above misses it entirely (the objects' keys
+        // sit at 2n), so a real array-returning target was silently unconfirmable
+        // even though the gate admits it. Anchor `[` + newline + exactly n spaces +
+        // the first element's opener (`{` object, `"` string, `[` nested array). A
+        // deeper level has 2n spaces (a space at position n+1), so nesting can't
+        // false-match; and the confirm's revert-after-cleanup still gates it, so a
+        // coincidentally-n-space server never confirms.
+        || body.indexOf(QByteArray("[\n")   + sp + "{")  >= 0
+        || body.indexOf(QByteArray("[\r\n") + sp + "{")  >= 0
+        || body.indexOf(QByteArray("[\n")   + sp + "\"") >= 0
+        || body.indexOf(QByteArray("[\r\n") + sp + "\"") >= 0
+        || body.indexOf(QByteArray("[\n")   + sp + "[")  >= 0
+        || body.indexOf(QByteArray("[\r\n") + sp + "[")  >= 0;
 }
 
 bool encodingUnreadable(const QString &contentEncoding) {

@@ -52,6 +52,15 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Server-side prototype pollution missed against array-response endpoints.**
+  The `json spaces` gadget reformats *every* `res.json()` response, but the
+  confirmation signal (`indentedByN`) anchored only on an object root (`{` +
+  newline + N spaces + `"`), while the admission gate happily accepts a JSON
+  array. So a vulnerable observation endpoint that returns a top-level array was
+  run but could never confirm — silently clean. Extended the confirm to array
+  roots (`[` + newline + exactly N spaces + the first element's opener), which the
+  revert-after-cleanup check still gates, so no new false positives. Bug-proved;
+  gauntlet green (ctest 100/100, probe_smoke 159/159).
 - **CORS trailing-dot origin-normalization bypass was undetectable.** The active
   CORS tester's `trailing-dot` probe (for a server that strips an FQDN root dot
   before its allow-list check, then reflects the raw dotted origin) sent an
