@@ -139,6 +139,7 @@ DIFFICULTY = {
     "58-http-request-smuggling": "Hard",
     "59-llm-prompt-injection": "Easy",
     "60-dom-xss": "Medium",
+    "61-second-order-sqli": "Hard",
 }
 
 
@@ -448,6 +449,11 @@ HINTS = {
         "Fetch the page and look at the inline script -- does the HTML actually change if you vary a query parameter? If not, where else could untrusted input be coming from?",
         "A URL fragment (after `#`) is never sent to the server, only read by client-side JavaScript -- check what the script does with `location.hash` before it lands in the DOM.",
         "Open http://localhost:5060/#name=<img src=x onerror=\"fetch('/pwn')\"> in a real browser, then GET /flag with the same session cookie -- the onerror firing is what proves the sink actually executes script.",
+    ],
+    "61-second-order-sqli": [
+        "Registration and login both use bound parameters -- probing either one directly with a `'` gets you nowhere. What OTHER feature reads a value back out of the database and reuses it?",
+        "/change-password fetches your own username from the database first, then builds its UPDATE. If your username itself were a SQL fragment, what would that UPDATE actually run?",
+        "Register `administrator'--` as your username, log in as it, then POST {\"new_password\": \"pwned123\"} to /change-password -- the trailing `'--` comments out the rest of the WHERE clause, so the UPDATE targets `administrator`, not you. Log in as administrator/pwned123 and GET /flag.",
     ],
 }
 

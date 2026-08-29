@@ -1359,6 +1359,30 @@
       "Confirm success: GET /flag using the SAME session cookie the browser used for step 4."
     ],
     "fix": "Fix: never build DOM content from an untrusted string with innerHTML -- use textContent, or an HTML-sanitizing library, for anything derived from the URL (search, hash, referrer), postMessage, or any other client-controlled source."
+  },
+  {
+    "slug": "61-second-order-sqli",
+    "num": "61",
+    "title": "Second-order SQL injection via a reused username",
+    "vuln": "payload stored via a safe INSERT, detonates in a later unsafe UPDATE",
+    "port": "5061",
+    "category": "Injection",
+    "difficulty": "Hard",
+    "desc": "Registration is safe: the username you submit is stored with a parameterized INSERT, so a `'` in it can't break that query. The change-password feature is the trap: it looks up your username from the database (not from the request) and then builds its UPDATE with old-fashioned string formatting instead of a bound parameter. A payload that did nothing on the way in (registration) detonates later, in a completely different query, once the stored value is reused unsafely -- the defining trait of second-order (a.k.a. stored/second-round) SQLi. In Nullock: 1. nullock scope add http://localhost:5061/* 2. Nullock's `sqli` active probe sends its payloads straight at each request's own parameters and grades the immediate response -- it has nothing to inject here: /register and /change-password both take entirely benign-looking values on every single request you can throw at them directly. Run the probe against both and it reports clean. This is a genuine, honest blind spot: catching a payload that is inert in the request that carries it and only fires several requests and one stored round-trip later needs a multi-step, data-flow-aware tester, not a single-shot active probe. Manual testing (or Sequencer-style flow replay) is what finds this class -- exactly what this lab is for. 3. Register a normal account (say, `mallory` / `pw1`) and log in -- via Repeater, watch /change-password's own behavior with a harmless new password first, to see it succeeds for your own row. 4. Register a SECOND account whose username is the payload: `administrator'--` / any password. Nullock's Inspector shows the raw response: registration succeeds and never reflects the username anywhere, because the INSERT is parameterized -- nothing to see yet. 5. Log in as `administrator'--` and POST /change-password with {\"new_password\": \"pwned123\"}. The handler fetches your OWN username back out of the database and splices it into `UPDATE users SET password='...' WHERE username='<username>'`. With `username = administrator'--`, the trailing quote is commented out and the WHERE clause silently becomes `WHERE username='administrator'` -- you just changed the REAL administrator's password, not your own. 6. Log in as `administrator` / `pwned123` and GET /flag. Fix: parameterize EVERY query with a value that can carry attacker input, no matter where that value came from -- including values the application itself already stored. \"It was safely inserted once\" is not \"safe to concatenate forever after.\"",
+    "hints": [
+      "Registration and login both use bound parameters -- probing either one directly with a `'` gets you nowhere. What OTHER feature reads a value back out of the database and reuses it?",
+      "/change-password fetches your own username from the database first, then builds its UPDATE. If your username itself were a SQL fragment, what would that UPDATE actually run?",
+      "Register `administrator'--` as your username, log in as it, then POST {\"new_password\": \"pwned123\"} to /change-password -- the trailing `'--` comments out the rest of the WHERE clause, so the UPDATE targets `administrator`, not you. Log in as administrator/pwned123 and GET /flag."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5061/*",
+      "Nullock's `sqli` active probe sends its payloads straight at each request's own parameters and grades the immediate response -- it has nothing to inject here: /register and /change-password both take entirely benign-looking values on every single request you can throw at them directly. Run the probe against both and it reports clean. This is a genuine, honest blind spot: catching a payload that is inert in the request that carries it and only fires several requests and one stored round-trip later needs a multi-step, data-flow-aware tester, not a single-shot active probe. Manual testing (or Sequencer-style flow replay) is what finds this class -- exactly what this lab is for.",
+      "Register a normal account (say, `mallory` / `pw1`) and log in -- via Repeater, watch /change-password's own behavior with a harmless new password first, to see it succeeds for your own row.",
+      "Register a SECOND account whose username is the payload: `administrator'--` / any password. Nullock's Inspector shows the raw response: registration succeeds and never reflects the username anywhere, because the INSERT is parameterized -- nothing to see yet.",
+      "Log in as `administrator'--` and POST /change-password with {\"new_password\": \"pwned123\"}. The handler fetches your OWN username back out of the database and splices it into `UPDATE users SET password='...' WHERE username='<username>'`. With `username = administrator'--`, the trailing quote is commented out and the WHERE clause silently becomes `WHERE username='administrator'` -- you just changed the REAL administrator's password, not your own.",
+      "Log in as `administrator` / `pwned123` and GET /flag."
+    ],
+    "fix": "Fix: parameterize EVERY query with a value that can carry attacker input, no matter where that value came from -- including values the application itself already stored. \"It was safely inserted once\" is not \"safe to concatenate forever after.\""
   }
 ];
   window.NULLOCK_LABS_XP = {

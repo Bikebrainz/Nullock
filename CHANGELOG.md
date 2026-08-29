@@ -11,6 +11,29 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 61: Second-order SQL injection via a reused username.** A new
+  teaching lab (`labs/61-second-order-sqli/`) distinct from the existing
+  direct (Lab 2) and blind (Lab 26) SQLi labs: `/register` and `/login` both
+  use bound parameters, so probing either one directly is a dead end.
+  `/change-password` is the trap — it fetches the caller's own username back
+  out of the database and splices it, unparameterized, into its `UPDATE`.
+  Registering `administrator'--` as a username, then calling
+  `/change-password`, comments out the trailing quote and silently
+  redirects the `UPDATE` onto the real `administrator` row instead of the
+  attacker's own. This is a genuine, honestly-documented blind spot for
+  Nullock's single-shot `sqli` active probe (and for Burp's equivalent):
+  the payload is inert in the request that carries it and only detonates
+  several requests and one stored round-trip later, which needs a
+  multi-step, data-flow-aware tester rather than per-request grading.
+  Verified end-to-end over HTTP (curl): a benign account can change its own
+  password harmlessly, probing register/login/change-password directly
+  with a `'` payload produces no error or reflection (200, clean), and the
+  full second-order chain (register payload username → login → trigger
+  change-password → log in as the real administrator with the attacker's
+  chosen password → `/flag`) succeeds exactly as the walkthrough describes.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a
+  curated `Hard` difficulty + 3 hints); README.md and docs/index.html's
+  60->61 lab-count strings updated alongside.
 - **Lab 60: DOM-based XSS via a location-derived innerHTML sink.** A new
   teaching lab (`labs/60-dom-xss/`) distinct from the existing reflected
   (Lab 1) and stored (Lab 27) XSS labs: the vulnerable page's inline script
