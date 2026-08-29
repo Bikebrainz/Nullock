@@ -76,6 +76,13 @@ QByteArray buildRequest(const Request &req, const QString &query) {
     out += "Accept-Encoding: identity\r\n";
     for (const auto &h : req.headers) {
         if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
+        // Drop a carried Accept-Encoding: line 76 forces "identity" so matchError
+        // scans a PLAINTEXT body; a surviving "gzip, deflate, br" combines
+        // (RFC 7230 3.2.2), the server compresses, the client does NOT inflate ->
+        // every XPath engine-error signature would scan gzip bytes and a real
+        // injection reads clean. (The ldap/xxe siblings already drop it; this one
+        // was missing, so the whole probe was gzip-blind on any real target.)
+        if (h.first.compare("Accept-Encoding", Qt::CaseInsensitive) == 0) continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         out += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";

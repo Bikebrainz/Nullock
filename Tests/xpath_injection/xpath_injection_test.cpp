@@ -87,6 +87,17 @@ int main(int argc, char **argv) {
         injHdr.headers.append(qMakePair(QString("X-Foo"), QString("a\r\nX-Smuggled: 1")));
         chk("build: drops CRLF carried header", !buildRequest(injHdr, "q=x").contains("X-Smuggled"));
 
+        // A carried Accept-Encoding must be dropped so the forced "identity" stands
+        // alone -- else the server gzips and matchError scans compressed bytes,
+        // missing every XPath engine-error signature (a real injection reads clean).
+        // This drop was MISSING here though the ldap/xxe siblings have it.
+        Request ae = req;
+        ae.headers.append(qMakePair(QString("Accept-Encoding"), QString("gzip, deflate, br")));
+        const QByteArray aeb = buildRequest(ae, "q=x");
+        chk("build: carried Accept-Encoding dropped -> exactly one, identity",
+            aeb.count("Accept-Encoding:") == 1
+            && aeb.contains("Accept-Encoding: identity\r\n") && !aeb.contains("gzip"));
+
         Request badMethod = req; badMethod.method = "GET\r\nX: y";
         chk("build: CRLF method -> empty", buildRequest(badMethod, "q=x").isEmpty());
         Request badHost = req; badHost.host = "victim.tld\r\nX: y";

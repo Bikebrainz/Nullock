@@ -47,10 +47,13 @@ const Probe kProbes[] = {
     { "http://0xA9FEA9FE/latest/meta-data/",
       "http://0xA9FEA9FE/nullock-ssrf-zq9x1k7p/",
       "ami-id", "aws-imds-hex", "critical", "ssrf-cloud-metadata" },
-    // Alibaba Cloud metadata.
+    // Alibaba Cloud metadata. Its listing uses "image-id"/"zone-id"/"region-id" --
+    // NOT AWS's "ami-id" (which was copied here by mistake and can never appear in
+    // a real Aliyun IMDS response, so the probe could never confirm). "image-id" is
+    // absent from the sent URL, so it stays a response-only marker (no reflection FP).
     { "http://100.100.100.200/latest/meta-data/",
       "http://100.100.100.200/nullock-ssrf-zq9x1k7p/",
-      "ami-id", "aliyun-imds", "critical", "ssrf-cloud-metadata" },
+      "image-id", "aliyun-imds", "critical", "ssrf-cloud-metadata" },
     // Azure / GCP need a request header the SSRF can't inject, so they often
     // 403 -- a miss (signature absent), never a false positive. The JSON-key
     // signatures are quoted to avoid matching the same field name in ordinary

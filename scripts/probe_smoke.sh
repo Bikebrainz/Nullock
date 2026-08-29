@@ -519,6 +519,11 @@ def make(mode):
                             body = b'{"Code":"Success","Type":"AWS-HMAC","AccessKeyId":"redacted-fake"}'
                     elif '169.254.169.254/latest/meta-data/' in val and ctl not in val:
                         body = b'ami-id\ninstance-id\nplacement/\n'
+                    elif '100.100.100.200/latest/meta-data/' in val and ctl not in val:
+                        # Alibaba Cloud ECS IMDS listing -- uses image-id, NOT AWS's
+                        # ami-id. The aliyun-imds probe keyed on "ami-id" (a copy-paste
+                        # bug) could never confirm against this real body.
+                        body = b'image-id\ninstance-id\nregion-id\nzone-id\nhostname\n'
                     elif val.startswith('file:///etc/passwd'):
                         body = b'root:x:0:0:root:/root:/bin/bash\n'
                 elif mode == 'ssrf-fp':
@@ -1198,6 +1203,7 @@ chk "ssrf safe -> no fetch"               "$(post /api/ssrf/test "{\"url\":\"$(u
 chk "ssrf shaped-control -> FP suppressed" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-fp]} '?url=x')\"}")" "d.get('ok') and not d.get('vulnerable')"
 chk "ssrf decimal-IP bypass -> caught"    "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-bypass]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aws-imds-decimal' for h in d.get('hits',[]))"
 chk "ssrf internal service -> caught"     "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-internal]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('kind')=='ssrf-internal' for h in d.get('hits',[]))"
+chk "ssrf Alibaba IMDS -> caught (was ami-id dead)" "$(post /api/ssrf/test "{\"url\":\"$(url ${P[ssrf-vuln]} '?url=x')\"}")" "d.get('vulnerable') and any(h.get('technique')=='aliyun-imds' for h in d.get('hits',[]))"
 
 echo "== insecure deserialization (core) =="
 chk "deser Java sink -> confirmed Java"     "$(post /api/deser/test "{\"url\":\"$(url ${P[deser-vuln]} '?data=x')\"}")" "d.get('vulnerable') and any(h.get('format')=='Java' for h in d.get('hits',[]))"

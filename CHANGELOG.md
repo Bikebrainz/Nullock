@@ -11,6 +11,24 @@ developer-facing record.
 ## [Unreleased]
 
 ### Fixed
+- **Three active-probe false-negatives (a genuinely vulnerable target read
+  clean).** A dead-detector hunt over the active-scan probes found three, each
+  fixed + regression-tested + bug-proved: (1) **SQL injection missed MariaDB.**
+  The MySQL error signature anchored on the literal `SQL syntax.*MySQL`, but
+  MariaDB — the default MySQL-compatible DB on Debian/Ubuntu/RHEL — self-names the
+  engine in its error (`…corresponds to your MariaDB server version…`), so a
+  textbook error-based MariaDB SQLi produced no match and was reported clean.
+  Broadened to `SQL syntax.*(?:MySQL|MariaDB)`. (2) **XPath injection was
+  gzip-blind.** Its request builder forced `Accept-Encoding: identity` but — unlike
+  the ldap/xxe siblings — forgot to *drop* a carried `Accept-Encoding: gzip`; the
+  two combine (RFC 7230 3.2.2), the server compresses, and `matchError` scanned
+  gzip bytes, so every engine-error signature missed and a real XPath injection
+  read clean on any gzip-negotiating target. Added the drop. (3) **Alibaba Cloud
+  SSRF could never confirm.** The `aliyun-imds` probe keyed on AWS's `ami-id`
+  (copy-paste), which a real Aliyun IMDS listing never emits (it uses
+  `image-id`/`zone-id`/`region-id`); changed the signature to `image-id`. All
+  three bug-proved (each test fails on the old code, passes on the fix). Gauntlet
+  green (ctest 100/100, probe_smoke 158→159 with a new Aliyun-IMDS mock).
 - **Three passive-scanner false-negatives (real detections silently missed).**
   Runner-ups from the dead-detector hunt, each a genuine miss, now fixed +
   regression-tested + bug-proved: (1) **`dom-postmessage-wildcard` missed the

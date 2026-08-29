@@ -20,7 +20,13 @@ const QList<Sig> &signatures() {
     static const QList<Sig> s = {
         // DBMS-specific class / driver / error-code fingerprints -- a WAF block
         // page won't carry these, so they are trusted on ANY status.
-        { "MySQL",      QRegularExpression("SQL syntax.*MySQL|Warning.*\\bmysqli?_|MySqlException|"
+        // "SQL syntax.*(MySQL|MariaDB)": MariaDB is the default MySQL-compatible DB
+        // on Debian/Ubuntu/RHEL and its error-based-SQLi marker self-names the
+        // engine "MariaDB" ("...corresponds to your MariaDB server version..."),
+        // which the old MySQL-only anchor missed entirely -> a real MariaDB SQLi
+        // read clean. Still trusted on any status (a WAF page won't carry this
+        // distinctive "SQL syntax ... server version" prose).
+        { "MySQL",      QRegularExpression("SQL syntax.*(?:MySQL|MariaDB)|Warning.*\\bmysqli?_|MySqlException|"
                                            "valid MySQL result|com\\.mysql\\.jdbc|MySQLSyntaxErrorException", ci) },
         { "PostgreSQL", QRegularExpression("PostgreSQL.*ERROR|Warning.*\\bpg_|valid PostgreSQL result|"
                                            "PG::SyntaxError|org\\.postgresql\\.util\\.PSQLException", ci) },

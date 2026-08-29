@@ -31,6 +31,12 @@ int main(int argc, char **argv) {
 
     // ---- matchError: DBMS-specific (trusted on any status) ---------------
     chk("sig: MySQL", dbms("You have an error in your SQL syntax; ... your MySQL server version") == "MySQL");
+    // MariaDB (the default MySQL-compatible DB on most Linux distros) self-names
+    // the engine in its error-based-SQLi marker; the old "SQL syntax.*MySQL" anchor
+    // missed it entirely -> a real MariaDB SQLi read clean.
+    chk("sig: MariaDB error prose trusted as MySQL",
+        dbms("You have an error in your SQL syntax; check the manual that corresponds "
+             "to your MariaDB server version for the right syntax to use near ''' at line 1") == "MySQL");
     // The MySQL signature had FOUR untested driver/class alternatives -- only the
     // "SQL syntax .. MySQL" prose (above) was exercised. These three fingerprint
     // .NET Connector/NET and Java stack-trace errors; each body deliberately has
