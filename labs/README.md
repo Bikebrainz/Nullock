@@ -70,6 +70,7 @@ labs/
   60-dom-xss/              # location.hash -> innerHTML, sink only fires in a real browser         (5060)
   61-second-order-sqli/    # payload stored via a safe INSERT, detonates in a later unsafe UPDATE   (5061)
   62-graphql-batching-ratelimit-bypass/ # batched array of ops in 1 request = 1 count to the limiter (5062)
+  63-hidden-param-admin-bypass/ # leftover QA `bypass` param, findable only by param mining (5063)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

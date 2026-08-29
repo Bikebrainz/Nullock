@@ -11,6 +11,22 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 63: A hidden parameter unlocks the admin panel, found only by
+  parameter mining.** A new teaching lab
+  (`labs/63-hidden-param-admin-bypass/`) built around Nullock's parameter
+  miner (`/api/paramminer`), which had no lab of its own: `/admin` 403s by
+  default and nothing on the site -- the index page, its JS, robots.txt --
+  ever mentions any other parameter for it, so crawling or reading the site
+  never surfaces the bug. A leftover QA `bypass` query parameter skips the
+  auth check entirely whenever it's present (any non-empty value), which
+  only an active parameter-name brute-force with a status-flip check (the
+  param miner's actual technique) can find -- `bypass` sits in Nullock's own
+  default wordlist, so the probe genuinely discovers it end-to-end. Verified
+  over HTTP (curl): a baseline request and an unrelated control parameter
+  both 403, `?bypass=1` flips to 200 with the flag. `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium`
+  difficulty + 3 hints); README.md and docs/index.html's 62->63 lab-count
+  strings updated alongside.
 - **Lab 62: GraphQL query batching bypasses a per-request rate limit.** A
   new teaching lab (`labs/62-graphql-batching-ratelimit-bypass/`) distinct
   from the existing GraphQL introspection lab (Lab 6): `/graphql` accepts

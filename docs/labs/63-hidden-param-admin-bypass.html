@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A hidden parameter unlocks the admin panel, found only by parameter mining — Nullock Labs</title>
+<meta name="description" content="leftover QA `bypass` param, findable only by param mining">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">63</span>
+    <span class="labs-cat mono">Other</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5063</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">A hidden parameter unlocks the admin panel, found only by parameter mining</h1>
+  <p class="lead" style="margin-top:12px;">/admin is a real access-controlled endpoint: with no session and no special input it returns 403 Forbidden, and nothing else on the site -- the index page, its JS, robots.txt -- ever mentions any extra parameter for it. That&#x27;s deliberate: this isn&#x27;t a documented feature with a link a crawler would find, it&#x27;s a leftover internal QA switch. Whoever wired it up left a `bypass` query parameter in the handler that skips the auth check entirely whenever it&#x27;s present, no matter what value it carries. A spider or a manual read of every page on the site will never surface it, because it was never written down or linked anywhere -- only an active parameter-name brute-force (Nullock&#x27;s param miner) that watches for a STATUS FLIP relative to the 403 baseline will ever turn it up. In Nullock: 1. nullock scope add http://localhost:5063/* 2. Crawl the site (Discover) and browse /admin directly: 403 Forbidden, every time, and there is nothing in the index page or its JS hinting at any extra parameter -- read-only reconnaissance dead-ends here. 3. Run the parameter miner against GET /admin (SCANS tab&#x27;s Assess &amp; audit section -&gt; param-miner, or POST /api/paramminer {&quot;url&quot;: &quot;http://localhost:5063/admin&quot;}). It sends its built-in wordlist as isolated candidate query parameters, one at a time inside batches, each with a unique canary value, and isolates any name whose response STATUS differs from the 403 baseline. 4. The miner reports &quot;bypass&quot; as the one candidate that flips the status to 200 -- the handler doesn&#x27;t check the value, only that the parameter is present and non-empty. 5. Confirm by hand: GET /admin?bypass=1 returns 200 with the admin panel&#x27;s JSON, flag included. 6. Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/63-hidden-param-admin-bypass/app.py
+# then open http://localhost:5063/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5063/*</code><code class="inline">http://127.0.0.1:5063/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>/admin always 403s and nothing on the site -- the page, its JS, robots.txt -- ever mentions any other parameter for it. Reading the site harder won&#x27;t help; this isn&#x27;t a linked feature.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Run Nullock&#x27;s parameter miner (SCANS tab&#x27;s Assess &amp; audit -&gt; param-miner) against GET /admin -- it brute-forces a wordlist of candidate query parameter names and watches for a response STATUS FLIP away from the 403 baseline.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>The miner isolates &quot;bypass&quot; as the one name that flips /admin to 200. GET /admin?bypass=1 (any non-empty value works) returns the admin panel with the flag.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5063/*</li><li>Crawl the site (Discover) and browse /admin directly: 403 Forbidden, every time, and there is nothing in the index page or its JS hinting at any extra parameter -- read-only reconnaissance dead-ends here.</li><li>Run the parameter miner against GET /admin (SCANS tab&#x27;s Assess &amp; audit section -&gt; param-miner, or POST /api/paramminer {&quot;url&quot;: &quot;http://localhost:5063/admin&quot;}). It sends its built-in wordlist as isolated candidate query parameters, one at a time inside batches, each with a unique canary value, and isolates any name whose response STATUS differs from the 403 baseline.</li><li>The miner reports &quot;bypass&quot; as the one candidate that flips the status to 200 -- the handler doesn&#x27;t check the value, only that the parameter is present and non-empty.</li><li>Confirm by hand: GET /admin?bypass=1 returns 200 with the admin panel&#x27;s JSON, flag included.</li><li>Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "63-hidden-param-admin-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 63 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

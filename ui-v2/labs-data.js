@@ -1407,6 +1407,30 @@
       "Real fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright."
     ],
     "fix": "fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright."
+  },
+  {
+    "slug": "63-hidden-param-admin-bypass",
+    "num": "63",
+    "title": "A hidden parameter unlocks the admin panel, found only by parameter mining",
+    "vuln": "leftover QA `bypass` param, findable only by param mining",
+    "port": "5063",
+    "category": "Other",
+    "difficulty": "Medium",
+    "desc": "/admin is a real access-controlled endpoint: with no session and no special input it returns 403 Forbidden, and nothing else on the site -- the index page, its JS, robots.txt -- ever mentions any extra parameter for it. That's deliberate: this isn't a documented feature with a link a crawler would find, it's a leftover internal QA switch. Whoever wired it up left a `bypass` query parameter in the handler that skips the auth check entirely whenever it's present, no matter what value it carries. A spider or a manual read of every page on the site will never surface it, because it was never written down or linked anywhere -- only an active parameter-name brute-force (Nullock's param miner) that watches for a STATUS FLIP relative to the 403 baseline will ever turn it up. In Nullock: 1. nullock scope add http://localhost:5063/* 2. Crawl the site (Discover) and browse /admin directly: 403 Forbidden, every time, and there is nothing in the index page or its JS hinting at any extra parameter -- read-only reconnaissance dead-ends here. 3. Run the parameter miner against GET /admin (SCANS tab's Assess & audit section -> param-miner, or POST /api/paramminer {\"url\": \"http://localhost:5063/admin\"}). It sends its built-in wordlist as isolated candidate query parameters, one at a time inside batches, each with a unique canary value, and isolates any name whose response STATUS differs from the 403 baseline. 4. The miner reports \"bypass\" as the one candidate that flips the status to 200 -- the handler doesn't check the value, only that the parameter is present and non-empty. 5. Confirm by hand: GET /admin?bypass=1 returns 200 with the admin panel's JSON, flag included. 6. Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter.",
+    "hints": [
+      "/admin always 403s and nothing on the site -- the page, its JS, robots.txt -- ever mentions any other parameter for it. Reading the site harder won't help; this isn't a linked feature.",
+      "Run Nullock's parameter miner (SCANS tab's Assess & audit -> param-miner) against GET /admin -- it brute-forces a wordlist of candidate query parameter names and watches for a response STATUS FLIP away from the 403 baseline.",
+      "The miner isolates \"bypass\" as the one name that flips /admin to 200. GET /admin?bypass=1 (any non-empty value works) returns the admin panel with the flag."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5063/*",
+      "Crawl the site (Discover) and browse /admin directly: 403 Forbidden, every time, and there is nothing in the index page or its JS hinting at any extra parameter -- read-only reconnaissance dead-ends here.",
+      "Run the parameter miner against GET /admin (SCANS tab's Assess & audit section -> param-miner, or POST /api/paramminer {\"url\": \"http://localhost:5063/admin\"}). It sends its built-in wordlist as isolated candidate query parameters, one at a time inside batches, each with a unique canary value, and isolates any name whose response STATUS differs from the 403 baseline.",
+      "The miner reports \"bypass\" as the one candidate that flips the status to 200 -- the handler doesn't check the value, only that the parameter is present and non-empty.",
+      "Confirm by hand: GET /admin?bypass=1 returns 200 with the admin panel's JSON, flag included.",
+      "Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter."
+    ],
+    "fix": "Fix: delete the leftover bypass switch before shipping -- a debug/QA-only override has no place in a production auth check, and access control must never key off the mere PRESENCE of a client-supplied parameter."
   }
 ];
   window.NULLOCK_LABS_XP = {

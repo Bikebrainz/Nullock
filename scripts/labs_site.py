@@ -141,6 +141,7 @@ DIFFICULTY = {
     "60-dom-xss": "Medium",
     "61-second-order-sqli": "Hard",
     "62-graphql-batching-ratelimit-bypass": "Medium",
+    "63-hidden-param-admin-bypass": "Medium",
 }
 
 
@@ -460,6 +461,11 @@ HINTS = {
         "Hammer /graphql with single login mutations one at a time -- you get locked out with a 429 after just a few tries. The limiter is real. So how does anything ever brute-force this endpoint?",
         "This GraphQL server accepts a JSON ARRAY as the POST body, not just a single operation object -- that's query batching, a real feature many GraphQL servers ship. Look at where the limiter's counter actually gets incremented relative to where the batch gets processed.",
         "POST one request whose body is a JSON array of ~25 login-mutation objects, one candidate password each (see the walkthrough's list) -- the limiter only sees one HTTP request, so it never trips, and the response array's matching entry hands back a token. GET /flag with that token as a Bearer header.",
+    ],
+    "63-hidden-param-admin-bypass": [
+        "/admin always 403s and nothing on the site -- the page, its JS, robots.txt -- ever mentions any other parameter for it. Reading the site harder won't help; this isn't a linked feature.",
+        "Run Nullock's parameter miner (SCANS tab's Assess & audit -> param-miner) against GET /admin -- it brute-forces a wordlist of candidate query parameter names and watches for a response STATUS FLIP away from the 403 baseline.",
+        "The miner isolates \"bypass\" as the one name that flips /admin to 200. GET /admin?bypass=1 (any non-empty value works) returns the admin panel with the flag.",
     ],
 }
 
