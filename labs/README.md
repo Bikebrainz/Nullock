@@ -66,6 +66,7 @@ labs/
   56-cswsh-notifications/  # WS upgrade trusts the session cookie, never checks Origin        (5056)
   57-subdomain-takeover/   # dangling CNAME still serves the GitHub Pages "no site" 404        (5057)
   58-http-request-smuggling/ # CL.TE desync -- backend blocks on a dangling chunk (5058)
+  59-llm-prompt-injection/ # chatbot obeys "ignore previous instructions", leaks its system-prompt secret (5059)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
