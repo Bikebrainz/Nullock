@@ -3127,7 +3127,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-08-29",
-        "commit": "PENDING",
+        "commit": "424fc02",
         "note": "Diagnostics view wave: GET /api/diagnostics[/report] + Settings Diagnostics card + recordNonFatal() wired into its first two real call sites."
       }
     },
