@@ -69,6 +69,7 @@ labs/
   59-llm-prompt-injection/ # chatbot obeys "ignore previous instructions", leaks its system-prompt secret (5059)
   60-dom-xss/              # location.hash -> innerHTML, sink only fires in a real browser         (5060)
   61-second-order-sqli/    # payload stored via a safe INSERT, detonates in a later unsafe UPDATE   (5061)
+  62-graphql-batching-ratelimit-bypass/ # batched array of ops in 1 request = 1 count to the limiter (5062)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

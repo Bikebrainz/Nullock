@@ -11,6 +11,24 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 62: GraphQL query batching bypasses a per-request rate limit.** A
+  new teaching lab (`labs/62-graphql-batching-ratelimit-bypass/`) distinct
+  from the existing GraphQL introspection lab (Lab 6): `/graphql` accepts
+  either a single operation object or a JSON array of them ("batching," a
+  real feature many GraphQL servers ship to save round-trips), and the
+  login rate limiter counts HTTP requests per IP rather than the
+  operations inside them. Sent one login attempt at a time, an attacker
+  gets locked out after 3 tries; sent as one POST whose body is a JSON
+  array of 25 login mutations (one candidate password each), the whole
+  guess list rides in a single HTTP request and the limiter never trips.
+  Verified end-to-end over HTTP (curl): four sequential single-operation
+  logins confirm the limiter (200/200/200/429), then a fresh connection
+  sending the full 25-candidate batch in one request returns 200 with the
+  correct entry's `ok:true` + token, and `GET /flag` with that token as a
+  Bearer header returns the flag. `scripts/labs_site.py` regenerated
+  (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium` difficulty + 3
+  hints); README.md and docs/index.html's 61->62 lab-count strings updated
+  alongside.
 - **Lab 61: Second-order SQL injection via a reused username.** A new
   teaching lab (`labs/61-second-order-sqli/`) distinct from the existing
   direct (Lab 2) and blind (Lab 26) SQLi labs: `/register` and `/login` both

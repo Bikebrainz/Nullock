@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphQL query batching bypasses a per-request rate limit — Nullock Labs</title>
+<meta name="description" content="batched array of ops in 1 request = 1 count to the limiter">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">62</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5062</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">GraphQL query batching bypasses a per-request rate limit</h1>
+  <p class="lead" style="margin-top:12px;">/graphql accepts either a single operation object or a JSON ARRAY of operation objects (&quot;batching&quot; -- a real, common GraphQL server feature meant to save round-trips). The rate limiter here is naive: it counts HTTP requests per IP, not the operations inside them. Sent one login mutation at a time, an attacker is locked out after 3 tries -- looks safe. Sent as a single batched array of many login mutations, the whole guess list rides in ONE HTTP request, so the limiter only ever sees &quot;1&quot; and never trips, no matter how many passwords are inside. In Nullock: 1. nullock scope add http://localhost:5062/* 2. Confirm the limiter is real: in Repeater, POST /graphql four times with {&quot;query&quot;: &quot;mutation login&quot;, &quot;variables&quot;: {&quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;password123&quot;}} -- each returns {&quot;data&quot;: {&quot;login&quot;: {&quot;ok&quot;: false, &quot;token&quot;: null}}}, and the 4th comes back 429 rate limited. A Nullock Intruder sniper run against this endpoint (one HTTP request per payload) hits the same wall. 3. The bypass: send ONE POST /graphql whose body is a JSON ARRAY, one login-mutation object per candidate password below (25 entries -- well past the 3-request limit, but it&#x27;s still a single HTTP request): password123, admin123, letmein, qwerty2026, summer2026, spring2026, dragon99, Tr0ub4dor&amp;3, hunter2, admin!2026, P@ssw0rd, changeme, welcome1, football7, monkey123, shadow88, master01, superman1, batman123, iloveyou1, princess7, abc12345, trustno1, sunshine9, nullock62 Each array entry: {&quot;query&quot;: &quot;mutation login&quot;, &quot;variables&quot;: {&quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;&lt;candidate&gt;&quot;}}. 4. The response is a JSON array of 25 results, positionally matching the request array. Inspect it in Nullock&#x27;s Inspector: one entry (the last candidate, nullock62) has &quot;ok&quot;: true and a token -- the whole guess list cost the limiter exactly one count. 5. GET /flag with header &quot;Authorization: Bearer &lt;token&gt;&quot;. 6. Real fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/62-graphql-batching-ratelimit-bypass/app.py
+# then open http://localhost:5062/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5062/*</code><code class="inline">http://127.0.0.1:5062/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Hammer /graphql with single login mutations one at a time -- you get locked out with a 429 after just a few tries. The limiter is real. So how does anything ever brute-force this endpoint?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>This GraphQL server accepts a JSON ARRAY as the POST body, not just a single operation object -- that&#x27;s query batching, a real feature many GraphQL servers ship. Look at where the limiter&#x27;s counter actually gets incremented relative to where the batch gets processed.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST one request whose body is a JSON array of ~25 login-mutation objects, one candidate password each (see the walkthrough&#x27;s list) -- the limiter only sees one HTTP request, so it never trips, and the response array&#x27;s matching entry hands back a token. GET /flag with that token as a Bearer header.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5062/*</li><li>Confirm the limiter is real: in Repeater, POST /graphql four times with {&quot;query&quot;: &quot;mutation login&quot;, &quot;variables&quot;: {&quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;password123&quot;}} -- each returns {&quot;data&quot;: {&quot;login&quot;: {&quot;ok&quot;: false, &quot;token&quot;: null}}}, and the 4th comes back 429 rate limited. A Nullock Intruder sniper run against this endpoint (one HTTP request per payload) hits the same wall.</li><li>The bypass: send ONE POST /graphql whose body is a JSON ARRAY, one login-mutation object per candidate password below (25 entries -- well past the 3-request limit, but it&#x27;s still a single HTTP request): password123, admin123, letmein, qwerty2026, summer2026, spring2026, dragon99, Tr0ub4dor&amp;3, hunter2, admin!2026, P@ssw0rd, changeme, welcome1, football7, monkey123, shadow88, master01, superman1, batman123, iloveyou1, princess7, abc12345, trustno1, sunshine9, nullock62 Each array entry: {&quot;query&quot;: &quot;mutation login&quot;, &quot;variables&quot;: {&quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: &quot;&lt;candidate&gt;&quot;}}.</li><li>The response is a JSON array of 25 results, positionally matching the request array. Inspect it in Nullock&#x27;s Inspector: one entry (the last candidate, nullock62) has &quot;ok&quot;: true and a token -- the whole guess list cost the limiter exactly one count.</li><li>GET /flag with header &quot;Authorization: Bearer &lt;token&gt;&quot;.</li><li>Real fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "62-graphql-batching-ratelimit-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 62 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

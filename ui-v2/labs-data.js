@@ -1383,6 +1383,30 @@
       "Log in as `administrator` / `pwned123` and GET /flag."
     ],
     "fix": "Fix: parameterize EVERY query with a value that can carry attacker input, no matter where that value came from -- including values the application itself already stored. \"It was safely inserted once\" is not \"safe to concatenate forever after.\""
+  },
+  {
+    "slug": "62-graphql-batching-ratelimit-bypass",
+    "num": "62",
+    "title": "GraphQL query batching bypasses a per-request rate limit",
+    "vuln": "batched array of ops in 1 request = 1 count to the limiter",
+    "port": "5062",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "/graphql accepts either a single operation object or a JSON ARRAY of operation objects (\"batching\" -- a real, common GraphQL server feature meant to save round-trips). The rate limiter here is naive: it counts HTTP requests per IP, not the operations inside them. Sent one login mutation at a time, an attacker is locked out after 3 tries -- looks safe. Sent as a single batched array of many login mutations, the whole guess list rides in ONE HTTP request, so the limiter only ever sees \"1\" and never trips, no matter how many passwords are inside. In Nullock: 1. nullock scope add http://localhost:5062/* 2. Confirm the limiter is real: in Repeater, POST /graphql four times with {\"query\": \"mutation login\", \"variables\": {\"username\": \"admin\", \"password\": \"password123\"}} -- each returns {\"data\": {\"login\": {\"ok\": false, \"token\": null}}}, and the 4th comes back 429 rate limited. A Nullock Intruder sniper run against this endpoint (one HTTP request per payload) hits the same wall. 3. The bypass: send ONE POST /graphql whose body is a JSON ARRAY, one login-mutation object per candidate password below (25 entries -- well past the 3-request limit, but it's still a single HTTP request): password123, admin123, letmein, qwerty2026, summer2026, spring2026, dragon99, Tr0ub4dor&3, hunter2, admin!2026, P@ssw0rd, changeme, welcome1, football7, monkey123, shadow88, master01, superman1, batman123, iloveyou1, princess7, abc12345, trustno1, sunshine9, nullock62 Each array entry: {\"query\": \"mutation login\", \"variables\": {\"username\": \"admin\", \"password\": \"<candidate>\"}}. 4. The response is a JSON array of 25 results, positionally matching the request array. Inspect it in Nullock's Inspector: one entry (the last candidate, nullock62) has \"ok\": true and a token -- the whole guess list cost the limiter exactly one count. 5. GET /flag with header \"Authorization: Bearer <token>\". 6. Real fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright.",
+    "hints": [
+      "Hammer /graphql with single login mutations one at a time -- you get locked out with a 429 after just a few tries. The limiter is real. So how does anything ever brute-force this endpoint?",
+      "This GraphQL server accepts a JSON ARRAY as the POST body, not just a single operation object -- that's query batching, a real feature many GraphQL servers ship. Look at where the limiter's counter actually gets incremented relative to where the batch gets processed.",
+      "POST one request whose body is a JSON array of ~25 login-mutation objects, one candidate password each (see the walkthrough's list) -- the limiter only sees one HTTP request, so it never trips, and the response array's matching entry hands back a token. GET /flag with that token as a Bearer header."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5062/*",
+      "Confirm the limiter is real: in Repeater, POST /graphql four times with {\"query\": \"mutation login\", \"variables\": {\"username\": \"admin\", \"password\": \"password123\"}} -- each returns {\"data\": {\"login\": {\"ok\": false, \"token\": null}}}, and the 4th comes back 429 rate limited. A Nullock Intruder sniper run against this endpoint (one HTTP request per payload) hits the same wall.",
+      "The bypass: send ONE POST /graphql whose body is a JSON ARRAY, one login-mutation object per candidate password below (25 entries -- well past the 3-request limit, but it's still a single HTTP request): password123, admin123, letmein, qwerty2026, summer2026, spring2026, dragon99, Tr0ub4dor&3, hunter2, admin!2026, P@ssw0rd, changeme, welcome1, football7, monkey123, shadow88, master01, superman1, batman123, iloveyou1, princess7, abc12345, trustno1, sunshine9, nullock62 Each array entry: {\"query\": \"mutation login\", \"variables\": {\"username\": \"admin\", \"password\": \"<candidate>\"}}.",
+      "The response is a JSON array of 25 results, positionally matching the request array. Inspect it in Nullock's Inspector: one entry (the last candidate, nullock62) has \"ok\": true and a token -- the whole guess list cost the limiter exactly one count.",
+      "GET /flag with header \"Authorization: Bearer <token>\".",
+      "Real fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright."
+    ],
+    "fix": "fix: rate-limit by the number of operations actually executed (walk the batch array server-side and charge the limiter once per operation, not once per HTTP request), or reject/cap batch size on sensitive mutations like login outright."
   }
 ];
   window.NULLOCK_LABS_XP = {

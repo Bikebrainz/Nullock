@@ -140,6 +140,7 @@ DIFFICULTY = {
     "59-llm-prompt-injection": "Easy",
     "60-dom-xss": "Medium",
     "61-second-order-sqli": "Hard",
+    "62-graphql-batching-ratelimit-bypass": "Medium",
 }
 
 
@@ -454,6 +455,11 @@ HINTS = {
         "Registration and login both use bound parameters -- probing either one directly with a `'` gets you nowhere. What OTHER feature reads a value back out of the database and reuses it?",
         "/change-password fetches your own username from the database first, then builds its UPDATE. If your username itself were a SQL fragment, what would that UPDATE actually run?",
         "Register `administrator'--` as your username, log in as it, then POST {\"new_password\": \"pwned123\"} to /change-password -- the trailing `'--` comments out the rest of the WHERE clause, so the UPDATE targets `administrator`, not you. Log in as administrator/pwned123 and GET /flag.",
+    ],
+    "62-graphql-batching-ratelimit-bypass": [
+        "Hammer /graphql with single login mutations one at a time -- you get locked out with a 429 after just a few tries. The limiter is real. So how does anything ever brute-force this endpoint?",
+        "This GraphQL server accepts a JSON ARRAY as the POST body, not just a single operation object -- that's query batching, a real feature many GraphQL servers ship. Look at where the limiter's counter actually gets incremented relative to where the batch gets processed.",
+        "POST one request whose body is a JSON array of ~25 login-mutation objects, one candidate password each (see the walkthrough's list) -- the limiter only sees one HTTP request, so it never trips, and the response array's matching entry hands back a token. GET /flag with that token as a Bearer header.",
     ],
 }
 
