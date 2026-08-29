@@ -143,6 +143,7 @@ DIFFICULTY = {
     "62-graphql-batching-ratelimit-bypass": "Medium",
     "63-hidden-param-admin-bypass": "Medium",
     "64-ssrf-redirect-bypass": "Medium",
+    "65-ssrf-image-embed-export": "Medium",
 }
 
 
@@ -472,6 +473,11 @@ HINTS = {
         "/fetch?url=http://127.0.0.1:5064/internal gets blocked outright -- the filter clearly checks the URL string for a handful of substrings. What does it NOT check?",
         "The blocklist only ever looks at the URL you submit, never where the request actually ends up. /goto?b64=<base64> is an open redirector on this same app -- and `requests` follows redirects by default.",
         "Base64-encode http://127.0.0.1:5064/internal, then GET /fetch?url=http://localhost:5064/goto?b64=<that>. Neither \"127.0.0.1\" nor \"/internal\" appears in the URL the filter checks, so it sails through, /goto 302s straight at the real target, and /fetch follows the redirect. GET /flag once that response comes back.",
+    ],
+    "65-ssrf-image-embed-export": [
+        "POST /fetch with {\"url\": \"http://127.0.0.1:5065/internal\"} gets blocked -- so the app clearly knows this class of URL is dangerous. Is /fetch the only place the app makes an outbound request on your behalf?",
+        "Save a report (POST /report) and then render it with GET /export/<id> -- the export step walks every <img src=\"...\"> in your saved HTML and fetches it itself, server-side, to inline as a data: URI. That fetch never goes anywhere near the /fetch endpoint's blocklist.",
+        "POST /report with {\"html\": \"<img src=\\\"http://127.0.0.1:5065/internal\\\">\"}, note the returned id, then GET /export/<id> -- the response's `embedded` field hands back the /internal secret in plaintext (the img `src` itself becomes a base64 data: URI of the same bytes). GET /flag once that fetch has happened.",
     ],
 }
 

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF via a report&#x27;s image-embedding export feature — Nullock Labs</title>
+<meta name="description" content="export&#x27;s own img-fetch path skips the app&#x27;s one guarded blocklist">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">65</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5065</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF via a report&#x27;s image-embedding export feature</h1>
+  <p class="lead" style="margin-top:12px;">Users write a &quot;report&quot; as raw HTML saved to their account, then hit /export/&lt;id&gt; to render a shareable snapshot. The export step is meant to work offline (no live remote-image loading once shared), so it walks every &lt;img src=&quot;...&quot;&gt; in the saved HTML server-side, fetches each URL itself, and inlines the response as a data: URI -- a real pattern (most &quot;export to PDF&quot; and &quot;email digest&quot; features do exactly this so images survive after the source page changes). Nobody thought an &quot;image URL&quot; needed the same host allow-list the app&#x27;s other outbound-fetch feature already has, so /export will happily inline whatever internal endpoint an &lt;img&gt; tag points it at, and the exported HTML hands the response right back to the report&#x27;s owner as base64 -- not a blind SSRF, since the attacker (also the report&#x27;s author) reads the answer directly. /fetch?url=... (a normal &quot;attach a remote image&quot; helper elsewhere in the app) DOES check the same blocklist as lab 64&#x27;s -- proving the developers know SSRF is a risk here -- but /export&#x27;s own internal fetch path never calls that check at all, because nobody traced the second place the app makes an outbound request on the user&#x27;s behalf. In Nullock: 1. nullock scope add http://localhost:5065/* 2. Confirm the guarded path: POST /fetch {&quot;url&quot;: &quot;http://127.0.0.1:5065/internal&quot;} -- 400 &quot;blocked host&quot;. 3. Save a report whose body embeds the same target as an &lt;img&gt; tag instead: POST /report {&quot;html&quot;: &quot;&lt;img src=\\&quot;http://127.0.0.1:5065/internal\\&quot;&gt;&quot;} -&gt; {&quot;id&quot;: 1}. 4. GET /export/1 -- 200, and the returned HTML&#x27;s &lt;img&gt; src is now a data:text/plain;base64,... URI. Decode it (or just read the `embedded` field the response also includes for convenience) -- it&#x27;s the /internal response, fetched entirely server-side with no blocklist in the way. 5. GET /flag -- solved once /export has actually inlined the internal secret for some report. Fix: route EVERY server-initiated outbound fetch (the &quot;attach an image&quot; helper and the export renderer alike) through one shared URL-validation choke point, instead of adding the check to only the endpoint that was obviously named &quot;fetch&quot;.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/65-ssrf-image-embed-export/app.py
+# then open http://localhost:5065/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5065/*</code><code class="inline">http://127.0.0.1:5065/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /fetch with {&quot;url&quot;: &quot;http://127.0.0.1:5065/internal&quot;} gets blocked -- so the app clearly knows this class of URL is dangerous. Is /fetch the only place the app makes an outbound request on your behalf?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Save a report (POST /report) and then render it with GET /export/&lt;id&gt; -- the export step walks every &lt;img src=&quot;...&quot;&gt; in your saved HTML and fetches it itself, server-side, to inline as a data: URI. That fetch never goes anywhere near the /fetch endpoint&#x27;s blocklist.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST /report with {&quot;html&quot;: &quot;&lt;img src=\&quot;http://127.0.0.1:5065/internal\&quot;&gt;&quot;}, note the returned id, then GET /export/&lt;id&gt; -- the response&#x27;s `embedded` field hands back the /internal secret in plaintext (the img `src` itself becomes a base64 data: URI of the same bytes). GET /flag once that fetch has happened.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5065/*</li><li>Confirm the guarded path: POST /fetch {&quot;url&quot;: &quot;http://127.0.0.1:5065/internal&quot;} -- 400 &quot;blocked host&quot;.</li><li>Save a report whose body embeds the same target as an &lt;img&gt; tag instead: POST /report {&quot;html&quot;: &quot;&lt;img src=\\&quot;http://127.0.0.1:5065/internal\\&quot;&gt;&quot;} -&gt; {&quot;id&quot;: 1}.</li><li>GET /export/1 -- 200, and the returned HTML&#x27;s &lt;img&gt; src is now a data:text/plain;base64,... URI. Decode it (or just read the `embedded` field the response also includes for convenience) -- it&#x27;s the /internal response, fetched entirely server-side with no blocklist in the way.</li><li>GET /flag -- solved once /export has actually inlined the internal secret for some report.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: route EVERY server-initiated outbound fetch (the &quot;attach an image&quot; helper and the export renderer alike) through one shared URL-validation choke point, instead of adding the check to only the endpoint that was obviously named &quot;fetch&quot;.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "65-ssrf-image-embed-export";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 65 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

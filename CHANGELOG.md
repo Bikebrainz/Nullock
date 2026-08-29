@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 65: SSRF via a report's image-embedding export feature.** A new
+  teaching lab (`labs/65-ssrf-image-embed-export/`) built around a
+  second outbound-fetch path the app's existing guard never covers:
+  `POST /fetch` checks a URL against the same `127.0.0.1` /
+  `169.254.169.254` / `/internal` blocklist as Lab 64's, but the
+  `GET /export/<id>` renderer walks every `<img src="...">` in a saved
+  report and fetches each one itself, server-side, to inline it as a
+  `data:` URI (a real "export to PDF"/"email digest" pattern) -- without
+  ever calling the same check. Saving a report whose HTML embeds
+  `http://127.0.0.1:5065/internal` as an `<img>` tag and then hitting
+  `/export/<id>` fetches and returns the internal secret directly (not
+  blind -- the report's author reads the response), distinct from Lab
+  64's filter-bypass-via-redirect: here the guarded endpoint is never in
+  the request path at all. Verified end-to-end over HTTP (curl): direct
+  `POST /fetch` to `/internal` 400s ("blocked host"), `GET /flag` is
+  unsolved beforehand, and `POST /report` + `GET /export/<id>` with the
+  `<img>` payload returns the internal secret in the response's
+  `embedded` field and flips `/flag` to `solved:true`.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`,
+  a curated `Medium` difficulty + 3 hints); README.md and
+  docs/index.html's 64->65 lab-count strings updated alongside.
 - **Lab 64: SSRF blocklist bypass via a same-app HTTP redirect.** A new
   teaching lab (`labs/64-ssrf-redirect-bypass/`) distinct from the
   existing unfiltered-SSRF labs (Lab 5, Lab 40): `/fetch?url=...` rejects

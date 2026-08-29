@@ -72,6 +72,7 @@ labs/
   62-graphql-batching-ratelimit-bypass/ # batched array of ops in 1 request = 1 count to the limiter (5062)
   63-hidden-param-admin-bypass/ # leftover QA `bypass` param, findable only by param mining (5063)
   64-ssrf-redirect-bypass/ # substring blocklist beaten by a same-app redirect hop (5064)
+  65-ssrf-image-embed-export/ # export's own img-fetch path skips the app's one guarded blocklist (5065)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

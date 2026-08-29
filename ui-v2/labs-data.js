@@ -1453,6 +1453,29 @@
       "Confirm success: GET /flag -- solved only once /fetch's own outbound request followed the redirect and read the internal secret back (browsing /internal directly does not solve it -- the point is the SSRF pivot through /fetch, not the endpoint existing)."
     ],
     "fix": "Fix: validate the FINAL destination after following every redirect (or set allow_redirects=False and re-check each hop yourself) -- never trust a blocklist that only ever looks at the string the client sent."
+  },
+  {
+    "slug": "65-ssrf-image-embed-export",
+    "num": "65",
+    "title": "SSRF via a report's image-embedding export feature",
+    "vuln": "export's own img-fetch path skips the app's one guarded blocklist",
+    "port": "5065",
+    "category": "SSRF & fetch",
+    "difficulty": "Medium",
+    "desc": "Users write a \"report\" as raw HTML saved to their account, then hit /export/<id> to render a shareable snapshot. The export step is meant to work offline (no live remote-image loading once shared), so it walks every <img src=\"...\"> in the saved HTML server-side, fetches each URL itself, and inlines the response as a data: URI -- a real pattern (most \"export to PDF\" and \"email digest\" features do exactly this so images survive after the source page changes). Nobody thought an \"image URL\" needed the same host allow-list the app's other outbound-fetch feature already has, so /export will happily inline whatever internal endpoint an <img> tag points it at, and the exported HTML hands the response right back to the report's owner as base64 -- not a blind SSRF, since the attacker (also the report's author) reads the answer directly. /fetch?url=... (a normal \"attach a remote image\" helper elsewhere in the app) DOES check the same blocklist as lab 64's -- proving the developers know SSRF is a risk here -- but /export's own internal fetch path never calls that check at all, because nobody traced the second place the app makes an outbound request on the user's behalf. In Nullock: 1. nullock scope add http://localhost:5065/* 2. Confirm the guarded path: POST /fetch {\"url\": \"http://127.0.0.1:5065/internal\"} -- 400 \"blocked host\". 3. Save a report whose body embeds the same target as an <img> tag instead: POST /report {\"html\": \"<img src=\\\\\"http://127.0.0.1:5065/internal\\\\\">\"} -> {\"id\": 1}. 4. GET /export/1 -- 200, and the returned HTML's <img> src is now a data:text/plain;base64,... URI. Decode it (or just read the `embedded` field the response also includes for convenience) -- it's the /internal response, fetched entirely server-side with no blocklist in the way. 5. GET /flag -- solved once /export has actually inlined the internal secret for some report. Fix: route EVERY server-initiated outbound fetch (the \"attach an image\" helper and the export renderer alike) through one shared URL-validation choke point, instead of adding the check to only the endpoint that was obviously named \"fetch\".",
+    "hints": [
+      "POST /fetch with {\"url\": \"http://127.0.0.1:5065/internal\"} gets blocked -- so the app clearly knows this class of URL is dangerous. Is /fetch the only place the app makes an outbound request on your behalf?",
+      "Save a report (POST /report) and then render it with GET /export/<id> -- the export step walks every <img src=\"...\"> in your saved HTML and fetches it itself, server-side, to inline as a data: URI. That fetch never goes anywhere near the /fetch endpoint's blocklist.",
+      "POST /report with {\"html\": \"<img src=\\\"http://127.0.0.1:5065/internal\\\">\"}, note the returned id, then GET /export/<id> -- the response's `embedded` field hands back the /internal secret in plaintext (the img `src` itself becomes a base64 data: URI of the same bytes). GET /flag once that fetch has happened."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5065/*",
+      "Confirm the guarded path: POST /fetch {\"url\": \"http://127.0.0.1:5065/internal\"} -- 400 \"blocked host\".",
+      "Save a report whose body embeds the same target as an <img> tag instead: POST /report {\"html\": \"<img src=\\\\\"http://127.0.0.1:5065/internal\\\\\">\"} -> {\"id\": 1}.",
+      "GET /export/1 -- 200, and the returned HTML's <img> src is now a data:text/plain;base64,... URI. Decode it (or just read the `embedded` field the response also includes for convenience) -- it's the /internal response, fetched entirely server-side with no blocklist in the way.",
+      "GET /flag -- solved once /export has actually inlined the internal secret for some report."
+    ],
+    "fix": "Fix: route EVERY server-initiated outbound fetch (the \"attach an image\" helper and the export renderer alike) through one shared URL-validation choke point, instead of adding the check to only the endpoint that was obviously named \"fetch\"."
   }
 ];
   window.NULLOCK_LABS_XP = {
