@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JWT `x5u` header injection (X.509 certificate URL spoofing) — Nullock Labs</title>
+<meta name="description" content="verifier trusts any cert a token&#x27;s x5u names, no CA chain check">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">71</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5071</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">JWT `x5u` header injection (X.509 certificate URL spoofing)</h1>
+  <p class="lead" style="margin-top:12px;">/login issues an RS256 JWT whose header carries an `x5u` claim -- the URL of an X.509 certificate the verifier should extract the signing key from. This is RFC 7515&#x27;s OTHER key-location header (alongside `jku`): instead of a raw JWK, `x5u` points at a PEM/DER certificate, and the verifier&#x27;s job is to pull the public key out of it. The spec is explicit that this is only safe if the certificate chain is validated against a trusted CA before its key is trusted for anything -- otherwise `x5u` is just &quot;fetch a key from wherever this token says, and believe it.&quot; This verifier does exactly that: it fetches whatever cert the token&#x27;s `x5u` names, extracts the public key, and never once checks who signed the certificate. A self-signed cert an attacker mints in one line of `cryptography` code parses just as cleanly as this server&#x27;s own, and gets trusted just the same. Distinct from every other JWT lab here: 51 is RS256/HS256 algorithm confusion (same key, wrong algorithm), 53 is `kid` path traversal (existing key, wrong file on disk), 68 is `jku` pointing at an attacker&#x27;s raw JWK JSON. This one never touches a JWK at all -- the attacker publishes a CERTIFICATE (X.509, the same structure TLS uses), and the bug isn&#x27;t merely &quot;no allow-list on the URL&quot; (68&#x27;s bug) but &quot;no chain-of-trust check on what comes back&quot;, which is the specific failure mode `x5u` implementations are warned about and this one ignores completely. Nullock&#x27;s automated `nullock jwt test` has no x5u coverage at all -- its built-in forgery families are alg:none, empty/weak HMAC secrets, and `kid` injection (see labs 03/51/53/68&#x27;s notes); x5u parsing a fetched certificate is outside all of them, so this is a hand-with-Repeater-plus-a-forge lab like 68, not something the active prober can stumble into. In Nullock: 1. nullock scope add http://localhost:5071/* 2. GET /login -- an RS256 token, header &quot;x5u&quot; points at this server&#x27;s own /certs/server (a real, self-signed cert this app generated at startup). GET /admin with it: 403 (role is &quot;user&quot;). 3. Generate your own RSA keypair AND a self-signed X.509 certificate for it locally (`cryptography`&#x27;s x509.CertificateBuilder, or `openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out c.pem`). POST the certificate&#x27;s PEM text as the raw body to this app&#x27;s stand-in for &quot;an attacker-controlled host&quot;: POST /attacker/publish/evil. It&#x27;s now servable at GET /attacker/certs/evil. 4. Forge a token with your PRIVATE key: header {&quot;alg&quot;:&quot;RS256&quot;, &quot;x5u&quot;:&quot;http://127.0.0.1:5071/attacker/certs/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}. Send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin. 5. The server fetches YOUR x5u URL, parses the PEM as an X.509 certificate (it IS one -- your own, self-signed, but structurally valid), pulls out the public key inside it, and verifies your token&#x27;s RS256 signature against that key -- which checks out, because you hold the matching private key. Nobody ever asked who (if anyone) signed the certificate itself. 200, welcome admin. 6. Confirm success: GET /flag with the same forged token. Fix: never resolve a signing key from a URL the token itself supplies. If `x5u` must be supported, validate the fetched certificate&#x27;s full chain against a fixed, pre-configured trusted CA bundle before trusting its key for anything -- a syntactically valid certificate proves nothing about who it belongs to. (Needs `requests`, `pyjwt`, `cryptography` -- the labs&#x27; non-Flask deps.)</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/71-jwt-x5u-injection/app.py
+# then open http://localhost:5071/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5071/*</code><code class="inline">http://127.0.0.1:5071/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The RS256 token&#x27;s header carries an x5u claim naming a URL the verifier fetches a CERTIFICATE from, not a raw key. Once that certificate comes back, what (if anything) does the server check about who signed it?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Generate your own RSA keypair and a self-signed X.509 certificate for it (cryptography&#x27;s x509.CertificateBuilder, or `openssl req -x509`). Publish the certificate&#x27;s PEM at a URL you control -- this lab&#x27;s own /attacker/publish/&lt;label&gt; stands in for &quot;an attacker-hosted host&quot;.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST your self-signed certificate&#x27;s PEM as the raw body to /attacker/publish/evil, then sign a token with your PRIVATE key: header {&quot;alg&quot;:&quot;RS256&quot;,&quot;x5u&quot;:&quot;http://127.0.0.1:5071/attacker/certs/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;}. Send it as Bearer to /admin, then GET /flag -- the server never checks the certificate is signed by any trusted CA, only that it parses.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5071/*</li><li>GET /login -- an RS256 token, header &quot;x5u&quot; points at this server&#x27;s own /certs/server (a real, self-signed cert this app generated at startup). GET /admin with it: 403 (role is &quot;user&quot;).</li><li>Generate your own RSA keypair AND a self-signed X.509 certificate for it locally (`cryptography`&#x27;s x509.CertificateBuilder, or `openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out c.pem`). POST the certificate&#x27;s PEM text as the raw body to this app&#x27;s stand-in for &quot;an attacker-controlled host&quot;: POST /attacker/publish/evil. It&#x27;s now servable at GET /attacker/certs/evil.</li><li>Forge a token with your PRIVATE key: header {&quot;alg&quot;:&quot;RS256&quot;, &quot;x5u&quot;:&quot;http://127.0.0.1:5071/attacker/certs/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}. Send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin.</li><li>The server fetches YOUR x5u URL, parses the PEM as an X.509 certificate (it IS one -- your own, self-signed, but structurally valid), pulls out the public key inside it, and verifies your token&#x27;s RS256 signature against that key -- which checks out, because you hold the matching private key. Nobody ever asked who (if anyone) signed the certificate itself. 200, welcome admin.</li><li>Confirm success: GET /flag with the same forged token.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never resolve a signing key from a URL the token itself supplies. If `x5u` must be supported, validate the fetched certificate&#x27;s full chain against a fixed, pre-configured trusted CA bundle before trusting its key for anything -- a syntactically valid certificate proves nothing about who it belongs to.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "71-jwt-x5u-injection";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 71 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

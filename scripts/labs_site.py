@@ -149,6 +149,7 @@ DIFFICULTY = {
     "68-jwt-jku-injection": "Hard",
     "69-cors-regex-anchor-bypass": "Medium",
     "70-ssrf-file-scheme-bypass": "Medium",
+    "71-jwt-x5u-injection": "Hard",
 }
 
 
@@ -508,6 +509,11 @@ HINTS = {
         "The /fetch endpoint does have an SSRF filter -- confirm it actually blocks a loopback URL first, then look at exactly WHAT it inspects about the URL.",
         "The filter only ever looks at the hostname. Is there a URL scheme that has no hostname at all, but that Python's URL fetcher still knows how to handle?",
         "file:///path/to/secret.txt has no host for the blocklist to match. Send url=file://<the absolute path shown on the index page> to /fetch, then to /flag.",
+    ],
+    "71-jwt-x5u-injection": [
+        "The RS256 token's header carries an x5u claim naming a URL the verifier fetches a CERTIFICATE from, not a raw key. Once that certificate comes back, what (if anything) does the server check about who signed it?",
+        "Generate your own RSA keypair and a self-signed X.509 certificate for it (cryptography's x509.CertificateBuilder, or `openssl req -x509`). Publish the certificate's PEM at a URL you control -- this lab's own /attacker/publish/<label> stands in for \"an attacker-hosted host\".",
+        "POST your self-signed certificate's PEM as the raw body to /attacker/publish/evil, then sign a token with your PRIVATE key: header {\"alg\":\"RS256\",\"x5u\":\"http://127.0.0.1:5071/attacker/certs/evil\"}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag -- the server never checks the certificate is signed by any trusted CA, only that it parses.",
     ],
 }
 
