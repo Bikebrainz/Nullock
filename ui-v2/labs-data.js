@@ -1547,6 +1547,29 @@
       "Confirm success: GET /flag with the same forged token."
     ],
     "fix": "Fix: never resolve a signing key from a URL the token itself supplies. Pin verification to a fixed, pre-configured JWKS URL (or a local key store) and ignore `jku` entirely; if key rotation via URL is required, allow-list the exact trusted hosts and never fetch on unauthenticated input."
+  },
+  {
+    "slug": "69-cors-regex-anchor-bypass",
+    "num": "69",
+    "title": "CORS allow-list bypass via an unanchored regex",
+    "vuln": "allow-list regex missing its `$` anchor -- prefix match, not full match",
+    "port": "5069",
+    "category": "Client-side",
+    "difficulty": "Medium",
+    "desc": "/api/account is a credentialed, session-cookie-authenticated endpoint meant to be callable cross-origin only by the bank's own partner frontend, https://partner.nullock.test (and its subdomains, e.g. a staging environment). The allow-list check uses a regex that anchors the START of the Origin string but never anchors the END: re.match(r'^https://([\\\\w-]+\\\\.)*partner\\\\.nullock\\\\.test', origin) `re.match` only requires the pattern to match a PREFIX of the string, not the whole thing -- and there is no trailing `$`. So the regex matches not only \"https://partner.nullock.test\" and \"https://staging.partner.nullock.test\" but also \"https://partner.nullock.test.attacker.test\": an attacker who controls attacker.test can create that exact subdomain, point it at a page they host, and any browser that visits it will have `partner.nullock.test` as a *prefix* of the real Origin header the browser sends -- which is all this regex checks. This is a different CORS bug from Lab 16 (blanket Origin reflection, no allow-list at all). Here there IS an allow-list, and it correctly rejects naive attempts like \"https://evilpartner.nullock.test\" (no dot separator, so the literal \"partner.nullock.test\" substring never appears right after the scheme) or \"https://partner.nullock.test.evil.com\" sent from an origin you don't control. The only way through is a domain suffix trick: register (or in this lab, simply claim) a hostname whose FIRST label sequence literally reads \"partner.nullock.test.\" followed by anything you own. In Nullock: 1. nullock scope add http://localhost:5069/* 2. Send /api/account with header Origin: https://evil.example -- rejected: no ACAO header at all (the naive reflect-everything bug from Lab 16 is NOT present here). 3. Try Origin: https://evilpartner.nullock.test -- still rejected (the regex's ^ anchor plus literal \"partner.nullock.test\" means a prefix like \"evil\" glued directly onto \"partner\" doesn't match). 4. Try Origin: https://partner.nullock.test.attacker.test -- ACCEPTED. ACAO reflects it, ACAC: true. The regex matched only the first ~35 characters of the Origin string and never checked there was nothing else after \"test\". 5. Confirm success: GET /flag with that same Origin header -- the endpoint uses the identical (buggy) allow-list check, so it hands back the flag once it sees a cross-origin request the check should have rejected but didn't. Fix: anchor the pattern at both ends (add `$`), or better, parse the Origin's host with urllib.parse and compare it against an exact allow-list of hostnames (equality or a real `.endswith(\".\" + trusted)` check with the leading-dot boundary, never a raw regex/substring match).",
+    "hints": [
+      "The server DOES have an Origin allow-list here (unlike Lab 16) -- so sending an arbitrary Origin gets no CORS headers at all. Look at exactly what pattern the allow-list is matching, not just whether one exists.",
+      "The check uses a regex with `re.match` and a `^` at the start -- but does it also anchor the END of the string with `$`? If not, anything can follow the trusted hostname and the match still succeeds.",
+      "Send Origin: https://partner.nullock.test.attacker.test to /api/account -- the regex only checks the string STARTS WITH the trusted host, so appending .attacker.test after it still passes. Confirm with GET /flag using the same Origin header."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5069/*",
+      "Send /api/account with header Origin: https://evil.example -- rejected: no ACAO header at all (the naive reflect-everything bug from Lab 16 is NOT present here).",
+      "Try Origin: https://evilpartner.nullock.test -- still rejected (the regex's ^ anchor plus literal \"partner.nullock.test\" means a prefix like \"evil\" glued directly onto \"partner\" doesn't match).",
+      "Try Origin: https://partner.nullock.test.attacker.test -- ACCEPTED. ACAO reflects it, ACAC: true. The regex matched only the first ~35 characters of the Origin string and never checked there was nothing else after \"test\".",
+      "Confirm success: GET /flag with that same Origin header -- the endpoint uses the identical (buggy) allow-list check, so it hands back the flag once it sees a cross-origin request the check should have rejected but didn't."
+    ],
+    "fix": "Fix: anchor the pattern at both ends (add `$`), or better, parse the Origin's host with urllib.parse and compare it against an exact allow-list of hostnames (equality or a real `.endswith(\".\" + trusted)` check with the leading-dot boundary, never a raw regex/substring match)."
   }
 ];
   window.NULLOCK_LABS_XP = {

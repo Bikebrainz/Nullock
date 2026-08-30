@@ -76,6 +76,7 @@ labs/
   66-zip-slip-archive-extract/ # archive entry name walks a write outside the extraction dir (Zip Slip) (5066)
   67-graphql-depth-dos/    # no query-depth limit -- server walks an 8-hop ofType chain unbounded     (5067)
   68-jwt-jku-injection/    # verifier fetches the signing key from a URL the token itself names        (5068)
+  69-cors-regex-anchor-bypass/ # allow-list regex missing its `$` anchor -- prefix match, not full match (5069)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

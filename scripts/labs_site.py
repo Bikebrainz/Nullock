@@ -147,6 +147,7 @@ DIFFICULTY = {
     "66-zip-slip-archive-extract": "Medium",
     "67-graphql-depth-dos": "Medium",
     "68-jwt-jku-injection": "Hard",
+    "69-cors-regex-anchor-bypass": "Medium",
 }
 
 
@@ -496,6 +497,11 @@ HINTS = {
         "The RS256 token's header carries a jku claim naming the URL the verifier fetches its signing key from. What happens if you point jku somewhere the server didn't expect -- does it check that URL is one of ITS OWN trusted endpoints before fetching?",
         "Generate your own RSA keypair and publish the PUBLIC half as a JWKS document at a URL you control -- this lab's own /attacker/publish/<label> stands in for \"an attacker-hosted host\". The server has no allow-list, so any reachable jku is fetched and trusted.",
         "POST your public JWK {\"kty\":\"RSA\",\"kid\":\"evil\",\"n\":...,\"e\":...} to /attacker/publish/evil, then sign a token with your PRIVATE key: header {\"kid\":\"evil\",\"jku\":\"http://127.0.0.1:5068/attacker/keys/evil\"}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag.",
+    ],
+    "69-cors-regex-anchor-bypass": [
+        "The server DOES have an Origin allow-list here (unlike Lab 16) -- so sending an arbitrary Origin gets no CORS headers at all. Look at exactly what pattern the allow-list is matching, not just whether one exists.",
+        "The check uses a regex with `re.match` and a `^` at the start -- but does it also anchor the END of the string with `$`? If not, anything can follow the trusted hostname and the match still succeeds.",
+        "Send Origin: https://partner.nullock.test.attacker.test to /api/account -- the regex only checks the string STARTS WITH the trusted host, so appending .attacker.test after it still passes. Confirm with GET /flag using the same Origin header.",
     ],
 }
 
