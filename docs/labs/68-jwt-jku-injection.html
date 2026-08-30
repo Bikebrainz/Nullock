@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JWT `jku` header injection (JWKS URL spoofing) — Nullock Labs</title>
+<meta name="description" content="verifier fetches the signing key from a URL the token itself names">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">68</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5068</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">JWT `jku` header injection (JWKS URL spoofing)</h1>
+  <p class="lead" style="margin-top:12px;">/login issues an RS256 JWT whose header carries a `jku` claim -- the URL of the JSON Web Key Set the verifier should fetch the signing key from. Real JWT libraries support this so one issuer can rotate keys or federate across hosts without redeploying every verifier. The bug: the verifier trusts whatever URL the TOKEN ITSELF names in `jku`, with no allow-list pinning it to this server&#x27;s own /jwks. Publish your own key set anywhere reachable, point a self-signed token&#x27;s `jku` at it, and the server fetches YOUR key and validates the forgery against it. This is a different JWT primitive from the other JWT labs here: Lab 51 is RS256/HS256 confusion (same key, wrong algorithm), Lab 53 is `kid` path traversal (existing key, wrong file). This one never touches the server&#x27;s real key at all -- the attacker supplies an entirely new one and the server fetches it because the token said to. In Nullock: 1. nullock scope add http://localhost:5068/* 2. GET /login -- an RS256 token, header includes &quot;kid&quot;:&quot;prod-2026&quot; and &quot;jku&quot;:&quot;http://127.0.0.1:5068/jwks&quot; (the server&#x27;s real key set). GET /admin with it: 403 (role is &quot;user&quot;). Note there&#x27;s no automated `nullock jwt test` coverage for jku forgery yet (its wordlist targets alg:none and weak/empty HMAC secrets) -- confirm this one with Repeater plus a short local forge, same as any real jku pentest needs a scripted forgery step. 3. Generate your own RSA keypair locally (openssl, or `cryptography` in a REPL) and publish its PUBLIC JWK to this app&#x27;s stand-in for &quot;an attacker-controlled host&quot;: POST /attacker/publish/evil with body {&quot;kty&quot;:&quot;RSA&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;n&quot;:&quot;&lt;b64url modulus&gt;&quot;,&quot;e&quot;:&quot;&lt;b64url exponent&gt;&quot;}. It&#x27;s now servable at GET /attacker/keys/evil. 4. Forge a token with your PRIVATE key: header {&quot;alg&quot;:&quot;RS256&quot;, &quot;kid&quot;:&quot;evil&quot;,&quot;jku&quot;:&quot;http://127.0.0.1:5068/attacker/keys/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}. In Repeater, send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin. 5. The server fetches YOUR jku URL (no allow-list -- any host, including this one under a path you control, is accepted), finds `kid:&quot;evil&quot;` in the key set you published, and verifies the RS256 signature against YOUR public key -- which of course checks out, because you hold the matching private key. 200, welcome admin. 6. Confirm success: GET /flag with the same forged token. Fix: never resolve a signing key from a URL the token itself supplies. Pin verification to a fixed, pre-configured JWKS URL (or a local key store) and ignore `jku` entirely; if key rotation via URL is required, allow-list the exact trusted hosts and never fetch on unauthenticated input. (Needs `requests`, `pyjwt`, `cryptography` -- the labs&#x27; non-Flask deps.)</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/68-jwt-jku-injection/app.py
+# then open http://localhost:5068/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5068/*</code><code class="inline">http://127.0.0.1:5068/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The RS256 token&#x27;s header carries a jku claim naming the URL the verifier fetches its signing key from. What happens if you point jku somewhere the server didn&#x27;t expect -- does it check that URL is one of ITS OWN trusted endpoints before fetching?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>Generate your own RSA keypair and publish the PUBLIC half as a JWKS document at a URL you control -- this lab&#x27;s own /attacker/publish/&lt;label&gt; stands in for &quot;an attacker-hosted host&quot;. The server has no allow-list, so any reachable jku is fetched and trusted.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST your public JWK {&quot;kty&quot;:&quot;RSA&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;n&quot;:...,&quot;e&quot;:...} to /attacker/publish/evil, then sign a token with your PRIVATE key: header {&quot;kid&quot;:&quot;evil&quot;,&quot;jku&quot;:&quot;http://127.0.0.1:5068/attacker/keys/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;}. Send it as Bearer to /admin, then GET /flag.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5068/*</li><li>GET /login -- an RS256 token, header includes &quot;kid&quot;:&quot;prod-2026&quot; and &quot;jku&quot;:&quot;http://127.0.0.1:5068/jwks&quot; (the server&#x27;s real key set). GET /admin with it: 403 (role is &quot;user&quot;). Note there&#x27;s no automated `nullock jwt test` coverage for jku forgery yet (its wordlist targets alg:none and weak/empty HMAC secrets) -- confirm this one with Repeater plus a short local forge, same as any real jku pentest needs a scripted forgery step.</li><li>Generate your own RSA keypair locally (openssl, or `cryptography` in a REPL) and publish its PUBLIC JWK to this app&#x27;s stand-in for &quot;an attacker-controlled host&quot;: POST /attacker/publish/evil with body {&quot;kty&quot;:&quot;RSA&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;n&quot;:&quot;&lt;b64url modulus&gt;&quot;,&quot;e&quot;:&quot;&lt;b64url exponent&gt;&quot;}. It&#x27;s now servable at GET /attacker/keys/evil.</li><li>Forge a token with your PRIVATE key: header {&quot;alg&quot;:&quot;RS256&quot;, &quot;kid&quot;:&quot;evil&quot;,&quot;jku&quot;:&quot;http://127.0.0.1:5068/attacker/keys/evil&quot;}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}. In Repeater, send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin.</li><li>The server fetches YOUR jku URL (no allow-list -- any host, including this one under a path you control, is accepted), finds `kid:&quot;evil&quot;` in the key set you published, and verifies the RS256 signature against YOUR public key -- which of course checks out, because you hold the matching private key. 200, welcome admin.</li><li>Confirm success: GET /flag with the same forged token.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never resolve a signing key from a URL the token itself supplies. Pin verification to a fixed, pre-configured JWKS URL (or a local key store) and ignore `jku` entirely; if key rotation via URL is required, allow-list the exact trusted hosts and never fetch on unauthenticated input.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "68-jwt-jku-injection";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 68 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

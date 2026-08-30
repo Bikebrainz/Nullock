@@ -146,6 +146,7 @@ DIFFICULTY = {
     "65-ssrf-image-embed-export": "Medium",
     "66-zip-slip-archive-extract": "Medium",
     "67-graphql-depth-dos": "Medium",
+    "68-jwt-jku-injection": "Hard",
 }
 
 
@@ -490,6 +491,11 @@ HINTS = {
         "GET the schema via {__schema{types{name}}} -- introspection is on. GraphQL validates field existence before applying any depth rule, so a query using only REAL introspection fields can never be rejected for \"field does not exist\" -- only for being too deep, if the server checks that at all.",
         "`ofType` is a real, always-queryable field on the `__Type` introspection type, and it's self-recursive -- you can nest it as many times as you like and it stays schema-valid. Run Nullock's built-in GraphQL active probe (PROBE tab, or POST /api/graphql/probe) against /graphql and watch its graphql-depth-bypass attack.",
         "POST {\"query\":\"{__schema{types{ofType{ofType{ofType{ofType{ofType{ofType{ofType{ofType{name}}}}}}}}}}}\"} (8 nested ofType hops) to /graphql -- the server resolves it all the way down and answers with \"data\" instead of rejecting the document for excessive depth. GET /flag once it has.",
+    ],
+    "68-jwt-jku-injection": [
+        "The RS256 token's header carries a jku claim naming the URL the verifier fetches its signing key from. What happens if you point jku somewhere the server didn't expect -- does it check that URL is one of ITS OWN trusted endpoints before fetching?",
+        "Generate your own RSA keypair and publish the PUBLIC half as a JWKS document at a URL you control -- this lab's own /attacker/publish/<label> stands in for \"an attacker-hosted host\". The server has no allow-list, so any reachable jku is fetched and trusted.",
+        "POST your public JWK {\"kty\":\"RSA\",\"kid\":\"evil\",\"n\":...,\"e\":...} to /attacker/publish/evil, then sign a token with your PRIVATE key: header {\"kid\":\"evil\",\"jku\":\"http://127.0.0.1:5068/attacker/keys/evil\"}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag.",
     ],
 }
 

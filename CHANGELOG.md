@@ -11,6 +11,29 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 68: JWT `jku` header injection (JWKS URL spoofing).** A new teaching
+  lab (`labs/68-jwt-jku-injection/`) covering a JWT primitive none of the
+  existing JWT labs exercise: the verifier resolves its signing key from a
+  `jku` URL the TOKEN ITSELF names, with no allow-list pinning it to the
+  server's own `/jwks`. An attacker publishes their own keypair's public
+  half as a JWKS document (the lab's `/attacker/publish/<label>` stands in
+  for attacker-controlled infrastructure), points a self-signed forged
+  token's `jku` at it, and the server fetches and trusts that key —
+  distinct from Lab 51's RS256/HS256 confusion (same key, wrong algorithm)
+  and Lab 53's `kid` path traversal (existing key, wrong file); this one
+  never touches the server's real key at all. No automated `nullock jwt
+  test` coverage exists for `jku` forgery (its wordlist targets alg:none
+  and weak/empty HMAC secrets), so the walkthrough forges the token with a
+  short local script and confirms via Repeater, same as any real jku
+  pentest needs a scripted forgery step. Verified end-to-end over HTTP: a
+  legit user token gets `403` on `/admin`, a forged token whose `jku` names
+  the attacker's published key set gets `200`/`welcome, admin`, and `GET
+  /flag` flips to `200`/`solved:true` only with that forged token — a
+  garbage token still gets `403`. `scripts/labs_site.py` regenerated
+  (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Hard` difficulty + 3
+  hints); README.md and docs/index.html's 67→68 lab-count strings updated
+  alongside.
+
 - **Lab 67: GraphQL query-depth DoS (no server-side depth limit).** A new
   teaching lab (`labs/67-graphql-depth-dos/`) built specifically to exercise
   the `graphql-depth-bypass` active probe fixed this run (`ce5e194`): the
