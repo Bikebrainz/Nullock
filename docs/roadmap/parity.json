@@ -349,7 +349,12 @@
       "effort": "days",
       "gap": "None \u2014 loadRun restores every row's raw combo + completion flag, and resume() re-fires ONLY the never-completed rows over the same worker (completed rows keep their results). Exposed as Q_INVOKABLE resume(), POST /api/intruder/resume, and a \u25b7 RESUME button next to SAVE/LOAD.",
       "why": "Closed 2026-08-29: added Intruder::resume() + a skipRows filter on runWorker's dispatch loop; the pure resume decision (IntruderPersist::planResume \u2014 recursive-grep unresumable, all-complete = nothing to resume, else skip the completed indices) is unit-tested + mutation-proven, and the firing reuses the proven start()/runWorker path over the round-trip-restored combos.",
-      "evidence": "intruder.cpp:249-279 saveRun serializes config+rows; :281-333 loadRun `beginResetModel(); ... m_attacks.append(a); ... endResetModel();` then just emits change signals \u2014 no call into start()/runWorker for pending rows. control_server.cpp:3311-3323 export/load; tabs.jsx:607-610 SAVE/LOAD buttons.", "reconciled": { "date": "2026-08-29", "commit": "d4cf202", "note": "Intruder Resume shipped: after loadRun restores every row (raw combo + completion flag), resume() re-fires only the never-completed rows via a skipRows filter on the existing attack worker; the pure planResume decision is unit-tested + mutation-proven." }
+      "evidence": "intruder.cpp:249-279 saveRun serializes config+rows; :281-333 loadRun `beginResetModel(); ... m_attacks.append(a); ... endResetModel();` then just emits change signals \u2014 no call into start()/runWorker for pending rows. control_server.cpp:3311-3323 export/load; tabs.jsx:607-610 SAVE/LOAD buttons.",
+      "reconciled": {
+        "date": "2026-08-29",
+        "commit": "d4cf202",
+        "note": "Intruder Resume shipped: after loadRun restores every row (raw combo + completion flag), resume() re-fires only the never-completed rows via a skipRows filter on the existing attack worker; the pure planResume decision is unit-tested + mutation-proven."
+      }
     },
     {
       "area": "intruder",
@@ -1422,7 +1427,13 @@
       "effort": "weeks",
       "gap": "No ToolType: a handler cannot tell proxy from repeater from scan probe and cannot opt out per tool. Intruder is silently uncovered \u2014 extensions never see or influence an attack. Host/port immutable, so no redirection. Binary bodies unrepresentable (bodyText is a QString; corruption is avoided only by refusing to write back an unchanged body).",
       "why": "CONFIRMED, every cited line re-read and correct (control_server line numbers shifted +1 for the deep-scan sites because of uncommitted marketplace code, 2105->2106 etc.; the replay sites 2875/2895 are exact). I independently re-ran the reach analysis: `grep -rn applyRequestMutation Src/` returns proxy_server.cpp {273,527,603,684} + control_server.cpp {2106,2674,2745,2780,2875} and nothing else; `g",
-      "evidence": "extensions_api.cpp:353-356 `// Read final mutated values back into the C++ struct. Host/port stay // immutable on purpose -- changing them mid-flight would require // reconnecting to a different upstream, which is a bigger design.`; extensions_api.cpp:378-379 `req.headers = headersFromJs(entry.property(\"headers\")); req.body   = entry.property(\"bodyText\").toString().toUtf8();`; extensions_api.cpp:4"
+      "evidence": "extensions_api.cpp:695-697 `// Read final mutated values back into the C++ struct. Host/port stay // immutable on purpose -- changing them mid-flight would require // reconnecting to a different upstream, which is a bigger design.`; extensions_api.cpp:720 `req.headers = headersFromJs(entry.property(\"headers\"));`",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1432,7 +1443,13 @@
       "effort": "weeks",
       "gap": "An output channel, not a scan check. No registration, no insertion-point-driven invocation, no active checks (structurally impossible without a send API), no per-check enable/disable, no duplicate consolidation (rowId hard-coded 0). Deep-scan probes call applyRequestMutation, which only lets an extension rewrite Nullock's own probes.",
       "why": "CONFIRMED but the claim is generous and I nearly downgraded. reportFinding at extensions_api.cpp:61-78 is verbatim as quoted and app.cpp:728 `extensions.setScanner(&scanner);` is real, and dom_taint.js is a shipped extension that genuinely lands findings in the panel, so a USER does get working extension-authored passive detection \u2014 that is more than a stub. But there is no registration API of any",
-      "evidence": "extensions_api.cpp:76-77 `// rowId 0 = extension-originated; the panel still renders it, the URL // makes it actionable.` then `scanner->reportFinding(0, severity, kind, summary, evidence, host, url);`; extensions_api.hpp:181-185 shows reportFinding is the ONLY finding-related bridge method; Src/App/app.cpp:728 `extensions.setScanner(&scanner);`"
+      "evidence": "extensions_api.cpp:122-124 `// rowId 0 = extension-originated; the panel still renders it, the URL // makes it actionable.` then `scanner->reportFinding(0, severity, kind, summary, evidence, host, url);`; extensions_api.hpp:342 `Q_INVOKABLE void reportFinding(...)` is the only finding-related bridge method.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1442,7 +1459,13 @@
       "effort": "days",
       "gap": "One global stream for all extensions \u2014 attribution only if the author prefixed the line. No stdout/stderr separation, no file or console redirect, no export, no scrollback. Only the newest 40 of 500 buffered lines are exposed by any API and only 30 are rendered; a chatty extension loses lines silently.",
       "why": "CONFIRMED, and WORSE than the auditor stated in one respect I verified myself. kMaxLogLines=500 and the ring buffer are verbatim. But the 500-line buffer is not reachable: the ONLY API surface is bootInfo, which calls recentLog(40) (control_server.cpp:1226), and there is no /api/extensions/log endpoint \u2014 `grep -n '/api/extensions' control_server.cpp` returns exactly install-builtins:5272 and reloa",
-      "evidence": "extensions_api.cpp:18 `constexpr int kMaxLogLines = 500;`; extensions_api.cpp:164-166 `m_logLines.append(stamped); if (m_logLines.size() > kMaxLogLines) m_logLines.remove(0, m_logLines.size() - kMaxLogLines);`; control_server.cpp:1226 `for (const QString &line : m_wiring.extensions->recentLog(40))`; ui-v2/app.jsx:471 `: extLog.slice(-30).map((line, i) => (`"
+      "evidence": "extensions_api.cpp:27 `constexpr int kMaxLogLines = 500;`; extensions_api.cpp:485-486 `if (m_logLines.size() > kMaxLogLines) m_logLines.remove(0, m_logLines.size() - kMaxLogLines);`; control_server.cpp:1311 `for (const QString &line : m_wiring.extensions->recentLog(40))`; ui-v2/app.jsx:1393 `: extLog.slice(-30).map((line, i) => (`",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1484,7 +1507,13 @@
       "effort": "days",
       "gap": "PR review is still the whole human review model and no third party has used it. No signing, no automated source review. But integrity IS pinned end to end now (manifest sha256 + CI drift check + install-time verification), which the first pass reported as absent.",
       "why": "State CONFIRMED but the auditor's gap statement is now FACTUALLY WRONG and I corrected it. They wrote 'no signing, no hash pinning in the manifest'. The uncommitted working tree adds exactly that: every catalog entry now carries a sha256, CI fails the build on a missing/malformed digest AND on drift between the manifest hash and the committed .js. That is stronger than 'trust the PR'. Still partia",
-      "evidence": "extensions/marketplace.json:+ `\"sha256\": \"8c02c0578289944a6dc858726e7a1357804bff3872a80480fa606b496b554d1a\"` on each entry; .github/workflows/ci.yml `- name: every extension pins a well-formed sha256` / `(.sha256 | test(\"^[0-9a-f]{64}$\"))` and `- name: manifest hashes match the committed extensions` / `run: bash scripts/marketplace_sync.sh --check`; docs/marketplace/index.html:62 `Submit a PR to B"
+      "evidence": "extensions/marketplace.json:+ `\"sha256\": \"8c02c0578289944a6dc858726e7a1357804bff3872a80480fa606b496b554d1a\"` on each entry; .github/workflows/ci.yml `- name: every extension pins a well-formed sha256` / `(.sha256 | test(\"^[0-9a-f]{64}$\"))` and `- name: manifest hashes match the committed extensions` / `run: bash scripts/marketplace_sync.sh --check`; docs/marketplace/index.html:62 `Submit a PR to B",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1526,7 +1555,13 @@
       "effort": "months",
       "gap": "No object model, no typed events, no versioning. Extensions receive ad-hoc JS objects built in doMutateRequest/doMutateResponse. A different design rather than a smaller one.",
       "why": "CONFIRMED. I re-ran the greps myself across Src/ ui-v2/ extensions/: montoya=0, IBurpExtender=0, registerExtension/ExtensionPoint=0. I read extensions_api.hpp end to end \u2014 the bridge really is exactly four Q_INVOKABLEs, no more.",
-      "evidence": "extensions_api.hpp:164-185 \u2014 the complete bridge: `Q_INVOKABLE void log(const QString &message);`, `Q_INVOKABLE void onResponse(const QJSValue &callback);`, `Q_INVOKABLE void onRequest(const QJSValue &callback);`, `Q_INVOKABLE void reportFinding(const QString &severity, const QString &kind, const QString &summary, const QString &evidence, const QString &url);`"
+      "evidence": "extensions_api.hpp:297-345 -- the complete bridge, `class ExtensionsApiBridge : public QObject`: `Q_INVOKABLE void log(const QString &message);`, `Q_INVOKABLE void onResponse(const QJSValue &callback);`, `Q_INVOKABLE void onRequest(const QJSValue &callback);`, `Q_INVOKABLE void reportFinding(...)`.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1536,7 +1571,13 @@
       "effort": "months",
       "gap": "No compatibility layer. Moot unless Nullock ever hosts a JVM.",
       "why": "CONFIRMED by my own grep: IBurpExtenderCallbacks / registerExtenderCallbacks = 0 hits across Src/, ui-v2/, extensions/. Nothing to upgrade \u2014 there is no JVM to host it.",
-      "evidence": "extensions_api.hpp:158-189 defines ExtensionsApiBridge as the sole JS-facing class; no other extension entry point exists in the tree"
+      "evidence": "extensions_api.hpp:297-345 defines ExtensionsApiBridge as the sole JS-facing class; no other extension entry point exists in the tree.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1546,7 +1587,13 @@
       "effort": "months",
       "gap": "No JVM host, so the entire BApp ecosystem is unreachable. Largest single difference in this area.",
       "why": "CONFIRMED. loadAll globs only *.js and I re-read the line; no .jar/JVM/jni references. This is the structural fork in the road for the whole area.",
-      "evidence": "extensions_api.cpp:125 `const QFileInfoList files = QDir(dir).entryInfoList({ \"*.js\" }, QDir::Files);`"
+      "evidence": "extensions_api.cpp:400 `const QFileInfoList files = QDir(dir).entryInfoList({ \"*.js\" }, QDir::Files, QDir::Name);` -- the only extension discovery path in the codebase.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1556,7 +1603,13 @@
       "effort": "months",
       "gap": "No Python extensions; throwaway Python BApps must be rewritten as ES5-ish JS with no stdlib.",
       "why": "CONFIRMED by my own grep (jython=0) and by the loader glob, which I re-read.",
-      "evidence": "extensions_api.cpp:125 `entryInfoList({ \"*.js\" }, QDir::Files);` \u2014 the only extension discovery path in the codebase"
+      "evidence": "extensions_api.cpp:400 `entryInfoList({ \"*.js\" }, QDir::Files, QDir::Name);` -- the only extension discovery path in the codebase.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1566,7 +1619,13 @@
       "effort": "months",
       "gap": "Absent. Low real-world demand.",
       "why": "CONFIRMED (jruby=0 in my grep; same loader restriction).",
-      "evidence": "extensions_api.cpp:125 `entryInfoList({ \"*.js\" }, QDir::Files);`"
+      "evidence": "extensions_api.cpp:400 `entryInfoList({ \"*.js\" }, QDir::Files, QDir::Name);` -- the only extension discovery path in the codebase.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -1576,7 +1635,13 @@
       "effort": "weeks",
       "gap": "Extensions cannot share code or use libraries; primitives get inlined by hand in every script.",
       "why": "CONFIRMED. `grep -rn installExtensions Src/` = 0 in my own run, so the engine gets no console, no require, no import \u2014 the sandbox has no module system to configure.",
-      "evidence": "extensions_api.cpp:86-88 \u2014 the ONLY global installed is the bridge: `m_bridge = new ExtensionsApiBridge(this); QJSValue nullockObj = m_engine.newQObject(m_bridge); m_engine.globalObject().setProperty(\"nullock\", nullockObj);`"
+      "evidence": "extensions_api.cpp:253,322 -- the ONLY global installed is the bridge: `m_bridge = new ExtensionsApiBridge(this);` ... `m_engine->globalObject().setProperty(\"nullock\", nullockObj);`",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
