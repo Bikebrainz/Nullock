@@ -73,6 +73,7 @@ labs/
   63-hidden-param-admin-bypass/ # leftover QA `bypass` param, findable only by param mining (5063)
   64-ssrf-redirect-bypass/ # substring blocklist beaten by a same-app redirect hop (5064)
   65-ssrf-image-embed-export/ # export's own img-fetch path skips the app's one guarded blocklist (5065)
+  66-zip-slip-archive-extract/ # archive entry name walks a write outside the extraction dir (Zip Slip) (5066)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

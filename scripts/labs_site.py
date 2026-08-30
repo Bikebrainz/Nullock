@@ -144,6 +144,7 @@ DIFFICULTY = {
     "63-hidden-param-admin-bypass": "Medium",
     "64-ssrf-redirect-bypass": "Medium",
     "65-ssrf-image-embed-export": "Medium",
+    "66-zip-slip-archive-extract": "Medium",
 }
 
 
@@ -478,6 +479,11 @@ HINTS = {
         "POST /fetch with {\"url\": \"http://127.0.0.1:5065/internal\"} gets blocked -- so the app clearly knows this class of URL is dangerous. Is /fetch the only place the app makes an outbound request on your behalf?",
         "Save a report (POST /report) and then render it with GET /export/<id> -- the export step walks every <img src=\"...\"> in your saved HTML and fetches it itself, server-side, to inline as a data: URI. That fetch never goes anywhere near the /fetch endpoint's blocklist.",
         "POST /report with {\"html\": \"<img src=\\\"http://127.0.0.1:5065/internal\\\">\"}, note the returned id, then GET /export/<id> -- the response's `embedded` field hands back the /internal secret in plaintext (the img `src` itself becomes a base64 data: URI of the same bytes). GET /flag once that fetch has happened.",
+    ],
+    "66-zip-slip-archive-extract": [
+        "GET /config first -- note the current theme. /upload-archive extracts a zip's entries into a fresh per-upload workspace directory each time. What happens if an entry's name isn't a plain filename?",
+        "The extractor joins each entry name straight onto the workspace path with no containment check. A zip entry named with '../' components writes outside that workspace instead of inside it -- and the app's own config file lives exactly two directories above every workspace.",
+        "Build a zip whose one entry is named '../../protected/app_config.json' with body {\"theme\": \"zipslip-pwned\"} (python3's zipfile.ZipFile.writestr can name an entry anything), POST it to /upload-archive as multipart field 'archive', then GET /config again -- it now reads back your content. GET /flag once it does.",
     ],
 }
 

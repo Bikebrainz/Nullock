@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 66: Zip Slip via unsanitized archive extraction.** A new teaching
+  lab (`labs/66-zip-slip-archive-extract/`) covering a bug class none of
+  the existing 65 labs demonstrate: `POST /upload-archive` extracts every
+  entry of an uploaded `.zip` by joining its name straight onto a
+  per-upload workspace path and writing there, without calling
+  `ZipFile.extractall()` (which has sanitized `..` entry names since the
+  Zip Slip disclosures) or any equivalent containment check of its own —
+  the archive-handling twin of Lab 14's download-path traversal, one
+  input class later. An entry named `../../protected/app_config.json`
+  therefore lands two directories above its own workspace, directly on
+  the app's own config file. Verified end-to-end with a Flask test
+  client: `GET /config` starts at the default theme, uploading a zip
+  built with `zipfile.ZipFile.writestr('../../protected/app_config.json',
+  ...)` returns 200 with the traversal entry name echoed back verbatim
+  (no rejection), `GET /config` then reads back the attacker's content,
+  and `GET /flag` flips from `403`/`solved:false` to `200`/`solved:true`
+  only once that overwrite has actually happened; a benign zip upload
+  (no traversal) leaves `/flag` unsolved. `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium`
+  difficulty + 3 hints); README.md and docs/index.html's 65→66 lab-count
+  strings updated alongside.
 - **Intruder: Resume attack.** Completes Burp's save/resume — the "resume" half
   that was missing. After you load a saved attack (which already round-trips the
   target, config, and every result row incl. its raw payload combo), the new

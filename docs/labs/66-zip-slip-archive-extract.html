@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zip Slip: archive extraction with no path containment check — Nullock Labs</title>
+<meta name="description" content="archive entry name walks a write outside the extraction dir (Zip Slip)">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">66</span>
+    <span class="labs-cat mono">Other</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5066</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Zip Slip: archive extraction with no path containment check</h1>
+  <p class="lead" style="margin-top:12px;">An uploaded archive gets extracted with no path sanitization, letting a &quot;../&quot;-crafted entry name write outside the per-upload workspace and overwrite an app config file that lives elsewhere on disk. /upload-archive accepts a .zip and processes every entry itself (a real pattern -- e.g. a virus scan or a thumbnail pass before the file is trusted) instead of calling `ZipFile.extractall()`, so none of the path-traversal guards Python&#x27;s zipfile module has carried since the Zip Slip disclosures apply: each entry&#x27;s name is joined straight onto the workspace directory and written there, &quot;..&quot; components and all. The app also happens to keep its own config file in a sibling directory of the upload root -- exactly two levels up from any workspace -- so an entry named &quot;../../protected/app_config.json&quot; lands squarely on it. This is the archive-handling twin of Lab 14&#x27;s download-path traversal: that one walks a filename *parameter* out of a serving directory, this one walks an *archive entry name* out of an extraction directory -- the same missing-containment-check bug, one class of input later. In Nullock: 1. nullock scope add http://localhost:5066/* 2. GET /config -- the app&#x27;s current config, theme: &quot;default&quot;. 3. Build a malicious archive locally (Nullock doesn&#x27;t need to see this step, only the upload that follows): python3 -c &quot; import zipfile with zipfile.ZipFile(&#x27;evil.zip&#x27;, &#x27;w&#x27;) as z: z.writestr(&#x27;../../protected/app_config.json&#x27;, &#x27;{\&quot;theme\&quot;: \&quot;zipslip-pwned\&quot;}&#x27;) &quot; 4. POST /upload-archive with the zip as multipart field &quot;archive&quot;: curl -F archive=@evil.zip http://localhost:5066/upload-archive 200, and the response&#x27;s &quot;extracted&quot; list echoes the traversal entry name back verbatim -- no rejection, no sanitization. 5. GET /config again -- theme is now &quot;zipslip-pwned&quot;: the upload wrote a file two directories above its own workspace, not inside it. 6. GET /flag -- solved once /config has been overwritten this way. Fix: never join an archive-supplied name straight onto a filesystem path. Resolve each entry&#x27;s destination, confirm it&#x27;s still inside the workspace root (`os.path.commonpath` / `Path.resolve()` containment check) before writing, and reject the entry outright if it isn&#x27;t -- or just use `ZipFile.extractall()`, which has carried this exact guard since the Zip Slip disclosures.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/66-zip-slip-archive-extract/app.py
+# then open http://localhost:5066/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5066/*</code><code class="inline">http://127.0.0.1:5066/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET /config first -- note the current theme. /upload-archive extracts a zip&#x27;s entries into a fresh per-upload workspace directory each time. What happens if an entry&#x27;s name isn&#x27;t a plain filename?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The extractor joins each entry name straight onto the workspace path with no containment check. A zip entry named with &#x27;../&#x27; components writes outside that workspace instead of inside it -- and the app&#x27;s own config file lives exactly two directories above every workspace.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Build a zip whose one entry is named &#x27;../../protected/app_config.json&#x27; with body {&quot;theme&quot;: &quot;zipslip-pwned&quot;} (python3&#x27;s zipfile.ZipFile.writestr can name an entry anything), POST it to /upload-archive as multipart field &#x27;archive&#x27;, then GET /config again -- it now reads back your content. GET /flag once it does.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5066/*</li><li>GET /config -- the app&#x27;s current config, theme: &quot;default&quot;.</li><li>Build a malicious archive locally (Nullock doesn&#x27;t need to see this step, only the upload that follows): python3 -c &quot; import zipfile with zipfile.ZipFile(&#x27;evil.zip&#x27;, &#x27;w&#x27;) as z: z.writestr(&#x27;../../protected/app_config.json&#x27;, &#x27;{\&quot;theme\&quot;: \&quot;zipslip-pwned\&quot;}&#x27;) &quot;</li><li>POST /upload-archive with the zip as multipart field &quot;archive&quot;: curl -F archive=@evil.zip http://localhost:5066/upload-archive 200, and the response&#x27;s &quot;extracted&quot; list echoes the traversal entry name back verbatim -- no rejection, no sanitization.</li><li>GET /config again -- theme is now &quot;zipslip-pwned&quot;: the upload wrote a file two directories above its own workspace, not inside it.</li><li>GET /flag -- solved once /config has been overwritten this way.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never join an archive-supplied name straight onto a filesystem path. Resolve each entry&#x27;s destination, confirm it&#x27;s still inside the workspace root (`os.path.commonpath` / `Path.resolve()` containment check) before writing, and reject the entry outright if it isn&#x27;t -- or just use `ZipFile.extractall()`, which has carried this exact guard since the Zip Slip disclosures.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "66-zip-slip-archive-extract";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 66 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

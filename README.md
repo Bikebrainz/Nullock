@@ -256,11 +256,11 @@ Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR, XML is
 SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
-Teaching labs     65 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
+Teaching labs     66 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
                   a LABS tab in the app itself (and the docs/labs site) rates each
                   Easy/Medium/Hard, gives 3 progressive hints before the full
                   walkthrough, and one click sends a GET /flag check straight to
-                  Repeater; all 65 labs add a real /flag success-check endpoint
+                  Repeater; all 66 labs add a real /flag success-check endpoint
                   you solve by exploiting the bug server-side, not just reading
                   the walkthrough; solved labs and per-category XP/tracks are
                   tracked locally in the app

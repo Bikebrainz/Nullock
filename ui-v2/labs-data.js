@@ -1476,6 +1476,30 @@
       "GET /flag -- solved once /export has actually inlined the internal secret for some report."
     ],
     "fix": "Fix: route EVERY server-initiated outbound fetch (the \"attach an image\" helper and the export renderer alike) through one shared URL-validation choke point, instead of adding the check to only the endpoint that was obviously named \"fetch\"."
+  },
+  {
+    "slug": "66-zip-slip-archive-extract",
+    "num": "66",
+    "title": "Zip Slip: archive extraction with no path containment check",
+    "vuln": "archive entry name walks a write outside the extraction dir (Zip Slip)",
+    "port": "5066",
+    "category": "Other",
+    "difficulty": "Medium",
+    "desc": "An uploaded archive gets extracted with no path sanitization, letting a \"../\"-crafted entry name write outside the per-upload workspace and overwrite an app config file that lives elsewhere on disk. /upload-archive accepts a .zip and processes every entry itself (a real pattern -- e.g. a virus scan or a thumbnail pass before the file is trusted) instead of calling `ZipFile.extractall()`, so none of the path-traversal guards Python's zipfile module has carried since the Zip Slip disclosures apply: each entry's name is joined straight onto the workspace directory and written there, \"..\" components and all. The app also happens to keep its own config file in a sibling directory of the upload root -- exactly two levels up from any workspace -- so an entry named \"../../protected/app_config.json\" lands squarely on it. This is the archive-handling twin of Lab 14's download-path traversal: that one walks a filename *parameter* out of a serving directory, this one walks an *archive entry name* out of an extraction directory -- the same missing-containment-check bug, one class of input later. In Nullock: 1. nullock scope add http://localhost:5066/* 2. GET /config -- the app's current config, theme: \"default\". 3. Build a malicious archive locally (Nullock doesn't need to see this step, only the upload that follows): python3 -c \" import zipfile with zipfile.ZipFile('evil.zip', 'w') as z: z.writestr('../../protected/app_config.json', '{\\\"theme\\\": \\\"zipslip-pwned\\\"}') \" 4. POST /upload-archive with the zip as multipart field \"archive\": curl -F archive=@evil.zip http://localhost:5066/upload-archive 200, and the response's \"extracted\" list echoes the traversal entry name back verbatim -- no rejection, no sanitization. 5. GET /config again -- theme is now \"zipslip-pwned\": the upload wrote a file two directories above its own workspace, not inside it. 6. GET /flag -- solved once /config has been overwritten this way. Fix: never join an archive-supplied name straight onto a filesystem path. Resolve each entry's destination, confirm it's still inside the workspace root (`os.path.commonpath` / `Path.resolve()` containment check) before writing, and reject the entry outright if it isn't -- or just use `ZipFile.extractall()`, which has carried this exact guard since the Zip Slip disclosures.",
+    "hints": [
+      "GET /config first -- note the current theme. /upload-archive extracts a zip's entries into a fresh per-upload workspace directory each time. What happens if an entry's name isn't a plain filename?",
+      "The extractor joins each entry name straight onto the workspace path with no containment check. A zip entry named with '../' components writes outside that workspace instead of inside it -- and the app's own config file lives exactly two directories above every workspace.",
+      "Build a zip whose one entry is named '../../protected/app_config.json' with body {\"theme\": \"zipslip-pwned\"} (python3's zipfile.ZipFile.writestr can name an entry anything), POST it to /upload-archive as multipart field 'archive', then GET /config again -- it now reads back your content. GET /flag once it does."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5066/*",
+      "GET /config -- the app's current config, theme: \"default\".",
+      "Build a malicious archive locally (Nullock doesn't need to see this step, only the upload that follows): python3 -c \" import zipfile with zipfile.ZipFile('evil.zip', 'w') as z: z.writestr('../../protected/app_config.json', '{\\\"theme\\\": \\\"zipslip-pwned\\\"}') \"",
+      "POST /upload-archive with the zip as multipart field \"archive\": curl -F archive=@evil.zip http://localhost:5066/upload-archive 200, and the response's \"extracted\" list echoes the traversal entry name back verbatim -- no rejection, no sanitization.",
+      "GET /config again -- theme is now \"zipslip-pwned\": the upload wrote a file two directories above its own workspace, not inside it.",
+      "GET /flag -- solved once /config has been overwritten this way."
+    ],
+    "fix": "Fix: never join an archive-supplied name straight onto a filesystem path. Resolve each entry's destination, confirm it's still inside the workspace root (`os.path.commonpath` / `Path.resolve()` containment check) before writing, and reject the entry outright if it isn't -- or just use `ZipFile.extractall()`, which has carried this exact guard since the Zip Slip disclosures."
   }
 ];
   window.NULLOCK_LABS_XP = {
