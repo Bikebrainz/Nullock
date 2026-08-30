@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF scheme bypass: a host blocklist that never checks the scheme — Nullock Labs</title>
+<meta name="description" content="host blocklist never checks scheme -- file:// has no host to match">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">70</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5070</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF scheme bypass: a host blocklist that never checks the scheme</h1>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... is &quot;protected&quot; against SSRF: it parses the URL and rejects any request whose HOST is 127.0.0.1, localhost, 169.254.169.254, or contains &quot;internal&quot; -- the usual cloud-metadata/loopback blocklist. That check works fine for http:// and https:// targets. But the fetcher itself isn&#x27;t limited to http(s) -- it uses urllib.request.urlopen(), which happily also handles ftp://, data://, and file:// -- and a file:// URL has no network host at all: urlparse(&quot;file:///etc/nullock-lab70-config&quot;).hostname is None. The blocklist checks `hostname in BLOCKED_HOSTS`, and None is never in that set, so a file:// URL sails straight through a filter that was only ever written with network hosts in mind. This is a different failure mode from every earlier SSRF lab here (05&#x27;s total absence of filtering, 40&#x27;s metadata-endpoint framing, 64&#x27;s redirect pivot around a substring blocklist, 65&#x27;s second unguarded fetch path): here the one fetch path IS guarded, correctly, for the scheme it was designed around -- the bug is that &quot;no dangerous host&quot; was implemented as the whole allow/deny decision, when it needed to also be &quot;no dangerous scheme.&quot; Nullock&#x27;s automated SSRF prober (`/api/ssrf/test`) requires a URL with a real network host (it builds a host/port connection to replay against), so it structurally cannot be pointed at a file:// target -- this lab&#x27;s bug sits in the prober&#x27;s own blind spot, and is found in Repeater instead. In Nullock: 1. nullock scope add http://localhost:5070/* 2. GET /fetch?url=http://127.0.0.1:5070/ -- 400 &quot;blocked host&quot;: the loopback/metadata blocklist does work for network schemes. 3. Send /fetch to Repeater and change url to file:///app/labs/70-ssrf-file-scheme-bypass/secret.txt (or whatever absolute path this lab&#x27;s secret.txt resolves to on this host -- printed on the index page). No host in a file:// URL means nothing for the blocklist to match, and the response comes back 200 with the file&#x27;s contents. 4. Confirm success: GET /flag?url=file://&lt;same absolute path&gt; -- same fetch function /fetch uses, solved only once the marker inside secret.txt actually came back through it. Fix: allow-list the SCHEME first (http/https only, reject everything else outright) before ever inspecting the host -- a host check can&#x27;t save you from a scheme it was never written to handle.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/70-ssrf-file-scheme-bypass/app.py
+# then open http://localhost:5070/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5070/*</code><code class="inline">http://127.0.0.1:5070/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>The /fetch endpoint does have an SSRF filter -- confirm it actually blocks a loopback URL first, then look at exactly WHAT it inspects about the URL.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The filter only ever looks at the hostname. Is there a URL scheme that has no hostname at all, but that Python&#x27;s URL fetcher still knows how to handle?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>file:///path/to/secret.txt has no host for the blocklist to match. Send url=file://&lt;the absolute path shown on the index page&gt; to /fetch, then to /flag.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5070/*</li><li>GET /fetch?url=http://127.0.0.1:5070/ -- 400 &quot;blocked host&quot;: the loopback/metadata blocklist does work for network schemes.</li><li>Send /fetch to Repeater and change url to file:///app/labs/70-ssrf-file-scheme-bypass/secret.txt (or whatever absolute path this lab&#x27;s secret.txt resolves to on this host -- printed on the index page). No host in a file:// URL means nothing for the blocklist to match, and the response comes back 200 with the file&#x27;s contents.</li><li>Confirm success: GET /flag?url=file://&lt;same absolute path&gt; -- same fetch function /fetch uses, solved only once the marker inside secret.txt actually came back through it.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: allow-list the SCHEME first (http/https only, reject everything else outright) before ever inspecting the host -- a host check can&#x27;t save you from a scheme it was never written to handle.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "70-ssrf-file-scheme-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 70 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

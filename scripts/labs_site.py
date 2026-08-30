@@ -148,6 +148,7 @@ DIFFICULTY = {
     "67-graphql-depth-dos": "Medium",
     "68-jwt-jku-injection": "Hard",
     "69-cors-regex-anchor-bypass": "Medium",
+    "70-ssrf-file-scheme-bypass": "Medium",
 }
 
 
@@ -502,6 +503,11 @@ HINTS = {
         "The server DOES have an Origin allow-list here (unlike Lab 16) -- so sending an arbitrary Origin gets no CORS headers at all. Look at exactly what pattern the allow-list is matching, not just whether one exists.",
         "The check uses a regex with `re.match` and a `^` at the start -- but does it also anchor the END of the string with `$`? If not, anything can follow the trusted hostname and the match still succeeds.",
         "Send Origin: https://partner.nullock.test.attacker.test to /api/account -- the regex only checks the string STARTS WITH the trusted host, so appending .attacker.test after it still passes. Confirm with GET /flag using the same Origin header.",
+    ],
+    "70-ssrf-file-scheme-bypass": [
+        "The /fetch endpoint does have an SSRF filter -- confirm it actually blocks a loopback URL first, then look at exactly WHAT it inspects about the URL.",
+        "The filter only ever looks at the hostname. Is there a URL scheme that has no hostname at all, but that Python's URL fetcher still knows how to handle?",
+        "file:///path/to/secret.txt has no host for the blocklist to match. Send url=file://<the absolute path shown on the index page> to /fetch, then to /flag.",
     ],
 }
 

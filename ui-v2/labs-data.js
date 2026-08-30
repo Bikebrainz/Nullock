@@ -1570,6 +1570,28 @@
       "Confirm success: GET /flag with that same Origin header -- the endpoint uses the identical (buggy) allow-list check, so it hands back the flag once it sees a cross-origin request the check should have rejected but didn't."
     ],
     "fix": "Fix: anchor the pattern at both ends (add `$`), or better, parse the Origin's host with urllib.parse and compare it against an exact allow-list of hostnames (equality or a real `.endswith(\".\" + trusted)` check with the leading-dot boundary, never a raw regex/substring match)."
+  },
+  {
+    "slug": "70-ssrf-file-scheme-bypass",
+    "num": "70",
+    "title": "SSRF scheme bypass: a host blocklist that never checks the scheme",
+    "vuln": "host blocklist never checks scheme -- file:// has no host to match",
+    "port": "5070",
+    "category": "SSRF & fetch",
+    "difficulty": "Medium",
+    "desc": "/fetch?url=... is \"protected\" against SSRF: it parses the URL and rejects any request whose HOST is 127.0.0.1, localhost, 169.254.169.254, or contains \"internal\" -- the usual cloud-metadata/loopback blocklist. That check works fine for http:// and https:// targets. But the fetcher itself isn't limited to http(s) -- it uses urllib.request.urlopen(), which happily also handles ftp://, data://, and file:// -- and a file:// URL has no network host at all: urlparse(\"file:///etc/nullock-lab70-config\").hostname is None. The blocklist checks `hostname in BLOCKED_HOSTS`, and None is never in that set, so a file:// URL sails straight through a filter that was only ever written with network hosts in mind. This is a different failure mode from every earlier SSRF lab here (05's total absence of filtering, 40's metadata-endpoint framing, 64's redirect pivot around a substring blocklist, 65's second unguarded fetch path): here the one fetch path IS guarded, correctly, for the scheme it was designed around -- the bug is that \"no dangerous host\" was implemented as the whole allow/deny decision, when it needed to also be \"no dangerous scheme.\" Nullock's automated SSRF prober (`/api/ssrf/test`) requires a URL with a real network host (it builds a host/port connection to replay against), so it structurally cannot be pointed at a file:// target -- this lab's bug sits in the prober's own blind spot, and is found in Repeater instead. In Nullock: 1. nullock scope add http://localhost:5070/* 2. GET /fetch?url=http://127.0.0.1:5070/ -- 400 \"blocked host\": the loopback/metadata blocklist does work for network schemes. 3. Send /fetch to Repeater and change url to file:///app/labs/70-ssrf-file-scheme-bypass/secret.txt (or whatever absolute path this lab's secret.txt resolves to on this host -- printed on the index page). No host in a file:// URL means nothing for the blocklist to match, and the response comes back 200 with the file's contents. 4. Confirm success: GET /flag?url=file://<same absolute path> -- same fetch function /fetch uses, solved only once the marker inside secret.txt actually came back through it. Fix: allow-list the SCHEME first (http/https only, reject everything else outright) before ever inspecting the host -- a host check can't save you from a scheme it was never written to handle.",
+    "hints": [
+      "The /fetch endpoint does have an SSRF filter -- confirm it actually blocks a loopback URL first, then look at exactly WHAT it inspects about the URL.",
+      "The filter only ever looks at the hostname. Is there a URL scheme that has no hostname at all, but that Python's URL fetcher still knows how to handle?",
+      "file:///path/to/secret.txt has no host for the blocklist to match. Send url=file://<the absolute path shown on the index page> to /fetch, then to /flag."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5070/*",
+      "GET /fetch?url=http://127.0.0.1:5070/ -- 400 \"blocked host\": the loopback/metadata blocklist does work for network schemes.",
+      "Send /fetch to Repeater and change url to file:///app/labs/70-ssrf-file-scheme-bypass/secret.txt (or whatever absolute path this lab's secret.txt resolves to on this host -- printed on the index page). No host in a file:// URL means nothing for the blocklist to match, and the response comes back 200 with the file's contents.",
+      "Confirm success: GET /flag?url=file://<same absolute path> -- same fetch function /fetch uses, solved only once the marker inside secret.txt actually came back through it."
+    ],
+    "fix": "Fix: allow-list the SCHEME first (http/https only, reject everything else outright) before ever inspecting the host -- a host check can't save you from a scheme it was never written to handle."
   }
 ];
   window.NULLOCK_LABS_XP = {
