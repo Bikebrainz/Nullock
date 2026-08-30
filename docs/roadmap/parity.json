@@ -290,8 +290,13 @@
       "effort": "days",
       "gap": "Backend supports both regex and start/end-delimiter extract, but an attempt stores only ONE extracted value and the UI exposes a single regex Extract column -- Burp allows multiple grep-extract items per attack.",
       "why": "Corrected from 'present' on independent re-derivation (2026-08-02): intruder.cpp:143 returns a single m_extracted QString (one ExtractedRole), so multi-extract parity with Burp is not met.",
-      "evidence": "intruder.cpp:143 `case ExtractedRole: return a->m_extracted;` (single QString); intruder_grep.cpp implements regex+delimiter modes; tabs.jsx sends only {regex} with one Extract column.",
-      "audited_state": "present"
+      "evidence": "intruder.cpp:162 `case ExtractedRole:return a->m_extracted;` (single QString); intruder_grep.cpp implements regex+delimiter extract modes (grepExtract); tabs.jsx:2558-2562 sends only {regex} to grepExtract, one Extract column (tabs.jsx:2273).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: audited_state was stuck at \"present\" (the pre-correction grade the \"why\" field already says was corrected to partial on 2026-08-02) which rendered backwards on the roadmap page (\"closed since audit: present -> partial\" reads as a regression, not a correction) -- reset it to match the current, re-verified state. No code change; single-value extraction (m_extracted, one Extract column) still holds."
+      }
     },
     {
       "area": "intruder",
@@ -428,7 +433,13 @@
       "effort": "days",
       "gap": "No way to stream payloads line-by-line from a large file; everything must be loaded into the textarea/memory.",
       "why": "Re-grepped intruder sources for QFile/readFile/fromFile/runtime \u2014 nothing. types() lists only numbers/brute/dates. Confirmed absent.",
-      "evidence": "intruder_generators.cpp:89-91 `types(){ return {\"numbers\",\"brute\",\"dates\"}; }`. No QFile include or file read anywhere in intruder*.cpp."
+      "evidence": "intruder_generators.cpp:337-344 types() now returns 13 generator types (numbers/brute/dates/null/frobber/blocks/casemod/charsub/bitflip/username/illegal-unicode/ecb-shuffle/iterator), up from the 3 last cited here -- still none reading from a file. No QFile/file-streaming reference anywhere in intruder*.cpp/hpp.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -614,7 +625,13 @@
       "effort": "weeks",
       "gap": "Extensions cannot supply Intruder payloads or attack types (no payload-provider API wired to Intruder).",
       "why": "Re-read the entire intruder.cpp; start()/runWorker/fireOne never call any extension hook. No IIntruderPayloadGenerator equivalent exists.",
-      "evidence": "intruder.cpp:365-419 start() and :422-530 runWorker build combos purely from m_payloadSets + generators; there is no extension callback on the payload path."
+      "evidence": "intruder.cpp:437 start() and :613 runWorker build combos purely from m_payloadSets + generators; `grep -n extension Src/Core/Networking/intruder.cpp` returns no hits -- no extension hook anywhere on the payload path.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -688,7 +705,13 @@
       "effort": "weeks",
       "gap": "No extension-backed payload processing.",
       "why": "Confirmed: applyRule op set is fixed; no branch calls into an extension.",
-      "evidence": "intruder_rules.cpp:9-47 fixed op dispatch, delegating only to Transcode; no extension call anywhere on the rule path."
+      "evidence": "intruder_rules.cpp:32-172 applyRule's op dispatch is a fixed if-chain (add-raw-payload/prefix/suffix/uppercase/lowercase/propername/reverse/match-replace/regex-replace/url-encode-chars/substring/reverse-substring) falling back to Transcode::apply for everything else; no extension call anywhere on the rule path.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "intruder",
@@ -1941,8 +1964,13 @@
       "effort": "weeks",
       "gap": "Two halves. LAST-UPDATED + SORTING now exist on the website store: catalog entries carry a per-entry 'updated' field (extensions/marketplace.json, e.g. dom_taint '2026-06-09') and docs/marketplace/index.html sorts by it (:107-111, sort-updated button). RATINGS/POPULARITY/installs remain absent everywhere with no backend to collect them \u2014 CatalogEntry (marketplace_logic.hpp:64-77) has no rating/ins",
       "why": "Reclassified absent -> partial (2026-08-02): independent triage + adversarial-verify agreed; cited files re-confirmed to exist. See PARITY-BACKLOG.md.",
-      "evidence": "marketplace_logic.hpp:64-77 CatalogEntry has no rating/installs/updated member; docs/marketplace/index.html:107-111 sort by b.updated; extensions/marketplace.json per-entry 'updated' present but dropped by the C++ catalog parser",
-      "audited_state": "absent"
+      "evidence": "marketplace_logic.hpp:64-81 CatalogEntry has no rating/installs/updated member (id/name/summary/version/author/categories/url/sha256/hooks/declaredPermissions/minVersion only); marketplace_logic.cpp:75 only parses the catalog-level `updated` (Catalog::updated) via str(root,\"updated\",32), never a per-entry one; extensions/marketplace.json:24 dom_taint's own per-entry \"updated\":\"2026-06-09\" is present in the source JSON but dropped by the parser; docs/marketplace/index.html:57 sort-updated button, :114 `b.updated` compare.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "extender",
@@ -3314,8 +3342,13 @@
       "effort": "weeks",
       "gap": "Reclassify stub->partial: the prior 'Repeater traffic never lands in history' is now STALE \u2014 the /api/.../replay handler appends replayed responses to both history model and ProjectStore (control_server.cpp:2944-2946), and the crawler already logs (app.cpp entryLoaded->addResponse/appendEntry). What is genuinely still missing is (a) any tool-attribution/source column \u2014 ProxyModel::Roles has no Sou",
       "why": "Reclassified stub -> partial (2026-08-02): triage + adversarial-verify agreed; keyed by stable roadmap id, area-guarded. See PARITY-BACKLOG.md.",
-      "evidence": "control_server.cpp:2885 `if (parts[1]==\"replay\")` -> :2944-2946 `if (w.history) w.history->addResponse(r,resp); ... if(w.projectStore) w.projectStore->appendEntry(r,resp);`. proxy_model.hpp:14-24 Roles {Id,Host,Method,Url,StatusCode,Mime,Params,Tls,Ip,Timestamp} \u2014 no source/tool. intruder.cpp:105-106 own model. No source column in history_logic.",
-      "audited_state": "stub"
+      "evidence": "control_server.cpp:3154 `if (parts[1] == \"replay\")` -> :3214 `if (w.history) w.history->addResponse(r, resp);` / :3216 `if (w.projectStore) w.projectStore->appendEntry(r, resp);`. proxy_model.hpp:14-25 Roles {Id,Host,Method,Url,StatusCode,Mime,Params,Tls,Ip,Timestamp} -- still no source/tool role. intruder.cpp:124 `: QAbstractListModel(parent), m_model(historyModel) {}` -- its own separate model, not routed through proxy history.",
+      "audited_state": "stub",
+      "reconciled": {
+        "date": "2026-08-30",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; refreshed evidence line numbers that had drifted from intervening waves and this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+      }
     },
     {
       "area": "platform",
