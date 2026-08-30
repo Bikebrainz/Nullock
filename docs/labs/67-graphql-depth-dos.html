@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphQL query-depth DoS (no server-side depth limit) — Nullock Labs</title>
+<meta name="description" content="no query-depth limit -- server walks an 8-hop ofType chain unbounded">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">67</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5067</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">GraphQL query-depth DoS (no server-side depth limit)</h1>
+  <p class="lead" style="margin-top:12px;">Hosts a minimal GraphQL introspection endpoint at /graphql. The schema resolver happily walks the `__Type.ofType` chain to whatever nesting depth the client&#x27;s query asks for -- there is no cap. A real production GraphQL server needs an explicit depth-limit rule (e.g. graphql-depth-limit) or an attacker can nest a query hundreds or thousands of levels deep to blow up parse/execution cost, a classic GraphQL DoS vector. This is exactly the misconfiguration Nullock&#x27;s built-in active probe `graphql-depth-bypass` (POST /api/graphql/probe) targets. That probe sends the schema-VALID self-recursive introspection query {__schema{types{ofType{ofType{ofType{ofType{ofType{ofType{ofType{ofType{name}}}}}}}}}}} (8 nested `ofType` hops, depth ~11 overall) because `ofType` is a real, always-queryable field on the `__Type` introspection type -- unlike a fabricated field name, GraphQL can never reject it for &quot;field does not exist&quot;, so the ONLY thing that can make a well-behaved server refuse it is an actual depth-limit rule. A server with no such rule answers with `&quot;data&quot;` present; a depth-limited (or introspection-disabled) server answers with only `&quot;errors&quot;` and no `&quot;data&quot;`.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/67-graphql-depth-dos/app.py
+# then open http://localhost:5067/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5067/*</code><code class="inline">http://127.0.0.1:5067/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET the schema via {__schema{types{name}}} -- introspection is on. GraphQL validates field existence before applying any depth rule, so a query using only REAL introspection fields can never be rejected for &quot;field does not exist&quot; -- only for being too deep, if the server checks that at all.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>`ofType` is a real, always-queryable field on the `__Type` introspection type, and it&#x27;s self-recursive -- you can nest it as many times as you like and it stays schema-valid. Run Nullock&#x27;s built-in GraphQL active probe (PROBE tab, or POST /api/graphql/probe) against /graphql and watch its graphql-depth-bypass attack.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST {&quot;query&quot;:&quot;{__schema{types{ofType{ofType{ofType{ofType{ofType{ofType{ofType{ofType{name}}}}}}}}}}}&quot;} (8 nested ofType hops) to /graphql -- the server resolves it all the way down and answers with &quot;data&quot; instead of rejecting the document for excessive depth. GET /flag once it has.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>Set scope to http://localhost:5067/* (or use the pre-set project file), then confirm introspection is on: POST /graphql {&quot;query&quot;: &quot;{ __schema { types { name } } }&quot;}.</li><li>Run the built-in GraphQL active probe (PROBE tab&#x27;s GraphQL toolkit, or POST /api/graphql/probe {&quot;url&quot;: &quot;http://localhost:5067/graphql&quot;}) -- the graphql-depth-bypass attack fires, because this server answers the 8-hop `ofType` chain query with real `&quot;data&quot;` instead of rejecting it for excessive depth.</li><li>Confirm by hand: POST the same deep query yourself and see `&quot;data&quot;` come back with a fully-resolved 8-level-deep `ofType` chain -- proof the server will walk however deep you ask it to.</li><li>GET /flag once you&#x27;ve sent a query with an `ofType` chain at least as deep as the probe&#x27;s (8 hops) and gotten `&quot;data&quot;` back for it.</li><li>Real fix: add a query-depth-limit validation rule (reject the query document before execution once nesting exceeds a small fixed maximum, e.g. 5-10) rather than trusting resolvers to bound themselves.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>fix: add a query-depth-limit validation rule (reject the query document before execution once nesting exceeds a small fixed maximum, e.g. 5-10) rather than trusting resolvers to bound themselves.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "67-graphql-depth-dos";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 67 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

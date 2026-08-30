@@ -145,6 +145,7 @@ DIFFICULTY = {
     "64-ssrf-redirect-bypass": "Medium",
     "65-ssrf-image-embed-export": "Medium",
     "66-zip-slip-archive-extract": "Medium",
+    "67-graphql-depth-dos": "Medium",
 }
 
 
@@ -484,6 +485,11 @@ HINTS = {
         "GET /config first -- note the current theme. /upload-archive extracts a zip's entries into a fresh per-upload workspace directory each time. What happens if an entry's name isn't a plain filename?",
         "The extractor joins each entry name straight onto the workspace path with no containment check. A zip entry named with '../' components writes outside that workspace instead of inside it -- and the app's own config file lives exactly two directories above every workspace.",
         "Build a zip whose one entry is named '../../protected/app_config.json' with body {\"theme\": \"zipslip-pwned\"} (python3's zipfile.ZipFile.writestr can name an entry anything), POST it to /upload-archive as multipart field 'archive', then GET /config again -- it now reads back your content. GET /flag once it does.",
+    ],
+    "67-graphql-depth-dos": [
+        "GET the schema via {__schema{types{name}}} -- introspection is on. GraphQL validates field existence before applying any depth rule, so a query using only REAL introspection fields can never be rejected for \"field does not exist\" -- only for being too deep, if the server checks that at all.",
+        "`ofType` is a real, always-queryable field on the `__Type` introspection type, and it's self-recursive -- you can nest it as many times as you like and it stays schema-valid. Run Nullock's built-in GraphQL active probe (PROBE tab, or POST /api/graphql/probe) against /graphql and watch its graphql-depth-bypass attack.",
+        "POST {\"query\":\"{__schema{types{ofType{ofType{ofType{ofType{ofType{ofType{ofType{ofType{name}}}}}}}}}}}\"} (8 nested ofType hops) to /graphql -- the server resolves it all the way down and answers with \"data\" instead of rejecting the document for excessive depth. GET /flag once it has.",
     ],
 }
 

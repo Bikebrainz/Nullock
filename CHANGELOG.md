@@ -11,6 +11,23 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 67: GraphQL query-depth DoS (no server-side depth limit).** A new
+  teaching lab (`labs/67-graphql-depth-dos/`) built specifically to exercise
+  the `graphql-depth-bypass` active probe fixed this run (`ce5e194`): the
+  probe now sends a schema-valid, self-recursive `__Type.ofType` introspection
+  chain (8 nested `ofType` hops) instead of the old fabricated-field query
+  that every real GraphQL server rejected regardless of depth limiting. Lab
+  67's `/graphql` endpoint resolves that `ofType` chain to whatever depth the
+  client asks for, with no cap — a server without a depth-limit validation
+  rule answers with `"data"` present; the fix note calls for rejecting the
+  query document once nesting exceeds a small fixed maximum. Verified
+  end-to-end over HTTP: a shallow introspection query solves nothing, the
+  probe's exact 8-hop `ofType` payload gets back real nested `"data"`, and
+  `GET /flag` flips from `403`/`solved:false` to `200`/`solved:true` only
+  after a query at or past that depth has been answered.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a
+  curated `Medium` difficulty + 3 hints); README.md and docs/index.html's
+  66→67 lab-count strings updated alongside.
 - **Lab 66: Zip Slip via unsanitized archive extraction.** A new teaching
   lab (`labs/66-zip-slip-archive-extract/`) covering a bug class none of
   the existing 65 labs demonstrate: `POST /upload-archive` extracts every
