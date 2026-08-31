@@ -816,7 +816,12 @@
       "effort": "weeks",
       "gap": "No form is submitted with generated data, no auto-fill, no account registration to reach deeper states. Burp submits forms to expand coverage; Nullock only appends GET-form param names to the crawl frontier.",
       "why": "Downgraded partial->stub. Re-read crawler_logic.cpp:90-116: extractFormGets only turns GET-form field NAMES into empty-valued query strings ('?n1=&n2=') to crawl as URLs. Nothing is ever SUBMITTED: no POST, no value generation, no registration. Line 103 explicitly '(a POST form isn't a URL surface)'. So the capability 'automatic form submission' is not implemented; only GET-form param-name surfaci",
-      "evidence": "crawler_logic.cpp:111 `for (const QString &n : names) q += (q.isEmpty() ? \"?\" : \"&\") + n + \"=\";`  line 103 `if (!methodGet.match(attrs).hasMatch()) continue;   // GET forms only`"
+      "evidence": "crawler_logic.cpp:111 `for (const QString &n : names) q += (q.isEmpty() ? \"?\" : \"&\") + n + \"=\";`  line 103 `if (!methodGet.match(attrs).hasMatch()) continue;   // GET forms only`",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at stub. Re-verified crawler_logic.cpp:90-114 extractFormGets -- GET forms only (methodGet.match guard at :103), field NAMES turned into empty-valued query params (:111 `q += ... + n + \"=\";`), never a POST, never a filled value, no registration flow. Line numbers unchanged, content unchanged. No code change this pass."
+      }
     },
     {
       "area": "scanner",
@@ -937,7 +942,12 @@
       "effort": "months",
       "gap": "No live DOM taint tracking (no browser); misses runtime-reached sinks and external JS. Regex over the first 1MB of inline HTML only.",
       "why": "Re-read passive_scanner.cpp:1076-1099: static regex over inline scripts for innerHTML<-location, eval<-location, postMessage '*', eval-of-responseText. Regex-only, no runtime taint. Claim holds.",
-      "evidence": "passive_scanner.cpp:1083 `R\"(\\.innerHTML\\s*=\\s*[^;]*(?:location|document\\.referrer|window\\.name))\"`"
+      "evidence": "passive_scanner.cpp:1196 `R\"(\\.innerHTML\\s*=\\s*[^;]*(?:location|document\\.referrer|window\\.name))\"` (block starts :1188, body slice :1189-1190)",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified passive_scanner.cpp -- the DOM-XSS sink block (line drift 1076-1099 -> 1188-1213) is still a static QRegularExpression table (innerHTML<-location, eval/setTimeout<-location, postMessage '*', eval-of-responseText) run over `scanBody.left(1MB)` when `html` is true (:1189), gated by `scanBody.size() < 1MB` (:1189). No live DOM taint tracking, no runtime-reached-sink coverage, no external-JS fetch. Claim holds; evidence line refreshed 1083 -> 1196."
+      }
     },
     {
       "area": "scanner",
@@ -1091,7 +1101,12 @@
       "effort": "weeks",
       "gap": "OGNL/Struts2 is now ACTIVELY probed (no longer CVE-correlation-only): the SSTI tester's two-expression arithmetic proof gained the %{ } delimiter family, which only OGNL/Apache-Struts2 evaluates, so an OGNL-parsed sink is confirmed and fingerprinted as Struts2. Remaining gap: generic non-arithmetic server-side code-eval -- SpEL class access (T(java.lang.Runtime)...), raw eval() APIs, and OGNL member-access chains beyond infix math -- is still not actively probed.",
       "why": "Extended the proven SSTI engine rather than duplicating it: added { \"%{\", \"}\", \"OGNL (Apache Struts2)\" } to ssti_tester.cpp families(). The existing polyglot sends pre%{a*b}sep%{c*d}suf and confirmsArithmetic() requires BOTH products with the literal separator preserved and neither raw expression echoed -- so a Struts2 OGNL sink confirms while pure reflection / a single-expression calculator do not. No other family uses %{ }, so the hit's engine string uniquely fingerprints OGNL.",
-      "evidence": "ssti_tester.cpp families() now includes the %{ } OGNL family; hpp doc updated (\"...also covers OGNL/Apache-Struts2\"). Live-proven in scripts/probe_smoke.sh: a new ssti-ognl mock evaluates ONLY %{N*N} (not Jinja {{ }}), and /api/ssti/test confirms it with engines containing 'OGNL' AND not 'Jinja2' (2 new cases). Mutation-proven: deleting the %{ } family drops that case to confirmed:false/hits:[] while ssti-vuln/safe/calc stay correct. Gauntlet: ctest 100/100, probe_smoke 158/158."
+      "evidence": "ssti_tester.cpp families() now includes the %{ } OGNL family; hpp doc updated (\"...also covers OGNL/Apache-Struts2\"). Live-proven in scripts/probe_smoke.sh: a new ssti-ognl mock evaluates ONLY %{N*N} (not Jinja {{ }}), and /api/ssti/test confirms it with engines containing 'OGNL' AND not 'Jinja2' (2 new cases). Mutation-proven: deleting the %{ } family drops that case to confirmed:false/hits:[] while ssti-vuln/safe/calc stay correct. Gauntlet: ctest 100/100, probe_smoke 158/158.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified ssti_tester.cpp -- the `{ \"%{\", \"}\", \"OGNL (Apache Struts2)\" }` family (:32) is present and wired exactly as described, giving an active OGNL/Struts2 confirm via the arithmetic-polyglot proof. Generic non-arithmetic server-side code-eval (SpEL class access, raw eval() APIs, OGNL member-access chains) is still not actively probed -- grep for SpEL/T\\(java\\.lang\\.Runtime confirms no such family exists. Claim holds, no drift."
+      }
     },
     {
       "area": "scanner",
@@ -1276,7 +1291,12 @@
       "effort": "weeks",
       "gap": "No 'crawl then audit' pipeline, no live active scanning of proxy traffic, no named launch-mode selector.",
       "why": "Re-read: passive is always-on live (passive_scanner.hpp:71-73), active is manual per-URL (/api/audit/run:6460) or session-wide (/api/audit/all:6513 fromHistory). Crawler is a separate endpoint. No unified crawl->audit pipe, no named launch-mode selector. Claim holds.",
-      "evidence": "control_server.cpp:6513 /api/audit/all pulls history rows; :3959 /api/crawler/start is separate; no code path feeds crawler output into runDeepAudit"
+      "evidence": "control_server.cpp:7855 `/api/audit/all` pulls history rows; :4722 `/api/crawler/start` is separate; no code path feeds crawler output into runDeepAudit",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp -- /api/crawler/start (:4722, was :3959) and /api/audit/run (:7802) / /api/audit/all (:7855, was :6513) remain three independent entry points; no code path feeds crawler output into runDeepAudit, no named launch-mode selector exists. Claim holds; evidence line numbers refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1318,7 +1338,12 @@
       "effort": "weeks",
       "gap": "Cannot re-run one check for one issue; only whole-baseline diff, not tied to the original insertion point/payload.",
       "why": "Re-read: grep for retest finds no per-issue endpoint. Only /api/baseline/save + /api/baseline/diff (control_server.cpp:4074,4147) re-run and diff the whole finding set. Claim holds.",
-      "evidence": "control_server.cpp:4147 `if (path == \"/api/baseline/diff\")`; no per-finding retest route exists"
+      "evidence": "control_server.cpp:4926 `if (path == \"/api/baseline/diff\")`; no per-finding retest route exists",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp -- /api/baseline/save (:4853, was :4074) and /api/baseline/diff (:4926, was :4147) remain the only baseline-related routes; grep for `retest` across control_server.cpp and ui-v2/ returns no per-issue retest endpoint or UI action. Claim holds; evidence line numbers refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1328,7 +1353,12 @@
       "effort": "weeks",
       "gap": "No username/password + login-URL auto-login; session rules act on proxy traffic, and the /api/audit/* testers call HttpClient::send directly without applying session rules, so they cannot re-auth on session expiry.",
       "why": "Re-read session_rules.hpp:1-40 (extract value from response, re-inject {{var}} into later requests) -- this IS the Burp session-handling-rule/macro equivalent and it is wired (control_server.cpp applyToResponse/applyToRequest, /api/rules/* + /api/session-rules/set:3795, UI ruleAdd/ruleToggle in real-data.js:205-209). But no credential-based auto-login, and the deep-audit HttpClient path does not a",
-      "evidence": "session_rules.hpp:3 'The \"Burp macros / session handling rules\" equivalent'; control_server.cpp:3795 /api/session-rules/set; real-data.js:205 ruleAdd"
+      "evidence": "session_rules.hpp:3 'The \"Burp macros / session handling rules\" equivalent'; control_server.cpp:4534 /api/session-rules/set; real-data.js:451 ruleAdd",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified session_rules.hpp/.cpp and control_server.cpp -- /api/session-rules/set (:4534, was :3795), applyToRequest/applyToResponse still the extraction+injection pipeline, real-data.js:451 ruleAdd. Session rules remain proxy-traffic-only; the /api/audit/* deep-audit testers still call HttpClient::send directly without consulting SessionRules, so they cannot pick up a rule-injected token or trigger re-auth on expiry -- confirmed unchanged by grep (no SessionRules reference in the runDeepAudit call path). Claim holds; evidence line numbers refreshed. (Note: a separate, newly-added SessionMacro/login-macro mechanism is evaluated under [B6], item 94 below -- it doesn't change this item's audit-path gap.)"
+      }
     },
     {
       "area": "scanner",
@@ -1354,7 +1384,12 @@
       "effort": "weeks",
       "gap": "No thread-count/concurrency control; no fast/normal/thorough presets that change payload depth or retries.",
       "why": "Re-read control_server.cpp:6524-6527 (audit/all throttleMs default 150 bounded 0..60000, limit default 50 bounded 1..200) and the sweep worker at 6584-6592 (single serial QtConcurrent::run loop). Only throttle+cap, serial, no concurrency knob, no accuracy presets. Claim holds.",
-      "evidence": "control_server.cpp:6585 `for (const AuditTarget &t : targets) { ... runDeepAudit(...); QThread::msleep(throttleMs); }` -- single serial loop"
+      "evidence": "control_server.cpp:7947 `auditAllInFlight.storeRelease(0); // sweep done` -- single serial loop with QThread::msleep(throttleMs) between targets",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp /api/audit/all -- throttleMs default 150 bounded 0..60000 and limit default 50 bounded 1..200 (line drift 6524-6527 -> ~7866-7869), sweep dispatched via QtConcurrent::run but the target loop itself is still a single serial iteration with QThread::msleep(throttleMs) between targets (no thread-count knob, no fast/normal/thorough accuracy presets). Claim holds; evidence line numbers refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1364,7 +1399,12 @@
       "effort": "weeks",
       "gap": "No live active task; user must manually kick off /api/audit/all or GUI 'Probe all rows' after browsing.",
       "why": "Re-read: passive is wired live on every response (app.cpp:945-946 crawler->onResponseReceived, scanner ctor). Active auditing is only user-triggered (/api/audit/run, /api/audit/all fromHistory, GUI /api/probe/all). No auto-active-scan of in-scope requests as they pass. Claim holds.",
-      "evidence": "app.cpp:946 `QObject::connect(&crawler, ...entryLoaded, &scanner, ...onResponseReceived)`; no live active-scan task exists"
+      "evidence": "app.cpp:1266 `QObject::connect(&crawler, ...entryLoaded, ...)` / :1271 `&scanner, &...::onResponseReceived)`; no live active-scan task exists",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified app.cpp -- crawler.entryLoaded is still connected straight to scanner.onResponseReceived for passive-only coverage (line drift 945-946 -> 1266-1271); active auditing remains exclusively user-triggered via /api/audit/run, /api/audit/all, or GUI /api/probe/all. No live active-scan task exists. Claim holds; evidence line numbers refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1374,7 +1414,12 @@
       "effort": "weeks",
       "gap": "Version-string correlation against a bundled DB, not a retire.js-style known-vulnerable-JS hash catalogue or live feed.",
       "why": "Re-read: js_recon.cpp exists; assessWebTarget correlates detected tech+version to CveDatabase (control_server.cpp:431-435); framework fingerprints passive_scanner.cpp:1483-1517. CVE correlation is version-string based against the curated cve_database.cpp, not a retire.js hash/pattern catalogue. Claim holds.",
-      "evidence": "control_server.cpp:432 CveDatabase::lookup(t.cveKind, name+version); no hash/pattern library-advisory catalogue in Src/"
+      "evidence": "control_server.cpp:452 `CveDatabase::lookup(t.cveKind, t.name + \" \" + t.version)`; no hash/pattern library-advisory catalogue in Src/",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp assessWebTarget (line drift 431-435 -> 415-452) still resolves via CveDatabase::lookup(t.cveKind, name+version) -- version-string correlation against the bundled cve_database.cpp, not a retire.js-style hash/pattern catalogue. Claim holds; evidence line numbers refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1384,7 +1429,12 @@
       "effort": "months",
       "gap": "No browser-driven crawl; client-rendered SPA navigation is invisible.",
       "why": "Re-read crawler.cpp:151-183 (regex link extraction over static HTML) and grep of Src/ for headless|chromium|puppeteer|webengine|CDP returns nothing in the crawl path. Confirmed absent; task #12 headless-browser DAST still pending.",
-      "evidence": "crawler.cpp:154 'Doesn't run JS so heavily-SPA targets won't yield many links'; no browser engine in Src/"
+      "evidence": "crawler.cpp:154 'Doesn't run JS so heavily-SPA targets won't yield many links'; no browser engine in Src/",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-verified crawler.cpp:153 comment still reads \"Doesn't run JS so heavily-SPA targets won't yield...\" (line drift from :154); grep of Src/ for headless|chromium|puppeteer|webengine|CDP in the crawl path still returns nothing. Confirmed still absent, no drift in substance."
+      }
     },
     {
       "area": "scanner",
@@ -1394,7 +1444,12 @@
       "effort": "months",
       "gap": "No stored-XSS detection (needs inject-at-A / detect-at-B after re-crawl). Neither the dedicated module nor the GUI probe attempts it.",
       "why": "Re-read xss_reflected.hpp:12 ('DOM-based, and stored XSS are out of scope') and grep 'stored.?xss' across Src/ returns only that exclusion comment. No inject-here/detect-there correlation engine. Confirmed absent.",
-      "evidence": "xss_reflected.hpp:12 '...DOM-based, and stored XSS are out of scope for this reflected check.'; no stored-xss correlation code exists"
+      "evidence": "xss_reflected.hpp:12 '...DOM-based, and stored XSS are out of scope for this reflected check.'; no stored-xss correlation code exists",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-verified xss_reflected.hpp:12 still excludes \"DOM-based, and stored XSS\" from the reflected checker's scope; grep for stored.?xss across Src/ still returns only that exclusion comment. No inject-at-A/detect-at-B correlation engine exists. Confirmed still absent."
+      }
     },
     {
       "area": "scanner",
@@ -1404,7 +1459,12 @@
       "effort": "weeks",
       "gap": "No saved/named scan configs, no built-in preset library, no import/export. Every run re-specifies include[] + throttle inline.",
       "why": "Re-read control_server.cpp:6480-6483 (audit selection is a freeform include[] set built per-call). Grep of Src/ and ui-v2/ for scanConfig|savedConfig|config.?library|named.?config|scanProfile returns nothing. No persistence of a scan profile. Confirmed absent.",
-      "evidence": "control_server.cpp:6481 `QSet<QString> include;` built inline per request; grep for named/saved config returns empty"
+      "evidence": "control_server.cpp:6481 `QSet<QString> include;` built inline per request; grep for named/saved config returns empty",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-verified control_server.cpp /api/audit/all still builds its `include` set as a freeform QSet<QString> parsed inline per request (no persisted profile); grep of Src/ and ui-v2/ for scanConfig|savedConfig|config.?library|named.?config|scanProfile still returns nothing. Confirmed still absent."
+      }
     },
     {
       "area": "scanner",
@@ -1414,7 +1474,12 @@
       "effort": "weeks",
       "gap": "No scan queue UI/model; cannot inspect, pause, resume, cancel, or see per-target/per-insertion-point progress.",
       "why": "Re-read control_server.cpp:6516-6519 (single global auditAllInFlight atomic flag) and 6584-6593 (one QtConcurrent::run loop, returns only a queued count). No task model, no per-item status, no pause/resume. Grep ScanQueue|scanTask|pauseScan returns only an unrelated kMaxScanTasks constant. Confirmed absent.",
-      "evidence": "control_server.cpp:6516 `static QAtomicInteger<int> auditAllInFlight(0);`; :6593 returns `{ \"queued\", targets.size() }` only"
+      "evidence": "control_server.cpp:7858 `static QAtomicInteger<int> auditAllInFlight(0);`; sweep returns only a queued count",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-verified control_server.cpp -- auditAllInFlight is still a single global QAtomicInteger<int> testAndSetAcquire gate (line drift 6516 -> 7858), the sweep still returns only a queued count, no per-task model, no pause/resume/cancel. grep for ScanQueue|scanTask|pauseScan still returns only the unrelated kMaxScanTasks constant. Confirmed still absent; evidence line refreshed."
+      }
     },
     {
       "area": "scanner",
@@ -1435,12 +1500,17 @@
     {
       "area": "scanner",
       "feature": "[B6] Authenticated scanning: recorded login sequences",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "months",
-      "gap": "Cannot record/replay a multi-step or JS-driven login; blocks scanning apps behind SPA/JS logins.",
-      "why": "Re-read: grep of Src/, ui-v2/ for recorded.?login|login.?sequence|loginSequence|autoLogin returns nothing. No embedded browser to record a login (task #12 pending). The only auth mechanisms are manual headers and extract/inject session rules. Confirmed absent.",
-      "evidence": "grep recorded-login/loginSequence across Src/ and ui-v2/ -> no matches; no browser-record capability exists"
+      "gap": "Recorded steps are raw HTTP requests replayed via ChainRunner (built from Proxy history row IDs), not a browser interaction recording -- a JS-driven/SPA login that requires executing client-side script to reach the auth endpoint still cannot be captured or replayed. Also, per item #84, the deep-audit testers don't consult SessionRules directly, so a macro's re-auth only refreshes the shared variable bag, not an in-flight audit request.",
+      "why": "UPGRADED absent->partial: this grade is genuinely stale. Commit 88cbe99 (2026-08-28), after this file's audit_date (2026-07-30) and reconciled_through (2026-08-25), added SessionMacro (session_rules.hpp:93-101): a named macro combining recorded ChainRunner steps with an optional logged-out-status/body-regex auto-re-auth trigger. SessionRules::runMacro (session_rules.hpp:135) replays the steps synchronously and ingestVariables merges extracted values into the host's variable bag, which the existing session-rule injection pipeline then applies to subsequent requests -- a real login-sequence-replay auth mechanism, not just static header/cookie rules.",
+      "evidence": "session_rules.hpp:93 `struct SessionMacro { QString name; QString sessionHost; QList<ChainRunner::Step> steps; QString loggedOutStatus; QString loggedOutBodyRegex; };`; control_server.cpp:4555 `/api/session-macros` (get/set, persisted via projectStore->setSessionMacros) and :4574 `/api/session-macros/run` (QtConcurrent::run(sr->runMacro)); ui-v2/app.jsx:7370 \"LOGIN MACROS -- named recorded login sequences ... record steps from Proxy history\"; ui-v2/real-data.js:448-450 sessionMacrosGet/Set/Run.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. SessionMacro (named, recorded-from-proxy-history login sequences with ChainRunner replay and auto re-auth trigger on logged-out detection) landed in 88cbe99, after this file's prior audit_date/reconciled_through window. Fully wired: backend struct+persistence, /api/session-macros (get/set) and /api/session-macros/run endpoints, and a GUI 'Login macros' panel in app.jsx recording steps from Proxy history rows. Remaining gap: HTTP-replay only, no browser-driven capture for JS/SPA logins, and per item #84 the deep-audit path doesn't consult SessionRules mid-request."
+      }
     },
     {
       "area": "extender",
