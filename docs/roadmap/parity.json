@@ -2334,7 +2334,7 @@
       "evidence": "sequencer_logic.cpp:1287-1310 analyzeTokens summary block: `summary[\"confidence\"]=...; summary[\"significanceLevel\"]=alpha; summary[\"effectiveBitsPerToken\"]=effectiveBits; summary[\"tokensAnalyzed\"]=tokens.size(); summary[\"decodedBits\"]=double(bit.bits); summary[\"dataAnalyzed\"]=...` (tiers: tooFew||!estimable -> low, !fipsBitsMet -> medium, else high). Schema in sequencer.hpp:126-148. Verified: Tests/sequencer/sequencer_test.cpp confidence-tier cases at :785-804 (10/20 tokens -> low, 150x8-hex -> medium, 200x32-hex -> high).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified sequencer_logic.cpp's analyzeTokens summary block (function drifted to :966, summary assembly now at 1287-1310) -- confidence/significanceLevel/effectiveBitsPerToken/tokensAnalyzed/avgTokenLength/decodedBits/meetsRecommendedSample/meetsFipsSample/dataAnalyzed are all present and tier-gated exactly as described (tooFew||!estimable->low, !fipsBitsMet->medium, else high). Confirmed against Tests/sequencer/sequencer_test.cpp:785-804 (10/20 tok->low, 150x8-hex->medium, 200x32-hex->high) -- tiers unchanged. No per-significance-level entropy curve and no per-flag score attribution exist anywhere in the file (grepped for 'curve'/'attribution'/'perFlag': 0 hits). Claim holds; evidence line numbers refreshed."
       }
     },
@@ -2477,7 +2477,7 @@
       "evidence": "session_rules.hpp:49-50 `QString hostGlob = \"*\"; QString pathGlob = \"*\";`; session_rules.cpp:171-173 `return resolve(r.hostGlob).match(host).hasMatch() && resolve(r.pathGlob).match(stripQuery(path)).hasMatch() && SessionRulesLogic::urlScopeMatches(host, path, r.includeUrls, r.excludeUrls);`; session_rules_logic.cpp:17-24 globToRx loop (unchanged). Suite-scope gate now at proxy_server.cpp:1688 `if (!isUrlInScope(req.tls, req.host, req.port, req.path)) return;` (renamed from isInScope(host), now also protocol/port-aware, but still applied before the session hooks with no per-rule override).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at partial. hostGlob/pathGlob struct fields drifted 45-46 -> 49-50 (unchanged content); matches() return drifted 65-66 -> 171-173, now a three-clause return with the previously-landed urlScopeMatches include/exclude check appended -- content matches the gap's own already-updated description verbatim. globToRx (session_rules_logic.cpp:12-25, loop body 17-23) is byte-identical, no drift in the cited lines. The upstream suite-scope gate moved from proxy_server.cpp:1447 `isInScope(req.host)` to :1688 `isUrlInScope(req.tls, req.host, req.port, req.path)` -- a real signature change (the scope engine grew protocol/port/advanced-rule matching via ProxyServer::isUrlInScope + setAdvancedScope), but the substance for THIS item is unchanged: it is still an unconditional early return applied before SessionManager::injectInto and SessionRules::applyToRequest, with no per-rule opt-out. Still no 'use suite scope' checkbox or protocol/port field on SessionRule itself. Claim holds; evidence refreshed."
       }
     },
@@ -2492,7 +2492,7 @@
       "evidence": "session_manager.cpp:110-119 `void SessionManager::injectInto(...) { if (req.host.isEmpty()) return; ... auto it = m_byHost.constFind(lowercaseHost(req.host)); if (it == m_byHost.constEnd()) return; if (!it->autoInject) return; use = it->cookies; }`. Toggle: session_manager.cpp:165-176 `setAutoInject`, endpoint control_server.cpp:10775 `if (path == \"/api/sessions/autoInject\") {`, UI ui-v2/app.jsx:7062-7064 the auto-inject checkbox in the Sessions panel. `grep SessionManager Src/Core/Networking/repeater.cpp Src/Core/Networking/intruder.cpp`: 0 hits -- the cookie jar still never reaches either tool.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at partial (the cookie-jar-specific claim). injectInto/setAutoInject/endpoint/UI line numbers refreshed (93-103->110-119, 146-157->165-176, control_server.cpp 9489->10775, app.jsx ~190->7062). Silent suppressor (1), the scope early-return, moved 1447->1688 (see item #70/156) and still applies before injectInto. Silent suppressor (2) needed correcting, not just re-lining: the ORIGINAL 'grep session in repeater.cpp/intruder.cpp: zero hits' claim is now FALSE -- both files import session_rules.hpp and call m_sessionRules->applyToRequestBytes(..., ToolRepeater/ToolIntruder) (repeater.cpp:160-161, intruder.cpp:656-657 and :880-881), wired live via repeater.setSessionRules()/intruder.setSessionRules() in app.cpp:1108/1111. That is the SEPARATE SessionRules {{var}}-injection pipeline (item #72/159's mechanism, now scoped by a new per-rule `tools` bitmask), not this item's SessionManager cookie jar -- Repeater and Intruder still hold no SessionManager pointer at all (grep for SessionManager in both .hpp/.cpp: 0 hits), so 'use cookies from the session handling cookie jar' specifically remains Proxy-only. State holds at partial, but the supporting evidence for suppressor (2) needed retargeting to avoid citing a now-false grep result."
       }
     },
@@ -2523,7 +2523,7 @@
       "evidence": "chain_runner.hpp:27-32 verbatim: `struct Extract { QString var; enum From { Header, Cookie, Json, Regex, Status } from = Header; QString key; };`. extractOne implemented at chain_runner.cpp:20-47 covering all five. Substitution + CL repair at chain_runner.hpp:88-90; sanitization at :87 `QString sanitizeExtractedValue(const QString &v);`. Wiring: control_server.cpp:10210 `/api/chain/run` builds `steps` then :10254 `Nullock::Core::ChainRunner::run(steps, continueOnError)`. Second caller: session_rules.cpp:446 `SessionRules::runMacro` -> `Nullock::Core::ChainRunner::run(macro.steps, false)`, whose result is merged via `ingestVariables(macro.sessionHost, result.vars)` (:448) into the SessionRules variable bag that applyToRequest/applyToRequestBytes injects into Proxy, Repeater and Intruder traffic.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at partial, WITH a correction to the 'why' field's central claim. Extract struct / extractOne / substitution helpers verified verbatim modulo a small line shift (26-31->27-32, extractOne 21-46->20-47). But 'ChainRunner::run has exactly one caller (control_server.cpp:8994)' is now factually wrong: SessionMacro (session_rules.hpp:93-101, landed in commit 88cbe99 -- see scanner-area item #94's own upgrade, already reconciled in commit 9defca8) added a SECOND caller, SessionRules::runMacro (session_rules.cpp:434-451), which replays macro.steps through the exact same ChainRunner::run and then durably ingests the extracted vars into SessionRules' per-host bag (session_rules.cpp:448 ingestVariables) -- which the injection pipeline (applyToRequest/applyToRequestBytes) then threads into subsequent Proxy/Repeater/Intruder requests. So for a NAMED, persisted SessionMacro specifically, the chain is no longer 'attached to nothing': deriving a value from response 1 and updating request N+1's parameters now works end-to-end, including auto re-auth on a logged-out trigger. This does NOT fully close the gap: (a) it only applies to a configured SessionMacro, not an ad-hoc /api/chain/run chain, which still has no downstream consumer of its own; (b) the form-field extractor gap (item #85/170) is untouched; (c) crawl/deep-audit's own HttpClient still never consults SessionRules (confirmed: no SessionRules reference in crawler.cpp or the runDeepAudit call path -- see item #85/200). State held at partial for these remaining reasons, but the 'attached to nothing' framing in the original gap/why is stale for the login-macro case -- flagged here rather than silently re-affirmed."
       }
     },
@@ -2538,7 +2538,7 @@
       "evidence": "Src/App/app.cpp:937-940: `Nullock::Core::SessionManager sessions; proxy.setSessionManager(&sessions); QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived, &sessions, &Nullock::Core::SessionManager::onResponseReceived);` -- the sole feed. Capture at session_manager.cpp:45-51 `for (const auto &h : resp.headers) { if (h.first.compare(\"Set-Cookie\", Qt::CaseInsensitive) != 0) continue; ... }`. WebSocket exclusion at session_manager.cpp:37 `if (req.method.startsWith(\"WS\")) return;`. `grep -n onResponseReceived|SessionManager Src/Core/Networking/repeater.cpp Src/Core/Networking/intruder.cpp Src/Core/Networking/chain_runner.cpp`: 0 hits -- capture (as opposed to the separate SessionRules injection pipeline items #71/#72 discuss) is still Proxy-only.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at partial. app.cpp wiring drifted 777-780 -> 937-940 (identical content); session_manager.cpp's Set-Cookie capture loop drifted 39-44 -> 45-51; the WS exclusion drifted :35 -> :37 (all unchanged content, small shifts from earlier additions in the file). Re-confirmed Repeater/Intruder/ChainRunner still construct their own HttpClient and never call SessionManager::onResponseReceived or hold a SessionManager pointer at all (distinct from the SessionRules {{var}}-injection pipeline, which items #71/#72 (157/159) now confirm DOES reach Repeater/Intruder via a per-rule tools bitmask -- capture is a different, still- unaddressed half of this gap). No 'monitor traffic from' per-tool setting exists for the cookie jar. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -2697,7 +2697,7 @@
       "evidence": "SequencerCaptureLogic::ExtractFrom (sequencer_capture_logic.hpp:23-30) enumerates FromHeader/FromCookie/FromJson/FromRegex/FromStatus/FromDelimiter -- explicitly mirrored from ChainRunner::Extract::From (header comment :10-12) with ONE addition (FromDelimiter, a literal start/end-marker extractor) and still no form-field mode. session_rules.hpp:53-58 (SessionRule::ExtractFrom) and chain_runner.hpp:29 (ChainRunner::Extract::From) likewise have no Form option. No HTML form parser exists anywhere in the extraction layers.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent, but the evidence needed real re-derivation, not just a line-number refresh -- a live-capture engine (Src/Core/Networking/sequencer_capture.cpp/.hpp + sequencer_capture_logic.cpp/.hpp) was added since the last audit, giving Sequencer its own token-harvesting extraction vocabulary independent of ChainRunner/SessionRules. Checked it specifically for a form-field mode: SequencerCaptureLogic::ExtractFrom (sequencer_capture_logic.hpp:23-30) has Header/Cookie/Json/Regex/Status plus one NEW option, FromDelimiter (a literal start/end-delimiter extractor, key encoded \"<start>\\x1f<end>\") -- useful for scraping an inline-HTML token by surrounding text, but still not an HTML FORM-FIELD parser (no DOM/attribute-aware extraction; a delimiter is just two literal strings). ChainRunner::Extract::From (chain_runner.hpp:29) and SessionRule::ExtractFrom (session_rules.hpp:53-58) are unchanged, still four options, no Form. No HTML form parser exists anywhere in Src/. State holds at absent; the enabling primitive genuinely still does not exist, though the new delimiter mode narrows the practical gap for anti-CSRF tokens with stable surrounding markup."
       }
     },
@@ -2760,7 +2760,7 @@
       "evidence": "Src/Core/Networking/sequencer_capture.cpp/.hpp: a full live-capture engine now exists (SequencerCapture::run, :108-199) that fires N requests and harvests one token per response into a corpus (m_tokens). control_server.cpp:5511-5535 `/api/sequencer/capture/tokens` recomputes `Nullock::Core::Sequencer().analyze(toks)` (whole-corpus analyzeTokens) fresh on EVERY call (:5527-5529), gated by SequencerCaptureLogic::corpusGuard. ui-v2/app.jsx:4352-4372 `capPoll` calls this endpoint every 1500ms while a capture is running (`setInterval(capPoll, 1500)` at :4370) but only consumes `r.tokens` (folds new tokens into the corpus textarea, :4357-4362) -- `r.analysis`/`r.corpusNote`/`r.distinct` are stored in `capSnapshot` (:4356) but never rendered; the visible Sequencer results panel is only ever populated by the separate, manually-triggered ANALYZE NOW action.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent, but the underlying facts changed enough to need a full re-derivation, not a line refresh. A live-capture engine (sequencer_capture.cpp/.hpp, sequencer_capture_logic.cpp/.hpp) landed since the last audit and IS wired to auto-run the full randomness analysis: /api/sequencer/capture/tokens recomputes analyzeTokens() over the whole harvested corpus on every call (control_server.cpp:5527-5529), and the UI already polls that exact endpoint every 1.5s while a capture is in flight (app.jsx capPoll/setInterval, :4352-4372) -- so the mechanical pieces for 'auto analyze every N tokens' (a live poll re-running the full analysis) already exist and already fire automatically. The gap survives on a technicality: capPoll only reads the response's `tokens` field to grow the corpus textbox; the `analysis` field the backend computes on the same round trip is stored in `capSnapshot` but never read by any render path (grepped app.jsx for `capSnapshot.analysis`: 0 hits) -- so the user sees no live-updating verdict during a capture, only after manually clicking ANALYZE NOW once it's done. Also worth noting: this poll-and-discard pattern is a full O(N) recompute already running every poll, which the original 'why' assumed would need a design change; that assumption is now stale. State holds at absent as experienced by the user; wiring `capSnapshot.analysis` into the results panel would close this with no backend change."
       }
     },
@@ -2886,7 +2886,7 @@
       "evidence": "sequencer_logic.cpp:322-324: `//   * byte-level lag-1 serial correlation       -> the LCG/linear-congruential //                                                  lattice (and java.util.Random //                                                  low-bit) signature`. Admission at sequencer.hpp:26-28 (unchanged): `// so small or genuinely-random captures are never false-flagged. (A Mersenne // Twister stream passes 6-8; flagging MT needs a matrix-rank / state-recovery // test, left as future work.)`. `grep -rc spectral Src/`: 0 hits repo-wide, including the new sequencer_capture*.{cpp,hpp}.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. The lag-1 serial-correlation comment drifted 206-208 -> 322-324 (sequencer_logic.cpp grew with the confidence/dataAnalyzed summary work, item #71/147); the Mersenne Twister admission in sequencer.hpp did NOT drift, still exactly 26-28. Re-ran the 'spectral' grep repo-wide (including the two new sequencer_capture*.cpp/.hpp files, which do not add any bit-level test): 0 hits. Claim holds; one evidence line range refreshed."
       }
     },
@@ -2917,7 +2917,7 @@
       "evidence": "sequencer_logic.cpp:409 `r.columnEntropy << H;` and :1117-1118 `for (double h : pos.columnEntropy) cols.append(h); posObj[\"columnEntropy\"] = cols;`; weak-column threshold at :421-423. ui-v2/app.jsx:4580-4598 renders it: `{(pos.columnEntropy || []).map((h, i) => (<div ... title={\"col \" + i + \": \" + h.toFixed(2) + \" bits\"} ...><div style={{ ..., height: Math.min(100, (h / (pos.reference || 1)) * 100) + \"%\", background: h < 0.5 * (pos.reference || 1) ? \"var(--err)\" : \"var(--accent)\" }} /></div>))}`. Bit-level stats panel at app.jsx:4599-4608. CLI raw-JSON path unchanged: bin/nullock:724 `post /api/sequencer/analyze \"{\\\"tokens\\\":$tokens}\" | pp`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. columnEntropy was always emitted by the backend (sequencer_logic.cpp, drift 550-552 -> 1117-1118 from the confidence/dataAnalyzed work) but the original evidence's 'grep -a columnEntropy ui-v2/: 0 hits' is now false -- ui-v2/app.jsx:4580-4598 added a real per-position bar-chart Section since the last audit, rendering one bar per column colored by the same weak-column threshold the backend computes (h < 0.5*reference), plus a labeled bit-level-tests stats panel (:4599-4608, monobit p / two-bit chi-square / serial r, color-graded on failure). This is a genuine 'results drill-down with charts' as the feature title describes, closing the 'no visualisation anywhere' half of the gap. Remaining and real: no per-bit significance PLOT (bit-level tests show one aggregate number each, not a per-bit chart), and no true per-position PASS/FAIL for each individual statistical test (only the coarse per-column weak/not-weak bar coloring). Downgrade risk considered and rejected: this is core-product GUI code (ui-v2/app.jsx), not a stub or dead branch -- verified the Section is inside the always-rendered renderResult() function, gated only on `pos.applicable`."
       }
     },
@@ -2980,7 +2980,7 @@
       "evidence": "session_rules.hpp:44-86 (struct SessionRule) has no parameter field. session_rules.cpp:151-174 `SessionRules::matches` ends (:171-173) `return resolve(r.hostGlob).match(host).hasMatch() && resolve(r.pathGlob).match(stripQuery(path)).hasMatch() && SessionRulesLogic::urlScopeMatches(...);` -- and stripQuery (session_rules_logic.cpp:130-133) actively DISCARDS the query string before matching, so parameters are still not even visible to the matcher (the newer includeUrls/excludeUrls scope, item #70/156, also matches against `host + stripQuery(path)` only -- session_rules_logic.cpp:169).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. Struct span drifted 40-71 -> 44-86 (grew with includeUrls/excludeUrls/tools fields, still no parameter field). matches() drifted 46-67 -> 151-174; its closing return grew a THIRD clause (the new URL-scope check) but that clause also operates on host+stripQuery(path), so it does not expose parameters either. stripQuery drifted 123-126 -> 130-133, content unchanged, still strips the query before any matching happens. Claim holds; evidence refreshed to reflect the struct/function's real current shape, not just re-lined."
       }
     },
@@ -3027,7 +3027,7 @@
       "evidence": "session_rules.cpp and session_manager.cpp (both re-read in full: now 488 and 288 lines, up from 239/193) contain no wait, no signal-and-block, no user prompt -- including the new SessionMacro/maybeReauth code (session_rules.cpp:453-486), which is itself async (QtConcurrent::run) and non-interactive. The nearest analogue is Src/App/app.cpp:931-932 `Nullock::Proxy::InterceptController intercept; proxy.setInterceptController(&intercept);` -- the request-intercept pause, which no session code references.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. Both files grew substantially since the last audit (session_rules.cpp 239->488 lines, session_manager.cpp 193->288 lines) with the SessionMacro/auto-reauth feature (relevant to items #72/159 and #85/200), so re-read both in full rather than trusting the old line counts. The new maybeReauth path is itself fire-and-forget async (QtConcurrent::run, session_rules.cpp:481) with no pause, no signal-and-block, no prompt -- it re-runs a macro unattended or does nothing, never asking a human to intervene. InterceptController wiring drifted app.cpp:770-771 -> 931-932, still unreferenced by any session code. Claim holds; evidence refreshed."
       }
     },
@@ -3042,7 +3042,7 @@
       "evidence": "extensions_api.hpp:306 `Q_INVOKABLE void onResponse(const QJSValue &callback);` and :311 `Q_INVOKABLE void onRequest(const QJSValue &callback);`, consumed via `applyRequestMutation` (declared :147). No registration API for a named, invocable session-handling action; SessionRule (session_rules.hpp:44-86) still has no action-name field to reference one.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. onResponse/onRequest drifted 167/172 -> 306/311, applyRequestMutation drifted :87 -> :147 (extensions_api.hpp grew substantially -- other extension-API work landed, unrelated to session handling). Re-grepped for registerAction/sessionAction/ISessionHandling/registerSessionHandling repo-wide: 0 hits. SessionRule's field list (session_rules.hpp:44-86) still has no action-name/action-id field. Claim holds; evidence refreshed."
       }
     },
@@ -3121,7 +3121,7 @@
       "evidence": "Signals: session_rules.hpp:166-170 `signals: void rulesChanged(); void variablesChanged(); void macrosChanged(); ... void sessionReauthed(const QString &host, const QString &macro);` -- two more signals than before (macrosChanged, sessionReauthed), still none of them fire-grained per-rule/per-action. Sole introspection: session_rules.cpp:133-141 `variables()`, `// Flattened view for the UI/debug (later hosts win on a name collision).`. Silent, unlogged early exits: applyToResponse (session_rules.cpp:193 rs.isEmpty() return, :197 !enabled continue, :198 !matches continue, :199 empty key/var continue), applyToRequest (:259 rs.isEmpty() return, :263-266 four more continues), ingestVariables (:414 host/vars empty return), and three NEW ones in the SessionMacro re-auth path: runMacro (:442 macro-not-found/no-steps return), maybeReauth (:467 already-in-flight return, :469 cooldown return) -- none of these seven-plus branches produce any diagnostic output.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent -- and, per the original 'why''s own framing, this gets MORE relevant, not less. Re-enumerated the silent-return sites in the now-nearly-doubled session_rules.cpp (239->488 lines): the SessionMacro/auto-reauth feature (items #72/159, #85/200) added THREE new unlogged early-exit branches (macro not found, already re-authing, cooldown) on top of the original set, and two new signals (macrosChanged, sessionReauthed) that are still coarse rulesChanged-style notifications, not a fired-rule trace. Grepped repo-wide for 'tracer'/'Tracer': 0 hits, confirming no such feature exists anywhere, not just in this subsystem. Claim holds; evidence substantially refreshed (old line citations no longer matched current code shape after the SessionMacro addition, not just shifted)."
       }
     },
@@ -3136,7 +3136,7 @@
       "evidence": "The only NTLM reference is transcode.cpp:363 `case 32:  out << QStringLiteral(\"MD5\") << QStringLiteral(\"NTLM\") << QStringLiteral(\"MD4\"); break;` and transcode.hpp:43 (`32 hex -> MD5 / NTLM`) -- a hash-format identifier, not auth. `grep -rn WWW-Authenticate Src/`: 0 hits. `grep -rn platformAuth|basicAuth|DigestAuth|Proxy-Authorization Src/`: 3 hits, all in proxy_server.cpp/proxy_logic.cpp/.hpp and all about STRIPPING the hop-by-hop `Proxy-Authorization` header before forwarding (MITM proxy-credential hygiene), unrelated to authenticating to the TARGET. No 401-challenge handler exists in the HTTP client path.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. NTLM hash-label citation drifted transcode.cpp:299 -> 363, transcode.hpp:37 -> 43 (content unchanged). Re-ran the Proxy-Authorization grep and, unlike the original which reported 0 hits, it now returns 3 -- checked all three by hand: proxy_logic.cpp:150 and proxy_server.cpp:1305 plus a proxy_logic.hpp comment, all about the MITM proxy stripping ITS OWN hop-by-hop Proxy-Authorization header before relaying upstream, which is proxy-credential hygiene, not a per-host Basic/Digest/NTLM/Negotiate challenge-response mechanism for the TARGET application. WWW-Authenticate still 0 hits repo-wide. Claim holds; evidence refreshed including the corrected (non-zero but irrelevant) grep count."
       }
     },
@@ -3151,7 +3151,7 @@
       "evidence": "Sole presentation site, proxy_server.cpp:452-460: `QSslCertificate cert(leaf.certPem, QSsl::Pem); QSslKey key(leaf.keyPem, QSsl::Rsa, QSsl::Pem); ... cfg.setLocalCertificate(cert); cfg.setPrivateKey(key);` -- the cert Nullock presents TO the browser (the MITM leaf), unchanged in content from the prior audit. Every other hit is peer-side inspection: tls_inspect.cpp:99 `const QSslCertificate cert = sock.peerCertificate();`, :187 `QSslCertificate::verify(sock.peerCertificateChain(), req.host);` (both unchanged line numbers). `grep -rn pkcs12|PKCS12 Src/`: 0 hits.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. The MITM leaf-presentation site drifted proxy_server.cpp:398-406 -> 452-460 (content identical); both tls_inspect.cpp peer-inspection citations (:99, :187) did NOT drift. Re-ran the pkcs12/PKCS12 grep repo-wide: still 0 hits. No per-host client-cert keystore, no QSslConfiguration consumer for a CLIENT identity when Nullock is itself connecting outbound (Repeater/Intruder/chain/crawler/audit HttpClient sends). Claim holds; evidence refreshed."
       }
     },
@@ -3166,7 +3166,7 @@
       "evidence": "session_rules.hpp:88-102 `struct SessionMacro { QString name; QString sessionHost; QList<ChainRunner::Step> steps; QString loggedOutStatus; QString loggedOutBodyRegex; };`. control_server.cpp:4555 `/api/session-macros` (get/set, persisted via projectStore->setSessionMacros) and :4574 `/api/session-macros/run`. session_rules.cpp:434-451 `SessionRules::runMacro` replays via `ChainRunner::run` (a SECOND caller alongside /api/chain/run, control_server.cpp:10210/10254) then `ingestVariables` (:448) into the durable per-host bag. Remaining absence: `grep -in login Src/Core/Networking/crawler.cpp crawler.hpp crawler_logic.cpp`: still 0 hits; `grep -n SessionRules Src/BackEnd/Control/control_server.cpp` near the audit-tester call path (runDeepAudit, :491 and its callers :7840/:7944): 0 hits -- crawl and deep-audit still never consult SessionRules or a macro's refreshed vars.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial, the exact mirror of scanner-area item #94's own already-reconciled upgrade (commit 9defca8) for the same underlying SessionMacro feature (commit 88cbe99, landed after this file's prior audit_date/reconciled_through window). Re-verified independently rather than assuming the scanner-area finding transfers: confirmed ChainRunner::run now has two callers (control_server.cpp:10254 for ad-hoc /api/chain/run, session_rules.cpp:446 for a SessionMacro replay), confirmed session_rules.cpp:448 ingestVariables makes the replay's output durable (persisted to project.json, survives restart, unlike the old ChainRunner-only path), and confirmed the auto-reauth trigger (maybeReauth) exists. But this item's own title specifically names crawl/audit as the consumer, and those remain unserved: crawler.cpp still has zero login/auth concept (own HttpClient, confirmed 0 'login' hits), and the deep-audit tester call path (runDeepAudit and its two callers) still never references SessionRules -- so the practical benefit lands on Proxy/Repeater/Intruder traffic (per items #71/#72 (157/159)'s findings), not on an authenticated crawl or scan sweep. Gap/why/evidence rewritten to reflect the upgrade, following the same pattern as item #94."
       }
     },
@@ -3181,7 +3181,7 @@
       "evidence": "Hits are host_header.hpp (password-reset poisoning prose), nosql_injection.hpp (an auth-bypass payload string), sequencer.hpp (a comment listing token kinds) -- confirmed still prose-only, no code reference. No scan-config struct has credential fields anywhere in Src/Core/Networking/ (SessionMacro's ChainRunner::Step, session_rules.hpp:96, carries only raw recorded HTTP bytes -- no username/password fields). The audit entry point (control_server.cpp `/api/audit/run`, in kActivePaths at :3263, handler at :7802) takes a target host, not credentials.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "b242583",
         "note": "Wave 0 register-accuracy audit: held at absent. kActivePaths/`/api/audit/run` drifted :2953 -> kActivePaths set starting :3256 (path listed at :3263) / handler at :7802 (both moved with the file's overall growth). Specifically checked the new SessionMacro struct (session_rules.hpp:88-102, added since the last audit) for a credentials field, since it is the newest 'login-adjacent' addition in this area: it carries `name`, `sessionHost`, `steps` (raw recorded ChainRunner::Step requests), `loggedOutStatus`, `loggedOutBodyRegex` -- no username/password fields, and nothing drives a login FORM (it replays already-recorded raw HTTP requests verbatim, it does not find-and-fill a form). Claim holds; evidence refreshed to also rule out the newest candidate location."
       }
     },
@@ -4557,7 +4557,7 @@
       "evidence": "Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { if (m_busy) return; ... m_busy = true; ...}` (cleared at :284); :373 addTab, :383 addTabFromHistory, :400 addTabFromHistoryById, :421 closeTab, :433 setActiveTab, :455 duplicateTab all verified present and wired. Backing store repeater.hpp:187 `QList<RepeaterTab> m_tabs;`. Snapshot really emits them: control_server.cpp:1627 `for (const auto &t : m_wiring.repeater->tabs())` ... :1650 `repeater[\"tabs\"] = tabs;` (line drift from the original citation, content and conclusion unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified tab management (addTab/addTabFromHistory/addTabFromHistoryById/closeTab/setActiveTab/duplicateTab, repeater.cpp:373-467) is real and fully wired, but a single m_busy flag (repeater.cpp:136,140,284) still gates ALL tabs and send() (repeater.cpp:135) still calls the blocking HttpClient::send() inline on the control/GUI thread -- concurrency is exactly what the item asks for and still does not exist. No code change this pass."
       }
     },
@@ -4588,7 +4588,7 @@
       "evidence": "Src/Core/Networking/repeater.cpp:383 addTabFromHistory(int row) vs :400 addTabFromHistoryById(int id) -- two distinct entry points now exist. ui-v2/app.jsx:68 `act(\"repeaterTabAddFromHistoryId\", row.id)` (browser button, fixed) vs bin/nullock's `load)` case: `post /api/repeater/tab/addFromHistory \"{\\\"row\\\":$row}\"` where $row is the user-supplied value the usage text calls `<row-id>` (CLI, still buggy). Body rendering: Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp:141 looksTextual(), :163 `return QString(\"[binary %1 bytes, %2]\")...`, :174 requestRawAt() (line drift from the prior 128-160/151-160 citation, content unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at partial, with one real fix found. The browser 'send to Repeater' button (ui-v2/app.jsx:68) now calls repeaterTabAddFromHistoryId -> POST /api/repeater/tab/addFromHistoryId {id}, which routes to the new Repeater::addTabFromHistoryById(int id) (repeater.cpp:400) -- the id-vs-index bug the prior audit found in the browser path is fixed. The CLI is NOT: `nullock repeater load <row-id>` (bin/nullock, documented as taking a row-id) still POSTs to /api/repeater/tab/addFromHistory {row:$row} -- the INDEX-based endpoint (control_server.cpp:3710 -> addTabFromHistory(int row), repeater.cpp:383) -- so the CLI still silently loads the wrong row on a non-trivial id/index gap. The binary-placeholder and 64KB-truncation defects are unchanged: proxy_model.cpp's requestRawAt still renders a `[binary N bytes, ...]` placeholder for non-textual bodies and truncates text bodies over kMaxBodyPreviewBytes, in both cases leaving the captured Content-Length header untouched. Gap text narrowed to reflect the browser-path fix."
       }
     },
@@ -4887,7 +4887,7 @@
       "evidence": "ui-v2/app.jsx DecoderTab (function at :6171); the single chaining affordance `const useOutputAsInput = () => { setInput(output); setOutput(\"\"); setOutputB64(\"\"); setChain([]); setErr(\"\"); };` (:6248) bound to the '\u2191 input' button (:6326) -- resets rather than stacks (line drift from the prior 1536-1541 citation, content unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at partial. useOutputAsInput (ui-v2/app.jsx:6248) still does `setInput(output); setOutput(\"\"); setOutputB64(\"\"); setChain([]); setErr(\"\");` -- pressing the chain button still discards the prior stage's output/error state and clears the recorded chain rather than pushing a new stacked block, matching the prior finding exactly (line drift only). No code change this pass."
       }
     },
@@ -5077,7 +5077,7 @@
       "evidence": "Src/Core/Networking/repeater.hpp:187 `QList<RepeaterTab> m_tabs;` -- the RepeaterTab struct carries no group or order field; ui-v2/tabs.jsx's tab strip renders a flat horizontal scroller with no drag handlers (re-grepped for draggable/dragstart in tabs.jsx -- 0 hits).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh case-insensitive grep for tabGroup/groupName/sendGroup/draggable/dragstart across Src/Core/Networking/repeater.* and ui-v2/tabs.jsx returns zero hits -- no grouping or drag-reorder exists for Repeater tabs. RepeaterTab still has no group/order field. No code change this pass."
       }
     },
@@ -5092,7 +5092,7 @@
       "evidence": "Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { if (m_busy) return; auto &t = activeTab_(); ... }` -- active tab only, one request per call. control_server.cpp:3685 `if (path == \"/api/repeater/send\")` reads no body parameters and just invokes send() on the active tab via a queued connection (line drift from the prior 116-153/3087-3097 citation, content unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent. Repeater::send() (repeater.cpp:135) is still single-tab only (operates on activeTab_()), and POST /api/repeater/send (control_server.cpp:3685) still reads no body parameters at all -- it just QMetaObject::invokeMethod(...\"send\"...) on whichever tab is currently active. No group/sequence concept exists anywhere in the send path. No code change this pass."
       }
     },
@@ -5107,7 +5107,7 @@
       "evidence": "Src/Core/Networking/race_tester.hpp:22-24 `// v1 fires via the thread pool (good enough to win most application-layer races); true last-byte / single-packet synchronization is a future raw-socket iteration.` -- verbatim match to the prior citation, no drift.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent, including the stale-Burp-claim correction from the prior pass. race_tester.hpp's comment ('v1 fires via the thread pool ... true last-byte / single-packet synchronization is a future raw-socket iteration') is byte-for-byte unchanged, and a fresh grep for last.byte/single.packet/lastByte/singlePacket across Src/ still hits only those same comment lines -- no raw-socket last-byte-sync or single-packet send has landed, and there is still no path from Repeater into the race tester at all. No code change this pass."
       }
     },
@@ -5232,7 +5232,7 @@
       "evidence": "Src/Core/Networking/repeater.hpp -- RepeaterTab has no protocol field (re-checked, unchanged); Src/Core/Networking/networking.cpp's send path still connects a plain socket and writes HTTP/1 request bytes with HTTP/1 status-line parsing. The h2 stack exists but elsewhere: Src/BackEnd/Proxy/h2_client_logic.cpp, http2_client.cpp, h2_server.cpp (nghttp2, proxy-layer only).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for http2/HTTP\\/2/h2 across repeater.cpp and repeater.hpp still returns nothing; RepeaterTab has no protocol field and the client still writes HTTP/1 bytes to a plain QTcpSocket/QSslSocket. The nghttp2-backed h2 stack (h2_client_logic.cpp, http2_client.cpp, h2_server.cpp) exists but remains confined to the proxy layer, with no Repeater entry point. No code change this pass."
       }
     },
@@ -5263,7 +5263,7 @@
       "evidence": "Synchronous send: Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { ... auto result = m_client.send(...) ... }` -> Src/Core/Networking/networking.cpp:190 `if (!socket->waitForConnected(kTimeoutMs))`, :198 `if (!socket->waitForBytesWritten(kTimeoutMs))`, with networking.cpp:22 `constexpr int kTimeoutMs = 15'000;` and Src/Core/Networking/networking_logic.hpp:75 `constexpr qint64 kMaxTotalReadMs = 300'000;` (line drift from the prior 133/189-197/21/75 citation, values and conclusion unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent. Repeater::send() (repeater.cpp:135) is still fully synchronous -- it calls HttpClient::send() inline, which blocks on QTcpSocket::waitForConnected/waitForBytesWritten (networking.cpp, kTimeoutMs = 15'000) and reads for up to kMaxTotalReadMs = 300'000 (networking_logic.hpp:75, unchanged at 5 minutes). A fresh grep for cancel/abort across repeater.cpp/.hpp returns zero hits -- there is still no way to interrupt an in-flight send, and since the control server's QTcpServer lives on the same thread, a tarpitting target still freezes the whole app for up to 5 minutes. No code change this pass."
       }
     },
@@ -5484,7 +5484,7 @@
       "evidence": "Src/Core/Networking/inspector_logic.hpp declares only inspectRequest/inspectResponse (both `QJsonObject f(const QByteArray &raw)` -- input bytes, output JSON, no write-back). No Inspector-specific re-serializer symbol exists anywhere in the tree; the only `reserialize` hits are session_rules.cpp:279/373 and session_rules.hpp:153, which reserialize a request for session-rule injection, an unrelated feature.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-ran the symbol hunt (rebuildRequest/applyInspector/reserialize/applyEdit) across Src/ -- the only reserialize hits are session_rules.cpp/.hpp's unrelated session-handling-rules reserialization (rewriting a request for injected cookies/tokens), not an Inspector write path. inspector_logic.hpp still declares only inspectRequest/inspectResponse, both read-only `QJsonObject f(const QByteArray &raw)` functions -- no mutation parameter is accepted anywhere in the inspect endpoint. No code change this pass."
       }
     },
@@ -5531,7 +5531,7 @@
       "evidence": "Src/Core/Networking/inspector_logic.cpp:338 `out[\"pseudoHeaders\"] = QJsonArray{ nv(QStringLiteral(\":method\"), ...` through :343 (four pseudo-headers, line drift from the prior 158-162 citation which cited the start-line parse just above this block -- content and conclusion unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at partial. The DISPLAY half is still there and unchanged: inspector_logic.cpp emits a pseudoHeaders array (:method/:path/:authority/:scheme) reachable via /api/inspect. The editing half is still absent -- Repeater has no protocol field (per item #7's re-verification) and the Inspector has no write path at all (per item #9's re-verification), so there is nothing to wire a pseudo-header edit into yet. No code change this pass."
       }
     },
@@ -5546,7 +5546,7 @@
       "evidence": "Src/App/app.qml:110-114 `TabHeader { label: \"Proxy\"; ... root.currentTab = 0 }` through the Intruder tab at :114 -- five tabs total, no Comparer/Decoder/Inspector entry (line drift from the prior 112/657 citation, content unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: held at partial. Src/App/app.qml's tab bar (:110-114) is still exactly Proxy/Scope/Repeater/Intercept/Intruder -- Comparer, Decoder and Inspector remain absent from the native desktop shell, unchanged. The working single-tab Repeater implementation in app.qml is unaffected by this pass. No code change this pass."
       }
     },
@@ -5562,7 +5562,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "bd03640",
         "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. The prior audit's 'only hooks are traffic observation and finding reporting' claim is now stale: Q_INVOKABLE sendToRepeater(host,port,tls,requestText) and sendToIntruder(...) exist on the JS bridge (extensions_api.hpp:351,353; implemented extensions_api.cpp:127-143) and are wired live in app.cpp:1220 via setSendToRepeater/setSendToIntruder callbacks into the real Repeater and Intruder objects -- an extension really can push a captured request into either tool today. Still genuinely absent: registerContextMenuItem (no context-menu registration hook anywhere on the bridge) and custom message-editor tabs / Decoder codec contribution (no editor-provider or codec-registration method exists). 1 of the 4 named integration points now real; the other 3 remain absent."
       }
     },
