@@ -3960,7 +3960,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:287-290 `void run() { ... if (!readRequest(req)) { fail(\"malformed request\"); return; }` -- a TLS ClientHello with no CONNECT fails readRequestFrom's `if (parts.size() < 3) return false;` (proxy_server.cpp:881). Host fallback confirmed in rewriteHostPort, proxy_server.cpp:244-264 (`const QString hostHeader = findHeader(req.headers, \"Host\");` used only when the target isn't already an absolute URL).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-checked run()/readRequestFrom/rewriteHostPort line by line (drifted ~30 lines from the last audit, logic byte-identical) and re-ran `grep -rn SNI Src`: still only the two unrelated comment hits (cert_logic.hpp, tls_logic.cpp), no SNI-peek implementation anywhere. Invisible HTTPS (TLS-first accept with no CONNECT) is still impossible; cleartext invisible mode still works only by the same Host-header-fallback accident. No change."
       }
     },
@@ -4022,7 +4022,7 @@
       "evidence": "Src/BackEnd/Control/control_server.cpp:1194 `} else if (path == \"/ca.pem\" || path == \"/ca.crt\") {` and :1220-1236 `} else if (path == \"/ca.der\" || path == \"/cert\") { ... hdr += \"Content-Disposition: attachment; filename=\\\"nullock-ca.der\\\"\\r\\n\";`. CertAuthority's whole public surface is still cert_authority.hpp:26-33 (`ensureCa`, `caCertPath`, `caDir`, `hasOpenssl`, `leafCertFor`) -- no import, no regenerate, no PKCS#12 anywhere.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-ran `grep -rn 'pkcs12|PKCS12|\\.pfx' Src ui-v2 browser-ext`: still zero hits repo-wide. /ca.pem and /ca.der (plus the /cert Burp-compat alias) are still the complete export surface; CertAuthority's public API is unchanged (ensureCa/leafCertFor only, no import/regenerate entry point). No change."
       }
     },
@@ -4037,7 +4037,7 @@
       "evidence": "Src/BackEnd/Proxy/cert_authority.cpp:114-115 `QStringLiteral(\"C:/Program Files/OpenSSL-Win64/bin/openssl.exe\"), ...` -> hasOpenssl() gate at proxy_server.cpp:388 `if (inScope && sslClient && ca && ca->hasOpenssl() && !blocked) {`. Visible indicators: ui-v2/tabs.jsx:242 `{bootInfo.hasOpenssl ? \"openssl \\u2713\" : \"openssl \\u2717\"}`, ui-v2/app.jsx:995 `<Row label=\"OpenSSL\" value={b.hasOpenssl ? \"found\" : \"missing\"} />`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Same external-openssl dependency, same hasOpenssl() gate on the CONNECT path, both UI indicators (tabs.jsx, app.jsx) still present and unchanged in behavior -- only line numbers drifted (tabs.jsx :19->:242, app.jsx :488->:995, cert_authority.cpp :102-114->:114-115, proxy_server.cpp :334->:388). On a stock box with no openssl on PATH, HTTPS interception is still silently a blind tunnel with only the small chip as an explanation. No change."
       }
     },
@@ -4099,7 +4099,7 @@
       "evidence": "Src/Core/Networking/tls_profile.cpp:61-69 `const QStringList settable = settableCipherNames(full); const QList<QSslCipher> ciphers = resolveCiphers(settable); if (ciphers.size() != settable.size()) { qWarning() ... return false; }` then `cfg.setCiphers(ciphers); cfg.setProtocol(QSsl::TlsV1_2OrLater);`; SChannel branch at :79-84 `if (!backendIsOpenSsl()) { qWarning() << ... \"cipher ORDER is ignored, so the JA3 fingerprint is NOT shaped.\"; return false; }`. Still launch-flag only: Src/App/app.cpp:717-719 `const QString tlsFingerprint = flagValue(argc, argv, \"--tls-fingerprint\"); if (!tlsFingerprint.isEmpty()) { const auto p = Nullock::Core::TlsProfile::fromName(tlsFingerprint);` -- `grep -rn tlsFingerprint\\|TlsProfile ui-v2`: 0 hits, no UI picker.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. tls_profile.cpp is unchanged (same partial-resolution no-op-rather-than-mangle contract, same SChannel qWarning-and-return-false). Confirmed again there is no ui-v2 caller for TlsProfile/tlsFingerprint -- still --tls-fingerprint=chrome|firefox|none at process launch only, two canned profiles, no free-form protocol/cipher picker, no TLS 1.3 suite pinning (Qt 6 has no setCiphersuites()). No change."
       }
     },
@@ -4194,7 +4194,7 @@
       "evidence": "ui-v2/proxy.jsx:421-432 `<th></th><th>#</th><th>Method</th><th>Status</th><th>Host</th><th>Path</th><th>Params</th><th>Mime</th><th>Size</th><th>Time</th><th>IP</th><th>Captured</th>` (no onClick anywhere on them); Src/BackEnd/Control/control_server.cpp:1564 `row[\"elapsed\"] = 0;` rendered by ui-v2/proxy.jsx:9 `function fmtMs(n) { if (!n) return \"\\u2014\"; return n + \" ms\"; }`. Desktop QML stub unchanged: Src/FrontEnd/GUI/Proxy/proxy.qml is still 8 lines, a bare placeholder Rectangle.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Column set, model roles, hardcoded `elapsed = 0`, absent sort handlers, and the 8-line QML stub are all byte-identical to the last audit (only line numbers drifted, control_server.cpp :1435->:1564). Still missing Edited/Extension/Title/Notes/Cookies/Listener port columns, still no sorting in either front end, Time column still permanently em-dash. No change."
       }
     },
@@ -4271,7 +4271,7 @@
       "evidence": "Plaintext leg, Src/BackEnd/Proxy/proxy_server.cpp:366-369 `if (ir.dropped) { m_client->disconnectFromHost(); return; } m_client->write(ir.bytes); waitWritten(m_client, kReadTimeoutMs, m_server); m_client->disconnectFromHost();` -- end of run(), no loop, one request per connection. MITM leg still loops with Connection: close handling (proxy_server.cpp:752-860 region).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-read run()'s plaintext leg end-to-end: still an unconditional disconnectFromHost() after exactly one response, no keep-alive loop, no setting to opt in. The MITM leg's loop-and-honor-Connection-close semantics are unchanged. No change (evidence line numbers refreshed from :313-315 to :366-369)."
       }
     },
@@ -4286,7 +4286,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_logic.cpp:148-151 `bool isProxyHopRequestHeader(const QString &name) { return name.compare(QLatin1String(\"Proxy-Connection\"), Qt::CaseInsensitive) == 0 || name.compare(QLatin1String(\"Proxy-Authorization\"), Qt::CaseInsensitive) == 0; }`, called from Src/BackEnd/Proxy/proxy_server.cpp:1306 `if (HttpLogic::isProxyHopRequestHeader(h.first)) continue;` inside serializeRequestForOrigin(). Decode-for-inspection (the other present-of-9 item) at proxy_server.cpp:987 `const QByteArray dec = decodeContentEncoding(...)`. `grep -n 'Sec-WebSocket-Extensions\\|Accept-Encoding' Src/BackEnd/Proxy/proxy_server.cpp`: 0 hits.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial (2-of-9), but with a real evidence correction, not just a line refresh. The last audit's evidence said 'the header strip really is only Proxy-Connection -- Proxy-Authorization is forwarded to the origin verbatim' and the gap text listed that as a leaked-credential gap. That is now false: serializeRequestForOrigin() (proxy_server.cpp:1299-1312) was refactored to call the new HttpLogic::isProxyHopRequestHeader() (proxy_logic.cpp:148-151), which strips both Proxy-Connection and Proxy-Authorization before forwarding to the origin. Re-verified Sec-WebSocket-Extensions/Accept-Encoding normalisation are still entirely absent from the proxy path (0 grep hits), so the 2-of-9 count is unchanged -- gap and why text corrected to drop the now-false leaked-credential claim."
       }
     },
@@ -4333,7 +4333,7 @@
       "evidence": "Only caller: Src/BackEnd/Proxy/http2_client.cpp:494-495 `H2Client::Result H2Client::sendRequest(QSslSocket *sock, const HttpRequest &req) { const QList<Result> rs = sendConcurrent(sock, { req }); }` -- and sendRequest itself has no caller outside this file (`grep -rn sendRequest\\( Src Tests`: only the .hpp declaration). The proxy uses the sequential persistent-connection API instead: proxy_server.cpp:632 `const auto r = upstreamH2.send(upstream, req);` and :713 `const auto h2res = h2.send(upstream, req);`, both inside per-stream while loops that send one request at a time. `grep -rln sendConcurrent Tests/`: no hits, no test exercises N>1.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at stub. Re-confirmed sendConcurrent()'s only caller (H2Client::sendRequest) is itself uncalled outside http2_client.cpp, and both live proxy paths (persistent-connection leg and per-tunnel leg) still use the sequential .send() API one request at a time. No test in Tests/ exercises sendConcurrent with N>1. The correctly-implemented concurrent-stream code remains entirely dead from a user's perspective. No change."
       }
     },
@@ -4348,7 +4348,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:243-244 `void setH2Termination(bool on) { m_h2Termination = on; } bool h2Termination() const { return m_h2Termination; }`, default at :335 `bool m_h2Termination = false;   // --h2-termination (Phase 3, experimental)`; gate at proxy_server.cpp:465 `if (m_server->h2Termination())` before offering the h2 ALPN protocol; flag parsed at Src/App/app.cpp:744 `proxy.setH2Termination(hasFlag(argc, argv, \"--h2-termination\"));`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Flag name, default-false, and the ALPN gate are all unchanged (only line numbers drifted). Still off by default, still launch-flag only with no UI toggle. Did not re-verify the three stated in-code limitations (drop-only request editing, no response interception, sequential upstream fan-out on that leg) beyond confirming the surrounding code is untouched since the last audit. No change."
       }
     },
@@ -4379,7 +4379,7 @@
       "evidence": "Src/BackEnd/Control/control_server.cpp:1856 `pac += \"        || shExpMatch(host, \\\"10.*\\\")\\n\";` ... :1864 `pac += \"    return \\\"PROXY 127.0.0.1:\\\" + QByteArray::number(pport) + \\\"\\\\\\\";\\\\n\\\";` -- the whole 172.16/12 and 192.168/16 and 10/8 ranges still return DIRECT before the PROXY fallback. Extension: browser-ext/background.js:19 `proxyPort: 8080,` (DEFAULTS), applied verbatim at :36-42 `await chrome.proxy.settings.set({ value: { mode: \"fixed_servers\", rules: { singleProxy: { scheme: \"http\", host: cfg.proxyHost, port: cfg.proxyPort } ...`. background.js:67 does read `j.bootInfo?.port` from a live /api/snapshot ping, but only to display it in the popup status -- it is never fed back into applyProxy()'s port, so a non-default --proxy-port still requires the user to manually edit and save the extension's port field.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-checked the PAC generator: the RFC1918 DIRECT bypass for 10.*/192.168.*/172.16-31.* is unchanged (still means an internal-engagement target on those ranges silently never reaches the proxy). Re-checked background.js in full this pass (not just the applyProxy snippet the last audit quoted): it does now surface the live control-server's port via pingControl()'s j.bootInfo?.port for the popup's status display, but that value is read-only informational -- applyProxy() still sources its port from DEFAULTS/chrome.storage (8080 unless the user manually edits and saves it in the popup), so 'defaults to port 8080 regardless of --proxy-port' still holds in practice. No functional change to the gap; evidence expanded to cover this so a future pass doesn't mistake the informational readout for an auto-sync fix."
       }
     },
@@ -4442,7 +4442,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_server.hpp:325 `QTcpServer *m_server;` ; Src/BackEnd/Proxy/proxy_server.cpp:1315 `ProxyServer::ProxyServer(QObject *parent) : QObject(parent), m_server(new SslReadyTcpServer(this)) {` ; single bind loop at proxy_server.cpp:1940-1941 `for (quint16 p : tries) { if (m_server->listen(address, p)) {`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Still exactly one QTcpServer member, constructed once, one bind loop that stops at the first port that succeeds. Re-ran `grep -rn addListener\\|listenerPort Src ui-v2`: no hits besides unrelated JS/comment noise. Absent confirmed (line numbers refreshed)."
       }
     },
@@ -4457,7 +4457,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:314 `upstream.connectToHost(req.host, req.port);` with req.host/port set only by rewriteHostPort (proxy_server.cpp:244-264); CONNECT side parses the target the same way and passes it straight to runMitmTunnel/runBlindTunnel with no override hook anywhere.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped redirectHost/redirectTo/forceTls/forceSsl/forceHttps across Src, ui-v2 and browser-ext -- the only hits are still the unrelated open-redirect SCANNER vocabulary. The upstream destination is still taken verbatim from the request with no override field, flag, or endpoint. No change."
       }
     },
@@ -4472,7 +4472,7 @@
       "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:313-317 `QTcpSocket upstream; upstream.connectToHost(req.host, req.port); if (!waitConnected(&upstream, kReadTimeoutMs, m_server)) {` -- a QTcpSocket, never a QSslSocket; the only QSslSocket upstream is inside runMitmTunnel (connectToHostEncrypted at :540).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. The cleartext path still constructs a plain QTcpSocket unconditionally; still no flag/field/endpoint that would switch it to TLS. Same greps as the redirect item, same zero hits. No change (evidence line numbers refreshed)."
       }
     },
@@ -4487,7 +4487,7 @@
       "evidence": "Whole public API unchanged: Src/BackEnd/Proxy/cert_authority.hpp:26-33 `Q_INVOKABLE bool ensureCa(); ... LeafCert leafCertFor(const QString &host);` ; only consumer Src/BackEnd/Proxy/proxy_server.cpp:389-395 `leaf = ca->leafCertFor(host); ... if (leaf.valid()) { runMitmTunnel(...) } else { runBlindTunnel(...) }`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-ran `grep -rn 'pkcs12|PKCS12|\\.pfx'` across the whole repo: still zero hits. CertAuthority still exposes exactly one minting entry point and the tunnel still has exactly two outcomes (forged leaf or blind tunnel). No supplied-certificate path exists. No change."
       }
     },
@@ -4518,7 +4518,7 @@
       "evidence": "Server-side only: Src/BackEnd/Proxy/proxy_server.cpp:459-460 `cfg.setLocalCertificate(cert); cfg.setPrivateKey(key);` (inside runMitmTunnel, applied to sslClient -- presenting Nullock's forged leaf TO the browser). Upstream config in full at proxy_server.cpp:491-511 -- setAllowedNextProtocols, setPeerVerifyMode, TlsProfile::apply, setPeerVerifyName -- and nothing else; no setLocalCertificate/setPrivateKey call on the upstream QSslConfiguration anywhere.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped clientCert/mutualTls/mTLS/pkcs12/setLocalCertificate across Src: the only setLocalCertificate is still the server-side forged leaf presented to the browser; the only mTLS string is still the unrelated remediation blurb in finding_enricher.cpp. Re-read the full upstream QSslConfiguration block end to end -- still no local certificate/key set for the outbound connection. No change."
       }
     },
@@ -4533,7 +4533,7 @@
       "evidence": "Direct connects only: Src/BackEnd/Proxy/proxy_server.cpp:314 `upstream.connectToHost(req.host, req.port);` and :540 `upstream->connectToHostEncrypted(host, port);`. `grep -rn QNetworkProxy Src`: 0 hits repo-wide. The only HTTP_PROXY string is still ui-v2/app.jsx's copy-paste helper telling the USER to set their own env var, not something Nullock itself reads.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped upstreamProxy/parentProxy/chained proxy/setProxy/QNetworkProxy/--upstream/HTTP_PROXY across Src: same zero relevant hits as the last audit. Both outbound connects (plaintext and MITM-upstream) are still direct QTcpSocket/QSslSocket connects with no proxy-chaining hook. No change."
       }
     },
@@ -4548,7 +4548,7 @@
       "evidence": "`grep -rniE 'socks' --include=*.cpp --include=*.hpp --include=*.jsx --include=*.qml --include=*.js --include=*.md .`: no output. Corroborated by the continued absence of QNetworkProxy anywhere in Src (QNetworkProxy::Socks5Proxy would be the Qt route).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-ran the same repo-wide case-insensitive grep for 'socks': still zero hits. Nothing to upgrade. No change."
       }
     },
@@ -4674,7 +4674,7 @@
       "evidence": "Sections enumerated at Src/BackEnd/Proxy/proxy_server.hpp:80-87 (ReqUrl/ReqHeader/ReqBody/RespHeader/RespBody/RespStatus) -- no WS member. Relay passthrough at proxy_server.cpp:1233 and :1242 `const QByteArray bytes = client->readAll(); ... upstream->write(bytes);` (and the reverse direction) -- raw frame bytes forwarded untouched. Rule call sites: proxy_server.cpp:311, 343, 624, 656, 701, 735, 785, 813 -- every one on an HTTP request/response path, none inside runWebSocketRelay.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "4888e2d",
         "note": "Wave 0 register-accuracy audit: held at absent. MatchReplaceRule::Section still has no WS variant; traced every applyRequestRules/applyResponseRules call site again (8 call sites, up from the last audit's list due to the H2 tunnel legs, all still HTTP paths) and runWebSocketRelay still just shuttles readAll()/write() bytes in both directions with no rule application. No change."
       }
     },
