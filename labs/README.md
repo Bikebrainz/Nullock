@@ -79,6 +79,7 @@ labs/
   69-cors-regex-anchor-bypass/ # allow-list regex missing its `$` anchor -- prefix match, not full match (5069)
   70-ssrf-file-scheme-bypass/ # host blocklist never checks scheme -- file:// has no host to match (5070)
   71-jwt-x5u-injection/    # verifier trusts any cert a token's x5u names, no CA chain check       (5071)
+  72-blind-ssrf-oast/      # webhook fetch never reflects result -- only OOB callback confirms it  (5072)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

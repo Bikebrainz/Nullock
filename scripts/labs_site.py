@@ -150,6 +150,7 @@ DIFFICULTY = {
     "69-cors-regex-anchor-bypass": "Medium",
     "70-ssrf-file-scheme-bypass": "Medium",
     "71-jwt-x5u-injection": "Hard",
+    "72-blind-ssrf-oast": "Hard",
 }
 
 
@@ -514,6 +515,11 @@ HINTS = {
         "The RS256 token's header carries an x5u claim naming a URL the verifier fetches a CERTIFICATE from, not a raw key. Once that certificate comes back, what (if anything) does the server check about who signed it?",
         "Generate your own RSA keypair and a self-signed X.509 certificate for it (cryptography's x509.CertificateBuilder, or `openssl req -x509`). Publish the certificate's PEM at a URL you control -- this lab's own /attacker/publish/<label> stands in for \"an attacker-hosted host\".",
         "POST your self-signed certificate's PEM as the raw body to /attacker/publish/evil, then sign a token with your PRIVATE key: header {\"alg\":\"RS256\",\"x5u\":\"http://127.0.0.1:5071/attacker/certs/evil\"}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag -- the server never checks the certificate is signed by any trusted CA, only that it parses.",
+    ],
+    "72-blind-ssrf-oast": [
+        "POST /webhook/register {url} and POST /webhook/trigger {id} always answer {\"status\":\"queued\"} no matter what happens to the fetch -- unlike Lab 05's /fetch, nothing here ever tells you if the request succeeded, failed, or what it got back.",
+        "You need an out-of-band listener to prove the fetch fired at all. Register a webhook pointed at an OAST callback URL (or this lab's own /attacker/sink/<label> stand-in), trigger it, then poll for the hit instead of trusting the trigger response.",
+        "Once you've confirmed blind SSRF works, register a webhook pointed at http://127.0.0.1:5072/internal/admin/rotate-keys and trigger it -- still just {\"status\":\"queued\"} back, but GET /flag?id=<that id> shows the out-of-band record that it actually reached the internal action.",
     ],
 }
 

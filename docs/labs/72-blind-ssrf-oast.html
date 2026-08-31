@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blind SSRF via a webhook URL, only confirmable out-of-band — Nullock Labs</title>
+<meta name="description" content="webhook fetch never reflects result -- only OOB callback confirms it">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">72</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5072</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Blind SSRF via a webhook URL, only confirmable out-of-band</h1>
+  <p class="lead" style="margin-top:12px;">/webhook/register stores a URL; /webhook/trigger fires a server-side POST at it. Unlike every other SSRF lab here (05&#x27;s /fetch, 40&#x27;s cloud metadata, 64&#x27;s redirect bypass, 65&#x27;s image-embed export), the response NEVER carries the fetched content, the target&#x27;s status code, or even whether the fetch succeeded -- /webhook/trigger always answers {&quot;status&quot;:&quot;queued&quot;} immediately, win or fail. That is the point: this is the class of SSRF Burp&#x27;s Collaborator was built for. An SSRF whose response is visible is confirmable by reading the reply; a blind one is only confirmable by making the server call somewhere YOU control and watching for the callback to land, out-of-band, on your own clock. The vulnerable code path also reaches an &quot;internal-only&quot; admin action (a stand-in for the kind of firewalled management endpoint a real blind SSRF pivots into -- password rotation, an internal API, a metadata service) that the webhook fetch can trigger with zero indication in the HTTP response that anything happened at all.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/72-blind-ssrf-oast/app.py
+# then open http://localhost:5072/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5072/*</code><code class="inline">http://127.0.0.1:5072/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /webhook/register {url} and POST /webhook/trigger {id} always answer {&quot;status&quot;:&quot;queued&quot;} no matter what happens to the fetch -- unlike Lab 05&#x27;s /fetch, nothing here ever tells you if the request succeeded, failed, or what it got back.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>You need an out-of-band listener to prove the fetch fired at all. Register a webhook pointed at an OAST callback URL (or this lab&#x27;s own /attacker/sink/&lt;label&gt; stand-in), trigger it, then poll for the hit instead of trusting the trigger response.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Once you&#x27;ve confirmed blind SSRF works, register a webhook pointed at http://127.0.0.1:5072/internal/admin/rotate-keys and trigger it -- still just {&quot;status&quot;:&quot;queued&quot;} back, but GET /flag?id=&lt;that id&gt; shows the out-of-band record that it actually reached the internal action.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>Start Nullock&#x27;s OAST sink and mint a token (Collaborator tab, or `nullock oast mint`). This lab&#x27;s own /attacker/sink/&lt;label&gt; stands in for that OAST domain if you&#x27;d rather stay offline -- either way you need an out-of-band listener, because nothing this app sends back will tell you anything.</li><li>POST /webhook/register {&quot;url&quot;: &quot;&lt;your OAST callback URL, or http://127.0.0.1:5072/attacker/sink/evil&gt;&quot;} -- note the returned id. POST /webhook/trigger {&quot;id&quot;: &lt;id&gt;}. The response is always {&quot;status&quot;: &quot;queued&quot;} -- compare that to lab 05&#x27;s /fetch, which echoes the target&#x27;s actual response body back to you.</li><li>Watch your OAST sink (`nullock oast watch`) or GET /attacker/sink/evil/log -- the callback lands there moments later, proving the server made the request even though its own HTTP response told you nothing.</li><li>Now register a webhook pointed at the internal admin action: POST /webhook/register {&quot;url&quot;: &quot;http://127.0.0.1:5072/internal/admin/rotate-keys&quot;}, then POST /webhook/trigger with that id. Same blind {&quot;status&quot;: &quot;queued&quot;} reply -- but the action fired server-side.</li><li>Confirm success: GET /flag?id=&lt;that id&gt; -- the app&#x27;s own out-of-band record (not the trigger response) shows that id&#x27;s webhook reached the internal admin action.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never let a server-controlled fetch target be attacker-supplied without an allow-list, blind or not -- but blind SSRF specifically also means never assume &quot;the response didn&#x27;t confirm it&quot; means &quot;it didn&#x27;t happen&quot;: treat any outbound fetch whose target isn&#x27;t pinned to a known-safe destination as a live SSRF primitive, response body or not.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "72-blind-ssrf-oast";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 72 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

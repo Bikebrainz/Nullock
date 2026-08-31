@@ -1616,6 +1616,29 @@
       "Confirm success: GET /flag with the same forged token."
     ],
     "fix": "Fix: never resolve a signing key from a URL the token itself supplies. If `x5u` must be supported, validate the fetched certificate's full chain against a fixed, pre-configured trusted CA bundle before trusting its key for anything -- a syntactically valid certificate proves nothing about who it belongs to."
+  },
+  {
+    "slug": "72-blind-ssrf-oast",
+    "num": "72",
+    "title": "Blind SSRF via a webhook URL, only confirmable out-of-band",
+    "vuln": "webhook fetch never reflects result -- only OOB callback confirms it",
+    "port": "5072",
+    "category": "SSRF & fetch",
+    "difficulty": "Hard",
+    "desc": "/webhook/register stores a URL; /webhook/trigger fires a server-side POST at it. Unlike every other SSRF lab here (05's /fetch, 40's cloud metadata, 64's redirect bypass, 65's image-embed export), the response NEVER carries the fetched content, the target's status code, or even whether the fetch succeeded -- /webhook/trigger always answers {\"status\":\"queued\"} immediately, win or fail. That is the point: this is the class of SSRF Burp's Collaborator was built for. An SSRF whose response is visible is confirmable by reading the reply; a blind one is only confirmable by making the server call somewhere YOU control and watching for the callback to land, out-of-band, on your own clock. The vulnerable code path also reaches an \"internal-only\" admin action (a stand-in for the kind of firewalled management endpoint a real blind SSRF pivots into -- password rotation, an internal API, a metadata service) that the webhook fetch can trigger with zero indication in the HTTP response that anything happened at all.",
+    "hints": [
+      "POST /webhook/register {url} and POST /webhook/trigger {id} always answer {\"status\":\"queued\"} no matter what happens to the fetch -- unlike Lab 05's /fetch, nothing here ever tells you if the request succeeded, failed, or what it got back.",
+      "You need an out-of-band listener to prove the fetch fired at all. Register a webhook pointed at an OAST callback URL (or this lab's own /attacker/sink/<label> stand-in), trigger it, then poll for the hit instead of trusting the trigger response.",
+      "Once you've confirmed blind SSRF works, register a webhook pointed at http://127.0.0.1:5072/internal/admin/rotate-keys and trigger it -- still just {\"status\":\"queued\"} back, but GET /flag?id=<that id> shows the out-of-band record that it actually reached the internal action."
+    ],
+    "steps": [
+      "Start Nullock's OAST sink and mint a token (Collaborator tab, or `nullock oast mint`). This lab's own /attacker/sink/<label> stands in for that OAST domain if you'd rather stay offline -- either way you need an out-of-band listener, because nothing this app sends back will tell you anything.",
+      "POST /webhook/register {\"url\": \"<your OAST callback URL, or http://127.0.0.1:5072/attacker/sink/evil>\"} -- note the returned id. POST /webhook/trigger {\"id\": <id>}. The response is always {\"status\": \"queued\"} -- compare that to lab 05's /fetch, which echoes the target's actual response body back to you.",
+      "Watch your OAST sink (`nullock oast watch`) or GET /attacker/sink/evil/log -- the callback lands there moments later, proving the server made the request even though its own HTTP response told you nothing.",
+      "Now register a webhook pointed at the internal admin action: POST /webhook/register {\"url\": \"http://127.0.0.1:5072/internal/admin/rotate-keys\"}, then POST /webhook/trigger with that id. Same blind {\"status\": \"queued\"} reply -- but the action fired server-side.",
+      "Confirm success: GET /flag?id=<that id> -- the app's own out-of-band record (not the trigger response) shows that id's webhook reached the internal admin action."
+    ],
+    "fix": "Fix: never let a server-controlled fetch target be attacker-supplied without an allow-list, blind or not -- but blind SSRF specifically also means never assume \"the response didn't confirm it\" means \"it didn't happen\": treat any outbound fetch whose target isn't pinned to a known-safe destination as a live SSRF primitive, response body or not."
   }
 ];
   window.NULLOCK_LABS_XP = {
