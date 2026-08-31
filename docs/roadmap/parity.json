@@ -1677,7 +1677,7 @@
       "evidence": "extensions_api.cpp:672-721 doMutateRequest -- the full read-back: `const QString m = entry.property(\"method\").toString();` ... `req.headers = headersFromJs(entry.property(\"headers\")); req.body = entry.property(\"bodyText\").toString().toUtf8();` -- no action/verdict field is ever consulted (line drift from the prior pass's 358-379 citation, content unchanged).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read doMutateRequest's readback (line drift 358-379 -> 672-721) -- confirms no action/drop field is ever consulted, matching the prior finding exactly. No code change this pass."
       }
     },
@@ -1692,7 +1692,7 @@
       "evidence": "extensions_api.hpp:296-436 -- the complete current JS-facing surface (ExtensionsApiBridge plus the utils/collaborator/storage bridges) has no payload-generator registration of any kind; `grep -rni 'extension' Src/Core/Networking/intruder.cpp` (956 lines, up from 608) still returns nothing.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the whole extensions_api.hpp bridge surface (grown to 296-436, replacing the stale 164-185/four-method citation) and re-grepped intruder.cpp (now 956 lines, was 608) -- no payload-generator seam either place. No code change this pass."
       }
     },
@@ -1707,7 +1707,7 @@
       "evidence": "extensions_api.hpp:296-436 -- no processor registration; control_server.cpp:3992 `if (path == \"/api/intruder/rule-ops\")` exposes only the built-in rule set (line drift from 3262).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the bridge surface and the rule-ops handler (line drift 3262 -> 3992) -- still no processor-registration seam. No code change this pass."
       }
     },
@@ -1722,7 +1722,7 @@
       "evidence": "`grep -rnia 'extension|macro|ExtensionsApi' Src/Core/Networking/session_rules*.cpp` = 0 hits; extensions/aws_sigv4.js:30-36 `var CONFIG = { accessKey: \"\", secretKey: \"\", ...` \u2014 the workaround is an always-on onRequest handler with hard-coded creds",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped session_rules*.cpp for extension/macro/ExtensionsApi -- confirms the 'macro' hits are all the unrelated session-handling-rules feature, none an extension seam. No code change this pass."
       }
     },
@@ -1737,7 +1737,7 @@
       "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml (8 lines, unchanged: `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`) plus two newer siblings -- Components/extensions_console.qml and Components/extensions.qml, both identical 8-line blank-Rectangle stubs -- none referenced by grepping app.qml or CMakeLists.txt for any of the three names (0 hits); extensions_hub_model.cpp/.hpp remain 0 bytes.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Found two new but equally-orphaned blank-Rectangle QML stubs (Components/extensions_console.qml, Components/extensions.qml) alongside the original extensions_hub.qml -- none wired into app.qml or CMakeLists.txt, so the no-mount-point conclusion is unchanged, just now evidenced by three stub files instead of one. No code change this pass."
       }
     },
@@ -1752,7 +1752,7 @@
       "evidence": "extensions_api.hpp:296-436 -- no UI registration method on the bridge (line drift from the stale 164-185 citation).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for contextMenu/ContextMenuItemsProvider/InvocationType -- still 0 hits. No code change this pass."
       }
     },
@@ -1767,7 +1767,7 @@
       "evidence": "ui-v2/app.jsx:1319-1391 -- the complete current extension UI: per-extension Loaded checkbox + modifies-traffic/observe-only capability badge, an Auto-reload (dev) toggle, an Install bundled button, `<Row label=\"Folder\" value={b.extensionsDir} copyable />`, and a 30-line log tail. Still a management list only -- no editor-tab mount point (line drift from the prior 456-477 citation).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. The Settings Extensions card has grown (enable checkboxes, capability badges, auto-reload toggle, Install bundled button, line drift 456-477 -> 1319-1391) but is still a management list, not a pluggable editor-tab surface. No code change this pass."
       }
     },
@@ -1782,7 +1782,7 @@
       "evidence": "`grep -rnia 'insertion|injectionPoint|insertPoint' Src/` -> Src/App/app.qml:984 (unchanged UI label) and control_server.cpp:7800 (prose comment, drifted from 6599) -- neither is a provider seam.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for insertion/injectionPoint/insertPoint -- same two non-seam hits, line drift 6599 -> 7800 on the comment. No code change this pass."
       }
     },
@@ -1797,7 +1797,7 @@
       "evidence": "extensions_api.hpp:296-436 -- the complete current bridge surface (9 ExtensionsApiBridge methods + 11 across the utils/collaborator/storage bridges); none performs synchronous request I/O. sendToRepeater/sendToIntruder (:351-354) push only, no return value; collaborator generate()/interactions() (:398,404) is async OOB polling, not request/response I/O.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent for the core ask (no synchronous send-and-read-response method), while noting two new adjacent-but-not-closing additions since the prior pass: sendToRepeater/sendToIntruder (push-only, no response) and the new collaborator bridge's generate()/interactions() (async OOB polling). Neither is I/O an extension can use to confirm a finding synchronously. No code change this pass."
       }
     },
@@ -1844,7 +1844,7 @@
       "evidence": "extensions_api.hpp:121 `void setScanner(IFindingSink *scanner) { m_scanner = scanner; }` (line drift from 80-81) -- a C++-side wiring point, not JS-reachable; the JS surface is extensions_api.hpp:296-436.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Line drift only (setScanner 80-81 -> 121); still no scan-control or issue-read method on the JS surface. No code change this pass."
       }
     },
@@ -1955,7 +1955,7 @@
       "evidence": "extensions_api.cpp:400 `QDir(dir).entryInfoList({ \"*.js\" }, QDir::Files, QDir::Name)` in loadAll() -- deterministic alphabetical load/registration order (new since the prior audit's 'no sort flag' finding); extensions_api.cpp:683 `for (QJSValue &handler : m_onRequestHandlers)` -- handlers still fire in that registration order with no reorder API or persisted override.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent, but corrected a stale claim -- loadAll() now sorts extension load order with QDir::Name (extensions_api.cpp:400), so invocation order is deterministic alphabetical, not arbitrary as the prior 'why' text implied. Gap text updated to say composition order is fixed-but-predictable rather than fixed-and-random; still no user-facing reorder control. No code change this pass."
       }
     },
@@ -1970,7 +1970,7 @@
       "evidence": "control_server.cpp:6427 `if (path == \"/api/marketplace/install\") { ... const QString id = bodyJson.value(\"id\").toString();` (line drift from 5376-5422) -- the only input is a catalog id; marketplace.cpp:113-117 `const QString fileName = safeScriptFileName(entry.id); if (fileName.isEmpty()) { r.error = ...` -- the filename is derived from the catalog, never supplied by the user (unchanged, no drift).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Line drift on the install handler (5376-5422 -> 6427ff); marketplace.cpp:113-117 citation unchanged and re-verified exact. No code change this pass."
       }
     },
@@ -1985,7 +1985,7 @@
       "evidence": "extensions_api.cpp:352 `QString ExtensionsApi::extensionsDir() const { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + \"/extensions\"; }` (line drift from 94-97); extensions_api.cpp:276 and :390 `loadAll();` (constructor and setExtensionEnabled, drift from :89) run unconditionally with no startup-disable option; ui-v2/app.jsx:1340 `<Row label=\"Folder\" value={b.extensionsDir} copyable />` (drift from :460) still read-only; the new `Auto-reload (dev)` checkbox sits alongside it (~:1327) but is a dev-mode file-watch toggle, not a startup/auto-update setting.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Noted a real but non-closing addition -- an Auto-reload (dev) toggle now exists in the Extensions card, but it's a file-watch setting, not the reload-on-startup/auto-update this item asks about. Line drift refreshed throughout. No code change this pass."
       }
     },
@@ -2064,7 +2064,7 @@
       "evidence": "marketplace_logic.hpp:64-81 CatalogEntry (gained a `minVersion` semver-gate field since the prior pass, still no tier/licence field); no licence check appears in Src/Core/APIs/ExtensionsAPI or the marketplace TUs (fresh grep).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent/not-applicable. CatalogEntry grew a minVersion field (unrelated to licensing) since the prior pass; still no tier/licence concept anywhere. No code change this pass."
       }
     },
@@ -2095,7 +2095,7 @@
       "evidence": "Src/App/app.cpp:752 `Nullock::Core::ExtensionsApi extensions;` (drift from 683) and app.cpp:1299 `Nullock::Control::ControlServer controlServer(wiring);` (drift from 974) -- both on the main thread, no moveToThread in the file (fresh grep, 0 hits); extensions_api.cpp:642,662 `QMetaObject::invokeMethod(this, \"doMutateRequest\"/\"doMutateResponse\", Qt::BlockingQueuedConnection, ...)` (drift from 300-302).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Line drift on all three citations (683->752, 974->1299, 300-302->642/662); confirmed zero moveToThread calls in app.cpp. No code change this pass."
       }
     },
@@ -2110,7 +2110,7 @@
       "evidence": "extensions_api.hpp:296-436 -- complete JS-facing surface (drift from the stale 164-185 citation), no ai()/prompt method; fresh `grep -rnia 'ai\\(|aiPrompt|api\\.ai' Src/Core/APIs/ExtensionsAPI` -> 0 hits.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-checked the grown bridge surface and confirmed zero ai()/prompt hits; noted the backend's own unrelated AI feature (/api/payloads/generate) isn't extension-invocable either. No code change this pass."
       }
     },
@@ -2125,7 +2125,7 @@
       "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` -> 0, unchanged; ui-v2/proxy.jsx's FilterBar (now :484-...) exposes only fixed controls -- host filter, free-text search, deepSearch toggle -- line positions drifted with the file's growth (the #299 annotation layer and other additions), unchanged in kind.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh bambda grep still 0; FilterBar line positions refreshed (drifted with file growth), still fixed-field predicates only. No code change this pass."
       }
     },
@@ -2140,7 +2140,7 @@
       "evidence": "`grep -rnia 'customColumn|addColumn' Src/ ui-v2/` -> 0 hits, unchanged; ui-v2/proxy.jsx's HistoryTable header (now :404-432) grew a 12th column since the prior citation (was `<td colSpan={11}`, now `<td colSpan={12}`) plus a #299 per-row highlight applied as an inline boxShadow tint (:439) rather than a column -- still zero user-computed columns of any kind.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. customColumn/addColumn grep still 0; history table grew from 11 to 12 fixed columns (colSpan drift 11->12), still no user-computed column mechanism. No code change this pass."
       }
     },
@@ -2156,7 +2156,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. Found the #299 per-row highlight-colour + comment layer (ui-v2/proxy.jsx, added since this item was last audited) genuinely delivers the manual half of this ask (colorize + comment a row); confirmed by reading the full feature that it is strictly manual/per-row with no matcher or rule input, so the scripted/auto half this item is really about (Bambda-style rule-driven highlighting) remains absent. Gap/evidence/why rewritten to reflect the split honestly rather than either overclaiming or leaving a stale absent grade. No code change this pass -- this is a register correction only."
       }
     },
@@ -2171,7 +2171,7 @@
       "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` \u2192 0 hits",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Cross-referenced B38's upgrade to partial (a manual, non-bambda annotation layer, Proxy history only) -- confirmed it does not extend to any of the tables this item names. No code change this pass."
       }
     },
@@ -2186,7 +2186,7 @@
       "evidence": "`grep -rnia bambda Src/ ui-v2/` \u2192 0 hits; no monaco/codemirror/snippet module in ui-v2 outside vendor's React+Babel bundle",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-checked ui-v2/vendor's contents directly (babel + react/react-dom only) and re-grepped for monaco/codemirror (0 hits). No code change this pass."
       }
     },
@@ -2201,7 +2201,7 @@
       "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml complete contents, unchanged: `import QtQuick` / `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`; two newer identical stubs, Components/extensions_console.qml and Components/extensions.qml, also unreferenced; `ls -la` -> extensions_hub_model.cpp/.hpp both still 0 bytes; ui-v2/app.jsx:1319-1391 (drift from 456-477) is the entire real UI -- now with per-extension Loaded checkboxes and modifies-traffic/observe-only badges alongside the Folder row, 30-line log tail, and Reload button it already had.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Same widened-stub finding as B11 (two new orphaned blank-Rectangle QML files); ui-v2/app.jsx real-UI citation refreshed (456-477 -> 1319-1391) to reflect its since-grown per-extension checkboxes/badges. No code change this pass."
       }
     },
