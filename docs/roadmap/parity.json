@@ -819,7 +819,7 @@
       "evidence": "crawler_logic.cpp:111 `for (const QString &n : names) q += (q.isEmpty() ? \"?\" : \"&\") + n + \"=\";`  line 103 `if (!methodGet.match(attrs).hasMatch()) continue;   // GET forms only`",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at stub. Re-verified crawler_logic.cpp:90-114 extractFormGets -- GET forms only (methodGet.match guard at :103), field NAMES turned into empty-valued query params (:111 `q += ... + n + \"=\";`), never a POST, never a filled value, no registration flow. Line numbers unchanged, content unchanged. No code change this pass."
       }
     },
@@ -945,7 +945,7 @@
       "evidence": "passive_scanner.cpp:1196 `R\"(\\.innerHTML\\s*=\\s*[^;]*(?:location|document\\.referrer|window\\.name))\"` (block starts :1188, body slice :1189-1190)",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified passive_scanner.cpp -- the DOM-XSS sink block (line drift 1076-1099 -> 1188-1213) is still a static QRegularExpression table (innerHTML<-location, eval/setTimeout<-location, postMessage '*', eval-of-responseText) run over `scanBody.left(1MB)` when `html` is true (:1189), gated by `scanBody.size() < 1MB` (:1189). No live DOM taint tracking, no runtime-reached-sink coverage, no external-JS fetch. Claim holds; evidence line refreshed 1083 -> 1196."
       }
     },
@@ -1104,7 +1104,7 @@
       "evidence": "ssti_tester.cpp families() now includes the %{ } OGNL family; hpp doc updated (\"...also covers OGNL/Apache-Struts2\"). Live-proven in scripts/probe_smoke.sh: a new ssti-ognl mock evaluates ONLY %{N*N} (not Jinja {{ }}), and /api/ssti/test confirms it with engines containing 'OGNL' AND not 'Jinja2' (2 new cases). Mutation-proven: deleting the %{ } family drops that case to confirmed:false/hits:[] while ssti-vuln/safe/calc stay correct. Gauntlet: ctest 100/100, probe_smoke 158/158.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified ssti_tester.cpp -- the `{ \"%{\", \"}\", \"OGNL (Apache Struts2)\" }` family (:32) is present and wired exactly as described, giving an active OGNL/Struts2 confirm via the arithmetic-polyglot proof. Generic non-arithmetic server-side code-eval (SpEL class access, raw eval() APIs, OGNL member-access chains) is still not actively probed -- grep for SpEL/T\\(java\\.lang\\.Runtime confirms no such family exists. Claim holds, no drift."
       }
     },
@@ -1294,7 +1294,7 @@
       "evidence": "control_server.cpp:7855 `/api/audit/all` pulls history rows; :4722 `/api/crawler/start` is separate; no code path feeds crawler output into runDeepAudit",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp -- /api/crawler/start (:4722, was :3959) and /api/audit/run (:7802) / /api/audit/all (:7855, was :6513) remain three independent entry points; no code path feeds crawler output into runDeepAudit, no named launch-mode selector exists. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -1341,7 +1341,7 @@
       "evidence": "control_server.cpp:4926 `if (path == \"/api/baseline/diff\")`; no per-finding retest route exists",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp -- /api/baseline/save (:4853, was :4074) and /api/baseline/diff (:4926, was :4147) remain the only baseline-related routes; grep for `retest` across control_server.cpp and ui-v2/ returns no per-issue retest endpoint or UI action. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -1356,7 +1356,7 @@
       "evidence": "session_rules.hpp:3 'The \"Burp macros / session handling rules\" equivalent'; control_server.cpp:4534 /api/session-rules/set; real-data.js:451 ruleAdd",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified session_rules.hpp/.cpp and control_server.cpp -- /api/session-rules/set (:4534, was :3795), applyToRequest/applyToResponse still the extraction+injection pipeline, real-data.js:451 ruleAdd. Session rules remain proxy-traffic-only; the /api/audit/* deep-audit testers still call HttpClient::send directly without consulting SessionRules, so they cannot pick up a rule-injected token or trigger re-auth on expiry -- confirmed unchanged by grep (no SessionRules reference in the runDeepAudit call path). Claim holds; evidence line numbers refreshed. (Note: a separate, newly-added SessionMacro/login-macro mechanism is evaluated under [B6], item 94 below -- it doesn't change this item's audit-path gap.)"
       }
     },
@@ -1387,7 +1387,7 @@
       "evidence": "control_server.cpp:7947 `auditAllInFlight.storeRelease(0); // sweep done` -- single serial loop with QThread::msleep(throttleMs) between targets",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp /api/audit/all -- throttleMs default 150 bounded 0..60000 and limit default 50 bounded 1..200 (line drift 6524-6527 -> ~7866-7869), sweep dispatched via QtConcurrent::run but the target loop itself is still a single serial iteration with QThread::msleep(throttleMs) between targets (no thread-count knob, no fast/normal/thorough accuracy presets). Claim holds; evidence line numbers refreshed."
       }
     },
@@ -1402,7 +1402,7 @@
       "evidence": "app.cpp:1266 `QObject::connect(&crawler, ...entryLoaded, ...)` / :1271 `&scanner, &...::onResponseReceived)`; no live active-scan task exists",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified app.cpp -- crawler.entryLoaded is still connected straight to scanner.onResponseReceived for passive-only coverage (line drift 945-946 -> 1266-1271); active auditing remains exclusively user-triggered via /api/audit/run, /api/audit/all, or GUI /api/probe/all. No live active-scan task exists. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -1417,7 +1417,7 @@
       "evidence": "control_server.cpp:452 `CveDatabase::lookup(t.cveKind, t.name + \" \" + t.version)`; no hash/pattern library-advisory catalogue in Src/",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-verified control_server.cpp assessWebTarget (line drift 431-435 -> 415-452) still resolves via CveDatabase::lookup(t.cveKind, name+version) -- version-string correlation against the bundled cve_database.cpp, not a retire.js-style hash/pattern catalogue. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -1432,7 +1432,7 @@
       "evidence": "crawler.cpp:154 'Doesn't run JS so heavily-SPA targets won't yield many links'; no browser engine in Src/",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-verified crawler.cpp:153 comment still reads \"Doesn't run JS so heavily-SPA targets won't yield...\" (line drift from :154); grep of Src/ for headless|chromium|puppeteer|webengine|CDP in the crawl path still returns nothing. Confirmed still absent, no drift in substance."
       }
     },
@@ -1447,7 +1447,7 @@
       "evidence": "xss_reflected.hpp:12 '...DOM-based, and stored XSS are out of scope for this reflected check.'; no stored-xss correlation code exists",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-verified xss_reflected.hpp:12 still excludes \"DOM-based, and stored XSS\" from the reflected checker's scope; grep for stored.?xss across Src/ still returns only that exclusion comment. No inject-at-A/detect-at-B correlation engine exists. Confirmed still absent."
       }
     },
@@ -1462,7 +1462,7 @@
       "evidence": "control_server.cpp:6481 `QSet<QString> include;` built inline per request; grep for named/saved config returns empty",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-verified control_server.cpp /api/audit/all still builds its `include` set as a freeform QSet<QString> parsed inline per request (no persisted profile); grep of Src/ and ui-v2/ for scanConfig|savedConfig|config.?library|named.?config|scanProfile still returns nothing. Confirmed still absent."
       }
     },
@@ -1477,7 +1477,7 @@
       "evidence": "control_server.cpp:7858 `static QAtomicInteger<int> auditAllInFlight(0);`; sweep returns only a queued count",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-verified control_server.cpp -- auditAllInFlight is still a single global QAtomicInteger<int> testAndSetAcquire gate (line drift 6516 -> 7858), the sweep still returns only a queued count, no per-task model, no pause/resume/cancel. grep for ScanQueue|scanTask|pauseScan still returns only the unrelated kMaxScanTasks constant. Confirmed still absent; evidence line refreshed."
       }
     },
@@ -1508,7 +1508,7 @@
       "evidence": "session_rules.hpp:93 `struct SessionMacro { QString name; QString sessionHost; QList<ChainRunner::Step> steps; QString loggedOutStatus; QString loggedOutBodyRegex; };`; control_server.cpp:4555 `/api/session-macros` (get/set, persisted via projectStore->setSessionMacros) and :4574 `/api/session-macros/run` (QtConcurrent::run(sr->runMacro)); ui-v2/app.jsx:7370 \"LOGIN MACROS -- named recorded login sequences ... record steps from Proxy history\"; ui-v2/real-data.js:448-450 sessionMacrosGet/Set/Run.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "9defca8",
         "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. SessionMacro (named, recorded-from-proxy-history login sequences with ChainRunner replay and auto re-auth trigger on logged-out detection) landed in 88cbe99, after this file's prior audit_date/reconciled_through window. Fully wired: backend struct+persistence, /api/session-macros (get/set) and /api/session-macros/run endpoints, and a GUI 'Login macros' panel in app.jsx recording steps from Proxy history rows. Remaining gap: HTTP-replay only, no browser-driven capture for JS/SPA logins, and per item #84 the deep-audit path doesn't consult SessionRules mid-request."
       }
     },
