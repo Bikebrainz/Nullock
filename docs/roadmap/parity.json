@@ -4398,8 +4398,13 @@
       "impact": "medium",
       "effort": "days",
       "gap": "Tabs are a workspace, not concurrency: one global busy flag serializes every tab and the send blocks the shared control/GUI thread. Also, each keystroke in the request textarea POSTs /api/repeater/set fire-and-forget while a 500 ms snapshot poll merges server state back over local state (real-data.js:99-101 comment 'the snapshot poll picks up resulting state changes within ~500 ms'), so fast typing can be reverted by an in-flight poll. And no tab persists across restart (see B18).",
-      "why": "Re-read repeater.cpp/hpp, tabs.jsx, control_server.cpp snapshot+endpoints. The tab MANAGEMENT is real and fully wired (backend struct, 6 endpoints, UI strip, CLI). But the item says *concurrent*, and concurrency is exactly what does not work: a single m_busy flag gates all tabs, and Repeater::send() calls the blocking HttpClient::send() inline. The control server is a QTcpServer on the same thread",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:155-163 addTab / :182-192 closeTab / :194-200 setActiveTab / :209-219 duplicateTab all verified verbatim. Backing store repeater.hpp:101 `QList<RepeaterTab> m_tabs;`. Snapshot really emits them: control_server.cpp:1486-1496 `for (const auto &t : m_wiring.repeater->tabs()) { ... to[\"statusLine\"] = t.statusLine; tabs.append(to); } repeater[\"tabs\"] = ta"
+      "why": "Re-read repeater.cpp/hpp, tabs.jsx, control_server.cpp snapshot+endpoints against current line numbers. The tab MANAGEMENT is real and fully wired (backend struct, 6 endpoints, UI strip, CLI). But the item says *concurrent*, and concurrency is exactly what does not work: a single m_busy flag gates all tabs, and Repeater::send() calls the blocking HttpClient::send() inline. The control server is a QTcpServer on the same thread.",
+      "evidence": "Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { if (m_busy) return; ... m_busy = true; ...}` (cleared at :284); :373 addTab, :383 addTabFromHistory, :400 addTabFromHistoryById, :421 closeTab, :433 setActiveTab, :455 duplicateTab all verified present and wired. Backing store repeater.hpp:187 `QList<RepeaterTab> m_tabs;`. Snapshot really emits them: control_server.cpp:1627 `for (const auto &t : m_wiring.repeater->tabs())` ... :1650 `repeater[\"tabs\"] = tabs;` (line drift from the original citation, content and conclusion unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified tab management (addTab/addTabFromHistory/addTabFromHistoryById/closeTab/setActiveTab/duplicateTab, repeater.cpp:373-467) is real and fully wired, but a single m_busy flag (repeater.cpp:136,140,284) still gates ALL tabs and send() (repeater.cpp:135) still calls the blocking HttpClient::send() inline on the control/GUI thread -- concurrency is exactly what the item asks for and still does not exist. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -4423,9 +4428,14 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Three defects in the flagship workflow: (1) any file upload / multipart / non-textual POST arrives in the Repeater as the literal text `[binary N bytes, multipart/form-data; boundary=...]`; (2) bodies >64 KB arrive truncated with a marker appended \u2014 both with the captured Content-Length still in the headers; (3) `nullock repeater load 5` loads history row 6 (id passed where an index is wanted), and after 10 000 captured rows the browser button loads the wrong row too. Also still only one source (proxy history) \u2014 no Send to Repeater from sitemap, issues, Intruder results or Comparer.",
-      "why": "DOWNGRADED. The auditor stopped at the endpoint. I followed addTabFromHistory into the model and found the loaded text is a RENDERED PREVIEW, not the raw request: multipart bodies are replaced with a placeholder string and bodies over 64 KB are truncated, while the original Content-Length header is kept. Separately, the row argument is a model INDEX but every caller passes an ID.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:174 `t.requestText = m_model->requestRawAt(row);` -> D:/dev/Nullock/Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp:151-160 `QString ProxyModel::requestRawAt(int row) ... out += renderBody(req.body, req.headers, \"Content-Type\");` and :128-146 `if (!looksTextual(contentType)) return QString(\"[binary %1 bytes, %2]\")...; const QByteArray slice = body.left"
+      "gap": "Two defects remain, one narrowed since the last pass: (1) any file upload / multipart / non-textual POST arrives in the Repeater as the literal text `[binary N bytes, multipart/form-data; boundary=...]`; (2) bodies over the preview cap arrive truncated with a marker appended -- both with the captured Content-Length still in the headers. The id/index confusion is now FIXED for the browser button (it calls the dedicated addFromHistoryId endpoint) but still live in the CLI: `nullock repeater load <row-id>` calls the index-based endpoint despite its own usage text calling the argument a row-id. Also still only one source (proxy history) -- no Send to Repeater from sitemap, issues, Intruder results or Comparer.",
+      "why": "DOWNGRADED-then-partially-fixed. The auditor stopped at the endpoint. Re-following addTabFromHistory into the model confirms the loaded text is still a RENDERED PREVIEW, not the raw request: multipart bodies are replaced with a placeholder string and bodies over the preview cap are truncated, while the original Content-Length header is kept. Separately, a second endpoint (addTabFromHistoryById) now exists and IS used by the browser button, closing that half of the id/index bug -- but the CLI's documented `<row-id>` path still hits the index-based endpoint, so the same class of bug remains reachable from the command line.",
+      "evidence": "Src/Core/Networking/repeater.cpp:383 addTabFromHistory(int row) vs :400 addTabFromHistoryById(int id) -- two distinct entry points now exist. ui-v2/app.jsx:68 `act(\"repeaterTabAddFromHistoryId\", row.id)` (browser button, fixed) vs bin/nullock's `load)` case: `post /api/repeater/tab/addFromHistory \"{\\\"row\\\":$row}\"` where $row is the user-supplied value the usage text calls `<row-id>` (CLI, still buggy). Body rendering: Src/FrontEnd/GUI/Models/Proxy/proxy_model.cpp:141 looksTextual(), :163 `return QString(\"[binary %1 bytes, %2]\")...`, :174 requestRawAt() (line drift from the prior 128-160/151-160 citation, content unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial, with one real fix found. The browser 'send to Repeater' button (ui-v2/app.jsx:68) now calls repeaterTabAddFromHistoryId -> POST /api/repeater/tab/addFromHistoryId {id}, which routes to the new Repeater::addTabFromHistoryById(int id) (repeater.cpp:400) -- the id-vs-index bug the prior audit found in the browser path is fixed. The CLI is NOT: `nullock repeater load <row-id>` (bin/nullock, documented as taking a row-id) still POSTs to /api/repeater/tab/addFromHistory {row:$row} -- the INDEX-based endpoint (control_server.cpp:3710 -> addTabFromHistory(int row), repeater.cpp:383) -- so the CLI still silently loads the wrong row on a non-trivial id/index gap. The binary-placeholder and 64KB-truncation defects are unchanged: proxy_model.cpp's requestRawAt still renders a `[binary N bytes, ...]` placeholder for non-textual bodies and truncates text bodies over kMaxBodyPreviewBytes, in both cases leaving the captured Content-Length header untouched. Gap text narrowed to reflect the browser-path fix."
+      }
     },
     {
       "area": "repeater",
@@ -4719,7 +4729,12 @@
       "effort": "days",
       "gap": "Pressing '\u2191 input' discards the prior stage and clears the recorded smart-decode chain, so you cannot revise stage 2 and watch 3-5 recompute the way Burp's vertical block stack does. Smart decode records its chain but only as a label.",
       "why": "Verified; the state really is one input + one output and the chain button is destructive.",
-      "evidence": "D:/dev/Nullock/ui-v2/app.jsx DecoderTab :1536-1541 `const [input, setInput] = React.useState(\"\"); const [output, setOutput] = React.useState(\"\"); ... const [chain, setChain] = React.useState([]);` and the single chaining affordance `const useOutputAsInput = () => { setInput(output); setOutput(\"\"); setChain([]); setErr(\"\"); };` bound to `<Btn label=\"\u2191 input\" title=\"Use output as the new input (chai"
+      "evidence": "ui-v2/app.jsx DecoderTab (function at :6171); the single chaining affordance `const useOutputAsInput = () => { setInput(output); setOutput(\"\"); setOutputB64(\"\"); setChain([]); setErr(\"\"); };` (:6248) bound to the '\u2191 input' button (:6326) -- resets rather than stacks (line drift from the prior 1536-1541 citation, content unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. useOutputAsInput (ui-v2/app.jsx:6248) still does `setInput(output); setOutput(\"\"); setOutputB64(\"\"); setChain([]); setErr(\"\");` -- pressing the chain button still discards the prior stage's output/error state and clears the recorded chain rather than pushing a new stacked block, matching the prior finding exactly (line drift only). No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -4903,8 +4918,13 @@
       "impact": "medium",
       "effort": "days",
       "gap": "No grouping, no drag-reorder. Past ~10 tabs the flat horizontal strip becomes unusable, and reordering requires close-and-recreate (which loses the tab entirely, since nothing persists).",
-      "why": "Confirmed. My own grep for tabGroup/groupName/sendGroup/draggable/dragstart across Src/ and ui-v2 found only an unrelated `draggable=\"false\"` on the logo and the Tweaks panel's window drag.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:19-27 RepeaterTab has no group or order field. Tab strip is a flat map with a horizontal scroller: ui-v2/tabs.jsx `overflowX: \"auto\"` on the strip container and `{tabs.map((t, i) => { const isActive = i === active; ...` with no drag handlers. Only drag code in the UI is ui-v2/tweaks-panel.jsx:234 `const onDragStart = (e) => {` (panel positioning)."
+      "why": "Confirmed. Fresh grep for tabGroup/groupName/sendGroup/draggable/dragstart across Src/Core/Networking/repeater.* and ui-v2/tabs.jsx: zero hits.",
+      "evidence": "Src/Core/Networking/repeater.hpp:187 `QList<RepeaterTab> m_tabs;` -- the RepeaterTab struct carries no group or order field; ui-v2/tabs.jsx's tab strip renders a flat horizontal scroller with no drag handlers (re-grepped for draggable/dragstart in tabs.jsx -- 0 hits).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Fresh case-insensitive grep for tabGroup/groupName/sendGroup/draggable/dragstart across Src/Core/Networking/repeater.* and ui-v2/tabs.jsx returns zero hits -- no grouping or drag-reorder exists for Repeater tabs. RepeaterTab still has no group/order field. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -4914,7 +4934,12 @@
       "effort": "weeks",
       "gap": "Cannot drive a multi-step flow (login -> token -> privileged action) as an ordered sequence from Repeater. Note Src/Core/Networking/chain_runner.* does implement multi-step request chaining, but it is a separate engine with no Repeater entry point.",
       "why": "Confirmed. No group concept exists and the only send path takes no tab list.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.cpp:116-153 `void Repeater::send() { if (m_busy) return; auto &t = activeTab_(); ... const auto result = m_client.send(t.host, static_cast<quint16>(t.port), t.useTls, bytes); ... }` \u2014 active tab only, one request per call. Endpoint control_server.cpp:3087-3097 `/api/repeater/send` reads no body parameters at all."
+      "evidence": "Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { if (m_busy) return; auto &t = activeTab_(); ... }` -- active tab only, one request per call. control_server.cpp:3685 `if (path == \"/api/repeater/send\")` reads no body parameters and just invokes send() on the active tab via a queued connection (line drift from the prior 116-153/3087-3097 citation, content unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Repeater::send() (repeater.cpp:135) is still single-tab only (operates on activeTab_()), and POST /api/repeater/send (control_server.cpp:3685) still reads no body parameters at all -- it just QMetaObject::invokeMethod(...\"send\"...) on whichever tab is currently active. No group/sequence concept exists anywhere in the send path. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -4923,8 +4948,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "No single-packet or last-byte-sync send, and no path from Repeater to the race tester at all. The stale comment should also be fixed: Burp ships single-packet group send in Repeater in both Community and Pro.",
-      "why": "Confirmed, including the stale Burp claim in the comment. My own grep for last.byte / single.packet / lastByte / singlePacket across all of Src/ hit only those three comment lines.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/race_tester.hpp:22-24 `// v1 fires via the thread pool (good enough to win most application-layer races); true last-byte / single-packet synchronization is a future raw-socket iteration.` and race_tester.cpp:30-33 `// Dedicated pool sized to \\`count\\` ... plus a gate semaphore so every worker blocks until all are scheduled, then releases together -- as close to s"
+      "why": "Confirmed, including the stale Burp claim in the comment. Fresh grep for last.byte / single.packet / lastByte / singlePacket across all of Src/ hits only those three comment lines, unchanged.",
+      "evidence": "Src/Core/Networking/race_tester.hpp:22-24 `// v1 fires via the thread pool (good enough to win most application-layer races); true last-byte / single-packet synchronization is a future raw-socket iteration.` -- verbatim match to the prior citation, no drift.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent, including the stale-Burp-claim correction from the prior pass. race_tester.hpp's comment ('v1 fires via the thread pool ... true last-byte / single-packet synchronization is a future raw-socket iteration') is byte-for-byte unchanged, and a fresh grep for last.byte/single.packet/lastByte/singlePacket across Src/ still hits only those same comment lines -- no raw-socket last-byte-sync or single-packet send has landed, and there is still no path from Repeater into the race tester at all. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -5043,8 +5073,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "No h2 in the manual-testing tool despite a working nghttp2 client in the proxy layer. Blocks h2-specific work: pseudo-header injection, h2.CL/h2.TE smuggling, single-packet timing.",
-      "why": "Confirmed. My grep for http2/HTTP\\/2/h2 across repeater.cpp and repeater.hpp returned nothing, and the client writes HTTP/1 bytes to a plain socket.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:19-27 RepeaterTab has no protocol field. Src/Core/Networking/networking.cpp:186-200 `socket = new QTcpSocket(this); ... socket->connectToHost(host, port); ... socket->write(requestBytes);` then HTTP/1 status-line parsing. The h2 stack exists but elsewhere: Src/BackEnd/Proxy/h2_client_logic.cpp, http2_client.cpp, h2_server.cpp (nghttp2, per project me"
+      "why": "Confirmed. Fresh grep for http2/HTTP\\/2/h2 across repeater.cpp and repeater.hpp returned nothing, and the client writes HTTP/1 bytes to a plain socket.",
+      "evidence": "Src/Core/Networking/repeater.hpp -- RepeaterTab has no protocol field (re-checked, unchanged); Src/Core/Networking/networking.cpp's send path still connects a plain socket and writes HTTP/1 request bytes with HTTP/1 status-line parsing. The h2 stack exists but elsewhere: Src/BackEnd/Proxy/h2_client_logic.cpp, http2_client.cpp, h2_server.cpp (nghttp2, proxy-layer only).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for http2/HTTP\\/2/h2 across repeater.cpp and repeater.hpp still returns nothing; RepeaterTab has no protocol field and the client still writes HTTP/1 bytes to a plain QTcpSocket/QSslSocket. The nghttp2-backed h2 stack (h2_client_logic.cpp, http2_client.cpp, h2_server.cpp) exists but remains confined to the proxy layer, with no Repeater entry point. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -5069,8 +5104,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "A tarpitting target can freeze the whole control/GUI thread for up to 5 minutes with no escape \u2014 the browser UI stops updating entirely, not just the Repeater. The m_busy guard also serializes all tabs, which is what undermines A1.",
-      "why": "Confirmed, and worse than described. The control server's QTcpServer lives on the same thread the blocking send runs on, so a slow target freezes the ENTIRE app (snapshot polling included), and the whole-call read budget is five minutes.",
-      "evidence": "Synchronous send: D:/dev/Nullock/Src/Core/Networking/repeater.cpp:133 `const auto result = m_client.send(...)` -> Src/Core/Networking/networking.cpp:189-197 `if (!socket->waitForConnected(kTimeoutMs))` / `if (!socket->waitForBytesWritten(kTimeoutMs))`, with networking.cpp:21 `constexpr int kTimeoutMs = 15'000;` and Src/Core/Networking/networking_logic.hpp:75 `constexpr qint64 kMaxTotalReadMs = 300"
+      "why": "Confirmed, and worse than described. The control server's QTcpServer lives on the same thread the blocking send runs on, so a slow target freezes the ENTIRE app (snapshot polling included), and the whole-call read budget is five minutes. Fresh grep for cancel/abort in repeater.cpp/.hpp: zero hits.",
+      "evidence": "Synchronous send: Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { ... auto result = m_client.send(...) ... }` -> Src/Core/Networking/networking.cpp:190 `if (!socket->waitForConnected(kTimeoutMs))`, :198 `if (!socket->waitForBytesWritten(kTimeoutMs))`, with networking.cpp:22 `constexpr int kTimeoutMs = 15'000;` and Src/Core/Networking/networking_logic.hpp:75 `constexpr qint64 kMaxTotalReadMs = 300'000;` (line drift from the prior 133/189-197/21/75 citation, values and conclusion unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Repeater::send() (repeater.cpp:135) is still fully synchronous -- it calls HttpClient::send() inline, which blocks on QTcpSocket::waitForConnected/waitForBytesWritten (networking.cpp, kTimeoutMs = 15'000) and reads for up to kMaxTotalReadMs = 300'000 (networking_logic.hpp:75, unchanged at 5 minutes). A fresh grep for cancel/abort across repeater.cpp/.hpp returns zero hits -- there is still no way to interrupt an in-flight send, and since the control server's QTcpServer lives on the same thread, a tarpitting target still freezes the whole app for up to 5 minutes. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -5285,8 +5325,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "This is what makes Burp's Inspector a tool rather than a viewer: edit a param value and Burp re-encodes it and fixes Content-Length. Nullock has no write direction at all \u2014 and no Content-Length fixer to call even if it did (B11).",
-      "why": "Confirmed, and this one really is absent rather than stub: unlike the read path there is no code at all. I re-ran the symbol hunt (rebuildRequest/applyInspector/reserialize/applyEdit) across Src/ \u2014 nothing.",
-      "evidence": "D:/dev/Nullock/Src/BackEnd/Control/control_server.cpp:9409-9412 returns `{ \"ok\", true }, { \"kind\", kind }, { \"view\", view }` with no mutation parameter accepted. Src/Core/Networking/inspector_logic.hpp declares only inspectRequest/inspectResponse (both `QJsonObject f(const QByteArray &raw)` \u2014 input bytes, output JSON). No re-serializer symbol exists anywhere in the tree."
+      "why": "Confirmed, and this one really is absent rather than stub: unlike the read path there is no code at all. Re-ran the symbol hunt (rebuildRequest/applyInspector/reserialize/applyEdit) across Src/ -- the only reserialize hits belong to the unrelated session-handling-rules feature (session_rules.cpp), not the Inspector.",
+      "evidence": "Src/Core/Networking/inspector_logic.hpp declares only inspectRequest/inspectResponse (both `QJsonObject f(const QByteArray &raw)` -- input bytes, output JSON, no write-back). No Inspector-specific re-serializer symbol exists anywhere in the tree; the only `reserialize` hits are session_rules.cpp:279/373 and session_rules.hpp:153, which reserialize a request for session-rule injection, an unrelated feature.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-ran the symbol hunt (rebuildRequest/applyInspector/reserialize/applyEdit) across Src/ -- the only reserialize hits are session_rules.cpp/.hpp's unrelated session-handling-rules reserialization (rewriting a request for injected cookies/tokens), not an Inspector write path. inspector_logic.hpp still declares only inspectRequest/inspectResponse, both read-only `QJsonObject f(const QByteArray &raw)` functions -- no mutation parameter is accepted anywhere in the inspect endpoint. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -5327,8 +5372,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "The DISPLAY half now ships: inspectRequest emits a pseudoHeaders array (:method from the request line, :path from the full target, :authority from the Host header, :scheme defaulting to https), reachable via /api/inspect. Still partial for the interactive half: EDITING a pseudo-header, the HTTP/1<->HTTP/2 protocol toggle, and actually EMITTING malformed h2 pseudo-headers on the wire (Repeater has no protocol field and writes HTTP/1 bytes) -- ui-v2 + a Repeater-h2 socket path outside headless verification.",
-      "why": "Pure addition to inspector_logic.cpp (out[\"pseudoHeaders\"]) mutation-proven in inspector_logic_test (the four pseudo-headers for a sample POST; flipping the :scheme default fails only its case). The start-line was previously parsed strictly METHOD/TARGET/VERSION with no pseudo-header view; that display gap is closed. Held partial for the editing/toggle/emit legs, which are ui-v2 + a socket-level h2 write.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/inspector_logic.cpp:158-162 `const QStringList sl = p.start.split(' ', Qt::SkipEmptyParts); out[\"method\"] = sl.size() > 0 ? sl[0] : QString(); const QString target = sl.size() > 1 ? sl[1] : QString(); out[\"target\"] = target; out[\"version\"] = sl.size() > 2 ? sl[2] : QString();` \u2014 `grep -n ':method|:authority|pseudo' inspector_logic.cpp` returns nothing. Repeater: "
+      "why": "Pure addition to inspector_logic.cpp (out[\"pseudoHeaders\"]) mutation-proven in inspector_logic_test. Re-confirmed the DISPLAY half ships unchanged; held partial for the editing/toggle/emit legs, which remain blocked on both the Repeater HTTP/2 gap (#7, still absent) and the Inspector write-path gap (#9, still absent).",
+      "evidence": "Src/Core/Networking/inspector_logic.cpp:338 `out[\"pseudoHeaders\"] = QJsonArray{ nv(QStringLiteral(\":method\"), ...` through :343 (four pseudo-headers, line drift from the prior 158-162 citation which cited the start-line parse just above this block -- content and conclusion unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. The DISPLAY half is still there and unchanged: inspector_logic.cpp emits a pseudoHeaders array (:method/:path/:authority/:scheme) reachable via /api/inspect. The editing half is still absent -- Repeater has no protocol field (per item #7's re-verification) and the Inspector has no write path at all (per item #9's re-verification), so there is nothing to wire a pseudo-header edit into yet. No code change this pass."
+      }
     },
     {
       "area": "repeater",
@@ -5337,18 +5387,29 @@
       "impact": "low",
       "effort": "weeks",
       "gap": "The Qt Repeater is single-tab (no tab strip, no duplicate/rename) and its Send button bypasses the scope guard entirely (calls repeater.send() directly \u2014 see A7). There is still no Comparer/Decoder/Inspector in app.qml (tabs are Proxy/Scope/Repeater/Intercept/Intruder). And app.cpp:1163-1176 treats this window as optional legacy \u2014 'The REAL UI is the browser control panel' \u2014 loading it only when the exe is launched from the repo root.",
-      "why": "UPGRADED \u2014 the auditor looked at the wrong QML. Src/FrontEnd/GUI/RepeaterHub/*.qml really are blank 107-byte rectangles with 0-byte models, but they are DEAD SCAFFOLDING: the desktop binary loads Src/App/app.qml (1211 lines), which implements a genuinely working Repeater tab plus Send-to-Repeater from the history context menu. Comparer/Decoder/Inspector are correctly reported absent there.",
-      "evidence": "Entry point: D:/dev/Nullock/Src/App/app.cpp:1159-1161 `// run from project root so this relative path resolves to Nullock/Src/App/app.qml` `const QUrl url(QStringLiteral(\"./Src/App/app.qml\")); engine.load(url);` with `engine.rootContext()->setContextProperty(\"repeater\", &repeater);` (:1155). Working UI: Src/App/app.qml:112 `TabHeader { label: \"Repeater\"; active: root.currentTab === 2; ... }`, :657"
+      "why": "Confirmed. Re-read Src/App/app.qml's tab bar: still five tabs (Proxy/Scope/Repeater/Intercept/Intruder), Comparer/Decoder/Inspector correctly reported absent there. The RepeaterHub/*.qml dead scaffolding finding from the prior pass is unaffected.",
+      "evidence": "Src/App/app.qml:110-114 `TabHeader { label: \"Proxy\"; ... root.currentTab = 0 }` through the Intruder tab at :114 -- five tabs total, no Comparer/Decoder/Inspector entry (line drift from the prior 112/657 citation, content unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Src/App/app.qml's tab bar (:110-114) is still exactly Proxy/Scope/Repeater/Intercept/Intruder -- Comparer, Decoder and Inspector remain absent from the native desktop shell, unchanged. The working single-tab Repeater implementation in app.qml is unaffected by this pass. No code change this pass."
+      }
     },
     {
       "area": "repeater",
       "feature": "Extension access to Repeater / Comparer / Decoder / Inspector (Montoya API: sendToRepeater, registerContextMenuItem, custom message-editor tabs)",
-      "state": "absent",
+      "state": "partial",
       "impact": "medium",
       "effort": "weeks",
-      "gap": "Extensions cannot push a request into Repeater, register a context-menu action, contribute a codec to the Decoder, or add a custom editor tab \u2014 the four integration points most BApps use. The marketplace/install flow being built (task #112) does not change this: the missing piece is the hook surface, not distribution.",
-      "why": "Confirmed by reading the extension API surface myself. The only hooks are traffic observation and finding reporting.",
-      "evidence": "D:/dev/Nullock/Src/Core/APIs/ExtensionsAPI/extensions_api.hpp documents the entire JS surface: :163 `// Exposed to JS as nullock.log(\"\u2026\")`, :166 `// Exposed to JS as nullock.onResponse(function(entry) { ... })`, :169 `// Exposed to JS as nullock.onRequest(function(entry) { return modified; })`, :175 `//   nullock.reportFinding(severity, kind, summary, evidence, url)`. `grep -rn -i 'repeater|transc"
+      "gap": "Extensions can now push a request into Repeater or Intruder (nullock.sendToRepeater / nullock.sendToIntruder, wired to the live tool objects) -- the most commonly used of the four integration points this item names. Still missing: registering a context-menu action, contributing a codec to the Decoder, and adding a custom message-editor tab -- the marketplace/install flow being built does not change this, since the missing piece is the hook surface, not distribution.",
+      "why": "Re-read the full extension API surface (extensions_api.hpp, all Q_INVOKABLE methods) instead of trusting the prior 'only traffic observation and finding reporting' summary. Found sendToRepeater/sendToIntruder are real, callable, and wired to the live tool objects -- confirmed by tracing setSendToRepeater's call site in app.cpp into an actual Repeater::addTabFromHistory-style path. Fresh grep for registerContextMenuItem/messageEditor/registerCodec/registerDecoder across the same file: zero hits, so those three integration points are still absent.",
+      "evidence": "extensions_api.hpp:351 `Q_INVOKABLE void sendToRepeater(const QString &host, int port, bool tls, const QString &requestText);` and :353 sendToIntruder (same signature); extensions_api.cpp:127-143 both implementations call through m_owner->m_sendToRepeater / m_sendToIntruder (optional callbacks) and log `[ext] sendToRepeater host:port`; Src/App/app.cpp:1220 `// nullock.sendToRepeater / sendToIntruder: extensions push a request into the` wires both via setSendToRepeater/setSendToIntruder to the real Repeater/Intruder instances. `grep -n 'registerContextMenuItem|messageEditor|registerCodec|registerDecoder' extensions_api.hpp` = 0 hits -- context-menu registration and custom-editor/codec contribution remain unimplemented.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. The prior audit's 'only hooks are traffic observation and finding reporting' claim is now stale: Q_INVOKABLE sendToRepeater(host,port,tls,requestText) and sendToIntruder(...) exist on the JS bridge (extensions_api.hpp:351,353; implemented extensions_api.cpp:127-143) and are wired live in app.cpp:1220 via setSendToRepeater/setSendToIntruder callbacks into the real Repeater and Intruder objects -- an extension really can push a captured request into either tool today. Still genuinely absent: registerContextMenuItem (no context-menu registration hook anywhere on the bridge) and custom message-editor tabs / Decoder codec contribution (no editor-provider or codec-registration method exists). 1 of the 4 named integration points now real; the other 3 remain absent."
+      }
     },
     {
       "area": "target",
