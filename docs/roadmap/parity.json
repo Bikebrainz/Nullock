@@ -5299,7 +5299,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-read proxy.jsx's HistoryTable header (now :404-432, was :66-77 -- drifted with intervening waves) -- same 11 named columns + 1 blank marker cell, still no Title/Comment/Cookies/Extension column and no sort/reorder/show-hide. Noted a real but partial mitigation: the #299 annotation layer (highlight colour + free-text comment, added since this item was last touched) gives a practical substitute for a per-row Comment, so the gap text now says so explicitly rather than reading as if nothing changed. No code change this pass."
       }
     },
@@ -5378,7 +5378,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-read setScope/globVerdict -- the simple include-list this item names is still a bare host-glob with no path dimension, exactly as originally graded (line numbers refreshed, :1312-1338 drifted to :1501-1538). Cross-referenced the sibling 'Advanced scope control' parity item, which since this item was last touched grew a full editor UI and now supplies the path/protocol/port dimension this item's gap complains is missing -- added a pointer so the gap text does not read as if no progress happened anywhere in scope-land. No code change this pass."
       }
     },
@@ -5503,7 +5503,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at partial, core gap unchanged (no site-map issue view exists for anything to appear 'alongside' in). Found a genuine improvement the register hadn't caught: the dead-click-on-rowId-0 defect this item's own 'why' used to cite as an extra bug is fixed -- app.jsx now guards `!finding.rowId` in both the detail pane and the 'Open in proxy' button, showing an honest 'no associated request (extension-sourced)' message instead of a broken jump. Updated gap/evidence to drop the stale defect claim and refreshed drifted line numbers (app.cpp 726-728 -> 834-836; extensions_api.cpp 61-78 -> 108-124). No code change this pass."
       }
     },
@@ -5519,7 +5519,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at partial. Re-read the handler (moved 8447-8492 -> 9663-9705 across intervening waves) -- still one synchronous discover() call with no session/progress/pause-resume surface. Noted the engine gained an internal concurrency pool (concurrency/throttleMs) and extension/mutation wordlist variants since the prior pass, but neither changes the blocking, session-less shape this item grades on. No code change this pass."
       }
     },
@@ -5629,7 +5629,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped every addResponse/appendEntry call site repo-wide plus Repeater::send and every scanner source file directly -- Repeater, Intruder and Scanner still never write into history or the site map; only history-replay and direct project-store appends (OpenAPI import, etc.) reach it, matching the prior pass's finding exactly with no line drift. No code change this pass."
       }
     },
@@ -5645,7 +5645,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read IssuesTab (line moved 927 -> 1781) and SiteMap's full prop signature (line moved 172 -> 660, gained an `annotations`/`annotatedOnly` pair for the #299 highlight-colour feature but still nothing findings-shaped) -- confirms the map still cannot show per-node issues or overlay severity icons. No code change this pass."
       }
     },
@@ -5709,7 +5709,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent, verbatim. Re-read crawler.hpp:74-107 -- `PendingUrl` is still `{ QString url; int depth = 0; }` with no parent/referrer field, `m_seenUrls`/`m_queue` store no edges, and a fresh `grep -rail \"crawl path|crawlPath\" Src ui-v2 extensions` still returns nothing. Cited line numbers (74-77, 80, 106-107) matched exactly with zero drift. No code change this pass."
       }
     },
@@ -5821,7 +5821,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the probe-building loop (moved 154-176 -> 169-176 after a concurrency-pool addition) -- still exactly one directory level per invocation, `base` assigned once, no depth field or requeue anywhere. The new concurrency/throttle controls speed up the flat scan, they do not add recursion. No code change this pass."
       }
     },
@@ -5853,7 +5853,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the hit-to-finding loop (moved 8467-8480 -> 9682-9697) -- still `reportFinding(0, ...)`, no history row, no site-map tree insertion, matching the prior pass's finding with refreshed line numbers only. No code change this pass."
       }
     },
@@ -5885,7 +5885,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent. The literal grep now returns far more hits than the prior pass's \"exactly one file\" (new labs and comments added \"decoy\" in unrelated senses since), so re-checked every match by hand rather than trusting the count -- all are Lab 24's clickjacking PoC or unrelated SSRF/regression-test comments. No decoy-traffic feature exists. No code change this pass."
       }
     },
@@ -5901,7 +5901,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at absent, verbatim. Re-ran both greps: `schedul|cron|recurring` (case-insensitive, proper alternation) against control_server.cpp still returns zero matches, and `.github/workflows/nullock-scan-example.yml` still declares only `workflow_dispatch:` with no `schedule:` key. No code change this pass."
       }
     },
@@ -5917,7 +5917,7 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "d56a3e7",
         "note": "Wave 0 register-accuracy audit: held at partial (the prior pass's UPGRADE from absent-looking to a real, if limited, Qt Target UI stands). Re-verified app.cpp still loads ./Src/App/app.qml by relative path (line moved 1159-1161 -> 1485-1487, same relative-path-for-installed-builds bug) and app.qml's site map + scope tab are functionally unchanged. No code change this pass."
       }
     },
