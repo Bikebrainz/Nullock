@@ -3276,7 +3276,7 @@
       "evidence": "Src/Core/Storage/project_store.cpp:359-403 ProjectStore::saveMetadata() -- the persisted set is far larger than the last audit found: v, name, notes, created, updated, inScope, outOfScope, rules, repeater, interceptRules, interceptAutoContentLength, interceptAutoFixNewlines, sessionMacros, advancedScope, acceptInvalidUpstreamHosts, sessionRules, cookieJar, suppressedKinds, falsePositiveKeys, severityOverrides, deletedKeys -- one project.json write per save. control_server.cpp /api/project/list (:10895), /api/project/open (:10906) and /api/project/create (:10911) are still the complete project-management surface: `grep -n \"renameProject|deleteProject|copyProject|compact\" Src/Core/Storage/project_store.hpp`: 0 hits.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial, but the evidence needed a real correction, not a line refresh. The prior evidence's central claim -- \"the persisted set: v, name, notes, created, updated, inScope, outOfScope, rules -- and nothing else\" -- is now false: saveMetadata() (project_store.cpp:359-403) has grown to also persist repeater state, intercept rules and settings, session macros, advanced scope, accept-invalid-hosts, session rules, the cookie jar, and finding-triage state (suppressed kinds, false positives, severity overrides, deleted keys) -- ten fields the original evidence said did not exist. This is a substantial expansion of what survives a restart. The gap survives regardless: I checked project_store.hpp for rename/delete/copy/compact and found none (0 hits), and control_server.cpp's project surface is still exactly list/open/create -- no save-copy-as, no rename, no delete, no compaction, and it is still a directory of files (project.json + history.ndjson + findings), not a single portable project file. State holds at partial; evidence corrected to stop understating what persists."
       }
     },
@@ -3355,7 +3355,7 @@
       "evidence": "browser-ext/manifest.json: `\"permissions\": [\"proxy\", \"storage\", \"tabs\"]` and `\"description\": \"Routes browser traffic through a local Nullock proxy and one-click installs the CA cert...\"`. browser-ext/background.js:32-45 `await chrome.proxy.settings.set({ value: { mode: \"fixed_servers\", rules: { singleProxy: { scheme: \"http\", host: cfg.proxyHost, port: cfg.proxyPort }, bypassList: cfg.bypassList } }, scope: \"regular\" });`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial. manifest.json and background.js are byte-identical to the prior audit (same permissions, same description overpromise, same chrome.proxy.settings.set call at background.js:32-45, was :30-44 -- a 2-line drift from unrelated file changes). The extension still has no OS/browser CA trust-store installer and still requires developer-mode side-loading. No change."
       }
     },
@@ -3370,7 +3370,7 @@
       "evidence": "extensions/dom_taint.js:5-10 `Burp Pro's DOM Invader runs *inside* the browser and instruments the live DOM at runtime. Nullock is a proxy, so we can't hook the page -- but every script the app serves passes through us, and we can analyse it statically.`; :54 `{ re: /\\.\\s*innerHTML\\s*=/g, name: \"innerHTML\", cls: \"html\" },`. File is 256 lines total, source/sink tables and one-hop dataflow unchanged.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial. dom_taint.js drifted 2 lines from a version-comment addition (\"nullock:version 0.2.0\" at :3) but the self-declared-limits quote, the source/sink regex tables and the one-hop dataflow logic are unchanged. Still no runtime instrumentation, no canary tracing, no prototype-pollution gadget scan, no postMessage interception, no stack traces -- confirmed no new files or functions under extensions/ or Src/ implementing any of those. Claim holds."
       }
     },
@@ -3400,7 +3400,7 @@
       "evidence": "`grep -rn \"resourcePool|namedPool|poolName|sharedPool|globalThrottle\" Src ui-v2`: 0 hits. Src/Core/Networking/intruder.hpp:190 `// Request-pool config (Burp-parity \"resource pool\"): how many requests may be` -- still the only occurrence repo-wide, still a comment on a per-tool field. Per-tool knobs: control_server.cpp:1672-1673 `intruder[\"concurrency\"] = m_wiring.intruder->maxConcurrency(); intruder[\"throttleMs\"] = m_wiring.intruder->throttleMs();`; crawler takes its own at :4728 `const int throttle = bodyJson.value(\"throttleMs\").toInt(200);`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial. Same single repo-wide hit for the \"resource pool\" concept (intruder.hpp, drifted :155 -> :190), still just a comment on a per-tool field. Confirmed each tool (Intruder, crawler, deep-audit) still carries its own independent concurrency/throttle knob with no shared, named, cross-tool budget object. Claim holds; evidence line numbers refreshed."
       }
     },
@@ -3495,7 +3495,7 @@
       "evidence": "Src/Tools/workspace_server_main.cpp:13-21 `Auth: a single shared bearer key (X-Workspace-Key header or ?key=). Full OIDC/SSO + per-user roles is the separate design/enterprise-sso.md track; this MVP is \"shared team key\"` and `Sync: per-engagement monotonic seq; push upserts by identity key and bumps seq, pull returns everything with seq > since. Last-write-wins.`; endpoints `POST /api/ws/push, GET /api/ws/pull` (header comment :21).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial. workspace_server_main.cpp's header is unchanged in substance (drifted 12-17 -> 13-21, same self-declared MVP scope: shared bearer key, last-write-wins sync). Still no users/roles/SSO, no scheduling, no scan agents, no ticketing integration, no web dashboard beyond the sync API itself. Claim holds."
       }
     },
@@ -3574,7 +3574,7 @@
       "evidence": "`grep -rni \"ssl|https\" Src/Core/APIs/Oast/*.cpp Src/Core/APIs/Oast/*.hpp`: 0 hits. oast_server.cpp:32 `m_server = new QTcpServer(this);`; :192 `const QString pathUrl = QString(\"http://%1:%2/oast/%3/cb\")...`; :199 `hostUrl = QString(\"http://%1.%2:%3/\").arg(tok, m_baseHost).arg(p);`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. OAST directory unchanged in this respect (one new file since the last pass, oast_origin.hpp, is a data-struct extraction for the persistence feature reconciled separately under item #7/159 -- not a TLS listener). oast_server.cpp is still a plain QTcpServer with no SSL/TLS wrapping and both URL-minting sites emit http:// only (lines drifted 23->32, 76-77->192,199, content identical). Claim holds."
       }
     },
@@ -3589,7 +3589,7 @@
       "evidence": "`ls Src/Core/APIs/Oast/`: dns_logic.cpp/.hpp, dns_sink.cpp/.hpp, oast_correlator.cpp/.hpp, oast_logic.cpp/.hpp, oast_origin.hpp, oast_server.cpp/.hpp -- no SMTP listener. `grep -rni \"smtp\" Src` hits only port-scanner service classification (Src/Core/Networking/port_logic.cpp, Src/Core/Networking/scan_bridge.cpp) -- nothing that listens.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. The OAST directory listing grew by exactly one file since the last audit (oast_origin.hpp, the persistence-feature struct split from item #7/159 -- not SMTP-related). Every \"smtp\" grep hit across Src is still port-scanner banner classification, not a listener. Claim holds."
       }
     },
@@ -3636,7 +3636,7 @@
       "evidence": "oast_logic.cpp:12 `QJsonObject serializeState(...)`; :36 `void deserializeState(...)`; oast_correlator.cpp:12 `void OastCorrelator::setPersistPath(const QString &path) {`, :26 `void OastCorrelator::saveLocked() const {`, called from registerToken (:46) and the onHit new-confirmation branch (:71 `else { m_confirmed.insert(hit.token); saveLocked(); }`); app.cpp:1186 `oastCorrelator.setPersistPath(oastDir + \"/oast-interactions.json\");`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial. All cited functions and call sites verified present and wired exactly as described (serializeState/deserializeState in oast_logic.cpp, setPersistPath/saveLocked in oast_correlator.cpp called from both registerToken and the onHit confirmation path, app.cpp wiring to AppDataLocation/oast-interactions.json). The raw poll-log ring and DNS-hit retention remain the larger, un-persisted half of \"interaction persistence\" as the original note said. Claim holds; this is the one platform-area item that already carried fresh, accurate evidence from its 2026-08-24 closing commit -- only the audit-trail (reconciled) block was missing."
       }
     },
@@ -3667,7 +3667,7 @@
       "evidence": "Src/Core/Storage/history_logic.cpp:43-103 buildFindQuery() builds the WHERE clause from a fixed key set only: method (:67-70), host LIKE (:71-81), path LIKE (:82-85), and addNumeric-driven status/minSize/maxSize/sinceMs (:86-89) -- nothing else. Unrecognized numeric keys are collected into `ignoredFilters` (:59 `if (ignoredFilters) ignoredFilters->append(key);`). No source column: Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp:14-25 `enum Roles { IdRole = Qt::UserRole + 1, HostRole, MethodRole, UrlRole, StatusCodeRole, MimeRole, ParamsRole, TlsRole, IpRole, TimestampRole };` -- no tool/source role.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. buildFindQuery's supported key set is unchanged (method/host/path/status/minSize/maxSize/sinceMs), only line numbers drifted (67-89 -> 43-103, the function itself starts at 43 not 67 -- a fuller citation, not a content change). ProxyModel's Roles enum is unchanged, still no source/tool role to filter on. No custom-column or script-filter mechanism exists anywhere in the history/proxy-model layer. Claim holds."
       }
     },
@@ -3682,7 +3682,7 @@
       "evidence": "`grep -rani \"collection\\\\b|bookmark|starred|pinned|shortlist|savedItems\" Src ui-v2` returns only unrelated matches: cert-pinning comments (proxy_server.cpp, proxy_server.hpp), a version-pinned CVE table (service_vulns_logic.cpp), a Postman-collection exporter (control_server.cpp:7187-7212, ui-v2/proxy.jsx:1048, 2289), and marketplace catalog integrity pinning (marketplace_logic.hpp). No collection/bookmark concept exists anywhere.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-ran the full synonym grep; the hit set shifted (a Postman-collection exporter and a service-CVE version-pin table are new-ish additions since the last pass) but every single hit is still an unrelated use of the words \"collection\"/\"pinned\". No way to set aside interesting requests into a saved, read-only collection exists in Src or ui-v2. Claim holds."
       }
     },
@@ -3744,7 +3744,7 @@
       "evidence": "`grep -rni \"QSettings|preferences|userSettings|settings.json\" --include=*.cpp --include=*.hpp Src` returns only Src/Core/Networking/content_discovery.cpp:73 `\"settings.py\", \"web.config\", \"appsettings.json\", \"wp-config.php.bak\",` (a fuzzing wordlist) and Src/Core/Networking/tls_profile.hpp:10,22 (cipher-preference prose comments). Theme choice resets each launch: Src/FrontEnd/GUI/Themes/themes_manager.cpp:13 `ThemesManager::ThemesManager(QObject *parent) : QObject(parent), m_current(\"cyber\") {`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. Grep results are the same shape as the prior pass (a fuzzing wordlist entry and TLS cipher-preference prose, neither a settings store). ThemesManager still hard-codes its startup theme in the constructor with no persisted user-level store. No QSettings, preferences file, or user-vs-project options split exists anywhere in Src. Claim holds."
       }
     },
@@ -3791,7 +3791,7 @@
       "evidence": "control_logic.cpp:298 `bool findingPasses(const QString &severity, const QString &confidence, ...)`; :355 `ReportFilterCriteria reportFilterFromQuery(const QUrlQuery &q) {`; :368 `ReportFilterCriteria reportFilterFromJson(const QJsonObject &body) {`. All four report sinks wired to the shared predicate: control_server.cpp GET /api/report/json (:6200), GET /api/report/xml (:6257), POST /api/report/build (:5884), POST /api/report/html (:5995).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at partial (real parity for issue selection, still missing detail-level and request/response-inclusion controls per the existing gap text). findingPasses/reportFilterFromQuery/reportFilterFromJson all present and wired to all four report endpoints exactly as the last (already-fresh, 2026-08-2x-vintage) evidence described; this item only needed the audit-trail block, not a re-derivation. Claim holds."
       }
     },
@@ -3838,7 +3838,7 @@
       "evidence": "`grep -rni \"QWebEngine|WebEngine|puppeteer|playwright|chromium\" --include=*.cpp --include=*.hpp Src CMakeLists.txt`: 0 hits. Src/App/app.cpp:1346 `if (!headless && ctlLoopback) QDesktopServices::openUrl(QUrl(url));` -- the default OS browser at the control UI, nothing embedded.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. No embedded-browser dependency of any kind is linked (CMakeLists.txt included in the grep, still 0 hits). The only launch behaviour is opening the user's own default browser (app.cpp, drifted :1021 -> :1346, unchanged content). Claim holds."
       }
     },
@@ -3853,7 +3853,7 @@
       "evidence": "`grep -rani \"\\\"tasks\\\"|taskList|jobQueue|progressPct|cancelTask|pauseTask\" Src ui-v2`: 0 hits. control_server.cpp:7858-7861 `static QAtomicInteger<int> auditAllInFlight(0); if (!auditAllInFlight.testAndSetAcquire(0, 1)) return okJson({{ \"ok\", false }, { \"queued\", 0 }, { \"error\", \"a deep-audit sweep is already running\" }});` then dispatched fire-and-forget via QtConcurrent::run with no handle, counter, or cancel path.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. No task-registry vocabulary exists anywhere (0 hits repeated). /api/audit/all is still gated by a single global QAtomicInteger that answers only \"already running\" -- no handle, no per-task progress, no pause/resume/cancel, no detail view (line drifted 6657-6660/6725 -> 7858-7869, logic byte-identical). Claim holds."
       }
     },
@@ -3868,7 +3868,7 @@
       "evidence": "Src/BackEnd/Proxy/h2_events.cpp:19 `void H2EventLog::noteFrame(...)`, :52 noteRequestHeader, :69 noteResponseStatus, :79 noteRstStream -- an HTTP/2 protocol frame tracer, not an application log. Only user-facing log: control_server.cpp:1311-1313 `for (const QString &line : m_wiring.extensions->recentLog(40)) extLog.append(line); bootInfo[\"extensionsLog\"] = extLog;`. `grep -rani \"eventLog|appLog|activityLog\\b\" --include=*.cpp --include=*.hpp Src`: 0 hits outside H2EventLog.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. H2EventLog's four note* methods are unchanged (line numbers identical: 19/52/69/79), confirmed it is still purely an HTTP/2 frame tracer with no general error/warning/info channel. The only operator-visible log surface is still the per-extension recentLog (control_server.cpp, drifted 1224-1227 -> 1311-1313). Backend qWarning() output is still not surfaced anywhere in the GUI. Claim holds."
       }
     },
@@ -3883,7 +3883,7 @@
       "evidence": "`grep -rani \"QTimer.*schedul|cron|recurring\" --include=*.cpp --include=*.hpp --include=*.jsx Src ui-v2` now returns false-positive noise from Src/Core/Networking/session_rules.cpp (`macroName` contains the substring \"croN\", matching /cron/i) -- no real hit. Separately grepped `QTimer` usage in app.cpp and control_server.cpp directly: every instance is a kill-timer or event-loop timeout (app.cpp:74,95,139,148,179,183,250,255), not a task scheduler. No timer-driven task registry exists anywhere in product code.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. The exact synonym grep now returns spurious hits in session_rules.cpp because the new SessionMacro variable `macroName` (added since the last audit, for the login-macro feature covered by items #71-72/157-159) happens to contain the case-insensitive substring \"cron\" (m-a-c-r-o-N-ame). Verified by hand that none of those lines are scheduling-related -- they are macro-name plumbing around QtConcurrent::run. Read every QTimer use in app.cpp directly as a second check: all are shutdown/kill timers or synchronous-call timeouts, not a recurring-task mechanism. No scheduling surface exists in buildSnapshot or the endpoint dispatcher. Claim holds; flagging the grep false-positive so it isn't mistaken for a real hit in a future pass."
       }
     },
@@ -3914,7 +3914,7 @@
       "evidence": "`grep -rni \"GlobalMemoryStatus|memoryUsage|getrusage|/proc/self/status\" --include=*.cpp Src`: 0 hits. The one control: Src/App/app.cpp:639 `\"  --max-rows=N          ProxyModel in-memory window cap (default 10000)\\n\"` implemented as Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp:89 `int m_maxRows = 10'000; // window cap`, enforced silently at proxy_model.cpp:58-78 (`m_maxRows = std::max(100, n);` ... `while (static_cast<int>(m_entries.size()) > m_maxRows) {`).",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at absent. No platform memory-query API is used anywhere (0 hits, same as prior pass). The row-cap mechanism is unchanged in substance, only line numbers drifted (584 -> 639 for the flag help text; 78-82 -> 58-78 for the eviction loop, content identical). No memory/throughput visibility or low-memory warning exists anywhere. Claim holds."
       }
     },
@@ -3945,7 +3945,7 @@
       "evidence": "`wc -l Src/FrontEnd/GUI/*/*.qml Src/FrontEnd/GUI/*/Components/*.qml`: `8` for all 23 files, `184 total` (e.g. Src/FrontEnd/GUI/Workspace/workspace.qml, .../Proxy/proxy.qml, .../RepeaterHub/repeater_hub.qml). `wc -l Src/App/app.qml`: `1211`. Src/App/app.cpp:1485-1486 `// run from project root so this relative path resolves to Nullock/Src/App/app.qml` / `const QUrl url(QStringLiteral(\"./Src/App/app.qml\"));`.",
       "reconciled": {
         "date": "2026-08-31",
-        "commit": "",
+        "commit": "1c67725",
         "note": "Wave 0 register-accuracy audit: held at stub. Re-ran the exact wc -l sweep: still 8 lines for all 23 scaffold .qml components (184 total, unchanged), still 1211 lines for the one real app.qml, still loaded from a relative source-checkout path (app.cpp, drifted 1159-1160 -> 1485-1486, content identical -- the binary still cannot locate its own QML window from an installed/packaged location). ui-v2 (the browser-hosted front end) remains the sole functional UI. Claim holds."
       }
     },
