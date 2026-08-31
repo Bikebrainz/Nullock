@@ -1673,8 +1673,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "An extension cannot block a request, force interception, or annotate/highlight a history row. Rules out blockers, auto-taggers and per-request interception logic.",
-      "why": "CONFIRMED and strengthened. I read doMutateRequest line by line: the read-back after the handler loop touches method, path, headers and bodyText and nothing else \u2014 there is no sentinel, no action enum, no drop. Same for doMutateResponse's applyBack (status/reason/headers/body only).",
-      "evidence": "extensions_api.cpp:358-379 \u2014 the entire read-back: `const QString m = entry.property(\"method\").toString();` \u2026 `req.headers = headersFromJs(entry.property(\"headers\")); req.body = entry.property(\"bodyText\").toString().toUtf8();` \u2014 no action/verdict field is ever consulted"
+      "why": "Re-verified against live source. doMutateRequest (moved 358-379 -> 672-721 across intervening waves) still only reads back method/path/headers/bodyText -- no sentinel, no action enum, no drop path, matching the prior finding exactly. Noted for completeness: proxy.jsx has since grown a #299 per-row highlight+comment layer, but that is a *user*-driven manual UI feature, not an extension hook -- it does not touch the extension-facing gap this item grades on, which is unchanged.",
+      "evidence": "extensions_api.cpp:672-721 doMutateRequest -- the full read-back: `const QString m = entry.property(\"method\").toString();` ... `req.headers = headersFromJs(entry.property(\"headers\")); req.body = entry.property(\"bodyText\").toString().toUtf8();` -- no action/verdict field is ever consulted (line drift from the prior pass's 358-379 citation, content unchanged).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read doMutateRequest's readback (line drift 358-379 -> 672-721) -- confirms no action/drop field is ever consulted, matching the prior finding exactly. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1683,8 +1688,13 @@
       "impact": "medium",
       "effort": "days",
       "gap": "Extensions cannot feed Intruder, and cannot influence an Intruder request by any other path either.",
-      "why": "CONFIRMED, and the consequence is worse than the auditor said \u2014 I verified BOTH halves: payloadGenerator=0 in my grep AND intruder.cpp contains zero extension references across all 608 lines, so there is no route at all, not even the indirect mutation route the proxy gets.",
-      "evidence": "extensions_api.hpp:164-185 (four methods, none payload-related); `grep -rni 'extension' Src/Core/Networking/intruder.cpp` returns nothing"
+      "why": "CONFIRMED again, re-checking the whole bridge surface rather than trusting the old '164-185, four methods' citation, which has drifted -- the surface has grown substantially since (log/onResponse/onRequest/onUnload/registerUnloadingHandler/history/reportFinding/sendToRepeater/sendToIntruder on the main bridge, plus entirely new utils/collaborator/storage bridges for codecs, OOB mint-and-poll, and a KV store) -- none of it payload-generation-shaped. intruder.cpp has also grown 608->956 lines; a fresh grep still returns zero extension references anywhere in it.",
+      "evidence": "extensions_api.hpp:296-436 -- the complete current JS-facing surface (ExtensionsApiBridge plus the utils/collaborator/storage bridges) has no payload-generator registration of any kind; `grep -rni 'extension' Src/Core/Networking/intruder.cpp` (956 lines, up from 608) still returns nothing.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read the whole extensions_api.hpp bridge surface (grown to 296-436, replacing the stale 164-185/four-method citation) and re-grepped intruder.cpp (now 956 lines, was 608) -- no payload-generator seam either place. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1693,8 +1703,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "The classic escape hatch for custom encodings/signing inside an attack. Without it a bespoke-signed API cannot be fuzzed.",
-      "why": "CONFIRMED by my own grep (registerPayloadProcessor=0). Processing rules exist but are built-in only; nothing extension-facing.",
-      "evidence": "extensions_api.hpp:164-185 \u2014 no processor registration; control_server.cpp:3262 `if (path == \"/api/intruder/rule-ops\")` exposes only the built-in rule set"
+      "why": "CONFIRMED. Re-read the current bridge surface (extensions_api.hpp:296-436, replacing the stale 164-185 citation) -- no processor registration exists. control_server.cpp's rule-ops handler (moved 3262 -> 3992) still exposes only the built-in transform set, unchanged in shape.",
+      "evidence": "extensions_api.hpp:296-436 -- no processor registration; control_server.cpp:3992 `if (path == \"/api/intruder/rule-ops\")` exposes only the built-in rule set (line drift from 3262).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read the bridge surface and the rule-ops handler (line drift 3262 -> 3992) -- still no processor-registration seam. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1703,8 +1718,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "No extension-driven auth/login macro. Custom SSO or signature schemes must be always-on onRequest handlers instead of scoped session rules.",
-      "why": "CONFIRMED after hunting the local vocabulary specifically, since 'macro' is the likeliest synonym trap. I grepped session_rules.cpp and session_rules_logic.cpp for 'extension', 'macro' and 'ExtensionsApi': ZERO hits in either file. The session-rules engine has no extension seam at all.",
-      "evidence": "`grep -rnia 'extension|macro|ExtensionsApi' Src/Core/Networking/session_rules*.cpp` = 0 hits; extensions/aws_sigv4.js:30-36 `var CONFIG = { accessKey: \"\", secretKey: \"\", ...` \u2014 the workaround is an always-on onRequest handler with hard-coded creds"
+      "why": "CONFIRMED. Fresh `grep -rnia 'extension|macro|ExtensionsApi' Src/Core/Networking/session_rules*.cpp` still returns only hits for the unrelated session-macro login-flow feature (a stored request-replay macro, not an extension seam) -- zero for actual extension/ExtensionsApi wiring. extensions/aws_sigv4.js:30-36's hard-coded-creds CONFIG block is unchanged, still the only workaround an SSO/custom-signature scheme has.",
+      "evidence": "`grep -rnia 'extension|macro|ExtensionsApi' Src/Core/Networking/session_rules*.cpp` = 0 hits; extensions/aws_sigv4.js:30-36 `var CONFIG = { accessKey: \"\", secretKey: \"\", ...` \u2014 the workaround is an always-on onRequest handler with hard-coded creds",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped session_rules*.cpp for extension/macro/ExtensionsApi -- confirms the 'macro' hits are all the unrelated session-handling-rules feature, none an extension seam. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1713,8 +1733,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "Extensions are headless. Autorize / Turbo Intruder / JWT Editor / Logger++ shapes have no equivalent.",
-      "why": "CONFIRMED, and I verified the QML stub claim myself rather than trusting it: extensions_hub.qml is 8 lines of white Rectangle, both model files are 0 bytes, and `grep -nia extension Src/App/app.qml` returns NOTHING despite app.cpp exporting the context property. No mount point in either front end.",
-      "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml in full: `import QtQuick` / `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`; `ls -la Src/FrontEnd/GUI/Models/ExtensionsHub/` shows extensions_hub_model.cpp and .hpp both 0 bytes"
+      "why": "CONFIRMED, and the gap has actually WIDENED in file count even though the conclusion holds: alongside the still-8-line extensions_hub.qml (blank white Rectangle) and the still-0-byte extensions_hub_model.cpp/.hpp, two MORE blank-Rectangle placeholder files have landed since -- Src/FrontEnd/GUI/ExtensionsHub/Components/extensions_console.qml and .../extensions.qml, each an identical 8-line `import QtQuick; Rectangle { ... color: \"#ffffff\" }` stub. Neither is referenced by app.qml or CMakeLists.txt -- confirmed by grep, zero hits for all three file names in both. Three orphaned placeholder shells now exist where the prior audit found one; none is wired to anything, so the mount-point gap is unchanged.",
+      "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml (8 lines, unchanged: `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`) plus two newer siblings -- Components/extensions_console.qml and Components/extensions.qml, both identical 8-line blank-Rectangle stubs -- none referenced by grepping app.qml or CMakeLists.txt for any of the three names (0 hits); extensions_hub_model.cpp/.hpp remain 0 bytes.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Found two new but equally-orphaned blank-Rectangle QML stubs (Components/extensions_console.qml, Components/extensions.qml) alongside the original extensions_hub.qml -- none wired into app.qml or CMakeLists.txt, so the no-mount-point conclusion is unchanged, just now evidenced by three stub files instead of one. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1723,8 +1748,13 @@
       "impact": "medium",
       "effort": "days",
       "gap": "'Send to <my extension>', the most common BApp integration point, has no equivalent.",
-      "why": "CONFIRMED by my own greps: contextMenu=0, ContextMenuItemsProvider=0, InvocationType=0 across Src/ and ui-v2/ (vendor excluded).",
-      "evidence": "extensions_api.hpp:164-185 \u2014 no UI registration method on the bridge"
+      "why": "CONFIRMED. Fresh repo-wide case-insensitive grep for contextMenu/ContextMenuItemsProvider/InvocationType across Src/ and ui-v2/ (vendor excluded) still returns zero hits.",
+      "evidence": "extensions_api.hpp:296-436 -- no UI registration method on the bridge (line drift from the stale 164-185 citation).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for contextMenu/ContextMenuItemsProvider/InvocationType -- still 0 hits. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1733,8 +1763,13 @@
       "impact": "medium",
       "effort": "weeks",
       "gap": "The built-in Inspector/Decoder is not extensible.",
-      "why": "CONFIRMED. No editor-provider method on the bridge; I re-read the whole Settings extensions card (app.jsx:456-477) and it is the only extension UI in ui-v2 \u2014 folder row, loaded row, log tail, Reload button. Nothing pluggable.",
-      "evidence": "ui-v2/app.jsx:456-477 \u2014 the complete extension UI: `title={\"Extensions (\" + scripts.length + \")\"}` \u2026 `<Row label=\"Folder\" value={b.extensionsDir} copyable />` \u2026 `extLog.slice(-30).map(...)`"
+      "why": "CONFIRMED. Re-read the whole Settings Extensions card, which has grown substantially since the prior citation (line drift 456-477 -> 1319-1391): it now adds per-extension enable/disable checkboxes, a modifies-traffic/observe-only capability badge per script, an Auto-reload (dev) toggle, and an 'Install bundled' button -- none of it a pluggable editor-tab surface. A fresh grep for registerHttpRequestEditorProvider/HttpResponseEditorProvider still returns 0 hits -- the built-in Inspector/Decoder remains closed to extensions.",
+      "evidence": "ui-v2/app.jsx:1319-1391 -- the complete current extension UI: per-extension Loaded checkbox + modifies-traffic/observe-only capability badge, an Auto-reload (dev) toggle, an Install bundled button, `<Row label=\"Folder\" value={b.extensionsDir} copyable />`, and a 30-line log tail. Still a management list only -- no editor-tab mount point (line drift from the prior 456-477 citation).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. The Settings Extensions card has grown (enable checkboxes, capability badges, auto-reload toggle, Install bundled button, line drift 456-477 -> 1319-1391) but is still a management list, not a pluggable editor-tab surface. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1743,8 +1778,13 @@
       "impact": "medium",
       "effort": "days",
       "gap": "Custom serialization formats cannot be taught to the scanner.",
-      "why": "CONFIRMED after searching the local vocabulary myself ('insertion', 'injectionPoint', 'insertPoint'): the only two hits in the tree are a QML label for the Intruder \u00a7payload\u00a7 marker and a prose comment in control_server, neither of which is a provider seam.",
-      "evidence": "`grep -rnia 'insertion|injectionPoint|insertPoint' Src/` \u2192 only Src/App/app.qml:984 `HeaderCell { text: \"Request template (mark insertion point with \u00a7payload\u00a7)\" }` and control_server.cpp:6599 (comment)"
+      "why": "CONFIRMED. Fresh case-insensitive grep for insertion|injectionPoint|insertPoint across Src/ still returns only the same two non-seam hits as before, with line drift: the Intruder \u00a7payload\u00a7 marker label at Src/App/app.qml:984 (unchanged) and a prose comment in control_server.cpp, now at :7800 (was :6599).",
+      "evidence": "`grep -rnia 'insertion|injectionPoint|insertPoint' Src/` -> Src/App/app.qml:984 (unchanged UI label) and control_server.cpp:7800 (prose comment, drifted from 6599) -- neither is a provider seam.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for insertion/injectionPoint/insertPoint -- same two non-seam hits, line drift 6599 -> 7800 on the comment. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1753,8 +1793,13 @@
       "impact": "high",
       "effort": "weeks",
       "gap": "An extension is purely reactive: it cannot confirm a finding, enumerate, or re-issue a request. This is why no scan-check, macro or crawler BApp equivalent can exist.",
-      "why": "CONFIRMED and it is the keystone limit \u2014 I read the full bridge header and none of the four methods performs I/O. Worth noting the irony I verified: the new marketplace code uses HttpClient directly (marketplace.cpp:54-55 `HttpClient client; const auto res = client.send(host, 443, true, req);`) so the capability exists in-process; it is simply not exposed to JS.",
-      "evidence": "extensions_api.hpp:164-185 \u2014 four Q_INVOKABLEs, all pure; extensions_api.cpp:87-88 installs only the bridge as a global, so there is no fetch/XHR either"
+      "why": "CONFIRMED, core gap unchanged -- the bridge still has no I/O-performing method. The surrounding surface has grown since the prior pass in ways worth noting so the register doesn't read as if nothing changed: ExtensionsApiBridge gained sendToRepeater/sendToIntruder (fire-and-forget pushes into those tools' UI, no response returned to the script) and a new ExtensionsCollaboratorBridge exposes generate()/interactions() (mint an OOB token, later poll for out-of-band HTTP/DNS hits). Both are genuinely useful but neither lets an extension issue a request through the tool's stack and read the reply synchronously -- re-read every one of the now much larger set of Q_INVOKABLE methods to confirm none is a disguised sendRequest. None is.",
+      "evidence": "extensions_api.hpp:296-436 -- the complete current bridge surface (9 ExtensionsApiBridge methods + 11 across the utils/collaborator/storage bridges); none performs synchronous request I/O. sendToRepeater/sendToIntruder (:351-354) push only, no return value; collaborator generate()/interactions() (:398,404) is async OOB polling, not request/response I/O.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent for the core ask (no synchronous send-and-read-response method), while noting two new adjacent-but-not-closing additions since the prior pass: sendToRepeater/sendToIntruder (push-only, no response) and the new collaborator bridge's generate()/interactions() (async OOB polling). Neither is I/O an extension can use to confirm a finding synchronously. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1795,8 +1840,13 @@
       "impact": "low",
       "effort": "days",
       "gap": "Absent.",
-      "why": "CONFIRMED. reportFinding is write-only into the sink and there is no scanner-control method; I read the bridge header in full.",
-      "evidence": "extensions_api.hpp:80-81 `void setScanner(IFindingSink *scanner) { m_scanner = scanner; }` \u2014 a C++-side wiring point, not JS-reachable; the JS surface is extensions_api.hpp:164-185"
+      "why": "CONFIRMED. setScanner (now :121, drifted from 80-81) remains a C++-side wiring point only; the JS-facing surface (now :296-436, replacing the stale 164-185 citation) still has no startAudit/startCrawl/read-issues method. reportFinding is still write-only into the sink.",
+      "evidence": "extensions_api.hpp:121 `void setScanner(IFindingSink *scanner) { m_scanner = scanner; }` (line drift from 80-81) -- a C++-side wiring point, not JS-reachable; the JS surface is extensions_api.hpp:296-436.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Line drift only (setScanner 80-81 -> 121); still no scan-control or issue-read method on the JS surface. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1900,9 +1950,14 @@
       "state": "absent",
       "impact": "medium",
       "effort": "hours",
-      "gap": "With multiple mutating extensions the composition order is implicit and unchangeable; two extensions rewriting the same header fight non-deterministically from the user's point of view.",
-      "why": "CONFIRMED. I re-read the loader: entryInfoList is called with no sort argument in the extensions loader, and handlers fire in registration order. No reorder API or persisted order exists. (Note the marketplace listing code does pass QDir::Name, but that is a display path and does not affect load order.)",
-      "evidence": "extensions_api.cpp:125 `const QFileInfoList files = QDir(dir).entryInfoList({ \"*.js\" }, QDir::Files);` (no sort flag); extensions_api.cpp:341 `for (QJSValue &handler : m_onRequestHandlers) {`"
+      "gap": "With multiple mutating extensions the composition order is fixed by filename (alphabetical, deterministic since a QDir::Name sort was added to loadAll()) but still not user-adjustable -- two extensions rewriting the same header still fight, just predictably rather than at random.",
+      "why": "CONFIRMED the ask (no reorder control exists) but CORRECTED a stale claim in the prior audit's own 'why': loadAll() -- the call that actually determines handler registration/invocation order -- now sorts with QDir::Name (extensions_api.cpp:400, added since the prior pass), so invocation order is deterministic alphabetical-by-filename, not the arbitrary filesystem order the prior audit's 'fight non-deterministically' language implied. (A second, unsorted entryInfoList call at :298 is refreshWatch()'s file-watch registration, order-irrelevant there.) The user-facing gap is unchanged either way: there is still no Up/Down control, so two extensions touching the same header still fight -- just predictably now, in filename order, rather than at random.",
+      "evidence": "extensions_api.cpp:400 `QDir(dir).entryInfoList({ \"*.js\" }, QDir::Files, QDir::Name)` in loadAll() -- deterministic alphabetical load/registration order (new since the prior audit's 'no sort flag' finding); extensions_api.cpp:683 `for (QJSValue &handler : m_onRequestHandlers)` -- handlers still fire in that registration order with no reorder API or persisted override.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent, but corrected a stale claim -- loadAll() now sorts extension load order with QDir::Name (extensions_api.cpp:400), so invocation order is deterministic alphabetical, not arbitrary as the prior 'why' text implied. Gap text updated to say composition order is fixed-but-predictable rather than fixed-and-random; still no user-facing reorder control. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1911,8 +1966,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "No file picker, no arbitrary local-file install, no type selection, no output/error destination. Only curated-catalog ids can be installed, and only over the API.",
-      "why": "UPGRADED one notch and no further. It is no longer true that 'there is no add/upload path' \u2014 POST /api/marketplace/install now downloads, verifies and writes a script by catalog id. But that is install-from-curated-catalog, not Burp's Add dialog: there is no file picker, no local-file add, no extension-type choice, no output/error routing, and no UI. A user with a .js they wrote or received still ",
-      "evidence": "control_server.cpp:5376-5422 `if (path == \"/api/marketplace/install\") { ... const QString id = bodyJson.value(\"id\").toString();` \u2014 the only input is a catalog id; marketplace.cpp:113-117 `const QString fileName = safeScriptFileName(entry.id); if (fileName.isEmpty()) { r.error = ...` \u2014 the filename is derived from the catalog, never supplied by the user"
+      "why": "Re-verified, held at stub. control_server.cpp's marketplace/install handler (moved 5376-5422 -> 6427ff) is unchanged in shape -- id is still the only input. marketplace.cpp:113-117's safeScriptFileName-derived-from-catalog-id evidence checked line-for-line and stands exactly as cited, no drift. Still no file picker, no arbitrary local-file install, no type selection, no output/error destination -- only curated-catalog ids, only over the API.",
+      "evidence": "control_server.cpp:6427 `if (path == \"/api/marketplace/install\") { ... const QString id = bodyJson.value(\"id\").toString();` (line drift from 5376-5422) -- the only input is a catalog id; marketplace.cpp:113-117 `const QString fileName = safeScriptFileName(entry.id); if (fileName.isEmpty()) { r.error = ...` -- the filename is derived from the catalog, never supplied by the user (unchanged, no drift).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at stub. Line drift on the install handler (5376-5422 -> 6427ff); marketplace.cpp:113-117 citation unchanged and re-verified exact. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1920,9 +1980,14 @@
       "state": "stub",
       "impact": "medium",
       "effort": "hours",
-      "gap": "No extension settings page. Cannot relocate the folder, cannot disable loading at startup, no auto-update setting.",
-      "why": "CONFIRMED. extensionsDir() is a hard-coded QStandardPaths expression with no setter or override, loadAll() is called unconditionally from the constructor, and the path is displayed read-only. The marketplace adds a catalogUrl override per request but no persisted setting and still no settings page. I re-read app.cpp:607 and agree the --ui-dir help text refers to the repo's bundled source dir, not ",
-      "evidence": "extensions_api.cpp:94-97 `QString ExtensionsApi::extensionsDir() const { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + \"/extensions\"; }`; extensions_api.cpp:89 `loadAll();` in the constructor; ui-v2/app.jsx:460 `<Row label=\"Folder\" value={b.extensionsDir} copyable />`"
+      "gap": "No dedicated extension settings page. Cannot relocate the folder, cannot disable loading at startup, no auto-update setting. An 'Auto-reload (dev)' toggle now exists inline in the Extensions card, but it controls live file-watch reload during development, not reload-on-startup or auto-update -- it doesn't address what this item asks for.",
+      "why": "CONFIRMED at stub, with one real addition noted so the register isn't stale: an 'Auto-reload (dev)' checkbox now sits in the Extensions card (ui-v2/app.jsx ~1327), wiring a genuine settings toggle -- but it controls live file-watch reload during development, not the 'reload-on-startup' or 'auto-update installed extensions' behaviours this item specifically asks about, so it doesn't close the gap. extensionsDir() (moved 94-97 -> 352) is still a hard-coded QStandardPaths expression with no setter; loadAll() (moved :89 -> two call sites, :276 constructor and :390 setExtensionEnabled) still runs unconditionally with no startup-disable option; the path is still displayed read-only in ui-v2/app.jsx (Folder row, now :1340, was :460).",
+      "evidence": "extensions_api.cpp:352 `QString ExtensionsApi::extensionsDir() const { return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + \"/extensions\"; }` (line drift from 94-97); extensions_api.cpp:276 and :390 `loadAll();` (constructor and setExtensionEnabled, drift from :89) run unconditionally with no startup-disable option; ui-v2/app.jsx:1340 `<Row label=\"Folder\" value={b.extensionsDir} copyable />` (drift from :460) still read-only; the new `Auto-reload (dev)` checkbox sits alongside it (~:1327) but is a dev-mode file-watch toggle, not a startup/auto-update setting.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at stub. Noted a real but non-closing addition -- an Auto-reload (dev) toggle now exists in the Extensions card, but it's a file-watch setting, not the reload-on-startup/auto-update this item asks about. Line drift refreshed throughout. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -1995,8 +2060,13 @@
       "impact": "cosmetic",
       "effort": "hours",
       "gap": "Not applicable. Arguably an advantage: the Pro-only BApps a Community user cannot run have no analogue here.",
-      "why": "CONFIRMED. No licence/edition concept exists near the extension or marketplace code. Correctly filed as not-applicable bookkeeping rather than a defect \u2014 Nullock is single-tier.",
-      "evidence": "marketplace_logic.hpp:64-77 CatalogEntry carries no tier/licence field; no licence check appears in Src/Core/APIs/ExtensionsAPI or the marketplace TUs"
+      "why": "CONFIRMED, held not-applicable/absent. CatalogEntry (Src/Core/Networking/marketplace_logic.hpp, now :64-81, gained a minVersion semver-gate field since the prior pass but still no tier/licence field) and a fresh grep of Src/Core/APIs/ExtensionsAPI plus the marketplace TUs for licence/tier/pro confirm no gating concept exists anywhere near extension or marketplace code. Correctly filed as not-applicable bookkeeping rather than a defect -- Nullock is single-tier.",
+      "evidence": "marketplace_logic.hpp:64-81 CatalogEntry (gained a `minVersion` semver-gate field since the prior pass, still no tier/licence field); no licence check appears in Src/Core/APIs/ExtensionsAPI or the marketplace TUs (fresh grep).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent/not-applicable. CatalogEntry grew a minVersion field (unrelated to licensing) since the prior pass; still no tier/licence concept anywhere. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2021,8 +2091,13 @@
       "impact": "high",
       "effort": "days",
       "gap": "No execution timeout, no interrupt, no per-extension kill, no unload. A runaway script freezes the main event loop \u2014 every proxied request, the UI, and the very endpoints you would use to reload or uninstall it.",
-      "why": "CONFIRMED and I am RAISING impact from medium to high, because the auditor understated the blast radius. They said a runaway script 'wedges the ExtensionsApi thread'. I traced the ownership: ExtensionsApi is constructed in main() at app.cpp:683, as is ControlServer at app.cpp:974, and there is no moveToThread anywhere in app.cpp \u2014 so the engine runs on the MAIN thread and proxy workers block on it",
-      "evidence": "Src/App/app.cpp:683 `Nullock::Core::ExtensionsApi extensions;` and app.cpp:974 `Nullock::Control::ControlServer controlServer(wiring);` \u2014 both on the main thread, no moveToThread in the file; extensions_api.cpp:300-302 `if (!QMetaObject::invokeMethod(this, \"doMutateRequest\", Qt::BlockingQueuedConnection, Q_RETURN_ARG(...), Q_ARG(...)))`"
+      "why": "CONFIRMED. app.cpp still constructs both ExtensionsApi (now line 752, was 683) and ControlServer (now line 1299, was 974) on the main thread with no moveToThread anywhere in the file (fresh grep, 0 hits). extensions_api.cpp's BlockingQueuedConnection calls (now :642 and :662, was :300-302) are unchanged -- a runaway onRequest/onResponse handler still blocks the calling proxy thread AND, because the JS engine itself lives on the main/GUI thread, the whole app with it. No execution timeout, interrupt, per-extension kill, or Unload-while-running exists.",
+      "evidence": "Src/App/app.cpp:752 `Nullock::Core::ExtensionsApi extensions;` (drift from 683) and app.cpp:1299 `Nullock::Control::ControlServer controlServer(wiring);` (drift from 974) -- both on the main thread, no moveToThread in the file (fresh grep, 0 hits); extensions_api.cpp:642,662 `QMetaObject::invokeMethod(this, \"doMutateRequest\"/\"doMutateResponse\", Qt::BlockingQueuedConnection, ...)` (drift from 300-302).",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Line drift on all three citations (683->752, 974->1299, 300-302->642/662); confirmed zero moveToThread calls in app.cpp. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2031,8 +2106,13 @@
       "impact": "low",
       "effort": "weeks",
       "gap": "Absent. Newest Burp axis; nothing comparable exists.",
-      "why": "CONFIRMED. No AI surface anywhere near the extension code; the bridge is the four methods I read in full.",
-      "evidence": "extensions_api.hpp:164-185 \u2014 complete JS-facing surface, no ai()/prompt method"
+      "why": "CONFIRMED. Re-checked the now much larger bridge surface (extensions_api.hpp:296-436, replacing the stale 164-185 pointer that covered only 4 methods) end to end, plus a fresh case-insensitive grep for ai(/aiPrompt/api.ai across Src/Core/APIs/ExtensionsAPI -- zero hits either way. No AI surface of any kind exists for extensions, even though the backend gained its own AI surface elsewhere (payload-mutation via local Ollama, /api/payloads/generate, wired into the PAYLOADS tab per UI-NAVIGABILITY.md) -- that capability is tool-driven, not extension-invocable.",
+      "evidence": "extensions_api.hpp:296-436 -- complete JS-facing surface (drift from the stale 164-185 citation), no ai()/prompt method; fresh `grep -rnia 'ai\\(|aiPrompt|api\\.ai' Src/Core/APIs/ExtensionsAPI` -> 0 hits.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-checked the grown bridge surface and confirmed zero ai()/prompt hits; noted the backend's own unrelated AI feature (/api/payloads/generate) isn't extension-invocable either. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2041,8 +2121,13 @@
       "impact": "medium",
       "effort": "weeks",
       "gap": "No user-written filter expressions. Filtering is limited to the predicates the UI exposes.",
-      "why": "CONFIRMED by my own case-insensitive repo-wide grep: bambda = 0 hits across Src/, ui-v2/ and extensions/. History filtering is fixed-field with UI predicates only; there is no expression language of any kind in the tree.",
-      "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` \u2192 0; ui-v2/proxy.jsx exposes only fixed controls (host filter at :117, search at :143, deepSearch toggle at :150)"
+      "why": "CONFIRMED. Fresh case-insensitive grep for bambda across Src/, ui-v2/ and extensions/ -- 0 hits, unchanged. ui-v2/proxy.jsx's history filters are still fixed controls; line positions drifted with the file's growth (host filter/search/deepSearch toggle now sit inside a much larger FilterBar after the #299 annotation and other additions) but remain fixed-field UI predicates only, no expression language.",
+      "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` -> 0, unchanged; ui-v2/proxy.jsx's FilterBar (now :484-...) exposes only fixed controls -- host filter, free-text search, deepSearch toggle -- line positions drifted with the file's growth (the #299 annotation layer and other additions), unchanged in kind.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Fresh bambda grep still 0; FilterBar line positions refreshed (drifted with file growth), still fixed-field predicates only. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2051,18 +2136,29 @@
       "impact": "medium",
       "effort": "weeks",
       "gap": "No user-computed column.",
-      "why": "CONFIRMED \u2014 bambda=0 and customColumn=0 in my own greps across Src/ and ui-v2/. The history table columns are hard-coded in proxy.jsx.",
-      "evidence": "`grep -rnia 'customColumn|addColumn' Src/ ui-v2/` \u2192 0 hits; ui-v2/proxy.jsx:96 `<tr><td colSpan={11}` \u2014 a fixed 11-column table"
+      "why": "CONFIRMED. customColumn/addColumn still 0 hits repo-wide. The history table gained a 12th column since the prior citation (was a fixed 11-column table, colSpan={11}; now 12, colSpan={12}, header Host/Method/Status/.../IP/Captured at proxy.jsx:404-432) plus the #299 per-row highlight applied as an inline boxShadow rather than a column -- still zero user-computed columns of any kind.",
+      "evidence": "`grep -rnia 'customColumn|addColumn' Src/ ui-v2/` -> 0 hits, unchanged; ui-v2/proxy.jsx's HistoryTable header (now :404-432) grew a 12th column since the prior citation (was `<td colSpan={11}`, now `<td colSpan={12}`) plus a #299 per-row highlight applied as an inline boxShadow tint (:439) rather than a column -- still zero user-computed columns of any kind.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. customColumn/addColumn grep still 0; history table grew from 11 to 12 fixed columns (colSpan drift 11->12), still no user-computed column mechanism. No code change this pass."
+      }
     },
     {
       "area": "extender",
       "feature": "[B38] Bambdas: highlight and annotate \u2014 colorize matching rows and auto-comment them",
-      "state": "absent",
+      "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "No row highlighting or commenting at all, neither user-scripted nor extension-driven. A Burp workflow staple with no equivalent.",
-      "why": "CONFIRMED, and I hunted the synonyms the brief warned about rather than accepting the first pass's grep. Repo-wide case-insensitive `highlight` yields exactly two hits, neither related: a QML ListView property and a CSS comment about payload preview. I also searched proxy.jsx for annotate/comment/tag/starred/flag \u2014 every 'color' hit is inline styling, nothing is a per-row annotation. And the exten",
-      "evidence": "`grep -rnia highlight Src/ ui-v2/` \u2192 only Src/App/app.qml:306 `highlightFollowsCurrentItem: false` and ui-v2/styles.css:975 `/* ---------- highlight in payload preview ---------- */`; extensions_api.cpp:174-203 and :404-419 build entries with no annotation/colour field"
+      "gap": "The 'auto' half is still absent -- there is no bambda-style expression engine, so no rule can auto-colorize or auto-comment rows that match a pattern. But the manual half of this ask now exists: a per-row highlight-colour + free-text comment layer (#299) lets a user flag and annotate history rows by hand, client-side, persisted to localStorage. Neither an extension nor a user-written rule can drive it -- every flag is a manual right-click action, one row at a time -- so bulk/scripted triage across a large history still has no equivalent.",
+      "why": "UPGRADED one notch from the prior 'no row highlighting or commenting at all, neither user-scripted nor extension-driven' finding, which is now stale. I re-ran the same highlight grep the prior audit used and it still returns nothing bambda-shaped (Src/App/app.qml:306 highlightFollowsCurrentItem and a payload-preview CSS comment, both irrelevant) -- but ui-v2/proxy.jsx has since grown a real per-row annotation feature (#299): ANNOTATION_COLORS + setRowColor/setRowComment/clearRowAnnotation (:3179-3199), a right-click context-menu Highlight swatch row and an Add/Edit Comment prompt (:3482-3520), an ANNOTATED filter chip (:593), and a per-row inline boxShadow tint in the history table (:439) driven by the stored colour. I confirmed by hand that it is purely manual -- there is no matcher/rule/expression input anywhere in the feature, only a per-row click -- so it satisfies the 'colorize and comment' outcome one row at a time but not the 'auto' / rule-matching half the Bambda ask is actually about. Grading this partial rather than leaving it absent reflects that real user-facing outcome without overclaiming the scripted half, which is genuinely still missing.",
+      "evidence": "ui-v2/proxy.jsx:66 (feature marker comment), :3179-3199 (ANNOTATION_COLORS + setRowColor/setRowComment/clearRowAnnotation, localStorage-persisted), :3482-3520 (right-click Highlight swatches + Add/Edit Comment prompt), :593 (ANNOTATED filter chip), :439 (per-row inline boxShadow tint driven by the stored colour) -- all manual, per-row, no expression/matcher input anywhere in the feature (confirmed by reading the full block); `grep -rnia bambda Src/ ui-v2/ extensions/` still 0 hits, so the rule-driven/auto half remains completely absent.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: UPGRADED absent -> partial. Found the #299 per-row highlight-colour + comment layer (ui-v2/proxy.jsx, added since this item was last audited) genuinely delivers the manual half of this ask (colorize + comment a row); confirmed by reading the full feature that it is strictly manual/per-row with no matcher or rule input, so the scripted/auto half this item is really about (Bambda-style rule-driven highlighting) remains absent. Gap/evidence/why rewritten to reflect the split honestly rather than either overclaiming or leaving a stale absent grade. No code change this pass -- this is a register correction only."
+      }
     },
     {
       "area": "extender",
@@ -2071,8 +2167,13 @@
       "impact": "low",
       "effort": "weeks",
       "gap": "Absent, downstream of having no expression concept.",
-      "why": "CONFIRMED \u2014 downstream of B36; there is no expression engine to apply anywhere. bambda = 0 repo-wide in my own grep.",
-      "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` \u2192 0 hits"
+      "why": "CONFIRMED, downstream of B36/B38. Fresh grep bambda=0 repo-wide. Note the one exception is now B38 (highlight/annotate on Proxy history), which moved to partial via a manual, non-bambda feature -- but that manual pattern doesn't extend to Organizer/Logger/Intruder-results/WebSockets/Sitemap tables (none of them carry an equivalent per-row annotation layer), so this item's 'downstream of no expression engine, applies nowhere' framing still holds for every table it names.",
+      "evidence": "`grep -rnia bambda Src/ ui-v2/ extensions/` \u2192 0 hits",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Cross-referenced B38's upgrade to partial (a manual, non-bambda annotation layer, Proxy history only) -- confirmed it does not extend to any of the tables this item names. No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2081,8 +2182,13 @@
       "impact": "low",
       "effort": "weeks",
       "gap": "Absent.",
-      "why": "CONFIRMED. No expression editor and no snippet store; ui-v2/vendor carries only the React/Babel bundle, so there is no embedded code editor component to build on.",
-      "evidence": "`grep -rnia bambda Src/ ui-v2/` \u2192 0 hits; no monaco/codemirror/snippet module in ui-v2 outside vendor's React+Babel bundle"
+      "why": "CONFIRMED. bambda=0 fresh grep. ui-v2/vendor still carries only babel.min.js, react.development.js and react-dom.development.js (checked the directory listing directly) -- no monaco/codemirror or any embeddable code-editor component exists to build a Bambda editor on.",
+      "evidence": "`grep -rnia bambda Src/ ui-v2/` \u2192 0 hits; no monaco/codemirror/snippet module in ui-v2 outside vendor's React+Babel bundle",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-checked ui-v2/vendor's contents directly (babel + react/react-dom only) and re-grepped for monaco/codemirror (0 hits). No code change this pass."
+      }
     },
     {
       "area": "extender",
@@ -2091,8 +2197,13 @@
       "impact": "medium",
       "effort": "weeks",
       "gap": "The named, CMake-listed 'Extensions Hub' renders a blank white rectangle backed by two empty source files. All real extension UI is one card inside SettingsTab in the browser front end \u2014 and it still shows no grants, no per-extension enable, no remove, and no marketplace.",
-      "why": "CONFIRMED, and this one I verified byte for byte because it is the clearest file-name-is-not-evidence trap in the area. I catted extensions_hub.qml \u2014 it is the 8-line white Rectangle as described. `ls -la Src/FrontEnd/GUI/Models/ExtensionsHub/` shows both model files at exactly 0 bytes. And `grep -nia extension Src/App/app.qml` returns NOTHING, so the context property app.cpp exports has no consum",
-      "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml complete contents: `import QtQuick` / `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`; `ls -la` \u2192 `0 May 17 04:27 extensions_hub_model.cpp` and `0 May 17 04:27 extensions_hub_model.hpp`; ui-v2/app.jsx:456-477 is the entire real UI (Folder row, Loaded row, 30-line log tail, Reload button)"
+      "why": "CONFIRMED, and re-verified byte-for-byte again as the audit style demands for this item specifically: extensions_hub.qml is still exactly the 8-line blank Rectangle, extensions_hub_model.cpp/.hpp are still 0 bytes each -- and two MORE identical 8-line blank-Rectangle stubs have appeared since (Components/extensions_console.qml, Components/extensions.qml), neither referenced anywhere (0 hits grepping app.qml and CMakeLists.txt for all three names). All real extension UI is still the one ui-v2/app.jsx Settings card (grown since: :1319-1391, was :456-477 -- now with per-extension enable checkboxes and capability badges alongside the folder/loaded/log-tail/reload it had before) -- still no grants UI beyond a read-only per-script badge, no remove button, and the marketplace lives in its own separate Card, not this one.",
+      "evidence": "Src/FrontEnd/GUI/ExtensionsHub/extensions_hub.qml complete contents, unchanged: `import QtQuick` / `Rectangle { id: extensionsHub; width: 400; height: 300; color: \"#ffffff\" }`; two newer identical stubs, Components/extensions_console.qml and Components/extensions.qml, also unreferenced; `ls -la` -> extensions_hub_model.cpp/.hpp both still 0 bytes; ui-v2/app.jsx:1319-1391 (drift from 456-477) is the entire real UI -- now with per-extension Loaded checkboxes and modifies-traffic/observe-only badges alongside the Folder row, 30-line log tail, and Reload button it already had.",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at stub. Same widened-stub finding as B11 (two new orphaned blank-Rectangle QML files); ui-v2/app.jsx real-UI citation refreshed (456-477 -> 1319-1391) to reflect its since-grown per-extension checkboxes/badges. No code change this pass."
+      }
     },
     {
       "area": "sequencer",
