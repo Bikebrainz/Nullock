@@ -5293,9 +5293,15 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "No Title (response <title> is never parsed), no Comment, no Cookies, no Extension column. Columns are hardcoded -- no show/hide, no reorder, no click-to-sort, no copy-column.",
+      "gap": "No Title (response <title> is never parsed), no Comment, no Cookies, no Extension column. Columns are hardcoded -- no show/hide, no reorder, no click-to-sort, no copy-column. (Since last audit: a client-side highlight-colour + free-text-comment annotation layer exists -- right-click a row, see parity item #299 -- which covers part of the practical intent of a Comment column, but it is a row overlay, not an actual sortable/reorderable table column, so the column-level gap named here still stands.)",
       "why": "Held, verbatim-confirmed. Also checked the Qt side (app.qml) and ProxyFilterModel for extra columns -- none.",
-      "evidence": "ui-v2/proxy.jsx:66-77 renders exactly eleven `<th>`: `#, Method, Status, Host, Path, Params, Mime, Size, Time, IP, Captured`. TLS is a dot inside the Host cell, proxy.jsx:85 `<td><span className={\"tls-dot \" + (r.tls ? \"\" : \"off\")} />{r.host}</td>`. Roles at proxy_model.hpp:14-25 (IdRole..TimestampRole) are the complete set. No sort: the `<thead>` cells carry no onClick, and the row list is a plain"
+      "evidence": "ui-v2/proxy.jsx:404-432 (colgroup + thead) renders exactly the same eleven named columns as before -- `#, Method, Status, Host, Path, Params, Mime, Size, Time, IP, Captured` -- plus one leading blank `<th></th>` marker column (12 cells total, still no Title/Comment/Cookies/Extension column). No `onClick` on any `<th>` -- still no click-to-sort, no show/hide, no reorder, no copy-column. TLS remains a dot inside the Host cell, not its own column. One real addition since the last pass: a client-side per-row highlight-colour + free-text comment layer (proxy.jsx ANNOTATION_COLORS/loadAnnotations, see parity item #299) now renders a coloured row edge and a comment-icon -- but as an overlay on the Host/Path cells, not a Comment table column, so it narrows rather than closes this gap.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-read proxy.jsx's HistoryTable header (now :404-432, was :66-77 -- drifted with intervening waves) -- same 11 named columns + 1 blank marker cell, still no Title/Comment/Cookies/Extension column and no sort/reorder/show-hide. Noted a real but partial mitigation: the #299 annotation layer (highlight colour + free-text comment, added since this item was last touched) gives a practical substitute for a per-row Comment, so the gap text now says so explicitly rather than reading as if nothing changed. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5366,9 +5372,15 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "The rule is a glob over the HOST STRING only. `https://example.com/app/` as a scope entry matches nothing (the anchored regex would need the literal string to BE the Host header). Path-scoped engagements ('only /shop, not /blog') cannot be expressed, and since scope gates every active tool (item 15), the coarseness propagates everywhere.",
+      "gap": "The rule is a glob over the HOST STRING only. `https://example.com/app/` as a scope entry matches nothing (the anchored regex would need the literal string to BE the Host header). Path-scoped engagements ('only /shop, not /blog') cannot be expressed, and since scope gates every active tool (item 15), the coarseness propagates everywhere. A separate 'Advanced scope control' feature now provides the missing path/protocol/port dimension as a composed extra layer (its own parity item, partial, UI-wired in the SCOPE tab) -- so the practical path-scoping need this item names IS now addressable in the product, just not through the simple include-list this item is titled after.",
       "why": "Held exactly. Re-read the compiler and the matcher; the quoted code is verbatim correct.",
-      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:1312-1327 `void ProxyServer::setScope(...) { auto compile = [](const QStringList &globs) { ... QString pattern = QRegularExpression::escape(g); pattern.replace(\"\\\\*\", \".*\"); out.append(QRegularExpression(\"^\" + pattern + \"$\", QRegularExpression::CaseInsensitiveOption)); ...`. Matcher takes a bare host and nothing else: proxy_server.cpp:1329-1338 `bool ProxyServer:"
+      "evidence": "Src/BackEnd/Proxy/proxy_server.cpp:1501-1514 `void ProxyServer::setScope(...) { auto compile = [](const QStringList &globs) { ... QString pattern = QRegularExpression::escape(g); pattern.replace(\"\\\\*\", \".*\"); out.append(QRegularExpression(\"^\" + pattern + \"$\", QRegularExpression::CaseInsensitiveOption)); ...`. globVerdict() (:1527-1538) matches this compiled list against a bare `host` string only -- no path/scheme/port parameter anywhere in this layer. A separate, newer layer now exists alongside it: Src/BackEnd/Proxy/scope_logic.hpp's AdvancedScopeRule/CompiledRule (protocol + host-regex + port-range + file-regex, composed on top of the simple list via ScopeLogic::urlInScope) -- tracked and UI-wired under its own parity item 'Advanced scope control...' (partial, ~10 non-proxy tool gates still host-only). This item's own subject, the SIMPLE include/exclude list, is unchanged: still a bare host glob with no path dimension.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-read setScope/globVerdict -- the simple include-list this item names is still a bare host-glob with no path dimension, exactly as originally graded (line numbers refreshed, :1312-1338 drifted to :1501-1538). Cross-referenced the sibling 'Advanced scope control' parity item, which since this item was last touched grew a full editor UI and now supplies the path/protocol/port dimension this item's gap complains is missing -- added a pointer so the gap text does not read as if no progress happened anywhere in scope-land. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5485,9 +5497,15 @@
       "state": "partial",
       "impact": "low",
       "effort": "days",
-      "gap": "They land in the same flat list, so 'alongside built-in issues in the site map' is unreachable -- there is no site-map issue view. Plus the dead click on rowId 0.",
+      "gap": "They land in the same flat list, so 'alongside built-in issues in the site map' is unreachable -- there is no site-map issue view. (The dead click on rowId-0 findings the prior audit flagged as an extra defect has since been fixed -- see the Issues detail pane's rowId guard.)",
       "why": "Held, with one extra defect found: extension findings are reported with rowId 0, and the Issues list makes every row click-to-jump, so clicking an extension finding navigates to a nonexistent row #000.",
-      "evidence": "Src/App/app.cpp:726-728 `// Let JS extensions emit findings into the same panel via nullock.reportFinding(). Without this they fall back to the ext log.` / `extensions.setScanner(&scanner);`. Bridge at Src/Core/APIs/ExtensionsAPI/extensions_api.cpp:61-78: `IFindingSink *scanner = m_owner->scanner(); if (!scanner) { ... appendLog(...); return; } const QString host = QUrl(url).host(); // rowId 0 = e"
+      "evidence": "Src/App/app.cpp:834-836 `// Let JS extensions emit findings into the same panel via nullock.reportFinding(). Without this they fall back to the ext log.` / `extensions.setScanner(&scanner);`. Bridge at Src/Core/APIs/ExtensionsAPI/extensions_api.cpp:108-124: `ExtensionsApiBridge::reportFinding(...)` calls `scanner->reportFinding(0, severity, kind, summary, evidence, host, url)` -- rowId 0 for every extension finding, landing in the same flat Issues list as built-in findings (no site-map issue view exists to appear 'alongside' anything in). The dead-click defect the prior pass flagged (clicking a rowId-0 finding tried to jump to a nonexistent row) is FIXED since then: ui-v2/app.jsx:1733 `if (!finding.rowId) { return (<div ...>no associated request \u2014 this finding has no underlying HTTP transaction (extension-sourced)</div>);}` and app.jsx:2420-2421 disables the 'Open in proxy' button (`disabled={!f.rowId}`) with the title 'No associated request (extension finding)' -- clicking an extension finding today shows a clear message instead of misnavigating.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial, core gap unchanged (no site-map issue view exists for anything to appear 'alongside' in). Found a genuine improvement the register hadn't caught: the dead-click-on-rowId-0 defect this item's own 'why' used to cite as an extra bug is fixed -- app.jsx now guards `!finding.rowId` in both the detail pane and the 'Open in proxy' button, showing an honest 'no associated request (extension-sourced)' message instead of a broken jump. Updated gap/evidence to drop the stale defect claim and refreshed drifted line numbers (app.cpp 726-728 -> 834-836; extensions_api.cpp 61-78 -> 108-124). No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5497,7 +5515,13 @@
       "effort": "days",
       "gap": "No session object, no live progress, no pause/resume/stop. A 2000-word run blocks the control API for the whole duration with zero feedback.",
       "why": "Held. Confirmed the handler runs discover() to completion inline and returns -- one synchronous POST, no session object. Correcting the line numbers: the handler is at control_server.cpp:8447-8492, not 8306-8352.",
-      "evidence": "Engine: Src/Core/Networking/content_discovery.cpp:86 `Result discover(const Request &reqIn) {`. Handler control_server.cpp:8447-8467 `if (path == \"/api/content/discover\") { ... cr.maxRequests = qBound(1, mx, 2000); ... const auto cres = Nullock::Core::ContentDiscovery::discover(cr);` -- a blocking call on the control-server thread, then it serializes and returns (cpp:8481-8492). No start/stop pair"
+      "evidence": "Engine: Src/Core/Networking/content_discovery.cpp:96 `const QString base = normBase(req.basePath);` and its Request struct now has concurrency/throttleMs/extensions/mutations fields (pool-based fan-out was added since the prior pass), but that is all still internal to one synchronous call. Handler control_server.cpp:9663-9705 `if (path == \"/api/content/discover\") { ... const auto cres = Nullock::Core::ContentDiscovery::discover(cr); ... }` -- one blocking POST that runs the whole probe pool to completion on the control-server thread and returns; no session object, no progress endpoint, no start/stop/pause/resume pair anywhere in this handler or file (confirmed by re-grepping the file for a second content/discover-prefixed route -- there is none).",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial. Re-read the handler (moved 8447-8492 -> 9663-9705 across intervening waves) -- still one synchronous discover() call with no session/progress/pause-resume surface. Noted the engine gained an internal concurrency pool (concurrency/throttleMs) and extension/mutation wordlist variants since the prior pass, but neither changes the blocking, session-less shape this item grades on. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5601,7 +5625,13 @@
       "effort": "days",
       "gap": "Requests you craft in Repeater or fire from Intruder never appear in history or the map, so the map is not a record of what you sent the target. Content-discovery hits become findings with rowId 0, not rows.",
       "why": "Confirmed by enumerating every caller of addResponse/appendEntry repo-wide rather than trusting the app.cpp grep, then reading Repeater::send to be sure it does not emit through some other route. It does not. Two producers the first pass missed do reach the map (history replay, OpenAPI import) but neither is one of the four tools named here.",
-      "evidence": "Repeater is a dead end: Src/Core/Networking/repeater.cpp:116-153 `void Repeater::send() { ... const auto result = m_client.send(t.host, ...); if (result.ok) { t.responseText = ...; t.statusLine = ...; } ... emit responseChanged(); emit busyChanged(); emit tabsChanged(); }` -- it emits UI-state signals only; repeater.hpp:85-95 declares no entryLoaded/responseReceived. Repo-wide `grep -rn \"addRespon"
+      "evidence": "Repeater is still a dead end: Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { ... emit responseChanged(); emit busyChanged(); emit tabsChanged(); }` -- UI-state signals only, no entryLoaded/responseReceived. Repo-wide `grep -rn \"addResponse|appendEntry\" Src/` still returns only history-replay (control_server.cpp:3214-3216 `if (w.history) w.history->addResponse(r, resp); ... if (w.projectStore) w.projectStore->appendEntry(r, resp);`) and direct project-store callers (project_store.cpp:1054, control_server.cpp:6679) -- confirmed by grepping Src/Core/Networking/intruder.cpp and every scanner .cpp for the same two symbols: zero hits in either. Content-discovery hits still become rowId-0 findings, not history rows (see the sibling 'live tree' item).",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped every addResponse/appendEntry call site repo-wide plus Repeater::send and every scanner source file directly -- Repeater, Intruder and Scanner still never write into history or the site map; only history-replay and direct project-store appends (OpenAPI import, etc.) reach it, matching the prior pass's finding exactly with no line drift. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5611,7 +5641,13 @@
       "effort": "days",
       "gap": "You cannot select a URL and see its issues, and cannot see which branch of the app is where the bugs are. Triage is a flat scroll.",
       "why": "Confirmed. Corrected line numbers (IssuesTab is app.jsx:927, not 742) and verified the SiteMap component's prop list to be certain it cannot overlay anything.",
-      "evidence": "ui-v2/app.jsx:927 `function IssuesTab({ dispatch })` with only two filters, app.jsx:937-938 `const [sevFilter, setSevFilter] = React.useState(\"all\"); const [kindFilter, setKindFilter] = React.useState(\"all\");`; the location is plain text, app.jsx:1090 `}}>{f.host} \u00b7 {f.url}</span>`. The map component receives no findings at all: ui-v2/proxy.jsx:172 `function SiteMap({ entries, selectedHost, onSele"
+      "evidence": "ui-v2/app.jsx:1781 `function IssuesTab({ dispatch })` still renders a flat list with only severity/kind filters, plain-text location (`{f.host} \u00b7 {f.url}`) -- no per-branch tree, no map overlay. ui-v2/proxy.jsx:660 `function SiteMap({ entries, rows, selectedOrigin, selectedRowId, onSelect, onSelectLeaf, totalRows, onRowContextMenu, annotations, annotatedOnly })` -- the prop list carries no findings/issues data of any kind, confirming the map component still cannot overlay a severity/confidence icon or receive a per-node issue count.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read IssuesTab (line moved 927 -> 1781) and SiteMap's full prop signature (line moved 172 -> 660, gained an `annotations`/`annotatedOnly` pair for the #299 highlight-colour feature but still nothing findings-shaped) -- confirms the map still cannot show per-node issues or overlay severity icons. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5669,7 +5705,13 @@
       "effort": "days",
       "gap": "No way to see how a resource was reached. Low value outside large automated crawls, and moot until a tree exists.",
       "why": "Confirmed. Read the crawler's queue structure directly -- depth is tracked, the referrer is not persisted.",
-      "evidence": "Src/Core/Networking/crawler.hpp:74-77 `struct PendingUrl { QString url; int depth = 0; };` -- no parent/referrer field. hpp:80 `void extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth);` takes fromUrl but only to resolve relative URLs; hpp:106-107 `QSet<QString> m_seenUrls; QQueue<PendingUrl> m_queue;` stores no edges. `grep -rail \"crawl path|crawlPath\" Src ui-v2 extension"
+      "evidence": "Src/Core/Networking/crawler.hpp:74-77 `struct PendingUrl { QString url; int depth = 0; };` -- no parent/referrer field. hpp:80 `void extractAndEnqueue(const QString &fromUrl, const QByteArray &body, int depth);` takes fromUrl but only to resolve relative URLs; hpp:106-107 `QSet<QString> m_seenUrls; QQueue<PendingUrl> m_queue;` stores no edges. `grep -rail \"crawl path|crawlPath\" Src ui-v2 extension",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent, verbatim. Re-read crawler.hpp:74-107 -- `PendingUrl` is still `{ QString url; int depth = 0; }` with no parent/referrer field, `m_seenUrls`/`m_queue` store no edges, and a fresh `grep -rail \"crawl path|crawlPath\" Src ui-v2 extensions` still returns nothing. Cited line numbers (74-77, 80, 106-107) matched exactly with zero drift. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5775,7 +5817,13 @@
       "effort": "days",
       "gap": "One directory level per invocation. Finding /admin never leads to /admin/users -- the tester must re-POST manually for each hit, which is the core of what Burp's engine automates.",
       "why": "Confirmed by reading the loop. base is computed once and never reassigned; there is no queue, no depth field, and no re-entry into discover().",
-      "evidence": "content_discovery.cpp:90 `const QString base = normBase(req.basePath);` -- the sole assignment. Flat loop, cpp:154-176: `for (const QString &w : words) { if (result.requestsSent >= maxReq + 2) break; QString rel = w; while (rel.startsWith('/')) rel.remove(0, 1); if (rel.isEmpty()) continue; ++result.wordsTried; const QString full = base + \"/\" + rel; const auto r = get(full); ... result.hits.append"
+      "evidence": "content_discovery.cpp:96 `const QString base = normBase(req.basePath);` is still the sole assignment -- base is never reassigned into a discovered subdirectory. The probe loop (now :169-176, building a flat `probes` list fanned out across a concurrency pool added since the last pass) still has no queue of discovered directories and no re-entry into discover() -- the concurrency addition parallelizes the SAME flat wordlist, it does not add a second level.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read the probe-building loop (moved 154-176 -> 169-176 after a concurrency-pool addition) -- still exactly one directory level per invocation, `base` assigned once, no depth field or requeue anywhere. The new concurrency/throttle controls speed up the flat scan, they do not add recursion. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5801,7 +5849,13 @@
       "effort": "days",
       "gap": "Discovered paths cannot be sent to Repeater, re-requested, or inspected. You get a status code and a byte count in a flat findings list, and the request that produced them is discarded.",
       "why": "Confirmed. Hits become findings with rowId 0 and a JSON array; no history row is created, so nothing can reach the map. Corrected line numbers (8467-8480, not 8328-8339).",
-      "evidence": "control_server.cpp:8468-8480 `for (const auto &h : cres.hits) { hits.append(QJsonObject{ { \"path\", h.path }, { \"status\", h.status }, { \"size\", h.size }, { \"location\", h.location }, { \"note\", h.note } }); if (m_wiring.scanner) m_wiring.scanner->reportFinding(0, \"info\", \"content-discovered\", QString(\"Discovered path %1 (%2 %3)\")...` -- rowId 0, i.e. no history row. SiteMapModel exposes no insertion "
+      "evidence": "control_server.cpp:9682-9697 `for (const auto &h : cres.hits) { hits.append(QJsonObject{ { \"path\", h.path }, { \"status\", h.status }, { \"size\", h.size }, { \"location\", h.location }, { \"note\", h.note } }); if (m_wiring.scanner) m_wiring.scanner->reportFinding(0, \"info\", \"content-discovered\", ...` -- still rowId 0, i.e. no history row, so nothing a discovered path produces can be sent to Repeater or re-requested. SiteMapModel still exposes no insertion API a discovery session could stream into.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. Re-read the hit-to-finding loop (moved 8467-8480 -> 9682-9697) -- still `reportFinding(0, ...)`, no history row, no site-map tree insertion, matching the prior pass's finding with refreshed line numbers only. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5827,7 +5881,13 @@
       "effort": "days",
       "gap": "Missing. Rarely used; exists mainly to make an automated scan look human in target logs.",
       "why": "Confirmed. Grepped for the feature name and for the concept (decoy/noise/synthetic traffic); the single 'decoy' hit is an unrelated comment about stale robots.txt directives.",
-      "evidence": "`grep -rail \"decoy|simulate manual|manual testing simulat\" Src ui-v2 extensions scripts docs` returns exactly one file, Src/Core/Networking/js_recon_logic.cpp:144, whose text is `// browsers) -- a stale/decoy earlier directive must not mask the real map.` -- unrelated."
+      "evidence": "`grep -rlia \"decoy|simulate manual|manual testing simulat\" .` now matches 15 files (up from 1 at the prior pass, driven mostly by Lab 24's clickjacking PoC which legitimately uses \"decoy\" for its overlay button) -- every hit re-checked by hand is either the Lab 24 clickjacking PoC (labs/24-clickjacking/*, docs/labs/24-clickjacking.html, ui-v2/labs-data.js, scripts/labs_site.py, ui-v2/proxy.jsx's own clickjacking-PoC generator) or an unrelated code comment using \"decoy\" colloquially (js_recon_logic.cpp:144 stale-directive comment; ssrf_scan.hpp:74/ssrf_scan.cpp:201/ssrf_logic.cpp:58 \"decoy param\" in SSRF sink-detection comments; two test-file comments about a decoy secret/value in unrelated regression tests). None is a decoy-TRAFFIC-generation feature -- still nothing shipped that fires synthetic background traffic to disguise an automated scan.",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent. The literal grep now returns far more hits than the prior pass's \"exactly one file\" (new labs and comments added \"decoy\" in unrelated senses since), so re-checked every match by hand rather than trusting the count -- all are Lab 24's clickjacking PoC or unrelated SSRF/regression-test comments. No decoy-traffic feature exists. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5837,7 +5897,13 @@
       "effort": "days",
       "gap": "No in-app scheduling and no shipped scheduled job. A user would have to write their own cron around --scan, and there is no crawl/discovery equivalent to schedule anyway.",
       "why": "Confirmed, and I tightened the compensating-control claim. The first pass said the CI direction partly compensates; the shipped workflow is workflow_dispatch (manual) only, with no cron: schedule block, so nothing shipped schedules anything.",
-      "evidence": "`grep -rain \"schedul|cron|recurring\" Src/BackEnd/Control/control_server.cpp` -> no matches. .github/workflows/nullock-scan-example.yml:5-8 `# Manual-dispatch only so it never runs against a target without an explicit opt-in.` / `on:` / `  workflow_dispatch:` -- no `schedule:` key anywhere in the file. The CLI gate it drives is one-shot: Src/App/app.cpp:658-661 `if (!scanUrl.isEmpty()) { ... return"
+      "evidence": "`grep -rain \"schedul|cron|recurring\" Src/BackEnd/Control/control_server.cpp` -> no matches. .github/workflows/nullock-scan-example.yml:5-8 `# Manual-dispatch only so it never runs against a target without an explicit opt-in.` / `on:` / `  workflow_dispatch:` -- no `schedule:` key anywhere in the file. The CLI gate it drives is one-shot: Src/App/app.cpp:658-661 `if (!scanUrl.isEmpty()) { ... return",
+      "audited_state": "absent",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at absent, verbatim. Re-ran both greps: `schedul|cron|recurring` (case-insensitive, proper alternation) against control_server.cpp still returns zero matches, and `.github/workflows/nullock-scan-example.yml` still declares only `workflow_dispatch:` with no `schedule:` key. No code change this pass."
+      }
     },
     {
       "area": "target",
@@ -5847,7 +5913,13 @@
       "effort": "weeks",
       "gap": "Real, but the same flat host list and host-glob scope as ui-v2 -- no tree, no per-node issues, no context menu, no annotations. The misleading part is the repo layout, not the capability: the four blank Components files read as an unfinished Target UI while the finished one lives in app.qml. Also carries the relative-path load bug for installed builds.",
       "why": "UPGRADED, and this is the first pass's largest error. It read the four 8-line placeholder .qml files and concluded the Qt Target UI is blank. Those files are dead scaffolding -- registered in the QML module but never instantiated. The QML the app actually LOADS is Src/App/app.qml, which contains a working Site Map pane bound to the siteMap model and a complete Scope tab with both lists and add/rem",
-      "evidence": "The loaded file: Src/App/app.cpp:1159-1161 `// run from project root so this relative path resolves to Nullock/Src/App/app.qml` / `const QUrl url(QStringLiteral(\"./Src/App/app.qml\")); engine.load(url);`. Working site map, app.qml:159-193: `HeaderCell { text: \"Site Map (\" + siteMap.rowCount() + \")\"; ... }` then `ListView { id: siteMapList; ... model: siteMap; ... delegate: Rectangle { ... MouseArea"
+      "evidence": "The loaded file: Src/App/app.cpp:1485-1487 `// run from project root so this relative path resolves to Nullock/Src/App/app.qml` / `const QUrl url(QStringLiteral(\"./Src/App/app.qml\"));` / `engine.load(url);`. Working site map, app.qml:159 `HeaderCell { text: \"Site Map (\" + siteMap.rowCount() + \")\"; ... }` with a bound ListView beneath it; the Scope tab (app.qml:111 TabHeader, :428 onward) has real in-scope/out-of-scope lists bound to `projectStore.inScopeList`/`outOfScopeList` with add/remove wired to `projectStore.addInScope`/`removeInScope` -- still the same flat host list and host-glob scope as ui-v2, no tree, no per-node issues, no context menu.",
+      "audited_state": "partial",
+      "reconciled": {
+        "date": "2026-08-31",
+        "commit": "",
+        "note": "Wave 0 register-accuracy audit: held at partial (the prior pass's UPGRADE from absent-looking to a real, if limited, Qt Target UI stands). Re-verified app.cpp still loads ./Src/App/app.qml by relative path (line moved 1159-1161 -> 1485-1487, same relative-path-for-installed-builds bug) and app.qml's site map + scope tab are functionally unchanged. No code change this pass."
+      }
     },
     {
       "area": "platform",
