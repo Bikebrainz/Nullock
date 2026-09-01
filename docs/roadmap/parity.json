@@ -5828,8 +5828,8 @@
       "audited_state": "partial",
       "reconciled": {
         "date": "2026-09-01",
-        "commit": "",
-        "note": "Closed the Title and Extension halves of this gap: control_server.cpp's buildSnapshot() now parses a response's <title> tag (decoded body, 16 KB cap, first match) into a new `title` row field; ui-v2/proxy.jsx's HistoryTable gained Title and Ext columns (Ext via the existing pathExtension() helper). Comment-as-column, Cookies-as-column, and show/hide/reorder/sort/copy-column remain -- state held at partial, gap text narrowed rather than closed."
+        "commit": "692664f",
+        "note": "Closed the Title and Extension halves of this gap: control_server.cpp's buildSnapshot() now parses a response's <title> tag (decoded body, 16 KB cap, first match) into a new `title` row field; ui-v2/proxy.jsx's HistoryTable gained Title and Ext columns (Ext via the existing pathExtension() helper). Comment-as-column, Cookies-as-column, and show/hide/reorder/sort/copy-column remain -- state held at partial, gap text narrowed rather than closed. CI confirmed green on 692664f (all 8 ci.yml jobs, including build-windows' full regression-test suite and build-linux/build-macos): https://github.com/Bikebrainz/Nullock/actions/runs/33526543362."
       }
     },
     {
