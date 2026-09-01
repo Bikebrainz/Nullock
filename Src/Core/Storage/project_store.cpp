@@ -221,6 +221,7 @@ bool ProjectStore::open(const QString &projectDir) {
     emit interceptRulesChanged(m_meta.interceptRules);
     emit interceptAutoContentLengthChanged(m_meta.interceptAutoContentLength);
     emit interceptAutoFixNewlinesChanged(m_meta.interceptAutoFixNewlines);
+    emit logOutOfScopeChanged(m_meta.logOutOfScope);
     emit sessionMacrosChanged(m_meta.sessionMacros);
     emit sessionRulesJsonChanged(m_meta.sessionRulesJson);
     emit cookieJarChanged(m_meta.cookieJar);
@@ -329,6 +330,9 @@ bool ProjectStore::ensureMetadata() {
         // Same absent-key-means-Burp-default-ON contract as interceptAutoContentLength.
         m_meta.interceptAutoFixNewlines =
             o.value("interceptAutoFixNewlines").toBool(true);
+        // Default OFF when the key is absent (older projects predate the toggle),
+        // matching ProxyServer's own restricted-to-scope-by-default posture.
+        m_meta.logOutOfScope = o.value("logOutOfScope").toBool(false);
         m_meta.sessionMacros = o.value("sessionMacros").toArray();
         m_meta.advancedScope = o.value("advancedScope").toArray();
         // Missing key -> empty array = FAIL CLOSED (verify every upstream). Never a
@@ -388,6 +392,7 @@ bool ProjectStore::saveMetadata() {
     o["interceptRules"] = m_meta.interceptRules;
     o["interceptAutoContentLength"] = m_meta.interceptAutoContentLength;
     o["interceptAutoFixNewlines"] = m_meta.interceptAutoFixNewlines;
+    o["logOutOfScope"] = m_meta.logOutOfScope;
     o["sessionMacros"] = m_meta.sessionMacros;
     o["advancedScope"] = m_meta.advancedScope;
     o["acceptInvalidUpstreamHosts"] = m_meta.acceptInvalidUpstreamHosts;
@@ -423,6 +428,12 @@ void ProjectStore::setInterceptAutoContentLength(bool on) {
 void ProjectStore::setInterceptAutoFixNewlines(bool on) {
     if (m_meta.interceptAutoFixNewlines == on) return;
     m_meta.interceptAutoFixNewlines = on;
+    saveMetadata();
+}
+
+void ProjectStore::setLogOutOfScope(bool on) {
+    if (m_meta.logOutOfScope == on) return;
+    m_meta.logOutOfScope = on;
     saveMetadata();
 }
 

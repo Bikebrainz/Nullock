@@ -3309,8 +3309,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         // browse-broadly-then-set-scope loop works. A body carrying "value" sets it;
         // any request returns the current state.
         if (!m_wiring.proxy) return okJson({{ "logOutOfScope", false }});
-        if (bodyJson.contains("value"))
-            m_wiring.proxy->setLogOutOfScope(bodyJson.value("value").toBool());
+        if (bodyJson.contains("value")) {
+            const bool v = bodyJson.value("value").toBool();
+            m_wiring.proxy->setLogOutOfScope(v);
+            if (m_wiring.projectStore) m_wiring.projectStore->setLogOutOfScope(v);
+        }
         return okJson({{ "logOutOfScope", m_wiring.proxy->logOutOfScope() }});
     }
     if (path == "/api/intercept/toggle") {

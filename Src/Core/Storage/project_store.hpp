@@ -40,6 +40,11 @@ struct ProjectMeta {
     // "interceptAutoFixNewlines" for the same reopen-must-not-silently-re-arm
     // reason as interceptAutoContentLength.
     bool interceptAutoFixNewlines = true;
+    // "Log out-of-scope traffic" toggle (Burp logs everything by default;
+    // Nullock's default is OFF -- see ProxyServer::logOutOfScope). Persisted
+    // under "logOutOfScope" so a project reopen restores the operator's choice
+    // instead of silently reverting to the restricted-to-scope default.
+    bool logOutOfScope = false;
     // Named session login macros (opaque JSON owned by SessionRules; see
     // sessionMacrosToJson), so a reopened project restores its recorded login
     // sequences + their auto-re-auth conditions. Serialized under "sessionMacros".
@@ -189,6 +194,12 @@ public:
     void setInterceptAutoFixNewlines(bool on);
     bool interceptAutoFixNewlines() const { return m_meta.interceptAutoFixNewlines; }
 
+    // "Log out-of-scope traffic" toggle, persisted under "logOutOfScope".
+    // setLogOutOfScope persists immediately; open() emits logOutOfScopeChanged
+    // so app.cpp can push it into the live ProxyServer.
+    void setLogOutOfScope(bool on);
+    bool logOutOfScope() const { return m_meta.logOutOfScope; }
+
     // Session login macros, persisted in project.json under "sessionMacros".
     // Opaque JSON (SessionRules::sessionMacrosToJson owns the shape).
     // setSessionMacros persists immediately; open() emits sessionMacrosChanged so
@@ -286,6 +297,9 @@ signals:
     // "Fix missing/superfluous new lines" toggle. Wire to
     // InterceptController::setAutoFixNewlines.
     void interceptAutoFixNewlinesChanged(bool on);
+    // Emitted at the END of open() with the freshly-loaded project's
+    // "log out-of-scope traffic" toggle. Wire to ProxyServer::setLogOutOfScope.
+    void logOutOfScopeChanged(bool on);
     // Emitted at the END of open() with the freshly-loaded project's session
     // login macros. Wire (via Nullock::Core::sessionMacrosFromJson) to
     // SessionRules::setMacros so a reopened project restores them.

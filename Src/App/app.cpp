@@ -791,6 +791,12 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::acceptInvalidHostsChanged,
                      &proxy, applyAcceptHosts);
 
+    // "Log out-of-scope traffic" toggle: re-apply on every project switch so a
+    // reopened project restores the operator's persisted choice instead of
+    // silently reverting to the restricted-to-scope default.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::logOutOfScopeChanged,
+                     &proxy, &Nullock::Proxy::ProxyServer::setLogOutOfScope);
+
     // Match & replace rules: load from project, push live updates.
     proxy.setRules(projectStore.rules());
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::rulesChanged,
@@ -1030,6 +1036,9 @@ int main(int argc, char *argv[]) {
         Nullock::Proxy::InterceptLogic::interceptRulesFromJson(projectStore.interceptRules()));
     intercept.setAutoContentLength(projectStore.interceptAutoContentLength());
     intercept.setAutoFixNewlines(projectStore.interceptAutoFixNewlines());
+    // Same for the "log out-of-scope traffic" toggle -- the proxy didn't have
+    // this wiring yet at the initial open().
+    proxy.setLogOutOfScope(projectStore.logOutOfScope());
 
     if (smokeTest) {
         // Smoke test exercises HTTPS via the h2 path -- if a previous run
