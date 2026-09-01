@@ -409,7 +409,9 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
           <col style={{ width: 78 }} />
           <col style={{ width: 200 }} />
           <col />
+          <col style={{ width: 160 }} />
           <col style={{ width: 70 }} />
+          <col style={{ width: 60 }} />
           <col style={{ width: 110 }} />
           <col style={{ width: 70 }} />
           <col style={{ width: 70 }} />
@@ -424,7 +426,9 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
             <th>Status</th>
             <th>Host</th>
             <th>Path</th>
+            <th>Title</th>
             <th>Params</th>
+            <th>Ext</th>
             <th>Mime</th>
             <th>Size</th>
             <th>Time</th>
@@ -461,7 +465,9 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
                 <span className={"tls-dot " + (r.tls ? "" : "off")} />{r.host}
               </td>
               <td>{r.path}</td>
+              <td title={r.title || ""} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{r.title || ""}</td>
               <td className="num">{r.params || ""}</td>
+              <td className="num">{pathExtension(r.path)}</td>
               <td className="num">{r.mime}</td>
               <td className="num">{fmtSize(r.size)}</td>
               <td className="num">{fmtMs(r.elapsed)}</td>
@@ -471,7 +477,7 @@ function HistoryTable({ rows, selectedId, onSelect, hostFilter, statusClass, met
             );
           })}
           {filtered.length === 0 && (
-            <tr><td colSpan={12} style={{ textAlign: "center", color: "var(--dim)", height: 80 }}>
+            <tr><td colSpan={14} style={{ textAlign: "center", color: "var(--dim)", height: 80 }}>
               ╌╌  no rows match filters  ╌╌
             </td></tr>
           )}

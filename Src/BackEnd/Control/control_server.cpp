@@ -1562,6 +1562,20 @@ QByteArray ControlServer::buildSnapshot() const {
             row["size"]    = resp ? static_cast<qint64>(resp->body.size()) : 0;
             row["reqSize"] = req  ? static_cast<qint64>(req->body.size())  : 0;
             row["elapsed"] = 0;
+            // Site-map "Title" column: parse the response's <title> tag, from the
+            // DECODED body (bodyForInspection) so a gzip'd page isn't scanned as raw
+            // bytes and comes back empty. Bounded to the first 16 KB -- <title> always
+            // lives in <head>, so scanning a whole multi-MB body would cost far more
+            // than it could ever find.
+            row["title"] = QString();
+            if (resp) {
+                static const QRegularExpression titleRx(
+                    "<title[^>]*>([^<]{1,300})</title>",
+                    QRegularExpression::CaseInsensitiveOption);
+                const QByteArray head = resp->bodyForInspection().left(16 * 1024);
+                const auto m = titleRx.match(QString::fromUtf8(head));
+                if (m.hasMatch()) row["title"] = m.captured(1).simplified();
+            }
             rows.append(row);
         }
     }
