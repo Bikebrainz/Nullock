@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF via DNS rebinding (validate-then-fetch TOCTOU) — Nullock Labs</title>
+<meta name="description" content="validate-then-fetch TOCTOU -- hostname re-resolves internal after check">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">74</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5074</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF via DNS rebinding (validate-then-fetch TOCTOU)</h1>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... is NOT naively open like Lab 40, and it isn&#x27;t fooled by a bare loopback URL either: it resolves the URL&#x27;s hostname, rejects the request outright if that IP is private/loopback/link-local, and only then goes on to fetch it. GET /fetch?url=http://127.0.0.1:5074/... gets a clean 400 &quot;blocked&quot; -- the filter does exactly what it looks like it does. The bug is WHEN it resolves. The check calls `_resolve(host)` once to decide whether to allow the request; the fetch step then reconnects by hostname and lets `_resolve(host)` run AGAIN to get the IP to actually connect to. Nothing pins the fetch to the IP the check just approved. A name whose DNS answer changes between those two lookups -- the classic &quot;rebinding&quot; attack, where an attacker-controlled nameserver serves a public IP with a near-zero TTL, then flips to an internal IP once that TTL expires -- sails straight through: the check resolves it once and sees the public answer, the fetch resolves it again a moment later and gets the internal one. This lab collapses the real attack&#x27;s timing race (wait for the TTL to expire between two real DNS lookups) into something reproducible without a real internet-facing nameserver: `_resolve()` special-cases one hostname, `rebind.lab74.test`, to answer with a public-looking IP on its FIRST call per process and with 127.0.0.1 on every call after that -- same &quot;first answer differs from every later answer&quot; shape a real rebind produces, without the TTL wait or your own DNS infrastructure. Every other hostname resolves normally. Nullock&#x27;s automated SSRF prober (`/api/ssrf/test`) sends one request and inspects one response; it has no way to force two independent resolutions of the same host with different answers, so -- like Lab 70&#x27;s scheme gap -- this is a Repeater find: send /fetch to Repeater, point `url` at the rebind hostname, and watch the SAME request that would 400 for a literal 127.0.0.1 come back 200 once the hostname is the thing doing the flipping. In Nullock: 1. nullock scope add http://localhost:5074/* 2. GET /fetch?url=http://127.0.0.1:5074/internal/admin-secret -- 400 &quot;blocked&quot;: the private/loopback filter does work against a literal loopback IP. 3. Send /fetch to Repeater, change url to http://rebind.lab74.test:5074/internal/admin-secret -- the VALIDATION lookup for this host returns 8.8.8.8 (public, allowed); the FETCH step then resolves the same name again, this time getting 127.0.0.1, and connects there instead -- the response comes back 200 with the internal secret. 4. Confirm success: GET /flag -- solved only once /fetch&#x27;s own server-side request chain (not a direct hit on /internal) actually returned the internal marker. Fix: resolve once, validate that IP, and connect to the VALIDATED IP address directly (never the hostname again) -- pinning the connection to the address you checked is what defeats a DNS answer that changes between your two lookups.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/74-ssrf-dns-rebinding/app.py
+# then open http://localhost:5074/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5074/*</code><code class="inline">http://127.0.0.1:5074/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>/fetch DOES block a literal http://127.0.0.1:5074/... url -- confirm that 400 first, then think about exactly WHEN the server decides a host is safe versus when it actually connects to it.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The safety check and the actual fetch each resolve the hostname independently. If a name&#x27;s DNS answer could change between those two lookups, the check could approve an address the fetch never actually visits.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Send /fetch to Repeater and point url at http://rebind.lab74.test:5074/internal/admin-secret -- this lab&#x27;s own resolver answers that name with a public IP the FIRST time it&#x27;s asked (the check) and 127.0.0.1 every time after (the fetch). GET /flag once the internal marker comes back through it.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5074/*</li><li>GET /fetch?url=http://127.0.0.1:5074/internal/admin-secret -- 400 &quot;blocked&quot;: the private/loopback filter does work against a literal loopback IP.</li><li>Send /fetch to Repeater, change url to http://rebind.lab74.test:5074/internal/admin-secret -- the VALIDATION lookup for this host returns 8.8.8.8 (public, allowed); the FETCH step then resolves the same name again, this time getting</li><li>0.0.1, and connects there instead -- the response comes back 200 with the internal secret.</li><li>Confirm success: GET /flag -- solved only once /fetch&#x27;s own server-side request chain (not a direct hit on /internal) actually returned the internal marker.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: resolve once, validate that IP, and connect to the VALIDATED IP address directly (never the hostname again) -- pinning the connection to the address you checked is what defeats a DNS answer that changes between your two lookups.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "74-ssrf-dns-rebinding";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 74 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

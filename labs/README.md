@@ -81,6 +81,7 @@ labs/
   71-jwt-x5u-injection/    # verifier trusts any cert a token's x5u names, no CA chain check       (5071)
   72-blind-ssrf-oast/      # webhook fetch never reflects result -- only OOB callback confirms it  (5072)
   73-http-request-smuggling-tecl/ # TE.CL desync -- backend blocks on a CL-short forwarded chunk    (5073)
+  74-ssrf-dns-rebinding/   # validate-then-fetch TOCTOU -- hostname re-resolves internal after check (5074)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

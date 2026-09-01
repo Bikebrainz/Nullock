@@ -152,6 +152,7 @@ DIFFICULTY = {
     "71-jwt-x5u-injection": "Hard",
     "72-blind-ssrf-oast": "Hard",
     "73-http-request-smuggling-tecl": "Hard",
+    "74-ssrf-dns-rebinding": "Hard",
 }
 
 
@@ -526,6 +527,11 @@ HINTS = {
         "Like Lab 58, this is two servers that disagree about request framing when both Content-Length and Transfer-Encoding are present -- but run Nullock's smuggle probe here and see which of the TWO timed variants actually reproduces this time.",
         "The front-end trusts Transfer-Encoding; the backend trusts Content-Length. A chunk's DATA can itself look like a whole second HTTP request -- the front-end forwards it as one opaque blob, but a Content-Length short enough to stop right after the chunk-size line makes the backend re-parse everything past it as a brand new request.",
         "Send a chunked POST whose Content-Length equals only the chunk-size line's own byte length, with the chunk's DATA being a full 'GET /admin-secret ...' request. The backend answers your visible request, then separately answers the smuggled one on the same pooled connection -- the next unrelated request to reuse that connection gets the smuggled response instead of its own. GET /flag once that's happened.",
+    ],
+    "74-ssrf-dns-rebinding": [
+        "/fetch DOES block a literal http://127.0.0.1:5074/... url -- confirm that 400 first, then think about exactly WHEN the server decides a host is safe versus when it actually connects to it.",
+        "The safety check and the actual fetch each resolve the hostname independently. If a name's DNS answer could change between those two lookups, the check could approve an address the fetch never actually visits.",
+        "Send /fetch to Repeater and point url at http://rebind.lab74.test:5074/internal/admin-secret -- this lab's own resolver answers that name with a public IP the FIRST time it's asked (the check) and 127.0.0.1 every time after (the fetch). GET /flag once the internal marker comes back through it.",
     ],
 }
 

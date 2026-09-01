@@ -1662,6 +1662,29 @@
       "Confirm success: GET /flag -- solved only once the backend itself recorded serving /admin-secret from a request it parsed out of another connection's forwarded chunk data, never one the front-end's allow-list saw and let through directly."
     ],
     "fix": "Fix: never let a front-end and back-end disagree on request framing -- reject any request carrying both Content-Length and Transfer-Encoding (RFC 7230 3.3.3), or terminate and completely re-frame every request at the edge instead of tunneling raw parsed bytes through to a pooled backend connection."
+  },
+  {
+    "slug": "74-ssrf-dns-rebinding",
+    "num": "74",
+    "title": "SSRF via DNS rebinding (validate-then-fetch TOCTOU)",
+    "vuln": "validate-then-fetch TOCTOU -- hostname re-resolves internal after check",
+    "port": "5074",
+    "category": "SSRF & fetch",
+    "difficulty": "Hard",
+    "desc": "/fetch?url=... is NOT naively open like Lab 40, and it isn't fooled by a bare loopback URL either: it resolves the URL's hostname, rejects the request outright if that IP is private/loopback/link-local, and only then goes on to fetch it. GET /fetch?url=http://127.0.0.1:5074/... gets a clean 400 \"blocked\" -- the filter does exactly what it looks like it does. The bug is WHEN it resolves. The check calls `_resolve(host)` once to decide whether to allow the request; the fetch step then reconnects by hostname and lets `_resolve(host)` run AGAIN to get the IP to actually connect to. Nothing pins the fetch to the IP the check just approved. A name whose DNS answer changes between those two lookups -- the classic \"rebinding\" attack, where an attacker-controlled nameserver serves a public IP with a near-zero TTL, then flips to an internal IP once that TTL expires -- sails straight through: the check resolves it once and sees the public answer, the fetch resolves it again a moment later and gets the internal one. This lab collapses the real attack's timing race (wait for the TTL to expire between two real DNS lookups) into something reproducible without a real internet-facing nameserver: `_resolve()` special-cases one hostname, `rebind.lab74.test`, to answer with a public-looking IP on its FIRST call per process and with 127.0.0.1 on every call after that -- same \"first answer differs from every later answer\" shape a real rebind produces, without the TTL wait or your own DNS infrastructure. Every other hostname resolves normally. Nullock's automated SSRF prober (`/api/ssrf/test`) sends one request and inspects one response; it has no way to force two independent resolutions of the same host with different answers, so -- like Lab 70's scheme gap -- this is a Repeater find: send /fetch to Repeater, point `url` at the rebind hostname, and watch the SAME request that would 400 for a literal 127.0.0.1 come back 200 once the hostname is the thing doing the flipping. In Nullock: 1. nullock scope add http://localhost:5074/* 2. GET /fetch?url=http://127.0.0.1:5074/internal/admin-secret -- 400 \"blocked\": the private/loopback filter does work against a literal loopback IP. 3. Send /fetch to Repeater, change url to http://rebind.lab74.test:5074/internal/admin-secret -- the VALIDATION lookup for this host returns 8.8.8.8 (public, allowed); the FETCH step then resolves the same name again, this time getting 127.0.0.1, and connects there instead -- the response comes back 200 with the internal secret. 4. Confirm success: GET /flag -- solved only once /fetch's own server-side request chain (not a direct hit on /internal) actually returned the internal marker. Fix: resolve once, validate that IP, and connect to the VALIDATED IP address directly (never the hostname again) -- pinning the connection to the address you checked is what defeats a DNS answer that changes between your two lookups.",
+    "hints": [
+      "/fetch DOES block a literal http://127.0.0.1:5074/... url -- confirm that 400 first, then think about exactly WHEN the server decides a host is safe versus when it actually connects to it.",
+      "The safety check and the actual fetch each resolve the hostname independently. If a name's DNS answer could change between those two lookups, the check could approve an address the fetch never actually visits.",
+      "Send /fetch to Repeater and point url at http://rebind.lab74.test:5074/internal/admin-secret -- this lab's own resolver answers that name with a public IP the FIRST time it's asked (the check) and 127.0.0.1 every time after (the fetch). GET /flag once the internal marker comes back through it."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5074/*",
+      "GET /fetch?url=http://127.0.0.1:5074/internal/admin-secret -- 400 \"blocked\": the private/loopback filter does work against a literal loopback IP.",
+      "Send /fetch to Repeater, change url to http://rebind.lab74.test:5074/internal/admin-secret -- the VALIDATION lookup for this host returns 8.8.8.8 (public, allowed); the FETCH step then resolves the same name again, this time getting",
+      "0.0.1, and connects there instead -- the response comes back 200 with the internal secret.",
+      "Confirm success: GET /flag -- solved only once /fetch's own server-side request chain (not a direct hit on /internal) actually returned the internal marker."
+    ],
+    "fix": "Fix: resolve once, validate that IP, and connect to the VALIDATED IP address directly (never the hostname again) -- pinning the connection to the address you checked is what defeats a DNS answer that changes between your two lookups."
   }
 ];
   window.NULLOCK_LABS_XP = {

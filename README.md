@@ -256,11 +256,11 @@ Exports           SARIF, CycloneDX SBOM, nmap-XML, Postman, OpenAPI, HAR, XML is
 SQLite history    200k+ row engagements stay snappy
 AI payloads       Local Ollama expands a seed payload set into new candidates (opt-in)
 Scriptable CLI    Drive every panel from your shell
-Teaching labs     73 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
+Teaching labs     74 intentionally-vulnerable apps, each mapped to a Nullock probe (labs/);
                   a LABS tab in the app itself (and the docs/labs site) rates each
                   Easy/Medium/Hard, gives 3 progressive hints before the full
                   walkthrough, and one click sends a GET /flag check straight to
-                  Repeater; all 73 labs add a real /flag success-check endpoint
+                  Repeater; all 74 labs add a real /flag success-check endpoint
                   you solve by exploiting the bug server-side, not just reading
                   the walkthrough; solved labs and per-category XP/tracks are
                   tracked locally in the app
@@ -474,7 +474,7 @@ To report a vulnerability: [`github.com/Bikebrainz/Nullock/security/advisories`]
   - [x] hosted OAST tier — deployable `nullock-oast` server + Docker + [`DEPLOY_OAST.md`](DEPLOY_OAST.md) (you supply the host + DNS)
   - [ ] team workspaces — **Phase-1 findings-sync server shipped** (`nullock-workspace`, [`DEPLOY_WORKSPACE.md`](DEPLOY_WORKSPACE.md)); design + later phases: [`design/team-workspaces.md`](design/team-workspaces.md)
 - [ ] v4:
-  - [x] Web Security Academy clone — **73/50 labs** under [`labs/`](labs/) (past the original goal, still growing)
+  - [x] Web Security Academy clone — **74/50 labs** under [`labs/`](labs/) (past the original goal, still growing)
   - [ ] enterprise SSO — design: [`design/enterprise-sso.md`](design/enterprise-sso.md)
   - [ ] SOC2 (organizational/audit process)
 
