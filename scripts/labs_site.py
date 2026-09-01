@@ -151,6 +151,7 @@ DIFFICULTY = {
     "70-ssrf-file-scheme-bypass": "Medium",
     "71-jwt-x5u-injection": "Hard",
     "72-blind-ssrf-oast": "Hard",
+    "73-http-request-smuggling-tecl": "Hard",
 }
 
 
@@ -520,6 +521,11 @@ HINTS = {
         "POST /webhook/register {url} and POST /webhook/trigger {id} always answer {\"status\":\"queued\"} no matter what happens to the fetch -- unlike Lab 05's /fetch, nothing here ever tells you if the request succeeded, failed, or what it got back.",
         "You need an out-of-band listener to prove the fetch fired at all. Register a webhook pointed at an OAST callback URL (or this lab's own /attacker/sink/<label> stand-in), trigger it, then poll for the hit instead of trusting the trigger response.",
         "Once you've confirmed blind SSRF works, register a webhook pointed at http://127.0.0.1:5072/internal/admin/rotate-keys and trigger it -- still just {\"status\":\"queued\"} back, but GET /flag?id=<that id> shows the out-of-band record that it actually reached the internal action.",
+    ],
+    "73-http-request-smuggling-tecl": [
+        "Like Lab 58, this is two servers that disagree about request framing when both Content-Length and Transfer-Encoding are present -- but run Nullock's smuggle probe here and see which of the TWO timed variants actually reproduces this time.",
+        "The front-end trusts Transfer-Encoding; the backend trusts Content-Length. A chunk's DATA can itself look like a whole second HTTP request -- the front-end forwards it as one opaque blob, but a Content-Length short enough to stop right after the chunk-size line makes the backend re-parse everything past it as a brand new request.",
+        "Send a chunked POST whose Content-Length equals only the chunk-size line's own byte length, with the chunk's DATA being a full 'GET /admin-secret ...' request. The backend answers your visible request, then separately answers the smuggled one on the same pooled connection -- the next unrelated request to reuse that connection gets the smuggled response instead of its own. GET /flag once that's happened.",
     ],
 }
 
