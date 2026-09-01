@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CORS null-origin bypass: an allow-list that trusts &quot;null&quot; for local testing — Nullock Labs</title>
+<meta name="description" content="allow-list special-cases Origin: null, reachable via a sandboxed iframe">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">76</span>
+    <span class="labs-cat mono">Client-side</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5076</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">CORS null-origin bypass: an allow-list that trusts &quot;null&quot; for local testing</h1>
+  <p class="lead" style="margin-top:12px;">/api/wallet returns the logged-in user&#x27;s balance, gated by a real CORS allow-list: ALLOWED_ORIGIN_RE = re.compile(r&quot;^https://partner-[a-z]+\.nullock-corp\.test$&quot;) checks the Origin header with a properly ANCHORED regex (^...$, unlike Lab 69&#x27;s missing trailing anchor) before ever reflecting it into Access-Control-Allow-Origin, and only reflects a matching Origin together with Access-Control-Allow-Credentials: true. Neither Lab 16&#x27;s &quot;reflect anything&quot; bug nor Lab 69&#x27;s &quot;unanchored regex&quot; bug is present here -- an arbitrary attacker.example Origin gets no CORS headers at all. But the allow-list has one more branch: `if origin == &quot;null&quot;: allow it too`, added by a developer who wanted to test the API from a local file://...html page during development (opening a local file makes the browser send Origin: null) and never removed before shipping. The literal string &quot;null&quot; is not something only a local file can send, though -- a browser also sends it for a request that comes from a SANDBOXED iframe with no `allow-same-origin` token (`&lt;iframe sandbox=&quot;allow-scripts allow-forms&quot; src=&quot;https://attacker.example/poc.html&quot;&gt;`), from a `data:` URI navigation, or from some cross-origin redirect chains. Any of those, hosted by an attacker, lets a real visiting browser send Origin: null while still attaching the victim&#x27;s own session cookie for THIS site -- the sandbox restricts what the iframe&#x27;s OWN origin can do, not which cookies the browser sends to the target origin -- so the same &quot;null&quot; branch a developer added for their own local-testing convenience is reachable by anyone who can get a victim to load a sandboxed iframe or a data: URI, with the victim&#x27;s cookies riding along for free. Nullock&#x27;s automated CORS prober (`/api/cors/probe`) sends a handful of crafted Origin values (an arbitrary attacker.example string, a subdomain variant, a protocol-relative variant) to look for a reflected-and- credentialed response, same shape as Lab 16 and Lab 69 -- but &quot;null&quot; is a literal string, not a host pattern, so it doesn&#x27;t fit the URL-host mutation the prober applies and isn&#x27;t in its candidate list, so the probe reports no finding here. This is a Repeater find, same precedent as Lab 69&#x27;s own literal-header edit. In Nullock: 1. nullock scope add http://localhost:5076/* 2. Send /api/wallet to Repeater with header Origin: https://attacker.example -- no Access-Control-Allow-Origin comes back at all: the anchored allow-list correctly rejects an arbitrary origin. 3. Change the header to Origin: null -- the response now carries Access-Control-Allow-Origin: null and Access-Control-Allow-Credentials: true. 4. That is exactly what a victim&#x27;s browser would send from a sandboxed iframe or a data: URI hosted by an attacker, with the victim&#x27;s own session cookie still attached -- the response body (the balance) would be readable by the attacker&#x27;s page. 5. Confirm success: GET /flag with header Origin: null -- same allow-list logic /api/wallet uses, solved only once a literal &quot;null&quot; Origin comes back reflected with credentials allowed. Fix: never special-case the literal string &quot;null&quot; (or any unvalidated value) in a CORS allow-list -- it is not proof of same-machine local testing, it is a value any attacker-controlled sandboxed iframe or data: URI can produce from a real victim&#x27;s browser. Drop the branch, or gate local development behind an environment flag that never ships.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/76-cors-null-origin-bypass/app.py
+# then open http://localhost:5076/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5076/*</code><code class="inline">http://127.0.0.1:5076/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Send /api/wallet with an arbitrary Origin like https://attacker.example -- no CORS headers come back at all, and even a lookalike host with the trusted domain as a prefix or suffix is still rejected. This allow-list really is anchored properly, unlike Lab 69&#x27;s.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>There&#x27;s one more value the allow-list treats as trusted besides the real partner hostnames -- not a domain, but the literal string a browser sends for a page that has no origin of its own.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Send Origin: null to /api/wallet -- Access-Control-Allow-Origin: null and Access-Control-Allow-Credentials: true come back. A sandboxed iframe (no allow-same-origin) or a data: URI hosted by an attacker sends exactly that Origin, with the victim&#x27;s real cookies still attached. GET /flag with the same header to confirm.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5076/*</li><li>Send /api/wallet to Repeater with header Origin: https://attacker.example -- no Access-Control-Allow-Origin comes back at all: the anchored allow-list correctly rejects an arbitrary origin.</li><li>Change the header to Origin: null -- the response now carries Access-Control-Allow-Origin: null and Access-Control-Allow-Credentials: true.</li><li>That is exactly what a victim&#x27;s browser would send from a sandboxed iframe or a data: URI hosted by an attacker, with the victim&#x27;s own session cookie still attached -- the response body (the balance) would be readable by the attacker&#x27;s page.</li><li>Confirm success: GET /flag with header Origin: null -- same allow-list logic /api/wallet uses, solved only once a literal &quot;null&quot; Origin comes back reflected with credentials allowed.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never special-case the literal string &quot;null&quot; (or any unvalidated value) in a CORS allow-list -- it is not proof of same-machine local testing, it is a value any attacker-controlled sandboxed iframe or data: URI can produce from a real victim&#x27;s browser. Drop the branch, or gate local development behind an environment flag that never ships.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "76-cors-null-origin-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 76 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

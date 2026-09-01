@@ -83,6 +83,7 @@ labs/
   73-http-request-smuggling-tecl/ # TE.CL desync -- backend blocks on a CL-short forwarded chunk    (5073)
   74-ssrf-dns-rebinding/   # validate-then-fetch TOCTOU -- hostname re-resolves internal after check (5074)
   75-ssrf-ip-encoding-bypass/ # decimal/octal/hex host spelling beats a literal-string blocklist       (5075)
+  76-cors-null-origin-bypass/ # allow-list special-cases Origin: null, reachable via a sandboxed iframe (5076)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
