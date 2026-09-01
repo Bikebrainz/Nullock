@@ -359,7 +359,8 @@
         "date": "2026-08-29",
         "commit": "d4cf202",
         "note": "Intruder Resume shipped: after loadRun restores every row (raw combo + completion flag), resume() re-fires only the never-completed rows via a skipRows filter on the existing attack worker; the pure planResume decision is unit-tested + mutation-proven."
-      }
+      },
+      "audited_state": "present"
     },
     {
       "area": "intruder",
@@ -1749,7 +1750,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read doMutateRequest's readback (line drift 358-379 -> 672-721) -- confirms no action/drop field is ever consulted, matching the prior finding exactly. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1764,7 +1766,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the whole extensions_api.hpp bridge surface (grown to 296-436, replacing the stale 164-185/four-method citation) and re-grepped intruder.cpp (now 956 lines, was 608) -- no payload-generator seam either place. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1779,7 +1782,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-read the bridge surface and the rule-ops handler (line drift 3262 -> 3992) -- still no processor-registration seam. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1794,7 +1798,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-grepped session_rules*.cpp for extension/macro/ExtensionsApi -- confirms the 'macro' hits are all the unrelated session-handling-rules feature, none an extension seam. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1809,7 +1814,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Found two new but equally-orphaned blank-Rectangle QML stubs (Components/extensions_console.qml, Components/extensions.qml) alongside the original extensions_hub.qml -- none wired into app.qml or CMakeLists.txt, so the no-mount-point conclusion is unchanged, just now evidenced by three stub files instead of one. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1824,7 +1830,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for contextMenu/ContextMenuItemsProvider/InvocationType -- still 0 hits. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1839,7 +1846,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. The Settings Extensions card has grown (enable checkboxes, capability badges, auto-reload toggle, Install bundled button, line drift 456-477 -> 1319-1391) but is still a management list, not a pluggable editor-tab surface. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1854,7 +1862,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh grep for insertion/injectionPoint/insertPoint -- same two non-seam hits, line drift 6599 -> 7800 on the comment. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1869,7 +1878,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent for the core ask (no synchronous send-and-read-response method), while noting two new adjacent-but-not-closing additions since the prior pass: sendToRepeater/sendToIntruder (push-only, no response) and the new collaborator bridge's generate()/interactions() (async OOB polling). Neither is I/O an extension can use to confirm a finding synchronously. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -1916,7 +1926,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Line drift only (setScanner 80-81 -> 121); still no scan-control or issue-read method on the JS surface. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2027,7 +2038,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent, but corrected a stale claim -- loadAll() now sorts extension load order with QDir::Name (extensions_api.cpp:400), so invocation order is deterministic alphabetical, not arbitrary as the prior 'why' text implied. Gap text updated to say composition order is fixed-but-predictable rather than fixed-and-random; still no user-facing reorder control. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2042,7 +2054,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Line drift on the install handler (5376-5422 -> 6427ff); marketplace.cpp:113-117 citation unchanged and re-verified exact. No code change this pass."
-      }
+      },
+      "audited_state": "stub"
     },
     {
       "area": "extender",
@@ -2057,7 +2070,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Noted a real but non-closing addition -- an Auto-reload (dev) toggle now exists in the Extensions card, but it's a file-watch setting, not the reload-on-startup/auto-update this item asks about. Line drift refreshed throughout. No code change this pass."
-      }
+      },
+      "audited_state": "stub"
     },
     {
       "area": "extender",
@@ -2136,7 +2150,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent/not-applicable. CatalogEntry grew a minVersion field (unrelated to licensing) since the prior pass; still no tier/licence concept anywhere. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2167,7 +2182,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Line drift on all three citations (683->752, 974->1299, 300-302->642/662); confirmed zero moveToThread calls in app.cpp. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2182,7 +2198,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-checked the grown bridge surface and confirmed zero ai()/prompt hits; noted the backend's own unrelated AI feature (/api/payloads/generate) isn't extension-invocable either. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2197,7 +2214,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Fresh bambda grep still 0; FilterBar line positions refreshed (drifted with file growth), still fixed-field predicates only. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2212,7 +2230,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. customColumn/addColumn grep still 0; history table grew from 11 to 12 fixed columns (colSpan drift 11->12), still no user-computed column mechanism. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2243,7 +2262,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Cross-referenced B38's upgrade to partial (a manual, non-bambda annotation layer, Proxy history only) -- confirmed it does not extend to any of the tables this item names. No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2258,7 +2278,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at absent. Re-checked ui-v2/vendor's contents directly (babel + react/react-dom only) and re-grepped for monaco/codemirror (0 hits). No code change this pass."
-      }
+      },
+      "audited_state": "absent"
     },
     {
       "area": "extender",
@@ -2273,7 +2294,8 @@
         "date": "2026-08-31",
         "commit": "85abbe0",
         "note": "Wave 0 register-accuracy audit: held at stub. Same widened-stub finding as B11 (two new orphaned blank-Rectangle QML files); ui-v2/app.jsx real-UI citation refreshed (456-477 -> 1319-1391) to reflect its since-grown per-extension checkboxes/badges. No code change this pass."
-      }
+      },
+      "audited_state": "stub"
     },
     {
       "area": "sequencer",
