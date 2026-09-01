@@ -84,6 +84,7 @@ labs/
   74-ssrf-dns-rebinding/   # validate-then-fetch TOCTOU -- hostname re-resolves internal after check (5074)
   75-ssrf-ip-encoding-bypass/ # decimal/octal/hex host spelling beats a literal-string blocklist       (5075)
   76-cors-null-origin-bypass/ # allow-list special-cases Origin: null, reachable via a sandboxed iframe (5076)
+  77-llm-indirect-prompt-injection/ # ticket-summarize path never filters injections /chat now blocks (5077)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
