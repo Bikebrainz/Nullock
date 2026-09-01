@@ -153,6 +153,7 @@ DIFFICULTY = {
     "72-blind-ssrf-oast": "Hard",
     "73-http-request-smuggling-tecl": "Hard",
     "74-ssrf-dns-rebinding": "Hard",
+    "75-ssrf-ip-encoding-bypass": "Medium",
 }
 
 
@@ -532,6 +533,11 @@ HINTS = {
         "/fetch DOES block a literal http://127.0.0.1:5074/... url -- confirm that 400 first, then think about exactly WHEN the server decides a host is safe versus when it actually connects to it.",
         "The safety check and the actual fetch each resolve the hostname independently. If a name's DNS answer could change between those two lookups, the check could approve an address the fetch never actually visits.",
         "Send /fetch to Repeater and point url at http://rebind.lab74.test:5074/internal/admin-secret -- this lab's own resolver answers that name with a public IP the FIRST time it's asked (the check) and 127.0.0.1 every time after (the fetch). GET /flag once the internal marker comes back through it.",
+    ],
+    "75-ssrf-ip-encoding-bypass": [
+        "/fetch DOES block the literal http://127.0.0.1:5075/... url -- confirm that 400 first, then look at exactly what string the blocklist is comparing.",
+        "The blocklist is an exact string match against \"127.0.0.1\" (and two others). Is there more than one way to WRITE that same IP address as text?",
+        "Try http://2130706433:5075/internal/admin-secret (127.0.0.1 as one decimal integer) -- your resolver still turns that into 127.0.0.1, but the string \"2130706433\" isn't in the blocklist. Octal (0177.0.0.1), hex (0x7f000001), and short-form (127.1) all work too. GET /flag with any of them once the internal marker comes back.",
     ],
 }
 

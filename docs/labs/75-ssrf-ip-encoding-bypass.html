@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF via IP-address encoding: a host blocklist that only ever compares literal strings — Nullock Labs</title>
+<meta name="description" content="decimal/octal/hex host spelling beats a literal-string blocklist">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">75</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5075</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF via IP-address encoding: a host blocklist that only ever compares literal strings</h1>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... is &quot;protected&quot; against SSRF: it parses the URL and rejects any request whose HOST string is exactly &quot;127.0.0.1&quot;, &quot;localhost&quot;, or &quot;169.254.169.254&quot; -- the usual loopback/cloud-metadata blocklist, and it DOES work: /fetch?url=http://127.0.0.1:5075/internal/admin-secret comes back 400. But the check never normalizes the host before comparing it -- it just tests `host in BLOCKED_HOSTS` on whatever string urlparse() pulled out of the URL. glibc&#x27;s resolver (which is what Python&#x27;s socket module, and therefore `requests`, ultimately calls into) accepts several other textual spellings of the exact same IPv4 address that a browser&#x27;s address bar would also happily follow: - decimal:        http://2130706433/          (127.0.0.1 as one 32-bit int) - octal:           http://0177.0.0.1/          (leading-zero octet) - hex:             http://0x7f000001/          (whole address as one hex int) - short form:      http://127.1/               (trailing zero octets dropped) None of those strings equal &quot;127.0.0.1&quot;, so the blocklist -- which only ever does an exact string comparison -- lets every one of them straight through. The fetch then resolves to 127.0.0.1 exactly the same as the literal form would have, and lands on the internal-only endpoint the blocklist exists to protect. This is a different failure mode from every earlier SSRF lab here (05&#x27;s total absence of filtering, 40&#x27;s metadata-endpoint framing, 64&#x27;s redirect pivot, 65&#x27;s second unguarded fetch path, 70&#x27;s scheme blind spot, 72&#x27;s blind/OAST-only confirmation, 74&#x27;s validate-then-fetch TOCTOU): here the host check runs against the SAME address, at the SAME time as the fetch, with no race and no alternate code path -- the bug is purely that &quot;is this the blocked host&quot; was implemented as a literal string comparison against an address family that has more than one valid spelling. Nullock&#x27;s automated SSRF prober (`/api/ssrf/test`) only ever tries the literal strings &quot;169.254.169.254&quot; and &quot;127.0.0.1&quot; as candidate hosts (see ssrf_scan.cpp&#x27;s CANDIDATES table) -- against THIS lab&#x27;s blocklist those literal probes correctly get blocked, so the automated probe reports no finding here. This bug sits in the prober&#x27;s own blind spot (it does not try alternate numeric encodings of the same address) and is found in Repeater by hand instead, same precedent as Lab 70&#x27;s file:// scheme bypass. In Nullock: 1. nullock scope add http://localhost:5075/* 2. GET /fetch?url=http://127.0.0.1:5075/internal/admin-secret -- 400 &quot;blocked host&quot;: the literal-string blocklist does work for the literal spelling. 3. Send /fetch to Repeater and change url to http://2130706433:5075/internal/admin-secret (127.0.0.1 written as one decimal integer). &quot;2130706433&quot; is not in BLOCKED_HOSTS, so the check passes -- and the fetch itself resolves that same integer straight to 127.0.0.1, returning the internal secret with a 200. 4. Octal (http://0177.0.0.1:5075/...), hex (http://0x7f000001:5075/...), and short-form (http://127.1:5075/...) all work the same way -- try any of them. 5. Confirm success: GET /flag?url=&lt;same encoded-host URL&gt; -- same fetch function /fetch uses, solved only once the marker actually came back through a NON-literal encoding of the blocked address (the literal 127.0.0.1 form is accepted by /fetch&#x27;s normal flow but does not solve /flag, since it never bypassed anything). Fix: canonicalize the host BEFORE comparing it -- resolve/parse it to its actual numeric address (e.g. `ipaddress.ip_address(socket.gethostbyname(host))`) and compare THAT against the blocked address set, instead of comparing whatever string spelling happened to arrive in the URL.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/75-ssrf-ip-encoding-bypass/app.py
+# then open http://localhost:5075/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5075/*</code><code class="inline">http://127.0.0.1:5075/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>/fetch DOES block the literal http://127.0.0.1:5075/... url -- confirm that 400 first, then look at exactly what string the blocklist is comparing.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The blocklist is an exact string match against &quot;127.0.0.1&quot; (and two others). Is there more than one way to WRITE that same IP address as text?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Try http://2130706433:5075/internal/admin-secret (127.0.0.1 as one decimal integer) -- your resolver still turns that into 127.0.0.1, but the string &quot;2130706433&quot; isn&#x27;t in the blocklist. Octal (0177.0.0.1), hex (0x7f000001), and short-form (127.1) all work too. GET /flag with any of them once the internal marker comes back.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5075/*</li><li>GET /fetch?url=http://127.0.0.1:5075/internal/admin-secret -- 400 &quot;blocked host&quot;: the literal-string blocklist does work for the literal spelling.</li><li>Send /fetch to Repeater and change url to http://2130706433:5075/internal/admin-secret (127.0.0.1 written as one decimal integer). &quot;2130706433&quot; is not in BLOCKED_HOSTS, so the check passes -- and the fetch itself resolves that same integer straight to</li><li>0.0.1, returning the internal secret with a 200.</li><li>Octal (http://0177.0.0.1:5075/...), hex (http://0x7f000001:5075/...), and short-form (http://127.1:5075/...) all work the same way -- try any of them.</li><li>Confirm success: GET /flag?url=&lt;same encoded-host URL&gt; -- same fetch function /fetch uses, solved only once the marker actually came back through a NON-literal encoding of the blocked address (the literal</li><li>0.0.1 form is accepted by /fetch&#x27;s normal flow but does not solve /flag, since it never bypassed anything).</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: canonicalize the host BEFORE comparing it -- resolve/parse it to its actual numeric address (e.g. `ipaddress.ip_address(socket.gethostbyname(host))`) and compare THAT against the blocked address set, instead of comparing whatever string spelling happened to arrive in the URL.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "75-ssrf-ip-encoding-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 75 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>
