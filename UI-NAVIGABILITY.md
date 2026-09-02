@@ -261,3 +261,31 @@ a dedicated "Web cache poisoning" panel below the uniform runner (URL/method fie
 anyCacheable and the per-header hit table (sentValue/where/reflected/cacheable/cacheConfirmed).
 True orphaned count corrected 3 -> 2 of 207 (1%), the remaining two
 (`/api/request/curl`, `/api/intruder/multi`) still intentional for the reasons above.
+
+A 2026-09-02 pass targeted spot-checked a `path.startsWith(...)` prefix branch that the doc's
+literal-grep methodology is known to under-count (dynamic-construction/prefix routes need
+tracing by hand, per the `jwt`/TEST_TYPES correction above): `/api/history/full/<id>`
+(control_server.cpp:4607) was genuinely unwired. Its own source comment says it exists for
+exactly the case DetailPane's row-selection flow did NOT actually handle: "reads the full
+HttpRequest + HttpResponse from the SQLite store, used when the user navigates to a row that
+has been evicted from the in-memory ProxyModel window." Tracing the existing eviction-safe
+path (`NL.requestRawById`/`responseRawById`, cited by item #268/#370's prior notes) showed it
+only covered the raw request/response *bytes* for an evicted id, via `buildHistoryRow()`'s own
+SQLite fallback -- the row *metadata* DetailPane gates on (`ui-v2/proxy.jsx`:
+`const selectedRow = rows.find(r => r.id === selectedRowId) || null`) had no such fallback, so
+a row selected before eviction (traffic keeps flowing after you open DetailPane, the bounded
+window drops the row out from under the still-open selection) silently collapsed to "select a
+row to inspect" even though it was still, from the user's perspective, selected. Closed:
+`real-data.js` gained a memoized `NL.historyFullById(rowId)` sync accessor (same
+sync-XHR-on-first-call pattern as `requestRawById`/`responseRawById`) that maps the endpoint's
+JSON onto the same row shape `NL.rows` entries carry (id/method/host/port/path/url/status/
+size/tls/elapsed) and pre-seeds the raw-body cache from the same response so the two existing
+accessors don't re-fetch; `proxy.jsx`'s `selectedRow` computation now falls back to it when
+`rows.find` misses. This is a targeted correction, not a fresh full re-census (a strict
+`path == "..."`/`path.startsWith(...)` grep now finds 214 literals, up from this file's last
+count of 207 -- the delta is unaudited and left for a future pass rather than claimed here).
+Like the `/api/chain/record` precedent above, `/api/history/full/<id>` was never among the
+"2 of 207" this file was already tracking -- it was simply missing from the census entirely
+(a prefix-routed endpoint the literal-grep methodology under-counts). True orphaned count
+within the previously-audited 207 holds at 2, both still intentional
+(`/api/request/curl`, `/api/intruder/multi`).

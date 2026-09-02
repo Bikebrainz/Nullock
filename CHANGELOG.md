@@ -222,6 +222,22 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Proxy tab's DetailPane silently lost a selected row once it aged out of
+  the in-memory history window.** `GET /api/history/full/<id>` has existed
+  since before this run to serve exactly this case (its own comment says
+  so) but had no UI caller: `selectedRow` was computed as `rows.find(r =>
+  r.id === selectedRowId) || null`, and `rows` is the bounded in-memory
+  ProxyModel window, not the full SQLite-backed history. Select a row, keep
+  DetailPane open while traffic keeps flowing, and the moment that row aged
+  out of the window the pane silently reverted to "select a row to
+  inspect" — even though `NL.requestRawById`/`responseRawById` already had
+  an eviction-safe cold-fetch path for the raw request/response *bytes*, it
+  never covered the row *metadata* DetailPane gates rendering on. Added
+  `NL.historyFullById(rowId)` (`ui-v2/real-data.js`), a memoized sync-XHR
+  accessor mirroring `requestRawById`/`responseRawById`'s own pattern, that
+  GETs `/api/history/full/<id>` and maps its JSON onto the same row shape
+  `NL.rows` entries carry; `ui-v2/proxy.jsx`'s `selectedRow` now falls back
+  to it when the row has fallen out of the live window.
 - **GraphQL depth-limit probe could never confirm a missing depth limit.** The
   active `graphql-depth-bypass` probe sent a 10-level query built from a
   fabricated field (`{a{a{…{__typename}}}}`), but GraphQL validates field

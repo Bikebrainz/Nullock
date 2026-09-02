@@ -3247,7 +3247,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
 
   // visibleHost feeds the table filter as hostFilter, but when sitemap selects a host we want exact match
   const tableHostFilter = selectedHost || hostFilter;
-  const selectedRow = rows.find(r => r.id === selectedRowId) || null;
+  // A Site Map leaf (or a #268 search-overlay hit) can point at a row id
+  // that has since fallen out of `rows`, the bounded in-memory window --
+  // fall back to the SQLite cold-storage fetch so DetailPane still opens
+  // instead of showing "select a row to inspect" for a row that plainly is
+  // selected, just not resident.
+  const selectedRow = rows.find(r => r.id === selectedRowId)
+    || (selectedRowId != null ? NL.historyFullById(selectedRowId) : null);
 
   // count hidden -- mirrors HistoryTable's own filter predicate so the
   // "shown / total" header stays in sync with what the table actually renders.

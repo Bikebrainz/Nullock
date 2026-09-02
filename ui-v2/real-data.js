@@ -12,7 +12,7 @@
 
 (function () {
   window.NL = window.NL || {};
-  NL._cache = NL._cache || { req: {}, resp: {} };
+  NL._cache = NL._cache || { req: {}, resp: {}, fullRow: {} };
 
   function syncFetch(url) {
     try {
@@ -113,6 +113,38 @@
     const t = syncFetch("/api/history/" + rowId + "/response") || "";
     NL._cache.resp[rowId] = t;
     return t;
+  };
+  // Row-metadata fallback for an id that has fallen out of NL.rows (the
+  // bounded in-memory window): /api/history/full/<id> reads the SQLite
+  // cold-storage index and returns the same fields NL.rows carries for a
+  // live row, so DetailPane can render an evicted row instead of showing
+  // "select a row to inspect" the moment a Site Map / search-overlay leaf
+  // outlives the window. Mirrors requestRawById/responseRawById's memoized
+  // sync-XHR-on-first-call pattern; also pre-seeds NL._cache.req/resp from
+  // the same response so those two calls don't re-fetch what this endpoint
+  // already returned. Returns null (not a cached call) so a genuinely
+  // missing row still falls through to the "select a row" placeholder.
+  NL.historyFullById = function (rowId) {
+    if (rowId == null) return null;
+    if (NL._cache.fullRow[rowId] !== undefined) return NL._cache.fullRow[rowId];
+    let row = null;
+    const text = syncFetch("/api/history/full/" + rowId);
+    if (text) {
+      try {
+        const d = JSON.parse(text);
+        if (d && d.id != null) {
+          row = {
+            id: d.id, method: d.method, host: d.host, port: d.port,
+            path: d.path, url: d.path, status: d.status, size: d.size,
+            tls: d.tls, elapsed: 0,
+          };
+          if (NL._cache.req[rowId] === undefined)  NL._cache.req[rowId]  = d.rawRequest  || "";
+          if (NL._cache.resp[rowId] === undefined) NL._cache.resp[rowId] = d.rawResponse || "";
+        }
+      } catch (e) { console.warn("NL historyFullById parse failed", e); }
+    }
+    NL._cache.fullRow[rowId] = row;
+    return row;
   };
   // POST helpers wired to the control server's action endpoints. Fire and
   // forget -- the snapshot poll picks up resulting state changes within
