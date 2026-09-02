@@ -86,6 +86,7 @@ labs/
   76-cors-null-origin-bypass/ # allow-list special-cases Origin: null, reachable via a sandboxed iframe (5076)
   77-llm-indirect-prompt-injection/ # ticket-summarize path never filters injections /chat now blocks (5077)
   78-ssrf-internal-docker-api/     # blocklist covers cloud metadata, forgets the loopback Docker API (5078)
+  79-jwt-jwk-header-injection/     # verifier trusts a public key embedded right in the token's own header (5079)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

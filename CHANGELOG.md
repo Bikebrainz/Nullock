@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 79: JWT `jwk` header injection (embedded public key, no fetch
+  needed).** A new teaching lab (`labs/79-jwt-jwk-header-injection/`)
+  covering the third member of the "verifier trusts a key the token names"
+  JWT family: Lab 68's `jku` and Lab 71's `x5u` both require the verifier
+  to FETCH a remote resource the token points at; RFC 7515's `jwk` header
+  parameter skips that round trip entirely by embedding the signing key
+  directly in the token's own header. This verifier builds a verification
+  key straight from an embedded `jwk` with no check that it was ever
+  issued or trusted by the server, so a forged token carrying an
+  attacker-generated RSA public key in its header verifies against its
+  own attacker-generated signature. Distinct from Lab 51 (RS256/HS256
+  algorithm confusion, same key) and Lab 53 (`kid` path traversal,
+  existing key, wrong file) as well: this one never touches the server's
+  keystore at all. Verified end-to-end: the legitimate user token gets
+  `403` on `/admin`, a garbage token gets `401`, and a token forged with a
+  freshly generated keypair whose public half is embedded as `jwk` gets
+  `200`/`welcome, admin` and flips `GET /flag` to `solved:true`.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a
+  curated `Hard` difficulty + 3 hints); README.md and docs/index.html's
+  78→79 lab-count strings updated alongside.
+
 - **Lab 78: SSRF blocklist covers cloud metadata, forgets the loopback
   Docker API.** A new teaching lab (`labs/78-ssrf-internal-docker-api/`)
   targeting a gap none of labs 05/40/64/65/70/72/74/75/76's SSRF variants

@@ -289,3 +289,21 @@ Like the `/api/chain/record` precedent above, `/api/history/full/<id>` was never
 (a prefix-routed endpoint the literal-grep methodology under-counts). True orphaned count
 within the previously-audited 207 holds at 2, both still intentional
 (`/api/request/curl`, `/api/intruder/multi`).
+
+A same-day follow-up closed that "unaudited delta" instead of leaving it for later: a fresh
+`path == "..."` / `path.startsWith("...")` extraction from `control_server.cpp` (excluding the
+top-level `path.startsWith("/api/")` dispatcher guard itself, which routes rather than names an
+endpoint) finds 210 exact-match routes + 3 prefix routes (`/api/history/`, `/api/history/full/`,
+`/api/baseline/`) = 213 distinct endpoints -- close enough to the "214" figure above to be the
+same census (minor recount drift, not a new endpoint). Every one of the 27 that a plain
+literal-string grep against `ui-v2/*.jsx` + `real-data.js` initially flagged as unmatched
+resolved on inspection: 25 are members of the `/<type>/test` family built by
+`NL.actions.runTest`'s dynamic `"/api/" + type + "/test"` construction (`real-data.js:450`) --
+the same false-positive shape the `jwt`/TEST_TYPES correction above already documented, and all
+25 are confirmed present in `TEST_TYPES` (`app.jsx:5925`) or, for `cache/poison`, in its own
+dedicated TESTS-tab panel. The other 2 are the already-tracked intentional orphans. All 3
+prefix routes were confirmed individually wired (`/api/history/<id>/{request,response}` +
+`/api/history/full/<id>` via the accessors in `real-data.js`; `/api/history/find` via the DB
+SEARCH overlay; `/api/baseline/{save,status,diff,clear}` via the ISSUES tab's Baseline bar).
+**Confirmed: true orphaned count holds at 2 of 213 (1%), both still intentional
+(`/api/request/curl`, `/api/intruder/multi`) -- no new gaps found, census fully reconciled.**

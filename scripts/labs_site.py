@@ -157,6 +157,7 @@ DIFFICULTY = {
     "76-cors-null-origin-bypass": "Medium",
     "77-llm-indirect-prompt-injection": "Medium",
     "78-ssrf-internal-docker-api": "Medium",
+    "79-jwt-jwk-header-injection": "Hard",
 }
 
 
@@ -556,6 +557,11 @@ HINTS = {
         "/fetch DOES block http://169.254.169.254/... -- confirm that 400 first, then think about what ELSE runs on this host besides a cloud-metadata service.",
         "The blocklist only names one address. This host also runs a real, common misconfiguration on loopback: an unauthenticated Docker Engine API, the default result of starting dockerd with no TLS on a non-default bind address.",
         "GET /fetch?url=http://127.0.0.1:2375/version -- 200, with the Docker Engine's own ApiVersion/Os/KernelVersion banner in the body. Nullock's own SSRF prober (`/api/ssrf/test`, param=url) confirms this one automatically too. GET /flag once that fetch has actually happened.",
+    ],
+    "79-jwt-jwk-header-injection": [
+        "GET /login -- an RS256 token whose header only carries a kid. Paste it into Inspector's JWT TOOLKIT: ANALYZE has nothing alarming to say. The real hole is in a header FIELD this token doesn't use yet -- what does the verifier do if you add one?",
+        "RFC 7515 lets a JWT header embed the signing key itself as a `jwk` field, so the verifier never has to look one up. Does this verifier check that an embedded jwk is one it actually trusts, or does it just build a key straight out of whatever the token hands it?",
+        "Generate your own RSA keypair, and forge a token signed with your PRIVATE key whose header embeds the matching PUBLIC key as jwk: {\"alg\":\"RS256\",\"kid\":\"evil\",\"jwk\":{\"kty\":\"RSA\",\"n\":...,\"e\":...}}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag.",
     ],
 }
 

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JWT `jwk` header injection (embedded public key, no fetch needed) — Nullock Labs</title>
+<meta name="description" content="verifier trusts a public key embedded right in the token&#x27;s own header">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">79</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5079</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">JWT `jwk` header injection (embedded public key, no fetch needed)</h1>
+  <p class="lead" style="margin-top:12px;">/login issues an RS256 JWT signed with this server&#x27;s real key. The verifier resolves the key to check a token against by looking first for a `jwk` header parameter (RFC 7515 4.1.3: the signing key itself, embedded directly in the token&#x27;s own unprotected header as a JSON Web Key) and only falls back to its own fixed keystore when `jwk` is absent. It never checks that an embedded `jwk` is one THIS SERVER issued or trusts -- so an attacker can mint a brand-new RSA keypair, embed the PUBLIC half directly in a forged token&#x27;s header, sign that token with the matching PRIVATE half, and the verifier happily validates the signature against the very key the attacker just handed it. No server-side trust store is ever consulted for the embedded case. This is the third member of the &quot;verifier trusts a key the token names&quot; JWT family here, and the one that needs no network step at all: Lab 68&#x27;s `jku` points the verifier at a URL it must FETCH a key set from (an SSRF- adjacent primitive -- the forgery only completes once that fetch succeeds against attacker infrastructure); Lab 71&#x27;s `x5u` is the same fetch-a- remote-resource shape one level removed, pointing at an X.509 cert instead of a raw JWK. `jwk` skips the round trip entirely -- RFC 7515 designed it so the key travels WITH the token, which is exactly why trusting it unconditionally is worse in one respect: there&#x27;s no attacker-controlled URL for a network-level control (an egress allow-list, DNS logging, an OAST callback) to ever observe. Nullock&#x27;s `/api/jwt/analyze` (jwt_tool.cpp) already flags `alg:none`, absent-alg, symmetric-vs-asymmetric algorithm confusion, and risky `kid` values (path traversal / injection metachars) -- but has no check for an embedded `jwk` header parameter at all, so this verifier&#x27;s specific hole surfaces only by reading the header of a real token and noticing the extra field. In Nullock: 1. nullock scope add http://localhost:5079/* 2. GET /login -- an RS256 token, header {&quot;alg&quot;:&quot;RS256&quot;,&quot;kid&quot;:&quot;prod-2026&quot;} (no jwk). GET /admin with it: 403 (role is &quot;user&quot;). Paste it into Inspector&#x27;s JWT TOOLKIT -- ANALYZE lists the asymmetric-algorithm info finding but nothing else stands out; the real hole is what the verifier does when a header field ANALYZE never sees added. 3. Generate your own RSA keypair locally (openssl, or `cryptography` in a REPL -- the walkthrough&#x27;s forge.py does this for you). 4. Forge a token with your PRIVATE key, and embed its PUBLIC half directly in the header as `jwk`: header {&quot;alg&quot;:&quot;RS256&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;jwk&quot;:{&quot;kty&quot;:&quot;RSA&quot;,&quot;n&quot;:&quot;&lt;b64url modulus&gt;&quot;,&quot;e&quot;:&quot;&lt;b64url exponent&gt;&quot;}}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}. 5. Send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin in Repeater. The verifier sees the `jwk` field, builds a public key straight from it -- no lookup, no trust-store check, no comparison against the real `kid:&quot;prod-2026&quot;` key at all -- and verifies your own signature against your own embedded key. Of course it checks out. 200, welcome admin. 6. Confirm success: GET /flag with the same forged token. Fix: never build a verification key from a `jwk` (or `jwks`) header parameter the token itself supplies. Resolve signing keys ONLY from a fixed, pre-configured server-side keystore looked up by `kid`; treat any inbound `jwk`/`jku`/`x5u` header field as attacker input to be ignored, not a hint about where to find the key. (Needs `pyjwt`, `cryptography` -- the labs&#x27; non-Flask deps.)</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/79-jwt-jwk-header-injection/app.py
+# then open http://localhost:5079/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5079/*</code><code class="inline">http://127.0.0.1:5079/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET /login -- an RS256 token whose header only carries a kid. Paste it into Inspector&#x27;s JWT TOOLKIT: ANALYZE has nothing alarming to say. The real hole is in a header FIELD this token doesn&#x27;t use yet -- what does the verifier do if you add one?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>RFC 7515 lets a JWT header embed the signing key itself as a `jwk` field, so the verifier never has to look one up. Does this verifier check that an embedded jwk is one it actually trusts, or does it just build a key straight out of whatever the token hands it?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>Generate your own RSA keypair, and forge a token signed with your PRIVATE key whose header embeds the matching PUBLIC key as jwk: {&quot;alg&quot;:&quot;RS256&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;jwk&quot;:{&quot;kty&quot;:&quot;RSA&quot;,&quot;n&quot;:...,&quot;e&quot;:...}}, payload {&quot;role&quot;:&quot;admin&quot;}. Send it as Bearer to /admin, then GET /flag.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5079/*</li><li>GET /login -- an RS256 token, header {&quot;alg&quot;:&quot;RS256&quot;,&quot;kid&quot;:&quot;prod-2026&quot;} (no jwk). GET /admin with it: 403 (role is &quot;user&quot;). Paste it into Inspector&#x27;s JWT TOOLKIT -- ANALYZE lists the asymmetric-algorithm info finding but nothing else stands out; the real hole is what the verifier does when a header field ANALYZE never sees added.</li><li>Generate your own RSA keypair locally (openssl, or `cryptography` in a REPL -- the walkthrough&#x27;s forge.py does this for you).</li><li>Forge a token with your PRIVATE key, and embed its PUBLIC half directly in the header as `jwk`: header {&quot;alg&quot;:&quot;RS256&quot;,&quot;kid&quot;:&quot;evil&quot;,&quot;jwk&quot;:{&quot;kty&quot;:&quot;RSA&quot;,&quot;n&quot;:&quot;&lt;b64url modulus&gt;&quot;,&quot;e&quot;:&quot;&lt;b64url exponent&gt;&quot;}}, payload {&quot;role&quot;:&quot;admin&quot;,&quot;sub&quot;:&quot;mallory&quot;,&quot;exp&quot;:&lt;future&gt;}.</li><li>Send it as `Authorization: Bearer &lt;forged&gt;` to GET /admin in Repeater. The verifier sees the `jwk` field, builds a public key straight from it -- no lookup, no trust-store check, no comparison against the real `kid:&quot;prod-2026&quot;` key at all -- and verifies your own signature against your own embedded key. Of course it checks out. 200, welcome admin.</li><li>Confirm success: GET /flag with the same forged token.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never build a verification key from a `jwk` (or `jwks`) header parameter the token itself supplies. Resolve signing keys ONLY from a fixed, pre-configured server-side keystore looked up by `kid`; treat any inbound `jwk`/`jku`/`x5u` header field as attacker input to be ignored, not a hint about where to find the key.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "79-jwt-jwk-header-injection";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 79 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>
