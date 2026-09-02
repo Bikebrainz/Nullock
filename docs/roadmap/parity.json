@@ -4247,7 +4247,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-09-02",
-        "commit": "PENDING",
+        "commit": "e4243e7",
         "note": "Follow-up: closed the metadata half of the eviction gap left over from the 2026-08-13 DB Search wave -- DetailPane's own selectedRow lookup (distinct from the DB Search overlay's self-contained flow) had no cold-storage fallback, so a row selected before eviction would silently drop out of view. Wired the previously-orphaned GET /api/history/full/<id> via a new NL.historyFullById() accessor. Verified: bundled-babel transform of ui-v2/proxy.jsx succeeds; Node functional test of the row-shape mapping (path->url mirroring, null-on-missing/error) and the rows.find-then-fallback selection logic (present row never triggers fallback, evicted id does, null selection short-circuits); backend read directly from source (control_server.cpp:4607-4639) to confirm the endpoint's field set and SQLite cold-storage fallback match what the frontend now consumes. No C++ build available in this cloud session -- backend code itself was not touched, only its consumption."
       }
     },
