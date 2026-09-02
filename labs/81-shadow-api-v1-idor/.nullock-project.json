@@ -1,0 +1,6 @@
+{
+  "name": "Lab 81 -- Shadow API: forgotten v1 endpoint never got the ownership check v2 added.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5081/*", "http://127.0.0.1:5081/*"],
+  "outOfScope": []
+}

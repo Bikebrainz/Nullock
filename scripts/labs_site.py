@@ -159,6 +159,7 @@ DIFFICULTY = {
     "78-ssrf-internal-docker-api": "Medium",
     "79-jwt-jwk-header-injection": "Hard",
     "80-graphql-bola-invoice": "Medium",
+    "81-shadow-api-v1-idor": "Medium",
 }
 
 
@@ -568,6 +569,11 @@ HINTS = {
         "Log in as alice and bob (two sid cookies). Confirm the REST endpoint /api/invoice/<id> is actually solid first: alice fetching her own id is fine, alice fetching bob's is a clean 403.",
         "The same invoice data is also reachable through /graphql. A resolver written after the REST handler doesn't always re-implement every check the original one has -- does invoice(id:...) verify the id belongs to whoever is logged in, or just that SOMEONE is?",
         "As alice: POST /graphql {\"query\": \"{ invoice(id: 2) { id amount owner } }\"} -- 200 with bob's amount and owner, the exact object REST just refused. GET /flag with alice's cookie once that response has come back.",
+    ],
+    "81-shadow-api-v1-idor": [
+        "GET /api/v2/users/2 as alice -- a clean 403. The current API surface looks correctly guarded. But `/openapi.json` only documents ONE version -- is v2 really the only route still mounted?",
+        "The app used to serve this same data from a `v1` path before v2's ownership check was added. Nothing says v1 was ever unmounted -- try requesting the same object by its OLD path instead, with no auth at all.",
+        "GET /api/v1/users/2 -- 200, full record (apiKey included), no Cookie header sent. Nullock's `/api/idor/test` against that same URL confirms the id space is walkable unauthenticated. GET /flag once you've pulled a record you don't own through v1.",
     ],
 }
 

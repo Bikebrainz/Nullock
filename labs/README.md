@@ -88,6 +88,7 @@ labs/
   78-ssrf-internal-docker-api/     # blocklist covers cloud metadata, forgets the loopback Docker API (5078)
   79-jwt-jwk-header-injection/     # verifier trusts a public key embedded right in the token's own header (5079)
   80-graphql-bola-invoice/         # REST endpoint checks ownership, its GraphQL resolver twin doesn't    (5080)
+  81-shadow-api-v1-idor/           # forgotten v1 endpoint never got v2's ownership check                 (5081)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadow API: a forgotten v1 endpoint never got v2&#x27;s ownership check — Nullock Labs</title>
+<meta name="description" content="forgotten v1 endpoint never got v2&#x27;s ownership check">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">81</span>
+    <span class="labs-cat mono">Access control</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5081</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Shadow API: a forgotten v1 endpoint never got v2&#x27;s ownership check</h1>
+  <p class="lead" style="margin-top:12px;">The app shipped `/api/v1/users/&lt;id&gt;` a while back, no auth on it at all -- an internal-only endpoint that leaked out. When account data started carrying an `apiKey` field, someone wrote `/api/v2/users/&lt;id&gt;` properly: session-authenticated, and the session&#x27;s own user id has to match the id being requested. v1 was supposed to be retired the same day. It wasn&#x27;t -- the route is still mounted, still reachable, and still returns the full record (apiKey included) for ANY id, logged in or not. Nobody scanning the current API surface even knows to look for it: it&#x27;s not linked from the app, not in the OpenAPI doc `/openapi.json` serves, and the only trace is the version number itself. This is OWASP API9:2023 (Improper Inventory Management) wearing an IDOR costume: the vulnerable object-access bug was already fixed once, in the endpoint everyone reviews. It survives in a second, unlisted endpoint serving the identical data model. A REST audit that only walks the documented v2 surface -- or an IDOR probe that only ever got pointed at `/api/v2/users/&lt;id&gt;` -- reports clean and is wrong. Nullock&#x27;s content-discovery engine (DISCOVER tab / `/api/discover`) is built to catch exactly this: seed it with the known `/api/v2/users/1` path and a wordlist that includes short segments like `v1`, `v2`, `v3`, and it will find the sibling `/api/v1/users/1` that no page links to. Once found, `/api/idor/test` (or the uniform TESTS tab&#x27;s `idor` type) against `/api/v1/users/&lt;id&gt;` confirms the same numeric-id-walk that v2 correctly blocks succeeds unauthenticated on v1. In Nullock: 1. nullock scope add http://localhost:5081/* 2. GET /login?user=alice -- sets a `sid` cookie (alice is user id 1). 3. As alice: GET /api/v2/users/2 -- 403 (bob&#x27;s record, correctly refused; v2&#x27;s ownership check works). 4. Run content discovery against /api/v2/users/1 with a wordlist containing `v1` (or just try it by hand): GET /api/v1/users/2 -- no Cookie header needed at all -- 200, with bob&#x27;s full record including `apiKey`. The endpoint v2 was written to replace is still live and was never brought up to the same standard. 5. Confirm success: GET /flag once you&#x27;ve pulled a v1 record for a user id you don&#x27;t own. Fix: retire v1 for real (405/410 the route, or better, remove it from the router entirely) the same day v2 ships, and audit an API&#x27;s full version history, not just the currently-documented surface, before calling authorization &quot;fixed&quot;.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/81-shadow-api-v1-idor/app.py
+# then open http://localhost:5081/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5081/*</code><code class="inline">http://127.0.0.1:5081/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET /api/v2/users/2 as alice -- a clean 403. The current API surface looks correctly guarded. But `/openapi.json` only documents ONE version -- is v2 really the only route still mounted?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The app used to serve this same data from a `v1` path before v2&#x27;s ownership check was added. Nothing says v1 was ever unmounted -- try requesting the same object by its OLD path instead, with no auth at all.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>GET /api/v1/users/2 -- 200, full record (apiKey included), no Cookie header sent. Nullock&#x27;s `/api/idor/test` against that same URL confirms the id space is walkable unauthenticated. GET /flag once you&#x27;ve pulled a record you don&#x27;t own through v1.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5081/*</li><li>GET /login?user=alice -- sets a `sid` cookie (alice is user id 1).</li><li>As alice: GET /api/v2/users/2 -- 403 (bob&#x27;s record, correctly refused; v2&#x27;s ownership check works).</li><li>Run content discovery against /api/v2/users/1 with a wordlist containing `v1` (or just try it by hand): GET /api/v1/users/2 -- no Cookie header needed at all -- 200, with bob&#x27;s full record including `apiKey`. The endpoint v2 was written to replace is still live and was never brought up to the same standard.</li><li>Confirm success: GET /flag once you&#x27;ve pulled a v1 record for a user id you don&#x27;t own.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: retire v1 for real (405/410 the route, or better, remove it from the router entirely) the same day v2 ships, and audit an API&#x27;s full version history, not just the currently-documented surface, before calling authorization &quot;fixed&quot;.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "81-shadow-api-v1-idor";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 81 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

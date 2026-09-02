@@ -11,6 +11,28 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 81: Shadow API (a forgotten v1 endpoint never got v2's ownership
+  check).** A new teaching lab (`labs/81-shadow-api-v1-idor/`) covering
+  OWASP API9:2023 (Improper Inventory Management) wearing an IDOR costume:
+  `/api/v2/users/<id>` is written correctly (session-authenticated, own-id
+  only, `403` on anyone else's), but the `/api/v1/users/<id>` route it
+  replaced was never retired -- it is still mounted, unauthenticated, and
+  serves the identical record (including an `apiKey` field) for any id.
+  `/openapi.json` documents only v2, so the vulnerable route has no trace
+  in the app's own inventory. Distinct from Lab 80's BOLA (two API
+  surfaces reviewed at different times, one never rechecked) in that the
+  gap here is a whole forgotten *version* of the same endpoint rather than
+  a sibling resolver -- pairs with Nullock's content-discovery engine
+  (`/api/discover`, whose default wordlist already carries `v1`/`v2`) to
+  locate the shadow route and `/api/idor/test` to confirm its id space is
+  walkable unauthenticated. Verified end-to-end over HTTP: alice's session
+  gets `200`/her own record and `403` on bob's via v2, then an
+  unauthenticated request pulls bob's full record (apiKey included)
+  straight off v1, flipping `GET /flag` to `solved:true`.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`,
+  a curated `Medium` difficulty + 3 hints); README.md and
+  docs/index.html's 80→81 lab-count strings updated alongside.
+
 - **Lab 80: GraphQL broken object-level authorization (REST guarded, the
   resolver twin isn't).** A new teaching lab
   (`labs/80-graphql-bola-invoice/`) covering a BOLA shape none of the
