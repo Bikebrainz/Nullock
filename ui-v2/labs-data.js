@@ -1874,6 +1874,29 @@
       "Confirm success: GET /flag?hash=<the exact passwordHash value>."
     ],
     "fix": "Fix: never serialize an ORM row / internal record straight into an HTTP response -- define an explicit public view (an allow-list of fields) per endpoint, and keep secrets (hashes, MFA seeds, internal flags) out of any response a client-facing endpoint can return, full stop."
+  },
+  {
+    "slug": "83-bfla-delete-user",
+    "num": "83",
+    "title": "Broken function level authorization: the destructive admin action never got the same role check its sibling admin views did",
+    "vuln": "destructive admin action skips the role check its sibling views have",
+    "port": "5083",
+    "category": "Access control",
+    "difficulty": "Medium",
+    "desc": "This app has three admin-only functions. Two of them are gated correctly: GET /admin/users and GET /admin/stats both require a logged-in session AND is_admin=True, returning 403 to anyone else. The third, POST /admin/delete-user, is the one that actually does something dangerous -- and its handler only checks that a session exists, not what role it belongs to. Any logged-in user, admin or not, can delete any other account. This is OWASP API5:2023 (Broken Function Level Authorization): distinct from Lab 12 (no auth check at all -- even an anonymous request gets in) in that this app's authorization is real and mostly correct. A scanner or reviewer that only ever tests the well-known admin views (the two that behave exactly as expected) would sign off on this app's access control entirely, having never touched the one action a regular, properly-authenticated user can still reach. Also distinct from Lab 80's BOLA and Lab 81's shadow-API IDOR (which OBJECT a request can reach) -- here every function is object-agnostic (id is just which account to delete), the gap is purely which FUNCTION a given ROLE may call.",
+    "hints": [
+      "Log in as a plain, non-admin user, then try both admin views first -- GET /admin/users and GET /admin/stats. Both should 403 you. That's this app's authorization working correctly, not the bug.",
+      "There's a third admin route that actually does something destructive rather than just displaying data. Does it check the same thing the two views you just got blocked by check?",
+      "POST /admin/delete-user?id=<n> with your non-admin session's cookie -- it succeeds where the views didn't. GET /flag once a delete has gone through behind a session that was never an admin session."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5083/*",
+      "POST /login {\"user\":\"alice\",\"password\":\"x\"} -- alice is a regular, non-admin account. Keep the session cookie.",
+      "GET /admin/users with alice's cookie -- 403. GET /admin/stats -- 403 too. Both admin views are gated correctly; this is not Lab 12.",
+      "POST /admin/delete-user?id=2 with the SAME alice cookie -- 200 {\"deleted\": \"bob\"}. The one admin action that forgot the check every other admin route has.",
+      "Confirm success: GET /flag -- flips true only once a delete has gone through behind an authenticated session that was never an admin session."
+    ],
+    "fix": "Fix: authorization must be checked per FUNCTION, not just per session -- put every admin route (views AND actions) behind the same require_admin() decorator, and add a test that walks the route table asserting each /admin/* handler actually calls it, so a new action can't be added without one."
   }
 ];
   window.NULLOCK_LABS_XP = {

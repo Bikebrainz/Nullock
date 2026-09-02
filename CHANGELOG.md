@@ -11,6 +11,29 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 83: Broken function level authorization (the destructive admin
+  action never got the same role check its sibling admin views did).** A
+  new teaching lab (`labs/83-bfla-delete-user/`) covering OWASP API5:2023
+  (Broken Function Level Authorization): `GET /admin/users` and `GET
+  /admin/stats` both correctly require an authenticated session AND
+  `is_admin=True`, returning `403` to anyone else -- but `POST
+  /admin/delete-user`, the one action that actually mutates state, only
+  checks that a session exists, not what role it holds. Any logged-in
+  user, admin or not, can delete any other account. Distinct from Lab 12
+  (no auth check at all, even anonymous requests get in -- this app's
+  authorization is real and mostly correct) and from Lab 80's BOLA / Lab
+  81's shadow-API IDOR (which OBJECT a request can reach -- here every
+  function is object-agnostic, the gap is purely which FUNCTION a given
+  ROLE may call). Verified end-to-end over HTTP: a non-admin session gets
+  `403` from both admin views, `200 {"deleted": ...}` from the delete
+  action, and `GET /flag` only flips to `solved:true` once a delete has
+  gone through behind a session that was never an admin session (a
+  legitimate admin-performed delete does not trip it). `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium`
+  difficulty + 3 hints, and a `bfla` keyword added to the site generator's
+  "Access control" category rule); README.md and docs/index.html's 82→83
+  lab-count strings updated alongside.
+
 - **Lab 82: Excessive data exposure (the profile API returns the whole DB
   row, the page renders two fields of it).** A new teaching lab
   (`labs/82-excessive-data-exposure/`) covering OWASP API3:2023 (Broken

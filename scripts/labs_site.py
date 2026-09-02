@@ -50,7 +50,7 @@ CATEGORY_RULES = [
                    "prototype-pollution", "param-pollution", "ldap-injection",
                    "xpath-injection", "ognl", "prompt-injection")),
     ("Access control", ("idor", "broken-access", "mass-assignment",
-                        "verb-tamper", "2fa", "dangerous-http-methods")),
+                        "verb-tamper", "2fa", "dangerous-http-methods", "bfla")),
     ("Authentication", ("jwt", "oauth", "session-fixation", "user-enumeration",
                         "weak-reset", "reset-token", "predictable-session",
                         "credentials-in-url", "rate-limit")),
@@ -161,6 +161,7 @@ DIFFICULTY = {
     "80-graphql-bola-invoice": "Medium",
     "81-shadow-api-v1-idor": "Medium",
     "82-excessive-data-exposure": "Medium",
+    "83-bfla-delete-user": "Medium",
 }
 
 
@@ -580,6 +581,11 @@ HINTS = {
         "Open /profile/admin in a browser -- a username and a bio, nothing else. That's the rendered page. Now look at the actual network request the page makes, not the HTML it produces from it.",
         "The page fetches /api/profile/admin and only reads two fields off the response for the title. Request that same URL directly and read the FULL response body -- does it stop at username/bio?",
         "GET /api/profile/admin returns passwordHash, mfaSecret, isAdmin, and lastLoginIp too -- fields the page never asked for. GET /flag?hash=<the exact passwordHash value from that response>.",
+    ],
+    "83-bfla-delete-user": [
+        "Log in as a plain, non-admin user, then try both admin views first -- GET /admin/users and GET /admin/stats. Both should 403 you. That's this app's authorization working correctly, not the bug.",
+        "There's a third admin route that actually does something destructive rather than just displaying data. Does it check the same thing the two views you just got blocked by check?",
+        "POST /admin/delete-user?id=<n> with your non-admin session's cookie -- it succeeds where the views didn't. GET /flag once a delete has gone through behind a session that was never an admin session.",
     ],
 }
 

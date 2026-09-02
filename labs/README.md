@@ -90,6 +90,7 @@ labs/
   80-graphql-bola-invoice/         # REST endpoint checks ownership, its GraphQL resolver twin doesn't    (5080)
   81-shadow-api-v1-idor/           # forgotten v1 endpoint never got v2's ownership check                 (5081)
   82-excessive-data-exposure/      # profile API returns the whole DB row, page renders 2 fields of it    (5082)
+  83-bfla-delete-user/             # destructive admin action skips the role check its sibling views have (5083)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
