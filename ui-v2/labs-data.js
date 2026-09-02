@@ -1851,6 +1851,29 @@
       "Confirm success: GET /flag once you've pulled a v1 record for a user id you don't own."
     ],
     "fix": "Fix: retire v1 for real (405/410 the route, or better, remove it from the router entirely) the same day v2 ships, and audit an API's full version history, not just the currently-documented surface, before calling authorization \"fixed\"."
+  },
+  {
+    "slug": "82-excessive-data-exposure",
+    "num": "82",
+    "title": "Excessive data exposure: the profile API returns the whole DB row, the page only ever renders two fields of it",
+    "vuln": "profile API returns the whole DB row, page renders 2 fields of it",
+    "port": "5082",
+    "category": "Info disclosure",
+    "difficulty": "Medium",
+    "desc": "/profile/<username> looks completely clean in a browser: a username and a one-line bio, nothing else. That page is rendered from a single fetch to /api/profile/<username>, and the *handler* behind that endpoint was never given its own response shape -- it just serializes the full in-memory user record and lets the frontend pick out whichever fields it feels like using. Convenient for whoever wrote the frontend, and invisible to anyone who only ever looks at the rendered page. Anyone who reads the raw HTTP response instead of the rendered HTML sees passwordHash, mfaSecret, isAdmin, and lastLoginIp sitting right there in the JSON, for every profile the endpoint will answer for -- public pages included, no login required. This is OWASP API3:2023 (Broken Object Property Level Authorization -- Excessive Data Exposure): distinct from an access-control bug like IDOR (Lab 04) or BOLA (Lab 80), where the question is WHICH objects you can reach. Here access to the object is fine and intended -- profiles are meant to be public -- the bug is that the response carries far more PROPERTIES of that object than the product ever meant to expose, because serialization was never scoped down to a public view. A tool that only ever renders pages like a browser does never notices; one that shows you the raw wire response does. In Nullock: 1. nullock scope add http://localhost:5082/* 2. Open http://localhost:5082/profile/admin in a browser -- a username and a bio, nothing else visible on the page. 3. In Nullock's Proxy history, find the page's own GET /api/profile/admin call and open it in the Inspector / DetailPane -- the raw response body is not what the page showed you. 4. Read the passwordHash field straight off that JSON. 5. Confirm success: GET /flag?hash=<the exact passwordHash value>. Fix: never serialize an ORM row / internal record straight into an HTTP response -- define an explicit public view (an allow-list of fields) per endpoint, and keep secrets (hashes, MFA seeds, internal flags) out of any response a client-facing endpoint can return, full stop.",
+    "hints": [
+      "Open /profile/admin in a browser -- a username and a bio, nothing else. That's the rendered page. Now look at the actual network request the page makes, not the HTML it produces from it.",
+      "The page fetches /api/profile/admin and only reads two fields off the response for the title. Request that same URL directly and read the FULL response body -- does it stop at username/bio?",
+      "GET /api/profile/admin returns passwordHash, mfaSecret, isAdmin, and lastLoginIp too -- fields the page never asked for. GET /flag?hash=<the exact passwordHash value from that response>."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5082/*",
+      "Open http://localhost:5082/profile/admin in a browser -- a username and a bio, nothing else visible on the page.",
+      "In Nullock's Proxy history, find the page's own GET /api/profile/admin call and open it in the Inspector / DetailPane -- the raw response body is not what the page showed you.",
+      "Read the passwordHash field straight off that JSON.",
+      "Confirm success: GET /flag?hash=<the exact passwordHash value>."
+    ],
+    "fix": "Fix: never serialize an ORM row / internal record straight into an HTTP response -- define an explicit public view (an allow-list of fields) per endpoint, and keep secrets (hashes, MFA seeds, internal flags) out of any response a client-facing endpoint can return, full stop."
   }
 ];
   window.NULLOCK_LABS_XP = {

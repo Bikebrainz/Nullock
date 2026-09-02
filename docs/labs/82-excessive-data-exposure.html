@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excessive data exposure: the profile API returns the whole DB row, the page only ever renders two fields of it — Nullock Labs</title>
+<meta name="description" content="profile API returns the whole DB row, page renders 2 fields of it">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">82</span>
+    <span class="labs-cat mono">Info disclosure</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5082</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Excessive data exposure: the profile API returns the whole DB row, the page only ever renders two fields of it</h1>
+  <p class="lead" style="margin-top:12px;">/profile/&lt;username&gt; looks completely clean in a browser: a username and a one-line bio, nothing else. That page is rendered from a single fetch to /api/profile/&lt;username&gt;, and the *handler* behind that endpoint was never given its own response shape -- it just serializes the full in-memory user record and lets the frontend pick out whichever fields it feels like using. Convenient for whoever wrote the frontend, and invisible to anyone who only ever looks at the rendered page. Anyone who reads the raw HTTP response instead of the rendered HTML sees passwordHash, mfaSecret, isAdmin, and lastLoginIp sitting right there in the JSON, for every profile the endpoint will answer for -- public pages included, no login required. This is OWASP API3:2023 (Broken Object Property Level Authorization -- Excessive Data Exposure): distinct from an access-control bug like IDOR (Lab 04) or BOLA (Lab 80), where the question is WHICH objects you can reach. Here access to the object is fine and intended -- profiles are meant to be public -- the bug is that the response carries far more PROPERTIES of that object than the product ever meant to expose, because serialization was never scoped down to a public view. A tool that only ever renders pages like a browser does never notices; one that shows you the raw wire response does. In Nullock: 1. nullock scope add http://localhost:5082/* 2. Open http://localhost:5082/profile/admin in a browser -- a username and a bio, nothing else visible on the page. 3. In Nullock&#x27;s Proxy history, find the page&#x27;s own GET /api/profile/admin call and open it in the Inspector / DetailPane -- the raw response body is not what the page showed you. 4. Read the passwordHash field straight off that JSON. 5. Confirm success: GET /flag?hash=&lt;the exact passwordHash value&gt;. Fix: never serialize an ORM row / internal record straight into an HTTP response -- define an explicit public view (an allow-list of fields) per endpoint, and keep secrets (hashes, MFA seeds, internal flags) out of any response a client-facing endpoint can return, full stop.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/82-excessive-data-exposure/app.py
+# then open http://localhost:5082/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5082/*</code><code class="inline">http://127.0.0.1:5082/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Open /profile/admin in a browser -- a username and a bio, nothing else. That&#x27;s the rendered page. Now look at the actual network request the page makes, not the HTML it produces from it.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The page fetches /api/profile/admin and only reads two fields off the response for the title. Request that same URL directly and read the FULL response body -- does it stop at username/bio?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>GET /api/profile/admin returns passwordHash, mfaSecret, isAdmin, and lastLoginIp too -- fields the page never asked for. GET /flag?hash=&lt;the exact passwordHash value from that response&gt;.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5082/*</li><li>Open http://localhost:5082/profile/admin in a browser -- a username and a bio, nothing else visible on the page.</li><li>In Nullock&#x27;s Proxy history, find the page&#x27;s own GET /api/profile/admin call and open it in the Inspector / DetailPane -- the raw response body is not what the page showed you.</li><li>Read the passwordHash field straight off that JSON.</li><li>Confirm success: GET /flag?hash=&lt;the exact passwordHash value&gt;.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: never serialize an ORM row / internal record straight into an HTTP response -- define an explicit public view (an allow-list of fields) per endpoint, and keep secrets (hashes, MFA seeds, internal flags) out of any response a client-facing endpoint can return, full stop.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "82-excessive-data-exposure";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 82 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

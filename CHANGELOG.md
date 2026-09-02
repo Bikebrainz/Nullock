@@ -11,6 +11,28 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 82: Excessive data exposure (the profile API returns the whole DB
+  row, the page renders two fields of it).** A new teaching lab
+  (`labs/82-excessive-data-exposure/`) covering OWASP API3:2023 (Broken
+  Object Property Level Authorization): `/profile/<username>` renders
+  cleanly (username + bio only), but the `/api/profile/<username>` call
+  behind it serializes the whole in-memory user record with no public
+  view / field allow-list, so the raw JSON also carries `passwordHash`,
+  `mfaSecret`, `isAdmin`, and `lastLoginIp` -- for every profile the
+  endpoint answers, no login required. Distinct from an access-control bug
+  like Lab 04's IDOR or Lab 80's BOLA (which object you can reach); here
+  reaching the object is fine and intended, the bug is which *properties*
+  of it the response carries. Verified end-to-end over HTTP: the rendered
+  page shows only username/bio, the raw `/api/profile/admin` response
+  leaks `passwordHash` alongside the other unintended fields, and `GET
+  /flag` only flips to `solved:true` when the exact leaked hash value is
+  submitted back, proving the response was read off the wire rather than
+  guessed. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, a curated `Medium` difficulty + 3 hints, plus a
+  `data-exposure` keyword added to the site generator's "Info disclosure"
+  category rule); README.md and docs/index.html's 81→82 lab-count strings
+  updated alongside.
+
 - **Lab 81: Shadow API (a forgotten v1 endpoint never got v2's ownership
   check).** A new teaching lab (`labs/81-shadow-api-v1-idor/`) covering
   OWASP API9:2023 (Improper Inventory Management) wearing an IDOR costume:

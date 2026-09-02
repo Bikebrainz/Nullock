@@ -60,7 +60,7 @@ CATEGORY_RULES = [
                      "insecure-cookie", "missing-security-headers", "cswsh",
                      "smuggl")),
     ("Info disclosure", ("secret-exposure", "verbose-errors", "directory-listing",
-                         "sensitive-file", "robots", "file-upload")),
+                         "sensitive-file", "robots", "file-upload", "data-exposure")),
     ("Business logic", ("race-condition", "business-logic")),
 ]
 
@@ -160,6 +160,7 @@ DIFFICULTY = {
     "79-jwt-jwk-header-injection": "Hard",
     "80-graphql-bola-invoice": "Medium",
     "81-shadow-api-v1-idor": "Medium",
+    "82-excessive-data-exposure": "Medium",
 }
 
 
@@ -574,6 +575,11 @@ HINTS = {
         "GET /api/v2/users/2 as alice -- a clean 403. The current API surface looks correctly guarded. But `/openapi.json` only documents ONE version -- is v2 really the only route still mounted?",
         "The app used to serve this same data from a `v1` path before v2's ownership check was added. Nothing says v1 was ever unmounted -- try requesting the same object by its OLD path instead, with no auth at all.",
         "GET /api/v1/users/2 -- 200, full record (apiKey included), no Cookie header sent. Nullock's `/api/idor/test` against that same URL confirms the id space is walkable unauthenticated. GET /flag once you've pulled a record you don't own through v1.",
+    ],
+    "82-excessive-data-exposure": [
+        "Open /profile/admin in a browser -- a username and a bio, nothing else. That's the rendered page. Now look at the actual network request the page makes, not the HTML it produces from it.",
+        "The page fetches /api/profile/admin and only reads two fields off the response for the title. Request that same URL directly and read the FULL response body -- does it stop at username/bio?",
+        "GET /api/profile/admin returns passwordHash, mfaSecret, isAdmin, and lastLoginIp too -- fields the page never asked for. GET /flag?hash=<the exact passwordHash value from that response>.",
     ],
 }
 
