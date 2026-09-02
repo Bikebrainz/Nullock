@@ -11,6 +11,24 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 78: SSRF blocklist covers cloud metadata, forgets the loopback
+  Docker API.** A new teaching lab (`labs/78-ssrf-internal-docker-api/`)
+  targeting a gap none of labs 05/40/64/65/70/72/74/75/76's SSRF variants
+  cover: `/fetch?url=...`'s blocklist defends the one address every SSRF
+  checklist names (`169.254.169.254`) and says nothing about loopback,
+  where an unauthenticated Docker Engine API sits on `127.0.0.1:2375` (the
+  default `dockerd -H tcp://0.0.0.0:2375` misconfiguration). It's also the
+  first SSRF lab whose internal service reproduces a fixed banner Nullock's
+  own `ssrf_scan.cpp` `kProbes` table already fingerprints by name
+  (`internal-docker`, `127.0.0.1:2375/version` → `"ApiVersion"`) — the
+  automated `/api/ssrf/test` confirms it outright, no manual bypass needed.
+  Verified end-to-end: the metadata fetch gets `400`, the Docker `/version`
+  pivot returns the real banner and flips `/flag` to `solved:true`, and
+  `/containers/json` demonstrates the further control-plane pivot.
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a
+  curated `Medium` difficulty + 3 hints); README.md and docs/index.html's
+  77→78 lab-count strings updated alongside.
+
 - **Lab 68: JWT `jku` header injection (JWKS URL spoofing).** A new teaching
   lab (`labs/68-jwt-jku-injection/`) covering a JWT primitive none of the
   existing JWT labs exercise: the verifier resolves its signing key from a
