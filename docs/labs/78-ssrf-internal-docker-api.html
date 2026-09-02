@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSRF into an internal Docker Engine API (unauthenticated control-plane exposure) — Nullock Labs</title>
+<meta name="description" content="blocklist covers cloud metadata, forgets the loopback Docker API">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">78</span>
+    <span class="labs-cat mono">SSRF &amp; fetch</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5078</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">SSRF into an internal Docker Engine API (unauthenticated control-plane exposure)</h1>
+  <p class="lead" style="margin-top:12px;">/fetch?url=... previews a webhook target server-side. Its blocklist rejects one host: &quot;169.254.169.254&quot;, the well-known cloud-metadata IP every SSRF checklist tells you to defend. It never considers the OTHER thing loopback gives an attacker who can make the server issue arbitrary requests: this host also runs an unauthenticated Docker Engine API on 127.0.0.1:2375 -- the default `dockerd -H tcp://0.0.0.0:2375` misconfiguration (no TLS, no auth token), a real and still-common finding on CI runners and dev boxes, not a lab invention. /fetch&#x27;s blocklist has nothing to say about it. This is a different angle from every earlier SSRF lab here: 05&#x27;s total absence of filtering, 40&#x27;s same-process &quot;INTERNAL SECRET&quot; text, 64/65&#x27;s redirect/second-fetch-path pivots, 70&#x27;s scheme blind spot, 72&#x27;s blind/OAST- only confirmation, 74&#x27;s TOCTOU race, 75&#x27;s numeric-encoding bypass, 76&#x27;s CORS-adjacent null-origin case -- here the blocklist isn&#x27;t buggy or bypassed at all, it just protects the ONE target (cloud metadata) everyone remembers and leaves the whole rest of the loopback control-plane surface open. It&#x27;s also the first SSRF lab whose &quot;internal&quot; service reproduces a REAL fixed banner Nullock&#x27;s dedicated SSRF prober already fingerprints by name: ssrf_scan.cpp&#x27;s `kProbes` table carries an `internal-docker` entry for exactly `http://127.0.0.1:2375/version` containing `&quot;ApiVersion&quot;` (alongside sibling entries for Elasticsearch on :9200, Spring Actuator on :8080, and Consul on :8500) -- unlike Lab 75, where the prober&#x27;s own blind spot forces a manual bypass, THIS lab&#x27;s finding is one the automated `/api/ssrf/test` confirms outright, no hand-crafted encoding required. In Nullock: 1. nullock scope add http://localhost:5078/* 2. GET /fetch?url=http://169.254.169.254/latest/meta-data/ -- 400 &quot;blocked host&quot;: the one host the blocklist actually defends. 3. GET /fetch?url=http://127.0.0.1:2375/version -- 200, and the body IS the Docker Engine&#x27;s own `/version` response: &quot;ApiVersion&quot;, &quot;Os&quot;: &quot;linux&quot;, a real kernel string. The blocklist never even considered this host. 4. Pivot further: GET /fetch?url=http://127.0.0.1:2375/containers/json lists the host&#x27;s running containers by name and image -- exactly the kind of control-plane inventory an attacker uses to plan the next step of a real internal-network pivot. 5. Or just run the TESTS tab&#x27;s SSRF check (`/api/ssrf/test`, param=url) against /fetch directly -- its built-in `internal-docker` probe hits step 3&#x27;s exact URL/signature pair and confirms with no manual work. 6. Confirm success: GET /flag -- solved only once /fetch&#x27;s own SERVER-SIDE request actually reached the Docker API and got the real &quot;ApiVersion&quot; banner back (not just that :2375 was requested by hand). Fix: default-deny outbound fetches to loopback/link-local/RFC1918 ranges (not just the one cloud-metadata address), and separately, never expose the Docker Engine API without TLS + client-cert auth in the first place -- CIS Docker Benchmark 2.1 exists for exactly this misconfiguration. (Needs `requests`, which is the labs&#x27; only non-Flask dependency.)</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/78-ssrf-internal-docker-api/app.py
+# then open http://localhost:5078/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5078/*</code><code class="inline">http://127.0.0.1:5078/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>/fetch DOES block http://169.254.169.254/... -- confirm that 400 first, then think about what ELSE runs on this host besides a cloud-metadata service.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The blocklist only names one address. This host also runs a real, common misconfiguration on loopback: an unauthenticated Docker Engine API, the default result of starting dockerd with no TLS on a non-default bind address.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>GET /fetch?url=http://127.0.0.1:2375/version -- 200, with the Docker Engine&#x27;s own ApiVersion/Os/KernelVersion banner in the body. Nullock&#x27;s own SSRF prober (`/api/ssrf/test`, param=url) confirms this one automatically too. GET /flag once that fetch has actually happened.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5078/*</li><li>GET /fetch?url=http://169.254.169.254/latest/meta-data/ -- 400 &quot;blocked host&quot;: the one host the blocklist actually defends.</li><li>GET /fetch?url=http://127.0.0.1:2375/version -- 200, and the body IS the Docker Engine&#x27;s own `/version` response: &quot;ApiVersion&quot;, &quot;Os&quot;: &quot;linux&quot;, a real kernel string. The blocklist never even considered this host.</li><li>Pivot further: GET /fetch?url=http://127.0.0.1:2375/containers/json lists the host&#x27;s running containers by name and image -- exactly the kind of control-plane inventory an attacker uses to plan the next step of a real internal-network pivot.</li><li>Or just run the TESTS tab&#x27;s SSRF check (`/api/ssrf/test`, param=url) against /fetch directly -- its built-in `internal-docker` probe hits step 3&#x27;s exact URL/signature pair and confirms with no manual work.</li><li>Confirm success: GET /flag -- solved only once /fetch&#x27;s own SERVER-SIDE request actually reached the Docker API and got the real &quot;ApiVersion&quot; banner back (not just that :2375 was requested by hand).</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: default-deny outbound fetches to loopback/link-local/RFC1918 ranges (not just the one cloud-metadata address), and separately, never expose the Docker Engine API without TLS + client-cert auth in the first place -- CIS Docker Benchmark 2.1 exists for exactly this misconfiguration.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "78-ssrf-internal-docker-api";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 78 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>
