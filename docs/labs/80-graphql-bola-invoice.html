@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphQL broken object-level authorization (the REST endpoint is — Nullock Labs</title>
+<meta name="description" content="REST endpoint checks ownership, its GraphQL resolver twin doesn&#x27;t">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">80</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5080</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">GraphQL broken object-level authorization (the REST endpoint is</h1>
+  <p class="lead" style="margin-top:12px;">guarded, the GraphQL resolver for the exact same data isn&#x27;t). Two users, alice (invoice 1) and bob (invoice 2). The REST endpoint `/api/invoice/&lt;id&gt;` does this right: it checks that the session&#x27;s own `sid` cookie maps to the invoice&#x27;s owner before returning anything, so alice fetching `/api/invoice/2` gets a clean 403. `/graphql` serves the identical `Invoice { id amount owner }` data through a resolver that was written later, reusing the REST handler&#x27;s own auth-looks-solved intuition -- it checks that a `sid` cookie names SOME logged-in user (so an anonymous request is still rejected), but never compares that user against the invoice id actually being resolved. Two different code paths for the same object, one of them never re-derives the ownership check the other one has. This is the shape Burp&#x27;s own docs single out as the sleeper BOLA case: a REST audit that stops at &quot;the REST endpoint is fixed&quot; misses that the same backend data model is reachable through a second API surface that never got the same review. Nullock&#x27;s `/api/authz-test` (multi-identity replay: same captured request, different identities&#x27; headers/cookies, diverge-or-match comparison) is built exactly for surfacing this -- and it works identically against a GraphQL POST body, since GraphQL is just JSON over HTTP from the replay engine&#x27;s point of view. Capture one `/graphql` invoice(id:2) request as alice, then AUTHZ TEST it against bob&#x27;s identity: REST already told you alice/bob get consistently *different* shapes on `/api/invoice`, so the interesting result here is the opposite -- alice&#x27;s session getting bob&#x27;s own 200+amount back is the finding, not a mismatch. In Nullock: 1. nullock scope add http://localhost:5080/* 2. GET /login?user=alice, then GET /login?user=bob (in a second Repeater tab / different Cookie jar) -- each sets its own `sid`. 3. As alice: GET /api/invoice/1 -- 200, your own invoice. GET /api/invoice/2 -- 403 (bob&#x27;s, correctly refused). The REST surface looks solid. 4. As alice: POST /graphql {&quot;query&quot;: &quot;{ invoice(id: 2) { id amount owner } }&quot;} -- 200, with bob&#x27;s full invoice (amount + owner) in the response, despite step 3 refusing the identical object over REST. Send this request to Repeater, then use the AUTHZ TEST button (or POST /api/authz-test {rowId, identities:[{name:&quot;bob&quot;, headers:{&quot;Cookie&quot;:&quot;sid=&lt;bob&#x27;s sid&gt;&quot;}}]}) to confirm both identities land on the exact same 200 body -- ownership plays no part in the GraphQL resolver&#x27;s decision at all. 5. Confirm success: GET /flag with alice&#x27;s `sid` cookie once you&#x27;ve pulled bob&#x27;s invoice through /graphql. Fix: authorization has to be enforced once, in the data-access layer both paths call through -- not re-implemented (and inevitably forgotten) in each API surface that happens to expose the same object.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/80-graphql-bola-invoice/app.py
+# then open http://localhost:5080/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5080/*</code><code class="inline">http://127.0.0.1:5080/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Log in as alice and bob (two sid cookies). Confirm the REST endpoint /api/invoice/&lt;id&gt; is actually solid first: alice fetching her own id is fine, alice fetching bob&#x27;s is a clean 403.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The same invoice data is also reachable through /graphql. A resolver written after the REST handler doesn&#x27;t always re-implement every check the original one has -- does invoice(id:...) verify the id belongs to whoever is logged in, or just that SOMEONE is?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>As alice: POST /graphql {&quot;query&quot;: &quot;{ invoice(id: 2) { id amount owner } }&quot;} -- 200 with bob&#x27;s amount and owner, the exact object REST just refused. GET /flag with alice&#x27;s cookie once that response has come back.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5080/*</li><li>GET /login?user=alice, then GET /login?user=bob (in a second Repeater tab / different Cookie jar) -- each sets its own `sid`.</li><li>As alice: GET /api/invoice/1 -- 200, your own invoice. GET /api/invoice/2 -- 403 (bob&#x27;s, correctly refused). The REST surface looks solid.</li><li>As alice: POST /graphql {&quot;query&quot;: &quot;{ invoice(id: 2) { id amount owner } }&quot;} -- 200, with bob&#x27;s full invoice (amount + owner) in the response, despite step 3 refusing the identical object over REST. Send this request to Repeater, then use the AUTHZ TEST button (or POST /api/authz-test {rowId, identities:[{name:&quot;bob&quot;, headers:{&quot;Cookie&quot;:&quot;sid=&lt;bob&#x27;s sid&gt;&quot;}}]}) to confirm both identities land on the exact same 200 body -- ownership plays no part in the GraphQL resolver&#x27;s decision at all.</li><li>Confirm success: GET /flag with alice&#x27;s `sid` cookie once you&#x27;ve pulled bob&#x27;s invoice through /graphql.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: authorization has to be enforced once, in the data-access layer both paths call through -- not re-implemented (and inevitably forgotten) in each API surface that happens to expose the same object.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "80-graphql-bola-invoice";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 80 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

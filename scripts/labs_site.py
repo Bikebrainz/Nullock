@@ -158,6 +158,7 @@ DIFFICULTY = {
     "77-llm-indirect-prompt-injection": "Medium",
     "78-ssrf-internal-docker-api": "Medium",
     "79-jwt-jwk-header-injection": "Hard",
+    "80-graphql-bola-invoice": "Medium",
 }
 
 
@@ -562,6 +563,11 @@ HINTS = {
         "GET /login -- an RS256 token whose header only carries a kid. Paste it into Inspector's JWT TOOLKIT: ANALYZE has nothing alarming to say. The real hole is in a header FIELD this token doesn't use yet -- what does the verifier do if you add one?",
         "RFC 7515 lets a JWT header embed the signing key itself as a `jwk` field, so the verifier never has to look one up. Does this verifier check that an embedded jwk is one it actually trusts, or does it just build a key straight out of whatever the token hands it?",
         "Generate your own RSA keypair, and forge a token signed with your PRIVATE key whose header embeds the matching PUBLIC key as jwk: {\"alg\":\"RS256\",\"kid\":\"evil\",\"jwk\":{\"kty\":\"RSA\",\"n\":...,\"e\":...}}, payload {\"role\":\"admin\"}. Send it as Bearer to /admin, then GET /flag.",
+    ],
+    "80-graphql-bola-invoice": [
+        "Log in as alice and bob (two sid cookies). Confirm the REST endpoint /api/invoice/<id> is actually solid first: alice fetching her own id is fine, alice fetching bob's is a clean 403.",
+        "The same invoice data is also reachable through /graphql. A resolver written after the REST handler doesn't always re-implement every check the original one has -- does invoice(id:...) verify the id belongs to whoever is logged in, or just that SOMEONE is?",
+        "As alice: POST /graphql {\"query\": \"{ invoice(id: 2) { id amount owner } }\"} -- 200 with bob's amount and owner, the exact object REST just refused. GET /flag with alice's cookie once that response has come back.",
     ],
 }
 

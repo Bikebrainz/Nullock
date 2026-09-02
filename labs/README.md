@@ -87,6 +87,7 @@ labs/
   77-llm-indirect-prompt-injection/ # ticket-summarize path never filters injections /chat now blocks (5077)
   78-ssrf-internal-docker-api/     # blocklist covers cloud metadata, forgets the loopback Docker API (5078)
   79-jwt-jwk-header-injection/     # verifier trusts a public key embedded right in the token's own header (5079)
+  80-graphql-bola-invoice/         # REST endpoint checks ownership, its GraphQL resolver twin doesn't    (5080)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

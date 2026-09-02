@@ -1805,6 +1805,29 @@
       "Confirm success: GET /flag with the same forged token."
     ],
     "fix": "Fix: never build a verification key from a `jwk` (or `jwks`) header parameter the token itself supplies. Resolve signing keys ONLY from a fixed, pre-configured server-side keystore looked up by `kid`; treat any inbound `jwk`/`jku`/`x5u` header field as attacker input to be ignored, not a hint about where to find the key."
+  },
+  {
+    "slug": "80-graphql-bola-invoice",
+    "num": "80",
+    "title": "GraphQL broken object-level authorization (the REST endpoint is",
+    "vuln": "REST endpoint checks ownership, its GraphQL resolver twin doesn't",
+    "port": "5080",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "guarded, the GraphQL resolver for the exact same data isn't). Two users, alice (invoice 1) and bob (invoice 2). The REST endpoint `/api/invoice/<id>` does this right: it checks that the session's own `sid` cookie maps to the invoice's owner before returning anything, so alice fetching `/api/invoice/2` gets a clean 403. `/graphql` serves the identical `Invoice { id amount owner }` data through a resolver that was written later, reusing the REST handler's own auth-looks-solved intuition -- it checks that a `sid` cookie names SOME logged-in user (so an anonymous request is still rejected), but never compares that user against the invoice id actually being resolved. Two different code paths for the same object, one of them never re-derives the ownership check the other one has. This is the shape Burp's own docs single out as the sleeper BOLA case: a REST audit that stops at \"the REST endpoint is fixed\" misses that the same backend data model is reachable through a second API surface that never got the same review. Nullock's `/api/authz-test` (multi-identity replay: same captured request, different identities' headers/cookies, diverge-or-match comparison) is built exactly for surfacing this -- and it works identically against a GraphQL POST body, since GraphQL is just JSON over HTTP from the replay engine's point of view. Capture one `/graphql` invoice(id:2) request as alice, then AUTHZ TEST it against bob's identity: REST already told you alice/bob get consistently *different* shapes on `/api/invoice`, so the interesting result here is the opposite -- alice's session getting bob's own 200+amount back is the finding, not a mismatch. In Nullock: 1. nullock scope add http://localhost:5080/* 2. GET /login?user=alice, then GET /login?user=bob (in a second Repeater tab / different Cookie jar) -- each sets its own `sid`. 3. As alice: GET /api/invoice/1 -- 200, your own invoice. GET /api/invoice/2 -- 403 (bob's, correctly refused). The REST surface looks solid. 4. As alice: POST /graphql {\"query\": \"{ invoice(id: 2) { id amount owner } }\"} -- 200, with bob's full invoice (amount + owner) in the response, despite step 3 refusing the identical object over REST. Send this request to Repeater, then use the AUTHZ TEST button (or POST /api/authz-test {rowId, identities:[{name:\"bob\", headers:{\"Cookie\":\"sid=<bob's sid>\"}}]}) to confirm both identities land on the exact same 200 body -- ownership plays no part in the GraphQL resolver's decision at all. 5. Confirm success: GET /flag with alice's `sid` cookie once you've pulled bob's invoice through /graphql. Fix: authorization has to be enforced once, in the data-access layer both paths call through -- not re-implemented (and inevitably forgotten) in each API surface that happens to expose the same object.",
+    "hints": [
+      "Log in as alice and bob (two sid cookies). Confirm the REST endpoint /api/invoice/<id> is actually solid first: alice fetching her own id is fine, alice fetching bob's is a clean 403.",
+      "The same invoice data is also reachable through /graphql. A resolver written after the REST handler doesn't always re-implement every check the original one has -- does invoice(id:...) verify the id belongs to whoever is logged in, or just that SOMEONE is?",
+      "As alice: POST /graphql {\"query\": \"{ invoice(id: 2) { id amount owner } }\"} -- 200 with bob's amount and owner, the exact object REST just refused. GET /flag with alice's cookie once that response has come back."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5080/*",
+      "GET /login?user=alice, then GET /login?user=bob (in a second Repeater tab / different Cookie jar) -- each sets its own `sid`.",
+      "As alice: GET /api/invoice/1 -- 200, your own invoice. GET /api/invoice/2 -- 403 (bob's, correctly refused). The REST surface looks solid.",
+      "As alice: POST /graphql {\"query\": \"{ invoice(id: 2) { id amount owner } }\"} -- 200, with bob's full invoice (amount + owner) in the response, despite step 3 refusing the identical object over REST. Send this request to Repeater, then use the AUTHZ TEST button (or POST /api/authz-test {rowId, identities:[{name:\"bob\", headers:{\"Cookie\":\"sid=<bob's sid>\"}}]}) to confirm both identities land on the exact same 200 body -- ownership plays no part in the GraphQL resolver's decision at all.",
+      "Confirm success: GET /flag with alice's `sid` cookie once you've pulled bob's invoice through /graphql."
+    ],
+    "fix": "Fix: authorization has to be enforced once, in the data-access layer both paths call through -- not re-implemented (and inevitably forgotten) in each API surface that happens to expose the same object."
   }
 ];
   window.NULLOCK_LABS_XP = {

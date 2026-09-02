@@ -11,6 +11,27 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 80: GraphQL broken object-level authorization (REST guarded, the
+  resolver twin isn't).** A new teaching lab
+  (`labs/80-graphql-bola-invoice/`) covering a BOLA shape none of the
+  earlier IDOR/access-control labs (04, 12) or GraphQL labs (06, 62, 67)
+  hit directly: the same invoice object is reachable through two API
+  surfaces backed by the same data, and only one of them enforces
+  ownership. `/api/invoice/<id>` correctly checks that the session's own
+  user owns the requested id (403 for another user's invoice); `/graphql`'s
+  `invoice(id:...)` resolver checks only that *some* session is logged in,
+  never that it owns the id being resolved, so any authenticated user can
+  read any other user's invoice through GraphQL despite REST refusing the
+  identical object. Written to pair with Nullock's `/api/authz-test`
+  multi-identity replay tool, which works identically against a captured
+  GraphQL POST body. Verified end-to-end over HTTP: alice's session gets
+  `200`/her own invoice and `403` on bob's via REST, then `200` with bob's
+  full invoice (amount + owner) via `/graphql`, which flips `GET /flag` to
+  `solved:true`. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, a curated `Medium` difficulty + 3 hints);
+  README.md and docs/index.html's 79→80 lab-count strings updated
+  alongside.
+
 - **Lab 79: JWT `jwk` header injection (embedded public key, no fetch
   needed).** A new teaching lab (`labs/79-jwt-jwk-header-injection/`)
   covering the third member of the "verifier trusts a key the token names"
