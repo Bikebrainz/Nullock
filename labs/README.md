@@ -94,6 +94,7 @@ labs/
   84-graphql-mass-assignment-role/ # REST profile update allow-lists fields, GraphQL mutation merges any field sent (5084)
   85-race-condition-giftcode-limit-overrun/  # single-use gift code's redeemed check races its own write               (5085)
   86-js-sourcemap-secret-leak/     # minified bundle hides it, its exposed source map hands the secret right back (5086)
+  87-webhook-signature-bypass/     # payment webhook defines an HMAC check, the handler never actually calls it   (5087)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

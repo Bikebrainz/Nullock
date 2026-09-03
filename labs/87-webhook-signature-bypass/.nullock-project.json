@@ -1,0 +1,6 @@
+{
+  "name": "Lab 87 -- Webhook Signature Bypass: a payment webhook handler defines an HMAC signature check but never calls it, so any forged event is trusted.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5087/*", "http://127.0.0.1:5087/*"],
+  "outOfScope": []
+}

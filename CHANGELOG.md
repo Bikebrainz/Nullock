@@ -11,6 +11,33 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 87: Webhook signature bypass (a payment webhook handler defines
+  the HMAC signature check right next to itself but never actually calls
+  it, so any forged event is trusted).** A new teaching lab
+  (`labs/87-webhook-signature-bypass/`) covering CWE-345 (insufficient
+  verification of data authenticity): `POST /webhook/payment` reads an
+  `X-Signature` header off every request and even has a
+  `compute_signature()` HMAC helper defined right there in the module, but
+  never calls it to compare against the header -- any `payment.completed`
+  event with a garbage `X-Signature` value gets treated as authentic and
+  marks the order paid. Distinct from Lab 19 (CSRF -- the victim's own
+  browser sends the request, carrying real session cookies; here there is
+  no session or cookie at all, the whole point is server-to-server trust)
+  and from Lab 84 (GraphQL mass assignment -- the caller IS who they claim
+  to be, they just set fields they shouldn't; here the caller is never
+  authenticated in the first place). Verified end-to-end over HTTP: a
+  legitimate webhook call signed with the real shared secret marks the
+  order paid but leaves `GET /flag` at `solved:false`, while the exact
+  same call carrying an arbitrary/garbage `X-Signature` also marks the
+  order paid -- and `GET /flag` only flips `true` once the server can
+  itself confirm the accepted signature did not match
+  `compute_signature(SECRET, raw_body)`, proving the check is forgeable
+  rather than merely untested by this walkthrough. `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium`
+  difficulty + 3 hints, and a `webhook-signature` keyword added to the
+  site generator's "Authentication" category rule); README.md and
+  docs/index.html's 86→87 lab-count strings updated alongside.
+
 - **Lab 86: JS recon source-map secret leak (a minified production bundle
   hides its secret, but the source map next to it hands the pre-minification
   original right back).** A new teaching lab

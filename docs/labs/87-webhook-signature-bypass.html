@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhook signature bypass: a payment webhook handler defines the — Nullock Labs</title>
+<meta name="description" content="payment webhook defines an HMAC check, the handler never actually calls it">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">87</span>
+    <span class="labs-cat mono">Authentication</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5087</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Webhook signature bypass: a payment webhook handler defines the</h1>
+  <p class="lead" style="margin-top:12px;">HMAC signature check right there in the code but never actually calls it, so any POST claiming to be a completed payment is treated as gospel. Distinct from Lab 19 (CSRF -- a victim&#x27;s browser is tricked into sending a state-changing request carrying real session cookies) and from Lab 84 (GraphQL mass assignment -- the caller IS who they claim to be, they just set fields they shouldn&#x27;t): here there is no session and no cookie at all. The webhook is meant to be server-to-server, authenticated purely by an HMAC signature over the request body computed with a secret only the real payment provider holds. The handler reads an `X-Signature` header and even has a `compute_signature()` helper sitting right next to it, but never calls that helper to compare against what the header carries -- so anyone who can reach the URL, no secret required, can mark any order paid. In Nullock: 1. GET / -- shows order ORD-1001, status &quot;pending&quot;, amount $49.99, and the exact JSON body a real payment.completed webhook is documented to send. 2. POST /webhook/payment with that JSON body and header X-Signature: deadbeef (garbage -- not a real HMAC of anything) -- 200 {&quot;ok&quot;: true}. A correct verifier would reject this outright. 3. GET /order/ORD-1001 -- status now &quot;paid&quot;, despite no signature that ever matched the shared secret. 4. Confirm success: GET /flag -- flips true only once a payment has landed behind a signature the server can prove does NOT match compute_signature(SECRET, body) for that exact body, showing the check is forgeable rather than merely unexercised by this walkthrough. 5. The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock&#x27;s inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/87-webhook-signature-bypass/app.py
+# then open http://localhost:5087/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5087/*</code><code class="inline">http://127.0.0.1:5087/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET / -- an order is pending payment, and the page shows you exactly what a payment.completed webhook body looks like. Find the endpoint that accepts that event.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The handler reads an X-Signature header off every request -- but does it ever compute the real HMAC and compare it against what you sent?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST /webhook/payment with that sample body and any garbage X-Signature value like deadbeef -- 200 {&quot;ok&quot;: true}. GET /order/ORD-1001 to see it flip to paid, then GET /flag once a payment has landed behind a signature that was never real.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>GET / -- shows order ORD-1001, status &quot;pending&quot;, amount $49.99, and the exact JSON body a real payment.completed webhook is documented to send.</li><li>POST /webhook/payment with that JSON body and header X-Signature: deadbeef (garbage -- not a real HMAC of anything) -- 200 {&quot;ok&quot;: true}. A correct verifier would reject this outright.</li><li>GET /order/ORD-1001 -- status now &quot;paid&quot;, despite no signature that ever matched the shared secret.</li><li>Confirm success: GET /flag -- flips true only once a payment has landed behind a signature the server can prove does NOT match compute_signature(SECRET, body) for that exact body, showing the check is forgeable rather than merely unexercised by this walkthrough.</li><li>The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock&#x27;s inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock&#x27;s inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "87-webhook-signature-bypass";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 87 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

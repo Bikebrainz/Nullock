@@ -53,7 +53,7 @@ CATEGORY_RULES = [
                         "verb-tamper", "2fa", "dangerous-http-methods", "bfla")),
     ("Authentication", ("jwt", "oauth", "session-fixation", "user-enumeration",
                         "weak-reset", "reset-token", "predictable-session",
-                        "credentials-in-url", "rate-limit")),
+                        "credentials-in-url", "rate-limit", "webhook-signature")),
     ("SSRF & fetch", ("ssrf",)),
     ("Client-side", ("xss", "csrf", "clickjacking", "cors", "open-redirect",
                      "cache-deception", "cache-poisoning", "host-header",
@@ -166,6 +166,7 @@ DIFFICULTY = {
     "84-graphql-mass-assignment-role": "Medium",
     "85-race-condition-giftcode-limit-overrun": "Medium",
     "86-js-sourcemap-secret-leak": "Medium",
+    "87-webhook-signature-bypass": "Medium",
 }
 
 
@@ -605,6 +606,11 @@ HINTS = {
         "GET / and view its response body -- no secret anywhere. GET /static/app.min.js -- also no readable secret, but read its last line closely.",
         "That last line names a source map: //# sourceMappingURL=app.min.js.map. Nullock's JS recon probe follows exactly that kind of comment automatically -- try it against /, or just GET the map URL by hand.",
         "The map's sourcesContent holds the un-minified original source, including a hardcoded INTERNAL_API_TOKEN and a comment naming /internal/export-users. GET that endpoint with header X-Internal-Token: <the leaked value> -- 200 with a user dump. GET /flag once that call has actually gone through.",
+    ],
+    "87-webhook-signature-bypass": [
+        "GET / -- an order is pending payment, and the page shows you exactly what a payment.completed webhook body looks like. Find the endpoint that accepts that event.",
+        "The handler reads an X-Signature header off every request -- but does it ever compute the real HMAC and compare it against what you sent?",
+        "POST /webhook/payment with that sample body and any garbage X-Signature value like deadbeef -- 200 {\"ok\": true}. GET /order/ORD-1001 to see it flip to paid, then GET /flag once a payment has landed behind a signature that was never real.",
     ],
 }
 

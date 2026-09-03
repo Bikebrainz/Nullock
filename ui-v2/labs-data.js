@@ -1970,6 +1970,29 @@
       "Fix: never ship .map files (or gate them behind the same auth as the app) in production, and never hardcode a live credential into source at all -- minification is not a security boundary, and a source map undoes it for anyone who looks."
     ],
     "fix": "Fix: never ship .map files (or gate them behind the same auth as the app) in production, and never hardcode a live credential into source at all -- minification is not a security boundary, and a source map undoes it for anyone who looks."
+  },
+  {
+    "slug": "87-webhook-signature-bypass",
+    "num": "87",
+    "title": "Webhook signature bypass: a payment webhook handler defines the",
+    "vuln": "payment webhook defines an HMAC check, the handler never actually calls it",
+    "port": "5087",
+    "category": "Authentication",
+    "difficulty": "Medium",
+    "desc": "HMAC signature check right there in the code but never actually calls it, so any POST claiming to be a completed payment is treated as gospel. Distinct from Lab 19 (CSRF -- a victim's browser is tricked into sending a state-changing request carrying real session cookies) and from Lab 84 (GraphQL mass assignment -- the caller IS who they claim to be, they just set fields they shouldn't): here there is no session and no cookie at all. The webhook is meant to be server-to-server, authenticated purely by an HMAC signature over the request body computed with a secret only the real payment provider holds. The handler reads an `X-Signature` header and even has a `compute_signature()` helper sitting right next to it, but never calls that helper to compare against what the header carries -- so anyone who can reach the URL, no secret required, can mark any order paid. In Nullock: 1. GET / -- shows order ORD-1001, status \"pending\", amount $49.99, and the exact JSON body a real payment.completed webhook is documented to send. 2. POST /webhook/payment with that JSON body and header X-Signature: deadbeef (garbage -- not a real HMAC of anything) -- 200 {\"ok\": true}. A correct verifier would reject this outright. 3. GET /order/ORD-1001 -- status now \"paid\", despite no signature that ever matched the shared secret. 4. Confirm success: GET /flag -- flips true only once a payment has landed behind a signature the server can prove does NOT match compute_signature(SECRET, body) for that exact body, showing the check is forgeable rather than merely unexercised by this walkthrough. 5. The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock's inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value.",
+    "hints": [
+      "GET / -- an order is pending payment, and the page shows you exactly what a payment.completed webhook body looks like. Find the endpoint that accepts that event.",
+      "The handler reads an X-Signature header off every request -- but does it ever compute the real HMAC and compare it against what you sent?",
+      "POST /webhook/payment with that sample body and any garbage X-Signature value like deadbeef -- 200 {\"ok\": true}. GET /order/ORD-1001 to see it flip to paid, then GET /flag once a payment has landed behind a signature that was never real."
+    ],
+    "steps": [
+      "GET / -- shows order ORD-1001, status \"pending\", amount $49.99, and the exact JSON body a real payment.completed webhook is documented to send.",
+      "POST /webhook/payment with that JSON body and header X-Signature: deadbeef (garbage -- not a real HMAC of anything) -- 200 {\"ok\": true}. A correct verifier would reject this outright.",
+      "GET /order/ORD-1001 -- status now \"paid\", despite no signature that ever matched the shared secret.",
+      "Confirm success: GET /flag -- flips true only once a payment has landed behind a signature the server can prove does NOT match compute_signature(SECRET, body) for that exact body, showing the check is forgeable rather than merely unexercised by this walkthrough.",
+      "The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock's inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value."
+    ],
+    "fix": "The fix: verify X-Signature with hmac.compare_digest against compute_signature(SECRET, raw_body) before trusting any webhook event, rejecting with 401 on a mismatch -- the same gap Nullock's inspector flags when an endpoint reads an auth-shaped header but never branches on its actual value."
   }
 ];
   window.NULLOCK_LABS_XP = {
