@@ -96,6 +96,7 @@ labs/
   86-js-sourcemap-secret-leak/     # minified bundle hides it, its exposed source map hands the secret right back (5086)
   87-webhook-signature-bypass/     # payment webhook defines an HMAC check, the handler never actually calls it   (5087)
   88-yaml-unsafe-load-rce/         # CI config importer parses YAML with yaml.Loader -- python/object/apply -> RCE (5088)
+  89-redos-username-check/         # redundant nested quantifier regex -- one near-miss request costs seconds of CPU (ReDoS) (5089)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

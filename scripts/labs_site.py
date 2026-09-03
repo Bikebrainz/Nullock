@@ -64,6 +64,7 @@ CATEGORY_RULES = [
                          "sensitive-file", "robots", "file-upload", "data-exposure",
                          "sourcemap")),
     ("Business logic", ("race-condition", "business-logic")),
+    ("Denial of service", ("redos",)),
 ]
 
 
@@ -169,6 +170,7 @@ DIFFICULTY = {
     "86-js-sourcemap-secret-leak": "Medium",
     "87-webhook-signature-bypass": "Medium",
     "88-yaml-unsafe-load-rce": "Hard",
+    "89-redos-username-check": "Hard",
 }
 
 
@@ -618,6 +620,11 @@ HINTS = {
         "GET / -- shows the config importer's expected YAML shape and its one endpoint, POST /config/import. Send that sample body -- it parses fine and echoes a step count. Nothing looks wrong yet.",
         "The response shape doesn't change no matter what you send, which is the tell: the parser isn't yaml.safe_load. PyYAML's full Loader understands tags beyond plain dict/list/str -- specifically !!python/object/apply:, which calls an importable Python function by dotted name with whatever arguments you give it.",
         "POST /config/import with the raw body: !!python/object/apply:__main__._mark_pwned []  -- the server's own no-op marker function runs during \"parsing\", before the app ever looks at your config. GET /flag once that call has actually gone through.",
+    ],
+    "89-redos-username-check": [
+        "POST /account/check-username with an ordinary name like alice -- fast, and the response even tells you the elapsed milliseconds. Now look at the regex a username has to match before anything else happens.",
+        "The pattern nests one unbounded group inside another over the same character class -- a shape that's fine for strings that fully match, but explodes on a string that ALMOST matches: many valid characters, then one character that breaks it.",
+        "POST a username of 26 letters followed by one symbol that isn't in the allowed set, like 'a' * 26 + '!' -- elapsed_ms jumps into the thousands from a single request. GET /flag once the server has also seen a fast, ordinary request to prove it isn't just a slow box.",
     ],
 }
 

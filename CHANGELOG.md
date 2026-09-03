@@ -11,6 +11,32 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 89: Regular expression denial of service (a signup username check
+  validates with `re.match(r'^([a-zA-Z0-9_]+)+$', username)`, and the
+  redundant outer group around an already-unbounded inner `+` is a
+  textbook catastrophic-backtracking shape).** A new teaching lab
+  (`labs/89-redos-username-check/`) covering CWE-1333 (uncontrolled
+  resource consumption via algorithmic complexity) -- distinct from every
+  injection/access-control lab here because the input never reaches a
+  shell, DB, or filesystem: a perfectly *rejected* username is what costs
+  the server seconds of CPU on Python's backtracking `re` engine, and
+  Flask's one-request-at-a-time dev server means that one request stalls
+  everyone else's signup page too. Verified end-to-end over HTTP: `POST
+  /account/check-username` with an ordinary name (`alice`) or even a
+  same-length all-valid name (27 `a`s) returns in under a millisecond,
+  while 26 `a`s plus one trailing `!` -- a near-miss that forces the
+  engine to try every way of partitioning the run between the inner and
+  outer `+` -- takes ~3.6s, and 27 `a`s roughly doubles that, the
+  exponential signature that rules out "the box is just slow"; the
+  documented fix (`^[a-zA-Z0-9_]+$`, no outer group) resolves the exact
+  same malicious input in ~3 microseconds while accepting/rejecting
+  identically. `GET /flag` flips only once the server has recorded both a
+  slow rejected request past threshold AND a fast control request, so an
+  unrelated slow server can't fake a solve. `scripts/labs_site.py`
+  regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a new "Denial of
+  service" category, a curated `Hard` difficulty + 3 hints); README.md
+  and docs/index.html's 88→89 lab-count strings updated alongside.
+
 - **Lab 88: YAML unsafe deserialization (a CI config importer calls
   `yaml.load(raw, Loader=yaml.Loader)`, and that Loader alias still
   honours `!!python/object/apply:` tags -- arbitrary importable callable,

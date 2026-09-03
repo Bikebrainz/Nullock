@@ -1,0 +1,6 @@
+{
+  "name": "Lab 89 -- Regular Expression Denial of Service: a signup username check uses a redundant nested quantifier, so one near-miss request costs the server seconds of CPU on its own.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5089/*", "http://127.0.0.1:5089/*"],
+  "outOfScope": []
+}

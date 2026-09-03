@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regular expression denial of service (ReDoS) in a username check — Nullock Labs</title>
+<meta name="description" content="redundant nested quantifier regex -- one near-miss request costs seconds of CPU (ReDoS)">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">89</span>
+    <span class="labs-cat mono">Denial of service</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5089</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Regular expression denial of service (ReDoS) in a username check</h1>
+  <p class="lead" style="margin-top:12px;">The signup flow validates a candidate username with `re.match(r&#x27;^([a-zA-Z0-9_]+)+$&#x27;, username)` before ever touching the &quot;taken names&quot; set. The developer wrote `([a-zA-Z0-9_]+)+` meaning &quot;one or more allowed characters&quot; -- the outer `+` is a copy-paste leftover with no purpose the inner `+` doesn&#x27;t already cover. That redundant nesting is a textbook catastrophic-backtracking shape: Python&#x27;s `re` engine is backtracking-based, so on a string that *almost* matches (a long run of valid characters followed by one character that breaks the match), it tries every way of partitioning that run between the inner and outer `+` before giving up -- 2^n attempts for n valid characters. A 26-character username plus one trailing `!` takes low seconds on ordinary hardware; a few characters longer and it&#x27;s minutes, on a single request, and Flask&#x27;s dev server (like many app servers under load) handles one request at a time per worker -- so that one request stalls every other user&#x27;s signup page too. This is CWE-1333 (algorithmic complexity) / OWASP&#x27;s uncontrolled-resource-consumption class, not injection or access control: the string is inert, never reaches a shell/DB/filesystem, and a perfectly &quot;invalid, rejected&quot; username is what triggers it. Distinct from Lab 30 (rate-limit bypass -- beating a request-count gate with a spoofed header, not making any single request expensive) and from Lab 09 / Lab 85 (race conditions -- a logic window between check and use, not raw CPU cost): here one client, one request, zero concurrency, is the entire attack. In Nullock: 1. GET / -- shows the signup endpoint and its documented shape. 2. POST /account/check-username {&quot;username&quot;: &quot;alice&quot;} -- 200 in low single-digit milliseconds (see the response&#x27;s own `elapsed_ms`). This is also your control: a normal-shaped request is fast. 3. POST /account/check-username with a username of 26 `a`s followed by one `!` (still under typical max-length limits, so no length cap saves you) -- 200, same response shape, but `elapsed_ms` jumps into the thousands. Repeat with 27 `a`s and it roughly doubles again -- the exponential signature that separates a genuinely slow backend from this. In the desktop app, send it via Repeater and watch the History row&#x27;s own elapsed-time column spike the same way a time-based blind-SQLi payload does; the confirmation technique is identical. 4. Confirm without trusting your own stopwatch: GET /flag -- flips true only once the server has recorded BOTH a slow, rejected (non-matching) request past the threshold AND a fast control request, so an unrelated slow server alone can&#x27;t fake it. 5. The fix: drop the pointless outer group -- `re.match(r&#x27;^[a-zA-Z0-9_]+$&#x27;, username)` accepts exactly the same strings in linear time (no nested quantifier to backtrack through). Where the pattern genuinely needs nesting, compile it with a timeout-capable engine (the third-party `regex` module&#x27;s `timeout=` kwarg, or Python 3.11+&#x27;s no equivalent stdlib option) or validate a length cap *before* the regex ever runs.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/89-redos-username-check/app.py
+# then open http://localhost:5089/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5089/*</code><code class="inline">http://127.0.0.1:5089/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /account/check-username with an ordinary name like alice -- fast, and the response even tells you the elapsed milliseconds. Now look at the regex a username has to match before anything else happens.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The pattern nests one unbounded group inside another over the same character class -- a shape that&#x27;s fine for strings that fully match, but explodes on a string that ALMOST matches: many valid characters, then one character that breaks it.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST a username of 26 letters followed by one symbol that isn&#x27;t in the allowed set, like &#x27;a&#x27; * 26 + &#x27;!&#x27; -- elapsed_ms jumps into the thousands from a single request. GET /flag once the server has also seen a fast, ordinary request to prove it isn&#x27;t just a slow box.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>GET / -- shows the signup endpoint and its documented shape.</li><li>POST /account/check-username {&quot;username&quot;: &quot;alice&quot;} -- 200 in low single-digit milliseconds (see the response&#x27;s own `elapsed_ms`). This is also your control: a normal-shaped request is fast.</li><li>POST /account/check-username with a username of 26 `a`s followed by one `!` (still under typical max-length limits, so no length cap saves you) -- 200, same response shape, but `elapsed_ms` jumps into the thousands. Repeat with 27 `a`s and it roughly doubles again -- the exponential signature that separates a genuinely slow backend from this. In the desktop app, send it via Repeater and watch the History row&#x27;s own elapsed-time column spike the same way a time-based blind-SQLi payload does; the confirmation technique is identical.</li><li>Confirm without trusting your own stopwatch: GET /flag -- flips true only once the server has recorded BOTH a slow, rejected (non-matching) request past the threshold AND a fast control request, so an unrelated slow server alone can&#x27;t fake it.</li><li>The fix: drop the pointless outer group -- `re.match(r&#x27;^[a-zA-Z0-9_]+$&#x27;, username)` accepts exactly the same strings in linear time (no nested quantifier to backtrack through). Where the pattern genuinely needs nesting, compile it with a timeout-capable engine (the third-party `regex` module&#x27;s `timeout=` kwarg, or Python 3.11+&#x27;s no equivalent stdlib option) or validate a length cap *before* the regex ever runs.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>The fix: drop the pointless outer group -- `re.match(r&#x27;^[a-zA-Z0-9_]+$&#x27;, username)` accepts exactly the same strings in linear time (no nested quantifier to backtrack through). Where the pattern genuinely needs nesting, compile it with a timeout-capable engine (the third-party `regex` module&#x27;s `timeout=` kwarg, or Python 3.11+&#x27;s no equivalent stdlib option) or validate a length cap *before* the regex ever runs.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "89-redos-username-check";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 89 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>
