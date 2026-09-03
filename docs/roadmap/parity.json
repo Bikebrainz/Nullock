@@ -1494,7 +1494,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-09-03",
-        "commit": "PENDING",
+        "commit": "75e12cb",
         "note": "Wave 0 register-accuracy audit: upgraded partial -> present. The 2026-08-17 entry closed the backend (/api/findings/mark, /suppress-kind) and left the Issues-UI buttons as a named follow-on; grepping ui-v2/app.jsx today shows that follow-on is already fully wired (per-finding fp/del buttons, a severity-override select, and a per-kind mute button), calling all four persisted mutation routes and rendering their returned flags -- parity.json simply never caught up to that landing. No code changed in this commit; this is a state correction only."
       }
     },
