@@ -163,6 +163,7 @@ DIFFICULTY = {
     "82-excessive-data-exposure": "Medium",
     "83-bfla-delete-user": "Medium",
     "84-graphql-mass-assignment-role": "Medium",
+    "85-race-condition-giftcode-limit-overrun": "Medium",
 }
 
 
@@ -592,6 +593,11 @@ HINTS = {
         "Log in as alice, then PUT /api/profile with an extra field in the body -- something not asked for, like \"role\":\"admin\" -- alongside a legitimate bio update. GET /api/profile afterward: did it take?",
         "The REST endpoint is fine -- that's the control, not the bug. There's a GraphQL mutation reachable at /graphql that touches the exact same user record. Does it apply the same field list?",
         "POST /graphql with a mutation like `mutation { updateProfile(bio: \"hi\", role: \"admin\") { username role } }` -- the response's role now reads admin. GET /flag once that's landed.",
+    ],
+    "85-race-condition-giftcode-limit-overrun": [
+        "POST /api/redeem?code=WELCOME50 once, then POST it again right after. The second call 403s with \"already redeemed\" -- the check works fine when requests are sequential.",
+        "The check-then-credit gap in /api/redeem has a deliberate delay before it marks the code used. What happens if several identical requests all land inside that gap at once, instead of one after another?",
+        "POST /reset, then fire 5+ concurrent POST /api/redeem?code=WELCOME50 requests (Nullock's race probe, or Intruder with concurrent threads set). Several will all read used=False and all credit +50. GET /flag once the wallet balance exceeds a single redemption's value.",
     ],
 }
 

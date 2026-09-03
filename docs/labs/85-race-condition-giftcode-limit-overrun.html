@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race condition (limit overrun): a single-use gift code&#x27;s — Nullock Labs</title>
+<meta name="description" content="single-use gift code&#x27;s redeemed check races its own write">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">85</span>
+    <span class="labs-cat mono">Business logic</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5085</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">Race condition (limit overrun): a single-use gift code&#x27;s</h1>
+  <p class="lead" style="margin-top:12px;">&quot;already redeemed&quot; check races its own write, so N concurrent redemptions all read used=False before any of them writes used=True -- one code, multiple payouts. Distinct from Lab 09 (balance-transfer TOCTOU: a numeric balance overdrawn below zero by racing a spend against itself) in exploit shape, not just theme: this is the &quot;limit overrun&quot; pattern -- a boolean one-time token (GIFT_CODES[code][&quot;used&quot;]) is checked, then, after a deliberate fulfilment delay, set, with the same missing atomicity across the gap. Lab 09 wins by watching a balance go negative, something no sequence of single-shot requests can ever do; this one wins by watching ONE code&#x27;s credit land in the wallet more than once, which a single, non-concurrent replay of the same request can never do either -- POST it twice in a row and the second call always sees used=True and 403s. Only requests that land inside the race window, concurrently, both read the pre-write state. In Nullock: 1. GET /wallet -- balance 0. 2. POST /api/redeem?code=WELCOME50 -- single shot, credits +50, wallet balance now 50. POST it again -- 403 &quot;already redeemed&quot;, balance unchanged. The check works correctly under normal sequential use. 3. POST /reset -- zeroes the wallet and un-redeems the code. 4. Use Nullock&#x27;s race probe (Tests tab -&gt; type &quot;race&quot;, or Intruder with N concurrent identical requests) against POST /api/redeem?code=WELCOME50 with count &gt;= 5. 5. Several of the concurrent requests all read used=False before any of them writes used=True, so several all credit +50. Wallet balance ends up a multiple of 50 greater than one redemption should allow. 6. Confirm success: GET /flag -- flips true only once the wallet balance exceeds a single redemption&#x27;s value (50), a state no sequential use of this endpoint can ever reach. 7. Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/85-race-condition-giftcode-limit-overrun/app.py
+# then open http://localhost:5085/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5085/*</code><code class="inline">http://127.0.0.1:5085/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>POST /api/redeem?code=WELCOME50 once, then POST it again right after. The second call 403s with &quot;already redeemed&quot; -- the check works fine when requests are sequential.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The check-then-credit gap in /api/redeem has a deliberate delay before it marks the code used. What happens if several identical requests all land inside that gap at once, instead of one after another?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST /reset, then fire 5+ concurrent POST /api/redeem?code=WELCOME50 requests (Nullock&#x27;s race probe, or Intruder with concurrent threads set). Several will all read used=False and all credit +50. GET /flag once the wallet balance exceeds a single redemption&#x27;s value.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>GET /wallet -- balance 0.</li><li>POST /api/redeem?code=WELCOME50 -- single shot, credits +50, wallet balance now 50. POST it again -- 403 &quot;already redeemed&quot;, balance unchanged. The check works correctly under normal sequential use.</li><li>POST /reset -- zeroes the wallet and un-redeems the code.</li><li>Use Nullock&#x27;s race probe (Tests tab -&gt; type &quot;race&quot;, or Intruder with N concurrent identical requests) against POST /api/redeem?code=WELCOME50 with count &gt;= 5.</li><li>Several of the concurrent requests all read used=False before any of them writes used=True, so several all credit +50. Wallet balance ends up a multiple of 50 greater than one redemption should allow.</li><li>Confirm success: GET /flag -- flips true only once the wallet balance exceeds a single redemption&#x27;s value (50), a state no sequential use of this endpoint can ever reach.</li><li>Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "85-race-condition-giftcode-limit-overrun";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 85 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

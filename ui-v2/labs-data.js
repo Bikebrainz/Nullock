@@ -1920,6 +1920,31 @@
       "Confirm success: GET /flag with alice's cookie -- flips true only once a session that logged in non-admin has `is_admin=True` set through the GraphQL mutation specifically (not by editing the in-memory USERS table any other way)."
     ],
     "fix": "Fix: the resolver must build its own allow-listed update dict the same way the REST handler does (or, better, both call one shared `apply_profile_update(user, **allowed_fields)` helper) instead of merging the mutation's raw argument dict onto the record."
+  },
+  {
+    "slug": "85-race-condition-giftcode-limit-overrun",
+    "num": "85",
+    "title": "Race condition (limit overrun): a single-use gift code's",
+    "vuln": "single-use gift code's redeemed check races its own write",
+    "port": "5085",
+    "category": "Business logic",
+    "difficulty": "Medium",
+    "desc": "\"already redeemed\" check races its own write, so N concurrent redemptions all read used=False before any of them writes used=True -- one code, multiple payouts. Distinct from Lab 09 (balance-transfer TOCTOU: a numeric balance overdrawn below zero by racing a spend against itself) in exploit shape, not just theme: this is the \"limit overrun\" pattern -- a boolean one-time token (GIFT_CODES[code][\"used\"]) is checked, then, after a deliberate fulfilment delay, set, with the same missing atomicity across the gap. Lab 09 wins by watching a balance go negative, something no sequence of single-shot requests can ever do; this one wins by watching ONE code's credit land in the wallet more than once, which a single, non-concurrent replay of the same request can never do either -- POST it twice in a row and the second call always sees used=True and 403s. Only requests that land inside the race window, concurrently, both read the pre-write state. In Nullock: 1. GET /wallet -- balance 0. 2. POST /api/redeem?code=WELCOME50 -- single shot, credits +50, wallet balance now 50. POST it again -- 403 \"already redeemed\", balance unchanged. The check works correctly under normal sequential use. 3. POST /reset -- zeroes the wallet and un-redeems the code. 4. Use Nullock's race probe (Tests tab -> type \"race\", or Intruder with N concurrent identical requests) against POST /api/redeem?code=WELCOME50 with count >= 5. 5. Several of the concurrent requests all read used=False before any of them writes used=True, so several all credit +50. Wallet balance ends up a multiple of 50 greater than one redemption should allow. 6. Confirm success: GET /flag -- flips true only once the wallet balance exceeds a single redemption's value (50), a state no sequential use of this endpoint can ever reach. 7. Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write.",
+    "hints": [
+      "POST /api/redeem?code=WELCOME50 once, then POST it again right after. The second call 403s with \"already redeemed\" -- the check works fine when requests are sequential.",
+      "The check-then-credit gap in /api/redeem has a deliberate delay before it marks the code used. What happens if several identical requests all land inside that gap at once, instead of one after another?",
+      "POST /reset, then fire 5+ concurrent POST /api/redeem?code=WELCOME50 requests (Nullock's race probe, or Intruder with concurrent threads set). Several will all read used=False and all credit +50. GET /flag once the wallet balance exceeds a single redemption's value."
+    ],
+    "steps": [
+      "GET /wallet -- balance 0.",
+      "POST /api/redeem?code=WELCOME50 -- single shot, credits +50, wallet balance now 50. POST it again -- 403 \"already redeemed\", balance unchanged. The check works correctly under normal sequential use.",
+      "POST /reset -- zeroes the wallet and un-redeems the code.",
+      "Use Nullock's race probe (Tests tab -> type \"race\", or Intruder with N concurrent identical requests) against POST /api/redeem?code=WELCOME50 with count >= 5.",
+      "Several of the concurrent requests all read used=False before any of them writes used=True, so several all credit +50. Wallet balance ends up a multiple of 50 greater than one redemption should allow.",
+      "Confirm success: GET /flag -- flips true only once the wallet balance exceeds a single redemption's value (50), a state no sequential use of this endpoint can ever reach.",
+      "Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write."
+    ],
+    "fix": "Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write."
   }
 ];
   window.NULLOCK_LABS_XP = {
