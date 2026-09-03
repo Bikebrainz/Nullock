@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YAML unsafe deserialization (CI config import -&gt; RCE) — Nullock Labs</title>
+<meta name="description" content="CI config importer parses YAML with yaml.Loader -- python/object/apply -&gt; RCE">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">88</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-hard">Hard</span>
+    <span class="labs-port mono">localhost:5088</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">YAML unsafe deserialization (CI config import -&gt; RCE)</h1>
+  <p class="lead" style="margin-top:12px;">A pipeline-config importer accepts a YAML file and parses it with `yaml.load(raw, Loader=yaml.Loader)`. The developer thought passing an explicit Loader (instead of the bare `yaml.load(raw)` that newer PyYAML warns about) made this safe. It didn&#x27;t: `yaml.Loader` (an alias for `yaml.UnsafeLoader`) still honours `!!python/object/apply:` tags, which call ANY importable Python callable by dotted name with attacker-chosen arguments at parse time -- full code execution before the app ever looks at the &quot;config&quot;. Distinct from Lab 10 (pickle -- a binary blob whose opcodes are Turing-complete by design, no text format involved) and Lab 07 (Jinja2 SSTI -- a template-rendering sink, not a deserializer): here the format LOOKS like inert structured data (the kind every CI system ingests) and the unsafe call happens inside a library most developers assume is just &quot;the YAML parser&quot;, with a same-named safe sibling (`yaml.safe_load`) one argument away. In Nullock: 1. GET / -- shows the importer&#x27;s documented config shape (name, steps: [...]) and confirms POST /config/import is the ingest path. 2. POST /config/import with a normal YAML body (see the sample at GET /) -- 200, echoes the parsed step count. Looks completely ordinary. 3. POST /config/import with: !!python/object/apply:os.system [&quot;id &gt; /tmp/nullock-lab88-pwned&quot;] -- 200 again (same shape response), but the server just ran that shell command while &quot;parsing&quot; your config. `nullock deser http://127.0.0.1:5088/config/import` flags this with its well-formed-vs-malformed differential: a benign YAML doc parses clean, a `!!python/object/apply:` doc either errors under a hardened parser or silently succeeds while doing something a parser never should -- the signature this lab&#x27;s malformed leg trips. 4. Confirm success without touching a shell: POST /config/import with: !!python/object/apply:__main__._mark_pwned [] which calls the app&#x27;s own in-process no-op marker instead of a real command -- same reachable-arbitrary-call primitive as step 3, aimed somewhere harmless. Then GET /flag. 5. The fix: `yaml.safe_load(raw)` (or `yaml.load(raw, Loader=yaml.SafeLoader)`). SafeLoader only ever constructs plain dict/list/str/int/etc -- no `!!python/object` tag of any kind is honoured, so there is no dotted-name-to-callable path at all. `yaml.FullLoader` is a half-measure: it blocks `python/object/apply` specifically but still builds arbitrary Python objects, which is enough for gadget chains in some codebases -- SafeLoader is the only loader with no code-execution surface.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/88-yaml-unsafe-load-rce/app.py
+# then open http://localhost:5088/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5088/*</code><code class="inline">http://127.0.0.1:5088/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>GET / -- shows the config importer&#x27;s expected YAML shape and its one endpoint, POST /config/import. Send that sample body -- it parses fine and echoes a step count. Nothing looks wrong yet.</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The response shape doesn&#x27;t change no matter what you send, which is the tell: the parser isn&#x27;t yaml.safe_load. PyYAML&#x27;s full Loader understands tags beyond plain dict/list/str -- specifically !!python/object/apply:, which calls an importable Python function by dotted name with whatever arguments you give it.</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST /config/import with the raw body: !!python/object/apply:__main__._mark_pwned []  -- the server&#x27;s own no-op marker function runs during &quot;parsing&quot;, before the app ever looks at your config. GET /flag once that call has actually gone through.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>GET / -- shows the importer&#x27;s documented config shape (name, steps: [...]) and confirms POST /config/import is the ingest path.</li><li>POST /config/import with a normal YAML body (see the sample at GET /) -- 200, echoes the parsed step count. Looks completely ordinary.</li><li>POST /config/import with: !!python/object/apply:os.system [&quot;id &gt; /tmp/nullock-lab88-pwned&quot;] -- 200 again (same shape response), but the server just ran that shell command while &quot;parsing&quot; your config. `nullock deser http://127.0.0.1:5088/config/import` flags this with its well-formed-vs-malformed differential: a benign YAML doc parses clean, a `!!python/object/apply:` doc either errors under a hardened parser or silently succeeds while doing something a parser never should -- the signature this lab&#x27;s malformed leg trips.</li><li>Confirm success without touching a shell: POST /config/import with: !!python/object/apply:__main__._mark_pwned [] which calls the app&#x27;s own in-process no-op marker instead of a real command -- same reachable-arbitrary-call primitive as step 3, aimed somewhere harmless. Then GET /flag.</li><li>The fix: `yaml.safe_load(raw)` (or `yaml.load(raw, Loader=yaml.SafeLoader)`). SafeLoader only ever constructs plain dict/list/str/int/etc -- no `!!python/object` tag of any kind is honoured, so there is no dotted-name-to-callable path at all. `yaml.FullLoader` is a half-measure: it blocks `python/object/apply` specifically but still builds arbitrary Python objects, which is enough for gadget chains in some codebases -- SafeLoader is the only loader with no code-execution surface.</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>The fix: `yaml.safe_load(raw)` (or `yaml.load(raw, Loader=yaml.SafeLoader)`). SafeLoader only ever constructs plain dict/list/str/int/etc -- no `!!python/object` tag of any kind is honoured, so there is no dotted-name-to-callable path at all. `yaml.FullLoader` is a half-measure: it blocks `python/object/apply` specifically but still builds arbitrary Python objects, which is enough for gadget chains in some codebases -- SafeLoader is the only loader with no code-execution surface.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "88-yaml-unsafe-load-rce";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 88 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

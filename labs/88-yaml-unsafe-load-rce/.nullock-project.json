@@ -1,0 +1,6 @@
+{
+  "name": "Lab 88 -- YAML Unsafe Deserialization: a CI config importer parses attacker YAML with yaml.Loader, whose !!python/object/apply: tags call any importable function.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5088/*", "http://127.0.0.1:5088/*"],
+  "outOfScope": []
+}

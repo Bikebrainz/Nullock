@@ -2,9 +2,9 @@
 
 Intentionally-vulnerable apps for practicing with Nullock. Each lab is
 self-contained: one Python file + one walkthrough, runs on `localhost`,
-with no dependencies beyond Flask (plus `requests`, `pyjwt`, or
-`cryptography` for the handful of labs that need them -- see "Run"
-below).
+with no dependencies beyond Flask (plus `requests`, `pyjwt`,
+`cryptography`, or `pyyaml` for the handful of labs that need them --
+see "Run" below).
 
 ```
 labs/
@@ -95,6 +95,7 @@ labs/
   85-race-condition-giftcode-limit-overrun/  # single-use gift code's redeemed check races its own write               (5085)
   86-js-sourcemap-secret-leak/     # minified bundle hides it, its exposed source map hands the secret right back (5086)
   87-webhook-signature-bypass/     # payment webhook defines an HMAC check, the handler never actually calls it   (5087)
+  88-yaml-unsafe-load-rce/         # CI config importer parses YAML with yaml.Loader -- python/object/apply -> RCE (5088)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,
@@ -123,7 +124,7 @@ Each lab is its own `app.py` on a fixed port (`50NN` for lab NN, e.g. lab 43
 is on `5043`). From the lab dir:
 
 ```sh
-pip install flask          # + requests / pyjwt / cryptography for the labs that need them -- check the lab's docstring
+pip install flask          # + requests / pyjwt / cryptography / pyyaml for the labs that need them -- check the lab's docstring
 python app.py
 ```
 

@@ -11,6 +11,34 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 88: YAML unsafe deserialization (a CI config importer calls
+  `yaml.load(raw, Loader=yaml.Loader)`, and that Loader alias still
+  honours `!!python/object/apply:` tags -- arbitrary importable callable,
+  arbitrary arguments, at parse time).** A new teaching lab
+  (`labs/88-yaml-unsafe-load-rce/`) covering CWE-502 (deserialization of
+  untrusted data): `POST /config/import` looks like an ordinary config
+  ingest endpoint (echoes a step count for a normal `name: ...\nsteps:
+  [...]` document) but parses with the unsafe `yaml.Loader` instead of
+  `yaml.safe_load`. Distinct from Lab 10 (pickle -- a binary blob whose
+  opcodes are Turing-complete by design) and Lab 07 (Jinja2 SSTI -- a
+  template-rendering sink): here the payload is a text format every CI
+  system ingests, and the developer picked the *unsafe* loader precisely
+  because they thought passing an explicit `Loader=` argument (instead of
+  the bare `yaml.load(raw)` newer PyYAML deprecation-warns on) made it
+  safe. Verified end-to-end over HTTP: `POST /config/import` with a
+  normal YAML body succeeds and leaves `GET /flag` at `403`; the same
+  endpoint with body `!!python/object/apply:__main__._mark_pwned []`
+  also returns 200 with the same response shape, but flips `GET /flag`
+  to `solved:true` because the server's own in-process marker function
+  actually ran during "parsing" -- and a sanity check confirms
+  `yaml.safe_load` rejects the identical payload with a
+  `ConstructorError`, proving the gap is the Loader choice, not the
+  payload. `scripts/labs_site.py` regenerated (`docs/labs/`,
+  `ui-v2/labs-data.js`, a curated `Hard` difficulty + 3 hints, and a
+  `yaml-unsafe-load` keyword added to the site generator's "Injection"
+  category rule); README.md and docs/index.html's 87→88 lab-count
+  strings updated alongside.
+
 - **Lab 87: Webhook signature bypass (a payment webhook handler defines
   the HMAC signature check right next to itself but never actually calls
   it, so any forged event is trusted).** A new teaching lab

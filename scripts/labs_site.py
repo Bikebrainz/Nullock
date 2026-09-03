@@ -47,6 +47,7 @@ XP_BY_DIFFICULTY = {"Easy": 10, "Medium": 20, "Hard": 30}
 CATEGORY_RULES = [
     ("Injection", ("sqli", "ssti", "command-injection", "nosql", "xxe",
                    "crlf", "csv-injection", "graphql", "deserialization",
+                   "yaml-unsafe-load",
                    "prototype-pollution", "param-pollution", "ldap-injection",
                    "xpath-injection", "ognl", "prompt-injection")),
     ("Access control", ("idor", "broken-access", "mass-assignment",
@@ -167,6 +168,7 @@ DIFFICULTY = {
     "85-race-condition-giftcode-limit-overrun": "Medium",
     "86-js-sourcemap-secret-leak": "Medium",
     "87-webhook-signature-bypass": "Medium",
+    "88-yaml-unsafe-load-rce": "Hard",
 }
 
 
@@ -611,6 +613,11 @@ HINTS = {
         "GET / -- an order is pending payment, and the page shows you exactly what a payment.completed webhook body looks like. Find the endpoint that accepts that event.",
         "The handler reads an X-Signature header off every request -- but does it ever compute the real HMAC and compare it against what you sent?",
         "POST /webhook/payment with that sample body and any garbage X-Signature value like deadbeef -- 200 {\"ok\": true}. GET /order/ORD-1001 to see it flip to paid, then GET /flag once a payment has landed behind a signature that was never real.",
+    ],
+    "88-yaml-unsafe-load-rce": [
+        "GET / -- shows the config importer's expected YAML shape and its one endpoint, POST /config/import. Send that sample body -- it parses fine and echoes a step count. Nothing looks wrong yet.",
+        "The response shape doesn't change no matter what you send, which is the tell: the parser isn't yaml.safe_load. PyYAML's full Loader understands tags beyond plain dict/list/str -- specifically !!python/object/apply:, which calls an importable Python function by dotted name with whatever arguments you give it.",
+        "POST /config/import with the raw body: !!python/object/apply:__main__._mark_pwned []  -- the server's own no-op marker function runs during \"parsing\", before the app ever looks at your config. GET /flag once that call has actually gone through.",
     ],
 }
 
