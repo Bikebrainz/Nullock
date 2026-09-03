@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphQL mass assignment: the REST profile update allow-lists its — Nullock Labs</title>
+<meta name="description" content="REST profile update allow-lists fields, GraphQL mutation merges any field sent">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+<link rel="stylesheet" href="../assets/nullock.css">
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="../index.html" aria-label="nullock home">
+      <img class="mark" src="../assets/favicon.svg" alt="">
+      <span class="word">nullock</span>
+    </a>
+    <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <div class="nav-links" id="nav-links">
+      <a href="../index.html">Product</a>
+      <a href="../docs/index.html">Docs</a>
+      <a href="../marketplace/index.html">Extensions</a>
+      <a href="../labs/index.html" class="active">Labs</a>
+      <a href="../roadmap/index.html">Roadmap</a>
+      <a href="../pricing.html">Pricing</a>
+      <a href="../changelog.html">Changelog</a>
+      <a href="../about.html">About</a>
+      <a href="https://github.com/Bikebrainz/Nullock" class="github">GitHub</a>
+      <a href="../index.html#download" class="btn btn-primary btn-sm">Download</a>
+    </div>
+  </div>
+</nav>
+<main class="wrap-docs" style="padding:44px var(--pad-x) 72px;">
+  <a href="index.html" class="mono dim" style="font-size:13px;">&larr; all labs</a>
+  <div class="labs-detail-head">
+    <span class="labs-num mono">84</span>
+    <span class="labs-cat mono">Injection</span>
+    <span class="labs-diff labs-diff-medium">Medium</span>
+    <span class="labs-port mono">localhost:5084</span>
+    <button type="button" id="labs-solve-btn" class="btn btn-ghost btn-sm">Mark as solved</button>
+  </div>
+  <h1 class="h1-page" style="margin-top:14px;">GraphQL mass assignment: the REST profile update allow-lists its</h1>
+  <p class="lead" style="margin-top:12px;">fields, the GraphQL mutation for the exact same record merges whatever the client sends. `PUT /api/profile` does mass assignment right: it reads the request body and copies over ONLY `bio` and `email` -- even if the JSON also carries `role` or `is_admin`, those keys are never looked at, so a regular user POSTing `{&quot;bio&quot;: &quot;hi&quot;, &quot;role&quot;: &quot;admin&quot;}` still ends up a regular user. `POST /graphql`&#x27;s `updateProfile` mutation was written later against the same USERS record, and takes a shortcut: it parses every `field: &quot;value&quot;` pair out of the mutation&#x27;s argument list and applies the whole dict straight onto the user with no allow-list at all, `role` included -- because CWE-915 (mass assignment) is a per-field-name defect and each API surface here declares its own field list, fixing the REST handler did nothing for the resolver sitting right next to it. Distinct from Lab 18 (mass assignment via a single REST endpoint with no allow-list anywhere) in that THIS app&#x27;s REST endpoint is not the bug -- it is the control that makes the finding interesting: an auditor who only throws extra fields at `/api/profile` and watches them get stripped would reasonably conclude mass assignment is handled here. It&#x27;s also distinct from Lab 80&#x27;s GraphQL BOLA (same object, different identity) -- here there is only ever one user acting on their own record; the gap is which FIELDS of that record a mutation lets the caller set, not which record. In Nullock: 1. nullock scope add http://localhost:5084/* 2. GET /login?user=alice -- sets a session cookie. alice starts non-admin. 3. As alice: PUT /api/profile {&quot;bio&quot;:&quot;hi&quot;,&quot;role&quot;:&quot;admin&quot;} -- 200, but GET /api/profile shows role is still &quot;user&quot;. The allow-listed REST path is safe. 4. As alice: POST /graphql {&quot;query&quot;: &quot;mutation { updateProfile(bio: \\&quot;hi\\&quot;, role: \\&quot;admin\\&quot;) { username role } }&quot;} -- 200, and the response&#x27;s `role` now reads &quot;admin&quot;. The resolver applied the field REST would have dropped. 5. Confirm success: GET /flag with alice&#x27;s cookie -- flips true only once a session that logged in non-admin has `is_admin=True` set through the GraphQL mutation specifically (not by editing the in-memory USERS table any other way). Fix: the resolver must build its own allow-listed update dict the same way the REST handler does (or, better, both call one shared `apply_profile_update(user, **allowed_fields)` helper) instead of merging the mutation&#x27;s raw argument dict onto the record.</p>
+
+  <div class="code" style="margin-top:26px;">
+    <div class="code-head"><span class="mono">start the lab</span></div>
+    <pre><code>pip install flask
+python labs/84-graphql-mass-assignment-role/app.py
+# then open http://localhost:5084/</code></pre>
+  </div>
+
+  <div class="labs-scope"><div class="mono labs-scope-h">pre-set scope</div><code class="inline">http://localhost:5084/*</code><code class="inline">http://127.0.0.1:5084/*</code></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Hints</h2><p class="muted" style="font-size:13px;margin:8px 0 14px;">Stuck? Open these one at a time -- each reveals a bit more than the last.</p><div class="labs-hints"><details class="labs-hint"><summary>Hint 1</summary><p>Log in as alice, then PUT /api/profile with an extra field in the body -- something not asked for, like &quot;role&quot;:&quot;admin&quot; -- alongside a legitimate bio update. GET /api/profile afterward: did it take?</p></details><details class="labs-hint"><summary>Hint 2</summary><p>The REST endpoint is fine -- that&#x27;s the control, not the bug. There&#x27;s a GraphQL mutation reachable at /graphql that touches the exact same user record. Does it apply the same field list?</p></details><details class="labs-hint"><summary>Hint 3</summary><p>POST /graphql with a mutation like `mutation { updateProfile(bio: &quot;hi&quot;, role: &quot;admin&quot;) { username role } }` -- the response&#x27;s role now reads admin. GET /flag once that&#x27;s landed.</p></details></div>
+
+  <h2 class="h2-section" style="margin-top:40px;font-size:22px;">Walkthrough</h2>
+  <ol class="labs-steps"><li>nullock scope add http://localhost:5084/*</li><li>GET /login?user=alice -- sets a session cookie. alice starts non-admin.</li><li>As alice: PUT /api/profile {&quot;bio&quot;:&quot;hi&quot;,&quot;role&quot;:&quot;admin&quot;} -- 200, but GET /api/profile shows role is still &quot;user&quot;. The allow-listed REST path is safe.</li><li>As alice: POST /graphql {&quot;query&quot;: &quot;mutation { updateProfile(bio: \\&quot;hi\\&quot;, role: \\&quot;admin\\&quot;) { username role } }&quot;} -- 200, and the response&#x27;s `role` now reads &quot;admin&quot;. The resolver applied the field REST would have dropped.</li><li>Confirm success: GET /flag with alice&#x27;s cookie -- flips true only once a session that logged in non-admin has `is_admin=True` set through the GraphQL mutation specifically (not by editing the in-memory USERS table any other way).</li></ol>
+
+  <div class="labs-fix"><div class="mono labs-fix-h">the fix</div><p>Fix: the resolver must build its own allow-listed update dict the same way the REST handler does (or, better, both call one shared `apply_profile_update(user, **allowed_fields)` helper) instead of merging the mutation&#x27;s raw argument dict onto the record.</p></div>
+
+  <div class="labs-note">
+    <div class="mono" style="color:var(--purple);font-size:18px;">&#9873;</div>
+    <p class="muted" style="font-size:13.5px;margin:0;">Every lab maps to a Nullock probe, so you learn the bug class and how to confirm it with the tool. The scope above is pre-set to the lab host, so active probes only ever fire at the lab &mdash; never at anything else you have open.</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  // Same localStorage key/shape as the in-app LABS tab (ui-v2/app.jsx) --
+  // client-side only, no backend concept of lab progress. Separate origins
+  // so the two never actually share storage; kept identical for consistency.
+  var SLUG = "84-graphql-mass-assignment-role";
+  var KEY = "nullock:labs:completed";
+  function getSolved() {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(function (s) { return typeof s === "string"; }) : [];
+    } catch (e) { return []; }
+  }
+  function setSolved(arr) {
+    try { window.localStorage && window.localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage unavailable/full -- toggle still reflects in the button this visit */ }
+  }
+  var btn = document.getElementById("labs-solve-btn");
+  function paint(solved) {
+    btn.textContent = solved ? "\u2713 solved" : "Mark as solved";
+    btn.classList.toggle("is-solved", solved);
+  }
+  var solvedNow = getSolved().indexOf(SLUG) >= 0;
+  paint(solvedNow);
+  btn.addEventListener("click", function () {
+    var list = getSolved();
+    var i = list.indexOf(SLUG);
+    if (i >= 0) { list.splice(i, 1); solvedNow = false; } else { list.push(SLUG); solvedNow = true; }
+    setSolved(list);
+    paint(solvedNow);
+  });
+})();
+</script>
+<footer class="footer">
+  <div class="f-links">
+    <a href="../index.html">Product</a><span class="f-sep">&middot;</span>
+    <a href="../marketplace/index.html">Extensions</a><span class="f-sep">&middot;</span>
+    <a href="../roadmap/index.html">Roadmap</a><span class="f-sep">&middot;</span>
+    <a href="https://github.com/Bikebrainz/Nullock/tree/Nullock/labs">Source</a>
+  </div>
+  <div>nul&middot;lock &#9656; 84 intentionally-vulnerable targets &middot; run them on localhost &middot; MIT</div>
+</footer>
+</body>
+</html>

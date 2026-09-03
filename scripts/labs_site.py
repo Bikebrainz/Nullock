@@ -162,6 +162,7 @@ DIFFICULTY = {
     "81-shadow-api-v1-idor": "Medium",
     "82-excessive-data-exposure": "Medium",
     "83-bfla-delete-user": "Medium",
+    "84-graphql-mass-assignment-role": "Medium",
 }
 
 
@@ -586,6 +587,11 @@ HINTS = {
         "Log in as a plain, non-admin user, then try both admin views first -- GET /admin/users and GET /admin/stats. Both should 403 you. That's this app's authorization working correctly, not the bug.",
         "There's a third admin route that actually does something destructive rather than just displaying data. Does it check the same thing the two views you just got blocked by check?",
         "POST /admin/delete-user?id=<n> with your non-admin session's cookie -- it succeeds where the views didn't. GET /flag once a delete has gone through behind a session that was never an admin session.",
+    ],
+    "84-graphql-mass-assignment-role": [
+        "Log in as alice, then PUT /api/profile with an extra field in the body -- something not asked for, like \"role\":\"admin\" -- alongside a legitimate bio update. GET /api/profile afterward: did it take?",
+        "The REST endpoint is fine -- that's the control, not the bug. There's a GraphQL mutation reachable at /graphql that touches the exact same user record. Does it apply the same field list?",
+        "POST /graphql with a mutation like `mutation { updateProfile(bio: \"hi\", role: \"admin\") { username role } }` -- the response's role now reads admin. GET /flag once that's landed.",
     ],
 }
 

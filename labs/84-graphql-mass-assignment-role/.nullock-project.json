@@ -1,0 +1,6 @@
+{
+  "name": "Lab 84 -- GraphQL Mass Assignment: the REST profile update allow-lists its fields, the GraphQL mutation for the same record merges whatever the client sends.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5084/*", "http://127.0.0.1:5084/*"],
+  "outOfScope": []
+}

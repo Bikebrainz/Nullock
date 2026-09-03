@@ -1897,6 +1897,29 @@
       "Confirm success: GET /flag -- flips true only once a delete has gone through behind an authenticated session that was never an admin session."
     ],
     "fix": "Fix: authorization must be checked per FUNCTION, not just per session -- put every admin route (views AND actions) behind the same require_admin() decorator, and add a test that walks the route table asserting each /admin/* handler actually calls it, so a new action can't be added without one."
+  },
+  {
+    "slug": "84-graphql-mass-assignment-role",
+    "num": "84",
+    "title": "GraphQL mass assignment: the REST profile update allow-lists its",
+    "vuln": "REST profile update allow-lists fields, GraphQL mutation merges any field sent",
+    "port": "5084",
+    "category": "Injection",
+    "difficulty": "Medium",
+    "desc": "fields, the GraphQL mutation for the exact same record merges whatever the client sends. `PUT /api/profile` does mass assignment right: it reads the request body and copies over ONLY `bio` and `email` -- even if the JSON also carries `role` or `is_admin`, those keys are never looked at, so a regular user POSTing `{\"bio\": \"hi\", \"role\": \"admin\"}` still ends up a regular user. `POST /graphql`'s `updateProfile` mutation was written later against the same USERS record, and takes a shortcut: it parses every `field: \"value\"` pair out of the mutation's argument list and applies the whole dict straight onto the user with no allow-list at all, `role` included -- because CWE-915 (mass assignment) is a per-field-name defect and each API surface here declares its own field list, fixing the REST handler did nothing for the resolver sitting right next to it. Distinct from Lab 18 (mass assignment via a single REST endpoint with no allow-list anywhere) in that THIS app's REST endpoint is not the bug -- it is the control that makes the finding interesting: an auditor who only throws extra fields at `/api/profile` and watches them get stripped would reasonably conclude mass assignment is handled here. It's also distinct from Lab 80's GraphQL BOLA (same object, different identity) -- here there is only ever one user acting on their own record; the gap is which FIELDS of that record a mutation lets the caller set, not which record. In Nullock: 1. nullock scope add http://localhost:5084/* 2. GET /login?user=alice -- sets a session cookie. alice starts non-admin. 3. As alice: PUT /api/profile {\"bio\":\"hi\",\"role\":\"admin\"} -- 200, but GET /api/profile shows role is still \"user\". The allow-listed REST path is safe. 4. As alice: POST /graphql {\"query\": \"mutation { updateProfile(bio: \\\\\"hi\\\\\", role: \\\\\"admin\\\\\") { username role } }\"} -- 200, and the response's `role` now reads \"admin\". The resolver applied the field REST would have dropped. 5. Confirm success: GET /flag with alice's cookie -- flips true only once a session that logged in non-admin has `is_admin=True` set through the GraphQL mutation specifically (not by editing the in-memory USERS table any other way). Fix: the resolver must build its own allow-listed update dict the same way the REST handler does (or, better, both call one shared `apply_profile_update(user, **allowed_fields)` helper) instead of merging the mutation's raw argument dict onto the record.",
+    "hints": [
+      "Log in as alice, then PUT /api/profile with an extra field in the body -- something not asked for, like \"role\":\"admin\" -- alongside a legitimate bio update. GET /api/profile afterward: did it take?",
+      "The REST endpoint is fine -- that's the control, not the bug. There's a GraphQL mutation reachable at /graphql that touches the exact same user record. Does it apply the same field list?",
+      "POST /graphql with a mutation like `mutation { updateProfile(bio: \"hi\", role: \"admin\") { username role } }` -- the response's role now reads admin. GET /flag once that's landed."
+    ],
+    "steps": [
+      "nullock scope add http://localhost:5084/*",
+      "GET /login?user=alice -- sets a session cookie. alice starts non-admin.",
+      "As alice: PUT /api/profile {\"bio\":\"hi\",\"role\":\"admin\"} -- 200, but GET /api/profile shows role is still \"user\". The allow-listed REST path is safe.",
+      "As alice: POST /graphql {\"query\": \"mutation { updateProfile(bio: \\\\\"hi\\\\\", role: \\\\\"admin\\\\\") { username role } }\"} -- 200, and the response's `role` now reads \"admin\". The resolver applied the field REST would have dropped.",
+      "Confirm success: GET /flag with alice's cookie -- flips true only once a session that logged in non-admin has `is_admin=True` set through the GraphQL mutation specifically (not by editing the in-memory USERS table any other way)."
+    ],
+    "fix": "Fix: the resolver must build its own allow-listed update dict the same way the REST handler does (or, better, both call one shared `apply_profile_update(user, **allowed_fields)` helper) instead of merging the mutation's raw argument dict onto the record."
   }
 ];
   window.NULLOCK_LABS_XP = {

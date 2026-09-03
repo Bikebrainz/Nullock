@@ -11,6 +11,32 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 84: GraphQL mass assignment (the REST profile update allow-lists
+  its fields, the GraphQL mutation for the same record merges whatever
+  the client sends).** A new teaching lab
+  (`labs/84-graphql-mass-assignment-role/`) covering CWE-915 (mass
+  assignment) reached through a second API surface: `PUT /api/profile`
+  copies over only `bio` and `email`, silently dropping any `role` or
+  `is_admin` field a caller adds -- but `POST /graphql`'s `updateProfile`
+  mutation, written later against the identical in-memory record, parses
+  every `field: "value"` pair out of its argument list and applies the
+  whole set with no allow-list, `role` included. Distinct from Lab 18
+  (mass assignment via the one REST endpoint that has no allow-list
+  anywhere) in that this app's REST path IS the control -- an audit that
+  only probes `/api/profile` and watches extra fields get stripped would
+  reasonably sign off on mass assignment here; distinct from Lab 80's
+  GraphQL BOLA (same object, wrong identity) in that there is only ever
+  one user acting on their own record, the gap is which FIELDS a mutation
+  lets that same user set. Verified end-to-end over HTTP: `PUT
+  /api/profile {"bio":"hi","role":"admin"}` leaves `role` at `"user"`,
+  `POST /graphql` with an `updateProfile(bio: "hi", role: "admin")`
+  mutation flips it to `"admin"` in the response, and `GET /flag` only
+  flips to `solved:true` once that promotion has gone through via the
+  GraphQL path specifically. `scripts/labs_site.py` regenerated
+  (`docs/labs/`, `ui-v2/labs-data.js`, a curated `Medium` difficulty + 3
+  hints); README.md and docs/index.html's 83→84 lab-count strings updated
+  alongside.
+
 - **Lab 83: Broken function level authorization (the destructive admin
   action never got the same role check its sibling admin views did).** A
   new teaching lab (`labs/83-bfla-delete-user/`) covering OWASP API5:2023
