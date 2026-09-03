@@ -93,6 +93,7 @@ labs/
   83-bfla-delete-user/             # destructive admin action skips the role check its sibling views have (5083)
   84-graphql-mass-assignment-role/ # REST profile update allow-lists fields, GraphQL mutation merges any field sent (5084)
   85-race-condition-giftcode-limit-overrun/  # single-use gift code's redeemed check races its own write               (5085)
+  86-js-sourcemap-secret-leak/     # minified bundle hides it, its exposed source map hands the secret right back (5086)
 ```
 
 Each lab maps to a Nullock active probe (`cmdi`, `lfi`, `openredirect`,

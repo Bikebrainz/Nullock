@@ -1945,6 +1945,31 @@
       "Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write."
     ],
     "fix": "Fix: hold a per-code lock (or an atomic UPDATE ... SET used=1 WHERE used=0, checking rows-affected) across the check-and-set, not just around the write."
+  },
+  {
+    "slug": "86-js-sourcemap-secret-leak",
+    "num": "86",
+    "title": "JS recon: an exposed production source map hands back the",
+    "vuln": "minified bundle hides it, its exposed source map hands the secret right back",
+    "port": "5086",
+    "category": "Info disclosure",
+    "difficulty": "Medium",
+    "desc": "pre-minification source, and that source hardcodes an internal API token the minified bundle itself never shows in readable form. Distinct from Lab 25 (a plaintext AWS key sitting directly in app.js, no recon needed) and Lab 48 (raw files like .env/.git served from the web root): here the SECRET is not in anything a page links to or a directory listing would surface. It only exists inside app.min.js.map's `sourcesContent`, reachable solely by following the minified bundle's own `//# sourceMappingURL` comment -- exactly the two-hop chain Nullock's JS recon probe automates (fetch the page -> pull <script src> bundles -> follow each bundle's sourceMappingURL -> mine secrets out of what comes back), and exactly what a plain \"view source\" on the page never reveals. In Nullock: 1. GET / -- a plain dashboard-links page, references /static/app.min.js. View its response body: no secret anywhere. 2. GET /static/app.min.js -- single-line minified JS. No readable secret in it either, but its last line names a source map: `//# sourceMappingURL=app.min.js.map`. 3. Run Nullock's JS recon probe against / (Scans tab -> JS recon, or `nullock jsrecon <url>`). It fetches the bundle, follows the sourceMappingURL, confirms /static/app.min.js.map is reachable (flags a source-map-exposed finding), and mines the map's sourcesContent for hardcoded secrets -- surfacing a generic-secret hit for INTERNAL_API_TOKEN. 4. Confirm by hand: GET /static/app.min.js.map, read the sourcesContent[0] string -- the un-minified original source, including `const INTERNAL_API_TOKEN = \"nlk_live_...\"` and a comment naming the endpoint it unlocks. 5. GET /internal/export-users with header `X-Internal-Token: <the leaked value>` -- 200, dumps the (fake) user table. Without the header, or with the wrong value, 403. 6. Confirm success: GET /flag -- flips true only once the correct token has actually been used against /internal/export-users, not merely extracted. 7. Fix: never ship .map files (or gate them behind the same auth as the app) in production, and never hardcode a live credential into source at all -- minification is not a security boundary, and a source map undoes it for anyone who looks.",
+    "hints": [
+      "GET / and view its response body -- no secret anywhere. GET /static/app.min.js -- also no readable secret, but read its last line closely.",
+      "That last line names a source map: //# sourceMappingURL=app.min.js.map. Nullock's JS recon probe follows exactly that kind of comment automatically -- try it against /, or just GET the map URL by hand.",
+      "The map's sourcesContent holds the un-minified original source, including a hardcoded INTERNAL_API_TOKEN and a comment naming /internal/export-users. GET that endpoint with header X-Internal-Token: <the leaked value> -- 200 with a user dump. GET /flag once that call has actually gone through."
+    ],
+    "steps": [
+      "GET / -- a plain dashboard-links page, references /static/app.min.js. View its response body: no secret anywhere.",
+      "GET /static/app.min.js -- single-line minified JS. No readable secret in it either, but its last line names a source map: `//# sourceMappingURL=app.min.js.map`.",
+      "Run Nullock's JS recon probe against / (Scans tab -> JS recon, or `nullock jsrecon <url>`). It fetches the bundle, follows the sourceMappingURL, confirms /static/app.min.js.map is reachable (flags a source-map-exposed finding), and mines the map's sourcesContent for hardcoded secrets -- surfacing a generic-secret hit for INTERNAL_API_TOKEN.",
+      "Confirm by hand: GET /static/app.min.js.map, read the sourcesContent[0] string -- the un-minified original source, including `const INTERNAL_API_TOKEN = \"nlk_live_...\"` and a comment naming the endpoint it unlocks.",
+      "GET /internal/export-users with header `X-Internal-Token: <the leaked value>` -- 200, dumps the (fake) user table. Without the header, or with the wrong value, 403.",
+      "Confirm success: GET /flag -- flips true only once the correct token has actually been used against /internal/export-users, not merely extracted.",
+      "Fix: never ship .map files (or gate them behind the same auth as the app) in production, and never hardcode a live credential into source at all -- minification is not a security boundary, and a source map undoes it for anyone who looks."
+    ],
+    "fix": "Fix: never ship .map files (or gate them behind the same auth as the app) in production, and never hardcode a live credential into source at all -- minification is not a security boundary, and a source map undoes it for anyone who looks."
   }
 ];
   window.NULLOCK_LABS_XP = {

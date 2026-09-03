@@ -1485,17 +1485,17 @@
     {
       "area": "scanner",
       "feature": "[B5] Issue suppression / false-positive marking",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "weeks",
-      "gap": "No per-finding false-positive marking, kind suppression, or annotation. Triage is all-or-nothing (clear everything).",
-      "why": "Re-read: the only finding-mutation routes are /api/findings/clear (control_server.cpp:5741, clears ALL) and read-only /api/findings/grouped (3979). Grep of Src/ and ui-v2/ for markFalsePositive|suppressFinding|findings/(suppress|fp|falsepositive) returns nothing (only false-positive-risk prose). UI has only Export SARIF / Probe all / Clear all (app.jsx:806-844). Confirmed absent.",
-      "evidence": "control_server.cpp:5741 `if (path == \"/api/findings/clear\")`; app.jsx:838 'Clear all findings?' is the only mutation button",
+      "gap": "None -- the ISSUES tab (ui-v2/app.jsx IssuesTab) now has per-finding fp/un-fp and del/restore buttons plus a severity-override <select>, and a per-kind mute/muted button on each kind filter chip, all calling the already-built /api/findings/mark, /delete, /set-severity, and /suppress-kind routes and reflecting the returned falsePositive/deleted/suppressed flags back onto each row.",
+      "why": "Wave 0 register-accuracy audit: the 2026-08-17 close left this PARTIAL pending the Issues-UI follow-on; that follow-on has since landed (not separately reconciled here before now). ui-v2/app.jsx:1811-1826 defines doMarkFP/doToggleDelete/doSetSeverity/doSuppressKind, and each is wired to a live control: the fp/un-fp and del/restore buttons + severity <select> on every finding row (app.jsx:2342-2377), and a mute/muted button on every kind chip in the filter row (app.jsx:2198-2208). real-data.js:595-598 posts each to its backend route. Verified end to end against control_server.cpp:6891 (/api/findings/mark), :6910 (/suppress-kind), :6922 (/set-severity, /delete) and the snapshot's falsePositive/deleted/suppressed/severity fields (control_server.cpp:1420-1429) that the UI reads back. Upgraded partial -> present.",
+      "evidence": "ui-v2/app.jsx:1811-1826 (doMarkFP/doToggleDelete/doSetSeverity/doSuppressKind), :2198-2208 (per-kind mute button), :2342-2377 (per-finding fp/del buttons + severity select); ui-v2/real-data.js:595-598 (findingMark/findingDelete/findingSetSeverity/findingSuppressKind); control_server.cpp:6891,6910,6922 (routes), :1420-1429 (snapshot flags).",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-17",
-        "commit": "64441d6",
-        "note": "Backend + API built: mark a single finding false-positive (/api/findings/mark {id,falsePositive}) and suppress an entire issue kind (/api/findings/suppress-kind {kind,suppressed}). Both persist across restart and are reversible with no re-scan -- since findings.ndjson is append-only, the marks live in the project file (suppressedKinds + falsePositiveKeys) keyed by the finding identity key (identical to ProjectStore's dedup key, unit-tested + mutation-proven) and are applied at DISPLAY time. The snapshot now carries falsePositive + suppressed per finding + the suppressedKinds list. Verified e2e (mark -> flagged -> persists across restart; suppress kind -> in suppressedKinds + all findings of that kind flagged). PARTIAL: the triage buttons in the Issues UI (ui-v2) are the remaining follow-on; the kind 'suppress' is display-time only (findings still accumulate in ndjson)."
+        "date": "2026-09-03",
+        "commit": "PENDING",
+        "note": "Wave 0 register-accuracy audit: upgraded partial -> present. The 2026-08-17 entry closed the backend (/api/findings/mark, /suppress-kind) and left the Issues-UI buttons as a named follow-on; grepping ui-v2/app.jsx today shows that follow-on is already fully wired (per-finding fp/del buttons, a severity-override select, and a per-kind mute button), calling all four persisted mutation routes and rendering their returned flags -- parity.json simply never caught up to that landing. No code changed in this commit; this is a state correction only."
       }
     },
     {

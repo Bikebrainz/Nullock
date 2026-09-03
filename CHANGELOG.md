@@ -11,6 +11,56 @@ developer-facing record.
 ## [Unreleased]
 
 ### Added
+- **Lab 86: JS recon source-map secret leak (a minified production bundle
+  hides its secret, but the source map next to it hands the pre-minification
+  original right back).** A new teaching lab
+  (`labs/86-js-sourcemap-secret-leak/`) covering CWE-540 (information
+  exposure through source code) via an exposed `.map` file: `GET
+  /static/app.min.js` is genuinely unreadable, a single minified line with
+  no secret in it, but its trailing `//# sourceMappingURL=app.min.js.map`
+  comment -- the exact hop Nullock's JS recon probe (`nullock jsrecon`,
+  wired into the SCANS tab) automates -- leads to a map whose
+  `sourcesContent` is the un-minified original, complete with a hardcoded
+  `INTERNAL_API_TOKEN` unlocking `GET /internal/export-users`. Distinct from
+  Lab 25 (an AWS key sitting in plain sight in `app.js`, no recon needed)
+  and Lab 48 (raw files like `.env`/`.git` served from the web root): the
+  secret here is not linked from anywhere a page or directory listing would
+  surface, only reachable by following the bundle's own source-map pointer.
+  Verified end-to-end over HTTP: `/` and `/static/app.min.js` carry no
+  secret string; `/static/app.min.js.map`'s `sourcesContent[0]` does, and
+  the same generic-secret and `sourceMappingURL` regexes
+  `Src/Core/Networking/js_recon_logic.cpp` uses were run against the live
+  responses and confirmed to match; `/internal/export-users` 403s without
+  the header and 200s with the leaked token; `GET /flag` only flips to
+  `solved:true` after that authenticated call actually lands. Added a
+  `sourcemap` keyword to `scripts/labs_site.py`'s "Info disclosure" category
+  rule (the existing `secret-exposure` keyword doesn't match this slug).
+  `scripts/labs_site.py` regenerated (`docs/labs/`, `ui-v2/labs-data.js`, a
+  curated `Medium` difficulty + 3 hints); README.md and docs/index.html's
+  85→86 lab-count strings updated alongside.
+
+- **Lab 85: Race condition (limit overrun) -- a single-use gift code's
+  "already redeemed" check races its own write, so N concurrent
+  redemptions all read `used=False` before any of them writes
+  `used=True`, one code paying out multiple times.** A new teaching lab
+  (`labs/85-race-condition-giftcode-limit-overrun/`) covering CWE-362
+  (race condition) via a check-then-act gap with no lock across it.
+  Distinct from Lab 09 (a numeric balance overdrawn below zero by racing
+  a spend against itself) in exploit shape, not just theme: Lab 09 wins
+  by watching a balance go negative, something no sequence of
+  single-shot requests can ever do; this one wins by watching ONE code's
+  credit land more than once, which a single, non-concurrent replay can
+  never do either -- `POST /api/redeem?code=WELCOME50` twice in a row
+  always 403s the second time. Only requests landing inside the race
+  window, concurrently, both read the pre-write state. Verified
+  end-to-end: sequential replay 403s correctly; several concurrent
+  requests against the same code each credit +50, and `GET /flag` only
+  flips to `solved:true` once the wallet balance exceeds a single
+  redemption's value, a state no sequential use can ever reach.
+  (Backfilling this changelog entry now -- the original commit regenerated
+  `scripts/labs_site.py`'s output and the 84→85 lab-count strings but
+  skipped its own CHANGELOG.md entry.)
+
 - **Lab 84: GraphQL mass assignment (the REST profile update allow-lists
   its fields, the GraphQL mutation for the same record merges whatever
   the client sends).** A new teaching lab

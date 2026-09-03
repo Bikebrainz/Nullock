@@ -1,0 +1,6 @@
+{
+  "name": "Lab 86 -- JS Recon Source Map Secret Leak: a production source map hands back the pre-minification source, and that source hardcodes an internal API token.",
+  "notes": "Nullock lab target. Scope is pre-set to the lab host so active probes run only here. Start the lab (python app.py) then run the steps in app.py.",
+  "inScope": ["http://localhost:5086/*", "http://127.0.0.1:5086/*"],
+  "outOfScope": []
+}

@@ -60,7 +60,8 @@ CATEGORY_RULES = [
                      "insecure-cookie", "missing-security-headers", "cswsh",
                      "smuggl")),
     ("Info disclosure", ("secret-exposure", "verbose-errors", "directory-listing",
-                         "sensitive-file", "robots", "file-upload", "data-exposure")),
+                         "sensitive-file", "robots", "file-upload", "data-exposure",
+                         "sourcemap")),
     ("Business logic", ("race-condition", "business-logic")),
 ]
 
@@ -164,6 +165,7 @@ DIFFICULTY = {
     "83-bfla-delete-user": "Medium",
     "84-graphql-mass-assignment-role": "Medium",
     "85-race-condition-giftcode-limit-overrun": "Medium",
+    "86-js-sourcemap-secret-leak": "Medium",
 }
 
 
@@ -598,6 +600,11 @@ HINTS = {
         "POST /api/redeem?code=WELCOME50 once, then POST it again right after. The second call 403s with \"already redeemed\" -- the check works fine when requests are sequential.",
         "The check-then-credit gap in /api/redeem has a deliberate delay before it marks the code used. What happens if several identical requests all land inside that gap at once, instead of one after another?",
         "POST /reset, then fire 5+ concurrent POST /api/redeem?code=WELCOME50 requests (Nullock's race probe, or Intruder with concurrent threads set). Several will all read used=False and all credit +50. GET /flag once the wallet balance exceeds a single redemption's value.",
+    ],
+    "86-js-sourcemap-secret-leak": [
+        "GET / and view its response body -- no secret anywhere. GET /static/app.min.js -- also no readable secret, but read its last line closely.",
+        "That last line names a source map: //# sourceMappingURL=app.min.js.map. Nullock's JS recon probe follows exactly that kind of comment automatically -- try it against /, or just GET the map URL by hand.",
+        "The map's sourcesContent holds the un-minified original source, including a hardcoded INTERNAL_API_TOKEN and a comment naming /internal/export-users. GET that endpoint with header X-Internal-Token: <the leaked value> -- 200 with a user dump. GET /flag once that call has actually gone through.",
     ],
 }
 
