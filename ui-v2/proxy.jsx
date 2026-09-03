@@ -128,6 +128,23 @@ function isRowDeleted(row, deletedScopes) {
   return false;
 }
 
+// Burp's "stop sending out-of-scope items to history?" nudge: the first time
+// a scope is defined AND out-of-scope traffic is actually landing in history
+// (logOutOfScope is on, so nothing is being filtered), Burp prompts once
+// asking whether to restrict logging to in-scope items. Nullock's
+// logOutOfScope toggle already does the restricting -- this closes only the
+// "at-the-moment prompt" moment itself, not a new backend capability. One
+// dismissal per browser session (sessionStorage, not localStorage): a fresh
+// tab that starts capturing out-of-scope traffic again gets nudged again,
+// same as Burp re-surfacing this when it matters.
+const OOS_PROMPT_SESSION_KEY = "nl.proxy.oosPrompt.dismissed.v1";
+function loadOosPromptDismissed() {
+  try { return window.sessionStorage.getItem(OOS_PROMPT_SESSION_KEY) === "1"; } catch (e) { return false; }
+}
+function saveOosPromptDismissed() {
+  try { window.sessionStorage.setItem(OOS_PROMPT_SESSION_KEY, "1"); } catch (e) { /* storage unavailable -- keep working in-memory */ }
+}
+
 // Target Analyzer: attack-surface sizing over a site-map scope (Burp's
 // "counts of static vs dynamic URLs, unique parameter names, and per-URL
 // entry points"). Computed entirely client-side from the HTTP history rows
@@ -3035,6 +3052,17 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const [caseSensitive, setCaseSensitive] = React.useState(false);
   const extList = React.useMemo(() => parseExtList(extText), [extText]);
 
+  // Burp's "stop sending out-of-scope items to history?" one-time nudge --
+  // see loadOosPromptDismissed's comment above.
+  const [oosPromptDismissed, setOosPromptDismissed] = React.useState(loadOosPromptDismissed);
+  const hasOutOfScopeTraffic = React.useMemo(
+    () => !!(scope && scope.in && scope.in.length > 0 && visibleRows.some(r => !hostInScope(r.host, scope))),
+    [scope, visibleRows]
+  );
+  const showOosPrompt = !!state.logOutOfScope && hasOutOfScopeTraffic && !oosPromptDismissed;
+  const dismissOosPrompt = () => { saveOosPromptDismissed(); setOosPromptDismissed(true); };
+  const stopLoggingOutOfScope = () => { dispatch({ type: "log-out-of-scope-toggle" }); dismissOosPrompt(); };
+
   // #398: right-click add/remove scope, on any site-map or history row.
   const [wsRepeaterOpen, setWsRepeaterOpen] = React.useState(false);
   const [wsRepeaterInit, setWsRepeaterInit] = React.useState(null); // {host,port,direction,opcode,payload} | null
@@ -3321,6 +3349,13 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
               ? "Needs at least two distinct hosts in HTTP history to compare"
               : "Diff URL paths and findings between two hosts already in HTTP history"}>⇄ COMPARE HOSTS</button>
         </div>
+        {showOosPrompt && (
+          <div className="oos-prompt-banner" role="alert">
+            <span>Out-of-scope items are being added to history. Stop sending out-of-scope items to history?</span>
+            <button onClick={stopLoggingOutOfScope}>Yes, stop logging out-of-scope</button>
+            <button onClick={dismissOosPrompt}>No, keep logging everything</button>
+          </div>
+        )}
         {wsRepeaterOpen && <WsRepeaterOverlay onClose={() => { setWsRepeaterOpen(false); setWsRepeaterInit(null); }} initial={wsRepeaterInit} />}
         {h2LogOpen && <H2FrameLogOverlay onClose={() => setH2LogOpen(false)} />}
         {dbSearchOpen && <DbSearchOverlay onClose={() => setDbSearchOpen(false)} />}
