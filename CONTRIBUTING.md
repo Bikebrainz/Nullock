@@ -138,6 +138,11 @@ scripts/probe_smoke.sh            # auto-finds the Release build, or pass the ex
 `nullock` steps to confirm it, and the upstream fix). Keep it under ~100
 lines, Flask + `requests` only. Each lab should map to a Nullock probe.
 
+Fixture credentials follow the no-literal-secrets rule below: give them the
+`nlk_` prefix (Lab 86) or mint them by concatenation at runtime. A real
+provider shape (`whsec_`, `sk_live_`, `AKIA…`) in a lab raises a GitHub
+secret-scanning alert even though the value is invented (Lab 87, alert #1).
+
 ## Commits & PRs
 
 - One logical change per commit; explain *why* in the body.

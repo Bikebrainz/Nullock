@@ -42,7 +42,9 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-SECRET = "whsec_5c8f3a1e9b2d4671c0a8f6e21d9b5c74"
+# Fabricated; the nlk_ prefix is Nullock's own namespace so it matches no
+# real provider's key shape (a whsec_-style literal trips secret scanning).
+SECRET = "nlk_webhook_5c8f3a1e9b2d4671c0a8f6e21d9b5c74"
 FLAG = "NULLOCK{webhook_signature_bypass_87}"
 
 ORDERS = {"ORD-1001": {"amount": 49.99, "status": "pending"}}

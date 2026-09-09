@@ -506,6 +506,17 @@ developer-facing record.
   alongside.
 
 ### Fixed
+- **Lab 87's webhook fixture was a `whsec_`-prefixed 32-hex literal, which
+  is exactly Stripe's webhook-signing-secret shape, so GitHub secret
+  scanning raised alert #1 against the public repo.** The value was
+  invented for the lab and never belonged to any provider; it only feeds
+  the lab's own `compute_signature()`. Moved it into Nullock's `nlk_`
+  namespace (the Lab 86 precedent) so no partner pattern matches, added
+  the fixture rule to "Adding a lab" in CONTRIBUTING.md (it already lived
+  under "Commits & PRs", where lab authors weren't looking), and closed
+  the alert as a test fixture. Lab 87's walkthrough (forged webhook
+  accepted, order paid, flag solved) and its negative control (a correctly
+  signed webhook is not counted as forged) re-verified with the new value.
 - **Proxy tab's DetailPane silently lost a selected row once it aged out of
   the in-memory history window.** `GET /api/history/full/<id>` has existed
   since before this run to serve exactly this case (its own comment says
