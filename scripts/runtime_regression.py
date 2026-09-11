@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,6 +23,7 @@ def free_port():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('app', type=Path)
+    parser.add_argument('--gui', action='store_true', help='also require the embedded native window to load')
     args = parser.parse_args()
     app_path = args.app.resolve()
     ctl, proxy = free_port(), free_port()
@@ -54,11 +56,11 @@ def main():
     mock = ThreadingHTTPServer(('127.0.0.1', 0), Mock)
     threading.Thread(target=mock.serve_forever, daemon=True).start()
     host = f'127.0.0.1:{mock.server_port}'
-    def api(path, data=None, raw=False):
+    def api(path, data=None, raw=False, timeout=35):
         payload = data if raw else None if data is None else json.dumps(data).encode()
         req = urllib.request.Request(f'http://127.0.0.1:{ctl}' + path, data=payload,
             headers={'X-Nullock-UI': '1', 'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=35) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             content = r.read()
             return json.loads(content) if content else None
     def check(name, value):
@@ -95,11 +97,15 @@ def main():
         env = os.environ.copy()
         env['NULLOCK_DATA_DIR'] = str(scratch/'app-data')
         env['NULLOCK_NO_UPDATE'] = '1'
+        env['QT_LOGGING_TO_CONSOLE'] = '1'
+        if args.gui:
+            env['QT_QPA_PLATFORM'] = 'offscreen'
+            env['QT_QUICK_BACKEND'] = 'software'
         # A deployed runtime must not require a machine-specific OpenSSL config.
         env['OPENSSL_CONF'] = str(scratch/'does-not-exist.cnf')
         log = open(scratch/'app.log','wb')
         try:
-            process = subprocess.Popen([str(app_path),'--headless','--no-update-check',
+            process = subprocess.Popen([str(app_path),'--no-browser' if args.gui else '--headless','--no-update-check',
                 f'--project={initial}',f'--control-port={ctl}',f'--proxy-port={proxy}',
                 f'--oast-port={free_port()}',f'--dns-port={free_port()}'],
                 env=env,stdout=log,stderr=log,
@@ -108,9 +114,13 @@ def main():
                 if process.poll() is not None:
                     log.flush()
                     raise RuntimeError((scratch/'app.log').read_text(errors='replace'))
-                try: snap=api('/api/snapshot'); break
+                try: snap=api('/api/snapshot', timeout=.25); break
                 except OSError: time.sleep(.1)
-            else: raise RuntimeError('app did not start')
+            else: raise RuntimeError('app did not start: ' + (scratch/'app.log').read_text(errors='replace'))
+            if args.gui:
+                log.flush()
+                native_log = (scratch/'app.log').read_text(errors='replace')
+                check('embedded native window loads', 'Nullock native UI ready' in native_log)
             check('--project selects the explicit directory', Path(snap['bootInfo']['projectDir']).resolve()==initial.resolve())
             check('snapshot reports a real version', bool(snap['bootInfo']['version']))
             check('CA is created without external config', (scratch/'app-data/ca/ca.pem').exists())
@@ -202,11 +212,17 @@ def main():
             release.set()
             check('graceful shutdown completes successfully',process.wait(timeout=15)==0)
             check('late result persisted before shutdown',len((scratch/'app-data/projects/shutdown/history.ndjson').read_text().splitlines())==2)
+            if args.gui:
+                native_log = (scratch/'app.log').read_text(errors='replace')
+                check('native window has no QML binding errors',
+                      'ReferenceError:' not in native_log and 'TypeError:' not in native_log)
         finally:
             release.set()
             if process and process.poll() is None:
                 process.terminate(); process.wait(timeout=10)
             log.close()
+            if sys.exc_info()[0] is not None:
+                print((scratch/'app.log').read_text(errors='replace'), file=sys.stderr)
             mock.shutdown(); mock.server_close()
     print(f'{len(checks)} runtime checks passed')
 

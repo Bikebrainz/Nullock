@@ -152,6 +152,9 @@ elseif(WIN32)
         COMMAND "${NULLOCK_WINDEPLOYQT}" --no-translations --compiler-runtime
             --qmldir "${CMAKE_SOURCE_DIR}/Src" "$<TARGET_FILE:NullockApp>"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+            "$<TARGET_FILE_DIR:NullockApp>/platforms/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} "$<TARGET_FILE_DIR:NullockApp>"
         COMMAND ${CMAKE_COMMAND}
             "-DAPP_EXE=$<TARGET_FILE:NullockApp>"

@@ -149,9 +149,25 @@ jobs:
         shell: pwsh
         run: |
           cmake --install build --config Release --prefix stage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $python = (Get-Command python).Source
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe
+          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui
+      - name: build Windows installer and portable archive
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cpack --config build/CPackConfig.cmake -G "NSIS;ZIP" -C Release -B packages
+      - name: install and verify the Windows installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem packages/Nullock-*-win64.exe | Select-Object -First 1
+          $target = Join-Path $PWD installer-stage
+          $installed = Start-Process -FilePath $installer.FullName -ArgumentList '/S',"/D=$target" -Wait -PassThru -WindowStyle Hidden
+          if ($installed.ExitCode -ne 0) { exit $installed.ExitCode }
+          $python = (Get-Command python).Source
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & $python scripts/runtime_regression.py "$target/bin/NullockApp.exe" --gui
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |
@@ -182,9 +198,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential \
-            libnghttp2-dev libssl-dev patchelf libxcb-cursor0
+            libnghttp2-dev libssl-dev patchelf libxcb-cursor0 rpm dpkg-dev imagemagick wget ccache
+      - name: restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: linux-qt-${{ env.QT_VERSION }}-ccache-${{ github.sha }}
+          restore-keys: linux-qt-${{ env.QT_VERSION }}-ccache-
       - name: configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          ccache --max-size=1G
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: build (guards cross-platform compile/link regressions)
         # The app had only ever been built on Windows until the v3.7.0 release
         # surfaced a stack of Linux portability breaks (Qt6::ZlibPrivate absent,
@@ -204,7 +228,17 @@ jobs:
           else
             APP="$PWD/stage/bin/NullockApp"
           fi
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP"
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui
+      - name: build and verify Linux packages
+        run: |
+          cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B packages
+          dpkg-deb --extract packages/Nullock-*-Linux.deb deb-stage
+          APP=$(find deb-stage -type f -name NullockApp -print -quit)
+          test -n "$APP"
+          python3 scripts/runtime_regression.py "$APP" --gui
+          DESTDIR=appimage-stage cmake --install build --prefix /usr
+          bash packaging/appimage/build_appimage.sh appimage-stage
+          APPIMAGE_EXTRACT_AND_RUN=1 python3 scripts/runtime_regression.py ./Nullock-x86_64.AppImage --gui
 
   build-macos:
     name: build NullockApp (macOS)
@@ -239,7 +273,15 @@ jobs:
           else
             APP="$PWD/stage/bin/NullockApp"
           fi
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP"
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui
+      - name: build and verify macOS disk image
+        run: |
+          ln -s /Applications stage/Applications
+          hdiutil create -volname Nullock -srcfolder stage -ov -format UDZO Nullock.dmg
+          mkdir dmg-mounted
+          hdiutil attach Nullock.dmg -mountpoint "$PWD/dmg-mounted" -nobrowse
+          trap 'hdiutil detach "$PWD/dmg-mounted"' EXIT
+          python3 scripts/runtime_regression.py dmg-mounted/NullockApp.app/Contents/MacOS/NullockApp --gui
 
   fuzz-corpus-replay:
     name: sanitized parser corpus replay

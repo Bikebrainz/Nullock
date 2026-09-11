@@ -604,7 +604,7 @@ static bool hasFlag(int argc, char *argv[], const QString &flag) {
 }
 
 static QString validateArguments(int argc, char *argv[]) {
-    const QSet<QString> switches{"--headless", "--help", "-h", "--version", "--ndjson",
+    const QSet<QString> switches{"--headless", "--no-browser", "--help", "-h", "--version", "--ndjson",
         "--ndjson-include-query", "--h2-termination", "--ext-autoreload", "--no-update-check",
         "--smoke-test", "--proxy-bind-insecure"};
     const QSet<QString> values{"--project", "--data-dir", "--control-port", "--proxy-port", "--max-rows",
@@ -684,6 +684,7 @@ int main(int argc, char *argv[]) {
             << "  --version             Print the application version\n"
             << "  --project=PATH        Open this project directory (created if absent)\n"
             << "  --headless            Skip QML window + auto-browser-open\n"
+            << "  --no-browser          Start the native window without opening a browser\n"
             << "  --ndjson              Emit per-event JSON lines on stdout\n"
             << "  --ndjson-include-query  Include URL query strings in --ndjson events (off by default; query strings can leak ?token=... to log files)\n"
             << "  --max-rows=N          ProxyModel in-memory window cap (default 10000)\n"
@@ -1426,7 +1427,8 @@ int main(int argc, char *argv[]) {
         banner("Nullock UI:  " + url
                + (apiToken.isEmpty() ? QString()
                                      : QStringLiteral("  (API bearer-token auth enabled)")));
-        if (!headless && ctlLoopback) QDesktopServices::openUrl(QUrl(url));
+        if (!headless && !hasFlag(argc, argv, "--no-browser") && ctlLoopback)
+            QDesktopServices::openUrl(QUrl(url));
     }
 
     // NDJSON event stream. Wired here so we get every event from now on
@@ -1571,13 +1573,11 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("intercept", &intercept);
     engine.rootContext()->setContextProperty("intruder", &intruder);
 
-    // run from project root so this relative path resolves to Nullock/Src/App/app.qml
+    // The native window is embedded so installed builds work from any directory.
     const QUrl url(QStringLiteral("qrc:/Nullock/App/app.qml"));
     engine.load(url);
     if (engine.rootObjects().isEmpty()) {
-        // The legacy QML window couldn't load -- almost always because the exe
-        // was launched from outside the repo root (so this relative path
-        // doesn't resolve) or the QML runtime isn't deployed next to the binary.
+        // Missing QML runtime modules can prevent the native window loading.
         // The REAL UI is the browser control panel, which is already serving and
         // whose tab we auto-opened above, so DON'T exit (-1 here used to kill the
         // control server out from under the just-opened browser tab). Fall back
@@ -1593,7 +1593,7 @@ int main(int argc, char *argv[]) {
             drainWorkers();
             return -1;
         }
-        err << "Nullock: QML window unavailable (run from the repo root to use it); "
+        err << "Nullock: QML window unavailable (check the installed Qt runtime); "
                "serving the browser control UI at http://127.0.0.1:"
             << controlServer.listeningPort() << "/\n";
         err.flush();
@@ -1602,6 +1602,7 @@ int main(int argc, char *argv[]) {
         return rc;
     }
 
+    banner("Nullock native UI ready");
     const int rc = app->exec();
     // Same drain as the headless path -- the GUI run-loop returns at
     // window close, and any port-scan / probe / replay worker still in

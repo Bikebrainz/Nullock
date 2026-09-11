@@ -91,13 +91,17 @@ if(WIN32)
     )
 endif()
 
-# Linux: FrontEndGUI is a SHARED library NullockApp links. It must be installed
-# next to the binary so linuxdeploy can find + bundle it into the AppImage
-# (otherwise: "Could not find dependency: libFrontEndGUI.so"). Point the app's
-# install RPATH at $ORIGIN so it resolves the .so from its own dir. Windows uses
-# the POST_BUILD copy + windeployqt; macOS's .app + macdeployqt already handle it
-# (its .dmg builds green) -- leave that path untouched.
-if(UNIX AND NOT APPLE)
+# Install our own shared library before Qt deploys its dependencies. Qt's
+# deployment tool cannot resolve an @rpath library absent from the staged app.
+if(APPLE)
+    install(TARGETS FrontEndGUI
+        LIBRARY DESTINATION NullockApp.app/Contents/Frameworks COMPONENT Runtime)
+    install(FILES "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+        DESTINATION NullockApp.app/Contents/PlugIns/platforms COMPONENT Runtime)
+    set_target_properties(NullockApp PROPERTIES
+        INSTALL_RPATH "@executable_path/../Frameworks")
+    set_target_properties(FrontEndGUI PROPERTIES INSTALL_RPATH "@loader_path")
+elseif(UNIX)
     install(TARGETS FrontEndGUI
         LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Runtime

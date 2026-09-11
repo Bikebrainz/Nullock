@@ -27,10 +27,10 @@ The CLI `nullock` (in `bin/`) talks to a running instance over
 - A C++20 compiler (MSVC 2022 / GCC 12+ / Clang 15+) and CMake ≥ 3.24.
 - **nghttp2** dev headers (HTTP/2) and **OpenSSL** dev headers (forged-leaf CA).
   These are the two dependencies most often missing — install them explicitly:
-  - **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential cmake ninja-build libnghttp2-dev libssl-dev`
-  - **Linux (Fedora):** `sudo dnf install gcc-c++ cmake ninja-build libnghttp2-devel openssl-devel`
-  - **macOS:** `brew install nghttp2` (OpenSSL comes with the toolchain; CMake finds it via Homebrew)
-  - **Windows:** `vcpkg install nghttp2:x64-windows` (OpenSSL is provided by Qt)
+  - **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential cmake ninja-build libnghttp2-dev libssl-dev openssl patchelf libxcb-cursor0`
+  - **Linux (Fedora):** `sudo dnf install gcc-c++ cmake ninja-build libnghttp2-devel openssl-devel openssl patchelf`
+  - **macOS:** `brew install nghttp2`; the system OpenSSL-compatible command-line tool generates certificates.
+  - **Windows:** `vcpkg install nghttp2:x64-windows openssl:x64-windows`; the build deploys the OpenSSL CLI and Qt runtime.
 
 ### Windows (MSVC)
 Use the VS-bundled CMake (see [`CONTRIBUTING.md`](CONTRIBUTING.md)):
@@ -41,6 +41,8 @@ cmake -B build -G "Visual Studio 17 2022" -A x64 ^
 cmake --build build --config Release --target NullockApp
 ```
 The app lands at `build\Src\App\Release\NullockApp.exe`.
+Its browser assets and runtime dependencies are deployed alongside the build.
+See [packaging](packaging/README.md) to create and validate an installer.
 
 ### Linux / macOS
 ```sh
@@ -64,3 +66,14 @@ nullock scan target.example top100
 ```
 
 Full quickstart: <https://bikebrainz.github.io/Nullock/docs/index.html>
+
+Use `--project=PATH` to open an explicit project directory, or `--data-dir=PATH`
+to isolate app data (CA, projects, extensions, and preferences). Unknown or
+malformed options produce an error instead of silently using the default project.
+
+Project switching and clearing history are refused while requests, scans, or proxy
+connections are active. Finish or stop that work first. Clear History removes the
+saved history and findings for the current project and resets its browser row
+identity. Binary requests opened in Repeater or Intruder use explicit Latin-1
+byte mode; UTF-8 mode is available for text editing. Intruder's `§...§` delimiters
+identify payload positions.
