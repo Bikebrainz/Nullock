@@ -265,6 +265,8 @@ public:
     // outOfScope exclusion list.
     void setScope(const QStringList &inScope, const QStringList &outOfScope);
     bool isInScope(const QString &host) const;
+    bool mayTargetHost(const QString &host) const;
+    bool isTransportInScope(const QString &host, int port, int protocol) const;
 
     // Advanced scope control (Burp-parity): include/exclude rules over protocol /
     // host-regex / port-range / file-regex, COMPOSED on top of the host-glob scope

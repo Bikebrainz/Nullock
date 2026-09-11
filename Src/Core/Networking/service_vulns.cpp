@@ -1,3 +1,4 @@
+#include "outbound_scope.hpp"
 #include "service_vulns.hpp"
 
 #include <QTcpSocket>
@@ -19,6 +20,7 @@ bool isHttpPort(int port) {
 }
 
 QString grabBanner(const QString &host, int port, int timeoutMs) {
+    if (!OutboundScope::allows({host, port, 0, {}})) return {};
     QTcpSocket s;
     s.connectToHost(host, static_cast<quint16>(port));
     if (!s.waitForConnected(timeoutMs)) return QString();
@@ -27,7 +29,7 @@ QString grabBanner(const QString &host, int port, int timeoutMs) {
     if (s.waitForReadyRead(timeoutMs))
         banner = QString::fromLatin1(s.readAll().left(1024));
     // HTTP-ish ports answer a HEAD with a Server: header.
-    if (banner.isEmpty() && isHttpPort(port)) {
+    if (banner.isEmpty() && isHttpPort(port) && OutboundScope::allowsUrl(host, port, false, "/")) {
         s.write("HEAD / HTTP/1.0\r\nHost: " + host.toUtf8() + "\r\n\r\n");
         s.flush();
         if (s.waitForReadyRead(timeoutMs)) {
@@ -49,6 +51,10 @@ Result scan(const Request &req) {
     const QList<int> ports = req.ports.isEmpty() ? serviceProbePorts() : req.ports;
 
     for (int port : ports) {
+        if (!OutboundScope::allows({req.host, port, 0, {}})) {
+            result.error = OutboundScope::blockedError();
+            continue;
+        }
         ++result.portsProbed;
         const QString banner = grabBanner(req.host, port, req.timeoutMs);
         if (banner.isEmpty()) continue;

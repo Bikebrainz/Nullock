@@ -8,6 +8,7 @@
 // Run via:  ctest -R scope_logic -V
 
 #include "scope_logic.hpp"
+#include "outbound_scope.hpp"
 
 #include <QCoreApplication>
 
@@ -147,9 +148,9 @@ int main(int argc, char **argv) {
     {
         AdvancedScopeRule blank; blank.include = false;   // every dim empty
         const auto rules = compile({ blank });
-        chk("blackout-guard: blank exclude is dropped (not configured)", !configured(rules));
-        chk("blackout-guard: blank exclude does NOT drop everything",
-            urlInScope(rules, false, true, true, "anything.com", 443, "/"));
+        chk("blank exclusion produces a deny policy", configured(rules));
+        chk("blank exclusion on disk fails closed",
+            !urlInScope(rules, false, true, true, "anything.com", 443, "/"));
     }
     {
         AdvancedScopeRule blankInc; blankInc.include = true;   // blank include = allow-any
@@ -161,17 +162,70 @@ int main(int argc, char **argv) {
     // ===== ReDoS / validation caps ======================================
     {
         AdvancedScopeRule big; big.hostRegex = QString(kMaxPatternBytes + 10, QChar('a'));
-        chk("cap: oversized host regex rule is dropped", compile({ big }).isEmpty());
+        chk("cap: oversized rule fails closed", !urlInScope(compile({big}), false, true, false, "fixture", 80, "/"));
         AdvancedScopeRule bad; bad.hostRegex = "([unterminated";
-        chk("cap: invalid regex rule is dropped", compile({ bad }).isEmpty());
+        chk("cap: invalid rule fails closed", !urlInScope(compile({bad}), false, true, false, "fixture", 80, "/"));
         AdvancedScopeRule ok; ok.hostRegex = "good\\.com";
         chk("cap: a valid rule survives", compile({ ok }).size() == 1);
     }
     {
         QList<AdvancedScopeRule> many;
         for (int i = 0; i < kMaxRules + 50; ++i) many.append(mk(true, "h\\.com"));
-        chk("cap: rule count capped at kMaxRules", compile(many).size() == kMaxRules);
+        chk("cap: too many rules fail closed", !urlInScope(compile(many), false, true, false, "fixture", 80, "/"));
     }
+
+    // Active HTTP vs raw-transport boundaries and live policy changes.
+    {
+        namespace OS = Nullock::Core::OutboundScope;
+        auto rules = compile({mk(true, "fixture", 8080, 0, "/allowed/.*", ProtoHttp),
+                              mk(false, "fixture", 8080, 0, "/allowed/private.*", ProtoHttp)});
+        chk("host admission defers partial exclude", mayTargetHost(rules, false, true, "fixture"));
+        chk("raw TCP cannot consume an HTTP path grant", !transportInScope(rules, false, true, "fixture", 8080, ProtoAny));
+        chk("TLS cannot consume an HTTP path grant", !transportInScope(rules, false, true, "fixture", 8080, ProtoHttps));
+        chk("HTTP resource required by path grant", !transportInScope(rules, false, true, "fixture", 8080, ProtoHttp));
+        bool globOut = false;
+        const OS::Registration scope([&](const OS::Target &t) {
+            return t.path.isNull() ? transportInScope(rules, globOut, true, t.host, t.port, t.protocol)
+                : urlInScope(rules, globOut, true, t.protocol == ProtoHttps, t.host, t.port, t.path);
+        });
+        auto send = [&](const QByteArray &target, int port = 8080, bool tls = false) {
+            return OS::allowsRequest("fixture", port, tls, "GET " + target + " HTTP/1.1\r\nHost: fixture\r\n\r\n");
+        };
+        chk("allowed full URL", send("/allowed/public"));
+        chk("query excluded from path matching", send("/allowed/public?next=/blocked"));
+        chk("excluded sibling path", !send("/allowed/private"));
+        chk("outside include path", !send("/blocked"));
+        chk("wrong port", !send("/allowed/public", 8081));
+        chk("wrong protocol", !send("/allowed/public", 8080, true));
+        chk("absolute form checks actual port", !send("http://fixture:8080/allowed/public", 8081));
+        chk("absolute form allowed path", send("http://fixture:8080/allowed/public"));
+        chk("dot segments cannot escape prefix", !send("/allowed/../blocked"));
+        chk("encoded dot segments cannot escape prefix", !send("/allowed/%2e%2e/blocked"));
+        chk("encoded exclude cannot evade deny", !send("/allowed/%70rivate"));
+        chk("unknown resource requires whole-path grant", !send("*"));
+        chk("malformed request cannot evade path grant", !OS::allowsRequest("fixture", 8080, false, "garbage"));
+        globOut = true;
+        chk("glob exclusion overrides URL include", !send("/allowed/public"));
+        globOut = false;
+        rules = compile({mk(true, "fixture", 8080)});
+        chk("live policy change applies next call", send("/blocked"));
+        chk("whole endpoint permits raw probe", OS::allows({"fixture", 8080, ProtoAny, {}}));
+        chk("raw probe still enforces port", !OS::allows({"fixture", 8081, ProtoAny, {}}));
+        chk("raw fuzz request within unrestricted path scope", send("*"));
+        rules = compile({mk(true, "fixture", 8080, 0, {}, ProtoHttps)});
+        chk("explicit HTTPS endpoint permits TLS inspect", OS::allows({"fixture", 8080, ProtoHttps, {}}));
+        chk("HTTPS grant cannot widen into arbitrary TCP", !OS::allows({"fixture", 8080, ProtoAny, {}}));
+        rules = compile({mk(true, "fixture"), mk(false, "fixture", 8081, 0, "/private")});
+        chk("raw exclusion applies only matching port", OS::allows({"fixture", 8080, ProtoAny, {}}));
+        chk("raw cannot determine excluded path so blocks", !OS::allows({"fixture", 8081, ProtoAny, {}}));
+        chk("invalid port never wraps", !OS::allows({"fixture", 65536, ProtoAny, {}}));
+    }
+    chk("standalone library retains caller-owned policy", Nullock::Core::OutboundScope::allows({"fixture", 8080, 0, {}}));
+
+    chk("malformed JSON rule fails validation", !validationError(rulesFromJson(QJsonArray{42})).isEmpty());
+    chk("reversed range fails validation", !validationError({mk(true, "fixture", 8081, 8080)}).isEmpty());
+    chk("unknown protocol fails validation", !validationError({mk(true, "fixture", 0, 0, {}, 3)}).isEmpty());
+    chk("disabled invalid draft does not block valid rules", validationError({mk(true, "[", 0, 0, {}, ProtoAny, false)}).isEmpty());
 
     // ===== JSON round-trip ==============================================
     {

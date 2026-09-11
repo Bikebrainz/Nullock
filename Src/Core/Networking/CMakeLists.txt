@@ -1,5 +1,7 @@
 # Create static library for Networking
 add_library(Networking STATIC
+    outbound_scope.cpp
+    outbound_scope.hpp
     networking.cpp
     networking.hpp
     networking_logic.cpp

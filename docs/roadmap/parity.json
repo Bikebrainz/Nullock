@@ -1368,13 +1368,12 @@
       "impact": "low",
       "effort": "hours",
       "gap": "",
-      "why": "Re-read control_server.cpp:6535/6560 (audit/all blocksScope with scopeSkipped), :2048 (GUI probe refuses out-of-scope row, 403), :4571-4574 (authz refuses off-scope), crawler.cpp:13-19 (fail-closed to seed origin). Scope is enforced before active traffic on every path. Confirmed.",
-      "evidence": "control_server.cpp:6535 `if (blocksScope(uu.host())) { ++scopeSkipped; return; }`; :2048 probe `if (m_wiring.proxy && !m_wiring.proxy->isInScope(base.host))` -> 403",
+      "why": "Active tools check every concrete outbound request against host, protocol, port and path scope. Raw TCP/TLS probes require an unrestricted endpoint grant. Invalid enabled rules fail closed; invalid editor saves preserve the prior policy.",
+      "evidence": "Src/Core/Networking/outbound_scope.cpp; HttpClient::send; raw port/TLS/WebSocket guards; Tests/scope_logic/scope_logic_test.cpp; Tests/proxy_shutdown/proxy_shutdown_test.cpp; scripts/outbound_scope_regression.py; Tests/ui/scope_browser_test.cjs",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-11",
-        "commit": "942da87",
-        "note": "Wave 0 register-accuracy audit: re-verified against live source (symbol/line spot-check across the referenced files) -- no code change, register was already correct; this closes the missing audit trail (audited_state + reconciled) that Wave 0 exists to add."
+        "date": "2026-09-11",
+        "note": "Full outbound scope boundary, live policy updates, full-URL redirect/crawler checks and visible validation errors."
       }
     },
     {
@@ -6262,17 +6261,16 @@
     {
       "area": "target",
       "feature": "Advanced scope control: per-rule Protocol (HTTP/HTTPS/Any) + Host-or-IP-range (regex) + Port (regex) + File (regex, query ignored), toggled by the \"Use advanced scope control\" checkbox",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Editor UI now exists (SCOPE tab's \"Advanced scope control\" section: per-rule enabled/include-exclude/protocol/host-regex/port-range/file-regex, add/remove, whole-list save). Remaining: the ~10 tool gates besides the proxy hot path (Repeater, Intruder, chain runner, active-test callers, etc.) still check host-only scope rather than the full-URL decision, so an advanced rule scoped by port/path/protocol is enforced in the proxy but not yet in those tools.",
-      "why": "Confirmed, and the strongest single piece of evidence is one the first pass found and I re-verified: the one caller that HAS scheme and port explicitly discards them, with a comment saying why.",
-      "evidence": "There is no rule struct -- project_store.hpp:17-18 `QStringList inScope; QStringList outOfScope;`. The matcher's signature is the proof: proxy_server.cpp:1329 `bool ProxyServer::isInScope(const QString &host) const {` -- scheme and port are not parameters. Src/App/app.cpp:935-940 `crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) { // The project scope",
-      "audited_state": "absent",
+      "gap": "",
+      "why": "Active tools check every concrete outbound request against host, protocol, port and path scope. Raw TCP/TLS probes require an unrestricted endpoint grant. Invalid enabled rules fail closed; invalid editor saves preserve the prior policy.",
+      "evidence": "Src/Core/Networking/outbound_scope.cpp; HttpClient::send; raw port/TLS/WebSocket guards; Tests/scope_logic/scope_logic_test.cpp; Tests/proxy_shutdown/proxy_shutdown_test.cpp; scripts/outbound_scope_regression.py; Tests/ui/scope_browser_test.cjs",
+      "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-26",
-        "commit": "4b19da8",
-        "note": "Follow-up to 9ebecdb: built the ui-v2 editor this item's reconciled note called out as the remaining UI piece. SCOPE tab gains an \"Advanced scope control\" section -- a per-rule row (enabled checkbox, include/exclude select, protocol select, host-regex/port-from/port-to/file-regex inputs, remove) plus +RULE/SAVE, whole-list-replacing via NL.actions.scopeSetAdvanced -> POST /api/scope/advanced, synced from the live snapshot's scope.advanced. Field names verified against scope_logic.cpp's rulesFromJson/rulesToJson (enabled/include/protocol/host/portFrom/portTo/file) so the editor cannot round-trip something the backend doesn't accept. STILL PARTIAL: the ~10 non-proxy tool gates (item's own prior note) remain host-only."
+        "date": "2026-09-11",
+        "note": "Full outbound scope boundary, live policy updates, full-URL redirect/crawler checks and visible validation errors."
       }
     },
     {

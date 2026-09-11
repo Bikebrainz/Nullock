@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QUrl>
+
 #include "networking.hpp"
 #include "intruder_rules.hpp"
 #include "intruder_grep.hpp"
@@ -221,7 +223,7 @@ public:
     // Scope predicate for the "in-scope" follow policy (Intruder holds no proxy
     // pointer). app.cpp wires it to ProxyServer::isInScope. Unset -> in-scope
     // follows nothing (fail-closed).
-    void setScopeChecker(std::function<bool(const QString &)> fn) { m_inScope = std::move(fn); }
+    void setScopeChecker(std::function<bool(const QUrl &)> fn) { m_inScope = std::move(fn); }
 
     // Per-set helpers for QML multi-position editing. Indices past the end
     // grow the list; reads past the end return an empty string.
@@ -285,7 +287,7 @@ private:
                    const Nullock::Core::IntruderGrep::ExtractSpec &grepExtract,
                    int concurrency, int throttleMs, int retries,
                    int followPolicy, bool followCookies,
-                   std::function<bool(const QString &)> inScope,
+                   std::function<bool(const QUrl &)> inScope,
                    const RecursiveSpec &recursive,
                    const QSet<int> &skipRows);
 
@@ -313,7 +315,7 @@ private:
     int     m_maxRetries = Nullock::Core::IntruderPool::kDefaultRetries; // retries on network failure
     int     m_followPolicy  = 0;                         // RedirectLogic::FollowNever (off, Burp default)
     bool    m_followCookies = true;                      // "Process cookies in redirections"
-    std::function<bool(const QString &)> m_inScope;
+    std::function<bool(const QUrl &)> m_inScope;
     int     m_attackType = Sniper;
 
     QList<IntruderAttack *> m_attacks;

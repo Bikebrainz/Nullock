@@ -1529,6 +1529,28 @@ bool ProxyServer::isUrlInScope(bool tls, const QString &host, int port,
     return ScopeLogic::urlInScope(adv, globOut, globIn, tls, host, port, path);
 }
 
+bool ProxyServer::mayTargetHost(const QString &host) const {
+    bool globOut, globIn;
+    QList<ScopeLogic::CompiledRule> adv;
+    {
+        QMutexLocker lock(&m_scopeMutex);
+        globVerdict(m_inScope, m_outOfScope, host, globOut, globIn);
+        adv = m_advancedScope;
+    }
+    return ScopeLogic::mayTargetHost(adv, globOut, globIn, host);
+}
+
+bool ProxyServer::isTransportInScope(const QString &host, int port, int protocol) const {
+    bool globOut, globIn;
+    QList<ScopeLogic::CompiledRule> adv;
+    {
+        QMutexLocker lock(&m_scopeMutex);
+        globVerdict(m_inScope, m_outOfScope, host, globOut, globIn);
+        adv = m_advancedScope;
+    }
+    return ScopeLogic::transportInScope(adv, globOut, globIn, host, port, protocol);
+}
+
 void ProxyServer::noteFiltered() {
     m_filteredCount.fetchAndAddOrdered(1);
     emit filteredCountChanged();

@@ -18,7 +18,35 @@ QRegularExpression anchored(const QString &pat) {
 }
 } // namespace
 
+QString validationError(const QList<AdvancedScopeRule> &rules) {
+    if (rules.size() > kMaxRules) return QStringLiteral("Advanced scope exceeds the 256-rule limit");
+    for (qsizetype i = 0; i < rules.size(); ++i) {
+        const auto &r = rules[i];
+        if (!r.enabled) continue;
+        QString reason;
+        if (r.hostRegex.size() > kMaxPatternBytes || r.fileRegex.size() > kMaxPatternBytes)
+            reason = "pattern exceeds the 4096-character limit";
+        else if ((!r.hostRegex.isEmpty() && !anchored(r.hostRegex).isValid())
+                 || (!r.fileRegex.isEmpty() && !anchored(r.fileRegex).isValid())) reason = "invalid regular expression";
+        else if (r.protocol < ProtoAny || r.protocol > ProtoHttps) reason = "invalid protocol";
+        else if (r.portFrom < 0 || r.portFrom > 65535 || r.portTo < 0 || r.portTo > 65535
+                 || (r.portTo > 0 && (r.portFrom == 0 || r.portTo < r.portFrom))) reason = "invalid port range";
+        else if (!r.include && r.hostRegex.isEmpty() && r.fileRegex.isEmpty()
+                 && r.portFrom == 0 && r.protocol == ProtoAny) reason = "empty exclusion; use an explicit host pattern to exclude all targets";
+        if (!reason.isEmpty()) return QStringLiteral("Advanced scope rule %1: %2").arg(i + 1).arg(reason);
+    }
+    return {};
+}
+
 QList<CompiledRule> compile(const QList<AdvancedScopeRule> &rules) {
+    if (!validationError(rules).isEmpty()) {
+        // Imported/corrupt project settings must not widen scope by losing a
+        // broken include or exclusion. One enabled universal deny fails closed.
+        CompiledRule deny;
+        deny.enabled = true;
+        deny.include = false;
+        return {deny};
+    }
     QList<CompiledRule> out;
     for (const AdvancedScopeRule &r : rules) {
         if (out.size() >= kMaxRules) break;
@@ -125,11 +153,50 @@ bool hostInScope(const QList<CompiledRule> &rules, bool globOut, bool globIn,
     return globIn;
 }
 
+bool mayTargetHost(const QList<CompiledRule> &rules, bool globOut, bool globIn, const QString &host) {
+    if (globOut) return false;
+    for (const auto &r : rules)
+        if (r.enabled && !r.include && !r.constrainsBeyondHost
+            && (r.hostAny || r.hostRx.match(host).hasMatch())) return false;
+    if (!hasEnabledInclude(rules)) return globIn;
+    for (const auto &r : rules)
+        if (r.enabled && r.include && (r.hostAny || r.hostRx.match(host).hasMatch())) return true;
+    return false;
+}
+
+bool transportInScope(const QList<CompiledRule> &rules, bool globOut, bool globIn,
+                      const QString &host, int port, int protocol) {
+    if (globOut) return false;
+    bool included = false;
+    for (const auto &r : rules) {
+        if (!r.enabled || (!r.hostAny && !r.hostRx.match(host).hasMatch())
+            || !portInRange(r.portFrom, r.portTo, port)) continue;
+        if (!r.include) {
+            if (protocol == ProtoAny || r.protocol == ProtoAny || protocol == r.protocol) return false;
+        } else if (r.fileAny && (r.protocol == ProtoAny || protocol == r.protocol)) {
+            included = true;
+        }
+    }
+    return hasEnabledInclude(rules) ? included : globIn;
+}
+
 QList<AdvancedScopeRule> rulesFromJson(const QJsonArray &arr) {
     QList<AdvancedScopeRule> out;
     for (const QJsonValue &v : arr) {
         const QJsonObject o = v.toObject();
         AdvancedScopeRule r;
+        if (!v.isObject()
+            || (o.contains("enabled") && !o.value("enabled").isBool())
+            || (o.contains("include") && !o.value("include").isBool())
+            || (o.contains("host") && !o.value("host").isString())
+            || (o.contains("file") && !o.value("file").isString())
+            || (o.contains("protocol") && (!o.value("protocol").isDouble() || o.value("protocol").toDouble() != o.value("protocol").toInt(-1)))
+            || (o.contains("portFrom") && (!o.value("portFrom").isDouble() || o.value("portFrom").toDouble() != o.value("portFrom").toInt(-1)))
+            || (o.contains("portTo") && (!o.value("portTo").isDouble() || o.value("portTo").toDouble() != o.value("portTo").toInt(-1)))) {
+            r.protocol = -1; // validationError reports a malformed rule; fail closed on disk.
+            out.append(r);
+            continue;
+        }
         r.enabled   = o.value("enabled").toBool(true);
         r.include   = o.value("include").toBool(true);
         r.protocol  = o.value("protocol").toInt(ProtoAny);

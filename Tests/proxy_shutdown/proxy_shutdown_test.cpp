@@ -43,6 +43,12 @@
 // Run via:  ctest -R proxy_shutdown -V
 
 #include "proxy_server.hpp"
+#include "networking.hpp"
+#include "outbound_scope.hpp"
+#include <QTcpServer>
+#include <future>
+#include <thread>
+#include <atomic>
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -73,6 +79,39 @@ void pump(int ms) {
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
+
+    // Service downloads must remain available while engagement sends are denied.
+    {
+        using namespace Nullock::Core;
+        std::promise<quint16> ready;
+        auto port = ready.get_future();
+        std::atomic<int> connections{0};
+        std::thread origin([&] {
+            QTcpServer server;
+            server.listen(QHostAddress::LocalHost, 0);
+            ready.set_value(server.serverPort());
+            if (server.waitForNewConnection(5000)) {
+                ++connections;
+                auto *socket = server.nextPendingConnection();
+                if (socket->bytesAvailable() || socket->waitForReadyRead(2000)) {
+                    socket->readAll();
+                    socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+                    socket->waitForBytesWritten(2000);
+                }
+                socket->disconnectFromHost();
+            }
+        });
+        const quint16 targetPort = port.get();
+        const OutboundScope::Registration deny([](const auto &) { return false; });
+        const QByteArray request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        HttpClient engagement;
+        const auto blocked = engagement.send("127.0.0.1", targetPort, false, request);
+        chk("active client blocks before connection", !blocked.ok && connections == 0 && blocked.errorMessage.contains("scope"));
+        HttpClient service(nullptr, HttpClient::Purpose::ApplicationService);
+        const auto downloaded = service.send("127.0.0.1", targetPort, false, request);
+        origin.join();
+        chk("explicit application service can fetch under restricted scope", downloaded.ok && downloaded.parsed.statusCode == 200 && connections == 1);
+    }
 
     ProxyServer proxy;
     // Port 0 -> OS-assigned ephemeral port. Derived, not hard-coded: a fixed

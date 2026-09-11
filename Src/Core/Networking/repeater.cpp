@@ -204,7 +204,7 @@ void Repeater::send() {
             const QUrl next = RL::resolveRedirect(current, loc);
             if (next.isEmpty()) break;
             const QString nextHost = next.host();
-            const bool nextInScope = m_inScope ? m_inScope(nextHost) : false;
+            const bool nextInScope = m_inScope ? m_inScope(next) : false;
             if (!RL::followAllowed(RL::FollowPolicy(m_followPolicy),
                                    current.host(), nextHost, nextInScope))
                 break;

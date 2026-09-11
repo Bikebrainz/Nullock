@@ -39,10 +39,8 @@ struct AdvancedScopeRule {
     QString fileRegex;                // matched against the path; empty = any
 };
 
-// Compiled + validated form the proxy stores. A rule whose regex is oversized or
-// invalid is DROPPED at compile time (fail-safe: an uncompilable rule must not
-// silently allow or deny). Port is a numeric range, never a regex, so "443" can't
-// substring-match 8443.
+// Compiled policy. Invalid enabled rules produce a universal deny policy;
+// API edits are rejected before persistence. No broken rule is silently omitted.
 struct CompiledRule {
     bool enabled = false;
     bool include = true;
@@ -61,11 +59,9 @@ struct CompiledRule {
 inline constexpr int kMaxPatternBytes = 4096;   // mirror the M&R rule cap
 inline constexpr int kMaxRules        = 256;
 
-// Compile + validate: caps the rule count, drops a rule with an oversized/invalid
-// host or file regex, anchors host/file with \A..\z (case-insensitive) and calls
-// optimize() so a slow pattern is amortised. A blank EXCLUDE rule (every dimension
-// empty => "match everything") is dropped -- it is almost always a mis-edit and
-// would black out all scope.
+// Validate enabled rules and bounded input. Disabled drafts are ignored.
+// compile anchors expressions and returns a deny policy if validation fails.
+QString validationError(const QList<AdvancedScopeRule> &rules);
 QList<CompiledRule> compile(const QList<AdvancedScopeRule> &rules);
 
 bool hasEnabledInclude(const QList<CompiledRule> &rules);
@@ -92,6 +88,15 @@ bool urlInScope(const QList<CompiledRule> &rules, bool globOut, bool globIn,
 // attack an exclude was meant to forbid. Include/glob layers govern allow.
 bool hostInScope(const QList<CompiledRule> &rules, bool globOut, bool globIn,
                  const QString &host);
+
+// Preliminary admission only. A constrained exclusion must be evaluated at
+// the actual URL/transport boundary, not black out every path on its host.
+bool mayTargetHost(const QList<CompiledRule> &rules, bool globOut, bool globIn, const QString &host);
+// Raw connections have no path. Require a path-unrestricted include; any
+// possibly matching exclusion denies. Unknown protocol cannot satisfy an
+// HTTP/HTTPS-only include.
+bool transportInScope(const QList<CompiledRule> &rules, bool globOut, bool globIn,
+                      const QString &host, int port, int protocol);
 
 // JSON <-> raw rules (API body + project.json persistence).
 QList<AdvancedScopeRule> rulesFromJson(const QJsonArray &arr);

@@ -10,10 +10,10 @@
 
 namespace Nullock::Core {
 
-bool Crawler::inScope(const QString &scheme, const QString &host, int port) const {
+bool Crawler::inScope(const QString &scheme, const QString &host, int port, const QString &path) const {
     // Injected checker wins; otherwise fail closed to the seed's own domain tree
     // AND origin port. A null checker must NEVER mean "everything is in scope".
-    if (m_scope) return m_scope(scheme, host, port);
+    if (m_scope) return m_scope(scheme, host, port, path);
     return CrawlerLogic::inDefaultScopeOrigin(scheme, host, port,
                                               m_seedScheme, m_seedHost, m_seedPort);
 }
@@ -60,7 +60,7 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
     m_seedPort   = u.port(-1);          // -1 when absent -> resolved to the scheme default in logic
     // Scope-check the SEED before any fetch. With an injected checker an
     // out-of-scope seed is rejected; with none, the seed defines its own scope.
-    if (!inScope(m_seedScheme, seedHost, m_seedPort)) {
+    if (!inScope(m_seedScheme, seedHost, m_seedPort, QUrl(canonSeed).path(QUrl::FullyEncoded))) {
         emit errorOccurred("crawler: seed host is out of scope");
         return false;
     }
@@ -99,6 +99,20 @@ bool Crawler::start(const QString &seed, int maxPages, int maxDepth, int throttl
         emit progressChanged();
     });
     return true;
+}
+
+void Crawler::clear() {
+    if (running() || m_worker.isRunning()) return;
+    m_seed.clear();
+    m_seedHost.clear();
+    m_seedScheme.clear();
+    m_seedPort = -1;
+    m_queue.clear();
+    m_seenUrls.clear();
+    m_visited.storeRelease(0);
+    m_queuedCount.storeRelease(0);
+    emit seedChanged();
+    emit progressChanged();
 }
 
 void Crawler::stop() {
@@ -173,7 +187,7 @@ void Crawler::extractAndEnqueue(const QString &fromUrl, const QByteArray &body, 
         // a seen-slot toward the cap. inScope() is fail-closed when unconfigured.
         // The canonical URL carries the resolved scheme/port for the origin check.
         const QUrl cu(canon);
-        if (!inScope(cu.scheme(), host, cu.port(-1))) continue;
+        if (!inScope(cu.scheme(), host, cu.port(-1), cu.path(QUrl::FullyEncoded))) continue;
         if (m_seenUrls.contains(canon)) continue;
         m_seenUrls.insert(canon);
         m_queue.enqueue({ canon, depth });

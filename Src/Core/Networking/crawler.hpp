@@ -46,12 +46,9 @@ public:
     int     queued()  const { return m_queuedCount.loadAcquire(); }
     QString seed()    const { return m_seed; }
 
-    // Inject the project's scope checker so the crawler refuses to walk
-    // out-of-scope origins. Set by App at wire time. The checker receives the full
-    // origin (scheme, host, port) so a checker CAN scope by scheme/port; the
-    // project's host-glob model ignores all but the host, while the built-in
-    // default scope uses the port to refuse cross-service (port-crossing) creep.
-    using ScopeFn = std::function<bool(const QString &scheme, const QString &host, int port)>;
+    // Inject the full project URL check for seeds and links. With no checker,
+    // the built-in origin restriction still prevents port-crossing crawls.
+    using ScopeFn = std::function<bool(const QString &scheme, const QString &host, int port, const QString &path)>;
     void setScopeChecker(ScopeFn f) { m_scope = std::move(f); }
 
     // Start a fresh crawl from <seed>. Cancels any running walk first.
@@ -61,6 +58,7 @@ public:
                            int maxDepth = 4,
                            int throttleMs = 200);
     Q_INVOKABLE void stop();
+    void clear(); // idle project reset; never starts traffic
 
 signals:
     void runningChanged();
@@ -82,7 +80,7 @@ private:
     // injected checker when present; otherwise FAIL-CLOSED to the seed's own
     // domain tree AND origin port (never an unscoped walk of arbitrary hosts, and
     // never a port-crossing hop onto a different service on the same host).
-    bool inScope(const QString &scheme, const QString &host, int port) const;
+    bool inScope(const QString &scheme, const QString &host, int port, const QString &path) const;
 
     // m_running is set on the worker thread; readers can race so it's
     // also atomic. m_stopRequested gets flipped from the main thread

@@ -1,4 +1,5 @@
 #include "control_server.hpp"
+#include "outbound_scope.hpp"
 #include <QTimer>
 #include <QSslSocket>
 
@@ -893,6 +894,11 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.history, &QAbstractItemModel::modelReset,   this, bump);
         connect(m_wiring.history, &QAbstractItemModel::dataChanged,  this, bump);
     }
+    if (m_wiring.crawler) {
+        connect(m_wiring.crawler, &Nullock::Core::Crawler::runningChanged, this, bump);
+        connect(m_wiring.crawler, &Nullock::Core::Crawler::progressChanged, this, bump);
+        connect(m_wiring.crawler, &Nullock::Core::Crawler::seedChanged, this, bump);
+    }
     if (m_wiring.intruder) {
         connect(m_wiring.intruder, &QAbstractItemModel::rowsInserted, this, bump);
         connect(m_wiring.intruder, &QAbstractItemModel::modelReset,   this, bump);
@@ -1279,7 +1285,7 @@ QByteArray ControlServer::staticResponse(const QString &path) const {
 }
 
 bool ControlServer::blocksScope(const QString &host) const {
-    return m_wiring.proxy && !host.isEmpty() && !m_wiring.proxy->isInScope(host);
+    return m_wiring.proxy && !host.isEmpty() && !m_wiring.proxy->mayTargetHost(host);
 }
 
 QByteArray ControlServer::buildSnapshot() const {
@@ -1394,8 +1400,11 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     scope["in"]  = inArr;
     scope["out"] = outArr;
-    if (m_wiring.projectStore)
+    if (m_wiring.projectStore) {
         scope["advanced"] = m_wiring.projectStore->advancedScope();
+        scope["validationError"] = Nullock::Proxy::ScopeLogic::validationError(
+            Nullock::Proxy::ScopeLogic::rulesFromJson(m_wiring.projectStore->advancedScope()));
+    }
     root["scope"] = scope;
 
     // match & replace rules
@@ -1471,6 +1480,13 @@ QByteArray ControlServer::buildSnapshot() const {
     }
     root["findings"] = findingsArr;
     root["suppressedKinds"] = QJsonArray::fromStringList(suppressedKinds);
+
+    if (m_wiring.crawler) {
+        root["crawler"] = QJsonObject{
+            {"running", m_wiring.crawler->running()}, {"visited", m_wiring.crawler->visited()},
+            {"queued", m_wiring.crawler->queued()}, {"seed", m_wiring.crawler->seed()}
+        };
+    }
 
     // port scanner
     if (m_wiring.portScanner) {
@@ -2423,7 +2439,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                     // the project does not consider in-scope. A malicious
                     // local web page that pivots through us would otherwise
                     // be able to attack arbitrary targets we'd once browsed.
-                    if (m_wiring.proxy && !m_wiring.proxy->isInScope(base.host)) {
+                    if (m_wiring.proxy && !m_wiring.proxy->isUrlInScope(srcResp && srcResp->wasTls, base.host, base.port, base.path.section('?', 0, 0))) {
                         return httpJson(403, QJsonObject{
                             { "ok", false },
                             { "error", "row's host is out of scope; add it to "
@@ -3321,11 +3337,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, o);
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
-    if (path.startsWith("/api/intruder/") && bodyJson.contains("historyGeneration")
+    if ((path.startsWith("/api/intruder/") || path.startsWith("/api/scope/")) && bodyJson.contains("historyGeneration")
         && m_wiring.projectStore
         && bodyJson.value("historyGeneration").toString() != m_wiring.projectStore->historyGeneration())
         return httpJson(409, QJsonObject{{"ok", false},
-            {"error", "Project history changed; refresh before editing Intruder"}});
+            {"error", "Project history changed; refresh before editing the workspace"}});
 
     // ---- ScopeGuard: one authorization gate for every ACTIVE endpoint ----
     // Active tests fire payloads / scans at a target host. Refuse any whose
@@ -3487,13 +3503,18 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
     // Advanced scope rules (Burp-parity): whole-list replace of the include/exclude
     // rules. Persists to project.json + re-applies to the live proxy via
-    // advancedScopeChanged. The proxy validates/caps the regex on set; an invalid
-    // or blank-exclude rule is silently dropped there.
+    // advancedScopeChanged. Reject invalid edits; invalid saved rules fail closed.
     if (path == "/api/scope/advanced") {
         if (!m_wiring.projectStore)
             return okJson({{ "ok", false }, { "error", "project store not wired" }});
-        if (bodyJson.contains("rules"))
+        if (bodyJson.contains("rules")) {
+            if (!bodyJson.value("rules").isArray())
+                return httpJson(400, {{"ok", false}, {"error", "rules must be an array"}});
+            const auto error = Nullock::Proxy::ScopeLogic::validationError(
+                Nullock::Proxy::ScopeLogic::rulesFromJson(bodyJson.value("rules").toArray()));
+            if (!error.isEmpty()) return httpJson(400, {{"ok", false}, {"error", error}});
             m_wiring.projectStore->setAdvancedScope(bodyJson.value("rules").toArray());
+        }
         return okJson({{ "ok", true }, { "rules", m_wiring.projectStore->advancedScope() }});
     }
 
@@ -5301,7 +5322,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             req += "User-Agent: nullock-cve-sync/1.0\r\n";
             req += "Accept: application/json\r\n";
             req += "Connection: close\r\n\r\n";
-            Nullock::Core::HttpClient client;
+            Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::ApplicationService);
             auto res = client.send(u.host(), static_cast<quint16>(port), tls, req);
             if (!res.ok)
                 return okJson({{ "ok", false }, { "error", "fetch failed: " + res.errorMessage }});
@@ -5585,7 +5606,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         // explicitly inside a non-empty engagement scope.
         const bool listEmpty   = !m_wiring.projectStore
                                  || m_wiring.projectStore->inScope().isEmpty();
-        const bool hostInScope = m_wiring.proxy && m_wiring.proxy->isInScope(host);
+        const bool hostInScope = m_wiring.proxy && Nullock::Core::OutboundScope::allowsRequest(host, port, tls, request);
         if (!Nullock::Core::SequencerCaptureLogic::scopeAllows(listEmpty, hostInScope))
             return okJson({{ "ok", false }, { "error",
                 "target is not in a non-empty engagement scope -- add the host under "
@@ -9860,7 +9881,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         const QString wsHost = u.host();
         const quint16 wsPort = static_cast<quint16>(u.port(u.scheme() == "https" ? 443 : 80));
         const bool wsTls = (u.scheme() == "https");
-        Nullock::Core::HttpClient client;
+        Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::ApplicationService);
 
         if (path == "/api/workspace/push") {
             // Serialize local findings, deduped by the shared identity key.

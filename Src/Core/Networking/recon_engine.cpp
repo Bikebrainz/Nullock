@@ -356,7 +356,7 @@ void ReconEngine::runCertTransparency(const QString &domain) {
     // mutex (it locks m_mutex). Mirrors runWhois.
     QPointer<ReconEngine> self(this);
     (void)QtConcurrent::run([self, domain]() {
-        Nullock::Core::HttpClient client;
+        Nullock::Core::HttpClient client(nullptr, Nullock::Core::HttpClient::Purpose::ApplicationService);
         // crt.sh wants the bare domain with a % wildcard prefix to catch
         // subdomains too.
         const QString path = "/?q=%25." + domain + "&output=json";

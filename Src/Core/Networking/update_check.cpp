@@ -24,7 +24,7 @@ UpdateInfo UpdateChecker::doCheck(const QString &currentVersion) {
     req += "Accept: application/vnd.github+json\r\n";
     req += "Connection: close\r\n\r\n";
 
-    HttpClient client;
+    HttpClient client(nullptr, HttpClient::Purpose::ApplicationService);
     auto res = client.send(QStringLiteral("api.github.com"), 443, true, req);
     if (!res.ok) {
         r.error = "fetch failed: " + res.errorMessage;

@@ -156,7 +156,7 @@ function AdvancedScopeSection({ advanced }) {
         </span>
         <span style={{ flex: 1 }} />
         {dirty && <span style={{ fontSize: "var(--fz-xs)", color: "var(--accent)" }}>unsaved</span>}
-        {err && <span style={{ fontSize: "var(--fz-xs)", color: "var(--err)" }}>{err}</span>}
+        {err && <span role="alert" style={{ fontSize: "var(--fz-xs)", color: "var(--err)" }}>{err}</span>}
         <button className="btn" onClick={addRule}>+ RULE</button>
         <button className="btn" disabled={!dirty || saving} onClick={save}>
           {saving ? "SAVING…" : saved ? "✓ SAVED" : "SAVE"}
@@ -300,6 +300,9 @@ function ScopeTab({ scope, dispatch, bootInfo, logOutOfScope, onCopyCa }) {
         <ScopeColumn label="OUT-OF-SCOPE GLOBS" colorVar="--err" list={scope.out} kind="out" dispatch={dispatch} includeSubdomains={includeSubdomains} />
       </div>
 
+      {scope.validationError && <div role="alert" style={{padding: "8px 12px", color: "var(--err)"}}>
+        Active traffic is blocked: {scope.validationError}. Correct the rules below and save.
+      </div>}
       <AdvancedScopeSection advanced={scope.advanced} />
     </div>
   );
