@@ -95,6 +95,10 @@ class Intruder : public QAbstractListModel {
     Q_PROPERTY(int         completedCount   READ completedCount                             NOTIFY progressChanged)
     Q_PROPERTY(int         totalCount       READ totalCount                                 NOTIFY progressChanged)
 public:
+    void setRequestBytes(const QByteArray &bytes);
+    void setRequestLatin1(bool enabled) { m_templateLatin1 = enabled; }
+    bool requestLatin1() const { return m_templateLatin1; }
+
     // Mirror of IntruderEngine::AttackType (same order) so QML can bind an
     // int and the control API can round-trip a name.
     enum AttackType {
@@ -267,7 +271,7 @@ private:
     // config value. enabled=false -> ordinary combos run.
     struct RecursiveSpec { bool enabled = false; QString seed; int count = 0; };
     void runWorker(const QList<QStringList> &combos,
-                   const QString &templateCopy,
+                   const QString &templateCopy, bool templateLatin1,
                    const QString &host, int port, bool useTls,
                    const QList<Nullock::Core::IntruderRules::Rule> &rules,
                    const QStringList &grepMatch,
@@ -285,6 +289,7 @@ private:
     int     m_port = 443;
     bool    m_useTls = true;
     QString m_template;
+    bool m_templateLatin1 = false;
     // Canonical payload sets, each a newline-separated block. Index 0 is the
     // "payloads" alias. Empty list == no payloads configured.
     QStringList m_payloadSets;

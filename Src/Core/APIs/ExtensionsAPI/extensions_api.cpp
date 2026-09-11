@@ -199,7 +199,7 @@ ExtensionsStorageBridge::ExtensionsStorageBridge(QObject *parent) : QObject(pare
 QString ExtensionsStorageBridge::filePath() const {
     // Sibling of the extensions dir, NOT inside it -- a write here must not trip
     // the auto-reload filesystem watcher (which would reload on every set()).
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+    return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
            + "/nullock-ext-storage.json";
 }
 
@@ -350,7 +350,7 @@ void ExtensionsApi::runUnloadHandlers() {
 }
 
 QString ExtensionsApi::extensionsDir() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+    return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
            + "/extensions";
 }
 

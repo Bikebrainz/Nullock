@@ -2,11 +2,10 @@ add_executable(redirect_test
     redirect_test.cpp
 )
 
-# Pure redirect logic (status/URL-resolution/method/policy/cookies/request-build)
-# depends on Qt6::Core alone. Linking Networking pulls just redirect_logic.o --
-# not the Repeater QObject -- so the binary stays free of the Network/Qml chain.
+# Redirect cookies use Qt Network's URL-aware cookie jar.
 target_link_libraries(redirect_test PRIVATE
     Qt6::Core
+    Qt6::Network
     Networking
 )
 
@@ -23,5 +22,8 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${_qt_bin}/Qt6Core${_d}.dll"
             "$<TARGET_FILE_DIR:redirect_test>/Qt6Core${_d}.dll"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_qt_bin}/Qt6Network${_d}.dll"
+            "$<TARGET_FILE_DIR:redirect_test>/Qt6Network${_d}.dll"
         COMMAND_EXPAND_LISTS)
 endif()

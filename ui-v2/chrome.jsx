@@ -29,20 +29,20 @@ function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks, onOpen
         <div>
           <div className="tb-name">NULL<span className="nm-x">0</span>CK</div>
         </div>
-        <div className="tb-meta">v0.4 · acme-corp-2026</div>
+        <div className="tb-meta">{NL.bootInfo?.version ? `v${NL.bootInfo.version}` : "Connecting"} · {NL.bootInfo?.project || "No project"}</div>
       </div>
-      <div className="tb-tabs">
+      <div className="tb-tabs" role="tablist" aria-label="Tools">
         {tabs.map((t, i) => (
-          <div
+          <button type="button" role="tab" aria-selected={current === t.id}
             key={t.id}
             className="tb-tab"
             aria-current={current === t.id ? "true" : "false"}
             onClick={() => onTab(t.id)}
           >
-            <span className="idx">0{i + 1}</span>
+            <span className="idx">{String(i + 1).padStart(2, "0")}</span>
             <span>{t.label}</span>
             {t.dot ? <span className="dot" /> : null}
-          </div>
+          </button>
         ))}
       </div>
       <div className="tb-right">
@@ -61,17 +61,7 @@ function TitleBar({ tabs, current, onTab, theme, onTheme, onToggleTweaks, onOpen
           ⌥ TWEAKS
         </div>
       </div>
-      <div className="tb-wctrls">
-        <button title="Minimize">
-          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="5" width="8" height="1" fill="currentColor"/></svg>
-        </button>
-        <button title="Maximize">
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="1.5" y="1.5" width="7" height="7"/></svg>
-        </button>
-        <button className="close" title="Close">
-          <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor"><line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/></svg>
-        </button>
-      </div>
+
     </div>
   );
 }
@@ -82,7 +72,7 @@ function Rail({ proxyOn, port, h2Count, filtered, total, intercept, queue, proje
       <div className="seg">
         <span className={"led" + (proxyOn ? "" : " off")} />
         <span>PROXY</span>
-        <span className="v">{proxyOn ? `:${port}` : "STOPPED"}</span>
+        <span className="v">{!NL.connected ? "DISCONNECTED" : proxyOn ? `:${port}` : "STOPPED"}</span>
       </div>
       <div className="sep" />
       <div className="seg">
@@ -98,7 +88,7 @@ function Rail({ proxyOn, port, h2Count, filtered, total, intercept, queue, proje
         <span className="v">{total - filtered}</span>
       </div>
       <div className="sep" />
-      <AsciiSparkline width={18} intensity={proxyOn ? 1 : 0.05} label="RX" />
+      <AsciiSparkline width={18} label="HISTORY / S" />
       <div className="sep" />
       <div className="seg">
         <span>H2 UPSTREAM</span>
@@ -138,7 +128,7 @@ function StatusBar({ proxyOn, port, total, filtered, scope, intercept, queue, ha
         <span>● </span>
         <span>PROXY</span>
         <span className={proxyOn ? "v" : "red"}>
-          {proxyOn ? `LISTENING ${port}` : "STOPPED"}
+          {!NL.connected ? "DISCONNECTED" : proxyOn ? `LISTENING ${port}` : "STOPPED"}
         </span>
       </div>
       <div className="sep" />

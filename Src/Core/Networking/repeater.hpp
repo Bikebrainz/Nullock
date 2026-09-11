@@ -24,6 +24,7 @@ class SessionRules;
 // sends (Burp's per-tab history), compare them, and re-load one.
 struct RepeaterHistoryEntry {
     QString request;
+    bool requestLatin1 = false;
     QString response;
     QString statusLine;
     QString sentAt;      // ISO-8601 UTC
@@ -43,6 +44,7 @@ struct RepeaterTab {
     int     port = 443;
     bool    useTls = true;
     QString requestText;
+    bool requestLatin1 = false;
     QString responseText;
     QString statusLine;
     // Response metadata from the last send in this tab: round-trip time in ms and
@@ -96,6 +98,9 @@ public:
     QString host() const         { return activeTab_().host; }
     int     port() const         { return activeTab_().port; }
     bool    useTls() const       { return activeTab_().useTls; }
+    void setRequestBytes(const QByteArray &bytes);
+    void setRequestLatin1(bool enabled) { activeTab_().requestLatin1 = enabled; }
+    bool requestLatin1() const { return activeTab_().requestLatin1; }
     QString requestText() const  { return activeTab_().requestText; }
     QString responseText() const { return activeTab_().responseText; }
     QString statusLine() const   { return activeTab_().statusLine; }

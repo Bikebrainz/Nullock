@@ -17,7 +17,7 @@
       <span class="word">nullock</span>
     </a>
     <span class="mono dim" style="font-size:12.5px;letter-spacing:0.5px;">/ labs</span>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('nav-links').classList.toggle('open')">&#9776;</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="nav-links" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('nav-links').classList.toggle('open'))">&#9776;</button>
     <div class="nav-links" id="nav-links">
       <a href="../index.html">Product</a>
       <a href="../docs/index.html">Docs</a>

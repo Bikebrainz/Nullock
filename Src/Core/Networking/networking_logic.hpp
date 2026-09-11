@@ -101,6 +101,11 @@ QString findHeader(const QList<QPair<QString, QString>> &h, const QString &name)
 QString rewriteHostHeader(const QString &requestText,
                           const QString &oldHost, const QString &newHost);
 
+// Raw request editors use UTF-8 when lossless, otherwise Latin-1 byte mapping.
+// Only HTTP header newlines are normalized; body bytes must remain untouched.
+QString decodeRequestText(const QByteArray &bytes, bool &latin1);
+QByteArray encodeRequestText(const QString &text, bool latin1 = false);
+
 // --- Content-Length validation ------------------------------------------
 struct ContentLength {
     bool   ok = false;   // false => header present but malformed/over-cap; reject

@@ -31,6 +31,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QStandardPaths>
+#include <QEvent>
 #include <QThreadPool>
 #include <QEventLoop>
 #include <QFile>
@@ -602,6 +603,40 @@ static bool hasFlag(int argc, char *argv[], const QString &flag) {
     return false;
 }
 
+static QString validateArguments(int argc, char *argv[]) {
+    const QSet<QString> switches{"--headless", "--help", "-h", "--version", "--ndjson",
+        "--ndjson-include-query", "--h2-termination", "--ext-autoreload", "--no-update-check",
+        "--smoke-test", "--proxy-bind-insecure"};
+    const QSet<QString> values{"--project", "--data-dir", "--control-port", "--proxy-port", "--max-rows",
+        "--tls-fingerprint", "--scan", "--fail-on", "--proxy-bind", "--oast-host", "--oast-port",
+        "--oast-remote", "--oast-remote-key", "--dns-port", "--ui-dir", "--api-token", "--listen",
+        "-platform", "-style", "-qmljsdebugger"};
+    QSet<QString> seen;
+    for (int i = 1; i < argc; ++i) {
+        const QString arg = QString::fromLocal8Bit(argv[i]);
+        const QString key = arg.section('=', 0, 0);
+        if (seen.contains(key)) return "Duplicate option: " + key;
+        seen.insert(key);
+        if (switches.contains(key)) {
+            if (arg.contains('=')) return "Option takes no value: " + key;
+            continue;
+        }
+        if (!values.contains(key)) return "Unknown option: " + key;
+        QString value;
+        if (arg.contains('=')) value = arg.mid(arg.indexOf('=') + 1);
+        else if (i + 1 < argc && !QString::fromLocal8Bit(argv[i+1]).startsWith('-'))
+            value = QString::fromLocal8Bit(argv[++i]);
+        if (value.isEmpty()) return "Missing value for " + key;
+        if (key.endsWith("-port") || key == "--max-rows") {
+            bool ok = false;
+            const int n = value.toInt(&ok);
+            if (!ok || n < 0 || (key.endsWith("-port") && n > 65535) || (key == "--max-rows" && n < 1))
+                return "Invalid numeric value for " + key;
+        }
+    }
+    return {};
+}
+
 int main(int argc, char *argv[]) {
     Nullock::Core::CrashReporter::install();
     QCoreApplication::setOrganizationName("Nullock");
@@ -613,6 +648,18 @@ int main(int argc, char *argv[]) {
         QStringLiteral("1.0.0")
 #endif
     );
+
+    const QString argumentError = validateArguments(argc, argv);
+    if (!argumentError.isEmpty()) {
+        QTextStream(stderr) << "Nullock: " << argumentError << "\n";
+        return 2;
+    }
+    if (hasFlag(argc, argv, "--version")) {
+        QTextStream(stdout) << QCoreApplication::applicationVersion() << "\n";
+        return 0;
+    }
+    const QString dataDir = flagValue(argc, argv, "--data-dir");
+    if (!dataDir.isEmpty()) qputenv("NULLOCK_DATA_DIR", QDir(dataDir).absolutePath().toUtf8());
 
     // One-shot CI scan gate. --scan=URL runs the deep audit and exits with the
     // gate code -- it implies headless (no window, no display needed).
@@ -633,6 +680,9 @@ int main(int argc, char *argv[]) {
             << "Usage: NullockApp [flags]\n"
             << "\n"
             << "Flags:\n"
+            << "  --data-dir=PATH       Application data root (also NULLOCK_DATA_DIR)\n"
+            << "  --version             Print the application version\n"
+            << "  --project=PATH        Open this project directory (created if absent)\n"
             << "  --headless            Skip QML window + auto-browser-open\n"
             << "  --ndjson              Emit per-event JSON lines on stdout\n"
             << "  --ndjson-include-query  Include URL query strings in --ndjson events (off by default; query strings can leak ?token=... to log files)\n"
@@ -731,7 +781,10 @@ int main(int argc, char *argv[]) {
     }
 
     Nullock::Proxy::CertAuthority certAuthority;
-    certAuthority.ensureCa();
+    if (!certAuthority.ensureCa()) {
+        QTextStream(stderr) << "Nullock: could not initialize the local CA; check OpenSSL and data-directory permissions.\n";
+        return 2;
+    }
 
     Nullock::Proxy::ProxyServer proxy;
     proxy.setCertAuthority(&certAuthority);
@@ -761,7 +814,12 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &model, &Nullock::FrontEnd::ProxyModel::clear);
 
-    projectStore.open(projectStore.defaultProjectDir());
+    const QString requestedProject = flagValue(argc, argv, "--project");
+    if (!projectStore.open(requestedProject.isEmpty() ? projectStore.defaultProjectDir()
+                                                    : QDir(requestedProject).absolutePath())) {
+        QTextStream(stderr) << "Nullock: could not open project: " << projectStore.lastError() << "\n";
+        return 2;
+    }
 
     // Initial scope from the project file, plus live updates when the user
     // edits scope from the GUI (or any Q_INVOKABLE caller).
@@ -804,18 +862,9 @@ int main(int argc, char *argv[]) {
 
     // New traffic feeds both the live model and the on-disk history.
     //
-    // Connection order matters, though not for the reason this comment used to
-    // give. The scanner does NOT read the model: it keeps its own m_nextRowId
-    // and bumps it once per response (passive_scanner.cpp:133), so the two
-    // counters stay in step by both counting the same events, whatever order
-    // their slots run in. Seeding is what aligns them -- see setNextRowId below.
-    //
-    // What actually depends on order is the --ndjson response emitter further
-    // down: it reports model.lastId(), so ProxyModel::addResponse has to have
-    // run first. These are queued connections to the same (main) thread, and
-    // Qt posts them in connection order, so registering addResponse first is
-    // what puts it in front. Moving it after the emitter would make every
-    // NDJSON event report the id of the PREVIOUS row.
+    // Add to the model first: both passive scanning and NDJSON emissions use
+    // that transaction's stable ID. Imported rows can advance the model without
+    // invoking the scanner, so its counter must be set for each live response.
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
@@ -841,7 +890,11 @@ int main(int argc, char *argv[]) {
     // nullock.reportFinding(). Without this they fall back to the ext log.
     extensions.setScanner(&scanner);
     QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::responseReceived,
-                     &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
+                     &scanner, [&](const Nullock::Proxy::HttpRequest &req,
+                                   const Nullock::Proxy::HttpResponse &resp) {
+        scanner.setNextRowId(model.lastId());
+        scanner.onResponseReceived(req, resp);
+    });
     // Findings persistence: append every newly-discovered finding to the project's
     // findings.ndjson, and stream persisted findings back into the panel when a
     // project is (re)opened -- so a scan's findings survive app close / project
@@ -858,6 +911,13 @@ int main(int argc, char *argv[]) {
         scanner.setNextRowId(1);
         scanner.clear();
     });
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyCleared,
+                     &model, &Nullock::FrontEnd::ProxyModel::clear);
+    // Reset the scanner even if the outgoing project never captured a row.
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &scanner, &Nullock::Core::PassiveScanner::clear);
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::openedChanged,
+                     &scanner, [&] { scanner.setNextRowId(model.lastId() + 1); });
     // The default project was opened (above) before the scanner existed, so its
     // persisted findings weren't streamed into the now-wired panel. Restore once.
     projectStore.restoreFindings();
@@ -1189,7 +1249,7 @@ int main(int argc, char *argv[]) {
     // app data dir; a missing/corrupt file just starts empty.
     {
         const QString oastDir =
-            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+            qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
         if (!oastDir.isEmpty()) {
             QDir().mkpath(oastDir);
             oastCorrelator.setPersistPath(oastDir + "/oast-interactions.json");
@@ -1277,7 +1337,20 @@ int main(int argc, char *argv[]) {
     QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
                      &projectStore, &Nullock::Core::ProjectStore::appendEntry);
     QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
-                     &scanner, &Nullock::Core::PassiveScanner::onResponseReceived);
+                     &scanner, [&](const Nullock::Proxy::HttpRequest &req,
+                                   const Nullock::Proxy::HttpResponse &resp) {
+        scanner.setNextRowId(model.lastId());
+        scanner.onResponseReceived(req, resp);
+    });
+    projectStore.setSwitchGuard([&] {
+        auto busy = [&] { return QThreadPool::globalInstance()->activeThreadCount() != 0
+            || proxy.hasActiveConnections() || repeater.busy() || intruder.running(); };
+        if (busy()) return false;
+        // Finished workers may have queued their final result immediately before
+        // their thread became idle. Commit those to the OLD project first.
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        return !busy();
+    });
     wiring.crawler = &crawler;
     wiring.updates = &updateChecker;
 
@@ -1293,6 +1366,7 @@ int main(int argc, char *argv[]) {
         if (ui.isEmpty()) ui = qEnvironmentVariable("NULLOCK_UI_DIR");
         if (ui.isEmpty()) {
             const QStringList candidates = {
+                appDir + "/../Resources/nullock/ui", // macOS app bundle
                 appDir + "/../share/nullock/ui",   // <prefix>/bin -> <prefix>/share/nullock/ui
                 appDir + "/share/nullock/ui",      // portable: share/ next to the binary
                 appDir + "/ui-v2",                 // portable: ui-v2 next to the binary
@@ -1453,6 +1527,7 @@ int main(int argc, char *argv[]) {
     // stalls shutdown for the full run. Each object's destructor still
     // stop-joins as the hard guarantee; this only makes the drain prompt.
     auto stopWorkers = [&] {
+        controlServer.stop();
         crawler.stop();
         intruder.stop();
         portScanner.stop();
@@ -1465,16 +1540,21 @@ int main(int argc, char *argv[]) {
         proxy.shutdownAndJoin();
     };
 
+    auto drainWorkers = [&] {
+        stopWorkers();
+        while (!QThreadPool::globalInstance()->waitForDone(20))
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
+    };
+
     if (headless) {
         // Skip the QML window entirely. Event loop runs via QCoreApplication.
         const int rc = app->exec();
         // Drain any QtConcurrent task still in flight (port scan, probe
         // worker, replay). Their lambdas capture raw pointers to the
         // stack objects above (Wiring); if we let main() unwind while
-        // they're mid-run, the pointers dangle. Cap the wait at 5s so a
-        // hung worker doesn't block shutdown forever.
-        stopWorkers();
-        QThreadPool::globalInstance()->waitForDone(5000);
+        // they're mid-run, the pointers dangle. Join while servicing extension hooks.
+        drainWorkers();
         return rc;
     }
 
@@ -1492,7 +1572,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("intruder", &intruder);
 
     // run from project root so this relative path resolves to Nullock/Src/App/app.qml
-    const QUrl url(QStringLiteral("./Src/App/app.qml"));
+    const QUrl url(QStringLiteral("qrc:/Nullock/App/app.qml"));
     engine.load(url);
     if (engine.rootObjects().isEmpty()) {
         // The legacy QML window couldn't load -- almost always because the exe
@@ -1510,6 +1590,7 @@ int main(int argc, char *argv[]) {
             err << "Nullock: QML window unavailable and control server not "
                    "listening (port bind failed?) -- nothing to serve. Exiting.\n";
             err.flush();
+            drainWorkers();
             return -1;
         }
         err << "Nullock: QML window unavailable (run from the repo root to use it); "
@@ -1517,8 +1598,7 @@ int main(int argc, char *argv[]) {
             << controlServer.listeningPort() << "/\n";
         err.flush();
         const int rc = app->exec();
-        stopWorkers();
-        QThreadPool::globalInstance()->waitForDone(5000);
+        drainWorkers();
         return rc;
     }
 
@@ -1527,7 +1607,6 @@ int main(int argc, char *argv[]) {
     // window close, and any port-scan / probe / replay worker still in
     // flight needs to finish (or time out) before main()'s locals
     // destruct out from under them.
-    stopWorkers();
-    QThreadPool::globalInstance()->waitForDone(5000);
+    drainWorkers();
     return rc;
 }

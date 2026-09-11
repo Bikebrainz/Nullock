@@ -29,7 +29,7 @@
       <img class="mark" src="assets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="navlinks" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('navlinks').classList.toggle('open'))">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="index.html" class="active">Product</a>
       <a href="docs/index.html">Docs</a>
@@ -59,25 +59,23 @@
       <a href="#download" class="btn btn-primary btn-lg" data-dl-primary>Download<span data-dl-oslabel></span></a>
       <a href="https://github.com/Bikebrainz/Nullock" class="btn btn-ghost btn-lg">★ Star on GitHub</a>
     </div>
-    <p class="caption" style="margin-top:16px;"><span data-version>v3.8.0</span> · MIT · macOS · Linux · Windows · ~14 MB</p>
+    <p class="caption" style="margin-top:16px;"><span data-version>Latest release</span> · MIT · macOS · Linux · Windows</p>
   </div>
 
-  <!-- ===== PRODUCT DEMO: live capture ===== -->
+  <!-- ===== PRODUCT DEMO: interactive example ===== -->
   <div class="wrap-wide" style="padding-bottom:64px;">
     <div class="proxy" id="proxy">
       <div class="proxy-chrome">
         <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
         <span class="proxy-title mono">nullock — Proxy</span>
-        <span class="badge ok" style="margin-left:auto;"><span class="dot"></span>listening :8080</span>
+        <span class="badge ok" style="margin-left:auto;"><span class="dot"></span>sample traffic</span>
       </div>
       <div class="proxy-tabs">
-        <button class="ptab active">Proxy</button>
-        <button class="ptab">Repeater</button>
-        <button class="ptab">Intercept</button>
-        <button class="ptab">Scope</button>
-        <span class="mono dim" style="margin-left:auto;font-size:11.5px;" id="rowcount">0 captured</span>
+        <span class="ptab active">Proxy example</span>
+        <button class="ptab" id="demoPause" aria-pressed="true">Resume animation</button>
+        <span class="mono dim" style="margin-left:auto;font-size:11.5px;" id="rowcount">0 examples</span>
       </div>
-      <div class="proxy-history" id="history" role="table" aria-label="Captured requests">
+      <div class="proxy-history" id="history" role="table" aria-label="Synthetic request examples">
         <div class="hist-head">
           <span>#</span><span>Method</span><span>Host</span><span>Path</span><span>Status</span><span>Len</span><span>Time</span>
         </div>
@@ -94,7 +92,7 @@
         </div>
       </div>
     </div>
-    <p class="caption center" style="margin-top:14px;">Live capture, running locally. Click a row to inspect the raw exchange.</p>
+    <p class="caption center" style="margin-top:14px;">Interactive example with synthetic traffic. Select a row to inspect its sample request and response. No traffic is captured by this page.</p>
   </div>
 </header>
 
@@ -120,7 +118,7 @@
       </div>
       <div class="card">
         <h3>Scoped history</h3>
-        <p>200k+ rows on a 16GB box. SQLite-backed, indexed and filterable by host, method, path, status, in-scope, parameterized, hide-404, MIME class, or file extension (show/hide). Search is case-sensitive-toggleable and a leading "-" negates a term. Add hosts to scope by pasting a URL, loading a list, or right-click on any row. A DB Search overlay queries the SQLite index directly by method/host/path/status/size/since, at engagement scale rather than the bounded on-screen window, and opens any matched row's full raw request/response even if it has since been evicted from view. Each Site map host expands into a full protocol://host:port → directory → file tree — every path segment its own expandable folder, leaves deduped by method+path (most recent request wins) — click a leaf to jump straight to that message's editor instead of hunting for it in the history table, or click a folder to scope the history table (and Deep Search's regex-over-bodies results) to that branch, shown and cleared via a scope banner in the Site map pane. A "log out-of-scope traffic" checkbox in the Scope tab keeps the default Burp behaviour of dropping out-of-scope items from history and live tasks, or flip it on to browse broadly first and scope down later — each retained out-of-scope row is dimmed with a ⊘ marker in the history table so it's legible at a glance which captured rows fall outside the current scope. Right-click any history row or Site map leaf to flag it with one of 9 highlight colours and/or a free-text comment — shown as a coloured row edge and a comment icon, filterable via an ANNOTATED chip in either view; persisted client-side to this browser. Manually hand-add a URL to the Site map without sending it, or promote a Discover-tab robots.txt Disallow path / sitemap.xml URL with a one-click "+ map" button — each lands greyed-out and dashed ("not sent") in the tree, distinguishing an unrequested node from real captured traffic. Right-click a host, a folder, or a single leaf for COPY URLS (plain-text list), COPY LINKS (clickable HTML, for pasting into tickets/docs), SAVE SELECTED ITEMS (a Burp-site-map-shaped XML download with the full captured request/response, base64), DELETE HOST / DELETE BRANCH (client-side hide, removed from the site map, history table, and Compare Hosts alike, with a filter-bar chip to see the hidden count and restore in one click), or REPORT ISSUES (a standalone, severity-sorted HTML issue report), scoped to whatever was clicked.</p>
+        <p>SQLite-backed, indexed and filterable by host, method, path, status, in-scope, parameterized, hide-404, MIME class, or file extension (show/hide). Search is case-sensitive-toggleable and a leading "-" negates a term. Add hosts to scope by pasting a URL, loading a list, or right-click on any row. A DB Search overlay queries the SQLite index directly by method/host/path/status/size/since, at engagement scale rather than the bounded on-screen window, and opens any matched row's full raw request/response even if it has since been evicted from view. Each Site map host expands into a full protocol://host:port → directory → file tree — every path segment its own expandable folder, leaves deduped by method+path (most recent request wins) — click a leaf to jump straight to that message's editor instead of hunting for it in the history table, or click a folder to scope the history table (and Deep Search's regex-over-bodies results) to that branch, shown and cleared via a scope banner in the Site map pane. A "log out-of-scope traffic" checkbox in the Scope tab keeps the default Burp behaviour of dropping out-of-scope items from history and live tasks, or flip it on to browse broadly first and scope down later — each retained out-of-scope row is dimmed with a ⊘ marker in the history table so it's legible at a glance which captured rows fall outside the current scope. Right-click any history row or Site map leaf to flag it with one of 9 highlight colours and/or a free-text comment — shown as a coloured row edge and a comment icon, filterable via an ANNOTATED chip in either view; persisted client-side to this browser. Manually hand-add a URL to the Site map without sending it, or promote a Discover-tab robots.txt Disallow path / sitemap.xml URL with a one-click "+ map" button — each lands greyed-out and dashed ("not sent") in the tree, distinguishing an unrequested node from real captured traffic. Right-click a host, a folder, or a single leaf for COPY URLS (plain-text list), COPY LINKS (clickable HTML, for pasting into tickets/docs), SAVE SELECTED ITEMS (a Burp-site-map-shaped XML download with the full captured request/response, base64), DELETE HOST / DELETE BRANCH (client-side hide, removed from the site map, history table, and Compare Hosts alike, with a filter-bar chip to see the hidden count and restore in one click), or REPORT ISSUES (a standalone, severity-sorted HTML issue report), scoped to whatever was clicked.</p>
       </div>
       <div class="card">
         <h3>Match &amp; replace</h3>
@@ -132,7 +130,7 @@
       </div>
       <div class="card">
         <h3>Inspector</h3>
-        <p>Structured breakdown of any request or response — headers, cookies, query and body params, and JWTs decoded right where they sit. Paste-and-parse in its own tab, or docked live in Repeater, Proxy history, and Intruder's template editor. A Selection widget section reports the highlighted text's character count plus the first byte's decimal/hex value, labelling non-printing bytes (\n/\t/\r/space) instead of hiding them — a routine step when chasing header-injection or parser-differential bugs. Every header/cookie/query/body-param value carries its own automatic, revisable multi-step decode chain — gated URL/Base64/HTML auto-detection up to 6 layers deep, with a per-step dropdown to retarget the technique the auto-detector picked and see every step below it recompute. A JWT TOOLKIT mode adds an active attack toolkit — offline decode with weakness flags and HS* secret brute-force, alg:none and HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a target that confirms whether a forged token is actually accepted. Burp only offers active JWT testing through a paid extension; this is core.</p>
+        <p>Structured breakdown of any request or response — headers, cookies, query and body params, and JWTs decoded right where they sit. Paste-and-parse in its own tab, or docked live in Repeater, Proxy history, and Intruder's template editor. A Selection widget section reports the highlighted text's character count plus the first byte's decimal/hex value, labelling non-printing bytes (\n/\t/\r/space) instead of hiding them — a routine step when chasing header-injection or parser-differential bugs. Every header/cookie/query/body-param value carries its own automatic, revisable multi-step decode chain — gated URL/Base64/HTML auto-detection up to 6 layers deep, with a per-step dropdown to retarget the technique the auto-detector picked and see every step below it recompute. A JWT TOOLKIT mode adds an active attack toolkit — offline decode with weakness flags and HS* secret brute-force, alg:none and HS256-resign/algorithm-confusion forging, and a live calibrated acceptance test against a target that confirms whether a forged token is actually accepted.</p>
       </div>
       <div class="card">
         <h3>Active testing</h3>
@@ -184,7 +182,7 @@
       </div>
       <div class="card">
         <h3>H2 Frame Log</h3>
-        <p>A frame-level view of HTTP/2 that Burp doesn't have at all: a per-stream summary table (method/path/status/bytes in-out/frame counts/open-closed) and a live-tailing raw frame feed (type — DATA/HEADERS/PRIORITY/RST_STREAM/SETTINGS/PUSH_PROMISE/PING/GOAWAY/WINDOW_UPDATE/CONTINUATION — flags/stream/bytes/error code) captured on either MITM leg of any HTTP/2 connection the proxy negotiated via ALPN, one button away from the Proxy tab's HTTP HISTORY pane.</p>
+        <p>A frame-level view of HTTP/2: a per-stream summary table (method/path/status/bytes in-out/frame counts/open-closed) and a live-tailing raw frame feed (type — DATA/HEADERS/PRIORITY/RST_STREAM/SETTINGS/PUSH_PROMISE/PING/GOAWAY/WINDOW_UPDATE/CONTINUATION — flags/stream/bytes/error code) captured on either MITM leg of any HTTP/2 connection the proxy negotiated via ALPN, one button away from the Proxy tab's HTTP HISTORY pane.</p>
       </div>
       <div class="card">
         <h3>Assess &amp; audit</h3>
@@ -228,7 +226,7 @@
       </div>
       <div class="card">
         <h3>Local first</h3>
-        <p>Your captures never leave the machine. No telemetry, no account, no license server. Air-gap it if you want.</p>
+        <p>Captures are stored locally. Sharing, exports, and integrations are operator-controlled. No telemetry, account, or license server is required for the desktop toolkit.</p>
       </div>
     </div>
   </div>
@@ -237,82 +235,20 @@
 <!-- ============ COMPARISON ============ -->
 <section class="section" id="compare">
   <div class="wrap">
-    <p class="eyebrow center">// honest comparison</p>
-    <h2 class="h2-section center" style="margin-top:8px;">How it stacks up</h2>
-    <p class="lead center" style="margin:14px auto 32px;">Three good tools. Here's where each one wins, no spin.</p>
+    <p class="eyebrow center">// choosing your tools</p>
+    <h2 class="h2-section center" style="margin-top:8px;">Compare the workflow</h2>
+    <p class="lead center" style="margin:14px auto 32px;">Each project has a different focus. Try the workflows you need against your own test cases.</p>
     <div style="overflow-x:auto;">
       <table class="matrix" style="min-width:560px;">
-        <thead>
-          <tr><th>Capability</th><th class="feat-col">nullock</th><th>Burp Suite</th><th>mitmproxy</th></tr>
-        </thead>
+        <thead><tr><th scope="col">Workflow</th><th scope="col" class="feat-col">nullock</th><th scope="col">Burp Suite</th><th scope="col">mitmproxy</th></tr></thead>
         <tbody>
-          <tr><td>License</td><td class="feat-col">MIT, free</td><td>Commercial</td><td>MIT, free</td></tr>
-          <tr><td>Desktop GUI</td><td class="feat-col yes">✓ native</td><td class="yes">✓</td><td class="no">terminal / web</td></tr>
-          <tr><td>Repeater + diff</td><td class="feat-col yes">✓</td><td class="yes">✓ (Pro)</td><td class="no">manual</td></tr>
-          <tr><td>Scriptable extensions</td><td class="feat-col yes">✓ JavaScript</td><td class="yes">✓ Java</td><td class="yes">✓ Py</td></tr>
-          <tr><td>History at 200k rows</td><td class="feat-col yes">✓ SQLite</td><td class="no">heavy</td><td class="no">in-memory</td></tr>
-          <tr><td>Passive detectors</td><td class="feat-col yes">✓ 100+ kinds</td><td class="yes">✓ ~70</td><td class="no">none</td></tr>
-          <tr><td>CWE / OWASP / CVSS tags</td><td class="feat-col yes">✓ on every finding</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
-          <tr><td>CVE correlation</td><td class="feat-col yes">✓ built-in</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>GraphQL attack probes + schema audit</td><td class="feat-col yes">✓ 5 attacks + introspection</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>DOM-XSS taint analysis</td><td class="feat-col yes">✓ proxy-side</td><td class="yes">✓ in-browser</td><td class="no">—</td></tr>
-          <tr><td>Request chains (variable passing)</td><td class="feat-col yes">✓</td><td class="no">macros only</td><td class="no">—</td></tr>
-          <tr><td>Nuclei-style detection templates</td><td class="feat-col yes">✓ built-in library + custom JSON</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>JWT attack toolkit</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>Hidden parameter mining</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>IDOR / BOLA auto-detection</td><td class="feat-col yes">✓</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>Mass-assignment scanner (API #6)</td><td class="feat-col yes">✓</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>Active CORS exploitability</td><td class="feat-col yes">✓ proves it</td><td class="no">passive</td><td class="no">—</td></tr>
-          <tr><td>JS endpoint + source-map recon</td><td class="feat-col yes">✓</td><td class="no">sitemap only</td><td class="no">—</td></tr>
-          <tr><td>Race-condition tester</td><td class="feat-col yes">✓ core</td><td class="no">Turbo extension</td><td class="no">—</td></tr>
-          <tr><td>Verb-tampering auth bypass</td><td class="feat-col yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>SSTI detection + engine fingerprint</td><td class="feat-col yes">✓ core</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>Web cache poisoning (safe-confirm)</td><td class="feat-col yes">✓ core</td><td class="no">Param Miner add-on</td><td class="no">—</td></tr>
-          <tr><td>Open redirect (resolved-host confirm)</td><td class="feat-col yes">✓ core</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>CSP audit (gadget-host aware)</td><td class="feat-col yes">✓ core</td><td class="no">basic header check</td><td class="no">—</td></tr>
-          <tr><td>Secret scan in JS (masked)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>CRLF / response splitting (confirmed)</td><td class="feat-col yes">✓ core</td><td class="no">passive hint</td><td class="no">—</td></tr>
-          <tr><td>Path traversal / LFI (content-confirmed)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>OS command injection (exec-confirmed)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>Reflected XSS (context-confirmed)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>SQL injection (error-based + DBMS fp)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>XXE (content-confirmed file read)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>NoSQL injection (operator differential)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>HTTP request smuggling (CL.TE/TE.CL)</td><td class="feat-col yes">✓ core</td><td class="no">extension</td><td class="no">—</td></tr>
-          <tr><td>Service-version CVE scan (nmap-vulners)</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Port-scan &rarr; findings + CVE bridge</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Recon&rarr;vuln pipeline (point-at-host)</td><td class="feat-col yes">✓ one command</td><td class="no">manual chaining</td><td class="no">—</td></tr>
-          <tr><td>TLS/cert inspection (testssl-class)</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>HTTP/3 (Alt-Svc) readiness probe</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>HTTP/2 frame-level log</td><td class="feat-col yes">✓ stream table + live frame feed</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Active tech fingerprint (WhatWeb-class)</td><td class="feat-col yes">✓ core</td><td class="no">passive</td><td class="no">—</td></tr>
-          <tr><td>HTTP method / WebDAV / XST audit</td><td class="feat-col yes">✓ core</td><td class="no">passive</td><td class="no">—</td></tr>
-          <tr><td>Subdomain takeover detection</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>One-call host assessment</td><td class="feat-col yes">✓ core</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>Sensitive-file exposure (.git/.env/...)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>robots.txt / sitemap recon</td><td class="feat-col yes">✓ core</td><td class="no">crawl only</td><td class="no">—</td></tr>
-          <tr><td>WAF / CDN detection (wafw00f-class)</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Web cache deception</td><td class="feat-col yes">✓ core</td><td class="no">manual</td><td class="no">—</td></tr>
-          <tr><td>One-command deep audit (whole battery)</td><td class="feat-col yes">✓ audit all</td><td class="no">per-insertion config</td><td class="no">—</td></tr>
-          <tr><td>HTML / Markdown engagement report</td><td class="feat-col yes">✓ core</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
-          <tr><td>JSON master report (CI bundle)</td><td class="feat-col yes">✓ core</td><td class="no">Enterprise API</td><td class="no">—</td></tr>
-          <tr><td>Host-centric asset inventory (risk-sorted)</td><td class="feat-col yes">✓ core</td><td class="no">site map only</td><td class="no">—</td></tr>
-          <tr><td>CycloneDX SBOM export</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Findings baseline / diff (re-test deltas)</td><td class="feat-col yes">✓ core</td><td class="no">Enterprise only</td><td class="no">—</td></tr>
-          <tr><td>Security posture grade (A–F score)</td><td class="feat-col yes">✓ core</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>OWASP Top-10 / compliance coverage</td><td class="feat-col yes">✓ core</td><td class="no">Enterprise only</td><td class="no">—</td></tr>
-          <tr><td>Live CVE feed sync (runtime overlay)</td><td class="feat-col yes">✓ core</td><td class="no">add-on</td><td class="no">—</td></tr>
-          <tr><td>AI payload generation</td><td class="feat-col yes">✓ local Ollama</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Authorization tester</td><td class="feat-col yes">✓ multi-user</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
-          <tr><td>Token randomness (Sequencer)</td><td class="feat-col yes">✓ free</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
-          <tr><td>OAST / collab callbacks</td><td class="feat-col yes">✓ self-host</td><td class="yes">✓ (Pro, cloud)</td><td class="no">—</td></tr>
-          <tr><td>OAST auto-correlation (confirmed SSRF)</td><td class="feat-col yes">✓ free</td><td class="yes">✓ (Pro)</td><td class="no">—</td></tr>
-          <tr><td>DNS OAST sink (Log4Shell / blind exfil)</td><td class="feat-col yes">✓ self-host</td><td class="yes">✓ (Pro, cloud)</td><td class="no">—</td></tr>
-          <tr><td>Telemetry</td><td class="feat-col yes">none</td><td class="no">opt-out</td><td class="feat-col yes">none</td></tr>
-          <tr><td>Price to get started</td><td class="feat-col">$0</td><td>$475/yr</td><td>$0</td></tr>
+          <tr><th scope="row">Manual request replay</th><td class="feat-col">Repeater</td><td>Repeater in Community and Professional</td><td>Client-side replay</td></tr>
+          <tr><th scope="row">Automation</th><td class="feat-col">Local control API and CLI</td><td>Extensions and edition-specific scanning tools</td><td>Python addons and command-line tools</td></tr>
+          <tr><th scope="row">Getting started</th><td class="feat-col">Free, MIT-licensed source</td><td>Free Community edition; paid editions available</td><td>Free, open-source proxy</td></tr>
         </tbody>
       </table>
     </div>
+    <p class="caption" style="margin-top:16px;">See the current <a href="https://portswigger.net/burp/documentation/desktop/tools/repeater">Burp Repeater documentation</a> and <a href="https://docs.mitmproxy.org/stable/overview/features/">mitmproxy features</a> for details. This is a workflow overview, not a performance benchmark or a claim of feature parity.</p>
   </div>
 </section>
 
@@ -335,7 +271,7 @@
         <h3 style="color:var(--headline);">Pick your platform</h3>
         <div class="os-list">
           <a class="os-row" data-dl="macos" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">macOS</span><span class="dim mono">.dmg · right-click → Open</span><span class="badge ok"><span class="dot"></span>latest</span></a>
-          <a class="os-row" data-dl="linux-appimage linux-deb" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">Linux</span><span class="dim mono">.AppImage · .deb · .rpm</span><span class="badge ok"><span class="dot"></span>latest</span></a>
+          <a class="os-row" data-dl="linux-appimage linux-deb" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">Linux</span><span class="dim mono">.deb / available release assets</span><span class="badge ok"><span class="dot"></span>latest</span></a>
           <a class="os-row" data-dl="windows" href="https://github.com/Bikebrainz/Nullock/releases/latest"><span class="mono">Windows</span><span class="dim mono">.exe · x64</span><span class="badge ok"><span class="dot"></span>latest</span></a>
           <a class="os-row" href="https://github.com/Bikebrainz/Nullock/blob/HEAD/INSTALL.md"><span class="mono">Source</span><span class="dim mono">Qt 6.7+ · CMake · C++20</span><span class="badge">MIT</span></a>
         </div>
@@ -362,8 +298,8 @@
 <section class="section">
   <div class="wrap">
     <div class="cta-band glow-bg">
-      <h2 class="h2-section" style="font-size:26px;">Free desktop. Paid hosting. No bait.</h2>
-      <p class="muted" style="margin:8px 0 0;">Pay for hosted services if you need them, or for support if you want a human on email.</p>
+      <h2 class="h2-section" style="font-size:26px;">Free desktop. Built in the open.</h2>
+      <p class="muted" style="margin:8px 0 0;">Download the full desktop toolkit, or discuss proposed hosting and support with the maintainer.</p>
       <div class="row" style="margin-top:22px;">
         <a href="#download" class="btn btn-primary">Download</a>
         <a href="pricing.html" class="btn btn-ghost">See pricing</a>

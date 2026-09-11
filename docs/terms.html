@@ -14,7 +14,7 @@
       <img class="mark" src="assets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="navlinks" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('navlinks').classList.toggle('open'))">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="index.html">Product</a>
       <a href="docs/index.html">Docs</a>
@@ -38,21 +38,17 @@
 <section class="section" style="padding-top:28px;">
   <div class="wrap-docs legal">
 
-<p class="caption">Last updated June 2, 2026.</p>
+<p class="caption">Updated September 10, 2026.</p>
 <h2>The software</h2>
 <p>The desktop app is licensed under MIT — see the <a href="license.html">license</a>. You can use it for anything, including commercially, no permission needed.</p>
 <h2>Acceptable use</h2>
 <p>nullock intercepts network traffic. Only intercept traffic you own or are explicitly authorized to test. Using it to attack systems you don't control is illegal and not our doing.</p>
-<h2>Paid services</h2>
-<ul>
-  <li>Subscriptions are month to month and renew automatically until you cancel.</li>
-  <li>First 30 days are fully refundable. After that, cancel anytime and you keep access through the period you paid for.</li>
-  <li>We may suspend a hosted account that's being used to harm others or that abuses fair-use bandwidth after a warning.</li>
-</ul>
+<h2>Proposed paid services</h2>
+<p>Paid plans on this website are proposals. There is no checkout or automatic subscription on this site. Availability and written payment, cancellation, retention, and support terms must be confirmed before purchase.</p>
 <h2>No warranty</h2>
 <p>The software is provided as-is. We work hard to make it solid, but you run it at your own risk, especially against production systems.</p>
 <h2>Changes</h2>
-<p>If we change these terms we'll note it in the changelog and email active subscribers. Continued use means you accept the update.</p>
+<p>Changes to these pages are recorded in the public repository history. The software license is linked above.</p>
 
   </div>
 </section>

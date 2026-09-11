@@ -1,4 +1,5 @@
 #include "proxy_server.hpp"
+#include <QEvent>
 
 #include "cert_authority.hpp"
 #include "content_decode.hpp"
@@ -66,47 +67,9 @@ constexpr int kWaitSliceMs        = 500;
 // in between (see the deadlock note there), and gives up after the budget
 // rather than hanging the app on exit.
 //
-// What this budget has to outlast, and the one thing it still does not.
-//
-// Every blocking wait a Connection can sit in is now sliced at kWaitSliceMs and
-// polls a shutdown flag: the four waitFor* families in this file, and -- since
-// they were the real hole -- H2Client::pump (http2_client.cpp) and
-// H2Terminator::run (h2_server.cpp), which take the flag via setAbortFlag().
-// That matters because their per-wait timeouts RESET on every byte, so before
-// they were sliced a streaming upstream or a browser sending PING could park a
-// worker for their whole-batch deadlines (120 s and 300 s) with nothing wrong.
-// A worker now unwinds within about one slice.
-//
-// STILL UNSLICED: leaf-certificate minting. CertAuthority shells out to openssl
-// with waitForStarted(5 s) + waitForFinished(30 s) -- that is 35 s PER
-// INVOCATION, and a mint is not one invocation:
-//
-//   leafCertFor()  req -new -newkey   +  x509 -req        =  up to  70 s
-//   ...and on the very first mint it calls ensureCa() INSIDE the same lock,
-//      which adds genrsa + req -x509                      =  up to 140 s
-//
-// all of it under CertAuthority::m_mutex, which is process-wide rather than
-// per-host -- so every other worker that needs ANY leaf queues behind it, not
-// just the one doing the minting.
-//
-// (An earlier version of this comment said "~35 s" and framed it as affecting
-// only the minting worker. Both were wrong, and this number is the stated
-// reason kJoinBudgetMs is what it is, so the error propagates to whoever tunes
-// it next.)
-//
-// Those are hard QProcess timeouts rather than resettable ones, so it is
-// bounded and rare (first contact with a new host only), but it means the
-// give-up branch in joinWorkers is still reachable there. Raising the budget
-// past even the 70 s case would trade a rare detach for a routinely slower
-// exit, which is the worse deal. The qWarning is how it surfaces if it ever
-// happens.
-constexpr int kJoinPollMs         = 25;
-constexpr int kJoinBudgetMs       = 20'000;
-// Once the global budget is blown, every REMAINING thread still gets its own
-// grace window. Without this, one stuck worker makes the budget expire and
-// every healthy thread behind it is detached on its first 25 ms poll -- turning
-// a single un-interruptible site into N use-after-frees.
-constexpr int kJoinGraceMs        = 500;
+// Join all workers before their services are destroyed. Cooperative socket waits
+// wake promptly; certificate generation may need its bounded process timeout.
+constexpr int kJoinPollMs = 25;
 
 // Sliced, shutdown-aware waitForReadyRead.
 //
@@ -1836,53 +1799,14 @@ void ProxyServer::joinWorkers(bool pump) {
     // So pump while joining. ExcludeUserInputEvents keeps a click from
     // re-entering the UI during teardown; the metacalls we actually need are
     // not user-input events.
-    QElapsedTimer budget;
-    budget.start();
-    QList<QThread *> stuck;
-    for (QThread *t : mine) {
-        QElapsedTimer grace;
-        grace.start();
-        // Unconditional wait, same reasoning as port_scanner.cpp: an
-        // `if (isRunning())` guard can miss the window between start()
-        // returning and the OS thread being observed as running.
-        while (!t->wait(kJoinPollMs)) {
-            // pump=false on the destructor backstop: by then the objects
-            // those queued slots would reach are already destroyed, so
-            // dispatching them would turn one use-after-free into several.
-            //
-            // ExcludeSocketNotifiers is load-bearing, not tidiness. Without
-            // it this pump re-enters ControlServer's still-listening HTTP API
-            // mid-teardown, and its handlers reach straight back into the
-            // objects main() is unwinding -- a stray /api/proxy/toggle would
-            // call start() on us and re-open the listener while we are draining
-            // it. Posted QMetaCallEvents (the BlockingQueuedConnection hops we
-            // actually need to service) are NOT socket notifiers, so they still
-            // get dispatched.
-            //
-            // The 5 ms cap keeps one slow queued slot (a ProjectStore disk
-            // append, a passive scan) from stalling the poll loop.
+    for (QThread *thread : mine) {
+        while (!thread->wait(kJoinPollMs)) {
+            // Extension hooks can synchronously marshal to the main thread.
+            // Service those callbacks without accepting new UI or HTTP work.
             if (pump && QCoreApplication::instance())
-                QCoreApplication::processEvents(
-                    QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers,
-                    5);
-            // Give up only when BOTH the shared budget and this thread's own
-            // grace are exhausted. Budget alone would let the first stuck
-            // worker detach every healthy thread queued behind it.
-            if (budget.elapsed() > kJoinBudgetMs && grace.elapsed() > kJoinGraceMs) break;
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
         }
-        if (t->isFinished()) delete t;
-        else                 stuck.append(t);
-    }
-
-    if (!stuck.isEmpty()) {
-        // LEAKED ON PURPOSE. Deleting a still-running QThread is UB, so the
-        // safe failure is to let these outlive us and say so. This is a
-        // degraded outcome -- those workers can still reach freed objects, the
-        // bug this whole change exists to prevent -- so it must never be
-        // silent. Reaching it means some blocking site is not shutdown-aware.
-        qWarning("proxy: %lld worker thread(s) still running after %d ms; "
-                 "leaving them detached rather than destroying a live QThread",
-                 static_cast<long long>(stuck.size()), kJoinBudgetMs);
+        delete thread;
     }
 }
 
@@ -1964,6 +1888,12 @@ void ProxyServer::stop() {
 
 bool ProxyServer::restart() {
     return start(m_bindAddress, m_bindPort);
+}
+
+bool ProxyServer::hasActiveConnections() const {
+    QMutexLocker lock(&m_threadsMutex);
+    for (auto *thread : m_threads) if (!thread->isFinished()) return true;
+    return false;
 }
 
 bool ProxyServer::isRunning() const { return m_server->isListening(); }

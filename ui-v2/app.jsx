@@ -29,7 +29,10 @@ const TABS = [
 ];
 
 // fire-and-forget side-effect helper; safe before NL.actions exists.
-const act = (fn, ...args) => { if (window.NL && NL.actions && NL.actions[fn]) NL.actions[fn](...args); };
+const act = (fn, ...args) => {
+  if (window.NL && NL.actions && NL.actions[fn])
+    return Promise.resolve(NL.actions[fn](...args)).catch(e => window.alert(e.message || "Action failed"));
+};
 
 function reducer(state, action) {
   switch (action.type) {
@@ -44,6 +47,10 @@ function reducer(state, action) {
       if (!window.NL) return state;
       return {
         ...state,
+        generation: NL._generation,
+        selectedRowId: state.generation === NL._generation ? state.selectedRowId : null,
+        comparer: state.generation === NL._generation ? state.comparer : {items: [], selA: null, selB: null},
+        sequencer: state.generation === NL._generation ? state.sequencer : {tokens: []},
         rows: NL.rows || state.rows,
         scope: NL.scope || state.scope,
         intercepted: NL.intercepted || state.intercepted,
@@ -72,7 +79,7 @@ function reducer(state, action) {
         repeater: {
           ...state.repeater,
           host: row.host,
-          port: row.tls ? 443 : 80,
+          port: row.port || (row.tls ? 443 : 80),
           tls: row.tls,
           request: req,
           response: "",
@@ -132,17 +139,14 @@ function reducer(state, action) {
       const row = action.row;
       const req = NL.requestRawById(row.id);
       let tmpl = req;
-      if (req.includes("=")) {
-        tmpl = req.replace(/(=)([^&\s\n]*)$/m, "$1§payload§");
-      }
-      act("intruderSet", { host: row.host, port: row.tls ? 443 : 80, tls: row.tls, template: tmpl });
+      act("intruderFromHistory", row.id);
       return {
         ...state,
         tab: "intruder",
         intruder: {
           ...state.intruder,
           host: row.host,
-          port: row.tls ? 443 : 80,
+          port: row.port || (row.tls ? 443 : 80),
           tls: row.tls,
           template: tmpl,
         },
@@ -271,8 +275,8 @@ function reducer(state, action) {
       return { ...state, scope: { ...state.scope, notes: action.value } };
 
     case "clear-history":
-      act("clearHistory");
-      return { ...state, rows: [], selectedRowId: null };
+      if (window.confirm("Clear this project's saved history and findings? This cannot be undone.")) act("clearHistory");
+      return state;
     case "toggle-power":
       act("toggleProxy");
       return { ...state, proxyOn: !state.proxyOn };
@@ -1087,7 +1091,8 @@ function SettingsTab() {
               <div key={name}
                    onClick={async () => {
                      if (isActive) return;
-                     await NL.actions.projectOpen(name);
+                     const result = await NL.actions.projectOpen(name);
+                     if (!result.ok) { alert(result.error || "Could not open project"); return; }
                      await refreshProjects();
                    }}
                    style={{
@@ -1126,7 +1131,7 @@ function SettingsTab() {
               if (!n) return;
               const r = await NL.actions.projectCreate(n);
               if (r && r.ok === false) {
-                alert("Could not create project (name may contain invalid chars).");
+                alert(r.error || "Could not create project (name may contain invalid chars).");
                 return;
               }
               setNewProject("");
@@ -1142,7 +1147,7 @@ function SettingsTab() {
             if (!n) return;
             const r = await NL.actions.projectCreate(n);
             if (r && r.ok === false) {
-              alert("Could not create project (name may contain invalid chars).");
+              alert(r.error || "Could not create project (name may contain invalid chars).");
               return;
             }
             setNewProject("");
@@ -1404,7 +1409,7 @@ function SettingsTab() {
         // than the default 8080 if it was taken; pull the live value out
         // of bootInfo so the snippets always match reality.
         const host       = "127.0.0.1";
-        const proxyPort  = b.port || 8888;
+        const proxyPort  = b.port || 8080;
         const ctrlPort   = b.controlPort || 17777;
         const proxyAddr  = host + ":" + proxyPort;
         const pacUrl     = "http://" + host + ":" + ctrlPort + "/api/pac";
@@ -8116,7 +8121,7 @@ function App() {
     search: "",
     selectedHost: null,
     selectedOrigin: null,
-    proxyOn: true,
+    proxyOn: NL.connected && NL.bootInfo.proxyOn === true,
     logOutOfScope: NL.bootInfo && NL.bootInfo.logOutOfScope === true,
     intercept: false,
     interceptResponses: false,
@@ -8345,7 +8350,7 @@ function App() {
       />
       <Rail
         proxyOn={state.proxyOn}
-        port={NL.bootInfo.port}
+        port={NL.bootInfo.port || "—"}
         h2Count={h2Count}
         filtered={hidden}
         total={state.rows.length}
@@ -8355,7 +8360,7 @@ function App() {
         intruderRunning={state.intruder.running}
         intruderProgress={`${state.intruder.results.filter(r => r.status !== null).length}/${state.intruder.payloads.length}`}
       />
-      <div style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
+      <div key={NL._generation} style={{ minHeight: 0, overflow: "hidden", position: "relative" }}>
         {tab === "proxy" && (
           <ProxyTab
             state={state}
@@ -8453,7 +8458,7 @@ function App() {
       </div>
       <StatusBar
         proxyOn={state.proxyOn}
-        port={NL.bootInfo.port}
+        port={NL.bootInfo.port || "—"}
         total={state.rows.length}
         filtered={hidden}
         scope={state.scope}

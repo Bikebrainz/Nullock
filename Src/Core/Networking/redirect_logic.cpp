@@ -1,6 +1,8 @@
 // Pure redirect-following logic (see redirect_logic.hpp). Qt6::Core only.
 
 #include "redirect_logic.hpp"
+#include <QNetworkCookie>
+#include <QSet>
 
 #include <QStringList>
 #include <algorithm>
@@ -49,8 +51,8 @@ QString methodAfterRedirect(int status, const QString &currentMethod) {
     return m;
 }
 
-bool redirectPreservesBody(int status) {
-    return status == 307 || status == 308;
+bool redirectPreservesBody(int status, const QString &method) {
+    return status != 303 && methodAfterRedirect(status, method) == method.trimmed().toUpper();
 }
 
 bool followAllowed(FollowPolicy policy, const QString &originHost,
@@ -65,56 +67,82 @@ bool followAllowed(FollowPolicy policy, const QString &originHost,
     return false;
 }
 
-void mergeSetCookies(QHash<QString, QString> &jar,
-                     const QList<QPair<QString, QString>> &headers) {
-    for (const auto &h : headers) {
-        if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) != 0) continue;
-        // First ';'-segment is the name=value cookie pair; the rest are attributes.
-        const QString seg = h.second.section(QLatin1Char(';'), 0, 0).trimmed();
-        const int eq = seg.indexOf(QLatin1Char('='));
-        if (eq <= 0) continue;
-        const QString name = seg.left(eq).trimmed();
-        const QString val  = seg.mid(eq + 1).trimmed();
-        if (!name.isEmpty()) jar.insert(name, val);   // last write wins
+void seedRequestCookies(CookieJar &jar, const QUrl &origin, const QByteArray &request) {
+    const auto head = request.left(request.indexOf("\r\n\r\n") < 0 ? request.size() : request.indexOf("\r\n\r\n"));
+    for (auto line : head.split('\n')) {
+        const int c = line.indexOf(':');
+        if (c < 0 || line.left(c).trimmed().toLower() != "cookie") continue;
+        for (auto pair : line.mid(c + 1).trimmed().split(';')) {
+            const int eq = pair.indexOf('=');
+            if (eq <= 0) continue;
+            QNetworkCookie cookie(pair.left(eq).trimmed(), pair.mid(eq + 1).trimmed());
+            cookie.setPath("/");
+            cookie.setSecure(origin.scheme() == "https");
+            jar.setCookiesFromUrl({cookie}, origin);
+        }
     }
 }
 
-QString renderCookieHeader(const QHash<QString, QString> &jar) {
-    if (jar.isEmpty()) return {};
-    QStringList keys = jar.keys();
-    std::sort(keys.begin(), keys.end());   // deterministic order
+void mergeSetCookies(CookieJar &jar, const QUrl &origin,
+                     const QList<QPair<QString, QString>> &headers) {
+    for (const auto &h : headers) {
+        if (h.first.compare("Set-Cookie", Qt::CaseInsensitive) == 0)
+            jar.setCookiesFromUrl(QNetworkCookie::parseCookies(h.second.toLatin1()), origin);
+    }
+}
+
+QString renderCookieHeader(const CookieJar &jar, const QUrl &destination) {
     QStringList pairs;
-    pairs.reserve(keys.size());
-    for (const QString &k : keys) pairs << (k + QLatin1Char('=') + jar.value(k));
+    for (const auto &cookie : jar.cookiesForUrl(destination))
+        pairs << QString::fromLatin1(cookie.toRawForm(QNetworkCookie::NameAndValueOnly));
     return pairs.join(QStringLiteral("; "));
 }
 
 QByteArray buildFollowRequest(const QUrl &url, const QString &method,
-                              const QString &cookieHeader, const QByteArray &body) {
-    QString pathAndQuery = url.path(QUrl::FullyEncoded);
-    if (pathAndQuery.isEmpty()) pathAndQuery = QStringLiteral("/");
-    const QString q = url.query(QUrl::FullyEncoded);
-    if (!q.isEmpty()) pathAndQuery += QLatin1Char('?') + q;
-
-    // Host header: include the port only when it is non-default for the scheme.
-    const QString host = url.host();
-    const int port = url.port();
-    const bool tls = url.scheme().compare("https", Qt::CaseInsensitive) == 0;
-    QString hostHeader = host;
-    if (port > 0 && port != (tls ? 443 : 80))
-        hostHeader += QLatin1Char(':') + QString::number(port);
-
-    QByteArray out;
-    out += method.toUtf8() + " " + pathAndQuery.toUtf8() + " HTTP/1.1\r\n";
-    out += "Host: " + hostHeader.toUtf8() + "\r\n";
-    out += "Accept: */*\r\n";
-    if (!cookieHeader.isEmpty())
-        out += "Cookie: " + cookieHeader.toUtf8() + "\r\n";
-    if (!body.isEmpty())
+                              const QString &cookieHeader, const QByteArray &body,
+                              const QByteArray &previousRequest, const QUrl &previousUrl,
+                              bool preserveBody) {
+    QString target = url.path(QUrl::FullyEncoded);
+    if (target.isEmpty()) target = "/";
+    if (!url.query(QUrl::FullyEncoded).isEmpty()) target += "?" + url.query(QUrl::FullyEncoded);
+    const bool tls = url.scheme() == "https";
+    QString authority = url.host();
+    if (authority.contains(':')) authority = "[" + authority + "]";
+    if (url.port() > 0 && url.port() != (tls ? 443 : 80)) authority += ":" + QString::number(url.port());
+    const bool sameOrigin = previousUrl.scheme() == url.scheme()
+        && previousUrl.host().compare(url.host(), Qt::CaseInsensitive) == 0
+        && previousUrl.port(previousUrl.scheme() == "https" ? 443 : 80) == url.port(tls ? 443 : 80);
+    const int sep = previousRequest.indexOf("\r\n\r\n");
+    const auto lines = previousRequest.left(sep < 0 ? previousRequest.size() : sep).split('\n');
+    QSet<QByteArray> skip{"host", "cookie", "content-length", "transfer-encoding", "connection",
+        "proxy-connection", "keep-alive", "te", "trailer", "upgrade", "proxy-authorization"};
+    for (auto line : lines) {
+        const int c = line.indexOf(':');
+        if (c >= 0 && line.left(c).trimmed().toLower() == "connection")
+            for (auto token : line.mid(c+1).split(',')) skip.insert(token.trimmed().toLower());
+    }
+    // Unknown custom headers may contain credentials. Cross-origin follows use
+    // only representation/negotiation headers; same-origin follows retain others.
+    const QSet<QByteArray> crossOriginSafe{"accept", "accept-language", "accept-encoding", "user-agent",
+        "content-type", "content-encoding", "content-language", "content-location"};
+    QByteArray out = method.toUtf8() + " " + target.toUtf8() + " HTTP/1.1\r\nHost: " + authority.toUtf8() + "\r\n";
+    bool hasAccept = false;
+    for (auto line : lines) {
+        if (line.endsWith('\r')) line.chop(1);
+        const int c = line.indexOf(':');
+        if (c < 0) continue;
+        const auto name = line.left(c).trimmed().toLower();
+        if (skip.contains(name) || (!sameOrigin && !crossOriginSafe.contains(name))) continue;
+        if (!preserveBody && name.startsWith("content-")) continue;
+        if (name == "accept") hasAccept = true;
+        out += line + "\r\n";
+    }
+    if (!hasAccept) out += "Accept: */*\r\n";
+    if (!cookieHeader.isEmpty()) out += "Cookie: " + cookieHeader.toLatin1() + "\r\n";
+    if (!body.isEmpty() || method == "POST" || method == "PUT" || method == "PATCH")
         out += "Content-Length: " + QByteArray::number(body.size()) + "\r\n";
     out += "Connection: close\r\n\r\n";
-    out += body;
-    return out;
+    return out + body;
 }
 
 static QByteArray firstLine(const QByteArray &raw) {

@@ -20,7 +20,7 @@
 
   function pick(assets, keys) {
     for (var k = 0; k < keys.length; k++) {
-      var res = MATCHERS[keys[k]];
+      var res = MATCHERS[keys[k]] || [];
       for (var i = 0; i < res.length; i++) {
         for (var a = 0; a < assets.length; a++) {
           if (res[i].test(assets[a].name)) return assets[a];
@@ -41,10 +41,8 @@
   }
 
   function applyFallback() {
-    document.querySelectorAll("[data-dl]").forEach(function (el) {
-      if (!el.getAttribute("href") || el.getAttribute("href") === "#") {
-        el.setAttribute("href", LATEST_PAGE);
-      }
+    document.querySelectorAll("[data-dl], [data-dl-primary]").forEach(function (el) {
+      el.setAttribute("href", LATEST_PAGE);
     });
   }
 
@@ -55,8 +53,11 @@
   fetch(API, { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
     .then(function (rel) {
-      var assets = rel.assets || [];
-      var tag = rel.tag_name || "";
+      var assets = (Array.isArray(rel.assets) ? rel.assets : []).filter(function (a) {
+        return typeof a.name === "string" && typeof a.browser_download_url === "string" &&
+          a.browser_download_url.indexOf("https://github.com/" + REPO + "/releases/download/") === 0;
+      });
+      var tag = typeof rel.tag_name === "string" ? rel.tag_name : "";
 
       // version labels
       if (tag) {

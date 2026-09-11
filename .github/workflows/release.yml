@@ -44,7 +44,7 @@ jobs:
           # Qt6 aqt module -- requesting it makes aqt fail and breaks the build).
           modules: 'qtwebsockets'
       - name: install nghttp2
-        run: vcpkg install nghttp2:x64-windows
+        run: vcpkg install nghttp2:x64-windows openssl:x64-windows
       - name: install NSIS
         run: choco install nsis -y
       - name: configure
@@ -67,6 +67,13 @@ jobs:
           $exe = Get-ChildItem build -Recurse -Filter NullockApp.exe | Select-Object -First 1 -ExpandProperty FullName
           & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
           Remove-Item $pfx
+      - name: verify staged Windows runtime
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix stage
+          $python = (Get-Command python).Source
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe
       - name: package
         working-directory: build
         run: cpack -G "NSIS;ZIP" -C Release
@@ -105,12 +112,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential \
-            libnghttp2-dev libssl-dev \
+            libnghttp2-dev libssl-dev patchelf libxcb-cursor0 \
             rpm dpkg-dev imagemagick wget
       - name: configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build -j
+        run: cmake --build build -j 4
+      - name: verify staged Linux runtime
+        run: |
+          cmake --install build --prefix "$PWD/runtime-stage"
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py runtime-stage/bin/NullockApp
       - name: cpack -- DEB / RPM / TGZ
         working-directory: build
         run: cpack -G "DEB;RPM;TGZ"
@@ -121,7 +132,6 @@ jobs:
         # The .deb/.rpm/.tgz are already built by the cpack step above; don't let
         # an AppImage-only hiccup (linuxdeploy/FUSE quirks) block them from
         # uploading. The AppImage attaches too when it succeeds.
-        continue-on-error: true
         run: bash packaging/appimage/build_appimage.sh stage
       - uses: actions/upload-artifact@v4
         with:
@@ -145,7 +155,11 @@ jobs:
       - name: configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build -j
+        run: cmake --build build -j 4
+      - name: stage complete macOS app
+        run: |
+          cmake --install build --prefix "$PWD/stage"
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp
       - name: import signing cert (no-op without MACOS_CERT_* secrets)
         env:
           CERT_B64: ${{ secrets.MACOS_CERT_BASE64 }}
@@ -168,13 +182,15 @@ jobs:
           SIGN_ID: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
           if [ -z "$CERT_B64" ]; then echo "no MACOS_CERT_BASE64; skipping codesign"; exit 0; fi
-          APP=$(find build -maxdepth 6 -name '*.app' -type d | head -1)
+          APP="$PWD/stage/NullockApp.app"
           echo "signing $APP"
           codesign --deep --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
           codesign --verify --strict --verbose=2 "$APP"
-      - name: cpack -- DMG
-        working-directory: build
-        run: cpack -G "DragNDrop"
+      - name: package the verified and optionally signed macOS app
+        run: |
+          VER=$(sed -n 's/^    VERSION \(.*\)/\1/p' CMakeLists.txt | head -1)
+          ln -s /Applications stage/Applications
+          hdiutil create -volname Nullock -srcfolder stage -ov -format UDZO "build/Nullock-${VER}-Darwin.dmg"
       - name: notarize + staple dmg (no-op without AC_API_* secrets)
         env:
           AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
@@ -196,12 +212,6 @@ jobs:
 
   release:
     needs: [build-windows, build-linux, build-macos]
-    # Publish as soon as the Windows build is green; Linux/macOS are still being
-    # brought up (the app had only ever been built on Windows). `always()` lets
-    # this run even if those two fail, and it attaches whichever platform
-    # artifacts exist -- so the Windows installer ships now and Linux/macOS join
-    # the draft automatically once their builds go green.
-    if: ${{ always() && needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

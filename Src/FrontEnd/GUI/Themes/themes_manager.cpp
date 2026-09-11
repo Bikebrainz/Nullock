@@ -29,7 +29,7 @@ void ThemesManager::setCurrentTheme(const QString &name) {
 }
 
 QString ThemesManager::themesDir() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+    return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
            + "/themes";
 }
 

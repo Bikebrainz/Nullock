@@ -27,6 +27,11 @@ find_package(Qt6 REQUIRED COMPONENTS
     Sql
 )
 
+if(WIN32)
+    set(NULLOCK_NGHTTP2_ROOT "C:/vcpkg/installed/x64-windows" CACHE PATH "nghttp2 install prefix")
+    set(NULLOCK_OPENSSL_ROOT "${NULLOCK_NGHTTP2_ROOT}" CACHE PATH "OpenSSL install prefix")
+endif()
+
 # Add source subdirectory
 add_subdirectory(Src)
 
@@ -79,7 +84,7 @@ if(WIN32)
         DIRECTORY ${CMAKE_BINARY_DIR}/Src/App/$<CONFIG>/
         DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Runtime
-        PATTERN "*.exe" EXCLUDE     # exe already installed via TARGETS rule
+        PATTERN "NullockApp.exe" EXCLUDE # preserve the bundled OpenSSL executable
         PATTERN "*.pdb" EXCLUDE     # don't ship debug symbols
         PATTERN "*.lib" EXCLUDE
         PATTERN "*.exp" EXCLUDE
@@ -97,31 +102,46 @@ if(UNIX AND NOT APPLE)
         LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT Runtime
     )
-    set_target_properties(NullockApp PROPERTIES INSTALL_RPATH "$ORIGIN")
+    set_target_properties(NullockApp FrontEndGUI PROPERTIES
+        INSTALL_RPATH "$ORIGIN;$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
+
+# Unix packages bundle the Qt version used to build, including QML and plugins.
+# Relying on a distro's older Qt runtime does not satisfy Qt 6.7 symbols.
+if(UNIX)
+    qt_generate_deploy_qml_app_script(TARGET NullockApp OUTPUT_SCRIPT nullock_deploy
+        NO_TRANSLATIONS)
+    install(SCRIPT ${nullock_deploy} COMPONENT Runtime)
+endif()
+
+set(NULLOCK_ASSET_DIR "${CMAKE_INSTALL_DATADIR}/nullock")
+if(APPLE)
+    # A dragged .app must contain its assets, independent of the DMG's folders.
+    set(NULLOCK_ASSET_DIR "NullockApp.app/Contents/Resources/nullock")
 endif()
 
 # UI assets + extensions + labs.
 install(
     DIRECTORY ui-v2/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/ui
+    DESTINATION ${NULLOCK_ASSET_DIR}/ui
     COMPONENT Runtime
     PATTERN "node_modules" EXCLUDE
 )
 install(
     DIRECTORY extensions/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/extensions
+    DESTINATION ${NULLOCK_ASSET_DIR}/extensions
     COMPONENT Runtime
 )
 # Bundled detection templates + project templates -- read at runtime relative to
 # the UI dir (uiDir/../templates), so they install next to nullock/ui.
 install(
     DIRECTORY templates/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/templates
+    DESTINATION ${NULLOCK_ASSET_DIR}/templates
     COMPONENT Runtime
 )
 install(
     DIRECTORY browser-ext/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/nullock/browser-ext
+    DESTINATION ${NULLOCK_ASSET_DIR}/browser-ext
     COMPONENT Optional
 )
 install(
@@ -180,7 +200,10 @@ elseif(UNIX)
     set(CPACK_DEBIAN_PACKAGE_SECTION     "net")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY    "optional")
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt6core6, libqt6gui6, libqt6network6, libqt6qml6, libqt6quick6, libqt6sql6")
+        "openssl, libnghttp2-14, libxkbcommon0, libxcb-cursor0")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+    set(CPACK_RPM_PACKAGE_REQUIRES "openssl, libnghttp2, libxkbcommon, xcb-util-cursor")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE    "${PROJECT_HOMEPAGE_URL}")
     set(CPACK_RPM_PACKAGE_LICENSE        "MIT")
     set(CPACK_RPM_PACKAGE_GROUP          "Applications/Internet")

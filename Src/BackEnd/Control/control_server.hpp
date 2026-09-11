@@ -3,6 +3,7 @@
 #include <QHostAddress>
 #include <QObject>
 #include <QString>
+#include <QUuid>
 
 class QTcpServer;
 class QTcpSocket;
@@ -108,6 +109,7 @@ private:
     Wiring     m_wiring;
     QTcpServer *m_server = nullptr;
     quint64    m_seq = 1;
+    const QString m_instanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString    m_apiToken;              // bearer token; empty = auth disabled
     bool       m_tokenMandatory = false; // true when bound off-loopback: token required for EVERY request
 };

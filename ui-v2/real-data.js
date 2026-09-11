@@ -28,7 +28,15 @@
 
   function applySnapshot(snap) {
     if (!snap) return;
-    NL.bootInfo      = snap.bootInfo      || {};
+    const boot = snap.bootInfo || {};
+    const generation = [snap.instanceId || "", boot.projectDir || boot.project || "", boot.historyGeneration || ""].join(":");
+    if (generation !== NL._generation) {
+      NL._cache = { req: {}, resp: {}, fullRow: {} };
+      NL._generation = generation;
+    }
+    NL.connected = !!snap.bootInfo;
+    NL._instanceId = snap.instanceId || "";
+    NL.bootInfo      = boot;
     NL.themes        = snap.themes        || [];
     NL.scope         = snap.scope         || { in: [], out: [], notes: "" };
     NL.rules         = snap.rules         || [];
@@ -222,6 +230,7 @@
                 + "&limit=" + encodeURIComponent(limit);
       return fetch(url).then(r => r.json());
     },
+    intruderFromHistory(id) { return post("/api/intruder/from-history", {id}); },
     intruderSet(payload)    { return post("/api/intruder/set",     payload); },
     intruderStart()         { return post("/api/intruder/start"); },
     // Resume the "remaining" rows of a restored attack -- re-fires only the rows
@@ -274,7 +283,12 @@
     // See control_server.cpp /api/diagnostics[/report].
     diagnosticsList()          { return fetch("/api/diagnostics").then(r => r.json()); },
     diagnosticsReport(name)    { return fetch("/api/diagnostics/report?name=" + encodeURIComponent(name)).then(r => r.json()); },
-    clearHistory()          { return post("/api/clear-history"); },
+    clearHistory() {
+      return post("/api/clear-history").then(r => r.json()).then(r => {
+        if (!r.ok) throw new Error(r.error || "Could not clear history");
+        return r;
+      });
+    },
     clearMitmBlocked()      { return post("/api/mitm/clear-blocked"); },
     // Pre-add a host to the TLS pass-through (blind-tunnel) list, or remove
     // a single host from it -- both endpoints echo the resulting list back
@@ -751,21 +765,35 @@
   // counter on every backend change; if seq hasn't moved it returns
   // 304 and we don't even parse JSON. Net cost when idle: ~1 KB/s.
   NL._seq = NL._seq || 0;
+  let polling = false;
+  function disconnected() {
+    NL._seq = 0;
+    if (NL.connected) {
+      NL.connected = false;
+      window.dispatchEvent(new CustomEvent("nl-update"));
+    }
+  }
   setInterval(function () {
+    if (polling) return;
+    polling = true;
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open("GET", "/api/snapshot?since=" + NL._seq, true);
+      xhr.open("GET", "/api/snapshot?since=" + NL._seq + "&instance=" + encodeURIComponent(NL._instanceId || ""), true);
+      xhr.timeout = 5000;
+      xhr.onerror = xhr.ontimeout = function () { polling = false; disconnected(); };
       xhr.onload = function () {
-        if (xhr.status === 304) return;        // nothing changed, snooze
-        if (xhr.status < 200 || xhr.status >= 300) return;
+        polling = false;
+        if (xhr.status === 304) return;
+        if (xhr.status < 200 || xhr.status >= 300) { disconnected(); return; }
         try {
           const snap = JSON.parse(xhr.responseText);
-          NL._seq = snap.seq || (NL._seq + 1);
+          if (!snap.bootInfo) { disconnected(); return; }
+          NL._seq = snap.seq || 0;
           applySnapshot(snap);
           window.dispatchEvent(new CustomEvent("nl-update"));
-        } catch (e) { /* malformed payload, ignore */ }
+        } catch (e) { disconnected(); }
       };
       xhr.send();
-    } catch (e) { /* network blip; retry next tick */ }
+    } catch (e) { polling = false; disconnected(); }
   }, 250);
 })();

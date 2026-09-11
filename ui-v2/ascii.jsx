@@ -3,21 +3,23 @@
 // ---------- Sparkline ----------
 const SPARK_CHARS = " ▁▂▃▄▅▆▇█";
 
-function AsciiSparkline({ width = 16, intensity = 1, label = "TRAFFIC" }) {
+function AsciiSparkline({ width = 16, label = "HISTORY / S" }) {
   const [bars, setBars] = React.useState(() => Array(width).fill(0));
   React.useEffect(() => {
+    let previous = null;
+    let generation = NL.bootInfo?.historyGeneration;
     const id = setInterval(() => {
-      setBars(prev => {
-        const v = Math.max(0, Math.min(8, Math.floor(
-          Math.random() * 6 * intensity + (Math.random() < 0.18 ? 4 : 0)
-        )));
-        return [...prev.slice(1), v];
-      });
-    }, 320);
+      const current = Math.max(0, ...(NL.rows || []).map(r => r.id || 0));
+      const same = generation === NL.bootInfo?.historyGeneration;
+      const delta = NL.connected && same && previous !== null ? Math.max(0, current - previous) : 0;
+      generation = NL.bootInfo?.historyGeneration;
+      previous = current;
+      setBars(prev => [...prev.slice(1), Math.min(8, delta)]);
+    }, 1000);
     return () => clearInterval(id);
-  }, [intensity]);
+  }, [width]);
   return (
-    <span className="ascii-spark" title={label}>
+    <span className="ascii-spark" title="New history rows per second; each bar is capped at eight">
       <span className="ascii-spark-label">{label}</span>
       <span className="ascii-spark-bars">
         {bars.map((b, i) => (
@@ -81,7 +83,7 @@ function AsciiRadar({ label = "AWAITING NEXT REQUEST" }) {
     <div className="ascii-radar">
       <pre className="ascii-radar-art">{RADAR_FRAMES[f]}</pre>
       <div className="ascii-radar-label">▸ {label}</div>
-      <div className="ascii-radar-sub">scanning :8888 · listening for outbound</div>
+      <div className="ascii-radar-sub">{NL.connected ? (NL.bootInfo?.proxyOn ? `listening :${NL.bootInfo.port}` : "proxy stopped") : "backend disconnected"}</div>
     </div>
   );
 }
@@ -96,18 +98,14 @@ const NL_LOGO = [
   "╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝",
 ];
 
-const BOOT_LINES = [
-  { l: "loading root ca",                              v: "ok",       d: 320 },
-  { l: "starting listener on :8888",                   v: "ok",       d: 280 },
-  { l: "tls mitm · per-host leaf cert generation",     v: "ready",    d: 340 },
-  { l: "h1 ↔ h2 transparent bridge",                   v: "ready",    d: 260 },
-  { l: "websocket frame parser",                       v: "ready",    d: 220 },
-  { l: "loading extensions",                           v: "3 ok",     d: 380 },
-  { l: "project: acme-corp-2026.nlproj",               v: "attached", d: 300 },
-  { l: "scope: 4 in · 3 out",                          v: "armed",    d: 240 },
-];
-
 function BootSplash({ onDone }) {
+  const b = window.NL?.bootInfo || {};
+  const BOOT_LINES = [
+    { l: "control connection", v: NL.connected ? "connected" : "unavailable", d: 180 },
+    { l: "proxy listener", v: NL.connected ? (b.proxyOn ? `:${b.port}` : "stopped") : "unknown", d: 180 },
+    { l: "project", v: b.project || "none", d: 180 },
+    { l: "extensions", v: String(b.loadedExtensions || 0), d: 180 },
+  ];
   const [logoRevealed, setLogoRevealed] = React.useState(0);
   const [linesShown, setLinesShown] = React.useState(0);
   const [phase, setPhase] = React.useState("logo"); // logo → boot → ready
@@ -163,7 +161,7 @@ function BootSplash({ onDone }) {
 {NL_LOGO.slice(0, logoRevealed).join("\n")}
         </pre>
         <div className="boot-sub">
-          <span className="dim">[</span> MITM PROXY <span className="dim">·</span> v0.4 <span className="dim">·</span> operator build <span className="dim">]</span>
+          <span className="dim">[</span> MITM PROXY <span className="dim">·</span> {b.version ? `v${b.version}` : "version unavailable"} <span className="dim">·</span> local control <span className="dim">]</span>
         </div>
 
         <div className="boot-lines">
@@ -188,7 +186,7 @@ function BootSplash({ onDone }) {
           {phase === "ready" && (
             <div className="boot-line ready">
               <span className="prompt">▸</span>
-              <span className="lbl" style={{ color: "var(--accent)" }}>SYSTEM READY</span>
+              <span className="lbl" style={{ color: "var(--accent)" }}>{NL.connected ? "CONNECTED" : "BACKEND UNAVAILABLE"}</span>
               <span className="dots">{".".repeat(28)}</span>
               <span className="val" style={{ color: "var(--accent)" }}>★</span>
             </div>

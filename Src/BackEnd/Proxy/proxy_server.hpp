@@ -146,6 +146,7 @@ public:
     const std::atomic<bool> *shutdownFlag() const { return &m_shuttingDown; }
 
     bool isRunning() const;
+    bool hasActiveConnections() const;
     quint16 listeningPort() const;
 
     void setCertAuthority(CertAuthority *ca);

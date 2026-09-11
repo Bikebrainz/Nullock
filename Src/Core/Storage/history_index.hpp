@@ -45,6 +45,9 @@ public:
     void close();
     bool isOpen() const;
     int  rowCount() const;
+    bool clear();
+    void beginRebuild();
+    void endRebuild();
 
     // Mirror an appendEntry into the index. Today every HistoryIndex entry
     // point runs on the MAIN event loop: the proxy worker emits responseReceived

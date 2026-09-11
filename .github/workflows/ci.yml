@@ -51,6 +51,10 @@ jobs:
       # stop verifying -- so catch the drift here instead.
       - name: manifest hashes match the committed extensions
         run: bash scripts/marketplace_sync.sh --check
+      - name: served UI integrity and site links
+        run: python3 scripts/check_web_assets.py
+      - name: browser data lifecycle regression
+        run: node Tests/ui/real_data_test.cjs
       - name: docs site mirror is up to date
         run: diff -q extensions/marketplace.json docs/marketplace/marketplace.json
       # The marketplace site pages are GENERATED from the catalog + extension
@@ -112,7 +116,7 @@ jobs:
           modules: 'qtwebsockets'
       - name: install nghttp2 (vcpkg)
         run: |
-          vcpkg install nghttp2:x64-windows
+          vcpkg install nghttp2:x64-windows openssl:x64-windows
       - name: configure
         run: |
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
@@ -125,32 +129,21 @@ jobs:
         # part of NullockApp, so without this a build regression in them would
         # go unnoticed (as a stale test target once did).
         run: cmake --build build --config Release --target nullock-oast nullock-workspace
-      # ci_gate_logic and template_request_logic joined this list deliberately: both
-      # are PURE (Qt6::Core only, no sockets, no event loop), so they are as fast and
-      # deterministic as the rest, and both now guard properties that fail SILENTLY.
-      # ci_gate_logic pins "a scan that never ran is not a pass" -- the gate reported
-      # PASS/exit 0 at every threshold for an unreachable target. template_request
-      # pins that auto-headers defer to the EMITTED header name, so the tool cannot
-      # forge a duplicate/conflicting Content-Length. Live-socket suites (e.g.
-      # port_scan_live) stay OUT of this list on purpose -- they flake on runners.
-      # extension_perms_logic and extensions_api_grant join for the same reason as
-      # the rest: fast, deterministic, no sockets. extensions_api_grant drives a
-      # real QJSEngine but only touches a QStandardPaths TEST-MODE sandbox, never
-      # a real extensions dir. Both guard the permission model, where the DECISION
-      # was always right and the ENFORCEMENT leaked -- a class of bug the pure
-      # tests provably could not see. Live-socket suites (port_scan_live) stay OUT.
-      # control_logic joins last: it compiles control_logic.cpp directly and links
-      # Qt6::Core ALONE (control_server.cpp itself drags in Network/Sql/Qml + the
-      # whole scanner), so it is as fast and deterministic as the rest. It guards
-      # the control-server security gate -- the /api/search ReDoS pre-screen, the
-      # safeJoin path-confinement, bearer-token auth, XML-attribute escaping, and
-      # the /api/search newest-first scan ordering + truncated-iff-incomplete
-      # invariant -- all of which were previously built and run ONLY locally, so a
-      # regression to any of them could reach a release unseen.
-      - name: regression tests (scanner + CVE DB + enricher + gate + template + extensions + control)
+      - name: build and run every regression suite
         run: |
-          cmake --build build --config Release --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test control_logic_test
-          ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant|control_logic" --output-on-failure
+          cmake --build build --config Release --parallel 4
+          ctest --test-dir build -C Release --output-on-failure --parallel 4
+      - name: Windows checkout integrity
+        run: python scripts/check_web_assets.py
+      - name: application lifecycle and wire fidelity
+        run: python scripts/runtime_regression.py build/Src/App/Release/NullockApp.exe
+      - name: staged runtime without developer PATH
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix stage
+          $python = (Get-Command python).Source
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |
@@ -181,7 +174,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential \
-            libnghttp2-dev libssl-dev
+            libnghttp2-dev libssl-dev patchelf libxcb-cursor0
       - name: configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: build (guards cross-platform compile/link regressions)
@@ -191,8 +184,19 @@ jobs:
         # case-sensitive Tests/fuzz path, ...). This job catches a Linux
         # compile/link regression before it reaches a release. It mirrors the
         # proven-green release build-linux configure+build; running ctest on
-        # Linux is a follow-up (not yet validated there).
-        run: cmake --build build -j
+        # Linux is validated below alongside the installed runtime.
+        run: cmake --build build -j 4
+      - name: runtime regression suites
+        run: ctest --test-dir build --output-on-failure --parallel 4
+      - name: install and verify application assets and runtime
+        run: |
+          cmake --install build --prefix "$PWD/stage"
+          if [ "$(uname)" = Darwin ]; then
+            APP="$PWD/stage/NullockApp.app/Contents/MacOS/NullockApp"
+          else
+            APP="$PWD/stage/bin/NullockApp"
+          fi
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP"
 
   build-macos:
     name: build NullockApp (macOS)
@@ -216,23 +220,42 @@ jobs:
       - name: configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: build (guards macOS compile/link regressions)
-        run: cmake --build build -j
+        run: cmake --build build -j 4
+      - name: runtime regression suites
+        run: ctest --test-dir build --output-on-failure --parallel 4
+      - name: install and verify application assets and runtime
+        run: |
+          cmake --install build --prefix "$PWD/stage"
+          if [ "$(uname)" = Darwin ]; then
+            APP="$PWD/stage/NullockApp.app/Contents/MacOS/NullockApp"
+          else
+            APP="$PWD/stage/bin/NullockApp"
+          fi
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP"
 
   fuzz-corpus-replay:
-    name: replay fuzz corpus (standalone)
-    runs-on: ubuntu-latest
+    name: sanitized parser corpus replay
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: skip if no corpus
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: 'qtwebsockets'
+      - name: dependencies
+        run: sudo apt-get update && sudo apt-get install -y libnghttp2-dev libssl-dev patchelf libxcb-cursor0 ninja-build
+      - name: build instrumented standalone harnesses
         run: |
-          if [ ! -d Tests/fuzz/corpus ] || [ -z "$(ls -A Tests/fuzz/corpus 2>/dev/null)" ]; then
-            echo "no fuzz corpus checked in -- skipping (intended)"
-            exit 0
-          fi
-          echo "corpus replay would happen here once corpus is checked in"
-          # NULLOCK_FUZZ + standalone-driver build steps go here in a
-          # future iteration -- currently the fuzz harnesses build but
-          # the corpus is gitignored.
+          cmake -B build -G Ninja -DNULLOCK_FUZZ=ON -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+          cmake --build build --target fuzz_http1_parser fuzz_har_import fuzz_ws_parser -j 4
+      - name: replay all committed seeds
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          ASAN_OPTIONS: halt_on_error=1
+        run: python3 scripts/replay_fuzz_corpus.py build
 
   build-docker:
     name: build Docker image

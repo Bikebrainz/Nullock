@@ -1,4 +1,5 @@
 #include "project_store.hpp"
+#include <QCoreApplication>
 
 #include "finding_serial.hpp"
 #include "project_logic.hpp"
@@ -6,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -101,7 +103,7 @@ QString ProjectStore::defaultProjectDir() const {
 }
 
 QString ProjectStore::projectsRoot() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+    return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
            + "/projects";
 }
 
@@ -128,6 +130,7 @@ bool ProjectStore::openByName(const QString &name) {
 }
 
 bool ProjectStore::createProject(const QString &name) {
+    if (!prepareSwitch()) return false;
     if (!isValidProjectName(name)) return false;
     const QString dir = projectsRoot() + "/" + name;
     if (QFileInfo::exists(dir)) {
@@ -141,7 +144,46 @@ bool ProjectStore::createProject(const QString &name) {
     return open(dir);
 }
 
+bool ProjectStore::prepareSwitch() {
+    m_lastError.clear();
+    if (m_switchGuard && !m_switchGuard()) {
+        m_lastError = "Project is busy. Finish active requests/scans and close proxy connections before switching or clearing history.";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    return true;
+}
+
+bool ProjectStore::clearHistory() {
+    if (!isOpen() || !prepareSwitch()) return false;
+    QMutexLocker historyLock(&m_historyMutex);
+    QMutexLocker findingsLock(&m_findingsMutex);
+    if (!m_history.resize(0) || !m_findingsFile.resize(0) || !m_historyIndex.clear()) {
+        m_lastError = "Could not clear project history";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    m_history.seek(0);
+    m_findingsFile.seek(0);
+    m_history.flush();
+    m_findingsFile.flush();
+    m_nextRowId = 1;
+    m_findingKeys.clear();
+    m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_meta.historyEpoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    saveMetadata();
+    emit historyCleared();
+    return true;
+}
+
 bool ProjectStore::open(const QString &projectDir) {
+    if (!prepareSwitch()) return false;
+    if (projectDir.trimmed().isEmpty() || !QDir().mkpath(projectDir)) {
+        m_lastError = "Could not create project directory: " + projectDir;
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     // Save the OUTGOING project's Repeater tabs (app.cpp handles projectClosing)
     // BEFORE historyShouldClear wipes them -- only when a project is already open,
     // so a switch neither loses staged requests nor leaks them into the next one.
@@ -164,7 +206,15 @@ bool ProjectStore::open(const QString &projectDir) {
         return false;
     }
 
+    if (m_meta.historyEpoch.isEmpty()) {
+        m_meta.historyEpoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        saveMetadata();
+    }
+    m_historyIndex.open(m_dir);
+    m_historyIndex.beginRebuild();
+    m_nextRowId = 1;
     streamExistingHistory();
+    m_historyIndex.endRebuild();
 
     {
         // Same mutex covers open() so a concurrent appendEntry() can't
@@ -190,23 +240,6 @@ bool ProjectStore::open(const QString &projectDir) {
             emit errorOccurred("could not open findings.ndjson for append: "
                                + m_findingsFile.errorString());
     }
-
-    // Open the SQLite-backed metadata index next to the ndjson. Failures
-    // here are non-fatal -- the rest of the project keeps working, just
-    // without /api/history/find acceleration.
-    m_historyIndex.open(m_dir);
-    // Resume row numbering after the rows this project already has. This rests
-    // on two invariants that are true today but silent, so state them:
-    //   1. HistoryIndex ids ARE ProxyModel ids -- the same 1-based counter feeds
-    //      both, so continuing from the index's count keeps them aligned.
-    //   2. rowCount() is a COUNT, and it stands in for MAX(id) only because ids
-    //      are dense from 1 and rows are never deleted from the index. If row
-    //      deletion is ever added, this must become MAX(id)+1, or a reused id
-    //      will collide with an evicted-but-referenced row.
-    // Corollary: a history.ndjson that outlives its history-index.sqlite (index
-    // rebuilt, file deleted) starts the two sides out of step -- the ndjson has
-    // N rows, the fresh index reports 0, and numbering restarts at 1.
-    m_nextRowId = m_historyIndex.rowCount() + 1;
 
     // Tell downstream consumers (ProxyServer) to refresh their copy of
     // scope and rules with whatever this project specifies. Without this,
@@ -259,6 +292,7 @@ bool ProjectStore::ensureMetadata() {
         if (!doc.isObject()) return false;
         const QJsonObject o = doc.object();
         m_meta.name    = o.value("name").toString();
+        m_meta.historyEpoch = o.value("historyEpoch").toString();
         m_meta.notes   = o.value("notes").toString();
         m_meta.created = QDateTime::fromString(o.value("created").toString(), Qt::ISODateWithMs);
         m_meta.updated = QDateTime::fromString(o.value("updated").toString(), Qt::ISODateWithMs);
@@ -365,6 +399,7 @@ bool ProjectStore::saveMetadata() {
     QJsonObject o;
     o["v"]       = kSchemaVersion;
     o["name"]    = m_meta.name;
+    o["historyEpoch"] = m_meta.historyEpoch;
     o["notes"]   = m_meta.notes;
     o["created"] = m_meta.created.toUTC().toString(Qt::ISODateWithMs);
     m_meta.updated = QDateTime::currentDateTimeUtc();
@@ -403,10 +438,11 @@ bool ProjectStore::saveMetadata() {
     o["severityOverrides"] = m_meta.severityOverrides;
     o["deletedKeys"]       = QJsonArray::fromStringList(m_meta.deletedKeys);
 
-    QFile f(m_dir + "/project.json");
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
-    return true;
+    QSaveFile f(m_dir + "/project.json");
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    const QByteArray bytes = QJsonDocument(o).toJson(QJsonDocument::Indented);
+    if (f.write(bytes) != bytes.size()) return false;
+    return f.commit();
 }
 
 void ProjectStore::setRepeaterState(const QJsonObject &state) {
@@ -632,6 +668,7 @@ void ProjectStore::streamExistingHistory() {
         const QJsonObject o = doc.object();
         const auto req  = requestFromJson(o.value("request").toObject());
         const auto resp = responseFromJson(o.value("response").toObject());
+        m_historyIndex.append(m_nextRowId++, req, resp);
         emit entryLoaded(req, resp);
     }
 }
@@ -882,6 +919,23 @@ QString findContentType(const QList<QPair<QString, QString>> &headers) {
     return {};
 }
 
+void harBody(QJsonObject &out, const QByteArray &body, const QString &type,
+             bool redact, const QString &encodingKey) {
+    const QString text = QString::fromUtf8(body);
+    if (text.toUtf8() != body || body.contains('\0')) {
+        out["text"] = QString::fromLatin1(body.toBase64());
+        out[encodingKey] = "base64";
+    } else {
+        out["text"] = redactBody(body, type, redact);
+    }
+}
+
+QByteArray importHarBody(const QJsonObject &content) {
+    const QString encoding = content.value("encoding").toString(content.value("_encoding").toString());
+    const QByteArray text = content.value("text").toString().toUtf8();
+    return encoding == "base64" ? QByteArray::fromBase64(text, QByteArray::AbortOnBase64DecodingErrors) : text;
+}
+
 QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls,
                        bool redact) {
     QJsonObject o;
@@ -906,7 +960,7 @@ QJsonObject harRequest(const Nullock::Proxy::HttpRequest &r, bool wasTls,
         QJsonObject post;
         const QString ct = findContentType(r.headers);
         post["mimeType"] = ct;
-        post["text"]     = redactBody(r.body, ct, redact);
+        harBody(post, r.body, ct, redact, "_encoding");
         o["postData"]    = post;
     }
     o["headersSize"] = -1;
@@ -921,7 +975,7 @@ QJsonObject harResponse(const Nullock::Proxy::HttpResponse &r, bool redact) {
     content["mimeType"] = ct;
     // A login/token response body carries the credential too (e.g. a JSON
     // {"access_token":"..."}) -- redact by key like the request body.
-    content["text"]     = redactBody(r.body, ct, redact);
+    harBody(content, r.body, ct, redact, "encoding");
     QJsonObject o;
     o["status"]      = r.statusCode;
     o["statusText"]  = r.reasonPhrase;
@@ -984,7 +1038,7 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
     log["version"] = "1.2";
     QJsonObject creator;
     creator["name"]    = "Nullock";
-    creator["version"] = "0.1";
+    creator["version"] = QCoreApplication::applicationVersion();
     log["creator"] = creator;
     log["entries"] = entries;
     QJsonObject root;
@@ -1020,8 +1074,7 @@ Nullock::Proxy::HttpRequest harEntryToRequest(const QJsonObject &entry) {
         const QJsonObject ho = h.toObject();
         req.headers.append({ ho.value("name").toString(), ho.value("value").toString() });
     }
-    const QString postText = r.value("postData").toObject().value("text").toString();
-    if (!postText.isEmpty()) req.body = postText.toUtf8();
+    req.body = importHarBody(r.value("postData").toObject());
     req.timestamp = QDateTime::fromString(entry.value("startedDateTime").toString(), Qt::ISODateWithMs);
     if (!req.timestamp.isValid()) req.timestamp = QDateTime::currentDateTime();
     return req;
@@ -1038,8 +1091,7 @@ Nullock::Proxy::HttpResponse harEntryToResponse(const QJsonObject &entry) {
         const QJsonObject ho = h.toObject();
         resp.headers.append({ ho.value("name").toString(), ho.value("value").toString() });
     }
-    const QString contentText = r.value("content").toObject().value("text").toString();
-    if (!contentText.isEmpty()) resp.body = contentText.toUtf8();
+    resp.body = importHarBody(r.value("content").toObject());
     resp.peerAddress = entry.value("serverIPAddress").toString();
     const QUrl url(entry.value("request").toObject().value("url").toString());
     resp.wasTls = (url.scheme() == "https");
@@ -1054,6 +1106,18 @@ int ProjectStore::importHarBytes(const QByteArray &harJson) {
     const QJsonObject log = doc.object().value("log").toObject();
     const QJsonArray entries = log.value("entries").toArray();
 
+    // Validate every encoded body before mutating the project (atomic rejection).
+    for (const auto &value : entries) {
+        const auto entry = value.toObject();
+        const QList<QJsonObject> bodies{entry.value("request").toObject().value("postData").toObject(),
+            entry.value("response").toObject().value("content").toObject()};
+        for (const auto &body : bodies) {
+            const auto encoding = body.value("encoding").toString(body.value("_encoding").toString());
+            if (!encoding.isEmpty() && encoding != "base64") return -1;
+            if (encoding == "base64" && !QByteArray::fromBase64Encoding(body.value("text").toString().toLatin1(),
+                    QByteArray::AbortOnBase64DecodingErrors)) return -1;
+        }
+    }
     int imported = 0;
     for (const QJsonValue &v : entries) {
         const QJsonObject entry = v.toObject();

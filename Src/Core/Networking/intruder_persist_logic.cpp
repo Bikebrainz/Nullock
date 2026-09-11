@@ -103,6 +103,7 @@ QJsonObject toJson(const SavedRun &run) {
         { "port",        c.port },
         { "tls",         c.tls },
         { "template",    c.requestTemplate },
+        { "requestLatin1", c.requestLatin1 },
         { "attackType",  c.attackType },
         { "payloadSets", stringsToJson(c.payloadSets) },
         { "rules",       rulesToJson(c.rules) },
@@ -146,6 +147,7 @@ SavedRun fromJson(const QJsonObject &obj) {
     c.port            = config.value("port").toInt(443);
     c.tls             = config.value("tls").toBool(true);
     c.requestTemplate = config.value("template").toString();
+    c.requestLatin1 = config.value("requestLatin1").toBool();
     c.attackType      = config.value("attackType").toInt();
     c.payloadSets     = stringsFromJson(config.value("payloadSets").toArray());
     c.rules           = rulesFromJson(config.value("rules").toArray());

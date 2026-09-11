@@ -6,7 +6,7 @@
 // these. URL resolution uses QUrl (RFC 3986), the same idiom crawler_logic uses.
 
 #include <QByteArray>
-#include <QHash>
+#include <QNetworkCookieJar>
 #include <QList>
 #include <QPair>
 #include <QString>
@@ -40,9 +40,8 @@ QUrl resolveRedirect(const QUrl &current, const QString &location);
 //   307 / 308  -> the method is preserved
 QString methodAfterRedirect(int status, const QString &currentMethod);
 
-// Whether the original request body is carried to the follow-up. Only the
-// method-preserving 307/308 keep the body; 301/302/303 drop it.
-bool redirectPreservesBody(int status);
+// Keep the body whenever the redirect preserves the method (except 303).
+bool redirectPreservesBody(int status, const QString &method = "POST");
 
 // Policy gate. never -> false; always -> true; on-site -> nextHost == originHost
 // (case-insensitive); in-scope -> nextInScope (the caller supplies
@@ -50,24 +49,19 @@ bool redirectPreservesBody(int status);
 bool followAllowed(FollowPolicy policy, const QString &originHost,
                    const QString &nextHost, bool nextInScope);
 
-// --- cookie threading ("Process cookies in redirections") -------------------
-// Merge the name=value pair of each Set-Cookie in `headers` into `jar` (first
-// segment only -- Path/Domain/etc. attributes are not values), so a session
-// cookie set on hop 1 rides along on hop 2. Later Set-Cookie wins (last write).
-void mergeSetCookies(QHash<QString, QString> &jar,
+// A jar belongs to one redirect chain. Selection validates the destination URL.
+using CookieJar = QNetworkCookieJar;
+void seedRequestCookies(CookieJar &jar, const QUrl &origin, const QByteArray &request);
+void mergeSetCookies(CookieJar &jar, const QUrl &origin,
                      const QList<QPair<QString, QString>> &headers);
-// Render the accumulated jar as a "Cookie:" header VALUE ("a=1; b=2"), keys
-// sorted for determinism. Empty jar -> empty string.
-QString renderCookieHeader(const QHash<QString, QString> &jar);
+QString renderCookieHeader(const CookieJar &jar, const QUrl &destination);
 
-// --- follow-up request building ---------------------------------------------
-// Build the raw follow-up request bytes for `url` using `method`, carrying the
-// given Cookie header VALUE (may be empty) and optional `body` (caller passes it
-// only when redirectPreservesBody(status) is true). Emits request-line + Host +
-// Accept + Connection: close (+ Cookie, + Content-Length when a body is present).
+// Preserve applicable end-to-end headers, recomputing framing/authority and
+// removing credentials when the origin changes. previousRequest is the LAST hop.
 QByteArray buildFollowRequest(const QUrl &url, const QString &method,
-                              const QString &cookieHeader,
-                              const QByteArray &body = {});
+                              const QString &cookieHeader, const QByteArray &body = {},
+                              const QByteArray &previousRequest = {},
+                              const QUrl &previousUrl = {}, bool preserveBody = true);
 
 // Pull the method (first request-line token, upper-cased) and request-target
 // (second token, e.g. "/path?q") out of a raw HTTP/1.1 request. Empty on a

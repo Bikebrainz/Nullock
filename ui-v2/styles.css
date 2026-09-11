@@ -363,6 +363,9 @@ textarea, input { user-select: text; }
 .tb-tabs::-webkit-scrollbar { height: 3px; }
 .tb-tabs::-webkit-scrollbar-thumb { background: var(--line); }
 .tb-tab {
+  border: 0;
+  font-family: inherit;
+  flex-shrink: 0;
   position: relative;
   display: flex;
   align-items: center;

@@ -15,7 +15,7 @@
       <img class="mark" src="assets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="navlinks" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('navlinks').classList.toggle('open'))">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="index.html">Product</a>
       <a href="docs/index.html">Docs</a>
@@ -36,7 +36,7 @@
   <div class="wrap-wide center" style="padding-block:64px 20px;">
     <p class="eyebrow">// pricing</p>
     <h1 class="h1-page grad-text" style="margin:10px auto 0;">Honest pricing</h1>
-    <p class="lead center" style="margin:16px auto 0;">The desktop app is free forever. Pay for hosted services if you need them, or pay for support if you want a human on email. No bait.</p>
+    <p class="lead center" style="margin:16px auto 0;">The desktop toolkit is free and MIT licensed. Hosted plans and paid support below are proposals; contact the maintainer to discuss availability. This site has no checkout and does not take payments.</p>
   </div>
 </header>
 
@@ -50,7 +50,7 @@
         <p class="pc-sub">The full toolkit, on your machine.</p>
         <ul class="pc-feats">
           <li>Intercept, Repeater, Scope</li>
-          <li>200k+ row SQLite history</li>
+          <li>SQLite-backed history</li>
           <li>Extensions (JavaScript)</li>
           <li>MIT licensed source</li>
           <li>No account, no telemetry</li>
@@ -59,10 +59,10 @@
       </div>
 
       <div class="card price-card featured">
-        <span class="badge" style="position:absolute;top:-10px;left:20px;">most popular</span>
+        <span class="badge" style="position:absolute;top:-10px;left:20px;">proposed</span>
         <div class="pc-name">Hosted</div>
         <div class="pc-price">$12<span>/ mo</span></div>
-        <p class="pc-sub">A relay we run, so your team can share captures.</p>
+        <p class="pc-sub">Proposed managed relay for sharing captures.</p>
         <ul class="pc-feats">
           <li>Everything in Desktop</li>
           <li>Cloud capture relay</li>
@@ -70,7 +70,7 @@
           <li>Encrypted sync, 30-day retention</li>
           <li>1 seat included</li>
         </ul>
-        <a href="https://github.com/Bikebrainz/Nullock/discussions" class="btn btn-primary" style="width:100%;justify-content:center;">Buy Hosted</a>
+        <a href="https://github.com/Bikebrainz/Nullock/discussions" class="btn btn-primary" style="width:100%;justify-content:center;">Discuss Hosted</a>
       </div>
 
       <div class="card price-card">
@@ -84,7 +84,7 @@
           <li>90-day retention</li>
           <li>Audit log export</li>
         </ul>
-        <a href="https://github.com/Bikebrainz/Nullock/discussions" class="btn btn-ghost" style="width:100%;justify-content:center;">Buy Team</a>
+        <a href="https://github.com/Bikebrainz/Nullock/discussions" class="btn btn-ghost" style="width:100%;justify-content:center;">Discuss Team</a>
       </div>
 
       <div class="card price-card">
@@ -107,7 +107,7 @@
 <!-- MATRIX -->
 <section class="section">
   <div class="wrap-wide">
-    <h2 class="h2-section center" style="margin-bottom:28px;">What's in each plan</h2>
+    <h2 class="h2-section center" style="margin-bottom:28px;">Proposed paid plans</h2>
     <div style="overflow-x:auto;">
       <table class="matrix" style="min-width:640px;">
         <thead>
@@ -133,17 +133,12 @@
 <section class="section">
   <div class="wrap">
     <div class="notes">
-      <h3>The fine print, in plain words</h3>
-      <ul>
-        <li><strong>Refunds.</strong> <span class="badge err"><span class="dot"></span>refund</span> Not happy in the first 30 days? Email us and we send the money back. No form, no survey.</li>
-        <li><strong>Fair use.</strong> Hosted relay is metered on bandwidth, not requests. Heavy users get an email before anything changes, never a surprise bill.</li>
-        <li><strong>The desktop app stays free.</strong> It is MIT and it will always be MIT. Paid plans fund the hosting and one maintainer's time — they never paywall the core.</li>
-        <li><strong>Payments.</strong> Card processing by Stripe. We never see your card number. <span class="badge ok"><span class="dot"></span>payment confirmed · welcome aboard</span></li>
-      </ul>
+      <h3>Availability</h3>
+      <p>The desktop download is available now. Paid prices, features, response times, retention periods, and cancellation terms shown above are proposed and must be confirmed with the maintainer before purchase. GitHub Discussions is an inquiry link, not a payment page.</p>
     </div>
     <div class="row center" style="margin-top:32px;">
       <a href="index.html#download" class="btn btn-primary btn-lg">Download free</a>
-      <a href="support.html" class="btn btn-ghost btn-lg">Buy Premium</a>
+      <a href="support.html" class="btn btn-ghost btn-lg">Discuss support</a>
     </div>
   </div>
 </section>

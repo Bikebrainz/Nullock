@@ -46,7 +46,6 @@ QHash<int, QByteArray> ProxyModel::roleNames() const {
 }
 
 void ProxyModel::clear() {
-    if (m_entries.isEmpty()) return;
     beginResetModel();
     m_entries.clear();
     m_nextId  = 1;
@@ -179,7 +178,8 @@ QString ProxyModel::requestRawAt(int row) const {
     for (const auto &h : req.headers)
         out += QString("%1: %2\n").arg(h.first, h.second);
     out += "\n";
-    out += renderBody(req.body, req.headers, "Content-Type");
+    const QString text = QString::fromUtf8(req.body);
+    out += text.toUtf8() == req.body ? text : QString::fromLatin1(req.body);
     return out;
 }
 
