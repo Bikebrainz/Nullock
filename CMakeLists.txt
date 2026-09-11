@@ -87,6 +87,11 @@ if(WIN32)
         PATTERN "*.pdb" EXCLUDE     # don't ship debug symbols
         PATTERN "*.lib" EXCLUDE
         PATTERN "*.exp" EXCLUDE
+        # Install one current asset tree under share/nullock, not a second
+        # development copy beside the executable.
+        PATTERN "ui-v2" EXCLUDE
+        PATTERN "templates" EXCLUDE
+        PATTERN "extensions" EXCLUDE
     )
 endif()
 

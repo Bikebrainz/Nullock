@@ -56,11 +56,14 @@ else()
     set(_dev_assets "$<TARGET_FILE_DIR:NullockApp>")
     set(_dev_ui "${_dev_assets}/ui-v2")
 endif()
-add_custom_command(TARGET NullockApp POST_BUILD
+add_custom_target(NullockBrowserAssets
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/ui-v2" "${_dev_ui}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/templates" "${_dev_assets}/templates"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/extensions" "${_dev_assets}/extensions"
+    COMMENT "Refreshing browser UI and catalogs"
     VERBATIM)
+# Run even when only browser assets changed and the executable needs no relink.
+add_dependencies(NullockApp NullockBrowserAssets)
 
 # Link FrontEnd QML module
 target_link_libraries(NullockApp PRIVATE
