@@ -897,6 +897,13 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.intruder, &QAbstractItemModel::rowsInserted, this, bump);
         connect(m_wiring.intruder, &QAbstractItemModel::modelReset,   this, bump);
         connect(m_wiring.intruder, &QAbstractItemModel::dataChanged,  this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::targetChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::templateChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::payloadsChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::attackTypeChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::optionsChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::runningChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::progressChanged, this, bump);
     }
     if (m_wiring.proxy) {
         connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::runningChanged,       this, bump);

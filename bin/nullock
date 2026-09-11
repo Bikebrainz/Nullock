@@ -24,11 +24,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 post() {
     local path=$1; shift || true
     local body=${1:-'{}'}
-    curl -sS --max-time 30 \
+    printf '%s' "$body" | curl -sS --max-time 30 \
          -H "Content-Type: application/json" \
          -H "Origin: $API" \
          -H "X-Nullock-UI: 1" \
-         -X POST -d "$body" \
+         -X POST --data-binary @- \
          "$API$path"
 }
 
@@ -476,6 +476,24 @@ cmd_intruder() {
             post /api/intruder/stop | pp ;;
         clear)
             post /api/intruder/clear | pp ;;
+        save)
+            have "$JQ" || die "intruder save requires jq"
+            local saved
+            saved=$(get /api/intruder/export)
+            "$JQ" -e '(.config | type) == "object" and (.rows | type) == "array"' <<< "$saved" >/dev/null || die "Could not export Intruder workspace"
+            pp <<< "$saved" ;;
+        load|reset)
+            have "$JQ" || die "intruder load/reset requires jq"
+            local document='{}' response
+            if [[ $1 == load ]]; then
+                [[ -f ${2-} ]] || die "usage: nullock intruder load <saved-run.json>"
+                # ASCII JSON escapes preserve Unicode across Windows native-tool
+                # argument code pages as well as ordinary Unix shells.
+                document=$("$JQ" -ace 'select(type == "object" and (. == {} or ((.config | type) == "object" and (.rows | type) == "array")))' -- "$2") || die "Invalid Intruder saved-run document"
+            fi
+            response=$(post /api/intruder/load "$document")
+            "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "Intruder load/reset refused; stop the running attack first. $response"
+            pp <<< "$response" ;;
         status)
             snapshot | "$JQ" '{
                 host: .intruder.host, port: .intruder.port, tls: .intruder.tls,
@@ -504,7 +522,7 @@ cmd_intruder() {
         resend)
             [[ -n ${2-} ]] || die "usage: nullock intruder resend <row-index>"
             post /api/intruder/resend "{\"row\":$2}" | pp ;;
-        *) die "usage: nullock intruder {set|type|sets|multi|start|stop|clear|status|results|resend}" ;;
+        *) die "usage: nullock intruder {set|type|sets|multi|start|stop|clear|save|load|reset|status|results|resend}" ;;
     esac
 }
 
@@ -1770,7 +1788,10 @@ Intruder:
                                  one payload-set file per \xC2\xA7...\xC2\xA7 position
   nullock intruder start         fire the attack (returns immediately)
   nullock intruder stop          interrupt a running attack
-  nullock intruder clear         drop results + loaded state
+  nullock intruder clear         drop results, retain staged configuration
+  nullock intruder save          print saved-run JSON (redirect to a file)
+  nullock intruder load <file>   restore configuration/results without sending
+  nullock intruder reset         reset all staged settings and results
   nullock intruder status        running flag, payload count, result count
   nullock intruder results [status]
                                  list results, optionally filtered by status code

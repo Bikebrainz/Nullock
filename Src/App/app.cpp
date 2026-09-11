@@ -1086,6 +1086,11 @@ int main(int argc, char *argv[]) {
                      &intercept, [&intercept](bool on) { intercept.setAutoFixNewlines(on); });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
+    projectStore.setWorkspaceSave([&projectStore, &intruder]() {
+        return projectStore.saveIntruderWorkspace(intruder.saveRun());
+    });
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::intruderWorkspaceChanged,
+                     &intruder, [&intruder](const QByteArray &state) { intruder.loadRun(state); });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intercept, [&intercept]() {
         // Drop any in-flight intercepted requests/responses as forward (so the
@@ -1112,6 +1117,7 @@ int main(int argc, char *argv[]) {
     // The default project opened before the Repeater existed, so its persisted tabs
     // weren't streamed into it. Restore them once now that everything is wired.
     repeater.importState(projectStore.repeaterState());
+    intruder.loadRun(projectStore.intruderWorkspace());
     // Same for the cookie jar (default project opened before SessionManager wiring).
     sessions.importJson(projectStore.cookieJar(), QDateTime::currentSecsSinceEpoch());
     // Same for intercept rules -- the controller didn't exist at the initial open.
@@ -1570,6 +1576,15 @@ int main(int argc, char *argv[]) {
             QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
     };
+    // Save only after workers and their queued results are drained. Restoring
+    // this document never sends requests; incomplete rows require explicit Resume.
+    auto saveWorkspaceOnExit = [&](int rc) {
+        if (projectStore.isOpen() && !projectStore.saveIntruderWorkspace(intruder.saveRun())) {
+            QTextStream(stderr) << "Nullock: " << projectStore.lastError() << '\n';
+            return rc == 0 ? 1 : rc;
+        }
+        return rc;
+    };
 
     if (headless) {
         // Skip the QML window entirely. Event loop runs via QCoreApplication.
@@ -1579,7 +1594,7 @@ int main(int argc, char *argv[]) {
         // stack objects above (Wiring); if we let main() unwind while
         // they're mid-run, the pointers dangle. Join while servicing extension hooks.
         drainWorkers();
-        return rc;
+        return saveWorkspaceOnExit(rc);
     }
 
     QQmlApplicationEngine engine;
@@ -1621,7 +1636,7 @@ int main(int argc, char *argv[]) {
         err.flush();
         const int rc = app->exec();
         drainWorkers();
-        return rc;
+        return saveWorkspaceOnExit(rc);
     }
 
     banner("Nullock native UI ready");
@@ -1631,5 +1646,5 @@ int main(int argc, char *argv[]) {
     // flight needs to finish (or time out) before main()'s locals
     // destruct out from under them.
     drainWorkers();
-    return rc;
+    return saveWorkspaceOnExit(rc);
 }

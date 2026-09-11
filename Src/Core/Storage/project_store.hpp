@@ -98,6 +98,11 @@ public:
     Q_INVOKABLE void close();
     // A switch/clear may only proceed after old work and queued results are done.
     void setSwitchGuard(std::function<bool()> guard) { m_switchGuard = std::move(guard); }
+    // Persist tool workspaces before clearing the outgoing project. A failed
+    // save aborts the switch with the current editors/history still intact.
+    void setWorkspaceSave(std::function<bool()> save) { m_workspaceSave = std::move(save); }
+    bool saveIntruderWorkspace(const QByteArray &state);
+    QByteArray intruderWorkspace() const { return m_intruderWorkspace; }
     QString lastError() const { return m_lastError; }
     QString historyGeneration() const { return m_historyGeneration; }
     QString annotationsRevision() const { return m_annotationsRevision; }
@@ -329,6 +334,7 @@ signals:
     // keys) change, so the control server can bump its snapshot fingerprint.
     void triageChanged();
     void annotationsChanged();
+    void intruderWorkspaceChanged(const QByteArray &state);
     // Emitted whenever the advanced scope rules change (setter + open()), so
     // app.cpp re-applies them to the live proxy and the snapshot bumps.
     void advancedScopeChanged(const QJsonArray &rules);
@@ -348,6 +354,8 @@ private:
 
     bool prepareSwitch();
     std::function<bool()> m_switchGuard;
+    std::function<bool()> m_workspaceSave;
+    QByteArray m_intruderWorkspace = "{}";
     QString m_lastError;
     QString m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);

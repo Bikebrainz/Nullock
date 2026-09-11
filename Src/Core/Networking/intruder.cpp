@@ -219,56 +219,69 @@ void Intruder::setAttackType(int t) {
 
 void Intruder::setPayloadRules(const QList<IntruderRules::Rule> &rules) {
     m_payloadRules = rules;
+    emit optionsChanged();
 }
 
 void Intruder::setGlobalEncodeChars(const QString &chars) {
     m_globalEncodeChars = chars;
+    emit optionsChanged();
 }
 
 void Intruder::setGrepPayloadReflection(bool on) {
     m_grepPayloadReflection = on;
+    emit optionsChanged();
 }
 
 void Intruder::setGrepMatch(const QStringList &needles) {
     m_grepMatch = needles;
+    emit optionsChanged();
 }
 
 void Intruder::setGrepExtract(const IntruderGrep::ExtractSpec &spec) {
     m_grepExtract = spec;
+    emit optionsChanged();
 }
 
 void Intruder::setRecursiveGrep(bool on) {
     m_recursiveGrep = on;
+    emit optionsChanged();
 }
 void Intruder::setRecursiveGrepSeed(const QString &seed) {
     m_recursiveGrepSeed = seed;
+    emit optionsChanged();
 }
 void Intruder::setRecursiveGrepCount(int count) {
     // Bound like the payload generators: at least 1, capped so a runaway chain
     // can't fire forever (it's serial, so the cap also bounds wall-clock).
     m_recursiveGrepCount = qBound(1, count, 10000);
+    emit optionsChanged();
 }
 
 void Intruder::setMaxConcurrency(int n) {
     m_maxConcurrency = IntruderPool::clampConcurrency(n);
+    emit optionsChanged();
 }
 
 void Intruder::setThrottleMs(int ms) {
     m_throttleMs = IntruderPool::clampThrottleMs(ms);
+    emit optionsChanged();
 }
 
 void Intruder::setMaxRetries(int n) {
     m_maxRetries = IntruderPool::clampRetries(n);
+    emit optionsChanged();
 }
 
 void Intruder::setFollowRedirects(int policy) {
     if (policy < RedirectLogic::FollowNever || policy > RedirectLogic::FollowAlways)
         policy = RedirectLogic::FollowNever;
     m_followPolicy = policy;
+    emit optionsChanged();
 }
 
 void Intruder::setProcessCookies(bool on) {
     m_followCookies = on;
+    emit optionsChanged();
 }
 
 int Intruder::positionCount() const {
@@ -425,18 +438,10 @@ void Intruder::clear() {
 }
 
 void Intruder::clearAll() {
-    clear();
-    m_host.clear();
-    m_port = 443;
-    m_useTls = true;
-    m_template.clear();
-    m_templateLatin1 = false;
-    m_payloadSets.clear();
-    m_attackType = Sniper;
-    emit targetChanged();
-    emit templateChanged();
-    emit payloadsChanged();
-    emit attackTypeChanged();
+    // Project switches are guarded until work is idle. Reset through the full
+    // configuration decoder so rules, extracted values, redirect settings and
+    // recursive seeds cannot leak into another engagement.
+    loadRun("{}");
 }
 
 void Intruder::stop() {
