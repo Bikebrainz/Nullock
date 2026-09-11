@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('app', type=Path)
     parser.add_argument('--gui', action='store_true', help='also require the embedded native window to load')
+    parser.add_argument('--installed', action='store_true', help='remove developer runtime paths from the app environment')
     args = parser.parse_args()
     app_path = args.app.resolve()
     ctl, proxy = free_port(), free_port()
@@ -99,6 +100,17 @@ def main():
         scratch = Path(temporary)
         initial = scratch/'explicit project'
         env = os.environ.copy()
+        if args.installed:
+            for name in ('LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH',
+                         'DYLD_FALLBACK_LIBRARY_PATH', 'DYLD_FALLBACK_FRAMEWORK_PATH',
+                         'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH',
+                         'QML2_IMPORT_PATH', 'QML_IMPORT_PATH'):
+                env.pop(name, None)
+            if os.name == 'nt':
+                system = Path(os.environ['SystemRoot'])
+                env['PATH'] = os.pathsep.join((str(system/'System32'), str(system)))
+            else:
+                env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin'
         env['NULLOCK_DATA_DIR'] = str(scratch/'app-data')
         env['NULLOCK_NO_UPDATE'] = '1'
         env['QT_LOGGING_TO_CONSOLE'] = '1'
@@ -141,7 +153,7 @@ def main():
                 '[dn]\nCN=localhost\n[server]\nbasicConstraints=critical,CA:false\n'
                 'keyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n'
                 'subjectAltName=DNS:localhost,IP:127.0.0.1\n')
-            openssl = str(app_path.parent/'openssl.exe') if os.name == 'nt' else shutil.which('openssl')
+            openssl = str(app_path.parent/'openssl.exe') if os.name == 'nt' else shutil.which('openssl', path=env['PATH'])
             fixture_env = dict(env, OPENSSL_CONF=str(fixture_conf))
             subprocess.run([openssl,'req','-x509','-newkey','rsa:2048','-nodes','-days','1',
                 '-keyout',str(scratch/'tls.key'),'-out',str(scratch/'tls.pem'),'-config',str(fixture_conf)],

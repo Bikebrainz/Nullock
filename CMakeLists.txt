@@ -95,8 +95,6 @@ endif()
 if(APPLE)
     install(TARGETS FrontEndGUI
         LIBRARY DESTINATION NullockApp.app/Contents/Frameworks COMPONENT Runtime)
-    install(FILES "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
-        DESTINATION NullockApp.app/Contents/PlugIns/platforms COMPONENT Runtime)
     set_target_properties(NullockApp PROPERTIES
         INSTALL_RPATH "@executable_path/../Frameworks")
     set_target_properties(FrontEndGUI PROPERTIES INSTALL_RPATH "@loader_path")
@@ -113,9 +111,33 @@ endif()
 # Relying on a distro's older Qt runtime does not satisfy Qt 6.10 symbols.
 option(NULLOCK_DEPLOY_RUNTIME "Bundle Qt runtime dependencies when installing" ON)
 if(UNIX AND NULLOCK_DEPLOY_RUNTIME)
+    # History uses SQLite only. Qt's default SQL plugin set also includes
+    # drivers for proprietary clients that are absent on a clean machine.
+    set(_nullock_plugin_selection EXCLUDE_PLUGIN_TYPES sqldrivers INCLUDE_PLUGINS qsqlite qoffscreen)
+    if(APPLE)
+        # macdeployqt has no per-plugin filter. Install the native plugins used
+        # by this app and pass each one back for framework/rpath deployment.
+        set(_native_deploy_options -no-plugins)
+        foreach(_plugin QCocoaIntegrationPlugin QOffscreenIntegrationPlugin
+                QSQLiteDriverPlugin QTlsBackendOpenSSLPlugin
+                QAppleNetworkInformationPlugin QJpegPlugin QGifPlugin QICOPlugin)
+            get_target_property(_type Qt6::${_plugin} QT_PLUGIN_TYPE)
+            set(_destination "NullockApp.app/Contents/PlugIns/${_type}")
+            install(FILES "$<TARGET_FILE:Qt6::${_plugin}>"
+                DESTINATION "${_destination}" COMPONENT Runtime)
+            list(APPEND _native_deploy_options
+                "-executable=${_destination}/$<TARGET_FILE_NAME:Qt6::${_plugin}>")
+        endforeach()
+        set(_nullock_plugin_selection DEPLOY_TOOL_OPTIONS ${_native_deploy_options})
+    endif()
     qt_generate_deploy_qml_app_script(TARGET NullockApp OUTPUT_SCRIPT nullock_deploy
-        NO_TRANSLATIONS)
+        NO_TRANSLATIONS ${_nullock_plugin_selection})
     install(SCRIPT ${nullock_deploy} COMPONENT Runtime)
+    if(APPLE)
+        # -no-plugins also suppresses macdeployqt's qt.conf generation.
+        install(FILES packaging/macos/qt.conf
+            DESTINATION NullockApp.app/Contents/Resources COMPONENT Runtime)
+    endif()
 endif()
 
 set(NULLOCK_ASSET_DIR "${CMAKE_INSTALL_DATADIR}/nullock")

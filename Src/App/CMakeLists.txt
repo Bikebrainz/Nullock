@@ -79,6 +79,8 @@ target_link_libraries(NullockApp PRIVATE
 
 # Set executable properties based on platform
 if(APPLE)
+    find_package(OpenSSL 3 REQUIRED)
+    target_link_libraries(NullockApp PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     set_target_properties(NullockApp PROPERTIES
         MACOSX_BUNDLE ON
     )

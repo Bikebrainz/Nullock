@@ -25,8 +25,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# linuxdeploy + the Qt plugin handle Qt-aware bundling. They're both
-# free and self-contained.
+# CMake has already deployed the selected Qt plugins, QML imports and qt.conf.
+# linuxdeploy finishes the native dependency bundle and creates the AppImage.
 if ! command -v linuxdeploy >/dev/null 2>&1; then
     echo "downloading linuxdeploy..." >&2
     wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" \
@@ -35,14 +35,6 @@ if ! command -v linuxdeploy >/dev/null 2>&1; then
     LD=./linuxdeploy
 else
     LD=linuxdeploy
-fi
-
-if ! command -v linuxdeploy-plugin-qt >/dev/null 2>&1; then
-    echo "downloading linuxdeploy-plugin-qt..." >&2
-    wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" \
-        -O linuxdeploy-plugin-qt
-    chmod +x linuxdeploy-plugin-qt
-    export PATH="$PWD:$PATH"
 fi
 
 # Drop a desktop entry + icon into the stage.
@@ -85,7 +77,6 @@ fi
     --executable "$STAGE/usr/bin/NullockApp" \
     -d "$STAGE/usr/share/applications/nullock.desktop" \
     -i "$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png" \
-    --plugin qt \
     --output appimage
 
 ls -lh Nullock-*-x86_64.AppImage 2>/dev/null || ls -lh *.AppImage

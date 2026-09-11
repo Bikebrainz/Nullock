@@ -19,6 +19,8 @@ The CLI `nullock` (in `bin/`) talks to a running instance over
 
 Packages built from this revision use Qt 6.10.3 and require Windows 10 1809+
 or macOS 13+. Linux x86-64 packages are built and tested on Ubuntu 22.04.
+The CI-built macOS disk image targets Apple silicon; Intel Macs require a
+source build with an Intel toolchain and dependencies.
 See [Qt's supported platforms](https://doc.qt.io/qt-6.10/supported-platforms.html)
 for the runtime baseline.
 
@@ -34,7 +36,7 @@ for the runtime baseline.
   These are the two dependencies most often missing — install them explicitly:
   - **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential cmake ninja-build libnghttp2-dev libssl-dev openssl patchelf libxcb-cursor0`
   - **Linux (Fedora):** `sudo dnf install gcc-c++ cmake ninja-build libnghttp2-devel openssl-devel openssl patchelf`
-  - **macOS:** `brew install nghttp2`; the system OpenSSL-compatible command-line tool generates certificates.
+  - **macOS:** `brew install nghttp2 openssl@3`; the system OpenSSL-compatible command-line tool generates certificates.
   - **Windows:** `vcpkg install nghttp2:x64-windows openssl:x64-windows`; the build deploys the OpenSSL CLI and Qt runtime.
 
 ### Windows (MSVC)

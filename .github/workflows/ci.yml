@@ -152,7 +152,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $python = (Get-Command python).Source
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui
+          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui --installed
       - name: build Windows installer and portable archive
         run: |
           choco install nsis -y --no-progress
@@ -167,7 +167,7 @@ jobs:
           if ($installed.ExitCode -ne 0) { exit $installed.ExitCode }
           $python = (Get-Command python).Source
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          & $python scripts/runtime_regression.py "$target/bin/NullockApp.exe" --gui
+          & $python scripts/runtime_regression.py "$target/bin/NullockApp.exe" --gui --installed
       - name: smoke
         # httpbin is flaky; allow up to one failure.
         run: |
@@ -229,17 +229,17 @@ jobs:
           else
             APP="$PWD/stage/bin/NullockApp"
           fi
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui --installed
       - name: build and verify Linux packages
         run: |
           cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ' -B packages
           dpkg-deb --extract packages/Nullock-*-Linux.deb deb-stage
           APP=$(find deb-stage -type f -name NullockApp -print -quit)
           test -n "$APP"
-          python3 scripts/runtime_regression.py "$APP" --gui
+          python3 scripts/runtime_regression.py "$APP" --gui --installed
           DESTDIR="$PWD/appimage-stage" cmake --install build --prefix /usr
           bash packaging/appimage/build_appimage.sh appimage-stage
-          APPIMAGE_EXTRACT_AND_RUN=1 python3 scripts/runtime_regression.py ./Nullock-x86_64.AppImage --gui
+          APPIMAGE_EXTRACT_AND_RUN=1 python3 scripts/runtime_regression.py ./Nullock-x86_64.AppImage --gui --installed
       - name: preserve compiler cache
         if: always()
         uses: actions/cache/save@v4
@@ -265,9 +265,9 @@ jobs:
           version: ${{ env.QT_VERSION }}
           modules: 'qtwebsockets'
       - name: install nghttp2
-        run: brew install nghttp2
+        run: brew install nghttp2 openssl@3
       - name: configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
       - name: build (guards macOS compile/link regressions)
         run: cmake --build build -j 4
       - name: runtime regression suites
@@ -280,7 +280,7 @@ jobs:
           else
             APP="$PWD/stage/bin/NullockApp"
           fi
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py "$APP" --gui --installed
       - name: build and verify macOS disk image
         run: |
           ln -s /Applications stage/Applications
@@ -288,7 +288,7 @@ jobs:
           mkdir dmg-mounted
           hdiutil attach Nullock.dmg -mountpoint "$PWD/dmg-mounted" -nobrowse
           trap 'hdiutil detach "$PWD/dmg-mounted"' EXIT
-          python3 scripts/runtime_regression.py dmg-mounted/NullockApp.app/Contents/MacOS/NullockApp --gui
+          python3 scripts/runtime_regression.py dmg-mounted/NullockApp.app/Contents/MacOS/NullockApp --gui --installed
 
   fuzz-corpus-replay:
     name: sanitized parser corpus replay

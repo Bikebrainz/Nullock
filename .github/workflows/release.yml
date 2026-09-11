@@ -65,8 +65,14 @@ jobs:
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
                       Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
           $exe = Get-ChildItem build -Recurse -Filter NullockApp.exe | Select-Object -First 1 -ExpandProperty FullName
-          & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
-          Remove-Item $pfx
+          try {
+            & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $exe
+            if ($LASTEXITCODE -ne 0) { throw "Application signing failed ($LASTEXITCODE)" }
+            & $signtool verify /pa $exe
+            if ($LASTEXITCODE -ne 0) { throw "Application signature verification failed ($LASTEXITCODE)" }
+          } finally {
+            Remove-Item -LiteralPath $pfx
+          }
       - name: verify staged Windows runtime
         shell: pwsh
         run: |
@@ -74,7 +80,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $python = (Get-Command python).Source
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui
+          & $python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui --installed
       - name: package
         working-directory: build
         run: cpack -G "NSIS;ZIP" -C Release
@@ -89,10 +95,16 @@ jobs:
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" |
                       Sort-Object FullName | Select-Object -Last 1 -ExpandProperty FullName
-          Get-ChildItem build\Nullock-*-win64.exe | ForEach-Object {
-            & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $_.FullName
+          try {
+            Get-ChildItem build\Nullock-*-win64.exe | ForEach-Object {
+              & $signtool sign /f $pfx /p $env:CERT_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Installer signing failed ($LASTEXITCODE)" }
+              & $signtool verify /pa $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Installer signature verification failed ($LASTEXITCODE)" }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfx
           }
-          Remove-Item $pfx
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -122,7 +134,7 @@ jobs:
       - name: verify staged Linux runtime
         run: |
           cmake --install build --prefix "$PWD/runtime-stage"
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py runtime-stage/bin/NullockApp --gui
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py runtime-stage/bin/NullockApp --gui --installed
       - name: cpack -- DEB / RPM / TGZ
         working-directory: build
         run: cpack -G "DEB;RPM;TGZ"
@@ -150,15 +162,15 @@ jobs:
           version: ${{ env.QT_VERSION }}
           modules: 'qtwebsockets'
       - name: install nghttp2
-        run: brew install nghttp2
+        run: brew install nghttp2 openssl@3
       - name: configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
       - name: build
         run: cmake --build build -j 4
       - name: stage complete macOS app
         run: |
           cmake --install build --prefix "$PWD/stage"
-          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp --gui
+          QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp --gui --installed
       - name: import signing cert (no-op without MACOS_CERT_* secrets)
         env:
           CERT_B64: ${{ secrets.MACOS_CERT_BASE64 }}

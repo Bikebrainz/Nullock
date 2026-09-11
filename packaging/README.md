@@ -10,7 +10,7 @@ Install Qt's MSVC build, Visual Studio 2022 Build Tools, and `vcpkg install nght
 cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.10.3/msvc2022_64 -DNULLOCK_NGHTTP2_ROOT=C:/vcpkg/installed/x64-windows
 cmake --build build --config Release --target NullockApp
 cmake --install build --config Release --prefix stage
-python scripts/runtime_regression.py stage/bin/NullockApp.exe
+python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui --installed
 cpack --config build/CPackConfig.cmake -G "NSIS;ZIP" -C Release
 ```
 
@@ -24,7 +24,7 @@ Qt's deployment script installs the Qt version used for the build, its plugins a
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 4
 cmake --install build --prefix "$PWD/stage"
-QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/bin/NullockApp
+QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/bin/NullockApp --gui --installed
 cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ'
 ```
 
@@ -35,17 +35,17 @@ DESTDIR="$PWD/appimage-stage" cmake --install build --prefix /usr
 bash packaging/appimage/build_appimage.sh appimage-stage
 ```
 
-The helper downloads linuxdeploy and its Qt plugin and uses extraction mode to avoid requiring a FUSE mount. Compatibility is bounded by the build's glibc baseline; test each supported distribution.
+The helper downloads linuxdeploy and uses extraction mode to avoid requiring a FUSE mount. Qt plugins and QML imports come from the verified CMake installation. Compatibility is bounded by the build's glibc baseline; test each supported distribution.
 
 ## macOS
 
-Build on macOS with Qt and `brew install nghttp2`. The system OpenSSL-compatible CLI generates certificates. Qt's deployment script places dependencies in the installed `.app`; web assets, templates, and extensions are under `Contents/Resources/nullock`.
+Build on macOS with Qt and `brew install nghttp2 openssl@3`. OpenSSL 3 is bundled for TLS handshakes; the system OpenSSL-compatible CLI generates certificates. Qt's deployment script places dependencies in the installed `.app`; web assets, templates, and extensions are under `Contents/Resources/nullock`.
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
 cmake --build build -j 4
 cmake --install build --prefix "$PWD/stage"
-python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp
+python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp --gui --installed
 cpack --config build/CPackConfig.cmake -G DragNDrop
 ```
 

@@ -46,6 +46,9 @@
 #include <QQuickStyle>
 #include <QSslSocket>
 #include <QTextStream>
+#ifdef Q_OS_MACOS
+#include <openssl/ssl.h>
+#endif
 
 #include <cstdio>
 #include <QTimer>
@@ -639,12 +642,6 @@ static QString validateArguments(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-#ifdef Q_OS_MACOS
-    // Keep intercepted-host identities out of the user's login keychain and
-    // allow the Secure Transport backend to work without keychain dialogs.
-    if (qEnvironmentVariableIsEmpty("QT_SSL_USE_TEMPORARY_KEYCHAIN"))
-        qputenv("QT_SSL_USE_TEMPORARY_KEYCHAIN", "1");
-#endif
     Nullock::Core::CrashReporter::install();
     QCoreApplication::setOrganizationName("Nullock");
     QCoreApplication::setApplicationName("Nullock");
@@ -759,6 +756,17 @@ int main(int argc, char *argv[]) {
         headless
             ? new QCoreApplication(argc, argv)
             : static_cast<QCoreApplication *>(new QGuiApplication(argc, argv)));
+
+#ifdef Q_OS_MACOS
+    // Secure Transport fails server handshakes with generated interception
+    // identities on supported Macs. Use the bundled OpenSSL backend, which
+    // also supports TLS 1.3/server ALPN and never imports keys into a keychain.
+    // Referencing OpenSSL directly keeps its libraries loaded from the bundle.
+    if (OPENSSL_init_ssl(0, nullptr) != 1 || !QSslSocket::setActiveBackend(QStringLiteral("openssl"))) {
+        QTextStream(stderr) << "Nullock: the bundled OpenSSL TLS backend could not initialize.\n";
+        return 2;
+    }
+#endif
 
     const bool smokeTest = app->arguments().contains("--smoke-test");
     const quint16 wantedProxyPort = static_cast<quint16>(
