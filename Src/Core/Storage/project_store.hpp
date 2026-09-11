@@ -13,11 +13,14 @@
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <functional>
+#include <QUuid>
 
 namespace Nullock::Core {
 
 struct ProjectMeta {
     QString   name;
+    QString historyEpoch;
     QStringList inScope;
     QStringList outOfScope;
     QString   notes;
@@ -92,6 +95,11 @@ public:
 
     Q_INVOKABLE bool open(const QString &projectDir);
     Q_INVOKABLE void close();
+    // A switch/clear may only proceed after old work and queued results are done.
+    void setSwitchGuard(std::function<bool()> guard) { m_switchGuard = std::move(guard); }
+    QString lastError() const { return m_lastError; }
+    QString historyGeneration() const { return m_historyGeneration; }
+    Q_INVOKABLE bool clearHistory();
     Q_INVOKABLE bool saveMetadata();
     // Re-stream <project>/findings.ndjson, emitting findingRestored per finding.
     // open() already does this, but the very first project is opened before the
@@ -275,6 +283,7 @@ signals:
     // ProxyModel::clear and any other downstream caches that should
     // discard the previous project's state.
     void historyShouldClear();
+    void historyCleared();
     // Emitted once per finding streamed back from findings.ndjson on open() /
     // restoreFindings(). Wire to PassiveScanner::ingestFinding so a reopened
     // project's findings panel repopulates.
@@ -326,6 +335,10 @@ private:
     void streamExistingHistory();
     void streamExistingFindings();
 
+    bool prepareSwitch();
+    std::function<bool()> m_switchGuard;
+    QString m_lastError;
+    QString m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString    m_dir;
     QFile      m_history;
     ProjectMeta m_meta;

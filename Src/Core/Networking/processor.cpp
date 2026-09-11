@@ -44,7 +44,7 @@ QString htmlDecEntities(const QString &s) {
 QString unicodeEscape(const QString &s) {
     QString o;
     for (const QChar c : s)
-        o += QStringLiteral("\\u%1").arg(c.unicode(), 4, 16, QLatin1Char('0'));
+        o += QStringLiteral("\\u%1").arg(static_cast<uint>(c.unicode()), 4, 16, QLatin1Char('0'));
     return o;
 }
 QString spaceTo(const QString &s, const QString &rep) {

@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
     }
     for (int i = 1; i < argc; ++i) {
         std::FILE *f = std::fopen(argv[i], "rb");
-        if (!f) continue;
+        if (!f) { std::perror(argv[i]); return 2; }
         std::vector<uint8_t> buf;
         uint8_t chunk[4096];
         size_t n;

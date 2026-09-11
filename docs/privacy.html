@@ -14,7 +14,7 @@
       <img class="mark" src="assets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="navlinks" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('navlinks').classList.toggle('open'))">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="index.html">Product</a>
       <a href="docs/index.html">Docs</a>
@@ -38,20 +38,16 @@
 <section class="section" style="padding-top:28px;">
   <div class="wrap-docs legal">
 
-<p class="caption">Last updated June 2, 2026.</p>
-<p>The short version: the desktop app collects nothing. This page covers what the website and paid services touch.</p>
+<p class="caption">Updated September 10, 2026.</p>
 <h2>The desktop app</h2>
-<p>No telemetry, no account, no phone-home. The binary makes no network calls except the traffic you point it at. Your captures live in a local SQLite file and never leave your machine unless you buy Hosted and opt in per scope.</p>
+<p>Captures and findings are saved in local project files and a SQLite index. The desktop app does not require an account or include a telemetry uploader. Operators can export data or configure remote services and extensions; those actions can transmit data to the selected destinations.</p>
+<p>The optional update checker contacts GitHub for release metadata. Disable it with <code>--no-update-check</code> or <code>NULLOCK_NO_UPDATE=1</code>. Marketplace refreshes, feed synchronization, hosted OAST, and workspace integrations contact their configured services when used.</p>
 <h2>This website</h2>
-<p>Static pages, no third-party analytics, no ad trackers. Server logs keep IP and user-agent for 14 days to catch abuse, then they're deleted.</p>
-<h2>Paid services</h2>
-<ul>
-  <li><strong>Payments</strong> are handled by Stripe. We store your email and a Stripe customer ID — never your card number.</li>
-  <li><strong>Hosted relay</strong> stores the captures you choose to sync, encrypted at rest, deleted on the retention schedule for your plan.</li>
-  <li><strong>Support</strong> email is kept as long as your subscription is active, then archived for one year for tax reasons.</li>
-</ul>
-<h2>Your rights</h2>
-<p>Open a <a href="https://github.com/Bikebrainz/Nullock/security/advisories/new">private GitHub Security Advisory</a> to see, export, or delete anything we hold. We reply within 30 days, usually the same week.</p>
+<p>These static pages include no analytics or advertising scripts. Download links use the GitHub Releases API to find current assets, which sends a request from your browser to GitHub. Hosting and GitHub may process request metadata under their own policies. This project does not specify or control those providers' log-retention periods.</p>
+<h2>Proposed paid services</h2>
+<p>This site has no checkout and does not collect card details. Hosting, retention, and support policies for a paid service must be provided and agreed before that service is purchased.</p>
+<h2>Contact</h2>
+<p>Use <a href="https://github.com/Bikebrainz/Nullock/discussions">GitHub Discussions</a> for general questions. Keep captures, credentials, and personal information out of public posts. Vulnerability reports belong in a <a href="https://github.com/Bikebrainz/Nullock/security/advisories/new">private security advisory</a>.</p>
 
   </div>
 </section>

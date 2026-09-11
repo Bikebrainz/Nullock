@@ -1200,7 +1200,7 @@ ApplicationWindow {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {
-                            proxyModel.clear()
+                            projectStore.clearHistory()
                             history.currentIndex = -1
                         }
                     }

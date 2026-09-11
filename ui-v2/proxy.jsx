@@ -80,16 +80,20 @@ const ANNOTATION_COLORS = [
   { key: "pink",   hex: "#b0559a" },
   { key: "gray",   hex: "#6b6b6b" },
 ];
-const ANNOTATIONS_STORAGE_KEY = "nl.history.annotations.v1";
+function projectStorageKey(key) {
+  const b = window.NL?.bootInfo || {};
+  return key + ":" + encodeURIComponent((b.projectDir || b.project || "disconnected") + ":" + (b.historyEpoch || ""));
+}
+const ANNOTATIONS_STORAGE_KEY = "nl.history.annotations.v2";
 function loadAnnotations() {
   try {
-    const raw = window.localStorage.getItem(ANNOTATIONS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(projectStorageKey(ANNOTATIONS_STORAGE_KEY));
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch (e) { return {}; }
 }
 function saveAnnotations(map) {
-  try { window.localStorage.setItem(ANNOTATIONS_STORAGE_KEY, JSON.stringify(map)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
+  try { window.localStorage.setItem(projectStorageKey(ANNOTATIONS_STORAGE_KEY), JSON.stringify(map)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
 }
 function annotationColorHex(key) {
   const c = ANNOTATION_COLORS.find(c => c.key === key);
@@ -110,13 +114,13 @@ function annotationColorHex(key) {
 const DELETED_SCOPES_STORAGE_KEY = "nl.sitemap.deleted.v1";
 function loadDeletedScopes() {
   try {
-    const raw = window.localStorage.getItem(DELETED_SCOPES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(projectStorageKey(DELETED_SCOPES_STORAGE_KEY));
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.filter(s => s && typeof s.host === "string") : [];
   } catch (e) { return []; }
 }
 function saveDeletedScopes(list) {
-  try { window.localStorage.setItem(DELETED_SCOPES_STORAGE_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
+  try { window.localStorage.setItem(projectStorageKey(DELETED_SCOPES_STORAGE_KEY), JSON.stringify(list)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
 }
 function isRowDeleted(row, deletedScopes) {
   for (const s of deletedScopes) {

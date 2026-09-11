@@ -1,4 +1,6 @@
 #include "intruder.hpp"
+#include "chain_runner.hpp"
+#include "networking_logic.hpp"
 
 #include "session_rules.hpp"
 
@@ -189,6 +191,11 @@ void Intruder::setUseTls(bool tls) {
     else if (m_port == 443 && !m_useTls) m_port = 80;
     emit targetChanged();
 }
+void Intruder::setRequestBytes(const QByteArray &bytes) {
+    if (m_running) return;
+    m_template = NetworkingLogic::decodeRequestText(bytes, m_templateLatin1);
+    emit templateChanged();
+}
 void Intruder::setRequestTemplate(const QString &t) { if (t == m_template) return; m_template = t; emit templateChanged(); }
 
 void Intruder::setPayloads(const QString &p) {
@@ -295,7 +302,7 @@ void Intruder::loadFromHistory(int row) {
     m_host    = host;
     m_port    = m_model->portAt(row);
     m_useTls  = m_model->tlsAt(row);
-    m_template = m_model->requestRawAt(row);
+    m_template = NetworkingLogic::decodeRequestText(Nullock::Proxy::serializeRequestForOrigin(*m_model->requestAt(row)), m_templateLatin1);
     emit targetChanged();
     emit templateChanged();
 }
@@ -307,6 +314,7 @@ QByteArray Intruder::saveRun() const {
     c.port            = m_port;
     c.tls             = m_useTls;
     c.requestTemplate = m_template;
+    c.requestLatin1 = m_templateLatin1;
     c.attackType      = m_attackType;
     c.payloadSets     = m_payloadSets;
     c.rules           = m_payloadRules;
@@ -354,6 +362,7 @@ bool Intruder::loadRun(const QByteArray &bytes) {
     m_port        = c.port;
     m_useTls      = c.tls;
     m_template    = c.requestTemplate;
+    m_templateLatin1 = c.requestLatin1;
     m_attackType  = qBound(static_cast<int>(Sniper), c.attackType,
                            static_cast<int>(ClusterBomb));
     m_payloadSets = c.payloadSets;
@@ -421,6 +430,7 @@ void Intruder::clearAll() {
     m_port = 443;
     m_useTls = true;
     m_template.clear();
+    m_templateLatin1 = false;
     m_payloadSets.clear();
     m_attackType = Sniper;
     emit targetChanged();
@@ -509,6 +519,7 @@ void Intruder::start() {
     emit progressChanged();
 
     const QString templateCopy = m_template;
+    const bool templateLatin1 = m_templateLatin1;
     const QString hostCopy = m_host;
     const int portCopy = m_port;
     const bool tlsCopy = m_useTls;
@@ -533,13 +544,13 @@ void Intruder::start() {
     const RecursiveSpec recursiveCopy = recursive;
     const QSet<int> skipRowsCopy;   // fresh start: fire every row
 
-    m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
+    m_worker = QtConcurrent::run([this, combosCopy, templateCopy, templateLatin1, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                                   concurrencyCopy, throttleCopy, retriesCopy,
                                   followPolicyCopy, followCookiesCopy, inScopeCopy,
                                   recursiveCopy, skipRowsCopy]() {
-        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
+        runWorker(combosCopy, templateCopy, templateLatin1, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                   concurrencyCopy, throttleCopy, retriesCopy,
                   followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy,
@@ -574,6 +585,7 @@ bool Intruder::resume() {
     emit progressChanged();
 
     const QString templateCopy = m_template;
+    const bool templateLatin1 = m_templateLatin1;
     const QString hostCopy = m_host;
     const int portCopy = m_port;
     const bool tlsCopy = m_useTls;
@@ -595,13 +607,13 @@ bool Intruder::resume() {
     const RecursiveSpec recursiveCopy{ false, QString(), 0 };
     const QSet<int> skipRowsCopy = skip;
 
-    m_worker = QtConcurrent::run([this, combosCopy, templateCopy, hostCopy,
+    m_worker = QtConcurrent::run([this, combosCopy, templateCopy, templateLatin1, hostCopy,
                                   portCopy, tlsCopy, rulesCopy,
                                   grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                                   concurrencyCopy, throttleCopy, retriesCopy,
                                   followPolicyCopy, followCookiesCopy, inScopeCopy,
                                   recursiveCopy, skipRowsCopy]() {
-        runWorker(combosCopy, templateCopy, hostCopy, portCopy, tlsCopy,
+        runWorker(combosCopy, templateCopy, templateLatin1, hostCopy, portCopy, tlsCopy,
                   rulesCopy, grepMatchCopy, grepReflectionCopy, grepExtractCopy,
                   concurrencyCopy, throttleCopy, retriesCopy,
                   followPolicyCopy, followCookiesCopy, inScopeCopy, recursiveCopy,
@@ -611,7 +623,7 @@ bool Intruder::resume() {
 }
 
 void Intruder::runWorker(const QList<QStringList> &combos,
-                         const QString &templateCopy,
+                         const QString &templateCopy, bool templateLatin1,
                          const QString &host, int port, bool useTls,
                          const QList<IntruderRules::Rule> &rules,
                          const QStringList &grepMatch,
@@ -638,25 +650,24 @@ void Intruder::runWorker(const QList<QStringList> &combos,
     // HttpClient is not thread-safe, so a concurrent attack must never share
     // one instance across tasks. Grep runs here (bounded, off the GUI thread);
     // the queued callback only assigns the finished values.
-    auto fireOne = [this, &inFlight, templateCopy, host, port, useTls, rules,
+    auto fireOne = [this, &inFlight, templateCopy, templateLatin1, host, port, useTls, rules,
                     grepMatch, grepReflection, grepExtract, retries,
                     followPolicy, followCookies, inScope](int row, const QStringList &combo) -> QString {
         HttpClient client;
 
         QString req = IE::applyPayloads(templateCopy, applyRulesToCombo(combo, rules));
-        // Normalize line endings for the wire.
-        req.replace("\r\n", "\n");
-        req.replace("\n", "\r\n");
-        if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";
 
         QElapsedTimer t;
         t.start();
         // Session rules scoped to Intruder (only rewrites when a rule fires).
-        QByteArray reqBytes = req.toUtf8();
-        if (m_sessionRules)
+        QByteArray reqBytes = NetworkingLogic::encodeRequestText(req, templateLatin1);
+        const bool encodingValid = !reqBytes.isEmpty();
+        if (encodingValid) reqBytes = ChainRunner::normalizeContentLength(reqBytes);
+        if (encodingValid && m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, host, SessionRulesLogic::ToolIntruder);
-        auto result = client.send(host, static_cast<quint16>(port),
-                                  useTls, reqBytes);
+        HttpClient::SendResult result;
+        if (encodingValid) result = client.send(host, static_cast<quint16>(port), useTls, reqBytes);
+        else result.errorMessage = "Request contains characters outside Latin-1. Select UTF-8 encoding.";
         // Resource-pool "retries on network failure" (Burp-parity): only a
         // NETWORK-level failure (connect refused/timeout/reset -- !result.ok)
         // is retried, never an HTTP error status (a 500 is a real, meaningful
@@ -665,7 +676,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         // so this cannot block dispatch of other in-flight requests. Stops
         // early on m_stopRequested so a cancelled attack doesn't burn through
         // every retry against a dead target before honoring stop().
-        for (int attempt = 0; !result.ok && attempt < retries && !m_stopRequested; ++attempt)
+        for (int attempt = 0; encodingValid && !result.ok && attempt < retries && !m_stopRequested; ++attempt)
             result = client.send(host, static_cast<quint16>(port), useTls, reqBytes);
 
         // Follow 3xx redirects if configured -- the recorded result (status /
@@ -678,7 +689,9 @@ void Intruder::runWorker(const QList<QStringList> &combos,
             QString method = RL::requestMethod(reqBytes);
             QByteArray body;
             { const int hb = reqBytes.indexOf("\r\n\r\n"); if (hb >= 0) body = reqBytes.mid(hb + 4); }
-            QHash<QString, QString> jar;
+            RL::CookieJar jar;
+            QByteArray previousRequest = reqBytes;
+            if (followCookies) RL::seedRequestCookies(jar, current, reqBytes);
             int hops = 0;
             while (hops < kMaxRedirectHops && result.ok
                    && RL::isRedirectStatus(result.parsed.statusCode)) {
@@ -692,15 +705,16 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                 if (!RL::followAllowed(RL::FollowPolicy(followPolicy),
                                        current.host(), nextHost, nextInScope))
                     break;
-                if (followCookies) RL::mergeSetCookies(jar, result.parsed.headers);
+                if (followCookies) RL::mergeSetCookies(jar, current, result.parsed.headers);
                 const int status = result.parsed.statusCode;
                 const QString nextMethod  = RL::methodAfterRedirect(status, method);
-                const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
-                const QString cookieHdr   = followCookies ? RL::renderCookieHeader(jar) : QString();
-                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+                const QByteArray nextBody = RL::redirectPreservesBody(status, method) ? body : QByteArray();
+                const QString cookieHdr   = followCookies ? RL::renderCookieHeader(jar, next) : QString();
+                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody, previousRequest, current, RL::redirectPreservesBody(status, method));
                 const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
                 const int  nextPort = next.port(nextTls ? 443 : 80);
                 result  = client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+                previousRequest = nextReq;
                 current = next;
                 method  = nextMethod;
                 body    = nextBody;
@@ -808,7 +822,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         inFlight.acquire();
         if (m_stopRequested) { inFlight.release(); break; }
         const QStringList combo = combos[i];
-        QtConcurrent::run(&m_pool, [fireOne, i, combo]() { fireOne(i, combo); });
+        m_pool.start([fireOne, i, combo]() { fireOne(i, combo); });
         if (throttleMs > 0) interruptibleSleep(throttleMs, m_stopRequested);
     }
 
@@ -855,6 +869,7 @@ bool Intruder::resend(int row) {
     emit dataChanged(idx, idx);
 
     const QString templateCopy = m_template;
+    const bool templateLatin1 = m_templateLatin1;
     const QString hostCopy = m_host;
     const int     portCopy = m_port;
     const bool    tlsCopy  = m_useTls;
@@ -865,22 +880,22 @@ bool Intruder::resend(int row) {
     const bool followCookiesCopy = m_followCookies;
     const auto inScopeCopy = m_inScope;   // std::function copy (safe to capture by value)
 
-    m_resendWorker = QtConcurrent::run([this, row, combo, templateCopy, hostCopy,
+    m_resendWorker = QtConcurrent::run([this, row, combo, templateCopy, templateLatin1, hostCopy,
                              portCopy, tlsCopy, grepMatchCopy, grepReflectionCopy,
                              grepExtractCopy, followPolicyCopy, followCookiesCopy,
                              inScopeCopy]() {
         HttpClient client;
         QString req = IE::applyPayloads(templateCopy, combo);
-        req.replace("\r\n", "\n");
-        req.replace("\n", "\r\n");
-        if (!req.contains("\r\n\r\n")) req += "\r\n\r\n";
 
         QElapsedTimer t; t.start();
-        QByteArray reqBytes = req.toUtf8();
-        if (m_sessionRules)
+        QByteArray reqBytes = NetworkingLogic::encodeRequestText(req, templateLatin1);
+        const bool encodingValid = !reqBytes.isEmpty();
+        if (encodingValid) reqBytes = ChainRunner::normalizeContentLength(reqBytes);
+        if (encodingValid && m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, hostCopy, SessionRulesLogic::ToolIntruder);
-        auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
-                                  tlsCopy, reqBytes);
+        HttpClient::SendResult result;
+        if (encodingValid) result = client.send(hostCopy, static_cast<quint16>(portCopy), tlsCopy, reqBytes);
+        else result.errorMessage = "Request contains characters outside Latin-1. Select UTF-8 encoding.";
 
         // Follow 3xx redirects if configured, mirroring fireOne()'s block above
         // exactly -- a resent row's grade must match a first-pass fired row's.
@@ -890,7 +905,9 @@ bool Intruder::resend(int row) {
             QString method = RL::requestMethod(reqBytes);
             QByteArray body;
             { const int hb = reqBytes.indexOf("\r\n\r\n"); if (hb >= 0) body = reqBytes.mid(hb + 4); }
-            QHash<QString, QString> jar;
+            RL::CookieJar jar;
+            QByteArray previousRequest = reqBytes;
+            if (followCookiesCopy) RL::seedRequestCookies(jar, current, reqBytes);
             int hops = 0;
             while (hops < kMaxRedirectHops && result.ok
                    && RL::isRedirectStatus(result.parsed.statusCode)) {
@@ -904,15 +921,16 @@ bool Intruder::resend(int row) {
                 if (!RL::followAllowed(RL::FollowPolicy(followPolicyCopy),
                                        current.host(), nextHost, nextInScope))
                     break;
-                if (followCookiesCopy) RL::mergeSetCookies(jar, result.parsed.headers);
+                if (followCookiesCopy) RL::mergeSetCookies(jar, current, result.parsed.headers);
                 const int status = result.parsed.statusCode;
                 const QString nextMethod  = RL::methodAfterRedirect(status, method);
-                const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
-                const QString cookieHdr   = followCookiesCopy ? RL::renderCookieHeader(jar) : QString();
-                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+                const QByteArray nextBody = RL::redirectPreservesBody(status, method) ? body : QByteArray();
+                const QString cookieHdr   = followCookiesCopy ? RL::renderCookieHeader(jar, next) : QString();
+                const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody, previousRequest, current, RL::redirectPreservesBody(status, method));
                 const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
                 const int  nextPort = next.port(nextTls ? 443 : 80);
                 result  = client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+                previousRequest = nextReq;
                 current = next;
                 method  = nextMethod;
                 body    = nextBody;

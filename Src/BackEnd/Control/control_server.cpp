@@ -1,4 +1,6 @@
 #include "control_server.hpp"
+#include <QTimer>
+#include <QSslSocket>
 
 #include "control_logic.hpp"
 #include "cert_authority.hpp"
@@ -1043,7 +1045,8 @@ void ControlServer::handle(QTcpSocket *socket) {
             return;
         }
         buf.append(socket->readAll());
-        if (buf.size() > 64 * 1024) {
+        const int headerEnd = buf.indexOf("\r\n\r\n");
+        if ((headerEnd < 0 ? buf.size() : headerEnd + 4) > 64 * 1024) {
             socket->write(httpResponse(431, "text/plain", "Headers too large"));
             socket->disconnectFromHost();
             return;
@@ -1174,7 +1177,11 @@ void ControlServer::handle(QTcpSocket *socket) {
             return;
         }
         const int waitMs = static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs));
-        if (!socket->waitForReadyRead(waitMs)) break;
+        if (!socket->waitForReadyRead(waitMs)) {
+            socket->write(httpResponse(408, "text/plain", "Incomplete request body"));
+            socket->disconnectFromHost();
+            return;
+        }
         rest.append(socket->readAll());
     }
     const QByteArray body = rest.left(contentLength);
@@ -1270,6 +1277,7 @@ bool ControlServer::blocksScope(const QString &host) const {
 QByteArray ControlServer::buildSnapshot() const {
     QJsonObject root;
     root["seq"] = static_cast<qint64>(m_seq);
+    root["instanceId"] = m_instanceId;
 
     // bootInfo
     QJsonObject bootInfo;
@@ -1278,6 +1286,12 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["caDir"]           = m_wiring.ca ? m_wiring.ca->caDir()      : QString();
     bootInfo["hasOpenssl"]      = m_wiring.ca ? m_wiring.ca->hasOpenssl() : false;
     bootInfo["project"]         = m_wiring.projectStore ? m_wiring.projectStore->metadata().name : QString();
+    bootInfo["historyEpoch"] = m_wiring.projectStore ? m_wiring.projectStore->metadata().historyEpoch : QString();
+    bootInfo["version"] = QCoreApplication::applicationVersion();
+    bootInfo["qtVersion"] = QString::fromLatin1(qVersion());
+    bootInfo["tlsBackend"] = QSslSocket::activeBackend();
+    bootInfo["tlsAvailable"] = QSslSocket::supportsSsl();
+    bootInfo["historyGeneration"] = m_wiring.projectStore ? m_wiring.projectStore->historyGeneration() : QString();
     bootInfo["projectDir"]      = m_wiring.projectStore ? m_wiring.projectStore->currentPath() : QString();
     bootInfo["harPath"]         = m_wiring.projectStore ? (m_wiring.projectStore->currentPath() + "/exports/")
                                                        : QString();
@@ -1626,6 +1640,7 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["host"]       = m_wiring.repeater->host();
         repeater["port"]       = m_wiring.repeater->port();
         repeater["tls"]        = m_wiring.repeater->useTls();
+        repeater["requestEncoding"] = m_wiring.repeater->requestLatin1() ? "latin1" : "utf8";
         repeater["request"]    = m_wiring.repeater->requestText();
         repeater["response"]   = m_wiring.repeater->responseText();
         repeater["statusLine"] = m_wiring.repeater->statusLine();
@@ -1672,6 +1687,7 @@ QByteArray ControlServer::buildSnapshot() const {
         intruder["host"]       = m_wiring.intruder->host();
         intruder["port"]       = m_wiring.intruder->port();
         intruder["tls"]        = m_wiring.intruder->useTls();
+        intruder["requestEncoding"] = m_wiring.intruder->requestLatin1() ? "latin1" : "utf8";
         intruder["template"]   = m_wiring.intruder->requestTemplate();
         intruder["attackType"] = m_wiring.intruder->attackType();
         intruder["positions"]  = m_wiring.intruder->positionCount();
@@ -2298,6 +2314,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, root);
     }
 
+    if (path == "/api/app/quit") {
+        QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
+        return httpJson(200, QJsonObject{{"ok", true}});
+    }
     if (path == "/api/snapshot") {
         // ?since=<seq> -> 304 if seq hasn't moved. Saves us building 13 KB
         // of JSON twice a second when nothing has happened.
@@ -2306,7 +2326,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             const QString since = q.queryItemValue("since");
             bool ok = false;
             const quint64 sinceSeq = since.toULongLong(&ok);
-            if (ok && sinceSeq == m_seq)
+            if (ok && sinceSeq == m_seq && QUrlQuery(query).queryItemValue("instance") == m_instanceId)
                 return httpResponse(304, "application/json", "{}", "Not Modified");
         }
         return httpResponse(200, "application/json; charset=utf-8", buildSnapshot());
@@ -3226,7 +3246,10 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                         if (w.proxy) {
                             QMetaObject::invokeMethod(w.proxy, [w, r, resp]() {
                                 if (w.history)      w.history->addResponse(r, resp);
-                                if (w.scanner)      w.scanner->onResponseReceived(r, resp);
+                                if (w.scanner && w.history) {
+                                    w.scanner->setNextRowId(w.history->lastId());
+                                    w.scanner->onResponseReceived(r, resp);
+                                }
                                 if (w.projectStore) w.projectStore->appendEntry(r, resp);
                             }, Qt::QueuedConnection);
                         }
@@ -3581,7 +3604,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // save/load reuse captureConfigSections()/applyConfigSections() above, so a
     // preset is byte-for-byte an export document.
     auto presetsPath = []() -> QString {
-        return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
                + "/config-presets.json";
     };
     auto loadPresets = [&presetsPath]() -> QJsonObject {
@@ -3686,6 +3709,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (bodyJson.contains("port"))    m_wiring.repeater->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))     m_wiring.repeater->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("request")) m_wiring.repeater->setRequestText(bodyJson.value("request").toString());
+            if (bodyJson.contains("requestEncoding")) m_wiring.repeater->setRequestLatin1(bodyJson.value("requestEncoding").toString() == "latin1");
             // Burp's "Update Content-Length" toggle. On by default; set false to
             // send bytes verbatim for a hand-crafted CL/TE smuggling desync.
             if (bodyJson.contains("autoContentLength"))
@@ -3731,11 +3755,39 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // (accepts {"id":...}), so "send to Repeater" loads the correct request even
     // after the in-memory window has evicted older rows. Prefer this over
     // /addFromHistory, which treats its argument as a live window index.
-    if (path == "/api/repeater/tab/addFromHistoryId") {
-        int idx = -1;
-        if (m_wiring.repeater)
-            idx = m_wiring.repeater->addTabFromHistoryById(bodyJson.value("id").toInt(-1));
-        return okJson({{ "index", idx }});
+    if (path == "/api/repeater/tab/addFromHistoryId" || path == "/api/intruder/from-history") {
+        const int id = bodyJson.value("id").toInt(-1);
+        Nullock::Proxy::HttpRequest request;
+        bool tls = false, found = false;
+        if (m_wiring.history) {
+            if (const auto *r = m_wiring.history->requestById(id)) {
+                request = *r;
+                tls = m_wiring.history->tlsById(id);
+                found = true;
+            }
+        }
+        if (!found && m_wiring.projectStore) {
+            const auto row = m_wiring.projectStore->historyIndex()->loadFullRow(id);
+            if (row.ok) { request = row.request; tls = row.response.wasTls; found = true; }
+        }
+        if (!found) return okJson({{"ok", false}, {"error", "History row not found"}});
+        const auto bytes = Nullock::Proxy::serializeRequestForOrigin(request);
+        if (path == "/api/intruder/from-history") {
+            if (!m_wiring.intruder || m_wiring.intruder->running())
+                return okJson({{"ok", false}, {"error", "Intruder is unavailable or busy"}});
+            m_wiring.intruder->setHost(request.host);
+            m_wiring.intruder->setUseTls(tls);
+            m_wiring.intruder->setPort(request.port);
+            m_wiring.intruder->setRequestBytes(bytes);
+            return okJson();
+        }
+        if (!m_wiring.repeater) return okJson({{"ok", false}});
+        const int index = m_wiring.repeater->addTab();
+        m_wiring.repeater->setHost(request.host);
+        m_wiring.repeater->setUseTls(tls);
+        m_wiring.repeater->setPort(request.port);
+        m_wiring.repeater->setRequestBytes(bytes);
+        return okJson({{"index", index}});
     }
     if (path == "/api/repeater/tab/close") {
         bool ok = m_wiring.repeater
@@ -3876,6 +3928,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             if (bodyJson.contains("port"))     m_wiring.intruder->setPort(bodyJson.value("port").toInt());
             if (bodyJson.contains("tls"))      m_wiring.intruder->setUseTls(bodyJson.value("tls").toBool());
             if (bodyJson.contains("template")) m_wiring.intruder->setRequestTemplate(bodyJson.value("template").toString());
+            if (bodyJson.contains("requestEncoding")) m_wiring.intruder->setRequestLatin1(bodyJson.value("requestEncoding").toString() == "latin1");
             // attackType: an int (0..3) or a name ("sniper" / "battering-ram"
             // / "pitchfork" / "cluster-bomb", hyphen/space tolerant).
             if (bodyJson.contains("attackType")) {
@@ -5862,7 +5915,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             return okJson({{ "ok", false }, { "error", "template not found: " + tplId }});
 
         if (!m_wiring.projectStore->createProject(name))
-            return okJson({{ "ok", false }, { "error", "createProject failed" }});
+            return okJson({{ "ok", false }, { "error", m_wiring.projectStore->lastError() }});
 
         // Apply template metadata on top of the empty project.
         QStringList inS;
@@ -6802,8 +6855,9 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     }
 
     if (path == "/api/clear-history") {
-        if (m_wiring.history) m_wiring.history->clear();
-        return okJson();
+        const bool ok = m_wiring.projectStore && m_wiring.projectStore->clearHistory();
+        return okJson({{"ok", ok}, {"error", ok ? QString() :
+            (m_wiring.projectStore ? m_wiring.projectStore->lastError() : QString("No project"))}});
     }
 
     if (path == "/api/mitm/clear-blocked") {
@@ -10923,12 +10977,14 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     if (path == "/api/project/open") {
         bool ok = m_wiring.projectStore
                && m_wiring.projectStore->openByName(bodyJson.value("name").toString());
-        return okJson({{ "ok", ok }});
+        return okJson({{ "ok", ok }, {"error", ok ? QString() :
+            (m_wiring.projectStore ? m_wiring.projectStore->lastError() : QString("No project"))}});
     }
     if (path == "/api/project/create") {
         bool ok = m_wiring.projectStore
                && m_wiring.projectStore->createProject(bodyJson.value("name").toString());
-        return okJson({{ "ok", ok }});
+        return okJson({{ "ok", ok }, {"error", ok ? QString() :
+            (m_wiring.projectStore ? m_wiring.projectStore->lastError() : QString("No project"))}});
     }
 
     (void)method;

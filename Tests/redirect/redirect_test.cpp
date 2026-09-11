@@ -92,28 +92,44 @@ int main(int argc, char **argv) {
     chk("follow: empty next host always refused",
         !followAllowed(FollowAlways, "a.com", "  ", true));
 
-    // ===== mergeSetCookies / renderCookieHeader =========================
+    // Real destination selection, including host-only cookies, duplicate paths,
+    // secure downgrade, foreign Domain rejection and expiry/deletion.
     {
-        QHash<QString, QString> jar;
-        mergeSetCookies(jar, Hdrs{ { "Set-Cookie", "sid=abc; Path=/; HttpOnly" },
-                                   { "Content-Type", "text/html" },
-                                   { "Set-Cookie", "csrf=xyz; Secure" } });
-        chk("cookies: sid captured (value only, no attrs)", jar.value("sid") == "abc");
-        chk("cookies: csrf captured", jar.value("csrf") == "xyz");
-        chk("cookies: non-Set-Cookie header ignored", !jar.contains("Content-Type"));
-        chk("cookies: rendered sorted", renderCookieHeader(jar) == "csrf=xyz; sid=abc");
-        // a later hop overwrites an earlier cookie of the same name
-        mergeSetCookies(jar, Hdrs{ { "Set-Cookie", "sid=REFRESHED; Path=/" } });
-        chk("cookies: later Set-Cookie overwrites", jar.value("sid") == "REFRESHED");
-        // The Set-Cookie name match must be case-INSENSITIVE: HTTP/2 mandates
-        // lowercase header names, so a lowercase 'set-cookie' on a redirect hop must
-        // still be captured -- else the session cookie is silently dropped during
-        // redirect following and session-handling breaks.
-        QHash<QString, QString> jarLc;
-        mergeSetCookies(jarLc, Hdrs{ { "set-cookie", "sid=abc; Path=/" } });
-        chk("cookies: lowercase set-cookie (HTTP/2) captured", jarLc.value("sid") == "abc");
+        CookieJar jar;
+        const QUrl origin("https://app.example.com/login");
+        seedRequestCookies(jar, origin, "GET / HTTP/1.1\r\nCookie: original=fixture\r\n\r\n");
+        mergeSetCookies(jar, origin, Hdrs{{"set-cookie", "sid=root; Path=/"},
+            {"Set-Cookie", "sid=private; Path=/private; Secure"},
+            {"Set-Cookie", "bad=foreign; Domain=evil.test; Path=/"}});
+        const auto same = renderCookieHeader(jar, QUrl("https://app.example.com/private/x"));
+        chk("cookies: original retained at host", same.contains("original=fixture"));
+        chk("cookies: both paths retained", same.contains("sid=root") && same.contains("sid=private"));
+        chk("cookies: longer path first", same.indexOf("sid=private") < same.indexOf("sid=root"));
+        chk("cookies: wrong path excluded", !renderCookieHeader(jar, origin).contains("sid=private"));
+        chk("cookies: downgrade excludes secure", !renderCookieHeader(jar, QUrl("http://app.example.com/private")).contains("original="));
+        chk("cookies: secure path cookie excluded on http", !renderCookieHeader(jar, QUrl("http://app.example.com/private")).contains("sid=private"));
+        chk("cookies: foreign destination empty", renderCookieHeader(jar, QUrl("https://evil.test/private")).isEmpty());
+        chk("cookies: host-only excludes subdomain", renderCookieHeader(jar, QUrl("https://sub.app.example.com/private")).isEmpty());
+        mergeSetCookies(jar, origin, Hdrs{{"Set-Cookie", "sid=deleted; Path=/; Max-Age=0"}});
+        chk("cookies: deletion honored", !renderCookieHeader(jar, origin).contains("sid="));
+        mergeSetCookies(jar, origin, Hdrs{{"Set-Cookie", "domain=shared; Domain=example.com; Path=/"}});
+        chk("cookies: explicit domain usable by sibling", renderCookieHeader(jar, QUrl("https://other.example.com/")).contains("domain=shared"));
     }
-    chk("cookies: empty jar -> empty header", renderCookieHeader({}).isEmpty());
+    chk("body: 302 PUT preserved", redirectPreservesBody(302, "PUT"));
+    {
+        const QUrl origin("https://a.test/start"), next("https://a.test/next");
+        const QByteArray req = "POST /start HTTP/1.1\r\nHost: a.test\r\nContent-Type: application/json\r\nAuthorization: Bearer fixture\r\nX-Api-Key: fixture\r\nConnection: x-hop\r\nX-Hop: removed\r\n\r\n{}";
+        const auto same = buildFollowRequest(next, "POST", "", "{}", req, origin);
+        chk("307: content type retained", same.contains("Content-Type: application/json\r\n"));
+        chk("307: same-origin auth retained", same.contains("Authorization: Bearer fixture"));
+        chk("307: connection-nominated header removed", !same.contains("X-Hop:"));
+        const auto cross = buildFollowRequest(QUrl("https://b.test/"), "POST", "", "{}", req, origin);
+        chk("cross origin: credentials removed", !cross.contains("Authorization:") && !cross.contains("X-Api-Key:"));
+        chk("cross origin: entity retained", cross.contains("Content-Type: application/json") && cross.endsWith("{}"));
+        const auto get = buildFollowRequest(next, "GET", "", {}, req, origin, false);
+        chk("POST-to-GET: entity headers removed", !get.contains("Content-Type:") && !get.contains("Content-Length:"));
+        chk("IPv6 authority bracketed", buildFollowRequest(QUrl("http://[::1]:8080/"), "GET", "").contains("Host: [::1]:8080"));
+    }
 
     // ===== buildFollowRequest ===========================================
     {

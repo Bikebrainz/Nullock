@@ -10,6 +10,27 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Fixed
+- Keep history, findings, editor selections and browser caches within their
+  project and history generation. Reject project changes while work is active
+  and wait for queued results before shutdown.
+- Preserve complete binary request bodies through HAR, Repeater and Intruder;
+  reject unrepresentable edits and retain redirect methods, bodies and
+  destination-scoped cookies without forwarding cross-origin credentials.
+- Reject incomplete control requests before performing mutations and honor
+  explicit project/data-directory command-line options.
+- Deploy the native window, web assets, templates and required libraries in
+  Windows, Linux and macOS packages; verify installed apps and package formats
+  in CI. Keep macOS interception identities out of the login keychain.
+- Honor per-host certificate subjects with macOS LibreSSL, regenerate cached
+  leaves with incorrect subjects or expired validity, and verify that
+  interception rejects untrusted origins before an explicit exception.
+- Upgrade the build baseline to Qt 6.10.3, including upstream fixes for
+  [CVE-2025-14575](https://www.qt.io/blog/security-advisory-untrusted-search-path-vulnerability-in-openssl).
+- Show actual connection/project state in the app, repair the Scans table and
+  companion extension failures, and correct website navigation, download
+  handling and unsupported service/payment claims.
+
 ### Added
 - **Lab 89: Regular expression denial of service (a signup username check
   validates with `re.match(r'^([a-zA-Z0-9_]+)+$', username)`, and the

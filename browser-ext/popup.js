@@ -1,10 +1,19 @@
 // Nullock Companion popup wiring.
 
 const $ = (id) => document.getElementById(id);
+async function send(type) {
+  const reply = await chrome.runtime.sendMessage({ type });
+  if (!reply || reply.ok === false) throw new Error(reply?.error || "Companion did not respond.");
+  return reply;
+}
+function showError(error) {
+  $("status").textContent = error.message || String(error);
+  $("status").className = "bad";
+}
 
 async function refresh() {
-  const status = await new Promise((res) =>
-    chrome.runtime.sendMessage({ type: "getStatus" }, res));
+  const status = await send("getStatus");
+  $("status").className = "";
 
   $("toggle").textContent  = status.enabled ? "Disable Proxy" : "Enable Proxy";
   $("toggle").className    = status.enabled ? "" : "primary";
@@ -25,25 +34,17 @@ async function refresh() {
 }
 
 $("toggle").onclick = async () => {
-  await new Promise((res) =>
-    chrome.runtime.sendMessage({ type: "toggle" }, res));
-  await refresh();
+  try { await send("toggle"); await refresh(); } catch (error) { showError(error); }
 };
 
-$("ca").onclick = () => {
-  chrome.runtime.sendMessage({ type: "openCa" });
-  window.close();
+$("ca").onclick = async () => {
+  try { await send("openCa"); window.close(); } catch (error) { showError(error); }
 };
 
 $("ui").onclick = async () => {
-  const status = await new Promise((res) =>
-    chrome.runtime.sendMessage({ type: "getStatus" }, res));
-  chrome.tabs.create({
-    url: `http://${status.proxyHost}:${status.controlPort}/`,
-  });
-  window.close();
+  try { await send("openUi"); window.close(); } catch (error) { showError(error); }
 };
 
 $("options").onclick = () => chrome.runtime.openOptionsPage();
 
-refresh();
+refresh().catch(showError);

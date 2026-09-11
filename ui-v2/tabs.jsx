@@ -1541,6 +1541,10 @@ function RepeaterTab({ rep, dispatch, onSwitchTab }) {
           <div className="pane-head">
             <span style={{ color:"var(--accent-2)" }}>▸</span>
             <span>REQUEST · editable</span>
+            <select aria-label="Request encoding" value={rep.requestEncoding || "utf8"}
+              onChange={e => dispatch({type: "repeater-set", payload: {requestEncoding: e.target.value}})}>
+              <option value="utf8">UTF-8</option><option value="latin1">Latin-1 bytes</option>
+            </select>
             <span className="ph-count">{rep.request.split("\n").length} LINES</span>
             <button className="btn" style={{ marginLeft: 6 }} title="Send to Comparer"
                     onClick={() => sendToComparer("repeater request", rep.request)}>↦ CMP</button>
@@ -2240,7 +2244,7 @@ const PAYLOAD_PRESETS = {
     "", "a", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "0","-1","null","NULL","undefined","NaN","Infinity",
     "true","false","[]","{}","[null]",
-    "%00","%0a","%0d%0a","%ff"," ","\\n","\\r\\n",
+    "%00","%0a","%0d%0a","%ff","\u0000","\\n","\\r\\n",
     "../","./","\\\\","\\\\?\\",
     "${jndi:ldap://x}", "{{7*7}}", "<%= 7*7 %>",
   ].join("\n"),
@@ -2622,6 +2626,10 @@ function IntruderTab({ intruder, dispatch }) {
             <div className="pane-head">
               <span style={{ color:"var(--accent-2)" }}>▸</span>
               <span>TEMPLATE</span>
+              <select aria-label="Template encoding" value={intruder.requestEncoding || "utf8"}
+                onChange={e => dispatch({type: "intruder-set", payload: {requestEncoding: e.target.value}})}>
+                <option value="utf8">UTF-8</option><option value="latin1">Latin-1 bytes</option>
+              </select>
               <span className="ph-count">
                 {posCount} INSERTION POINT{posCount === 1 ? "" : "S"}
               </span>

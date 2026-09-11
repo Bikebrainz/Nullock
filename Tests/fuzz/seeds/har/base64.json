@@ -1,0 +1,1 @@
+{"log":{"entries":[{"request":{"url":"http://fixture.test/","method":"GET"},"response":{"status":200,"content":{"text":"AAH/","encoding":"base64"}}}]}}

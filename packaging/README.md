@@ -1,81 +1,60 @@
-# Packaging
+# Packaging Nullock
 
-How to produce installer artifacts for each platform. Everything here
-is free engineering -- no code-signing certs, no Apple Developer
-account, no paid CI. Users get a "this publisher is unverified" warning
-on first install; documented in `INSTALL.md` as expected.
+Build with Qt 6.10.3, CMake 3.24 or newer, and the dependencies in [INSTALL.md](../INSTALL.md). The package version comes from the root CMake project. Always test an installed tree before distributing an artifact.
 
-## Windows -- NSIS installer + portable ZIP
+## Windows
 
-Requires NSIS (free, https://nsis.sourceforge.io/Download).
+Install Qt's MSVC build, Visual Studio 2022 Build Tools, and `vcpkg install nghttp2:x64-windows openssl:x64-windows`. NSIS is needed for the `.exe` installer; ZIP packaging needs no installer tool.
 
-```cmd
-cmake -B build -G "Visual Studio 17 2022" -A x64
+```powershell
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.10.3/msvc2022_64 -DNULLOCK_NGHTTP2_ROOT=C:/vcpkg/installed/x64-windows
 cmake --build build --config Release --target NullockApp
-cd build
-cpack -G "NSIS;ZIP"
+cmake --install build --config Release --prefix stage
+python scripts/runtime_regression.py stage/bin/NullockApp.exe --gui --installed
+cpack --config build/CPackConfig.cmake -G "NSIS;ZIP" -C Release
 ```
 
-Outputs `Nullock-1.0.0-win64.exe` (installer) and
-`Nullock-1.0.0-win64.zip` (portable).
+Post-build deployment includes Qt libraries, plugins, QML imports, the Visual C++ runtime, nghttp2, and the OpenSSL executable and dependencies. `NULLOCK_OPENSSL_ROOT` overrides the OpenSSL prefix. CI starts the installed app with a system-only PATH.
 
-## Linux -- DEB / RPM / AppImage
+## Linux
 
-Requires the standard build chain (`dpkg-deb` / `rpmbuild`) plus the
-AppImage builder pulls its own.
+Qt's deployment script installs the Qt version used for the build, its plugins and QML imports. `patchelf` adjusts deployed library paths. OpenSSL and platform libraries remain native package dependencies. Qt documents the [X11 platform dependencies](https://doc.qt.io/qt-6/linux-requirements.html).
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-cd build
-cpack -G "DEB;RPM;TGZ"
-
-# AppImage path:
-cd ..
-DESTDIR=stage cmake --install build --prefix /usr
-packaging/appimage/build_appimage.sh stage
+cmake --build build -j 4
+cmake --install build --prefix "$PWD/stage"
+QT_QPA_PLATFORM=offscreen python3 scripts/runtime_regression.py stage/bin/NullockApp --gui --installed
+cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ'
 ```
 
-Outputs:
-- `Nullock-1.0.0-Linux.deb`
-- `Nullock-1.0.0-Linux.rpm`
-- `Nullock-1.0.0-Linux.tar.gz`
-- `Nullock-x86_64.AppImage`
-
-The AppImage is the easiest "run anywhere Linux" path -- single file,
-no install, no root.
-
-## macOS -- DMG
-
-Requires building on a Mac (no cross-builds for Apple). CPack drives it.
+DEB needs `dpkg-dev`; RPM needs `rpm`. For AppImage, install `wget` and ImageMagick, then:
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-cd build
-cpack -G "DragNDrop"
+DESTDIR="$PWD/appimage-stage" cmake --install build --prefix /usr
+bash packaging/appimage/build_appimage.sh appimage-stage
 ```
 
-Outputs `Nullock-1.0.0-Darwin.dmg`. Unsigned. Users have to
-right-click -> Open the first time to bypass Gatekeeper.
+The helper downloads linuxdeploy and uses extraction mode to avoid requiring a FUSE mount. Qt plugins and QML imports come from the verified CMake installation. Compatibility is bounded by the build's glibc baseline; test each supported distribution.
 
-## Future: code signing
+## macOS
 
-When we have certs:
+Build on macOS with Qt and `brew install nghttp2 openssl@3`. OpenSSL 3 is bundled for TLS handshakes; the system OpenSSL-compatible CLI generates certificates. Qt's deployment script places dependencies in the installed `.app`; web assets, templates, and extensions are under `Contents/Resources/nullock`.
 
-- **Windows**: a `signtool sign /fd SHA256 /tr http://timestamp.digicert.com ...`
-  step before the `cpack` invocation. NSIS scripts pick up signed exes
-  automatically.
-- **macOS**: `codesign --deep --force --options runtime --sign "Developer ID Application: ..."`
-  on the .app bundle, then `xcrun notarytool submit` for Apple
-  notarization, then `stapler staple` on the .dmg.
-- **Linux**: most distros don't enforce signing for unofficial repos;
-  Flatpak and AppImage have their own signing schemes (also free).
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+cmake --build build -j 4
+cmake --install build --prefix "$PWD/stage"
+python3 scripts/runtime_regression.py stage/NullockApp.app/Contents/MacOS/NullockApp --gui --installed
+cpack --config build/CPackConfig.cmake -G DragNDrop
+```
 
-## What we don't ship yet
+The release workflow signs the fully staged app when signing credentials are configured, then creates and optionally notarizes the DMG. Signing an incomplete build tree before deployment would leave subsequently copied dependencies unsigned.
 
-- Mac DMG (no Mac CI runner; documented for when someone has one)
-- Flatpak (manifest needed; not difficult)
-- Snap (snapcraft.io account needed for store distribution)
-- Microsoft Store (developer account: $19 one-time, deferred)
-- Mac App Store (Apple Developer: $99/yr, deferred)
+## Release checks
+
+The release workflow creates a **draft** only when all three platform jobs succeed. Each validates its staged runtime first. Signing remains optional; see [RELEASE_SIGNING.md](../RELEASE_SIGNING.md). Review actual artifacts and checksums before publication.
+
+`NULLOCK_DEPLOY_RUNTIME=OFF` is reserved for environments that provide their own Qt deployment. The Dockerfile uses it because its runtime stage explicitly copies Qt libraries and plugins. CI exercises that container's authenticated API and UI, including certificate initialization and graceful shutdown.
+
+The repository does not provide Flatpak, Snap, Microsoft Store, or Mac App Store packages.

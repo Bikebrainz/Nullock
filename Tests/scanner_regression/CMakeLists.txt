@@ -33,6 +33,9 @@ add_test(NAME scanner_regression COMMAND scanner_regression_test)
 # this test every config and the DLLs change names per config, so a
 # post-build hook is the simplest approach.
 if(WIN32)
+    # FrontEndGUI also loads Qt Gui/Quick transitively; nghttp2 is a raw import library.
+    set_tests_properties(scanner_regression PROPERTIES ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>;PATH=path_list_prepend:${NULLOCK_NGHTTP2_ROOT}/bin")
     set(_qt_bin "${Qt6_DIR}/../../../bin")
     set(_d "$<$<CONFIG:Debug>:d>")   # debug Qt DLLs carry a 'd' suffix; release don't
     set(_qt_dlls

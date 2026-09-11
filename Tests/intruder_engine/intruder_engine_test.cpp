@@ -23,14 +23,14 @@ void chk(const char *label, bool ok) {
 }
 // Render a 2-marker template with a combo, for value assertions.
 QString render2(const QStringList &combo) {
-    return applyPayloads(QStringLiteral("a=\xC2\xA7""d1\xC2\xA7&b=\xC2\xA7""d2\xC2\xA7"), combo);
+    return applyPayloads(QStringLiteral("a=\u00a7""d1\u00a7&b=\u00a7""d2\u00a7"), combo);
 }
 } // namespace
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
 
-    const QString tmpl2 = QStringLiteral("a=\xC2\xA7""d1\xC2\xA7&b=\xC2\xA7""d2\xC2\xA7");
+    const QString tmpl2 = QStringLiteral("a=\u00a7""d1\u00a7&b=\u00a7""d2\u00a7");
 
     // ---- countMarkers / parseAttackType -------------------------------
     chk("countMarkers: 2", countMarkers(tmpl2) == 2);

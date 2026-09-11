@@ -2,6 +2,26 @@
 
 namespace Nullock::Core::NetworkingLogic {
 
+QString decodeRequestText(const QByteArray &bytes, bool &latin1) {
+    const QString utf8 = QString::fromUtf8(bytes);
+    latin1 = utf8.toUtf8() != bytes;
+    return latin1 ? QString::fromLatin1(bytes) : utf8;
+}
+
+QByteArray encodeRequestText(const QString &text, bool latin1) {
+    if (latin1 && QString::fromLatin1(text.toLatin1()) != text) return {};
+    int sep = text.indexOf("\r\n\r\n"), width = 4;
+    const int lf = text.indexOf("\n\n");
+    if (sep < 0 || (lf >= 0 && lf < sep)) { sep = lf; width = 2; }
+    QString head = sep < 0 ? text : text.left(sep);
+    const QString body = sep < 0 ? QString() : text.mid(sep + width);
+    head.replace("\r\n", "\n");
+    head.replace("\n", "\r\n");
+    const QString raw = head + "\r\n\r\n" + body;
+    return latin1 ? raw.toLatin1() : raw.toUtf8();
+}
+
+
 StatusLine parseStatusLine(const QByteArray &line) {
     StatusLine out;
     const int sp1 = line.indexOf(' ');

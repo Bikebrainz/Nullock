@@ -363,6 +363,9 @@ textarea, input { user-select: text; }
 .tb-tabs::-webkit-scrollbar { height: 3px; }
 .tb-tabs::-webkit-scrollbar-thumb { background: var(--line); }
 .tb-tab {
+  border: 0;
+  font-family: inherit;
+  flex-shrink: 0;
   position: relative;
   display: flex;
   align-items: center;
@@ -898,6 +901,9 @@ textarea, input { user-select: text; }
 .filterbar::-webkit-scrollbar { height: 3px; }
 .filterbar::-webkit-scrollbar-thumb { background: var(--line); }
 .filterbar .fld { flex: 0 0 260px; }
+.filterbar > * { flex-shrink: 0; }
+.filterbar button, .filterbar > span { white-space: nowrap; }
+.filterbar .fld:has(input[placeholder*="search"]) { min-width: 220px; }
 .seg-btns {
   display: flex;
   border: 1px solid var(--line);

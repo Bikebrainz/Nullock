@@ -3,10 +3,15 @@
 #include "cert_logic.hpp"
 
 #include <QDir>
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QMutexLocker>
 #include <QProcess>
+#include <QProcessEnvironment>
+#include <QSaveFile>
+#include <QSslCertificate>
 #include <QStandardPaths>
 #include <QtGlobal>      // qWarning
 
@@ -106,10 +111,13 @@ CertAuthority::CertAuthority(QString caDir, QObject *parent)
 }
 
 QString CertAuthority::defaultCaDir() {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/ca";
+    return qEnvironmentVariable("NULLOCK_DATA_DIR", QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)) + "/ca";
 }
 
 QString CertAuthority::findOpensslExe() {
+    const QString bundled = QCoreApplication::applicationDirPath() + "/openssl.exe";
+    if (QFileInfo::exists(bundled)) return bundled;
+
     static const QStringList candidates = {
         QStringLiteral("C:/Program Files/OpenSSL-Win64/bin/openssl.exe"),
         QStringLiteral("C:/Program Files (x86)/OpenSSL-Win64/bin/openssl.exe"),
@@ -126,7 +134,23 @@ QString CertAuthority::findOpensslExe() {
 
 bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
     if (m_opensslExe.isEmpty()) return false;
+    // Use a minimal, owned configuration instead of a developer-machine path
+    // compiled into OpenSSL. x509_extensions applies only to the root's req -x509.
+    const QString configPath = m_caDir + "/openssl.cnf";
+    QSaveFile config(configPath);
+    if (!config.open(QIODevice::WriteOnly)) return false;
+    // Every req invocation supplies -subj. LibreSSL ignores that option when
+    // prompt=no is set, making every leaf inherit the root's subject instead.
+    config.write("[req]\ndistinguished_name=dn\ndefault_md=sha256\nx509_extensions=v3_ca\n"
+                 "[dn]\nCN=Nullock Local Root CA\nO=Nullock\n"
+                 "[v3_ca]\nbasicConstraints=critical,CA:true\n"
+                 "keyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\n"
+                 "authorityKeyIdentifier=keyid:always\n");
+    if (!config.commit()) return false;
     QProcess p;
+    auto environment = QProcessEnvironment::systemEnvironment();
+    environment.insert("OPENSSL_CONF", configPath);
+    p.setProcessEnvironment(environment);
     p.setProgram(m_opensslExe);
     p.setArguments(args);
     p.start();
@@ -202,7 +226,11 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         if (certFile.open(QFile::ReadOnly)) cached.certPem = certFile.readAll();
         QFile keyFile(persistKey);
         if (keyFile.open(QFile::ReadOnly)) cached.keyPem = keyFile.readAll();
-        if (cached.valid()) {
+        const QSslCertificate cachedCertificate(cached.certPem, QSsl::Pem);
+        const auto now = QDateTime::currentDateTimeUtc();
+        if (cached.valid() && !cachedCertificate.isNull()
+            && cachedCertificate.subjectInfo(QSslCertificate::CommonName).contains(host)
+            && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now) {
             // Re-assert owner-only ACL on reuse, the same way ensureCa does for
             // ca.key on startup. Leaves minted before the key-lockdown fix are
             // reused verbatim on this path and would otherwise stay at the

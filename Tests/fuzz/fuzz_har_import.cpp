@@ -10,13 +10,21 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstdlib>
 #include <vector>
 
 namespace {
+void cleanupContext();
 struct FuzzCtx {
     QCoreApplication *app = nullptr;
     Nullock::Core::ProjectStore *store = nullptr;
-    QTemporaryDir tmpDir;
+    QTemporaryDir *tmpDir = nullptr;
+    void shutdown() {
+        delete store; store = nullptr;
+        delete tmpDir; tmpDir = nullptr;
+        delete app; app = nullptr;
+    }
+    ~FuzzCtx() { shutdown(); }
     void init() {
         if (app) return;
         // libFuzzer hands us argc/argv via separate API; pass dummies.
@@ -24,11 +32,16 @@ struct FuzzCtx {
         static char arg0[] = "fuzz";
         static char *argv[] = { arg0, nullptr };
         app = new QCoreApplication(argc, argv);
+        tmpDir = new QTemporaryDir;
         store = new Nullock::Core::ProjectStore;
-        store->open(tmpDir.path());
+        store->open(tmpDir->path());
+        // QtSql initializes process-global state during open(). Destroy our
+        // database before those globals, including under libFuzzer's exit path.
+        std::atexit(cleanupContext);
     }
 };
 FuzzCtx g_ctx;
+void cleanupContext() { g_ctx.shutdown(); }
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
@@ -39,6 +52,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     // for paths -- importHarBytes itself has no cap so we apply one here
     // to keep fuzz iterations fast).
     if (bytes.size() > 8 * 1024 * 1024) bytes.truncate(8 * 1024 * 1024);
+    g_ctx.store->clearHistory();
     (void)g_ctx.store->importHarBytes(bytes);
     return 0;
 }
@@ -52,7 +66,7 @@ int main(int argc, char **argv) {
     }
     for (int i = 1; i < argc; ++i) {
         std::FILE *f = std::fopen(argv[i], "rb");
-        if (!f) continue;
+        if (!f) { std::perror(argv[i]); return 2; }
         std::vector<uint8_t> buf;
         uint8_t chunk[4096];
         size_t n;

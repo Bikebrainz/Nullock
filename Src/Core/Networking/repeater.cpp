@@ -87,6 +87,12 @@ void Repeater::setUseTls(bool tls) {
     else if (t.port == 443 && !t.useTls) t.port = 80;
     emit targetChanged();
 }
+void Repeater::setRequestBytes(const QByteArray &bytes) {
+    auto &tab = activeTab_();
+    tab.requestText = NetworkingLogic::decodeRequestText(bytes, tab.requestLatin1);
+    emit requestTextChanged();
+}
+
 void Repeater::setRequestText(const QString &txt) {
     auto &t = activeTab_();
     if (txt == t.requestText) return;
@@ -103,7 +109,7 @@ void Repeater::loadFromHistory(int row) {
     t.host        = host;
     t.port        = m_model->portAt(row);
     t.useTls      = m_model->tlsAt(row);
-    t.requestText = m_model->requestRawAt(row);
+    t.requestText = NetworkingLogic::decodeRequestText(Nullock::Proxy::serializeRequestForOrigin(*m_model->requestAt(row)), t.requestLatin1);
     if (t.name.isEmpty() || t.name.startsWith("tab "))
         t.name = autoTabName(t.host, t.requestText);
 
@@ -115,6 +121,7 @@ void Repeater::loadFromHistory(int row) {
 void Repeater::clear() {
     auto &t = activeTab_();
     t.requestText.clear();
+    t.requestLatin1 = false;
     t.responseText.clear();
     t.statusLine.clear();
     t.elapsedMs     = -1;
@@ -137,17 +144,18 @@ void Repeater::send() {
     auto &t = activeTab_();
     if (t.host.isEmpty() || t.requestText.isEmpty()) return;
 
+    QByteArray bytes = NetworkingLogic::encodeRequestText(t.requestText, t.requestLatin1);
+    if (bytes.isEmpty()) {
+        t.responseText = "[error] Request contains characters outside Latin-1. Select UTF-8 encoding.";
+        t.statusLine = "Encoding error";
+        t.elapsedMs = 0;
+        t.responseBytes = 0;
+        emit responseChanged();
+        return;
+    }
     m_busy = true;
     emit busyChanged();
 
-    // Normalize line endings to CRLF as the wire format expects.
-    QString normalized = t.requestText;
-    normalized.replace("\r\n", "\n");
-    normalized.replace("\n", "\r\n");
-    // Make sure we end with a blank line before any body.
-    if (!normalized.contains("\r\n\r\n"))
-        normalized += "\r\n\r\n";
-    QByteArray bytes = normalized.toUtf8();
     // Recompute Content-Length from the actual body (Burp's default) unless the
     // user turned it off to hand-craft a desync. The chain runner's audited helper
     // also collapses a duplicate Content-Length and drops it under
@@ -185,26 +193,9 @@ void Repeater::send() {
             const int hb = bytes.indexOf("\r\n\r\n");
             if (hb >= 0) body = bytes.mid(hb + 4);
         }
-        QHash<QString, QString> jar;
-        // Seed the jar with the original request's own Cookie header so a pre-set
-        // session cookie survives the follow (buildFollowRequest emits only jar
-        // cookies).
-        if (m_followCookies) {
-            const int hb = bytes.indexOf("\r\n\r\n");
-            const QByteArray head = hb >= 0 ? bytes.left(hb) : bytes;
-            for (const QByteArray &line : head.split('\n')) {
-                QByteArray l = line.endsWith('\r') ? line.left(line.size() - 1) : line;
-                const int c = l.indexOf(':');
-                if (c < 0) continue;
-                if (QString::fromUtf8(l.left(c)).trimmed().compare("Cookie", Qt::CaseInsensitive) != 0) continue;
-                for (const QByteArray &pair : l.mid(c + 1).split(';')) {
-                    const int eq = pair.indexOf('=');
-                    if (eq <= 0) continue;
-                    jar.insert(QString::fromUtf8(pair.left(eq)).trimmed(),
-                               QString::fromUtf8(pair.mid(eq + 1)).trimmed());
-                }
-            }
-        }
+        RL::CookieJar jar;
+        QByteArray previousRequest = bytes;
+        if (m_followCookies) RL::seedRequestCookies(jar, current, bytes);
         while (redirectHops < kMaxRedirectHops && result.ok
                && RL::isRedirectStatus(result.parsed.statusCode)) {
             QString loc;
@@ -217,15 +208,16 @@ void Repeater::send() {
             if (!RL::followAllowed(RL::FollowPolicy(m_followPolicy),
                                    current.host(), nextHost, nextInScope))
                 break;
-            if (m_followCookies) RL::mergeSetCookies(jar, result.parsed.headers);
+            if (m_followCookies) RL::mergeSetCookies(jar, current, result.parsed.headers);
             const int status = result.parsed.statusCode;
             const QString nextMethod  = RL::methodAfterRedirect(status, method);
-            const QByteArray nextBody = RL::redirectPreservesBody(status) ? body : QByteArray();
-            const QString cookieHdr   = m_followCookies ? RL::renderCookieHeader(jar) : QString();
-            const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody);
+            const QByteArray nextBody = RL::redirectPreservesBody(status, method) ? body : QByteArray();
+            const QString cookieHdr   = m_followCookies ? RL::renderCookieHeader(jar, next) : QString();
+            const QByteArray nextReq  = RL::buildFollowRequest(next, nextMethod, cookieHdr, nextBody, previousRequest, current, RL::redirectPreservesBody(status, method));
             const bool nextTls  = next.scheme().compare("https", Qt::CaseInsensitive) == 0;
             const int  nextPort = next.port(nextTls ? 443 : 80);
             result  = m_client.send(nextHost, static_cast<quint16>(nextPort), nextTls, nextReq);
+            previousRequest = nextReq;
             current = next;
             method  = nextMethod;
             body    = nextBody;
@@ -271,6 +263,7 @@ void Repeater::send() {
     {
         RepeaterHistoryEntry h;
         h.request       = t.requestText;
+        h.requestLatin1 = t.requestLatin1;
         h.response      = t.responseText;
         h.statusLine    = t.statusLine;
         h.sentAt        = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
@@ -296,6 +289,7 @@ bool Repeater::loadHistoryAt(int index) {
     if (index < 0 || index >= t.history.size()) return false;
     const RepeaterHistoryEntry &h = t.history.at(index);
     t.requestText   = h.request;
+    t.requestLatin1 = h.requestLatin1;
     t.responseText  = h.response;
     t.statusLine    = h.statusLine;
     t.elapsedMs     = h.elapsedMs;
@@ -336,6 +330,7 @@ QJsonObject Repeater::exportState() const {
             { "port",       t.port },
             { "tls",        t.useTls },
             { "request",    t.requestText },
+            { "requestLatin1", t.requestLatin1 },
             { "notes",      t.notes },
             { "statusLine", t.statusLine },
         });
@@ -356,6 +351,7 @@ void Repeater::importState(const QJsonObject &state) {
         t.port        = o.value("port").toInt(443);
         t.useTls      = o.value("tls").toBool(true);
         t.requestText = o.value("request").toString();
+        t.requestLatin1 = o.value("requestLatin1").toBool();
         t.notes       = o.value("notes").toString();
         t.statusLine  = o.value("statusLine").toString();
         restored.append(t);
@@ -389,7 +385,7 @@ int Repeater::addTabFromHistory(int row) {
     t.host        = host;
     t.port        = m_model->portAt(row);
     t.useTls      = m_model->tlsAt(row);
-    t.requestText = m_model->requestRawAt(row);
+    t.requestText = NetworkingLogic::decodeRequestText(Nullock::Proxy::serializeRequestForOrigin(*m_model->requestAt(row)), t.requestLatin1);
     t.name        = autoTabName(t.host, t.requestText);
     m_tabs.append(t);
     m_active = m_tabs.size() - 1;
@@ -410,7 +406,7 @@ int Repeater::addTabFromHistoryById(int id) {
     t.host        = host;
     t.port        = m_model->portById(id);
     t.useTls      = m_model->tlsById(id);
-    t.requestText = m_model->requestRawById(id);
+    t.requestText = NetworkingLogic::decodeRequestText(Nullock::Proxy::serializeRequestForOrigin(*m_model->requestById(id)), t.requestLatin1);
     t.name        = autoTabName(t.host, t.requestText);
     m_tabs.append(t);
     m_active = m_tabs.size() - 1;

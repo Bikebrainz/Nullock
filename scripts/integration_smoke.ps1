@@ -5,17 +5,16 @@
 # the whole new surface against ONE instance with accumulated state and checks
 # cross-feature consistency (the report bundle must agree with the dedicated
 # endpoints, etc.).
+param([Parameter(Mandatory=$true)][string]$exe)
 $ErrorActionPreference = "Stop"
-$exe = "D:\dev\Nullock\Build\Src\App\Release\NullockApp.exe"
+$exe = (Resolve-Path -LiteralPath $exe).Path
 
-Get-Process NullockApp -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
 $projDir = Join-Path $env:TEMP "nullock-smoke-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path $projDir | Out-Null
 $proxyPort = Get-Random -Minimum 20000 -Maximum 45000
 $ctlPort   = Get-Random -Minimum 20000 -Maximum 45000
 $nl = Start-Process -FilePath $exe `
-    -ArgumentList "--headless","--proxy-port=$proxyPort","--control-port=$ctlPort","--project=$projDir","--no-update-check" `
+    -ArgumentList @("--headless","--proxy-port=$proxyPort","--control-port=$ctlPort",('--project="' + $projDir + '"'),('--data-dir="' + (Join-Path $projDir "app-data") + '"'),"--no-update-check") `
     -PassThru -WindowStyle Hidden
 $base = "http://127.0.0.1:$ctlPort"
 $hdr  = @{ "Origin"="http://127.0.0.1:$ctlPort"; "X-Nullock-UI"="1" }
@@ -115,5 +114,9 @@ try {
 }
 finally {
     if ($nl) { Stop-Process -Id $nl.Id -Force -ErrorAction SilentlyContinue }
-    Remove-Item -Recurse -Force $projDir -ErrorAction SilentlyContinue
+    $resolvedProject = [IO.Path]::GetFullPath($projDir)
+    $tempRoot = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    if ($resolvedProject.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $resolvedProject -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

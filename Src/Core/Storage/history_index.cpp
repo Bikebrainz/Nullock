@@ -108,6 +108,23 @@ int HistoryIndex::rowCount() const {
     return q.value(0).toInt();
 }
 
+bool HistoryIndex::clear() {
+    QMutexLocker lk(&m_mutex);
+    return !m_db.isOpen() || QSqlQuery(m_db).exec("DELETE FROM rows");
+}
+
+void HistoryIndex::beginRebuild() {
+    QMutexLocker lk(&m_mutex);
+    if (!m_db.isOpen()) return;
+    m_db.transaction();
+    QSqlQuery(m_db).exec("DELETE FROM rows");
+}
+
+void HistoryIndex::endRebuild() {
+    QMutexLocker lk(&m_mutex);
+    if (m_db.isOpen()) m_db.commit();
+}
+
 namespace {
 QString mimeOf(const Nullock::Proxy::HttpResponse &r) {
     for (const auto &h : r.headers)
@@ -197,7 +214,8 @@ QString renderRawRequest(const Nullock::Proxy::HttpRequest &req) {
     for (const auto &h : req.headers)
         out += QString("%1: %2\n").arg(h.first, h.second);
     out += "\n";
-    out += QString::fromUtf8(req.body.left(64 * 1024));
+    const QString text = QString::fromUtf8(req.body);
+    out += text.toUtf8() == req.body ? text : QString::fromLatin1(req.body);
     return out;
 }
 

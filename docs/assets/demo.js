@@ -1,15 +1,20 @@
-/* nullock landing — live capture demo + copy buttons */
+/* nullock landing — synthetic capture example + copy buttons */
 (function () {
   "use strict";
 
   /* ---------- copy-to-clipboard ---------- */
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", async function (e) {
     var btn = e.target.closest(".copy");
     if (!btn) return;
     var text = (btn.getAttribute("data-copy") || "").replace(/&#10;/g, "\n");
-    navigator.clipboard && navigator.clipboard.writeText(text);
     var prev = btn.textContent;
-    btn.textContent = "copied ✓";
+    try {
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "copied ✓";
+    } catch (_) {
+      btn.textContent = "Select and copy manually";
+    }
     setTimeout(function () { btn.textContent = prev; }, 1400);
   });
 
@@ -74,6 +79,7 @@
     if (!r) return;
     document.querySelectorAll(".hist-row").forEach(function(el){
       el.classList.toggle("sel", +el.dataset.id === id);
+      el.setAttribute("aria-selected", String(+el.dataset.id === id));
     });
     document.getElementById("reqBody").textContent = rawRequest(r);
     document.getElementById("resBody").textContent = rawResponse(r);
@@ -91,6 +97,12 @@
     var el = document.createElement("div");
     el.className = "hist-row";
     el.dataset.id = r.id;
+    el.tabIndex = 0;
+    el.setAttribute("role", "row");
+    el.setAttribute("aria-selected", "false");
+    el.addEventListener("keydown", function(e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(r.id); }
+    });
     el.innerHTML =
       '<span>' + r.id + '</span>' +
       '<span class="' + methodClass(r.m) + '">' + r.m + '</span>' +
@@ -105,7 +117,7 @@
     // prune DOM to match
     while (body.children.length > 9) body.removeChild(body.firstChild);
 
-    document.getElementById("rowcount").textContent = n + " captured";
+    document.getElementById("rowcount").textContent = n + " examples";
 
     // auto-select newest if user hasn't picked, or selected got pruned
     var stillThere = rows.some(function(x){ return x.id === selectedId; });
@@ -118,21 +130,13 @@
   for (var i = 0; i < 5; i++) addRow();
   select(rows[2].id);
 
-  var paused = false;
-  document.getElementById("proxy").addEventListener("mouseenter", function(){ paused = true; });
-  document.getElementById("proxy").addEventListener("mouseleave", function(){ paused = false; });
-
-  function tick(){
-    if (!paused) addRow();
-    setTimeout(tick, 1600 + Math.random() * 900);
-  }
-  setTimeout(tick, 1600);
-
-  // tab clicks (visual only)
-  document.querySelectorAll(".ptab").forEach(function(tab){
-    tab.addEventListener("click", function(){
-      document.querySelectorAll(".ptab").forEach(function(t){ t.classList.remove("active"); });
-      tab.classList.add("active");
-    });
+  // Animation is opt-in and can be paused with mouse, keyboard or touch.
+  var paused = true;
+  var pause = document.getElementById("demoPause");
+  pause.addEventListener("click", function () {
+    paused = !paused;
+    pause.setAttribute("aria-pressed", String(paused));
+    pause.textContent = paused ? "Resume animation" : "Pause animation";
   });
+  setInterval(function () { if (!paused && !document.hidden) addRow(); }, 2000);
 })();

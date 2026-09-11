@@ -1068,9 +1068,9 @@ fi
 
 CTL=$(( (RANDOM % 4000) + 21000 ))
 PROJ="$(mktemp -d /tmp/nullock-probe-proj.XXXXXX)"
-"$EXE" --headless --control-port="$CTL" --proxy-port="$(( CTL + 1 ))" --project="$PROJ" --no-update-check &
+"$EXE" --headless --control-port="$CTL" --proxy-port="$(( CTL + 1 ))" --project="$PROJ" --data-dir="$PROJ/app-data" --no-update-check &
 APP_PID=$!
-cleanup() { kill "$MOCK_PID" "$APP_PID" 2>/dev/null; rm -f "$MOCK" "$MOCK_OUT"; rm -rf "$PROJ"; }
+cleanup() { kill "$MOCK_PID" "$APP_PID" 2>/dev/null; wait "$MOCK_PID" "$APP_PID" 2>/dev/null; rm -f "$MOCK" "$MOCK_OUT"; case "$PROJ" in /tmp/nullock-probe-proj.*) rm -rf -- "$PROJ";; esac; }
 trap cleanup EXIT
 
 BASEURL="http://127.0.0.1:$CTL"

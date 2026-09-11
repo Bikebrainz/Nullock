@@ -51,6 +51,7 @@ struct RunConfig {
     int         port = 443;
     bool        tls = true;
     QString     requestTemplate;
+    bool requestLatin1 = false;
     int         attackType = 0;
     QStringList payloadSets;                          // newline-joined block/pos
     QList<IntruderRules::Rule> rules;

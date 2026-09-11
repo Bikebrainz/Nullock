@@ -12,11 +12,8 @@
 #   # one-shot CI gate (exits nonzero on a finding at/above the threshold):
 #   docker run --rm nullock --scan https://target.example/ --fail-on high
 #
-# NOTE: validated green by CI's build-docker job (docker build + `--help`
-# runtime smoke, network-free) as of commit 6f39fea. The `--headless
-# --listen=0.0.0.0` server entrypoint itself is NOT covered by that smoke
-# check (it would need a live listener + token in a CI-safe way) -- only the
-# image build and basic binary startup are proven. Still no published image
+# CI builds this image and checks startup, authenticated API access, served
+# browser assets, certificate initialization and graceful shutdown. There is no published image
 # (this file is a local/CI build recipe, not a distribution channel) and the
 # base images are pinned to a tag (`ubuntu:22.04`), not a content digest.
 
@@ -25,7 +22,7 @@
 # --------------------------------------------------------------------------
 FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
-ARG QT_VERSION=6.7.3
+ARG QT_VERSION=6.10.3
 
 # NOTE: cmake is deliberately NOT installed via apt here -- Ubuntu 22.04's repo
 # ships 3.22.1, but CMakeLists.txt:1 requires 3.24+ (`cmake_minimum_required`
@@ -40,14 +37,14 @@ ARG QT_VERSION=6.7.3
 # ones, and a bare ubuntu:22.04 has neither installed (GitHub's hosted runner
 # images do, invisibly, which is why the CI build-linux job never needed this).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ninja-build build-essential git \
+        ninja-build build-essential git patchelf libxcb-cursor0 \
         libnghttp2-dev libssl-dev zlib1g-dev \
         libfontconfig1-dev libfreetype-dev libdbus-1-dev \
         python3 python3-pip \
         libgl1-mesa-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Qt 6.7.x via aqtinstall (the CLI equivalent of the install-qt-action CI uses).
+# Qt via aqtinstall (the CLI equivalent of the install-qt-action CI uses).
 # NOTE: aqtinstall renamed the Linux desktop x86_64 arch from "gcc_64" to
 # "linux_gcc_64" as of Qt 6.7.0 (aqtinstall v3.1.12) -- the old name (still
 # valid for Qt5) has no package metadata for 6.7+ and made `aqt install-qt`
@@ -71,8 +68,10 @@ COPY . .
 # the Runtime component also installs ui-v2/templates/extensions in one shot,
 # so the runtime stage no longer hand-copies each of those from the source
 # tree (a copy that would silently drift if the project ever restructures them).
-RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/nullock \
-    && cmake --build build --target NullockApp -j \
+# This image explicitly copies its Qt runtime below. Avoid deploying a second
+# desktop Qt tree (and its unused X11 plugins) into the headless install prefix.
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/nullock -DNULLOCK_DEPLOY_RUNTIME=OFF \
+    && cmake --build build --target NullockApp -j 4 \
     && cmake --install build --component Runtime
 
 # --------------------------------------------------------------------------
@@ -80,7 +79,7 @@ RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/o
 # --------------------------------------------------------------------------
 FROM ubuntu:22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
-ARG QT_VERSION=6.7.3
+ARG QT_VERSION=6.10.3
 
 # Runtime counterparts of the build stage's libfontconfig1-dev / libfreetype-dev
 # / libdbus-1-dev -- the copied libQt6Gui.so / libQt6DBus.so dlopen these at
@@ -97,7 +96,7 @@ ARG QT_VERSION=6.7.3
 # containers) have no GPU, so software rasterization is the only path to a
 # working GL context at all.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnghttp2-14 libssl3 libglib2.0-0 libxkbcommon0 \
+        openssl libnghttp2-14 libssl3 libglib2.0-0 libxkbcommon0 libxcb-cursor0 \
         libgl1 libopengl0 libegl1 libgles2 libgl1-mesa-dri \
         libfontconfig1 libfreetype6 libdbus-1-3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

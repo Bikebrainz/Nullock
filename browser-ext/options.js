@@ -1,8 +1,16 @@
 const $ = (id) => document.getElementById(id);
+async function send(message) {
+  const reply = await chrome.runtime.sendMessage(message);
+  if (!reply || reply.ok === false) throw new Error(reply?.error || "Companion did not respond.");
+  return reply;
+}
+function showError(error) {
+  $("saved").textContent = error.message || String(error);
+  $("saved").style.color = "#f87171";
+}
 
 async function load() {
-  const cfg = await new Promise((res) =>
-    chrome.runtime.sendMessage({ type: "getStatus" }, res));
+  const cfg = await send({ type: "getStatus" });
   $("proxyHost").value   = cfg.proxyHost;
   $("proxyPort").value   = cfg.proxyPort;
   $("controlPort").value = cfg.controlPort;
@@ -10,18 +18,23 @@ async function load() {
 }
 
 $("save").onclick = async () => {
-  await new Promise((res) =>
-    chrome.runtime.sendMessage({
+  try {
+    for (const id of ["proxyPort", "controlPort"]) {
+      if (!$(id).reportValidity()) return;
+    }
+    await send({
       type: "save",
       config: {
         proxyHost:   $("proxyHost").value.trim() || "127.0.0.1",
-        proxyPort:   parseInt($("proxyPort").value, 10) || 8080,
-        controlPort: parseInt($("controlPort").value, 10) || 17777,
+        proxyPort:   Number($("proxyPort").value),
+        controlPort: Number($("controlPort").value),
         bypassList:  $("bypassList").value.split("\n").map(s => s.trim()).filter(Boolean),
       },
-    }, res));
+    });
+  $("saved").style.color = "#4ade80";
   $("saved").textContent = "saved";
   setTimeout(() => { $("saved").textContent = ""; }, 1500);
+  } catch (error) { showError(error); }
 };
 
-load();
+load().catch(showError);

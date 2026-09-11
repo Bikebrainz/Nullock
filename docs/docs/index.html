@@ -15,7 +15,7 @@
       <img class="mark" src="../assets/favicon.svg" alt="">
       <span class="word">nullock</span>
     </a>
-    <button class="nav-toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">≡</button>
+    <button class="nav-toggle" aria-label="Menu" aria-controls="navlinks" aria-expanded="false" onclick="this.setAttribute('aria-expanded', document.getElementById('navlinks').classList.toggle('open'))">≡</button>
     <div class="nav-links" id="navlinks">
       <a href="../index.html">Product</a>
       <a href="../docs/index.html" class="active">Docs</a>

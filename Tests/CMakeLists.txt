@@ -615,3 +615,9 @@ add_subdirectory(ws_repeater)
 # than the catalog's claims, and the installed-vs-available merge.
 # Run via: ctest -R marketplace_logic -V
 add_subdirectory(marketplace_logic)
+
+add_subdirectory(request_codec)
+find_program(NULLOCK_NODE_EXECUTABLE node)
+if(NULLOCK_NODE_EXECUTABLE)
+    add_test(NAME ui_state COMMAND "${NULLOCK_NODE_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/ui/real_data_test.cjs")
+endif()

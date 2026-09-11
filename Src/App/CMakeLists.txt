@@ -13,6 +13,7 @@ target_compile_definitions(NullockApp PRIVATE
 # Register the QML module for the App
 qt_add_qml_module(NullockApp
     URI Nullock.App
+    RESOURCE_PREFIX /
     VERSION 1.0
     QML_FILES app.qml
 )
@@ -46,6 +47,24 @@ else()
     )
 endif()
 
+# Make the browser UI and its sibling catalogs available in every build layout.
+# Installed layouts are handled by the top-level install rules.
+if(APPLE)
+    set(_dev_assets "$<TARGET_BUNDLE_DIR:NullockApp>/Contents/Resources/nullock")
+    set(_dev_ui "${_dev_assets}/ui")
+else()
+    set(_dev_assets "$<TARGET_FILE_DIR:NullockApp>")
+    set(_dev_ui "${_dev_assets}/ui-v2")
+endif()
+add_custom_target(NullockBrowserAssets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/ui-v2" "${_dev_ui}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/templates" "${_dev_assets}/templates"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/extensions" "${_dev_assets}/extensions"
+    COMMENT "Refreshing browser UI and catalogs"
+    VERBATIM)
+# Run even when only browser assets changed and the executable needs no relink.
+add_dependencies(NullockApp NullockBrowserAssets)
+
 # Link FrontEnd QML module
 target_link_libraries(NullockApp PRIVATE
     FrontEndGUI
@@ -63,6 +82,8 @@ target_link_libraries(NullockApp PRIVATE
 
 # Set executable properties based on platform
 if(APPLE)
+    find_package(OpenSSL 3 REQUIRED)
+    target_link_libraries(NullockApp PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     set_target_properties(NullockApp PROPERTIES
         MACOSX_BUNDLE ON
     )
@@ -124,4 +145,33 @@ elseif(WIN32)
             "$<TARGET_FILE_DIR:NullockApp>/sqldrivers/"
         COMMENT "deploying qsqlite driver plugin"
     )
+    # Deploy the actual runtime before installation/CPack consumes this directory.
+    find_program(NULLOCK_WINDEPLOYQT windeployqt HINTS "${_qt_bin_dir}" REQUIRED NO_DEFAULT_PATH)
+    find_program(NULLOCK_OPENSSL_EXECUTABLE openssl
+        HINTS "${NULLOCK_OPENSSL_ROOT}/tools/openssl" "${NULLOCK_OPENSSL_ROOT}/bin" REQUIRED)
+    get_filename_component(_openssl_bin "${NULLOCK_OPENSSL_EXECUTABLE}" DIRECTORY)
+    get_filename_component(_msvc_bin "${CMAKE_LINKER}" DIRECTORY)
+    find_program(NULLOCK_DUMPBIN dumpbin HINTS "${_msvc_bin}" REQUIRED)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    include(InstallRequiredSystemLibraries)
+    add_custom_command(TARGET NullockApp POST_BUILD
+        COMMAND "${NULLOCK_WINDEPLOYQT}" --no-translations --compiler-runtime
+            --qmldir "${CMAKE_SOURCE_DIR}/Src" "$<TARGET_FILE:NullockApp>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+            "$<TARGET_FILE_DIR:NullockApp>/platforms/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} "$<TARGET_FILE_DIR:NullockApp>"
+        COMMAND ${CMAKE_COMMAND}
+            "-DAPP_EXE=$<TARGET_FILE:NullockApp>"
+            "-DDEST=$<TARGET_FILE_DIR:NullockApp>"
+            "-DDUMPBIN=${NULLOCK_DUMPBIN}"
+            "-DQT_BIN=${_qt_bin_dir}"
+            "-DNGHTTP2_BIN=${NULLOCK_NGHTTP2_ROOT}/bin"
+            "-DOPENSSL_EXE=${NULLOCK_OPENSSL_EXECUTABLE}"
+            "-DOPENSSL_BIN=${_openssl_bin}"
+            "-DOPENSSL_ROOT=${NULLOCK_OPENSSL_ROOT}"
+            -P "${CMAKE_SOURCE_DIR}/packaging/deploy_windows.cmake"
+        COMMAND_EXPAND_LISTS VERBATIM
+        COMMENT "Deploying Qt, compiler, nghttp2 and OpenSSL runtime dependencies")
 endif()
