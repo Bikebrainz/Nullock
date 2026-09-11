@@ -320,9 +320,8 @@ void Intruder::loadFromHistory(int row) {
     emit templateChanged();
 }
 
-QByteArray Intruder::saveRun() const {
-    IntruderPersist::SavedRun run;
-    IntruderPersist::RunConfig &c = run.config;
+IntruderPersist::RunConfig Intruder::configuration() const {
+    IntruderPersist::RunConfig c;
     c.host            = m_host;
     c.port            = m_port;
     c.tls             = m_useTls;
@@ -343,6 +342,12 @@ QByteArray Intruder::saveRun() const {
     c.recursiveGrepCount = m_recursiveGrepCount;
     c.followPolicy       = m_followPolicy;
     c.followCookies      = m_followCookies;
+    return c;
+}
+
+QByteArray Intruder::saveRun() const {
+    IntruderPersist::SavedRun run;
+    run.config = configuration();
 
     for (const IntruderAttack *a : m_attacks) {
         IntruderPersist::ResultRow r;

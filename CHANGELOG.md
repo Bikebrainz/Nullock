@@ -18,6 +18,9 @@ developer-facing record.
   rules, grep values, recursive seeds and redirect policy.
 - Publish Intruder target, template, option and run-state changes to polling
   clients so other browser views no longer retain stale settings.
+- Keep newer Intruder edits when older snapshots arrive, serialize writes before
+  Start, and reject stale queued edits after project changes. Restore visible
+  payload rules and grep settings; keep numeric controls readable in narrow windows.
 - Refuse a project switch when its outgoing workspace cannot be saved or its
   incoming workspace is malformed/unreadable, retaining the current draft.
 - Add CLI commands to save, load and explicitly reset an Intruder workspace;

@@ -6,6 +6,11 @@ rows with the project. Switching back to the project or reopening it after a
 clean app exit restores that workspace. Restoration does not start requests;
 Start and Resume remain explicit user actions.
 
+Connected browser clients receive target, rule and grep-setting updates. Edits
+are sent in order, and older polling responses cannot replace newer typing.
+Queued edits carry the project history generation so a stale client cannot apply
+them to another project. Numeric settings wrap onto another row when needed.
+
 The file is `intruder.json` beside `project.json`. It uses the existing Intruder
 save/load format, so the current **SAVE** / **LOAD** buttons work with
 portable copies. The CLI adds `nullock intruder save > attack.json`,
@@ -33,7 +38,7 @@ when moving an engagement between machines.
 
 Regression coverage: `scripts/intruder_workspace_regression.py` verifies complete
 configuration, binary request text, result rows, independent projects, same-project
-reopen, startup restoration, idle restoration, save failures and invalid files.
+reopen, startup restoration, idle restoration, stale edits, save failures and invalid files.
 `Tests/ui/intruder_workspace_browser_test.cjs` checks target/option synchronization
 between clients, project changes and page reloads. CI runs workspace checks on Windows, Linux and
 macOS, and the browser workflow on Windows.

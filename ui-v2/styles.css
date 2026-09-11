@@ -1079,6 +1079,8 @@ textarea, input { user-select: text; }
 .target-row .arrow { color: var(--accent); font-weight: 700; }
 
 /* ---------- intruder ---------- */
+.intruder-options { flex-wrap: wrap; }
+.intruder-options input[type="number"] { min-width: 6ch; }
 .intruder-cols { display: grid; grid-template-columns: 1.5fr 1fr; height: 100%; }
 .payload-list textarea { font-size: var(--fz-sm); line-height: 1.6; }
 

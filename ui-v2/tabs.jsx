@@ -2543,9 +2543,9 @@ function IntruderTab({ intruder, dispatch }) {
         )}
       </div>
 
-      <div className="target-row">
+      <div className="target-row intruder-options">
         <span className="arrow">▶</span>
-        <div className="fld" style={{ flex: "1 1 auto" }}>
+        <div className="fld" style={{ flex: "1 1 240px", minWidth: 220 }}>
           <span className="pre">GREP·MATCH</span>
           <input
             placeholder="needles, comma-separated (regex or literal) — flags the Grep column"
@@ -2556,7 +2556,7 @@ function IntruderTab({ intruder, dispatch }) {
             }})}
           />
         </div>
-        <div className="fld" style={{ flex: "1 1 auto" }}>
+        <div className="fld" style={{ flex: "1 1 240px", minWidth: 220 }}>
           <span className="pre">GREP·EXTRACT</span>
           <input
             placeholder="regex — 1st capture group fills the Extract column"
@@ -2567,7 +2567,7 @@ function IntruderTab({ intruder, dispatch }) {
             }})}
           />
         </div>
-        <div className="fld" style={{ flex: "0 0 92px" }}>
+        <div className="fld" style={{ flex: "0 0 110px" }}>
           <span className="pre">CONC</span>
           <input
             type="number" min="1" max="64"
@@ -2576,7 +2576,7 @@ function IntruderTab({ intruder, dispatch }) {
             title="Max in-flight requests (backend clamps 1..64)"
           />
         </div>
-        <div className="fld" style={{ flex: "0 0 120px" }}>
+        <div className="fld" style={{ flex: "0 0 190px" }}>
           <span className="pre">THROTTLE·MS</span>
           <input
             type="number" min="0"
@@ -2585,7 +2585,7 @@ function IntruderTab({ intruder, dispatch }) {
             title="Inter-dispatch delay in milliseconds (0 = as fast as concurrency allows)"
           />
         </div>
-        <div className="fld" style={{ flex: "0 0 92px" }}>
+        <div className="fld" style={{ flex: "0 0 130px" }}>
           <span className="pre">RETRIES</span>
           <input
             type="number" min="0" max="5"

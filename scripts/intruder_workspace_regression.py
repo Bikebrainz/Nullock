@@ -109,6 +109,13 @@ def main():
             check('project reopen restores complete configuration and binary template', exported() == expected)
             check('completed and pending rows retain results and null payload combinations', exported()['rows'] == draft['rows'])
             check('restoring a workspace does not start traffic', not api('/api/snapshot')['intruder']['running'])
+            shown = api('/api/snapshot')['intruder']
+            check('snapshot restores payload rules and visible grep settings',
+                shown['rules'] == draft['config']['rules'] and shown['grepMatchText'] == 'project-a-match'
+                and shown['grepExtractRegex'] == 'token=(.+)')
+            check('stale client edits cannot change the current project',
+                not api('/api/intruder/set', {'host':'wrong-project.test', 'historyGeneration':'stale'}, status=409)['ok']
+                and exported() == draft)
             assert api('/api/intruder/set', {'host':'changed.workspace.test'})['ok']
             expected = exported()
             assert api('/api/project/open', {'name':'workspace-a'})['ok']

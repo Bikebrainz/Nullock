@@ -47,16 +47,35 @@ async function freePort() {
     peer.on('pageerror', error => errors.push(error.message));
     await peer.goto(base);
     const host = page.locator('.target-row .fld').filter({hasText:'HOST'}).locator('input');
-    await host.fill('staged.workspace.test');
+    for (let attempt = 0; attempt < 4; ++attempt) {
+      await host.fill('');
+      await host.pressSequentially('staged.workspace.test', {delay:40});
+      await page.waitForFunction(() => NL.intruder.host === 'staged.workspace.test');
+    }
     await page.waitForFunction(() => NL.intruder.host === 'staged.workspace.test');
     await peer.waitForFunction(() => NL.intruder.host === 'staged.workspace.test');
-    assert.equal((await api('/api/intruder/set', {concurrency:3, throttleMs:75})).ok, true);
+    assert.equal((await api('/api/intruder/set', {concurrency:3, throttleMs:75,
+      rules:[{op:'prefix', arg:'project-a-'}], grepMatch:['project-note'],
+      grepExtract:{regex:'token=(.+)'}, payloads:['first','second'],
+      template:'GET /review?q=§seed§ HTTP/1.1\r\nHost: staged.workspace.test\r\n\r\n'})).ok, true);
     await page.waitForFunction(() => NL.intruder.concurrency === 3 && NL.intruder.throttleMs === 75);
     await peer.waitForFunction(() => NL.intruder.concurrency === 3 && NL.intruder.throttleMs === 75);
+    await page.waitForFunction(() => NL.intruder.rules?.[0]?.arg === 'project-a-'
+      && NL.intruder.grepMatchText === 'project-note');
+    for (const width of [1280,1440]) {
+      await page.setViewportSize({width, height:1000});
+      const fields = await page.locator('.intruder-options input[type="number"]').evaluateAll(
+        es => es.map(e => ({width:e.clientWidth, right:e.getBoundingClientRect().right})));
+      assert(fields.every(e => e.width >= 40 && e.right <= width), 'numeric fields must remain readable');
+    }
+    if (process.env.INTRUDER_SCREENSHOT)
+      await page.screenshot({path:path.resolve(process.env.INTRUDER_SCREENSHOT)});
     const saved = await api('/api/intruder/export');
     assert.equal((await api('/api/project/create', {name:'ui-workspace-b'})).ok, true);
     await page.waitForFunction(() => NL.bootInfo.project === 'ui-workspace-b');
     await peer.waitForFunction(() => NL.bootInfo.project === 'ui-workspace-b' && NL.intruder.host === '');
+    assert.equal(await page.evaluate(() => NL.intruder.rules.length), 0);
+    assert.equal(await page.locator('.intruder-options .fld').filter({hasText:'GREP·MATCH'}).locator('input').inputValue(), '');
     assert.equal(await host.inputValue(), '');
     await host.fill('independent.workspace.test');
     await page.waitForFunction(() => NL.intruder.host === 'independent.workspace.test');
@@ -64,6 +83,7 @@ async function freePort() {
     await page.waitForFunction(() => NL.bootInfo.project === 'ui-workspace-a'
       && NL.intruder.host === 'staged.workspace.test');
     assert.equal(await host.inputValue(), 'staged.workspace.test');
+    assert.equal(await page.locator('.intruder-options .fld').filter({hasText:'GREP·MATCH'}).locator('input').inputValue(), 'project-note');
     assert.deepEqual(await api('/api/intruder/export'), saved);
     await page.reload();
     await page.getByRole('button', {name:/SKIP$/}).click();

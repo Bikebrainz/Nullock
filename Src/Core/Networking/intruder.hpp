@@ -239,6 +239,7 @@ public:
     // does NOT re-fire; it just repopulates the table (resend() still works
     // because the raw combo, nulls included, round-trips).
     Q_INVOKABLE QByteArray saveRun() const;
+    IntruderPersist::RunConfig configuration() const;
     Q_INVOKABLE bool       loadRun(const QByteArray &bytes);
     Q_INVOKABLE void start();
     // The "Resume" half of save/resume: after loadRun repopulates a partially-

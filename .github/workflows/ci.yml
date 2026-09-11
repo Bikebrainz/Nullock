@@ -57,6 +57,8 @@ jobs:
         run: node Tests/ui/real_data_test.cjs
       - name: project note synchronization regression
         run: node Tests/ui/annotations_data_test.cjs
+      - name: Intruder draft synchronization regression
+        run: node Tests/ui/intruder_data_test.cjs
       - name: docs site mirror is up to date
         run: diff -q extensions/marketplace.json docs/marketplace/marketplace.json
       # The marketplace site pages are GENERATED from the catalog + extension
