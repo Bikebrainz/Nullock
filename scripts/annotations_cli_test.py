@@ -5,11 +5,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
 ROOT = Path(__file__).resolve().parents[1]
 received = []
+workspace = {'version':1, 'config':{'host':'fixture.test', 'template':'quoted "request"\n雪'}, 'rows':[]}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -29,12 +31,17 @@ class Handler(BaseHTTPRequestHandler):
             self.reply({'bootInfo': {'historyGeneration': 'project-generation'}})
         elif self.path == '/api/history/annotations':
             self.reply({'ok': True, 'annotations': {'1': {'comment': 'saved'}}})
+        elif self.path == '/api/intruder/export':
+            self.reply(workspace)
         else:
             self.reply({'ok': False}, 404)
 
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         received.append((self.path, data, self.headers.get('X-Nullock-UI')))
+        if self.path == '/api/intruder/load':
+            self.reply({'ok':data.get('config', {}).get('host') != 'refused.test'})
+            return
         if data['id'] == 2:
             self.reply({'ok': False, 'error': 'Project history changed'}, 409)
         else:
@@ -56,7 +63,7 @@ def main():
         return result
 
     try:
-        special = 'review "quoted" \\ path\n$(literal) `literal` <tag>'
+        special = 'review "quoted" \\ path\n$(literal) `literal` <tag> café 雪 😀'
         run('history-note', '1', '--comment', special)
         assert received[-1] == ('/api/history/annotation', {
             'id': 1, 'historyGeneration': 'project-generation', 'comment': special}, '1')
@@ -71,6 +78,22 @@ def main():
             run('history-note', *args, success=False)
         assert len(received) == count, 'invalid arguments must not mutate the server'
         print('PASS: CLI escaping, field patches, clear/list, stale edits and invalid arguments')
+        assert json.loads(run('intruder', 'save').stdout) == workspace
+        run('intruder', 'reset')
+        assert received[-1] == ('/api/intruder/load', {}, '1')
+        with tempfile.TemporaryDirectory(prefix='nullock-cli-workspace-') as temporary:
+            saved = Path(temporary) / 'attack.json'
+            saved.write_text(json.dumps(workspace), encoding='utf-8')
+            run('intruder', 'load', saved.as_posix())
+            assert received[-1] == ('/api/intruder/load', workspace, '1'), received[-1]
+            saved.write_text('{"config":{"host":"refused.test"},"rows":[]}', encoding='utf-8')
+            assert 'refused' in run('intruder', 'load', saved.as_posix(), success=False).stderr
+            count = len(received)
+            for invalid in ['{invalid', '[]', '{"config":{}}', 'null']:
+                saved.write_text(invalid, encoding='utf-8')
+                run('intruder', 'load', saved.as_posix(), success=False)
+            assert len(received) == count
+        print('PASS: CLI workspace save/load/reset, Unicode/quotes, server refusals and malformed files')
     finally:
         server.shutdown()
         server.server_close()

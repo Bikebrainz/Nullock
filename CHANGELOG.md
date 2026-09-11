@@ -10,6 +10,24 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Intruder project workspace
+- Save Intruder configuration and result rows in the project's `intruder.json`
+  on project switches and after worker shutdown on a clean exit. Restore the
+  workspace on reopen/startup without automatically starting or resuming requests.
+- Reset every Intruder setting for a new project, including payload processing
+  rules, grep values, recursive seeds and redirect policy.
+- Publish Intruder target, template, option and run-state changes to polling
+  clients so other browser views no longer retain stale settings.
+- Keep newer Intruder edits when older snapshots arrive, serialize writes before
+  Start, and reject stale queued edits after project changes. Restore visible
+  payload rules and grep settings; keep numeric controls readable in narrow windows.
+- Refuse a project switch when its outgoing workspace cannot be saved or its
+  incoming workspace is malformed/unreadable, retaining the current draft.
+- Add CLI commands to save, load and explicitly reset an Intruder workspace;
+  loading validates the document and reports refused operations as failures.
+- Stream CLI POST bodies through stdin to preserve Unicode with native Windows
+  curl instead of sending JSON through the Windows argument code page.
+
 ### Project notes
 - Persist history comments and nine highlight colours with each project, synchronize
   browser clients, and reject edits from a previous project/history generation.

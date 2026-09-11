@@ -897,6 +897,13 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.intruder, &QAbstractItemModel::rowsInserted, this, bump);
         connect(m_wiring.intruder, &QAbstractItemModel::modelReset,   this, bump);
         connect(m_wiring.intruder, &QAbstractItemModel::dataChanged,  this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::targetChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::templateChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::payloadsChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::attackTypeChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::optionsChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::runningChanged, this, bump);
+        connect(m_wiring.intruder, &Nullock::Core::Intruder::progressChanged, this, bump);
     }
     if (m_wiring.proxy) {
         connect(m_wiring.proxy, &Nullock::Proxy::ProxyServer::runningChanged,       this, bump);
@@ -1707,6 +1714,13 @@ QByteArray ControlServer::buildSnapshot() const {
         intruder["followRedirects"] = m_wiring.intruder->followRedirects();
         intruder["processCookies"]  = m_wiring.intruder->processCookies();
         intruder["recursiveGrep"]   = m_wiring.intruder->recursiveGrep();
+        const auto config = m_wiring.intruder->configuration();
+        QJsonArray processingRules;
+        for (const auto &rule : config.rules)
+            processingRules.append(QJsonObject{{"op", rule.op}, {"arg", rule.arg}});
+        intruder["rules"] = processingRules;
+        intruder["grepMatchText"] = config.grepMatch.join(", ");
+        intruder["grepExtractRegex"] = config.grepExtract.regex;
         QJsonArray results;
         const int n = m_wiring.intruder->rowCount();
         for (int i = 0; i < n; ++i) {
@@ -3307,6 +3321,11 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, o);
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
+    if (path.startsWith("/api/intruder/") && bodyJson.contains("historyGeneration")
+        && m_wiring.projectStore
+        && bodyJson.value("historyGeneration").toString() != m_wiring.projectStore->historyGeneration())
+        return httpJson(409, QJsonObject{{"ok", false},
+            {"error", "Project history changed; refresh before editing Intruder"}});
 
     // ---- ScopeGuard: one authorization gate for every ACTIVE endpoint ----
     // Active tests fire payloads / scans at a target host. Refuse any whose

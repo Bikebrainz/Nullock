@@ -26,11 +26,12 @@
     return null;
   }
 
-  function applySnapshot(snap) {
+  function applySnapshot(snap, intruderEpoch = NL._intruderWriteEpoch || 0) {
     if (!snap) return;
     const boot = snap.bootInfo || {};
     const generation = [snap.instanceId || "", boot.projectDir || boot.project || "", boot.historyGeneration || ""].join(":");
-    if (generation !== NL._generation) {
+    const projectChanged = generation !== NL._generation;
+    if (projectChanged) {
       NL._cache = { req: {}, resp: {}, fullRow: {} };
       NL._generation = generation;
       NL.historyAnnotations = {};
@@ -58,7 +59,11 @@
     NL.repeater    = snap.repeater    || { host: "", port: 443, tls: true,
                                             request: "", response: "",
                                             statusLine: "", autoContentLength: true };
-    NL.intruder    = snap.intruder    || { host: "", port: 443, tls: true,
+    // A poll started before an edit (or while a write is queued) must not
+    // overwrite newer keystrokes. Keep the optimistic draft until a fresh poll.
+    if (!projectChanged && (NL._intruderPendingWrites || intruderEpoch !== (NL._intruderWriteEpoch || 0))) {
+      NL._seq = 0;
+    } else NL.intruder = snap.intruder || { host: "", port: 443, tls: true,
                                             template: "", payloads: [],
                                             results: [], running: false,
                                             concurrency: 10, throttleMs: 0,
@@ -202,9 +207,10 @@
   // POST helpers wired to the control server's action endpoints. Fire and
   // forget -- the snapshot poll picks up resulting state changes within
   // ~500 ms. Callers can chain .then() if they want to refresh sooner.
-  function post(path, payload) {
+  function post(path, payload, signal) {
     return fetch(path, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         // Custom header the backend CSRF guard accepts in lieu of a
@@ -227,6 +233,35 @@
         "X-Nullock-UI": "1",
       },
       body: text || "",
+    });
+  }
+  let intruderWrites = Promise.resolve();
+  function writeIntruder(path, payload = {}, optimistic = false) {
+    const generation = NL._generation;
+    const historyGeneration = NL.bootInfo.historyGeneration;
+    NL._intruderWriteEpoch = (NL._intruderWriteEpoch || 0) + 1;
+    NL._intruderPendingWrites = (NL._intruderPendingWrites || 0) + 1;
+    if (optimistic) NL.intruder = {...NL.intruder, ...payload};
+    const write = async () => {
+      if (generation !== NL._generation) throw new Error("Project history changed; retry in the current project");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await post(path, {...payload, historyGeneration}, controller.signal);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Could not update Intruder");
+        }
+        return response;
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+    const queued = intruderWrites.then(write);
+    intruderWrites = queued.catch(() => {});
+    return queued.finally(() => {
+      NL._intruderPendingWrites--;
+      NL._seq = 0;
     });
   }
   NL.actions = {
@@ -294,21 +329,21 @@
                 + "&limit=" + encodeURIComponent(limit);
       return fetch(url).then(r => r.json());
     },
-    intruderFromHistory(id) { return post("/api/intruder/from-history", {id}); },
-    intruderSet(payload)    { return post("/api/intruder/set",     payload); },
-    intruderStart()         { return post("/api/intruder/start"); },
+    intruderFromHistory(id) { return writeIntruder("/api/intruder/from-history", {id}); },
+    intruderSet(payload)    { return writeIntruder("/api/intruder/set", payload, true); },
+    intruderStart()         { return writeIntruder("/api/intruder/start"); },
     // Resume the "remaining" rows of a restored attack -- re-fires only the rows
     // that never completed. Returns { ok } (ok:false if it can't resume: running,
     // no rows, recursive-grep, or already complete).
-    intruderResume()        { return post("/api/intruder/resume").then(r => r.json()); },
-    intruderStop()          { return post("/api/intruder/stop"); },
-    intruderClear()         { return post("/api/intruder/clear"); },
-    intruderResend(row)     { return post("/api/intruder/resend", { row }); },
+    intruderResume()        { return writeIntruder("/api/intruder/resume").then(r => r.json()); },
+    intruderStop()          { return writeIntruder("/api/intruder/stop"); },
+    intruderClear()         { return writeIntruder("/api/intruder/clear"); },
+    intruderResend(row)     { return writeIntruder("/api/intruder/resend", { row }); },
     // Save the whole attack (config + result rows) as a JSON document, and
     // restore one. GET /export returns the saved-run doc; feed it straight
     // back to POST /load. The backend refuses /load while an attack runs.
-    intruderExport()        { return fetch("/api/intruder/export").then(r => r.json()); },
-    intruderLoad(doc)       { return post("/api/intruder/load", doc).then(r => r.json()); },
+    intruderExport()        { return intruderWrites.then(() => fetch("/api/intruder/export")).then(r => r.json()); },
+    intruderLoad(doc)       { return writeIntruder("/api/intruder/load", doc).then(r => r.json()); },
     // GET discovery: the payload-processing op names the rule engine
     // understands (prefix/suffix/hash/encode/...). Read-only, allowlisted.
     intruderRuleOps()       { return fetch("/api/intruder/rule-ops").then(r => r.json()); },
@@ -841,6 +876,7 @@
     refreshAnnotations();
     if (polling) return;
     polling = true;
+    const intruderEpoch = NL._intruderWriteEpoch || 0;
     try {
       const xhr = new XMLHttpRequest();
       xhr.open("GET", "/api/snapshot?since=" + NL._seq + "&instance=" + encodeURIComponent(NL._instanceId || ""), true);
@@ -854,7 +890,7 @@
           const snap = JSON.parse(xhr.responseText);
           if (!snap.bootInfo) { disconnected(); return; }
           NL._seq = snap.seq || 0;
-          applySnapshot(snap);
+          applySnapshot(snap, intruderEpoch);
           window.dispatchEvent(new CustomEvent("nl-update"));
         } catch (e) { disconnected(); }
       };

@@ -96,7 +96,11 @@ class Intruder : public QAbstractListModel {
     Q_PROPERTY(int         totalCount       READ totalCount                                 NOTIFY progressChanged)
 public:
     void setRequestBytes(const QByteArray &bytes);
-    void setRequestLatin1(bool enabled) { m_templateLatin1 = enabled; }
+    void setRequestLatin1(bool enabled) {
+        if (m_templateLatin1 == enabled) return;
+        m_templateLatin1 = enabled;
+        emit templateChanged();
+    }
     bool requestLatin1() const { return m_templateLatin1; }
 
     // Mirror of IntruderEngine::AttackType (same order) so QML can bind an
@@ -235,6 +239,7 @@ public:
     // does NOT re-fire; it just repopulates the table (resend() still works
     // because the raw combo, nulls included, round-trips).
     Q_INVOKABLE QByteArray saveRun() const;
+    IntruderPersist::RunConfig configuration() const;
     Q_INVOKABLE bool       loadRun(const QByteArray &bytes);
     Q_INVOKABLE void start();
     // The "Resume" half of save/resume: after loadRun repopulates a partially-
@@ -262,6 +267,7 @@ signals:
     void templateChanged();
     void payloadsChanged();
     void attackTypeChanged();
+    void optionsChanged();
     void runningChanged();
     void progressChanged();
 

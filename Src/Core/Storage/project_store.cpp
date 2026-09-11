@@ -21,6 +21,15 @@ namespace Nullock::Core {
 namespace {
 
 constexpr int kSchemaVersion = 1;
+constexpr qsizetype kMaxWorkspaceBytes = 64 * 1024 * 1024;
+
+bool validWorkspace(const QByteArray &bytes) {
+    if (bytes.size() > kMaxWorkspaceBytes) return false;
+    const auto doc = QJsonDocument::fromJson(bytes);
+    if (!doc.isObject()) return false;
+    const auto object = doc.object();
+    return object.isEmpty() || (object.value("config").isObject() && object.value("rows").isArray());
+}
 
 constexpr qsizetype kMaxAnnotationsBytes = 1024 * 1024;
 QString annotationError(const QJsonObject &note) {
@@ -243,6 +252,29 @@ bool ProjectStore::open(const QString &projectDir) {
         emit errorOccurred(m_lastError);
         return false;
     }
+    // Check the incoming workspace before clearing the current one. Legacy
+    // projects have no file and start with the Intruder's default state.
+    QByteArray incomingWorkspace = "{}";
+    QFile workspace(projectDir + "/intruder.json");
+    if (workspace.exists()) {
+        if (!workspace.open(QIODevice::ReadOnly) || workspace.size() > kMaxWorkspaceBytes) {
+            m_lastError = "Could not read Intruder workspace; current project retained";
+            emit errorOccurred(m_lastError);
+            return false;
+        }
+        incomingWorkspace = workspace.readAll();
+        workspace.close();
+        if (!validWorkspace(incomingWorkspace)) {
+            m_lastError = "Invalid Intruder workspace; current project retained";
+            emit errorOccurred(m_lastError);
+            return false;
+        }
+    }
+    if (isOpen() && m_workspaceSave && !m_workspaceSave()) return false;
+    // Reopening the same project must restore the state just saved, rather than
+    // the previous file read during preflight above.
+    if (isOpen() && QFileInfo(m_dir).canonicalFilePath() == QFileInfo(projectDir).canonicalFilePath())
+        incomingWorkspace = m_intruderWorkspace;
     m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     // Save the OUTGOING project's Repeater tabs (app.cpp handles projectClosing)
     // BEFORE historyShouldClear wipes them -- only when a project is already open,
@@ -256,6 +288,7 @@ bool ProjectStore::open(const QString &projectDir) {
     close();
 
     m_dir = projectDir;
+    m_intruderWorkspace = incomingWorkspace;
     if (!QDir().mkpath(m_dir)) {
         emit errorOccurred("could not create project dir: " + m_dir);
         return false;
@@ -313,6 +346,7 @@ bool ProjectStore::open(const QString &projectDir) {
     // Fires AFTER historyShouldClear->clearAll wiped the outgoing tabs, so the panel
     // shows this project's staged requests and nothing from the previous engagement.
     emit repeaterStateChanged(m_meta.repeaterState);
+    emit intruderWorkspaceChanged(m_intruderWorkspace);
     emit interceptRulesChanged(m_meta.interceptRules);
     emit interceptAutoContentLengthChanged(m_meta.interceptAutoContentLength);
     emit interceptAutoFixNewlinesChanged(m_meta.interceptAutoFixNewlines);
@@ -521,6 +555,23 @@ bool ProjectStore::saveMetadata() {
 void ProjectStore::setRepeaterState(const QJsonObject &state) {
     m_meta.repeaterState = state;
     saveMetadata();
+}
+
+bool ProjectStore::saveIntruderWorkspace(const QByteArray &state) {
+    if (!isOpen() || !validWorkspace(state)) {
+        m_lastError = "Could not save Intruder workspace: no open project or invalid/oversized state";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    QSaveFile file(m_dir + "/intruder.json");
+    if (!file.open(QIODevice::WriteOnly) || file.write(state) != state.size() || !file.commit()) {
+        m_lastError = "Could not save Intruder workspace; keep this project open and retry or export the attack";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    m_intruderWorkspace = state;
+    m_lastError.clear();
+    return true;
 }
 
 QJsonObject ProjectStore::historyAnnotations() const {

@@ -111,7 +111,9 @@ Intruder          Sniper / Battering Ram / Pitchfork / Cluster Bomb via a GUI mo
                   match-replace/encode/decode/hash), sortable + filterable results, rate-limit-aware
                   (concurrency/throttle plus a configurable retry count on network failure),
                   same FOLLOW/COOKIES redirect-chasing controls as Repeater so a bruteforce behind
-                  a login/redirect grades against the real final page instead of a wall of 302s
+                  a login/redirect grades against the real final page instead of a wall of 302s;
+                  saves configuration and result rows with the project on switch/clean exit,
+                  restores without automatically sending requests, and keeps new projects isolated
 Passive scanner   Header/cookie/secret/info-leak findings, every one CWE/OWASP/CVSS-enriched
 Findings          ISSUES tab: flat, grouped-by-kind+host (instance count, max CVSS, CWE/
                   OWASP rollup), or Definitions view -- a browsable, filterable library of
@@ -286,6 +288,9 @@ Command palette    Ctrl/Cmd+K (or the title bar's ⌘K button) fuzzy-searches ev
                     "Customize keyboard shortcuts…"), with live conflict detection and
                     per-binding reset, persisted across restarts
 ```
+
+See [Intruder project workspaces](INTRUDER_WORKSPACE.md) for automatic restoration,
+portable save files, CLI commands and persistence limits in the unreleased build.
 
 ## 30 seconds to first capture
 
