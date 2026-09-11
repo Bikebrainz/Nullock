@@ -16,7 +16,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Find Qt6 with required components
-find_package(Qt6 REQUIRED COMPONENTS
+find_package(Qt6 6.10.3 REQUIRED COMPONENTS
     Core
     Gui
     Qml
@@ -76,9 +76,8 @@ install(
 )
 # Windows only: windeployqt copies the Qt runtime DLLs + FrontEndGUI.dll +
 # sqldrivers/ next to the exe as a post-build step, so we ship that whole dir.
-# On Linux/macOS the Qt runtime comes from the .deb/.rpm deps and the AppImage /
-# .app bundling steps, not a sibling-dir copy -- and this $<CONFIG> path doesn't
-# exist there.
+# Linux/macOS use Qt's deployment script below instead of this Windows-only
+# sibling-directory copy.
 if(WIN32)
     install(
         DIRECTORY ${CMAKE_BINARY_DIR}/Src/App/$<CONFIG>/
@@ -111,7 +110,7 @@ elseif(UNIX)
 endif()
 
 # Unix packages bundle the Qt version used to build, including QML and plugins.
-# Relying on a distro's older Qt runtime does not satisfy Qt 6.7 symbols.
+# Relying on a distro's older Qt runtime does not satisfy Qt 6.10 symbols.
 option(NULLOCK_DEPLOY_RUNTIME "Bundle Qt runtime dependencies when installing" ON)
 if(UNIX AND NULLOCK_DEPLOY_RUNTIME)
     qt_generate_deploy_qml_app_script(TARGET NullockApp OUTPUT_SCRIPT nullock_deploy

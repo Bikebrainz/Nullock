@@ -5,7 +5,7 @@
 # Usage:
 #   cmake -B build -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build -j
-#   DESTDIR=stage cmake --install build --prefix /usr
+#   DESTDIR="$PWD/stage" cmake --install build --prefix /usr
 #   packaging/appimage/build_appimage.sh stage
 #
 # Produces Nullock-x86_64.AppImage in the current directory. No root,

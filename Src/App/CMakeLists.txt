@@ -13,6 +13,7 @@ target_compile_definitions(NullockApp PRIVATE
 # Register the QML module for the App
 qt_add_qml_module(NullockApp
     URI Nullock.App
+    RESOURCE_PREFIX /
     VERSION 1.0
     QML_FILES app.qml
 )

@@ -22,7 +22,7 @@
 # --------------------------------------------------------------------------
 FROM ubuntu:22.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
-ARG QT_VERSION=6.7.3
+ARG QT_VERSION=6.10.3
 
 # NOTE: cmake is deliberately NOT installed via apt here -- Ubuntu 22.04's repo
 # ships 3.22.1, but CMakeLists.txt:1 requires 3.24+ (`cmake_minimum_required`
@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1-mesa-dev libxkbcommon-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Qt 6.7.x via aqtinstall (the CLI equivalent of the install-qt-action CI uses).
+# Qt via aqtinstall (the CLI equivalent of the install-qt-action CI uses).
 # NOTE: aqtinstall renamed the Linux desktop x86_64 arch from "gcc_64" to
 # "linux_gcc_64" as of Qt 6.7.0 (aqtinstall v3.1.12) -- the old name (still
 # valid for Qt5) has no package metadata for 6.7+ and made `aqt install-qt`
@@ -79,7 +79,7 @@ RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/o
 # --------------------------------------------------------------------------
 FROM ubuntu:22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
-ARG QT_VERSION=6.7.3
+ARG QT_VERSION=6.10.3
 
 # Runtime counterparts of the build stage's libfontconfig1-dev / libfreetype-dev
 # / libdbus-1-dev -- the copied libQt6Gui.so / libQt6DBus.so dlopen these at

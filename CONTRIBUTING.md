@@ -37,7 +37,7 @@ thin clients over `/api/*`. New capability = a backing module in
 
 ## Build (Windows)
 
-Requires Visual Studio 2022 (MSVC), Qt 6.7.3 (`msvc2019_64`), and
+Requires Visual Studio 2022 (MSVC), Qt 6.10.3 (`msvc2022_64`), and
 nghttp2 (via vcpkg). **Use the CMake bundled with Visual Studio** —
 `C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`.
 A standalone CMake on PATH can mis-detect the compiler.
@@ -45,7 +45,7 @@ A standalone CMake on PATH can mis-detect the compiler.
 ```cmd
 cmake -B build -G "Visual Studio 17 2022" -A x64 ^
   -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows" ^
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.7.3/msvc2019_64"
+  -DCMAKE_PREFIX_PATH="C:/Qt/6.10.3/msvc2022_64"
 cmake --build build --config Release --target NullockApp
 ```
 

@@ -17,13 +17,18 @@ Download the latest from
 The CLI `nullock` (in `bin/`) talks to a running instance over
 `$NULLOCK_API` (default `http://127.0.0.1:17777`); it needs `curl` + `jq`.
 
+Packages built from this revision use Qt 6.10.3 and require Windows 10 1809+
+or macOS 13+. Linux x86-64 packages are built and tested on Ubuntu 22.04.
+See [Qt's supported platforms](https://doc.qt.io/qt-6.10/supported-platforms.html)
+for the runtime baseline.
+
 ## Build from source
 
 ### Prerequisites
-- **Qt 6.7.3**, **including the `qtwebsockets` module** (it is a *separate*
+- **Qt 6.10.3**, **including the `qtwebsockets` module** (it is a *separate*
   add-on — a base Qt install without it will fail to configure). The QML / Quick
   / Sql / Network / Concurrent modules ship in the base Qt 6 install. This is the
-  version CI builds against; other Qt 6.7+ builds usually work but are not tested.
+  minimum version accepted by CMake and the version CI builds against.
 - A C++20 compiler (MSVC 2022 / GCC 12+ / Clang 15+) and CMake ≥ 3.24.
 - **nghttp2** dev headers (HTTP/2) and **OpenSSL** dev headers (forged-leaf CA).
   These are the two dependencies most often missing — install them explicitly:
@@ -37,7 +42,7 @@ Use the VS-bundled CMake (see [`CONTRIBUTING.md`](CONTRIBUTING.md)):
 ```cmd
 cmake -B build -G "Visual Studio 17 2022" -A x64 ^
   -DNULLOCK_NGHTTP2_ROOT="C:/vcpkg/installed/x64-windows" ^
-  -DCMAKE_PREFIX_PATH="C:/Qt/6.7.3/msvc2019_64"
+  -DCMAKE_PREFIX_PATH="C:/Qt/6.10.3/msvc2022_64"
 cmake --build build --config Release --target NullockApp
 ```
 The app lands at `build\Src\App\Release\NullockApp.exe`.

@@ -121,6 +121,8 @@ def main():
                 try: snap=api('/api/snapshot', timeout=.25); break
                 except OSError: time.sleep(.1)
             else: raise RuntimeError('app did not start: ' + (scratch/'app.log').read_text(errors='replace'))
+            print('Runtime: Qt', snap['bootInfo']['qtVersion'],
+                  'TLS backend', snap['bootInfo']['tlsBackend'], flush=True)
             if args.gui:
                 log.flush()
                 native_log = (scratch/'app.log').read_text(errors='replace')
@@ -266,7 +268,11 @@ def main():
         finally:
             release.set()
             if process and process.poll() is None:
-                process.terminate(); process.wait(timeout=10)
+                try:
+                    api('/api/app/quit', {}, timeout=2)
+                    process.wait(timeout=3)
+                except (OSError, subprocess.TimeoutExpired):
+                    process.terminate(); process.wait(timeout=10)
             log.close()
             if sys.exc_info()[0] is not None:
                 print((scratch/'app.log').read_text(errors='replace'), file=sys.stderr)

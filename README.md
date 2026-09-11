@@ -409,7 +409,7 @@ baseline diff as everything else.
 
 ## Build from source
 
-Requirements: CMake 3.24+, C++20 (MSVC 2022 / GCC 12+ / Clang 15+), **Qt 6.7.3
+Requirements: CMake 3.24+, C++20 (MSVC 2022 / GCC 12+ / Clang 15+), **Qt 6.10.3
 with the `qtwebsockets` add-on module**, and the **dev headers** for libnghttp2
 and OpenSSL. The two dev packages are the usual missing piece — install them first
 (full per-platform steps in [`INSTALL.md`](INSTALL.md)):

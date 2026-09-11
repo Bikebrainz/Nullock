@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  QT_VERSION: 6.7.3
+  QT_VERSION: 6.10.3
 
 jobs:
   marketplace-json:
@@ -200,7 +200,8 @@ jobs:
             cmake ninja-build build-essential \
             libnghttp2-dev libssl-dev patchelf libxcb-cursor0 rpm dpkg-dev imagemagick wget ccache
       - name: restore compiler cache
-        uses: actions/cache@v4
+        id: compiler-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ccache
           key: linux-qt-${{ env.QT_VERSION }}-ccache-${{ github.sha }}
@@ -236,9 +237,15 @@ jobs:
           APP=$(find deb-stage -type f -name NullockApp -print -quit)
           test -n "$APP"
           python3 scripts/runtime_regression.py "$APP" --gui
-          DESTDIR=appimage-stage cmake --install build --prefix /usr
+          DESTDIR="$PWD/appimage-stage" cmake --install build --prefix /usr
           bash packaging/appimage/build_appimage.sh appimage-stage
           APPIMAGE_EXTRACT_AND_RUN=1 python3 scripts/runtime_regression.py ./Nullock-x86_64.AppImage --gui
+      - name: preserve compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
 
   build-macos:
     name: build NullockApp (macOS)

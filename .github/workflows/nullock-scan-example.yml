@@ -16,7 +16,7 @@ on:
         default: 'high'
 
 env:
-  QT_VERSION: 6.7.3
+  QT_VERSION: 6.10.3
 
 jobs:
   gate:

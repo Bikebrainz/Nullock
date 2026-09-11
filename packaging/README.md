@@ -1,13 +1,13 @@
 # Packaging Nullock
 
-Build with Qt 6.7.3, CMake 3.24 or newer, and the dependencies in [INSTALL.md](../INSTALL.md). The package version comes from the root CMake project. Always test an installed tree before distributing an artifact.
+Build with Qt 6.10.3, CMake 3.24 or newer, and the dependencies in [INSTALL.md](../INSTALL.md). The package version comes from the root CMake project. Always test an installed tree before distributing an artifact.
 
 ## Windows
 
 Install Qt's MSVC build, Visual Studio 2022 Build Tools, and `vcpkg install nghttp2:x64-windows openssl:x64-windows`. NSIS is needed for the `.exe` installer; ZIP packaging needs no installer tool.
 
 ```powershell
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.7.3/msvc2019_64 -DNULLOCK_NGHTTP2_ROOT=C:/vcpkg/installed/x64-windows
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.10.3/msvc2022_64 -DNULLOCK_NGHTTP2_ROOT=C:/vcpkg/installed/x64-windows
 cmake --build build --config Release --target NullockApp
 cmake --install build --config Release --prefix stage
 python scripts/runtime_regression.py stage/bin/NullockApp.exe
@@ -31,7 +31,7 @@ cpack --config build/CPackConfig.cmake -G 'DEB;RPM;TGZ'
 DEB needs `dpkg-dev`; RPM needs `rpm`. For AppImage, install `wget` and ImageMagick, then:
 
 ```sh
-DESTDIR=appimage-stage cmake --install build --prefix /usr
+DESTDIR="$PWD/appimage-stage" cmake --install build --prefix /usr
 bash packaging/appimage/build_appimage.sh appimage-stage
 ```
 

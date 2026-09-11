@@ -1,5 +1,6 @@
 #include "control_server.hpp"
 #include <QTimer>
+#include <QSslSocket>
 
 #include "control_logic.hpp"
 #include "cert_authority.hpp"
@@ -1287,6 +1288,9 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["project"]         = m_wiring.projectStore ? m_wiring.projectStore->metadata().name : QString();
     bootInfo["historyEpoch"] = m_wiring.projectStore ? m_wiring.projectStore->metadata().historyEpoch : QString();
     bootInfo["version"] = QCoreApplication::applicationVersion();
+    bootInfo["qtVersion"] = QString::fromLatin1(qVersion());
+    bootInfo["tlsBackend"] = QSslSocket::activeBackend();
+    bootInfo["tlsAvailable"] = QSslSocket::supportsSsl();
     bootInfo["historyGeneration"] = m_wiring.projectStore ? m_wiring.projectStore->historyGeneration() : QString();
     bootInfo["projectDir"]      = m_wiring.projectStore ? m_wiring.projectStore->currentPath() : QString();
     bootInfo["harPath"]         = m_wiring.projectStore ? (m_wiring.projectStore->currentPath() + "/exports/")

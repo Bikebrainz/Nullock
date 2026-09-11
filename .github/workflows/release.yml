@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
 
 env:
-  QT_VERSION: 6.7.3
+  QT_VERSION: 6.10.3
 
 jobs:
   build-windows:
@@ -128,7 +128,7 @@ jobs:
         run: cpack -G "DEB;RPM;TGZ"
       - name: stage for AppImage
         run: |
-          DESTDIR=stage cmake --install build --prefix /usr
+          DESTDIR="$PWD/stage" cmake --install build --prefix /usr
       - name: AppImage
         # Every advertised artifact must build before a release is created.
         run: bash packaging/appimage/build_appimage.sh stage

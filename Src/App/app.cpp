@@ -44,6 +44,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QSslSocket>
 #include <QTextStream>
 
 #include <cstdio>
@@ -638,6 +639,12 @@ static QString validateArguments(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef Q_OS_MACOS
+    // Keep intercepted-host identities out of the user's login keychain and
+    // allow the Secure Transport backend to work without keychain dialogs.
+    if (qEnvironmentVariableIsEmpty("QT_SSL_USE_TEMPORARY_KEYCHAIN"))
+        qputenv("QT_SSL_USE_TEMPORARY_KEYCHAIN", "1");
+#endif
     Nullock::Core::CrashReporter::install();
     QCoreApplication::setOrganizationName("Nullock");
     QCoreApplication::setApplicationName("Nullock");
@@ -781,6 +788,10 @@ int main(int argc, char *argv[]) {
         return Nullock::Control::runGateScan(scanUrl, failOn, ndjsonOut);
     }
 
+    if (!QSslSocket::supportsSsl()) {
+        QTextStream(stderr) << "Nullock: no TLS backend is available; reinstall the complete application runtime.\n";
+        return 2;
+    }
     Nullock::Proxy::CertAuthority certAuthority;
     if (!certAuthority.ensureCa()) {
         QTextStream(stderr) << "Nullock: could not initialize the local CA; check OpenSSL and data-directory permissions.\n";
@@ -788,6 +799,10 @@ int main(int argc, char *argv[]) {
     }
 
     Nullock::Proxy::ProxyServer proxy;
+    QObject::connect(&proxy, &Nullock::Proxy::ProxyServer::errorOccurred,
+                     app.data(), [](const QString &message) {
+        QTextStream(stderr) << "Nullock proxy: " << message << Qt::endl;
+    });
     proxy.setCertAuthority(&certAuthority);
     // Persist the MITM bypass list next to the CA. Cert-pinned hosts stay
     // on the list across app restarts so we never re-fail their handshake.
