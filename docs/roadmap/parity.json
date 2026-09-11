@@ -3748,12 +3748,12 @@
       "effort": "days",
       "gap": "Repeater tabs and Intruder configuration/result rows now restore with each project. Sequencer state is still not project-persisted. Intruder saves on project switch and clean exit, not after every edit; raw response bodies are not in the existing saved-run format.",
       "why": "Repeater persistence already existed. Intruder now saves atomically to intruder.json, restores after startup/project changes without sending requests, resets every setting for fresh projects, and retains the current draft if saving or incoming-file validation fails. The combined feature stays partial until Sequencer state is also persisted.",
-      "evidence": "Src/Core/Storage/project_store.cpp: open/saveIntruderWorkspace; Src/App/app.cpp: setWorkspaceSave, intruderWorkspaceChanged and saveWorkspaceOnExit after worker drain; Src/Core/Networking/intruder.cpp: clearAll/loadRun; scripts/intruder_workspace_regression.py (17 runtime checks); Tests/ui/intruder_workspace_browser_test.cjs (two-client synchronization, project isolation, reload).",
+      "evidence": "Src/Core/Storage/project_store.cpp: open/saveIntruderWorkspace; Src/App/app.cpp: setWorkspaceSave, intruderWorkspaceChanged and saveWorkspaceOnExit after worker drain; Src/Core/Networking/intruder.cpp: clearAll/loadRun; scripts/intruder_workspace_regression.py (19 runtime checks); Tests/ui/intruder_workspace_browser_test.cjs (two-client synchronization, project isolation, reload).; Tests/ui/intruder_data_test.cjs (ordered writes, stale polls, rejected old-project edits and failure recovery).",
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-09-11",
-        "commit": "76c583ff",
-        "note": "Intruder configuration and result rows now persist per project on switch/clean exit and restore idle. All settings reset between projects. Runtime, browser and CLI checks pass; Sequencer persistence remains outstanding."
+        "commit": "f24543d3",
+        "note": "Intruder configuration and result rows persist per project on switch/clean exit and restore idle. Browser drafts survive stale polls; rules/grep settings synchronize and stale project edits are refused. Runtime, browser and CLI checks pass. Sequencer persistence remains outstanding."
       }
     },
     {
