@@ -1,5 +1,9 @@
 #include "networking.hpp"
 #include "outbound_scope.hpp"
+#include "session_rules.hpp"
+#include "session_manager.hpp"
+#include "chain_runner.hpp"
+#include <QMutexLocker>
 
 #include "content_decode.hpp"
 #include "networking_logic.hpp"
@@ -109,6 +113,20 @@ namespace {
 // lambdas) all inherit it without us having to thread a config through
 // every call site.
 TlsProfile::Profile g_defaultProfile = TlsProfile::Profile::None;
+QMutex g_scannerSessionMutex;
+SessionRules *g_scannerRules = nullptr;
+SessionManager *g_scannerSessions = nullptr;
+}
+
+ScannerSessionRegistration::ScannerSessionRegistration(SessionRules *rules, SessionManager *sessions) {
+    QMutexLocker lock(&g_scannerSessionMutex);
+    g_scannerRules = rules;
+    g_scannerSessions = sessions;
+}
+ScannerSessionRegistration::~ScannerSessionRegistration() {
+    QMutexLocker lock(&g_scannerSessionMutex);
+    g_scannerRules = nullptr;
+    g_scannerSessions = nullptr;
 }
 
 void HttpClient::setDefaultProfile(TlsProfile::Profile p) {
@@ -124,12 +142,41 @@ HttpClient::HttpClient(QObject *parent, Purpose purpose) : QObject(parent), m_pu
 HttpClient::SendResult HttpClient::send(const QString &host,
                                         quint16 port,
                                         bool useTls,
-                                        const QByteArray &requestBytes) {
+                                        const QByteArray &inputBytes) {
     SendResult result;
-    if (m_purpose == Purpose::Engagement && !OutboundScope::allowsRequest(host, port, useTls, requestBytes)) {
+    QByteArray requestBytes = inputBytes;
+    if (m_purpose != Purpose::ApplicationService && !OutboundScope::allowsRequest(host, port, useTls, requestBytes)) {
         result.errorMessage = OutboundScope::blockedError();
         return result;
     }
+
+    SessionRules *rules = nullptr;
+    SessionManager *sessions = nullptr;
+    if (m_purpose == Purpose::Scanner) {
+        QMutexLocker lock(&g_scannerSessionMutex);
+        rules = g_scannerRules;
+        sessions = g_scannerSessions;
+    }
+    if (rules || sessions) {
+        auto request = SessionRules::parseRequestBytes(requestBytes, host, port, useTls);
+        const auto headers = request.headers;
+        const auto body = request.body;
+        if (sessions) sessions->injectInto(request);
+        // Explicit session rules override older values in the captured cookie jar.
+        const bool changed = rules && rules->applyToRequest(request, SessionRulesLogic::ToolScanner);
+        // Preserve exact original bytes unless an enabled rule or cookie changed
+        // the request. Sessionless fuzzing must retain its deliberately odd wire.
+        if (changed || request.headers != headers) {
+            requestBytes = Nullock::Proxy::serializeRequestForOrigin(request);
+            if (request.body != body) requestBytes = ChainRunner::normalizeContentLength(requestBytes);
+        }
+        if (!OutboundScope::allowsRequest(host, port, useTls, requestBytes)) {
+            result.errorMessage = OutboundScope::blockedError();
+            return result;
+        }
+    }
+
+    result.requestBytes = requestBytes;
 
     // The socket is owned by THIS CALL, not by the client. Every HttpClient in the
     // repo is a stack local, but a single one drives a WHOLE scan loop --
@@ -355,6 +402,11 @@ HttpClient::SendResult HttpClient::send(const QString &host,
 
     socket->disconnectFromHost();
     result.ok = true;
+    if (rules || sessions) {
+        const auto request = SessionRules::parseRequestBytes(requestBytes, host, port, useTls);
+        if (sessions) sessions->onResponseReceived(request, result.parsed);
+        if (rules) rules->applyToResponse(request, result.parsed, true);
+    }
     return result;
 }
 

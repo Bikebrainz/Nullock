@@ -30,12 +30,12 @@ QString extractOne(const Extract &e,
             }
             return {};
         case Extract::Json:
-            return jsonPathGet(resp.body, e.key);
+            return jsonPathGet(resp.bodyForInspection(), e.key);
         case Extract::Regex: {
             QRegularExpression rx(e.key,
                 QRegularExpression::DotMatchesEverythingOption);
             if (!rx.isValid()) return {};
-            const QByteArray buf = resp.body.left(1 * 1024 * 1024);
+            const QByteArray buf = resp.bodyForInspection().left(1 * 1024 * 1024);
             auto m = rx.match(QString::fromUtf8(buf));
             if (!m.hasMatch()) return {};
             return m.lastCapturedIndex() >= 1 ? m.captured(1) : m.captured(0);
@@ -50,7 +50,7 @@ QString extractOne(const Extract &e,
 
 Result run(const QList<Step> &steps, bool continueOnError) {
     Result result;
-    HttpClient client;
+    HttpClient client(nullptr, HttpClient::Purpose::Engagement);
 
     for (const Step &step : steps) {
         StepResult sr;

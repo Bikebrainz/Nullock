@@ -1,6 +1,7 @@
 // Pure session-rule logic (see session_rules_logic.hpp). No I/O; Qt6::Core only.
 
 #include "session_rules_logic.hpp"
+#include <QUrl>
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -151,6 +152,23 @@ bool responseIsLoggedOut(int status, const QString &bodyText,
         if (re.isValid() && re.match(bodyText).hasMatch()) return true;
     }
     return false;
+}
+
+QByteArray upsertFormParameter(const QByteArray &body, const QString &key, const QString &value) {
+    const QByteArray replacement = QUrl::toPercentEncoding(key) + '=' + QUrl::toPercentEncoding(value);
+    QList<QByteArray> parts;
+    bool replaced = false;
+    for (const QByteArray &part : body.split('&')) {
+        if (part.isEmpty()) continue;
+        QByteArray name = part.left(part.indexOf('=') < 0 ? part.size() : part.indexOf('='));
+        name.replace('+', ' ');
+        if (QUrl::fromPercentEncoding(name) == key) {
+            if (!replaced) parts.append(replacement);
+            replaced = true;
+        } else parts.append(part);
+    }
+    if (!replaced) parts.append(replacement);
+    return parts.join('&');
 }
 
 QByteArray injectIntoNonFormBody(const QByteArray &body, const QString &injectKey,
