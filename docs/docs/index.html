@@ -89,18 +89,18 @@
       <h2 class="h2-section">Your first capture</h2>
       <p>Start the proxy on a port and point your client at it. The desktop app does this with one click; from the CLI:</p>
       <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'http://app.local/*'&#10;nullock status">Copy</button></div>
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'app.local'&#10;nullock status">Copy</button></div>
         <pre><span class="c-purple">NullockApp</span> --proxy-port=8080 --control-port=17777
 <span class="c-comment"># [nul-] proxy on :8080 · control API on :17777</span>
 <span class="c-comment"># then, in another shell — set scope, watch it fill:</span>
-<span class="c-purple">nullock</span> scope add <span class="c-ok">'http://app.local/*'</span>
+<span class="c-purple">nullock</span> scope add <span class="c-ok">'app.local'</span>
 <span class="c-purple">nullock</span> status
 <span class="c-ok"># ─── 42 rows · scope: app.local ───</span></pre>
       </div>
-      <p>Everything in scope lands in the history table. Click a row to inspect the raw exchange, or send it to Repeater.</p>
+      <p>Simple scope rules match host names, such as <code>app.local</code> or <code>*.example.test</code>; they do not restrict a URL path or port. Captured exchanges appear in the history table. Click a row to inspect the raw exchange, or send it to Repeater.</p>
       <div class="callout">
         <span class="badge"><span class="dot"></span>tip</span>
-        <p style="margin:0;">Out of scope traffic is still proxied — it just won't clutter your history. Widen scope later without losing rows.</p>
+        <p style="margin:0;">Out-of-scope traffic is still proxied. Enable logging of out-of-scope traffic before browsing if you need to retain those exchanges; widening scope later cannot recover traffic that was never recorded.</p>
       </div>
     </section>
 

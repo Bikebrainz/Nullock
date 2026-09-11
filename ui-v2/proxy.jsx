@@ -2139,7 +2139,14 @@ function maybeRedact(k, v) {
 }
 
 function xmlEscape(s) {
-  return String(s == null ? "" : s)
+  // XML 1.0 cannot represent control characters or unpaired surrogates,
+  // even as numeric entities. Iterate code points so valid emoji survive
+  // the browser's JSX transpilation as well as native JavaScript execution.
+  return Array.from(String(s == null ? "" : s), ch => {
+    const cp = ch.codePointAt(0);
+    return cp === 9 || cp === 10 || cp === 13 || (cp >= 0x20 && cp <= 0xD7FF)
+      || (cp >= 0xE000 && cp <= 0xFFFD) || cp >= 0x10000 ? ch : "\uFFFD";
+  }).join("")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -3229,20 +3236,21 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const annotations = NL.historyAnnotations || {};
   const [legacyAnnotations, setLegacyAnnotations] = React.useState(loadAnnotations);
   const [annotationError, setAnnotationError] = React.useState("");
-  const [annotationSaving, setAnnotationSaving] = React.useState(false);
+  const [pendingAnnotationSaves, setPendingAnnotationSaves] = React.useState(0);
+  const annotationSaving = pendingAnnotationSaves > 0;
   const [annotatedOnly, setAnnotatedOnly] = React.useState(false);
   const saveRowAnnotation = async (id, patch) => {
     setAnnotationError("");
-    setAnnotationSaving(true);
+    setPendingAnnotationSaves(n => n + 1);
     try { await NL.actions.annotateHistory(id, patch); }
     catch (error) { setAnnotationError(error.message || "Could not save project note"); }
-    finally { setAnnotationSaving(false); }
+    finally { setPendingAnnotationSaves(n => n - 1); }
   };
   const setRowColor = (id, color) => saveRowAnnotation(id, {color: color || ""});
   const setRowComment = (id, comment) => saveRowAnnotation(id, {comment});
   const clearRowAnnotation = id => saveRowAnnotation(id, {color: "", comment: ""});
   const migrateAnnotations = async () => {
-    setAnnotationSaving(true);
+    setPendingAnnotationSaves(n => n + 1);
     setAnnotationError("");
     const generation = NL._generation;
     try {
@@ -3256,7 +3264,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
       window.localStorage.removeItem(projectStorageKey(ANNOTATIONS_STORAGE_KEY));
       setLegacyAnnotations({});
     } catch (error) { setAnnotationError(error.message + ". Original browser notes are retained."); }
-    finally { setAnnotationSaving(false); }
+    finally { setPendingAnnotationSaves(n => n - 1); }
   };
   const ctxRowNote = ctxMenu && ctxMenu.rowId != null ? annotations[ctxMenu.rowId] : null;
 

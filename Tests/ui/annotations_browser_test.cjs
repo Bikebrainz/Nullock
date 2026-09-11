@@ -64,16 +64,54 @@ async function freePort() {
       const row = {...NL.rows.find(r => r.id === 1), path:'/annotated]]><fake/>', annotation:NL.historyAnnotations['1']};
       const xml = buildSiteMapItemsXml([row], 0);
       const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      const savedNote = NL.historyAnnotations['1'];
+      NL.historyAnnotations['1'] = {comment:'bad\u0000\u0001\uD800😀'};
+      const unusual = buildSiteMapItemsXml([row], 0);
+      NL.historyAnnotations['1'] = savedNote;
+      const unusualDoc = new DOMParser().parseFromString(unusual, 'application/xml');
       const html = buildBranchIssuesHtml([], 'notes.test', [row]);
       const report = new DOMParser().parseFromString(html, 'text/html');
       return {xmlValid:!doc.querySelector('parsererror'), comment:doc.querySelector('comment')?.textContent,
+        unusualValid:!unusualDoc.querySelector('parsererror'), unusualComment:unusualDoc.querySelector('comment')?.textContent,
         highlight:doc.querySelector('highlight')?.textContent, htmlText:report.body.textContent,
         injected:!!report.querySelector('img, script'), note};
     }, note);
     assert.equal(exports.xmlValid, true); assert.equal(exports.comment, note);
+    assert.equal(exports.unusualValid, true); assert.equal(exports.unusualComment, 'bad\uFFFD\uFFFD\uFFFD😀');
     assert.equal(exports.highlight, 'purple'); assert.equal(exports.injected, false);
     assert(exports.htmlText.includes(note));
     console.log('PASS: selected-item XML and branch HTML include escaped investigation notes');
+
+    let releaseFirst, releaseSecond, reachedFirst, reachedSecond, writes = 0;
+    const firstGate = new Promise(resolve => { releaseFirst = resolve; });
+    const secondGate = new Promise(resolve => { releaseSecond = resolve; });
+    const firstReached = new Promise(resolve => { reachedFirst = resolve; });
+    const secondReached = new Promise(resolve => { reachedSecond = resolve; });
+    await page.route('**/api/history/annotation', async route => {
+      if (++writes === 1) { reachedFirst(); await firstGate; }
+      else { reachedSecond(); await secondGate; }
+      await route.continue();
+    });
+    await row.click({button:'right'});
+    await page.getByRole('button', {name:'Highlight green', exact:true}).click();
+    await Promise.race([firstReached, new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('First annotation write did not arrive')), 10000);
+      firstReached.then(() => clearTimeout(timer));
+    })]);
+    await row.click({button:'right'});
+    await page.getByRole('button', {name:'Highlight purple', exact:true}).click();
+    releaseFirst();
+    await Promise.race([secondReached, new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('Queued annotation write did not arrive')), 10000);
+      secondReached.then(() => clearTimeout(timer));
+    })]);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    await page.getByRole('status').filter({hasText:'Saving notes'}).waitFor();
+    releaseSecond();
+    await page.getByRole('status').filter({hasText:'Saving notes'}).waitFor({state:'hidden'});
+    await page.unroute('**/api/history/annotation');
+    assert.equal(await page.evaluate(() => NL.historyAnnotations['1'].color), 'purple');
+    console.log('PASS: overlapping edits keep the saving indicator until the final write completes');
 
     await page.evaluate(() => {
       const b = NL.bootInfo;
