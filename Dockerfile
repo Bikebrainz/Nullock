@@ -40,7 +40,7 @@ ARG QT_VERSION=6.7.3
 # ones, and a bare ubuntu:22.04 has neither installed (GitHub's hosted runner
 # images do, invisibly, which is why the CI build-linux job never needed this).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ninja-build build-essential git \
+        ninja-build build-essential git patchelf libxcb-cursor0 \
         libnghttp2-dev libssl-dev zlib1g-dev \
         libfontconfig1-dev libfreetype-dev libdbus-1-dev \
         python3 python3-pip \
@@ -71,8 +71,10 @@ COPY . .
 # the Runtime component also installs ui-v2/templates/extensions in one shot,
 # so the runtime stage no longer hand-copies each of those from the source
 # tree (a copy that would silently drift if the project ever restructures them).
-RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/nullock \
-    && cmake --build build --target NullockApp -j \
+# This image explicitly copies its Qt runtime below. Avoid deploying a second
+# desktop Qt tree (and its unused X11 plugins) into the headless install prefix.
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/nullock -DNULLOCK_DEPLOY_RUNTIME=OFF \
+    && cmake --build build --target NullockApp -j 4 \
     && cmake --install build --component Runtime
 
 # --------------------------------------------------------------------------
@@ -97,7 +99,7 @@ ARG QT_VERSION=6.7.3
 # containers) have no GPU, so software rasterization is the only path to a
 # working GL context at all.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnghttp2-14 libssl3 libglib2.0-0 libxkbcommon0 \
+        openssl libnghttp2-14 libssl3 libglib2.0-0 libxkbcommon0 libxcb-cursor0 \
         libgl1 libopengl0 libegl1 libgles2 libgl1-mesa-dri \
         libfontconfig1 libfreetype6 libdbus-1-3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

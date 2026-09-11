@@ -158,20 +158,55 @@ bool ProjectStore::clearHistory() {
     if (!isOpen() || !prepareSwitch()) return false;
     QMutexLocker historyLock(&m_historyMutex);
     QMutexLocker findingsLock(&m_findingsMutex);
-    if (!m_history.resize(0) || !m_findingsFile.resize(0) || !m_historyIndex.clear()) {
-        m_lastError = "Could not clear project history";
-        emit errorOccurred(m_lastError);
-        return false;
-    }
-    m_history.seek(0);
-    m_findingsFile.seek(0);
+    const QString suffix = ".clear-backup-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString historyPath = m_history.fileName();
+    const QString findingsPath = m_findingsFile.fileName();
+    const QString oldEpoch = m_meta.historyEpoch;
+    bool historyMoved = false, findingsMoved = false;
+    // Keep the original archives until every replacement is writable. Renaming
+    // is independent of archive size and allows rollback on an ordinary I/O error.
     m_history.flush();
     m_findingsFile.flush();
+    m_history.close();
+    m_findingsFile.close();
+    auto fail = [&] {
+        m_history.close();
+        m_findingsFile.close();
+        bool restored = true;
+        if (historyMoved) {
+            if (QFile::exists(historyPath)) restored &= QFile::remove(historyPath);
+            restored &= QFile::rename(historyPath + suffix, historyPath);
+        }
+        if (findingsMoved) {
+            if (QFile::exists(findingsPath)) restored &= QFile::remove(findingsPath);
+            restored &= QFile::rename(findingsPath + suffix, findingsPath);
+        }
+        restored &= m_history.open(QIODevice::WriteOnly | QIODevice::Append);
+        restored &= m_findingsFile.open(QIODevice::WriteOnly | QIODevice::Append);
+        m_meta.historyEpoch = oldEpoch;
+        m_lastError = restored ? "Could not clear project history; original archives retained"
+            : "Could not restore history; recover the .clear-backup files in the project directory";
+        emit errorOccurred(m_lastError);
+        return false;
+    };
+    historyMoved = QFile::rename(historyPath, historyPath + suffix);
+    if (!historyMoved) return fail();
+    findingsMoved = QFile::rename(findingsPath, findingsPath + suffix);
+    if (!findingsMoved) return fail();
+    if (!m_history.open(QIODevice::WriteOnly | QIODevice::Append)
+        || !m_findingsFile.open(QIODevice::WriteOnly | QIODevice::Append)) return fail();
+    m_meta.historyEpoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!saveMetadata()) return fail();
+    if (!m_historyIndex.clear()) {
+        fail();
+        saveMetadata();
+        return false;
+    }
+    QFile::remove(historyPath + suffix);
+    QFile::remove(findingsPath + suffix);
     m_nextRowId = 1;
     m_findingKeys.clear();
     m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_meta.historyEpoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    saveMetadata();
     emit historyCleared();
     return true;
 }

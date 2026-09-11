@@ -16,6 +16,7 @@
 #include <QString>
 
 #include <cstdio>
+#include <optional>
 
 using namespace Nullock::Core::HttpFingerprint;
 
@@ -25,9 +26,9 @@ void chk(const char *label, bool ok) {
     if (ok) ++pass;
     else { std::fprintf(stderr, "  FAIL  %s\n", label); ++fail; }
 }
-const Tech *find(const QList<Tech> &ts, const char *name) {
-    for (const auto &t : ts) if (t.name == QString::fromLatin1(name)) return &t;
-    return nullptr;
+std::optional<Tech> find(const QList<Tech> &ts, const char *name) {
+    for (const auto &t : ts) if (t.name == QString::fromLatin1(name)) return t;
+    return std::nullopt;
 }
 Headers H(std::initializer_list<QPair<QString, QString>> l) { return Headers(l); }
 QList<Tech> body(const char *b) { return detect({}, QByteArray(b)); }
@@ -38,72 +39,72 @@ int main(int argc, char **argv) {
 
     // ---- Joomla FP fix: prose mention must NOT become a version+CVE -----
     chk("joomla prose 'Joomla! 3.4.5' (no marker) -> NOT detected (no false CVE)",
-        find(body("<p>A flaw was found in Joomla! 3.4.5 last week</p>"), "Joomla") == nullptr);
+        find(body("<p>A flaw was found in Joomla! 3.4.5 last week</p>"), "Joomla") == std::nullopt);
     chk("joomla generator meta -> version + cms-joomla",
-        [](){ const Tech *t = find(body("<meta name=\"generator\" content=\"Joomla! 3.9.28\">"), "Joomla");
+        [](){ const auto t = find(body("<meta name=\"generator\" content=\"Joomla! 3.9.28\">"), "Joomla");
               return t && t->version == "3.9.28" && t->cveKind == "cms-joomla"; }());
     chk("joomla path marker -> versionless inventory (cveKind set, version empty -> no CVE)",
-        [](){ const Tech *t = find(body("<script src=\"/media/jui/js/x.js\"></script>"), "Joomla");
+        [](){ const auto t = find(body("<script src=\"/media/jui/js/x.js\"></script>"), "Joomla");
               return t && t->version.isEmpty() && t->cveKind == "cms-joomla"; }());
 
     // ---- Drupal FP fix: prose version must NOT become a version+CVE -----
     chk("drupal prose 'Drupal 7.58' (no marker) -> NOT detected with version",
-        [](){ const Tech *t = find(body("<p>Drupal 7.58 had an SA-CORE advisory</p>"), "Drupal");
-              return t == nullptr || t->version.isEmpty(); }());
+        [](){ const auto t = find(body("<p>Drupal 7.58 had an SA-CORE advisory</p>"), "Drupal");
+              return t == std::nullopt || t->version.isEmpty(); }());
     chk("drupal generator meta -> version + cms-drupal",
-        [](){ const Tech *t = find(body("<meta name=\"generator\" content=\"Drupal 9.4 (https://www.drupal.org)\">"), "Drupal");
+        [](){ const auto t = find(body("<meta name=\"generator\" content=\"Drupal 9.4 (https://www.drupal.org)\">"), "Drupal");
               return t && t->version == "9.4" && t->cveKind == "cms-drupal"; }());
     chk("drupal /sites/ path -> versionless inventory",
-        [](){ const Tech *t = find(body("<link href=\"/sites/all/themes/x.css\">"), "Drupal");
+        [](){ const auto t = find(body("<link href=\"/sites/all/themes/x.css\">"), "Drupal");
               return t && t->version.isEmpty(); }());
 
     // ---- Django: require BOTH cookies (was bare sessionid) --------------
     chk("django bare sessionid cookie -> NOT Django (FP fix)",
-        find(detect(H({{"Set-Cookie", "sessionid=abc; Path=/"}}), ""), "Django") == nullptr);
+        find(detect(H({{"Set-Cookie", "sessionid=abc; Path=/"}}), ""), "Django") == std::nullopt);
     chk("django csrftoken + sessionid -> Django",
-        find(detect(H({{"Set-Cookie", "csrftoken=x"}, {"Set-Cookie", "sessionid=y"}}), ""), "Django") != nullptr);
+        find(detect(H({{"Set-Cookie", "csrftoken=x"}, {"Set-Cookie", "sessionid=y"}}), ""), "Django") != std::nullopt);
 
     // ---- well-gated positives still fire (no regression) ----------------
     chk("tomcat body marker -> version",
-        [](){ const Tech *t = find(body("<h3>Apache Tomcat/9.0.30</h3>"), "Apache Tomcat");
+        [](){ const auto t = find(body("<h3>Apache Tomcat/9.0.30</h3>"), "Apache Tomcat");
               return t && t->version == "9.0.30" && t->cveKind == "app-tomcat"; }());
     chk("server header Apache -> version",
-        [](){ const Tech *t = find(detect(H({{"Server", "Apache/2.4.52 (Ubuntu)"}}), ""), "Apache");
+        [](){ const auto t = find(detect(H({{"Server", "Apache/2.4.52 (Ubuntu)"}}), ""), "Apache");
               return t && t->version == "2.4.52" && t->cveKind == "server-apache"; }());
     chk("wordpress generator meta -> version",
-        [](){ const Tech *t = find(body("<meta name='generator' content='WordPress 6.4.2'>"), "WordPress");
+        [](){ const auto t = find(body("<meta name='generator' content='WordPress 6.4.2'>"), "WordPress");
               return t && t->version == "6.4.2"; }());
     chk("grafana gated marker -> version",
-        [](){ const Tech *t = find(body("window.grafanaBootData={\"settings\":{\"buildInfo\":{\"version\":\"9.5.2\"}}}"), "Grafana");
+        [](){ const auto t = find(body("window.grafanaBootData={\"settings\":{\"buildInfo\":{\"version\":\"9.5.2\"}}}"), "Grafana");
               return t && t->version == "9.5.2"; }());
-    chk("phpsessid cookie -> PHP", find(detect(H({{"Set-Cookie", "PHPSESSID=abc"}}), ""), "PHP") != nullptr);
+    chk("phpsessid cookie -> PHP", find(detect(H({{"Set-Cookie", "PHPSESSID=abc"}}), ""), "PHP") != std::nullopt);
 
     // ---- header extractors that had no coverage ------------------------
     // The Server / X-Powered-By / X-AspNet-Version / X-Jenkins version-capture
     // paths (and the presence-only ones) were untested; a broken regex would
     // silently stop fingerprinting the server + feed CVE correlation nothing.
     chk("server nginx -> version + server-nginx",
-        [](){ const Tech *t = find(detect(H({{"Server", "nginx/1.20.1"}}), ""), "nginx");
+        [](){ const auto t = find(detect(H({{"Server", "nginx/1.20.1"}}), ""), "nginx");
               return t && t->version == "1.20.1" && t->cveKind == "server-nginx"; }());
     chk("server IIS -> version + server-iis",
-        [](){ const Tech *t = find(detect(H({{"Server", "Microsoft-IIS/10.0"}}), ""), "IIS");
+        [](){ const auto t = find(detect(H({{"Server", "Microsoft-IIS/10.0"}}), ""), "IIS");
               return t && t->version == "10.0" && t->cveKind == "server-iis"; }());
     chk("server cloudflare -> detected (versionless)",
-        [](){ const Tech *t = find(detect(H({{"Server", "cloudflare"}}), ""), "Cloudflare");
+        [](){ const auto t = find(detect(H({{"Server", "cloudflare"}}), ""), "Cloudflare");
               return t && t->version.isEmpty(); }());
     chk("X-Powered-By PHP -> version + lang-php",
-        [](){ const Tech *t = find(detect(H({{"X-Powered-By", "PHP/8.1.2"}}), ""), "PHP");
+        [](){ const auto t = find(detect(H({{"X-Powered-By", "PHP/8.1.2"}}), ""), "PHP");
               return t && t->version == "8.1.2" && t->cveKind == "lang-php"; }());
     chk("X-Powered-By Express -> detected",
-        find(detect(H({{"X-Powered-By", "Express"}}), ""), "Express") != nullptr);
+        find(detect(H({{"X-Powered-By", "Express"}}), ""), "Express") != std::nullopt);
     chk("X-Powered-By Next.js -> fw-nextjs",
-        [](){ const Tech *t = find(detect(H({{"X-Powered-By", "Next.js"}}), ""), "Next.js");
+        [](){ const auto t = find(detect(H({{"X-Powered-By", "Next.js"}}), ""), "Next.js");
               return t && t->cveKind == "fw-nextjs"; }());
     chk("X-AspNet-Version -> ASP.NET version + fw-aspnet",
-        [](){ const Tech *t = find(detect(H({{"X-AspNet-Version", "4.0.30319"}}), ""), "ASP.NET");
+        [](){ const auto t = find(detect(H({{"X-AspNet-Version", "4.0.30319"}}), ""), "ASP.NET");
               return t && t->version == "4.0.30319" && t->cveKind == "fw-aspnet"; }());
     chk("X-Jenkins header -> version + app-jenkins",
-        [](){ const Tech *t = find(detect(H({{"X-Jenkins", "2.426.1"}}), ""), "Jenkins");
+        [](){ const auto t = find(detect(H({{"X-Jenkins", "2.426.1"}}), ""), "Jenkins");
               return t && t->version == "2.426.1" && t->cveKind == "app-jenkins"; }());
 
     // ---- buildGet: CR/LF guards ----------------------------------------

@@ -108,7 +108,8 @@ endif()
 
 # Unix packages bundle the Qt version used to build, including QML and plugins.
 # Relying on a distro's older Qt runtime does not satisfy Qt 6.7 symbols.
-if(UNIX)
+option(NULLOCK_DEPLOY_RUNTIME "Bundle Qt runtime dependencies when installing" ON)
+if(UNIX AND NULLOCK_DEPLOY_RUNTIME)
     qt_generate_deploy_qml_app_script(TARGET NullockApp OUTPUT_SCRIPT nullock_deploy
         NO_TRANSLATIONS)
     install(SCRIPT ${nullock_deploy} COMPONENT Runtime)

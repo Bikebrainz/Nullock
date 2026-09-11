@@ -2505,6 +2505,14 @@ function IssuesTab({ dispatch }) {
 
 // TCP port scanner (Nmap-flavored). Run a preset or custom port list
 // against a host, watch live progress, see banner-grabbed services.
+function ScanResultsTable({ cols, rows, cell }) {
+  const cellStyle = { padding: "4px 12px 4px 0", textAlign: "left", verticalAlign: "top", overflowWrap: "anywhere" };
+  return <table style={{ borderCollapse: "collapse", fontSize: "12px", width: "100%" }}>
+    <thead><tr>{cols.map(c => <th key={c} scope="col" style={{ ...cellStyle, color: "var(--dim)" }}>{c}</th>)}</tr></thead>
+    <tbody>{rows.map((row, i) => <tr key={row.id || i}>{cell(row).map((value, j) => <td key={j} style={cellStyle}>{value}</td>)}</tr>)}</tbody>
+  </table>;
+}
+
 function ScansTab() {
   const [, force] = React.useReducer(x => x + 1, 0);
   React.useEffect(() => {
@@ -3313,7 +3321,7 @@ function ScansTab() {
           <Btn2 k="templates" label="Reload list" onClick={loadTemplates} />
         </div>
         {tplList && tplList.templates && tplList.templates.length > 0 && (
-          <Table cols={["id", "name", "severity", "description"]} rows={tplList.templates}
+          <ScanResultsTable cols={["id", "name", "severity", "description"]} rows={tplList.templates}
                  cell={t => [t.id, t.name, <span style={{ color: SEVERITY_COLOR[t.severity] || "var(--dim)" }}>{t.severity}</span>, t.description]} />
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

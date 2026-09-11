@@ -28,6 +28,7 @@ ui_*.h
 # Python bytecode (e.g. from py_compile-ing the labs)
 __pycache__/
 *.pyc
+node_modules/
 
 # Internal / private strategy docs -- must NOT be in the public repo
 MONETIZATION.md

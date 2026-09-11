@@ -137,6 +137,14 @@ jobs:
         run: python scripts/check_web_assets.py
       - name: application lifecycle and wire fidelity
         run: python scripts/runtime_regression.py build/Src/App/Release/NullockApp.exe
+      - name: reporting integration
+        run: ./scripts/integration_smoke.ps1 -exe build/Src/App/Release/NullockApp.exe
+      - name: install browser test dependencies
+        run: |
+          npm ci --prefix Tests/ui
+          ./Tests/ui/node_modules/.bin/playwright install chromium
+      - name: every browser tool opens
+        run: node Tests/ui/browser_test.cjs build/Src/App/Release/NullockApp.exe
       - name: staged runtime without developer PATH
         shell: pwsh
         run: |
@@ -274,3 +282,16 @@ jobs:
         run: docker build -t nullock:ci .
       - name: runtime smoke (--help, no listeners/token required)
         run: docker run --rm nullock:ci --help
+      - name: authenticated container service
+        env:
+          NULLOCK_API_TOKEN: ci-local-fixture-token
+        run: |
+          docker run -d --name nullock-service -p 127.0.0.1::17777 -e NULLOCK_API_TOKEN nullock:ci --no-update-check
+          PORT=$(docker port nullock-service 17777/tcp | sed 's/.*://')
+          python3 scripts/container_smoke.py "http://127.0.0.1:$PORT"
+          test "$(docker wait nullock-service)" = 0
+      - name: container diagnostics and cleanup
+        if: always()
+        run: |
+          docker logs nullock-service 2>/dev/null || true
+          docker rm -f nullock-service 2>/dev/null || true

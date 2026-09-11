@@ -19,6 +19,7 @@
 #include <QUrl>
 
 #include <cstdio>
+#include <optional>
 
 using namespace Nullock::Core::SecretScanner;
 
@@ -32,9 +33,9 @@ bool hasType(const QList<Hit> &hits, const char *type) {
     for (const auto &h : hits) if (h.type == QString::fromLatin1(type)) return true;
     return false;
 }
-const Hit *findType(const QList<Hit> &hits, const char *type) {
-    for (const auto &h : hits) if (h.type == QString::fromLatin1(type)) return &h;
-    return nullptr;
+std::optional<Hit> findType(const QList<Hit> &hits, const char *type) {
+    for (const auto &h : hits) if (h.type == QString::fromLatin1(type)) return h;
+    return std::nullopt;
 }
 } // namespace
 
@@ -75,12 +76,12 @@ int main(int argc, char **argv) {
     {
         // a JWT shape (public-ish token) -> low
         const QString jwt = "eyJhbGciOiJ.eyJzdWIiOiAx.SflKxwRJSMeKKF2QT4";
-        const Hit *j = findType(scanText("var t = \"" + jwt + "\"", "x"), "json-web-token");
+        const auto j = findType(scanText("var t = \"" + jwt + "\"", "x"), "json-web-token");
         chk("jwt severity downgraded to low", j && j->severity == "low");
         // SID built by concatenation so no literal AC+32hex appears in source
         // (it would trip provider secret scanners) -- synthetic, not a real SID.
         const QString sid = QStringLiteral("AC") + "abf39d2e71c4508d6b9a3f0e2d18c47a";
-        const Hit *t = findType(scanText("sid = \"" + sid + "\"", "x"), "twilio-account-sid");
+        const auto t = findType(scanText("sid = \"" + sid + "\"", "x"), "twilio-account-sid");
         // (this SID is all-hex; not a placeholder, so it matches) -> low severity
         chk("twilio SID severity is low (identifier, not secret)", t && t->severity == "low");
     }
@@ -147,7 +148,7 @@ int main(int argc, char **argv) {
     // ---- masking never leaks the value ----------------------------------
     {
         const auto h = scanText("creds = \"" + awsReal + "\"", "x");
-        const Hit *a = findType(h, "aws-access-key-id");
+        const auto a = findType(h, "aws-access-key-id");
         chk("mask shows prefix+len, not the full key",
             a && a->masked.startsWith("AKIA") && a->masked.contains("(len 20)")
               && !a->masked.contains("NWJR58") && !a->context.contains(awsReal));

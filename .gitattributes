@@ -2,4 +2,4 @@
 * text=auto eol=lf
 ui-v2/vendor/*.js text eol=lf
 *.sh text eol=lf
-Tests/fuzz/seeds/** -text
+Tests/fuzz/seeds/** binary

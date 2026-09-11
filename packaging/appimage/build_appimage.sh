@@ -9,9 +9,10 @@
 #   packaging/appimage/build_appimage.sh stage
 #
 # Produces Nullock-x86_64.AppImage in the current directory. No root,
-# no daemons. Works on every Linux distro >= 2015.
+# no daemons. The target distro must support the build's glibc baseline.
 
 set -euo pipefail
+export APPIMAGE_EXTRACT_AND_RUN=1
 
 STAGE=${1:-stage}
 if [ ! -d "$STAGE/usr" ]; then
@@ -81,6 +82,7 @@ fi
 
 # Produce the AppImage.
 "$LD" --appdir "$STAGE" \
+    --executable "$STAGE/usr/bin/NullockApp" \
     -d "$STAGE/usr/share/applications/nullock.desktop" \
     -i "$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png" \
     --plugin qt \

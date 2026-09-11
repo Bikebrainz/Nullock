@@ -137,6 +137,9 @@ def main():
             ingest(entry(body=body))
             full=api('/api/history/full/1')
             check('HAR base64 response decoded', full['rawResponse'].endswith('Hello'))
+            exported=Path(api('/api/har/export', {'redact':False})['path'])
+            har=json.loads(exported.read_text())['log']['entries'][0]
+            check('HAR export preserves opaque request bytes', base64.b64decode(har['request']['postData']['text'])==body and har['request']['postData']['_encoding']=='base64')
             check('raw accessor is complete', '[binary' not in full['rawRequest'] and '[truncated' not in full['rawRequest'] and len(full['rawRequest'])>70000)
             api('/api/repeater/tab/addFromHistoryId', {'id':1})
             check('binary request has explicit byte encoding', api('/api/snapshot')['repeater']['requestEncoding']=='latin1')
