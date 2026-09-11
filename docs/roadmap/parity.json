@@ -354,7 +354,7 @@
       "effort": "days",
       "gap": "None \u2014 loadRun restores every row's raw combo + completion flag, and resume() re-fires ONLY the never-completed rows over the same worker (completed rows keep their results). Exposed as Q_INVOKABLE resume(), POST /api/intruder/resume, and a \u25b7 RESUME button next to SAVE/LOAD.",
       "why": "Closed 2026-08-29: added Intruder::resume() + a skipRows filter on runWorker's dispatch loop; the pure resume decision (IntruderPersist::planResume \u2014 recursive-grep unresumable, all-complete = nothing to resume, else skip the completed indices) is unit-tested + mutation-proven, and the firing reuses the proven start()/runWorker path over the round-trip-restored combos.",
-      "evidence": "Src/Core/Networking/intruder.cpp: saveRun/loadRun/resume; ui-v2/tabs.jsx: SAVE/LOAD/RESUME; bin/nullock: intruder save/load/reset; Tests/intruder_persist_logic and Tests/intruder_resume_logic; scripts/intruder_workspace_regression.py: project restoration remains idle and preserves completed/pending rows.",
+      "evidence": "Src/Core/Networking/intruder.cpp: saveRun/loadRun/resume; ui-v2/tabs.jsx: SAVE/LOAD/RESUME; bin/nullock: intruder save/load/reset; Tests/intruder_persist_logic/intruder_persist_logic_test.cpp; scripts/intruder_workspace_regression.py: project restoration remains idle and preserves completed/pending rows.",
       "reconciled": {
         "date": "2026-09-11",
         "commit": "76c583ff",
