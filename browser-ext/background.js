@@ -26,6 +26,26 @@ async function getConfig() {
   return { ...DEFAULTS, ...stored };
 }
 
+function controlUrl(cfg, suffix = "") {
+  const host = cfg.proxyHost.includes(":") ? `[${cfg.proxyHost.replace(/^\[|\]$/g, "")}]` : cfg.proxyHost;
+  return new URL(`http://${host}:${cfg.controlPort}${suffix}`).href;
+}
+
+function validateConfig(input) {
+  const cfg = { ...DEFAULTS, ...input };
+  for (const key of ["proxyPort", "controlPort"]) {
+    if (!Number.isInteger(cfg[key]) || cfg[key] < 1 || cfg[key] > 65535)
+      throw new Error("Ports must be whole numbers between 1 and 65535.");
+  }
+  if (typeof cfg.proxyHost !== "string" || !cfg.proxyHost.trim() || /[\s/?#@]/.test(cfg.proxyHost))
+    throw new Error("Enter a hostname or IP address without a scheme, path, or port.");
+  if (!Array.isArray(cfg.bypassList) || cfg.bypassList.some(v => typeof v !== "string"))
+    throw new Error("Enter one bypass host per line.");
+  controlUrl(cfg); // rejects malformed IPv6 and host:port input
+  return { proxyHost: cfg.proxyHost.trim(), proxyPort: cfg.proxyPort,
+    controlPort: cfg.controlPort, bypassList: cfg.bypassList.map(v => v.trim()).filter(Boolean) };
+}
+
 async function applyProxy(enabled) {
   const cfg = await getConfig();
   if (enabled) {
@@ -57,8 +77,8 @@ async function pingControl() {
   // is actually running. Returns the snapshot for quick stats.
   const cfg = await getConfig();
   try {
-    const r = await fetch(`http://${cfg.proxyHost}:${cfg.controlPort}/api/snapshot`,
-                          { credentials: "omit" });
+    const r = await fetch(controlUrl(cfg, "/api/snapshot"),
+                          { credentials: "omit", signal: AbortSignal.timeout(3000) });
     if (!r.ok) return { reachable: false, status: r.status };
     const j = await r.json();
     return {
@@ -84,26 +104,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       await applyProxy(!cfg.enabled);
       sendResponse({ enabled: !cfg.enabled });
     } else if (msg.type === "save") {
-      await chrome.storage.local.set(msg.config);
-      // Re-apply so the port change takes effect immediately.
-      const cfg = await getConfig();
-      if (cfg.enabled) await applyProxy(true);
+      const previous = await getConfig();
+      const cfg = validateConfig(msg.config);
+      await chrome.storage.local.set(cfg);
+      try {
+        if (previous.enabled) await applyProxy(true);
+      } catch (error) {
+        await chrome.storage.local.set(previous);
+        throw error;
+      }
       sendResponse({ ok: true });
-    } else if (msg.type === "openCa") {
+    } else if (msg.type === "openCa" || msg.type === "openUi") {
       const cfg = await getConfig();
-      const url = `http://${cfg.proxyHost}:${cfg.controlPort}/ca.pem`;
-      chrome.tabs.create({ url });
+      await chrome.tabs.create({ url: controlUrl(cfg, msg.type === "openCa" ? "/ca.pem" : "/") });
       sendResponse({ ok: true });
+    } else {
+      sendResponse({ ok: false, error: "Unknown companion action." });
     }
-  })();
+  })().catch(error => sendResponse({ ok: false, error: String(error.message || error) }));
   // async response
   return true;
 });
 
 // Restore state on browser start.
 chrome.runtime.onStartup.addListener(async () => {
-  const cfg = await getConfig();
-  if (cfg.enabled) await applyProxy(true);
+  try {
+    const cfg = await getConfig();
+    if (cfg.enabled) await applyProxy(true);
+  } catch (error) {
+    await chrome.action.setBadgeText({ text: "ERR" });
+    console.error("Could not restore the Nullock proxy:", error);
+  }
 });
 
 // First-install: leave proxy off, show the popup to walk through setup.

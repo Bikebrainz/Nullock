@@ -660,12 +660,14 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         QElapsedTimer t;
         t.start();
         // Session rules scoped to Intruder (only rewrites when a rule fires).
-        QByteArray reqBytes = ChainRunner::normalizeContentLength(
-            NetworkingLogic::encodeRequestText(req, templateLatin1));
-        if (m_sessionRules)
+        QByteArray reqBytes = NetworkingLogic::encodeRequestText(req, templateLatin1);
+        const bool encodingValid = !reqBytes.isEmpty();
+        if (encodingValid) reqBytes = ChainRunner::normalizeContentLength(reqBytes);
+        if (encodingValid && m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, host, SessionRulesLogic::ToolIntruder);
-        auto result = client.send(host, static_cast<quint16>(port),
-                                  useTls, reqBytes);
+        HttpClient::SendResult result;
+        if (encodingValid) result = client.send(host, static_cast<quint16>(port), useTls, reqBytes);
+        else result.errorMessage = "Request contains characters outside Latin-1. Select UTF-8 encoding.";
         // Resource-pool "retries on network failure" (Burp-parity): only a
         // NETWORK-level failure (connect refused/timeout/reset -- !result.ok)
         // is retried, never an HTTP error status (a 500 is a real, meaningful
@@ -674,7 +676,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
         // so this cannot block dispatch of other in-flight requests. Stops
         // early on m_stopRequested so a cancelled attack doesn't burn through
         // every retry against a dead target before honoring stop().
-        for (int attempt = 0; !result.ok && attempt < retries && !m_stopRequested; ++attempt)
+        for (int attempt = 0; encodingValid && !result.ok && attempt < retries && !m_stopRequested; ++attempt)
             result = client.send(host, static_cast<quint16>(port), useTls, reqBytes);
 
         // Follow 3xx redirects if configured -- the recorded result (status /
@@ -886,12 +888,14 @@ bool Intruder::resend(int row) {
         QString req = IE::applyPayloads(templateCopy, combo);
 
         QElapsedTimer t; t.start();
-        QByteArray reqBytes = ChainRunner::normalizeContentLength(
-            NetworkingLogic::encodeRequestText(req, templateLatin1));
-        if (m_sessionRules)
+        QByteArray reqBytes = NetworkingLogic::encodeRequestText(req, templateLatin1);
+        const bool encodingValid = !reqBytes.isEmpty();
+        if (encodingValid) reqBytes = ChainRunner::normalizeContentLength(reqBytes);
+        if (encodingValid && m_sessionRules)
             m_sessionRules->applyToRequestBytes(reqBytes, hostCopy, SessionRulesLogic::ToolIntruder);
-        auto result = client.send(hostCopy, static_cast<quint16>(portCopy),
-                                  tlsCopy, reqBytes);
+        HttpClient::SendResult result;
+        if (encodingValid) result = client.send(hostCopy, static_cast<quint16>(portCopy), tlsCopy, reqBytes);
+        else result.errorMessage = "Request contains characters outside Latin-1. Select UTF-8 encoding.";
 
         // Follow 3xx redirects if configured, mirroring fireOne()'s block above
         // exactly -- a resent row's grade must match a first-pass fired row's.

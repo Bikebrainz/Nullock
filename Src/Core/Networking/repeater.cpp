@@ -144,10 +144,18 @@ void Repeater::send() {
     auto &t = activeTab_();
     if (t.host.isEmpty() || t.requestText.isEmpty()) return;
 
+    QByteArray bytes = NetworkingLogic::encodeRequestText(t.requestText, t.requestLatin1);
+    if (bytes.isEmpty()) {
+        t.responseText = "[error] Request contains characters outside Latin-1. Select UTF-8 encoding.";
+        t.statusLine = "Encoding error";
+        t.elapsedMs = 0;
+        t.responseBytes = 0;
+        emit responseChanged();
+        return;
+    }
     m_busy = true;
     emit busyChanged();
 
-    QByteArray bytes = NetworkingLogic::encodeRequestText(t.requestText, t.requestLatin1);
     // Recompute Content-Length from the actual body (Burp's default) unless the
     // user turned it off to hand-craft a desync. The chain runner's audited helper
     // also collapses a duplicate Content-Length and drops it under

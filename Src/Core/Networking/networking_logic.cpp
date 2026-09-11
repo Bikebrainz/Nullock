@@ -9,6 +9,7 @@ QString decodeRequestText(const QByteArray &bytes, bool &latin1) {
 }
 
 QByteArray encodeRequestText(const QString &text, bool latin1) {
+    if (latin1 && QString::fromLatin1(text.toLatin1()) != text) return {};
     int sep = text.indexOf("\r\n\r\n"), width = 4;
     const int lf = text.indexOf("\n\n");
     if (sep < 0 || (lf >= 0 && lf < sep)) { sep = lf; width = 2; }

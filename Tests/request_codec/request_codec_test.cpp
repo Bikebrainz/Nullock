@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
     const QByteArray utf8 = "POST / HTTP/1.1\r\nHost: fixture.test\r\n\r\nline1\nline2\r\n" + QString::fromUtf8("日本語").toUtf8();
     const auto unicode = decodeRequestText(utf8, latin1);
     if (latin1 || encodeRequestText(unicode, latin1) != utf8) return 2;
+    if (!encodeRequestText(unicode, true).isEmpty()) return 4;
     if (encodeRequestText("POST / HTTP/1.1\nHost: fixture.test\n\nbody\nline") !=
         "POST / HTTP/1.1\r\nHost: fixture.test\r\n\r\nbody\nline") return 3;
     std::puts("PASS: all 256 byte values, large body, UTF-8, header-only newline normalization");

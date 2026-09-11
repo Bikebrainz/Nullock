@@ -9,7 +9,8 @@ file(GET_RUNTIME_DEPENDENCIES
     RESOLVED_DEPENDENCIES_VAR resolved
     UNRESOLVED_DEPENDENCIES_VAR unresolved
     PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
-    POST_EXCLUDE_REGEXES ".*[Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\].*")
+    # Match a complete directory, not vcpkg's "x64-windows" triplet directory.
+    POST_EXCLUDE_REGEXES ".*[/\\][Ww][Ii][Nn][Dd][Oo][Ww][Ss][/\\].*")
 if(unresolved)
     message(FATAL_ERROR "Missing Windows runtime dependencies: ${unresolved}")
 endif()

@@ -1,7 +1,7 @@
 # Nullock Companion (browser extension)
 
-One-click proxy routing + CA cert install path. Removes the #1 onboarding
-friction for Nullock.
+Enable proxy routing and download Nullock's CA certificate. Trusting that
+certificate is a separate, manual operating-system or browser step.
 
 ## Install (developer mode)
 
@@ -26,7 +26,7 @@ friction for Nullock.
 - `chrome.proxy.settings.set` with a fixed-servers config pointing at
   `127.0.0.1:8080` (configurable in Options). Localhost + `<local>` are
   bypassed so this extension's own control-API requests still work.
-- Polls `/api/snapshot` for the badge + popup stats (rows captured,
+- Reads `/api/snapshot` for popup stats (rows captured,
   findings, current project).
 - Provides one-click links to the Nullock UI and CA download.
 
@@ -39,9 +39,10 @@ config without you having to dig through system settings.
 - `proxy` -- to flip the browser's outbound proxy
 - `storage` -- to remember your host/port across sessions
 - `tabs` -- to open the UI and CA cert in new tabs
-- `webRequest` + host permissions -- reserved for a future "auto-tag
-  this tab's traffic with a label" feature; currently unused
-- `notifications` -- the one-time install hint
+- Host permissions -- read the configured Nullock control server's status.
+
+Status reads use the local control API. A remote control server that requires
+bearer authentication is not supported by this companion's status display.
 
 ## Why not Firefox?
 

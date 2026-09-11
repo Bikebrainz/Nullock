@@ -103,6 +103,7 @@ QString rewriteHostHeader(const QString &requestText,
 
 // Raw request editors use UTF-8 when lossless, otherwise Latin-1 byte mapping.
 // Only HTTP header newlines are normalized; body bytes must remain untouched.
+// Encoding returns empty when Latin-1 cannot represent an edited character.
 QString decodeRequestText(const QByteArray &bytes, bool &latin1);
 QByteArray encodeRequestText(const QString &text, bool latin1 = false);
 

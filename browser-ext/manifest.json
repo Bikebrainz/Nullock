@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Nullock Companion",
-  "version": "0.1.0",
-  "description": "Routes browser traffic through a local Nullock proxy and one-click installs the CA cert. Removes the #1 onboarding friction.",
+  "version": "0.1.1",
+  "description": "Routes browser traffic through a local Nullock proxy and downloads its CA certificate for manual trust setup.",
 
   "permissions": [
     "proxy",

@@ -3,9 +3,12 @@
 import argparse
 import base64
 import json
+import http.client
 import os
 from pathlib import Path
 import socket
+import ssl
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -91,6 +94,7 @@ def main():
         api('/api/snapshot')
 
     process = None
+    tls_mock = None
     with tempfile.TemporaryDirectory(prefix='nullock-regression-') as temporary:
         scratch = Path(temporary)
         initial = scratch/'explicit project'
@@ -127,6 +131,35 @@ def main():
             with urllib.request.urlopen(f'http://127.0.0.1:{ctl}/', timeout=5) as page:
                 check('installed browser UI is served', b'id="app"' in page.read())
             check('project templates are installed', bool(api('/api/project/templates')['templates']))
+            # Exercise certificate minting, Qt's TLS backend and actual encrypted
+            # proxy traffic. The self-signed fixture exception lives only in this
+            # isolated project; the test's trust store is a Python SSLContext.
+            fixture_conf = scratch/'tls.cnf'
+            fixture_conf.write_text('[req]\ndistinguished_name=dn\nprompt=no\nx509_extensions=server\n'
+                '[dn]\nCN=localhost\n[server]\nbasicConstraints=critical,CA:false\n'
+                'keyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n'
+                'subjectAltName=DNS:localhost,IP:127.0.0.1\n')
+            openssl = str(app_path.parent/'openssl.exe') if os.name == 'nt' else shutil.which('openssl')
+            fixture_env = dict(env, OPENSSL_CONF=str(fixture_conf))
+            subprocess.run([openssl,'req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+                '-keyout',str(scratch/'tls.key'),'-out',str(scratch/'tls.pem'),'-config',str(fixture_conf)],
+                env=fixture_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            tls_context.load_cert_chain(scratch/'tls.pem', scratch/'tls.key')
+            tls_mock = ThreadingHTTPServer(('127.0.0.1', 0), Mock)
+            tls_mock.socket = tls_context.wrap_socket(tls_mock.socket, server_side=True)
+            threading.Thread(target=tls_mock.serve_forever, daemon=True).start()
+            api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
+            trust = ssl.create_default_context(cafile=str(scratch/'app-data/ca/ca.pem'))
+            tunnel = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
+            try:
+                tunnel.set_tunnel('127.0.0.1', tls_mock.server_port)
+                tunnel.request('GET', '/tls-package')
+                response = tunnel.getresponse()
+                check('packaged proxy completes a local HTTPS transaction', response.status==200 and response.read()==b'OK')
+            finally:
+                tunnel.close()
             send(f'GET /redirect HTTP/1.1\r\nHost: {host}\r\nCookie: original=fixture\r\n\r\n')
             dst=next(r for r in received if r[0]=='/cookie-destination')
             check('redirect does not disclose original or Secure/path cookies', not dst[1].get('Cookie'))
@@ -156,6 +189,11 @@ def main():
             api('/api/repeater/send', {})
             api('/api/snapshot')  # send is queued; wait for its main-thread completion
             check('Repeater sends full unchanged binary body', received[-1][2]==body)
+            sent_count = len(received)
+            api('/api/repeater/set', {'request':full['rawRequest']+'\u20ac'})
+            api('/api/repeater/send', {})
+            check('Repeater rejects characters outside the selected byte encoding',
+                  'outside Latin-1' in api('/api/snapshot')['repeater']['response'] and len(received)==sent_count)
             api('/api/intruder/from-history', {'id':1})
             intr=api('/api/snapshot')['intruder']
             check('Intruder preserves binary template and port', intr['requestEncoding']=='latin1' and intr['port']==mock.server_port and '[truncated' not in intr['template'])
@@ -165,6 +203,15 @@ def main():
                 if not api('/api/snapshot')['intruder']['running']: break
                 time.sleep(.05)
             check('Intruder preserves binary bytes and updates payload framing', received[-1][2]==body.replace(b'ABC',b'LONGER-PAYLOAD'))
+            sent_count = len(received)
+            api('/api/intruder/set', {'payloads':'\u20ac'})
+            api('/api/intruder/start', {})
+            for _ in range(150):
+                intr = api('/api/snapshot')['intruder']
+                if not intr['running']: break
+                time.sleep(.05)
+            check('Intruder rejects unrepresentable generated payloads',
+                  len(received)==sent_count and 'outside Latin-1' in intr['results'][0]['err'])
             # The index is derived: recreate it and verify old rows plus future IDs.
             project('away')
             index=scratch/'app-data/projects/binary/history-index.sqlite'
@@ -224,6 +271,8 @@ def main():
             if sys.exc_info()[0] is not None:
                 print((scratch/'app.log').read_text(errors='replace'), file=sys.stderr)
             mock.shutdown(); mock.server_close()
+            if tls_mock:
+                tls_mock.shutdown(); tls_mock.server_close()
     print(f'{len(checks)} runtime checks passed')
 
 if __name__ == '__main__': main()
