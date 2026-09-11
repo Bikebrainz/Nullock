@@ -52,7 +52,7 @@ EOF
 
 # linuxdeploy needs an icon. Prefer the REAL shipped logo, resized to 256x256 --
 # a pure raster op with NO font dependency. Fall back to a font-free solid
-# brand-colour square, then a 1x1 PNG.
+# brand-colour square. linuxdeploy requires a supported square icon size.
 #
 # NB: the old placeholder used `convert -annotate 'Nullock'`, which pulls
 # ImageMagick's default 'helvetica' font. That font isn't installed on CI
@@ -62,13 +62,12 @@ ICON="$STAGE/usr/share/icons/hicolor/256x256/apps/nullock.png"
 LOGO="$REPO_ROOT/Src/FrontEnd/Resources/nullock_logo.png"
 if [ ! -f "$ICON" ]; then
     if command -v convert >/dev/null 2>&1 && [ -f "$LOGO" ]; then
-        convert "$LOGO" -resize 256x256 "$ICON"
+        convert "$LOGO" -resize 256x256 -gravity center -background none -extent 256x256 "$ICON"
     elif command -v convert >/dev/null 2>&1; then
         convert -size 256x256 xc:'#9d4edd' "$ICON"
     else
-        # Synthesize a 1x1 transparent PNG as a last resort.
-        printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcf\xc0\x00\x00\x00\x03\x00\x01\xc8\xd7\xd5\xa0\x00\x00\x00\x00IEND\xaeB`\x82' \
-            > "$ICON"
+        echo "ImageMagick is required to generate the 256x256 package icon" >&2
+        exit 1
     fi
 fi
 

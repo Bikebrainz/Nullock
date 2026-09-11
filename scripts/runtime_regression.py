@@ -159,13 +159,33 @@ def main():
                 '-keyout',str(scratch/'tls.key'),'-out',str(scratch/'tls.pem'),'-config',str(fixture_conf)],
                 env=fixture_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=True,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            # A cached leaf for the wrong subject must be regenerated, including
+            # identities produced by the former LibreSSL prompt=no configuration.
+            leaves = scratch/'app-data/ca/leaves'
+            leaves.mkdir(exist_ok=True)
+            shutil.copyfile(scratch/'tls.pem', leaves/'127.0.0.1.pem')
+            shutil.copyfile(scratch/'tls.key', leaves/'127.0.0.1.key')
             tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             tls_context.load_cert_chain(scratch/'tls.pem', scratch/'tls.key')
             tls_mock = ThreadingHTTPServer(('127.0.0.1', 0), Mock)
             tls_mock.socket = tls_context.wrap_socket(tls_mock.socket, server_side=True)
             threading.Thread(target=tls_mock.serve_forever, daemon=True).start()
-            api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
             trust = ssl.create_default_context(cafile=str(scratch/'app-data/ca/ca.pem'))
+            untrusted = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
+            rejected = False
+            try:
+                untrusted.set_tunnel('127.0.0.1', tls_mock.server_port)
+                untrusted.request('GET', '/tls-untrusted-origin')
+                response = untrusted.getresponse()
+                rejected = response.status >= 400
+                response.read()
+            except (OSError, http.client.HTTPException):
+                rejected = True
+            finally:
+                untrusted.close()
+            check('proxy rejects an untrusted HTTPS origin',
+                  rejected and not any(row[0] == '/tls-untrusted-origin' for row in received))
+            api('/api/proxy/accept-invalid-hosts/add', {'host':f'127.0.0.1:{tls_mock.server_port}'})
             tunnel = http.client.HTTPSConnection('127.0.0.1', proxy, context=trust, timeout=15)
             try:
                 tunnel.set_tunnel('127.0.0.1', tls_mock.server_port)

@@ -758,9 +758,8 @@ int main(int argc, char *argv[]) {
             : static_cast<QCoreApplication *>(new QGuiApplication(argc, argv)));
 
 #ifdef Q_OS_MACOS
-    // Secure Transport fails server handshakes with generated interception
-    // identities on supported Macs. Use the bundled OpenSSL backend, which
-    // also supports TLS 1.3/server ALPN and never imports keys into a keychain.
+    // Use the bundled OpenSSL backend for TLS 1.3/server ALPN and to keep
+    // per-host interception identities out of the user's keychain.
     // Referencing OpenSSL directly keeps its libraries loaded from the bundle.
     if (OPENSSL_init_ssl(0, nullptr) != 1 || !QSslSocket::setActiveBackend(QStringLiteral("openssl"))) {
         QTextStream(stderr) << "Nullock: the bundled OpenSSL TLS backend could not initialize.\n";

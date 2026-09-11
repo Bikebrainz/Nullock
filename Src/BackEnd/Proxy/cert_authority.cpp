@@ -4,12 +4,14 @@
 
 #include <QDir>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QMutexLocker>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSaveFile>
+#include <QSslCertificate>
 #include <QStandardPaths>
 #include <QtGlobal>      // qWarning
 
@@ -137,7 +139,9 @@ bool CertAuthority::runOpenssl(const QStringList &args, QByteArray *stderrOut) {
     const QString configPath = m_caDir + "/openssl.cnf";
     QSaveFile config(configPath);
     if (!config.open(QIODevice::WriteOnly)) return false;
-    config.write("[req]\ndistinguished_name=dn\nprompt=no\nx509_extensions=v3_ca\n"
+    // Every req invocation supplies -subj. LibreSSL ignores that option when
+    // prompt=no is set, making every leaf inherit the root's subject instead.
+    config.write("[req]\ndistinguished_name=dn\ndefault_md=sha256\nx509_extensions=v3_ca\n"
                  "[dn]\nCN=Nullock Local Root CA\nO=Nullock\n"
                  "[v3_ca]\nbasicConstraints=critical,CA:true\n"
                  "keyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\n"
@@ -222,7 +226,11 @@ LeafCert CertAuthority::leafCertFor(const QString &host) {
         if (certFile.open(QFile::ReadOnly)) cached.certPem = certFile.readAll();
         QFile keyFile(persistKey);
         if (keyFile.open(QFile::ReadOnly)) cached.keyPem = keyFile.readAll();
-        if (cached.valid()) {
+        const QSslCertificate cachedCertificate(cached.certPem, QSsl::Pem);
+        const auto now = QDateTime::currentDateTimeUtc();
+        if (cached.valid() && !cachedCertificate.isNull()
+            && cachedCertificate.subjectInfo(QSslCertificate::CommonName).contains(host)
+            && cachedCertificate.effectiveDate() <= now && cachedCertificate.expiryDate() > now) {
             // Re-assert owner-only ACL on reuse, the same way ensureCa does for
             // ca.key on startup. Leaves minted before the key-lockdown fix are
             // reused verbatim on this path and would otherwise stay at the
