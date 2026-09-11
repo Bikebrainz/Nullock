@@ -22,6 +22,26 @@ namespace {
 
 constexpr int kSchemaVersion = 1;
 
+constexpr qsizetype kMaxAnnotationsBytes = 1024 * 1024;
+QString annotationError(const QJsonObject &note) {
+    static const QSet<QString> colors{"", "red", "orange", "yellow", "green",
+        "cyan", "blue", "purple", "pink", "gray"};
+    for (auto it = note.begin(); it != note.end(); ++it) {
+        if (it.key() != "color" && it.key() != "comment") return "Unknown annotation field";
+        if (!it.value().isString()) return "Annotation fields must be strings";
+    }
+    if (!colors.contains(note.value("color").toString())) return "Unknown highlight color";
+    if (note.value("comment").toString().size() > 4096) return "Comments are limited to 4096 characters";
+    return {};
+}
+QJsonObject harAnnotation(const QJsonObject &entry) {
+    auto note = entry.value("_nullockAnnotation").toObject();
+    if (entry.contains("comment")) note["comment"] = entry.value("comment");
+    if (annotationError(note).isEmpty() && note.value("color").toString().isEmpty()
+        && note.value("comment").toString().isEmpty()) return {};
+    return note;
+}
+
 QJsonArray headersToJson(const QList<QPair<QString, QString>> &headers) {
     QJsonArray arr;
     for (const auto &h : headers) {
@@ -162,6 +182,7 @@ bool ProjectStore::clearHistory() {
     const QString historyPath = m_history.fileName();
     const QString findingsPath = m_findingsFile.fileName();
     const QString oldEpoch = m_meta.historyEpoch;
+    const auto oldAnnotations = m_meta.historyAnnotations;
     bool historyMoved = false, findingsMoved = false;
     // Keep the original archives until every replacement is writable. Renaming
     // is independent of archive size and allows rollback on an ordinary I/O error.
@@ -184,6 +205,7 @@ bool ProjectStore::clearHistory() {
         restored &= m_history.open(QIODevice::WriteOnly | QIODevice::Append);
         restored &= m_findingsFile.open(QIODevice::WriteOnly | QIODevice::Append);
         m_meta.historyEpoch = oldEpoch;
+        m_meta.historyAnnotations = oldAnnotations;
         m_lastError = restored ? "Could not clear project history; original archives retained"
             : "Could not restore history; recover the .clear-backup files in the project directory";
         emit errorOccurred(m_lastError);
@@ -196,6 +218,7 @@ bool ProjectStore::clearHistory() {
     if (!m_history.open(QIODevice::WriteOnly | QIODevice::Append)
         || !m_findingsFile.open(QIODevice::WriteOnly | QIODevice::Append)) return fail();
     m_meta.historyEpoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_meta.historyAnnotations = {};
     if (!saveMetadata()) return fail();
     if (!m_historyIndex.clear()) {
         fail();
@@ -205,6 +228,8 @@ bool ProjectStore::clearHistory() {
     QFile::remove(historyPath + suffix);
     QFile::remove(findingsPath + suffix);
     m_nextRowId = 1;
+    m_archiveAnnotations = {};
+    m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_findingKeys.clear();
     m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     emit historyCleared();
@@ -248,6 +273,8 @@ bool ProjectStore::open(const QString &projectDir) {
     m_historyIndex.open(m_dir);
     m_historyIndex.beginRebuild();
     m_nextRowId = 1;
+    m_archiveAnnotations = {};
+    m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);
     streamExistingHistory();
     m_historyIndex.endRebuild();
 
@@ -391,6 +418,16 @@ bool ProjectStore::ensureMetadata() {
             m_meta.rules.append(rule);
         }
         m_meta.repeaterState = o.value("repeater").toObject();
+        m_meta.historyAnnotations = o.value("historyAnnotations").toObject();
+        if (QJsonDocument(m_meta.historyAnnotations).toJson(QJsonDocument::Compact).size() > kMaxAnnotationsBytes)
+            return false;
+        for (auto it = m_meta.historyAnnotations.begin(); it != m_meta.historyAnnotations.end(); ++it) {
+            bool validId = false;
+            const int id = it.key().toInt(&validId);
+            if (!validId || id <= 0 || QString::number(id) != it.key()) return false;
+            if (!it.value().isNull() && (!it.value().isObject()
+                || !annotationError(it.value().toObject()).isEmpty())) return false;
+        }
         m_meta.interceptRules = o.value("interceptRules").toArray();
         // Default ON when the key is absent (older projects predate the toggle);
         // an explicit false persists and is honored.
@@ -435,6 +472,7 @@ bool ProjectStore::saveMetadata() {
     o["v"]       = kSchemaVersion;
     o["name"]    = m_meta.name;
     o["historyEpoch"] = m_meta.historyEpoch;
+    o["historyAnnotations"] = m_meta.historyAnnotations;
     o["notes"]   = m_meta.notes;
     o["created"] = m_meta.created.toUTC().toString(Qt::ISODateWithMs);
     m_meta.updated = QDateTime::currentDateTimeUtc();
@@ -483,6 +521,48 @@ bool ProjectStore::saveMetadata() {
 void ProjectStore::setRepeaterState(const QJsonObject &state) {
     m_meta.repeaterState = state;
     saveMetadata();
+}
+
+QJsonObject ProjectStore::historyAnnotations() const {
+    if (!isOpen()) return {};
+    auto notes = m_archiveAnnotations;
+    for (auto it = m_meta.historyAnnotations.begin(); it != m_meta.historyAnnotations.end(); ++it) {
+        if (it.value().isNull()) notes.remove(it.key());
+        else notes[it.key()] = it.value();
+    }
+    return notes;
+}
+
+bool ProjectStore::annotateHistory(int id, const QJsonObject &patch) {
+    m_lastError = annotationError(patch);
+    if (!m_lastError.isEmpty()) return false;
+    if (!isOpen() || id <= 0 || id >= m_nextRowId) {
+        m_lastError = "History row not found in this project";
+        return false;
+    }
+    if (patch.isEmpty()) { m_lastError = "Supply a color or comment"; return false; }
+    const auto key = QString::number(id);
+    auto note = historyAnnotations().value(key).toObject();
+    for (auto it = patch.begin(); it != patch.end(); ++it) note[it.key()] = it.value();
+    const auto previous = m_meta.historyAnnotations;
+    if (note.value("color").toString().isEmpty() && note.value("comment").toString().isEmpty()) {
+        if (m_archiveAnnotations.contains(key)) m_meta.historyAnnotations[key] = QJsonValue::Null;
+        else m_meta.historyAnnotations.remove(key);
+    } else m_meta.historyAnnotations[key] = note;
+    if (QJsonDocument(m_meta.historyAnnotations).toJson(QJsonDocument::Compact).size() > kMaxAnnotationsBytes
+        || QJsonDocument(historyAnnotations()).toJson(QJsonDocument::Compact).size() > kMaxAnnotationsBytes) {
+        m_meta.historyAnnotations = previous;
+        m_lastError = "Project annotations exceed the 1 MiB limit";
+        return false;
+    }
+    if (!saveMetadata()) {
+        m_meta.historyAnnotations = previous;
+        m_lastError = "Could not save annotation; the previous note is unchanged";
+        return false;
+    }
+    m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    emit annotationsChanged();
+    return true;
 }
 
 void ProjectStore::setInterceptRules(const QJsonArray &rules) {
@@ -703,6 +783,9 @@ void ProjectStore::streamExistingHistory() {
         const QJsonObject o = doc.object();
         const auto req  = requestFromJson(o.value("request").toObject());
         const auto resp = responseFromJson(o.value("response").toObject());
+        const auto note = o.value("annotation").toObject();
+        if (!note.isEmpty() && annotationError(note).isEmpty())
+            m_archiveAnnotations[QString::number(m_nextRowId)] = note;
         m_historyIndex.append(m_nextRowId++, req, resp);
         emit entryLoaded(req, resp);
     }
@@ -710,6 +793,12 @@ void ProjectStore::streamExistingHistory() {
 
 void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
                                const Nullock::Proxy::HttpResponse &response) {
+    appendAnnotatedEntry(request, response, {});
+}
+
+bool ProjectStore::appendAnnotatedEntry(const Nullock::Proxy::HttpRequest &request,
+                                       const Nullock::Proxy::HttpResponse &response,
+                                       const QJsonObject &annotation) {
     // Build the line outside the lock so the JSON encode doesn't block
     // another thread's response that's racing for the same write slot.
     QJsonObject o;
@@ -717,6 +806,7 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
     o["ts"]       = request.timestamp.toUTC().toString(Qt::ISODateWithMs);
     o["request"]  = requestToJson(request);
     o["response"] = responseToJson(response);
+    if (!annotation.isEmpty()) o["annotation"] = annotation;
     const QByteArray line = QJsonDocument(o).toJson(QJsonDocument::Compact) + "\n";
 
     // Hold m_historyMutex across the isOpen() check and the actual
@@ -726,15 +816,26 @@ void ProjectStore::appendEntry(const Nullock::Proxy::HttpRequest &request,
     int rowId;
     {
         QMutexLocker lk(&m_historyMutex);
-        if (!m_history.isOpen()) return;
-        m_history.write(line);
-        m_history.flush();
+        if (!m_history.isOpen()) return false;
+        const auto previousSize = m_history.size();
+        if (m_history.write(line) != line.size() || !m_history.flush()) {
+            m_history.resize(previousSize);
+            m_lastError = "Could not append project history";
+            emit errorOccurred(m_lastError);
+            return false;
+        }
         rowId = m_nextRowId++;
     }
     // Mirror metadata into the SQLite index for /api/history/find. Done
     // outside the file mutex so the index write doesn't serialize the
     // hot ndjson append path. HistoryIndex carries its own mutex.
     m_historyIndex.append(rowId, request, response);
+    if (!annotation.isEmpty()) {
+        m_archiveAnnotations[QString::number(rowId)] = annotation;
+        m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        emit annotationsChanged();
+    }
+    return true;
 }
 
 namespace {
@@ -1043,6 +1144,8 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
 
     QFile in(m_dir + "/history.ndjson");
     QJsonArray entries;
+    const auto annotations = historyAnnotations();
+    int rowId = 0;
     if (in.open(QIODevice::ReadOnly | QIODevice::Text)) {
         while (!in.atEnd()) {
             const QByteArray line = in.readLine().trimmed();
@@ -1050,6 +1153,7 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
             const QJsonDocument doc = QJsonDocument::fromJson(line);
             if (!doc.isObject()) continue;
             const QJsonObject src = doc.object();
+            const auto annotation = annotations.value(QString::number(++rowId)).toObject();
             const auto req  = requestFromJson(src.value("request").toObject());
             const auto resp = responseFromJson(src.value("response").toObject());
 
@@ -1065,6 +1169,10 @@ QString ProjectStore::exportHar(const QString &outPathIn) {
             timings["receive"] = -1;
             entry["timings"]   = timings;
             entry["serverIPAddress"] = resp.peerAddress;
+            if (!annotation.isEmpty()) {
+                entry["_nullockAnnotation"] = annotation;
+                entry["comment"] = annotation.value("comment").toString();
+            }
             entries.append(entry);
         }
     }
@@ -1142,8 +1250,15 @@ int ProjectStore::importHarBytes(const QByteArray &harJson) {
     const QJsonArray entries = log.value("entries").toArray();
 
     // Validate every encoded body before mutating the project (atomic rejection).
+    auto prospectiveNotes = historyAnnotations();
+    int prospectiveId = m_nextRowId;
     for (const auto &value : entries) {
         const auto entry = value.toObject();
+        if (entry.contains("_nullockAnnotation") && !entry.value("_nullockAnnotation").isObject()) return -1;
+        const auto note = harAnnotation(entry);
+        if (!annotationError(note).isEmpty()) return -1;
+        if (!note.isEmpty()) prospectiveNotes[QString::number(prospectiveId)] = note;
+        ++prospectiveId;
         const QList<QJsonObject> bodies{entry.value("request").toObject().value("postData").toObject(),
             entry.value("response").toObject().value("content").toObject()};
         for (const auto &body : bodies) {
@@ -1153,15 +1268,16 @@ int ProjectStore::importHarBytes(const QByteArray &harJson) {
                     QByteArray::AbortOnBase64DecodingErrors)) return -1;
         }
     }
+    if (QJsonDocument(prospectiveNotes).toJson(QJsonDocument::Compact).size() > kMaxAnnotationsBytes) return -1;
     int imported = 0;
     for (const QJsonValue &v : entries) {
         const QJsonObject entry = v.toObject();
         const auto req  = harEntryToRequest(entry);
         const auto resp = harEntryToResponse(entry);
-        emit entryLoaded(req, resp);
         // Mirror into our own history.ndjson so subsequent restarts /
         // exports see the imported entries too.
-        appendEntry(req, resp);
+        if (!appendAnnotatedEntry(req, resp, harAnnotation(entry))) return -1;
+        emit entryLoaded(req, resp);
         ++imported;
     }
     return imported;

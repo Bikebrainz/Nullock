@@ -1,6 +1,6 @@
 {
   "audit_date": "2026-07-30",
-  "reconciled_through": "2026-08-25",
+  "reconciled_through": "2026-09-11",
   "method": "Eight parallel readers enumerated Burp Suite's feature set per area and graded Nullock by reading its source; a second adversarial pass per area re-opened every cited file and corrected in both directions (51 verdicts changed). States are reconciled forward as features ship -- each change records the commit that made it true.",
   "grades": {
     "absent": "nothing implements it",
@@ -3714,14 +3714,15 @@
       "state": "partial",
       "impact": "high",
       "effort": "days",
-      "gap": "Client-side only: right-click any Proxy history/site-map row for one of 9 highlight colours and/or a free-text comment, localStorage-persisted (nl.history.annotations.v1) and filterable via an ANNOTATED chip. ProxyModel::Entry still carries no annotation field and the /api/snapshot row builder emits no comment/colour key, so a note or highlight does not survive a server restart, reach a different browser, or reach the CLI/API -- the real per-item Notes column this item names is still absent server-side.",
-      "why": "Register-accuracy fix: this entry is the platform-area sibling of parity item #299 (proxy area, same underlying feature), closed by c25af6a (2026-08-20) -- but that wave's commit only flipped #299 and left this duplicate register entry stale, still reading 'no product hits' for highlight/annotat against code that now has ANNOTATION_COLORS/loadAnnotations/saveAnnotations. Re-verified live: ui-v2/proxy.jsx:66-98 defines the 9-colour palette + localStorage load/save; HistoryTable (:106-148) and SiteMap (:361-397) both filter on annotatedOnly and render a coloured row edge from annotations[r.id]; FilterBar (:332) exposes the ANNOTATED chip. Absent -> partial, matching #299's grade and reasoning exactly.",
-      "evidence": "ui-v2/proxy.jsx:72-98 (ANNOTATION_COLORS, ANNOTATIONS_STORAGE_KEY, loadAnnotations/saveAnnotations/annotationColorHex); :114,148,185-187 (HistoryTable annotatedOnly filter + row highlight); :397,435-437 (SiteMap same); :332 (ANNOTATED filter chip). No backend field: Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp Roles enum unchanged, still no note/colour role.",
+      "gap": "Other message tables and global report formats do not yet share this annotation store; Proxy history and Site map workflows are implemented.",
+      "why": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action.",
+      "evidence": "Src/Core/Storage/project_store.cpp (historyAnnotations, annotateHistory, HAR import/export); Src/BackEnd/Control/control_server.cpp (/api/history/annotations, /api/history/annotation); ui-v2/real-data.js and proxy.jsx; bin/nullock; scripts/annotations_regression.py; Tests/ui/annotations_data_test.cjs and annotations_browser_test.cjs.",
       "reconciled": {
-        "date": "2026-08-21",
-        "commit": "c25af6a",
-        "note": "Wave 0 register-accuracy fix: this platform-area duplicate of #299 was left absent when c25af6a shipped client-side-only highlight-colour + comment annotations (localStorage-persisted, ANNOTATED filter chip on both HTTP history and Site map) -- flipped absent -> partial to match #299, with the same honest backend-still-missing caveat. No code change this pass."
-      }
+        "date": "2026-09-11",
+        "commit": "63ecda0e",
+        "note": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action."
+      },
+      "audited_state": "partial"
     },
     {
       "area": "platform",
@@ -4226,13 +4227,13 @@
       "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Listener/port filter remains missing -- no dedicated listener-port dropdown (the port is visible per-row but not a filter dimension). Server-side deep body search (/api/search) is still forced case-insensitive (control_server.cpp:1769-1771) -- the case-sensitivity toggle only applies to the local-column fast path, not the regex body scan. Annotation filter is present but client-side/localStorage only (see #299) -- it does not reach the CLI/API and does not survive across browsers.",
-      "why": "Closed 2026-08-10 (5c0c4b4): FilterBar/HistoryTable gain MIME-class/extension/case-sensitivity/negative-search dimensions. Register-accuracy update 2026-08-21: the annotation dimension named in this feature's own title was still marked missing here after c25af6a (2026-08-20) shipped it -- FilterBar now renders an ANNOTATED chip (ui-v2/proxy.jsx:332) and HistoryTable's filter predicate honors annotatedOnly (:114), closing that dimension client-side. Only listener/port remains a real gap.",
+      "gap": "Listener/port filter remains missing. Case sensitivity applies to local column/free-text matching; the server regex body-search path remains case-insensitive. Annotation filtering now uses project-persisted, cross-client notes.",
+      "why": "Closed 2026-08-10 (5c0c4b4): FilterBar/HistoryTable gain MIME-class/extension/case-sensitivity/negative-search dimensions. Register-accuracy update 2026-08-21: the annotation dimension named in this feature's own title was still marked missing here after c25af6a (2026-08-20) shipped it -- FilterBar now renders an ANNOTATED chip (ui-v2/proxy.jsx:332) and HistoryTable's filter predicate honors annotatedOnly (:114), closing that dimension client-side. Only listener/port remains a real gap. Updated 2026-09-11: 63ecda0e closes the browser-local annotation limitation with project storage and a revisioned read/patch API.",
       "evidence": "ui-v2/proxy.jsx: MIME_CATEGORIES/mimeCategory() and pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() helpers; HistoryTable's useMemo predicate applies mimeFilter/extList/extHide/caseSensitive/negate/annotatedOnly (:107-148); FilterBar renders the MIME select, EXT input+toggle, Aa case-sensitivity button, and ANNOTATED chip (:332); ProxyTab's `shown` count mirrors the same predicate so the header stays in sync.",
       "reconciled": {
-        "date": "2026-08-21",
-        "commit": "c25af6a",
-        "note": "Register-accuracy fix: the annotation filter dimension this feature names was closed client-side by c25af6a's ANNOTATED chip but this entry's gap text was never updated to say so -- corrected here. Listener/port is the sole remaining real gap. No code change this pass."
+        "date": "2026-09-11",
+        "commit": "63ecda0e",
+        "note": "Annotation persistence caveat removed; unrelated filtering gaps remain documented."
       }
     },
     {
@@ -4719,17 +4720,17 @@
     {
       "area": "proxy",
       "feature": "HTTP history annotations: per-item highlight colours and comments, plus filter-by-annotation",
-      "state": "partial",
+      "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Backend still absent: ProxyModel::Entry (Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp) carries no annotation field and the /api/snapshot row builder emits no comment/colour key, so a highlight or comment does not survive a server restart, is invisible to the CLI/API, and cannot be exported into a report. What now exists: a client-side annotation layer in the ui-v2 Proxy tab -- right-click any history/site-map row to pick one of 9 highlight colours and/or set a free-text comment, rendered as a coloured row edge + a comment-icon tooltip, persisted to this browser's localStorage (survives a page reload, not a different browser or machine), and filterable via a new ANNOTATED chip in the filter bar alongside IN-SCOPE/PARAMS/HIDE 404. The core triage workflow (flag a row during a long session, filter back to it) works end to end; only server-side/cross-client persistence remains a real gap.",
-      "why": "Re-derived 2026-08-20 against live source: confirmed the backend gap is still real (ProxyModel::Entry has exactly id/request/response, no annotation slot; control_server.cpp's history-row builder emits only id/host/method/url/path/status/mime/params/tls/ip/ts/port/size/reqSize/elapsed). Rather than leave the whole item absent while waiting on a backend model change this cloud session cannot build/verify, added the highlight+comment+filter UI as a client-side layer (ANNOTATION_COLORS/loadAnnotations/saveAnnotations/annotationColorHex in ui-v2/proxy.jsx), which delivers the actual triage workflow today without touching the wire format. Moved absent -> partial: a real, working feature exists now, honestly short of Burp's project-persisted version.",
-      "evidence": "ui-v2/proxy.jsx: ANNOTATION_COLORS (9-colour palette) + loadAnnotations/saveAnnotations (localStorage key nl.history.annotations.v1) + annotationColorHex; HistoryTable renders a coloured left-edge box-shadow keyed by annotations[r.id].color and a comment-icon cell for annotations[r.id].comment, plus an annotatedOnly filter; FilterBar gains an ANNOTATED chip beside IN-SCOPE/PARAMS/HIDE 404; ProxyTab's row context menu (already used for scope add/remove) gains a colour-swatch row, an ADD/EDIT COMMENT action (window.prompt), and CLEAR ANNOTATION, wired through setRowColor/setRowComment/clearRowAnnotation. Backend gap confirmed unchanged: Src/FrontEnd/GUI/Models/Proxy/proxy_model.hpp `struct Entry {\\n        int id;\\n        Nullock::Proxy::HttpRequest request;\\n        Nullock::Proxy::HttpResponse response;\\n    };` -- still no annotation field.",
+      "gap": "None for this history/Site map workflow. Other message tables and global report formats remain outside this item; see the platform annotation item.",
+      "why": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action.",
+      "evidence": "Src/Core/Storage/project_store.cpp (historyAnnotations, annotateHistory, HAR import/export); Src/BackEnd/Control/control_server.cpp (/api/history/annotations, /api/history/annotation); ui-v2/real-data.js and proxy.jsx; bin/nullock; scripts/annotations_regression.py; Tests/ui/annotations_data_test.cjs and annotations_browser_test.cjs.",
       "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-20",
-        "commit": "c25af6a",
-        "note": "Client-side highlight-colour + comment + ANNOTATED filter chip shipped in ui-v2/proxy.jsx (localStorage-persisted); backend model field/persistence stays an honest remaining gap."
+        "date": "2026-09-11",
+        "commit": "63ecda0e",
+        "note": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action."
       }
     },
     {
@@ -5853,14 +5854,14 @@
       "state": "present",
       "impact": "medium",
       "effort": "days",
-      "gap": "Annotation filter is client-side/localStorage only (see #299/#234) -- it does not survive a server restart, reach a different browser, or reach the CLI/API. Case-sensitivity applies to the local column/free-text match; the server regex body-search path is still forced case-insensitive.",
-      "why": "Register correction (2026-08-19, 6dcc404): downgraded present -> partial because the annotation criterion this feature's own name enumerates was confirmed absent. Re-verified 2026-08-21: c25af6a (2026-08-20) shipped client-side highlight-colour + comment annotations with an ANNOTATED filter chip shared by FilterBar, and SiteMap (ui-v2/proxy.jsx:361-397) filters its leaf list on the same annotatedOnly/annotations props HistoryTable uses (:397 `return annotatedOnly ? leaves.filter(r => annotations && annotations[r.id]) : leaves;`) and renders the same coloured row edge (:435-437). All five enumerated criteria are now genuinely present at the surface, matching how this file grades #267's identical situation -- present, with the client-side-only caveat carried in the gap text rather than blocking the whole item.",
+      "gap": "Case sensitivity applies to local column/free-text matching; the server regex body-search path remains case-insensitive. Annotation filtering now uses project-persisted, cross-client notes.",
+      "why": "Register correction (2026-08-19, 6dcc404): downgraded present -> partial because the annotation criterion this feature's own name enumerates was confirmed absent. Re-verified 2026-08-21: c25af6a (2026-08-20) shipped client-side highlight-colour + comment annotations with an ANNOTATED filter chip shared by FilterBar, and SiteMap (ui-v2/proxy.jsx:361-397) filters its leaf list on the same annotatedOnly/annotations props HistoryTable uses (:397 `return annotatedOnly ? leaves.filter(r => annotations && annotations[r.id]) : leaves;`) and renders the same coloured row edge (:435-437). All five enumerated criteria are now genuinely present at the surface, matching how this file grades #267's identical situation -- present, with the client-side-only caveat carried in the gap text rather than blocking the whole item. Updated 2026-09-11: 63ecda0e closes the browser-local annotation limitation with project storage and a revisioned read/patch API.",
       "evidence": "ui-v2/proxy.jsx:361 SiteMap signature takes annotations/annotatedOnly; :397 leaf-list filter on annotatedOnly; :435-437 row highlight from annotationColorHex(note.color); :332 FilterBar's ANNOTATED chip feeds the same state into both HistoryTable and SiteMap (ProxyTab :2497,:2520-2521). mimeCategory()/pathExtension()/parseExtList()/extFilterMatch()/parseSearchTerm() remain the same pure helpers shared with HTTP history.",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-21",
-        "commit": "c25af6a",
-        "note": "Wave 0 register-accuracy fix: flipped partial -> present. The annotation criterion that forced this item to partial on 2026-08-19 was closed client-side by c25af6a (already reconciled against sibling #299), which also wired SiteMap's leaf list into the same ANNOTATED chip/highlight rendering as HTTP history -- but that wave's commit didn't touch this entry, leaving it stale. No code change this pass; the backend-persistence gap is carried honestly in the gap text rather than claimed."
+        "date": "2026-09-11",
+        "commit": "63ecda0e",
+        "note": "Annotation persistence caveat removed; unrelated filtering gaps remain documented."
       }
     },
     {
@@ -6197,17 +6198,17 @@
     {
       "area": "target",
       "feature": "Site map / history annotations: per-item Comment and Highlight (six colours), used to drive filters and reporting",
-      "state": "partial",
+      "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Backend still absent: no comment/colour column exists anywhere in the persisted schema (Src/Core/Storage/history_index.cpp's `rows` table has no such field) or the /api/snapshot wire format, so an annotation does not survive a server restart, is invisible to the CLI/API, and cannot be exported into a report. What now exists: the Site Map tree's leaf rows (the same per-host expandable list used to open a request) share the Proxy tab's client-side annotation layer (#299) -- a leaf carries the same coloured left-edge indicator and comment-icon tooltip as the flat HTTP history table, right-click on a leaf opens the identical Highlight/Comment/Clear context menu (wired through the shared rowId-keyed ctxMenu state), and the ANNOTATED filter chip now also narrows which leaves a tree node expands to. The core 'mark it, find it later' workflow works from the tree, not just the flat list; only server-side/cross-client persistence and report inclusion remain a real gap.",
-      "why": "Re-derived 2026-08-21 against live source, continuing directly off #299 (2026-08-20, c25af6a): that wave added the annotation layer (ANNOTATION_COLORS/loadAnnotations/saveAnnotations/annotationColorHex, the ctxMenu Highlight/Comment/Clear panel keyed on rowId) to the flat HistoryTable only -- confirmed the SiteMap tree component took no `annotations` prop and its leaf rows (ui-v2/proxy.jsx SiteMap, leavesFor()) had no onContextMenu handler at all, so this item's own gap text (\"used to drive filters and reporting\") was still genuinely true for the tree view even though the sibling proxy-area item had already moved to partial. Backend gap re-confirmed unchanged (history_index.cpp's table definition still has no annotation column). Threaded the same shared state into the tree instead of building a second annotation store: SiteMap now accepts `annotations`/`annotatedOnly` props, leaf rows render the colour edge + comment glyph and forward right-clicks to the existing openRowMenu(host, event, rowId) handler (the annotation menu already branches on `ctxMenu.rowId != null`, so no new menu code was needed), and leavesFor() filters out non-annotated leaves when annotatedOnly is set.",
-      "evidence": "ui-v2/proxy.jsx: SiteMap({ ..., annotations, annotatedOnly }) -- leavesFor() now filters `annotatedOnly ? leaves.filter(r => annotations && annotations[r.id]) : leaves`; leaf rows compute the same `note = annotations && annotations[r.id]` used by HistoryTable, apply `boxShadow: inset 3px 0 0 <colour>` via annotationColorHex(note.color), render a sm-leaf-note span holding the comment glyph, and call `onRowContextMenu(e.host, ev, r.id)` on right-click; the ProxyTab call site now passes `annotations={annotations} annotatedOnly={annotatedOnly}` into <SiteMap>. ui-v2/styles.css .sm-leaf grid-template-columns extended 3 -> 4 columns (14px 40px 1fr 34px) to fit the new note glyph without disturbing method/path/status alignment. Backend gap confirmed unchanged: Src/Core/Storage/history_index.cpp:74-87's `rows` table still has no comment/colour column.",
+      "gap": "None for this history/Site map workflow. Other message tables and global report formats remain outside this item; see the platform annotation item.",
+      "why": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action.",
+      "evidence": "Src/Core/Storage/project_store.cpp (historyAnnotations, annotateHistory, HAR import/export); Src/BackEnd/Control/control_server.cpp (/api/history/annotations, /api/history/annotation); ui-v2/real-data.js and proxy.jsx; bin/nullock; scripts/annotations_regression.py; Tests/ui/annotations_data_test.cjs and annotations_browser_test.cjs.",
       "audited_state": "partial",
       "reconciled": {
-        "date": "2026-08-21",
-        "commit": "69c5b06",
-        "note": "Threaded #299's client-side highlight/comment annotation layer into the Site Map tree's leaf rows (colour edge, comment glyph, right-click menu, annotatedOnly filter) so the gesture works from the tree view, not just the flat HTTP history table; backend persistence stays an honest remaining gap, matching the sibling proxy-area item."
+        "date": "2026-09-11",
+        "commit": "63ecda0e",
+        "note": "Project-persisted comments and nine highlight colours synchronize across browser clients, survive restart/index rebuild, and round-trip through HAR. API/CLI field patches reject stale history generations. Selected-item XML and branch HTML reports include escaped notes. Legacy browser notes have an explicit migration action."
       }
     },
     {

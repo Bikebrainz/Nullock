@@ -64,16 +64,15 @@ Linux/macOS builds use the same CMake project with the platform Qt; see
 
 ## Test
 
-`ctest` runs the full suite locally (90 targets). Nine of those are the
-gate CI enforces on every push — they're the fast, deterministic ones, with
-no sockets and no event loop, so keep this list and the one in
-`.github/workflows/ci.yml` in step:
+CI builds and runs all 102 CTest suites on Windows, Linux and macOS,
+including local socket and shutdown tests. Use the same full-suite commands locally:
 
 ```sh
-cmake --build build --config Release ^
-  --target scanner_regression_test cve_database_test finding_enricher_test request_export_test intruder_engine_test ci_gate_logic_test template_request_logic_test extension_perms_logic_test extensions_api_grant_test
-ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_enricher|request_export|intruder_engine|ci_gate_logic|template_request_logic|extension_perms_logic|extensions_api_grant" --output-on-failure
+cmake --build build --config Release --parallel 4
+ctest --test-dir build -C Release --output-on-failure --parallel 4
 ```
+
+Examples of the covered suites:
 
 - `scanner_regression` — every passive detector, positive + negative cases.
 - `cve_database` — version→CVE correlation (vulnerable matches, patched
@@ -95,9 +94,13 @@ ctest --test-dir build -C Release -R "scanner_regression|cve_database|finding_en
   not just decided (drives a real `QJSEngine`), and that a granted observer
   can't corrupt a binary body.
 
-Live-socket suites (`port_scan_live`, `proxy_shutdown`) stay **out** of the CI
-filter on purpose: they bind sockets and spawn threads, which flakes on shared
-runners. Run them locally with plain `ctest`.
+Additional CI gates exercise installed packages, application lifecycle and
+wire fidelity, project-note persistence, browser tools and two-client note
+synchronization, parser sanitizer seeds, active-probe fixtures, website links,
+generated catalogs, extension hashes, the CLI and lab syntax. Runtime tests use
+isolated temporary profiles and local fixtures. See `.github/workflows/ci.yml`
+for the platform-specific commands and `scripts/annotations_regression.py`,
+`Tests/ui/annotations_browser_test.cjs` for the project-note workflow checks.
 
 `scripts/integration_smoke.ps1` is the whole-system check (import → CVE
 feed → bridge → reports → ScopeGuard) against one headless instance — the

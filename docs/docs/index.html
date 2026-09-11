@@ -43,6 +43,7 @@
     <div class="ds-group">
       <div class="ds-label">Reference</div>
       <a href="#cli" class="ds-link">CLI</a>
+      <a href="#project-notes" class="ds-link">Project notes (unreleased)</a>
       <a href="#extensions" class="ds-link">Extensions</a>
     </div>
     <div class="ds-group">
@@ -62,7 +63,7 @@
       <p>nullock is a man-in-the-middle proxy. It sits between your client and the network, captures every request and response, and lets you intercept, replay, and rewrite them. Three things to know before you start:</p>
       <ol class="doc-list">
         <li>It installs a local CA so it can read TLS. You control that CA; it never leaves your machine.</li>
-        <li>History is a single SQLite file. Back it up, copy it, grep it — it's just a file.</li>
+        <li>History lives in a project directory: the NDJSON archive stores exchanges, SQLite indexes them, and project.json stores settings and note overrides. Close the project before backing up its whole directory.</li>
         <li>There is no telemetry. The binary makes no network calls except the traffic you point at it.</li>
       </ol>
     </section>
@@ -88,19 +89,32 @@
       <h2 class="h2-section">Your first capture</h2>
       <p>Start the proxy on a port and point your client at it. The desktop app does this with one click; from the CLI:</p>
       <div class="code">
-        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'http://app.local/*'&#10;nullock status">Copy</button></div>
+        <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'app.local'&#10;nullock status">Copy</button></div>
         <pre><span class="c-purple">NullockApp</span> --proxy-port=8080 --control-port=17777
 <span class="c-comment"># [nul-] proxy on :8080 · control API on :17777</span>
 <span class="c-comment"># then, in another shell — set scope, watch it fill:</span>
-<span class="c-purple">nullock</span> scope add <span class="c-ok">'http://app.local/*'</span>
+<span class="c-purple">nullock</span> scope add <span class="c-ok">'app.local'</span>
 <span class="c-purple">nullock</span> status
 <span class="c-ok"># ─── 42 rows · scope: app.local ───</span></pre>
       </div>
-      <p>Everything in scope lands in the history table. Click a row to inspect the raw exchange, or send it to Repeater.</p>
+      <p>Simple scope rules match host names, such as <code>app.local</code> or <code>*.example.test</code>; they do not restrict a URL path or port. Captured exchanges appear in the history table. Click a row to inspect the raw exchange, or send it to Repeater.</p>
       <div class="callout">
         <span class="badge"><span class="dot"></span>tip</span>
-        <p style="margin:0;">Out of scope traffic is still proxied — it just won't clutter your history. Widen scope later without losing rows.</p>
+        <p style="margin:0;">Out-of-scope traffic is still proxied. Enable logging of out-of-scope traffic before browsing if you need to retain those exchanges; widening scope later cannot recover traffic that was never recorded.</p>
       </div>
+    </section>
+
+    <section id="project-notes" class="doc-sec">
+      <h2 class="h2-section">Project notes (unreleased)</h2>
+      <p>In the development build, right-click a history row or Site map leaf to add a comment or highlight. Notes are saved with the project and synchronized between connected clients. The ANNOTATED filter finds marked exchanges.</p>
+      <p>If this browser has older local notes, use <strong>SAVE BROWSER NOTES TO PROJECT</strong>. Existing project notes take priority; a failed import retains the browser copy so you can retry.</p>
+      <p>Comments and highlights travel with HAR files and appear in selected-item XML and branch HTML reports. Other message tables and global report formats do not yet share these annotations.</p>
+      <div class="code"><pre><code>nullock history-notes
+nullock history-note 42 --color purple --comment 'Review this exchange'
+nullock history-note 42 --comment ''
+nullock history-note 42 --clear</code></pre></div>
+      <p>The CLI needs jq and a running app. <code>GET /api/history/annotations</code> returns notes, their revision and the history generation. <code>POST /api/history/annotation</code> accepts a row ID, that generation, and a comment and/or colour. Unspecified fields stay unchanged. Stale generations are rejected with HTTP 409; failed saves keep the previous note.</p>
+      <p>Comments are limited to 4096 UTF-16 code units and the annotation map to 1 MiB. Colours are red, orange, yellow, green, cyan, blue, purple, pink and gray; an empty string clears a field. Clearing history clears its notes too.</p>
     </section>
 
     <section id="cli" class="doc-sec">
@@ -141,7 +155,7 @@
       <ul class="doc-list">
         <li><strong>The CA is yours.</strong> Generated locally on first run, stored in your OS keychain. We never ship a shared key. Delete it and interception stops.</li>
         <li><strong>Captures stay local.</strong> History is a file on disk. Nothing syncs unless you buy Hosted and opt in per scope.</li>
-        <li><strong>Secrets in history.</strong> Tokens and cookies land in plaintext in your SQLite file — that's the point. Encrypt the disk; don't commit the file.</li>
+        <li><strong>Secrets in history.</strong> Tokens and cookies land in plaintext in your project files — that's the point. Encrypt the disk; don't commit the file.</li>
         <li><strong>Reporting a flaw.</strong> Report privately via <a href="https://github.com/Bikebrainz/Nullock/security/advisories/new">GitHub Security Advisories</a>. We respond within 72 hours and credit you on the advisory.</li>
       </ul>
       <div class="callout warn">
