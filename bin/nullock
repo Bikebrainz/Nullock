@@ -149,6 +149,37 @@ cmd_history_show() {
     curl -sS --max-time 5 "$API/api/history/$1/response"
 }
 
+cmd_history_notes() {
+    have "$JQ" || die "history-notes requires jq"
+    local response
+    response=$(get /api/history/annotations)
+    "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+    pp <<< "$response"
+}
+
+cmd_history_note() {
+    have "$JQ" || die "history-note requires jq"
+    [[ ${1-} =~ ^[1-9][0-9]*$ ]] || die "usage: nullock history-note <row-id> [--color COLOR] [--comment TEXT] [--clear]"
+    local id=$1 patch='{}' generation body response
+    shift
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --color|--comment)
+                [[ $# -ge 2 ]] || die "$1 requires a value (use an empty string to clear it)"
+                patch=$("$JQ" --arg key "${1#--}" --arg value "$2" '. + {($key): $value}' <<< "$patch")
+                shift 2 ;;
+            --clear) patch='{"color":"","comment":""}'; shift ;;
+            *) die "unknown history-note option: $1" ;;
+        esac
+    done
+    [[ $patch != '{}' ]] || die "provide --color, --comment, or --clear"
+    generation=$(snapshot | "$JQ" -er '.bootInfo.historyGeneration | select(type == "string" and length > 0)') || die "no project history is available"
+    body=$("$JQ" --argjson id "$id" --arg generation "$generation" '. + {id:$id, historyGeneration:$generation}' <<< "$patch")
+    response=$(post /api/history/annotation "$body")
+    "$JQ" -e '.ok == true' <<< "$response" >/dev/null || die "$response"
+    pp <<< "$response"
+}
+
 cmd_replay() {
     [[ -n ${1-} ]] || die "usage: nullock replay <row-id>"
     post "/api/history/$1/replay" '{}' | pp
@@ -1678,6 +1709,9 @@ Status / inspection:
   nullock status                 quick summary (proxy / project / counts)
   nullock history [N]            last N captured rows (default 20)
   nullock history-show <id>      raw request + response for row <id>
+  nullock history-notes          list the current project's saved notes
+  nullock history-note <id> [--color COLOR] [--comment TEXT] [--clear]
+                                save a highlight/comment or clear both
   nullock curl <id>              reproduce a captured request as a curl command
   nullock findings [severity]    findings list (filter: high|medium|low|info)
 
@@ -2048,6 +2082,8 @@ case ${1:-help} in
     findings)      shift; cmd_findings "$@"      ;;
     history)       shift; cmd_history "$@"       ;;
     history-show)  shift; cmd_history_show "$@"  ;;
+    history-notes) shift; cmd_history_notes "$@" ;;
+    history-note)  shift; cmd_history_note "$@"  ;;
     replay)        shift; cmd_replay "$@"        ;;
     rule)          shift; cmd_rule "$@"          ;;
     intercept)     shift; cmd_intercept "$@"     ;;

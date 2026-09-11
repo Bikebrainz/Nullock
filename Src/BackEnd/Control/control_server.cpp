@@ -914,6 +914,7 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::scopeChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::rulesChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::triageChanged, this, bump);
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::annotationsChanged, this, bump);
         connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::advancedScopeChanged, this, bump);
     }
     if (m_wiring.themes) {
@@ -1292,6 +1293,7 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["tlsBackend"] = QSslSocket::activeBackend();
     bootInfo["tlsAvailable"] = QSslSocket::supportsSsl();
     bootInfo["historyGeneration"] = m_wiring.projectStore ? m_wiring.projectStore->historyGeneration() : QString();
+    bootInfo["annotationsRevision"] = m_wiring.projectStore ? m_wiring.projectStore->annotationsRevision() : QString();
     bootInfo["projectDir"]      = m_wiring.projectStore ? m_wiring.projectStore->currentPath() : QString();
     bootInfo["harPath"]         = m_wiring.projectStore ? (m_wiring.projectStore->currentPath() + "/exports/")
                                                        : QString();
@@ -1861,6 +1863,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/diagnostics/report"
             || p.startsWith("/api/export/")
             || p.startsWith("/api/history/full/")
+            || p == "/api/history/annotations"
             // /api/history/<id>/request  or  /response  but NOT /probe or /replay
             || (p.startsWith("/api/history/")
                 && (p.endsWith("/request") || p.endsWith("/response")));
@@ -2330,6 +2333,30 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
                 return httpResponse(304, "application/json", "{}", "Not Modified");
         }
         return httpResponse(200, "application/json; charset=utf-8", buildSnapshot());
+    }
+
+    if (path == "/api/history/annotations" || path == "/api/history/annotation") {
+        auto *store = m_wiring.projectStore;
+        if (!store || !store->isOpen())
+            return httpJson(409, QJsonObject{{"ok", false}, {"error", "No project is open"}});
+        if (path == "/api/history/annotation") {
+            const auto edit = QJsonDocument::fromJson(body).object();
+            if (edit.value("historyGeneration").toString() != store->historyGeneration())
+                return httpJson(409, QJsonObject{{"ok", false}, {"error", "Project history changed; refresh before editing notes"}});
+            const auto idValue = edit.value("id");
+            const int id = idValue.toInt(-1);
+            if (!idValue.isDouble() || id <= 0 || idValue.toDouble() != id)
+                return httpJson(400, QJsonObject{{"ok", false}, {"error", "A positive integer history id is required"}});
+            QJsonObject patch = edit;
+            patch.remove("id");
+            patch.remove("historyGeneration");
+            if (!store->annotateHistory(id, patch))
+                return httpJson(400, QJsonObject{{"ok", false}, {"error", store->lastError()}});
+        }
+        return httpJson(200, QJsonObject{{"ok", true},
+            {"historyGeneration", store->historyGeneration()},
+            {"revision", store->annotationsRevision()},
+            {"annotations", store->historyAnnotations()}});
     }
 
     // /api/history/{id}/request  or  /api/history/{id}/response

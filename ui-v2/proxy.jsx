@@ -64,11 +64,8 @@ function parseSearchTerm(raw) {
 }
 
 // #299: HTTP history annotations (Burp's per-item highlight colour + comment).
-// No backend model field exists for this yet (ProxyModel::Entry carries only
-// id/request/response), so this is a client-side-only layer, persisted to
-// localStorage keyed by row id so it survives a reload of this browser tab --
-// an honest partial vs. Burp's project-file persistence, but the same core
-// triage workflow (flag a row, filter back to it) works end to end.
+// Persisted in the project through /api/history/annotation. The legacy browser
+// store is retained only for the one-time migration offered below.
 const ANNOTATION_COLORS = [
   { key: "red",    hex: "#b8433a" },
   { key: "orange", hex: "#c07a2e" },
@@ -91,9 +88,6 @@ function loadAnnotations() {
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch (e) { return {}; }
-}
-function saveAnnotations(map) {
-  try { window.localStorage.setItem(projectStorageKey(ANNOTATIONS_STORAGE_KEY), JSON.stringify(map)); } catch (e) { /* storage unavailable -- keep working in-memory */ }
 }
 function annotationColorHex(key) {
   const c = ANNOTATION_COLORS.find(c => c.key === key);
@@ -2173,13 +2167,16 @@ function buildSiteMapItemsXml(rowsWithRaw, omittedCount) {
     const url = proto + "://" + r.host + portStr + path;
     const req = NL.requestRawById(r.id) || "";
     const resp = NL.responseRawById(r.id) || "";
+    const note = NL.historyAnnotations?.[r.id] || {};
     return "  <item>\n"
-      + "    <url><![CDATA[" + url + "]]></url>\n"
+      + "    <url>" + xmlEscape(url) + "</url>\n"
       + "    <host>" + xmlEscape(r.host) + "</host>\n"
       + "    <port>" + port + "</port>\n"
       + "    <protocol>" + proto + "</protocol>\n"
-      + "    <method><![CDATA[" + (r.method || "GET") + "]]></method>\n"
-      + "    <path><![CDATA[" + path + "]]></path>\n"
+      + "    <method>" + xmlEscape(r.method || "GET") + "</method>\n"
+      + "    <path>" + xmlEscape(path) + "</path>\n"
+      + "    <comment>" + xmlEscape(note.comment || "") + "</comment>\n"
+      + "    <highlight>" + xmlEscape(note.color || "") + "</highlight>\n"
       + "    <status>" + (r.status || 0) + "</status>\n"
       + "    <mimetype>" + xmlEscape(r.mime || "") + "</mimetype>\n"
       + "    <request base64=\"true\">" + base64FromText(req) + "</request>\n"
@@ -2217,7 +2214,7 @@ function findingsForScope(findings, host, branch, rowPath) {
 // Standalone HTML issue report for the scoped findings above -- same
 // Blob+<a download> pattern buildSiteMapItemsXml's caller uses, self-
 // contained escaping (quotes too, since URLs land in an href attribute).
-function buildBranchIssuesHtml(findings, scopeLabel) {
+function buildBranchIssuesHtml(findings, scopeLabel, annotatedRows = []) {
   const esc = s => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const sevOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
@@ -2225,7 +2222,7 @@ function buildBranchIssuesHtml(findings, scopeLabel) {
   const rows = sorted.map(f => "  <tr class=\"sev-" + esc(f.severity || "info") + "\">\n"
     + "    <td>" + esc(f.severity || "info") + "</td>\n"
     + "    <td>" + esc(f.kind || "") + "</td>\n"
-    + "    <td><a href=\"" + esc(f.url || "") + "\">" + esc(f.url || "") + "</a></td>\n"
+    + "    <td>" + esc(f.url || "") + "</td>\n"
     + "    <td>" + esc(f.summary || "") + "</td>\n"
     + "    <td>" + esc(f.evidence || "") + "</td>\n"
     + "    <td>" + esc(f.cwe || "") + "</td>\n"
@@ -2245,6 +2242,10 @@ function buildBranchIssuesHtml(findings, scopeLabel) {
         ? "<table><thead><tr><th>Severity</th><th>Kind</th><th>URL</th><th>Summary</th><th>Evidence</th><th>CWE</th></tr></thead><tbody>\n"
           + rows + "\n</tbody></table>\n"
         : "<p><em>No matching issues in this scope.</em></p>\n")
+    + (annotatedRows.length ? "<h3>Investigation notes</h3><table><thead><tr><th>Request</th><th>Highlight</th><th>Comment</th></tr></thead><tbody>"
+      + annotatedRows.map(r => "<tr><td>" + esc((r.method || "GET") + " " + r.host + (r.path || "/"))
+        + "</td><td>" + esc(r.annotation.color || "") + "</td><td style=\"white-space:pre-wrap\">"
+        + esc(r.annotation.comment || "") + "</td></tr>").join("") + "</tbody></table>" : "")
     + "</body></html>\n";
 }
 
@@ -3137,7 +3138,16 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   // from freezing the UI, and the export says so in a leading XML comment
   // rather than silently truncating.
   const SAVE_ITEMS_CAP = 200;
+  const notesReadyForExport = () => {
+    if (annotationSaving || NL._annotationsLoadedRevision !== NL.bootInfo?.annotationsRevision) {
+      setAnnotationError("Wait for project notes to finish loading or saving before exporting.");
+      closeRowMenu();
+      return false;
+    }
+    return true;
+  };
   const saveCtxMenuItems = () => {
+    if (!notesReadyForExport()) return;
     const allTarget = ctxMenuTargetRows();
     const target = allTarget.slice(0, SAVE_ITEMS_CAP);
     if (target.length) {
@@ -3163,13 +3173,15 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   // endpoint needed, just scope + render + download client-side, same as
   // Save selected items above.
   const reportCtxMenuIssues = () => {
-    if (!ctxMenu) return;
+    if (!ctxMenu || !notesReadyForExport()) return;
     const allFindings = (window.NL && NL.findings) ? NL.findings : [];
     const rowPath = ctxMenu.rowId != null ? (ctxMenuTargetRows()[0] || {}).path : null;
     const scoped = findingsForScope(allFindings, ctxMenu.host, ctxMenu.branch, rowPath);
     try {
       const scopeLabel = ctxMenu.host + (ctxMenu.branch ? ctxMenu.branch : (ctxMenu.rowId != null && rowPath ? rowPath : ""));
-      const html = buildBranchIssuesHtml(scoped, scopeLabel);
+      const notes = ctxMenuTargetRows().filter(r => NL.historyAnnotations?.[r.id])
+        .map(r => ({...r, annotation: NL.historyAnnotations[r.id]}));
+      const html = buildBranchIssuesHtml(scoped, scopeLabel, notes);
       const blob = new Blob([html], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -3214,30 +3226,38 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   };
   const restoreDeletedScopes = () => { setDeletedScopes([]); saveDeletedScopes([]); };
 
-  // #299: highlight colour + comment per history row (client-side, localStorage-persisted).
-  const [annotations, setAnnotations] = React.useState(loadAnnotations);
+  const annotations = NL.historyAnnotations || {};
+  const [legacyAnnotations, setLegacyAnnotations] = React.useState(loadAnnotations);
+  const [annotationError, setAnnotationError] = React.useState("");
+  const [annotationSaving, setAnnotationSaving] = React.useState(false);
   const [annotatedOnly, setAnnotatedOnly] = React.useState(false);
-  const setRowColor = (id, color) => setAnnotations(prev => {
-    const cur = prev[id] || {};
-    const next = { ...prev, [id]: { ...cur, color } };
-    if (!next[id].color && !next[id].comment) delete next[id];
-    saveAnnotations(next);
-    return next;
-  });
-  const setRowComment = (id, comment) => setAnnotations(prev => {
-    const cur = prev[id] || {};
-    const next = { ...prev, [id]: { ...cur, comment } };
-    if (!next[id].color && !next[id].comment) delete next[id];
-    saveAnnotations(next);
-    return next;
-  });
-  const clearRowAnnotation = (id) => setAnnotations(prev => {
-    if (!(id in prev)) return prev;
-    const next = { ...prev };
-    delete next[id];
-    saveAnnotations(next);
-    return next;
-  });
+  const saveRowAnnotation = async (id, patch) => {
+    setAnnotationError("");
+    setAnnotationSaving(true);
+    try { await NL.actions.annotateHistory(id, patch); }
+    catch (error) { setAnnotationError(error.message || "Could not save project note"); }
+    finally { setAnnotationSaving(false); }
+  };
+  const setRowColor = (id, color) => saveRowAnnotation(id, {color: color || ""});
+  const setRowComment = (id, comment) => saveRowAnnotation(id, {comment});
+  const clearRowAnnotation = id => saveRowAnnotation(id, {color: "", comment: ""});
+  const migrateAnnotations = async () => {
+    setAnnotationSaving(true);
+    setAnnotationError("");
+    const generation = NL._generation;
+    try {
+      if (NL._annotationsLoadedRevision !== NL.bootInfo.annotationsRevision)
+        throw new Error("Wait for project notes to load before importing browser notes");
+      for (const [id, note] of Object.entries(legacyAnnotations)) {
+        if (generation !== NL._generation) throw new Error("Project changed; browser notes were retained");
+        if (!NL.historyAnnotations[id]) await NL.actions.annotateHistory(Number(id), {color: note.color || "", comment: note.comment || ""});
+      }
+      if (generation !== NL._generation) return;
+      window.localStorage.removeItem(projectStorageKey(ANNOTATIONS_STORAGE_KEY));
+      setLegacyAnnotations({});
+    } catch (error) { setAnnotationError(error.message + ". Original browser notes are retained."); }
+    finally { setAnnotationSaving(false); }
+  };
   const ctxRowNote = ctxMenu && ctxMenu.rowId != null ? annotations[ctxMenu.rowId] : null;
 
   // Deep search: when enabled, the search box query is also run against
@@ -3339,11 +3359,15 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         />
       )}
       {showSitemap && <div className="divider-v" />}
-      <div className="pane" style={{ display: "grid", gridTemplateRows: "auto auto 1fr 1fr", minHeight: 0 }}>
+      <div className="pane" style={{ display: "grid", gridTemplateRows: "auto " + (showOosPrompt ? "auto " : "") + "auto 1fr 1fr", minHeight: 0 }}>
         <div className="pane-head">
           <span className="ph-corner">▸</span>
           <span>HTTP HISTORY</span>
           <span className="ph-count">{shown} / {visibleRows.length}</span>
+          {annotationSaving && <span role="status">Saving notes…</span>}
+          {(annotationError || NL.annotationError) && <span role="alert" style={{color:"var(--red)", whiteSpace:"normal"}}>{annotationError || NL.annotationError}</span>}
+          {Object.keys(legacyAnnotations).length > 0 && <button disabled={annotationSaving}
+            onClick={migrateAnnotations} title="Keep existing project notes; import notes stored only in this browser">SAVE BROWSER NOTES TO PROJECT</button>}
           <button onClick={() => { setWsRepeaterInit(null); setWsRepeaterOpen(true); }} title="Inject a frame into a live WebSocket tunnel">⇄ WS REPEATER</button>
           <button onClick={() => setH2LogOpen(true)} title="View HTTP/2 stream summary and raw frame log">⇅ H2 FRAME LOG</button>
           <button onClick={() => setDbSearchOpen(true)} title="Search the full SQLite-backed history index, beyond the on-screen window">⌕ DB SEARCH</button>
@@ -3534,25 +3558,26 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 10px 8px" }}>
                   {ANNOTATION_COLORS.map(c => (
-                    <span
+                    <button type="button"
                       key={c.key}
                       title={c.key}
+                      aria-label={"Highlight " + c.key}
                       onClick={() => { setRowColor(ctxMenu.rowId, c.key); closeRowMenu(); }}
                       style={{
-                        width: 16, height: 16, borderRadius: 3, cursor: "pointer",
+                        width: 20, height: 20, padding: 0, borderRadius: 3, cursor: "pointer",
                         background: c.hex,
                         outline: ctxRowNote && ctxRowNote.color === c.key ? "2px solid var(--text)" : "1px solid rgba(0,0,0,0.3)",
                       }}
                     />
                   ))}
-                  <span
+                  <button type="button" aria-label="Clear highlight"
                     title="no highlight"
                     onClick={() => { setRowColor(ctxMenu.rowId, null); closeRowMenu(); }}
                     style={{
-                      width: 16, height: 16, borderRadius: 3, cursor: "pointer",
+                      width: 20, height: 20, padding: 0, borderRadius: 3, cursor: "pointer",
                       background: "transparent", border: "1px dashed var(--dim)",
                     }}
-                  >×</span>
+                  >×</button>
                 </div>
                 <div
                   className="btn"

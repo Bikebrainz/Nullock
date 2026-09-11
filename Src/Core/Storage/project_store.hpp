@@ -21,6 +21,7 @@ namespace Nullock::Core {
 struct ProjectMeta {
     QString   name;
     QString historyEpoch;
+    QJsonObject historyAnnotations;
     QStringList inScope;
     QStringList outOfScope;
     QString   notes;
@@ -99,6 +100,11 @@ public:
     void setSwitchGuard(std::function<bool()> guard) { m_switchGuard = std::move(guard); }
     QString lastError() const { return m_lastError; }
     QString historyGeneration() const { return m_historyGeneration; }
+    QString annotationsRevision() const { return m_annotationsRevision; }
+    QJsonObject historyAnnotations() const;
+    // Patch only supplied fields; independent clients can edit colour and
+    // comment without overwriting the other's field. Persist before publishing.
+    bool annotateHistory(int id, const QJsonObject &patch);
     Q_INVOKABLE bool clearHistory();
     Q_INVOKABLE bool saveMetadata();
     // Re-stream <project>/findings.ndjson, emitting findingRestored per finding.
@@ -322,6 +328,7 @@ signals:
     // Emitted when the finding-triage sets (suppressed kinds / false-positive
     // keys) change, so the control server can bump its snapshot fingerprint.
     void triageChanged();
+    void annotationsChanged();
     // Emitted whenever the advanced scope rules change (setter + open()), so
     // app.cpp re-applies them to the live proxy and the snapshot bumps.
     void advancedScopeChanged(const QJsonArray &rules);
@@ -334,11 +341,16 @@ private:
     bool ensureMetadata();
     void streamExistingHistory();
     void streamExistingFindings();
+    bool appendAnnotatedEntry(const Nullock::Proxy::HttpRequest &request,
+                              const Nullock::Proxy::HttpResponse &response,
+                              const QJsonObject &annotation);
+    QJsonObject m_archiveAnnotations;
 
     bool prepareSwitch();
     std::function<bool()> m_switchGuard;
     QString m_lastError;
     QString m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString    m_dir;
     QFile      m_history;
     ProjectMeta m_meta;

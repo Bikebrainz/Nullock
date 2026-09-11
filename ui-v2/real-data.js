@@ -33,10 +33,15 @@
     if (generation !== NL._generation) {
       NL._cache = { req: {}, resp: {}, fullRow: {} };
       NL._generation = generation;
+      NL.historyAnnotations = {};
+      NL._annotationsLoadedRevision = null;
+      NL.annotationError = "";
+      NL._annotationsRetryAt = 0;
     }
     NL.connected = !!snap.bootInfo;
     NL._instanceId = snap.instanceId || "";
     NL.bootInfo      = boot;
+    refreshAnnotations();
     NL.themes        = snap.themes        || [];
     NL.scope         = snap.scope         || { in: [], out: [], notes: "" };
     NL.rules         = snap.rules         || [];
@@ -82,6 +87,46 @@
       });
     }
   }
+
+  // Notes are fetched only when their revision changes, not with every traffic
+  // snapshot. A response from an old project or revision must never replace them.
+  function acceptAnnotations(data, generation, revision) {
+    if (generation !== NL._generation || data.historyGeneration !== NL.bootInfo.historyGeneration
+        || (revision && (revision !== NL.bootInfo.annotationsRevision || data.revision !== revision))) return false;
+    NL.historyAnnotations = data.annotations || {};
+    NL._annotationsLoadedRevision = data.revision;
+    NL.annotationError = "";
+    window.dispatchEvent(new CustomEvent("nl-update"));
+    return true;
+  }
+  async function refreshAnnotations() {
+    const revision = NL.bootInfo?.annotationsRevision;
+    const generation = NL._generation;
+    const writeEpoch = NL._annotationWriteEpoch || 0;
+    const key = generation + ":" + revision;
+    if (!NL.connected || !revision || revision === NL._annotationsLoadedRevision
+        || NL._annotationsPending === key || Date.now() < (NL._annotationsRetryAt || 0)) return;
+    NL._annotationsPending = key;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch("/api/history/annotations", {signal: controller.signal});
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "Could not load project notes");
+      if (writeEpoch === (NL._annotationWriteEpoch || 0)) acceptAnnotations(data, generation, revision);
+    } catch (error) {
+      if (generation === NL._generation && revision === NL.bootInfo?.annotationsRevision
+          && writeEpoch === (NL._annotationWriteEpoch || 0)) {
+        NL.annotationError = "Project notes could not be refreshed. Retrying…";
+        NL._annotationsRetryAt = Date.now() + 3000;
+        window.dispatchEvent(new CustomEvent("nl-update"));
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (NL._annotationsPending === key) NL._annotationsPending = null;
+    }
+  }
+  let annotationWrites = Promise.resolve();
 
   // Initial sync load so React renders with real data immediately. ALWAYS call
   // applySnapshot -- even if the fetch or parse fails -- so every NL.* field
@@ -185,6 +230,25 @@
     });
   }
   NL.actions = {
+    annotateHistory(id, patch) {
+      const generation = NL._generation;
+      const historyGeneration = NL.bootInfo.historyGeneration;
+      const write = async () => {
+        if (generation !== NL._generation) throw new Error("Project history changed; reopen the row before editing notes");
+        const response = await post("/api/history/annotation", {...patch, id, historyGeneration});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not save project note");
+        if (generation === NL._generation) {
+          NL._annotationWriteEpoch = (NL._annotationWriteEpoch || 0) + 1;
+          NL.bootInfo.annotationsRevision = data.revision;
+          acceptAnnotations(data, generation);
+        }
+        return data;
+      };
+      const result = annotationWrites.then(write);
+      annotationWrites = result.catch(() => {});
+      return result;
+    },
     toggleProxy()           { return post("/api/proxy/toggle"); },
     setLogOutOfScope(value) { return post("/api/proxy/log-out-of-scope", { value }); },
     toggleIntercept()          { return post("/api/intercept/toggle"); },
@@ -774,6 +838,7 @@
     }
   }
   setInterval(function () {
+    refreshAnnotations();
     if (polling) return;
     polling = true;
     try {
