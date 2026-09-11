@@ -89,9 +89,9 @@ if(WIN32)
         PATTERN "*.exp" EXCLUDE
         # Install one current asset tree under share/nullock, not a second
         # development copy beside the executable.
-        PATTERN "ui-v2" EXCLUDE
-        PATTERN "templates" EXCLUDE
-        PATTERN "extensions" EXCLUDE
+        PATTERN "Src/App/*/ui-v2" EXCLUDE
+        PATTERN "Src/App/*/templates" EXCLUDE
+        PATTERN "Src/App/*/extensions" EXCLUDE
     )
 endif()
 
