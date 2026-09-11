@@ -10,6 +10,14 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Project notes
+- Persist history comments and nine highlight colours with each project, synchronize
+  browser clients, and reject edits from a previous project/history generation.
+- Preserve notes through HAR import/export, selected-item XML and branch HTML
+  reports. Escape exported text and offer migration of existing browser notes.
+- Add `history-notes` and `history-note` CLI commands and the corresponding
+  read/patch API, with persistence, isolation, concurrency and browser regressions.
+
 ### Fixed
 - Keep history, findings, editor selections and browser caches within their
   project and history generation. Reject project changes while work is active

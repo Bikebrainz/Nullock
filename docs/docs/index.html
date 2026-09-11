@@ -43,6 +43,7 @@
     <div class="ds-group">
       <div class="ds-label">Reference</div>
       <a href="#cli" class="ds-link">CLI</a>
+      <a href="#project-notes" class="ds-link">Project notes (unreleased)</a>
       <a href="#extensions" class="ds-link">Extensions</a>
     </div>
     <div class="ds-group">
@@ -62,7 +63,7 @@
       <p>nullock is a man-in-the-middle proxy. It sits between your client and the network, captures every request and response, and lets you intercept, replay, and rewrite them. Three things to know before you start:</p>
       <ol class="doc-list">
         <li>It installs a local CA so it can read TLS. You control that CA; it never leaves your machine.</li>
-        <li>History is a single SQLite file. Back it up, copy it, grep it — it's just a file.</li>
+        <li>History lives in a project directory: the NDJSON archive stores exchanges, SQLite indexes them, and project.json stores settings and note overrides. Close the project before backing up its whole directory.</li>
         <li>There is no telemetry. The binary makes no network calls except the traffic you point at it.</li>
       </ol>
     </section>
@@ -103,6 +104,19 @@
       </div>
     </section>
 
+    <section id="project-notes" class="doc-sec">
+      <h2 class="h2-section">Project notes (unreleased)</h2>
+      <p>In the development build, right-click a history row or Site map leaf to add a comment or highlight. Notes are saved with the project and synchronized between connected clients. The ANNOTATED filter finds marked exchanges.</p>
+      <p>If this browser has older local notes, use <strong>SAVE BROWSER NOTES TO PROJECT</strong>. Existing project notes take priority; a failed import retains the browser copy so you can retry.</p>
+      <p>Comments and highlights travel with HAR files and appear in selected-item XML and branch HTML reports. Other message tables and global report formats do not yet share these annotations.</p>
+      <pre><code>nullock history-notes
+nullock history-note 42 --color purple --comment 'Review this exchange'
+nullock history-note 42 --comment ''
+nullock history-note 42 --clear</code></pre>
+      <p>The CLI needs jq and a running app. <code>GET /api/history/annotations</code> returns notes, their revision and the history generation. <code>POST /api/history/annotation</code> accepts a row ID, that generation, and a comment and/or colour. Unspecified fields stay unchanged. Stale generations are rejected with HTTP 409; failed saves keep the previous note.</p>
+      <p>Comments are limited to 4096 UTF-16 code units and the annotation map to 1 MiB. Colours are red, orange, yellow, green, cyan, blue, purple, pink and gray; an empty string clears a field. Clearing history clears its notes too.</p>
+    </section>
+
     <section id="cli" class="doc-sec">
       <h2 class="h2-section">CLI</h2>
       <p>The CLI drives a running instance over its local control API (<code class="inline">$NULLOCK_API</code>, default <code class="inline">127.0.0.1:17777</code>) — it needs <code class="inline">curl</code> and <code class="inline">jq</code>. Anything you do in the UI, you can script.</p>
@@ -141,7 +155,7 @@
       <ul class="doc-list">
         <li><strong>The CA is yours.</strong> Generated locally on first run, stored in your OS keychain. We never ship a shared key. Delete it and interception stops.</li>
         <li><strong>Captures stay local.</strong> History is a file on disk. Nothing syncs unless you buy Hosted and opt in per scope.</li>
-        <li><strong>Secrets in history.</strong> Tokens and cookies land in plaintext in your SQLite file — that's the point. Encrypt the disk; don't commit the file.</li>
+        <li><strong>Secrets in history.</strong> Tokens and cookies land in plaintext in your project files — that's the point. Encrypt the disk; don't commit the file.</li>
         <li><strong>Reporting a flaw.</strong> Report privately via <a href="https://github.com/Bikebrainz/Nullock/security/advisories/new">GitHub Security Advisories</a>. We respond within 72 hours and credit you on the advisory.</li>
       </ul>
       <div class="callout warn">
