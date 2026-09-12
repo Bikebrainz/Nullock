@@ -59,7 +59,7 @@ add_subdirectory(Tests/fuzz)
 #
 # No code signing here -- signed packaging is a wrapper that we kick off
 # in CI once we have certs. The unsigned packages still install fine; users
-# just get a UAC / Gatekeeper warning the first time. See PACKAGING.md.
+# just get a UAC / Gatekeeper warning the first time. See packaging/README.md.
 
 include(GNUInstallDirs)
 

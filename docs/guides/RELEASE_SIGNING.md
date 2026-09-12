@@ -1,6 +1,6 @@
 # Release signing & notarization
 
-The [`release`](.github/workflows/release.yml) workflow builds installers for
+The [`release`](../../.github/workflows/release.yml) workflow builds installers for
 Windows, Linux and macOS on every `v*.*.*` tag. Code signing and Apple
 notarization are **wired but optional**: every signing step is guarded by
 `if: ${{ secrets.* != '' }}`, so until you add the certificates below, releases

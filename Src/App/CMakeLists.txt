@@ -31,17 +31,14 @@ qt_add_qml_module(NullockApp
 # the plain list untouched.
 if(UNIX AND NOT APPLE)
     target_link_libraries(NullockApp PRIVATE
-        "$<LINK_GROUP:RESCAN,AppController,APIs,Storage,Networking,Nullem,Utils,Cache,Proxy,Control>"
+        "$<LINK_GROUP:RESCAN,APIs,Storage,Networking,Utils,Proxy,Control>"
     )
 else()
     target_link_libraries(NullockApp PRIVATE
-        AppController
         APIs
         Storage
         Networking
-        Nullem
         Utils
-        Cache
         Proxy
         Control
     )

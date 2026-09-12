@@ -1,6 +1,4 @@
-# APIs is STATIC for now because the source files are stubs and MSVC will
-# not emit an import .lib for a SHARED target with zero exported symbols
-# (LNK1104). Revisit when ExtensionsAPI / ManagerAPI grow real exports.
+# Extensions sandbox and OAST services, linked into the application and tests.
 add_library(APIs STATIC
     ExtensionsAPI/extensions_api.cpp
     ExtensionsAPI/extensions_api.hpp
@@ -8,8 +6,6 @@ add_library(APIs STATIC
     ExtensionsAPI/extension_perms_logic.hpp
     ExtensionsAPI/extensions_utils_logic.cpp
     ExtensionsAPI/extensions_utils_logic.hpp
-    ManagerAPI/manager_api.cpp
-    ManagerAPI/manager_api.hpp
     Oast/oast_server.cpp
     Oast/oast_server.hpp
     Oast/oast_logic.cpp

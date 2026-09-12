@@ -6,24 +6,12 @@ qt_add_qml_module(FrontEndGUI
     CLASS_NAME FrontEndGUIPlugin
     SOURCES
     frontend_gui_export.hpp
-    Models/DevicesHub/devices_hub_model.cpp
-    Models/DevicesHub/devices_hub_model.hpp
-    Models/ExtensionsHub/extensions_hub_model.cpp
-    Models/ExtensionsHub/extensions_hub_model.hpp
-    Models/IntruderHub/intruder_hub_model.cpp
-    Models/IntruderHub/intruder_hub_model.hpp
-    Models/Overview/overview_model.cpp
-    Models/Overview/overview_model.hpp
     Models/Proxy/proxy_model.cpp
     Models/Proxy/proxy_model.hpp
     Models/Proxy/proxy_filter_model.cpp
     Models/Proxy/proxy_filter_model.hpp
     Models/Proxy/site_map_model.cpp
     Models/Proxy/site_map_model.hpp
-    Models/RepeaterHub/repeater_hub_model.cpp
-    Models/RepeaterHub/repeater_hub_model.hpp
-    Models/Workspace/workspace_model.cpp
-    Models/Workspace/workspace_model.hpp
     Themes/themes_manager.cpp
     Themes/themes_manager.hpp
     QML_FILES

@@ -24,7 +24,7 @@
 //   OAST_ADMIN_KEY   shared secret for the admin API    (default: random,
 //                    printed once at startup)
 //
-// See DEPLOY_OAST.md for DNS, TLS/reverse-proxy and hardening guidance.
+// See docs/guides/DEPLOY_OAST.md for DNS, TLS/reverse-proxy and hardening guidance.
 
 #include "oast_server.hpp"
 

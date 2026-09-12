@@ -13,23 +13,28 @@ Src/
   BackEnd/Control/control_server.cpp   # the :17777 HTTP control API (~110 /api/* routes)
   BackEnd/Proxy/                       # ProxyServer, CertAuthority, intercept, HttpRequest/Response
   Core/Networking/                     # the scanners/probes, CVE DB, fingerprint, enricher, recon, reporting
-  Core/APIs/                           # JS extensions API + sandbox, OAST server/correlator, manager API
+  Core/APIs/                           # JS extensions API + sandbox, OAST server/correlator
   Core/Storage/                        # SQLite history index, project store
   Core/Utils/                          # crash reporter
   Tools/                               # standalone binaries: nullock-oast, nullock-workspace
   FrontEnd/GUI/                        # QML UI (QtQuick)
 bin/nullock                            # bash CLI -- drives every /api endpoint
-labs/                                  # 50 intentionally-vulnerable teaching apps
+labs/                                  # intentionally-vulnerable teaching apps
 extensions/                            # JS plugin API + marketplace catalog
 Tests/                                 # ctest regression suites
-docs/                                  # GitHub Pages site
+docs/                                  # documentation index + GitHub Pages site
+  guides/                              # installation, usage, deployment, release guides
+  design/                              # architecture and feature designs
+  reviews/                             # dated engineering reviews
+ui-v2/                                 # browser application and vendored runtime
+packaging/                             # installer and container support
+scripts/                               # maintenance, generation, and regression tools
 ```
 
-`Src/Core/AppController/`, `Src/Core/Nullem/` and `Src/BackEnd/Cache/` are
-**empty**. They are placeholder modules inherited from the original project
-skeleton — the `.cpp`/`.hpp` files are zero bytes, but the targets still build
-and link, so the names show up in the link line. Nothing calls them. Don't go
-looking for an app controller; the wiring lives in `Src/App/app.cpp`.
+Application wiring and shutdown order live in `Src/App/app.cpp`. Only implemented
+modules belong in the build; avoid adding empty source files or placeholder targets.
+
+See the [documentation index](docs/README.md) for guides, design notes, and reviews.
 
 The control server is the seam: the GUI and the `bin/nullock` CLI are both
 thin clients over `/api/*`. New capability = a backing module in
@@ -50,7 +55,7 @@ cmake --build build --config Release --target NullockApp
 ```
 
 Linux/macOS builds use the same CMake project with the platform Qt; see
-[`INSTALL.md`](INSTALL.md).
+[`INSTALL.md`](docs/guides/INSTALL.md).
 
 ## Run
 

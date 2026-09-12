@@ -2,7 +2,7 @@
 
 # nullock-oast: the deployable OAST callback sink. It reuses OastServer directly
 # (compiled in, not via the APIs lib) so the binary stays lean -- Qt Core +
-# Network only, no Qml/Proxy/Networking/GUI baggage. See DEPLOY_OAST.md.
+# Network only, no Qml/Proxy/Networking/GUI baggage. See docs/guides/DEPLOY_OAST.md.
 qt_add_executable(nullock-oast
     oast_server_main.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/APIs/Oast/oast_server.cpp
@@ -22,7 +22,7 @@ target_link_libraries(nullock-oast PRIVATE
 
 # nullock-workspace: the deployable team-workspace sync server (findings push/
 # pull over SQLite + a shared bearer key). Self-contained -- Qt Core + Network +
-# Sql only. See design/team-workspaces.md and DEPLOY_WORKSPACE.md.
+# Sql only. See docs/design/team-workspaces.md and docs/guides/DEPLOY_WORKSPACE.md.
 qt_add_executable(nullock-workspace
     workspace_server_main.cpp
 )
