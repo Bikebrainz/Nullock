@@ -646,7 +646,7 @@ code.inline, .muted { overflow-wrap: anywhere; }
 .labs-hint { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
 .labs-hint summary { cursor: pointer; list-style: none; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--purple-light); }
 .labs-hint summary::-webkit-details-marker { display: none; }
-.labs-hint summary::before { content: "\\25B8"; display: inline-block; margin-right: 8px; color: var(--dim); transition: transform 0.15s; }
+.labs-hint summary::before { content: "\25B8"; display: inline-block; margin-right: 8px; color: var(--dim); transition: transform 0.15s; }
 .labs-hint[open] summary::before { transform: rotate(90deg); }
 .labs-hint p { margin: 0; padding: 0 14px 12px 36px; font-size: 13px; line-height: 1.6; color: var(--secondary); }
 .labs-note { margin-top: 30px; display: flex; gap: 16px; align-items: flex-start; background: var(--surface-feat); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }

@@ -4959,7 +4959,7 @@ function LabsTab({ dispatch }) {
                 <span style={{ color: "var(--dim)", fontSize: "11px" }}>{selected.category} · +{xpTable[selected.difficulty] || 0} XP</span>
               </div>
               <p style={{ fontSize: "12.5px", color: "var(--text-2)", marginTop: 6 }}>{selected.desc || selected.vuln}</p>
-              <div style={{ fontFamily: "var(--ff-mono)", fontSize: "11.5px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginTop: 6 }}>
+              <div style={{ fontFamily: "var(--ff-mono)", fontSize: "11.5px", background: "var(--bg-deep)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, marginTop: 6, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                 python labs/{selected.slug}/app.py{"\n"}# then open http://localhost:{selected.port}/
               </div>
 
