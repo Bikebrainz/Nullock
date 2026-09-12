@@ -76,6 +76,12 @@ On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=
 
 **11 · `alg:none` payload reserialization.** Real consistency gap — `algNoneVariants` re-serializes where `forgeNone` preserves `rawPayloadB64` — but `alg:none` has no signature and JSON claims are order-independent, so the missed surface is only a rare byte/order-sensitive verifier. *Fix: reuse `forgeNone`'s raw-payload preservation on the active path.*
 
+**Resolved (2026-09-12):** all six active variants now preserve `rawPayloadB64`
+when available. Constructed claims without a captured segment still serialize
+normally. The [JWT probe regression suite](../../Tests/jwt_probe/jwt_probe_test.cpp)
+covers captured whitespace/key order, JSON escapes and numeric spelling, plus
+the constructed-claims fallback.
+
 ---
 
 *Findings are advisory and based on static code inspection. This review did not modify source or validate findings against a live target.*
