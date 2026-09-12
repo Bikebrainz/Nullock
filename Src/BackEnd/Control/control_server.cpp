@@ -966,6 +966,8 @@ ControlServer::ControlServer(const Wiring &w, QObject *parent)
         connect(m_wiring.sessions, &Nullock::Core::SessionManager::sessionsChanged,
                 this, bump);
     }
+    if (m_wiring.projectStore)
+        connect(m_wiring.projectStore, &Nullock::Core::ProjectStore::workspaceSaveStatusChanged, this, bump);
     if (m_wiring.sequencerCapture) {
         connect(m_wiring.sequencerCapture, &Nullock::Core::SequencerCapture::progressChanged,
                 this, bump);
@@ -1305,6 +1307,7 @@ QByteArray ControlServer::buildSnapshot() const {
     bootInfo["qtVersion"] = QString::fromLatin1(qVersion());
     bootInfo["tlsBackend"] = QSslSocket::activeBackend();
     bootInfo["tlsAvailable"] = QSslSocket::supportsSsl();
+    bootInfo["workspaceSaveError"] = m_wiring.projectStore ? m_wiring.projectStore->workspaceSaveError() : QString();
     bootInfo["historyGeneration"] = m_wiring.projectStore ? m_wiring.projectStore->historyGeneration() : QString();
     bootInfo["annotationsRevision"] = m_wiring.projectStore ? m_wiring.projectStore->annotationsRevision() : QString();
     bootInfo["projectDir"]      = m_wiring.projectStore ? m_wiring.projectStore->currentPath() : QString();
@@ -1877,6 +1880,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
             || p == "/api/intruder/rule-ops"
             || p == "/api/intruder/generator-types"
             || p == "/api/intruder/export"
+            || p == "/api/sequencer/workspace"
             || p == "/api/template/list"
             || p == "/api/findings/grouped"
             || p == "/api/inventory"
@@ -3337,7 +3341,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, o);
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
-    if ((path.startsWith("/api/intruder/") || path.startsWith("/api/scope/")) && bodyJson.contains("historyGeneration")
+    if ((path.startsWith("/api/intruder/") || path.startsWith("/api/scope/") || path.startsWith("/api/sequencer/")) && bodyJson.contains("historyGeneration")
         && m_wiring.projectStore
         && bodyJson.value("historyGeneration").toString() != m_wiring.projectStore->historyGeneration())
         return httpJson(409, QJsonObject{{"ok", false},
@@ -5589,6 +5593,21 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
     // the snapshot's `sequencerCapture` slice; the corpus + analysis are fetched
     // via /tokens. Scope-gated because it AUTO-GENERATES traffic (unlike the
     // passive proxy), so the target must be explicitly in a non-empty scope.
+    if (path == "/api/sequencer/workspace" || path == "/api/sequencer/workspace/patch" || path == "/api/sequencer/workspace/append") {
+        auto *engine = m_wiring.sequencerCapture;
+        if (!engine) return httpJson(503, {{"ok", false}, {"error", "Sequencer unavailable"}});
+        QString error;
+        if (path.endsWith("/patch") && (!bodyJson.value("patch").isObject()
+            || !engine->patchDraft(bodyJson.value("patch").toObject(), bodyJson.value("textRevision").toInteger(-1), &error)))
+            return httpJson(409, {{"ok", false}, {"error", error.isEmpty() ? "Missing draft patch" : error}});
+        if (path.endsWith("/append") && (!bodyJson.value("text").isString()
+            || !engine->appendText(bodyJson.value("text").toString(), &error)))
+            return httpJson(400, {{"ok", false}, {"error", error.isEmpty() ? "Missing token text" : error}});
+        auto out = engine->exportState();
+        out["ok"] = true;
+        out["historyGeneration"] = m_wiring.projectStore ? m_wiring.projectStore->historyGeneration() : QString();
+        return httpJson(200, out);
+    }
     if (path == "/api/sequencer/capture/start") {
         if (!m_wiring.sequencerCapture)
             return okJson({{ "ok", false }, { "error", "capture engine not wired" }});

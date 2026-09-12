@@ -1060,19 +1060,11 @@ int main(int argc, char *argv[]) {
     // end of open()). clearAll above still runs in between as defense-in-depth, so
     // a project switch never carries one engagement's staged requests -- and their
     // Authorization headers -- into another.
-    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::projectClosing,
-                     &repeater, [&projectStore, &repeater]() {
-        projectStore.setRepeaterState(repeater.exportState());
-    });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::repeaterStateChanged,
                      &repeater, &Nullock::Core::Repeater::importState);
     // Cookie jar: saved at project-close (before the switch wipes it) and restored
     // when the incoming project loads (expired cookies dropped). Same pattern as
     // the Repeater tabs -- not persisted on every response, only at close/quit.
-    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::projectClosing,
-                     &sessions, [&projectStore, &sessions]() {
-        projectStore.setCookieJar(sessions.exportJson());
-    });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::cookieJarChanged,
                      &sessions, [&sessions](const QJsonArray &arr) {
         sessions.importJson(arr, QDateTime::currentSecsSinceEpoch());
@@ -1094,8 +1086,9 @@ int main(int argc, char *argv[]) {
                      &intercept, [&intercept](bool on) { intercept.setAutoFixNewlines(on); });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
                      &intruder, &Nullock::Core::Intruder::clearAll);
-    projectStore.setWorkspaceSave([&projectStore, &intruder]() {
-        return projectStore.saveIntruderWorkspace(intruder.saveRun());
+    projectStore.setWorkspaceSave([&projectStore, &intruder, &repeater, &sessions]() {
+        return projectStore.saveIntruderWorkspace(intruder.saveRun())
+            && projectStore.saveSessionWorkspace(repeater.exportState(), sessions.exportJson());
     });
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::intruderWorkspaceChanged,
                      &intruder, [&intruder](const QByteArray &state) { intruder.loadRun(state); });
@@ -1108,19 +1101,6 @@ int main(int argc, char *argv[]) {
         intercept.forwardAll();
         intercept.setEnabled(false);
         intercept.setResponsesEnabled(false);
-    });
-    // Persist Repeater tabs on a clean quit too -- exiting isn't a project switch,
-    // so projectClosing never fires. Saves to the currently-open project.
-    QObject::connect(qApp, &QCoreApplication::aboutToQuit, &repeater,
-                     [&projectStore, &repeater]() {
-        if (projectStore.isOpen())
-            projectStore.setRepeaterState(repeater.exportState());
-    });
-    // Same for the cookie jar on a clean quit.
-    QObject::connect(qApp, &QCoreApplication::aboutToQuit, &sessions,
-                     [&projectStore, &sessions]() {
-        if (projectStore.isOpen())
-            projectStore.setCookieJar(sessions.exportJson());
     });
     // The default project opened before the Repeater existed, so its persisted tabs
     // weren't streamed into it. Restore them once now that everything is wired.
@@ -1191,6 +1171,54 @@ int main(int argc, char *argv[]) {
     // w.r.t. other engines -- the control endpoint feeds it the scope gate.
     Nullock::Core::SequencerCapture sequencerCapture;
     wiring.sequencerCapture = &sequencerCapture;
+    sequencerCapture.importState(QJsonDocument::fromJson(projectStore.sequencerWorkspace()).object());
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::sequencerWorkspaceChanged,
+                     &sequencerCapture, [&sequencerCapture](const QByteArray &state) {
+        sequencerCapture.importState(QJsonDocument::fromJson(state).object());
+    });
+    // Coalesce changing work into atomic project files. A failed save remains
+    // dirty, is visible to clients, and prevents switching away from the project.
+    bool intruderDirty = false, sequencerDirty = false, sessionDirty = false;
+    QTimer autosave;
+    autosave.setInterval(2000);
+    auto saveWorkspaces = [&](bool force) {
+        if (!projectStore.isOpen()) return true;
+        bool ok = true;
+        QStringList errors;
+        auto save = [&](bool &dirty, const auto &write) {
+            if (!force && !dirty) return;
+            // Clear before serializing: a queued worker update may dirty it again.
+            dirty = false;
+            if (!write()) { dirty = true; ok = false; errors.append(projectStore.lastError()); }
+        };
+        save(intruderDirty, [&] { return projectStore.saveIntruderWorkspace(intruder.saveRun()); });
+        save(sequencerDirty, [&] { return projectStore.saveSequencerWorkspace(QJsonDocument(sequencerCapture.exportState()).toJson(QJsonDocument::Compact)); });
+        save(sessionDirty, [&] { return projectStore.saveSessionWorkspace(repeater.exportState(), sessions.exportJson()); });
+        const QString error = errors.join("; ");
+        if (projectStore.workspaceSaveError() != error) projectStore.setWorkspaceSaveError(error);
+        return ok;
+    };
+    projectStore.setWorkspaceSave([&] { return saveWorkspaces(true); });
+    QObject::connect(&autosave, &QTimer::timeout, &autosave, [&] { saveWorkspaces(false); });
+    auto markIntruder = [&] { intruderDirty = true; };
+    QObject::connect(&intruder, &Nullock::Core::Intruder::targetChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::templateChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::payloadsChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::attackTypeChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::optionsChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::progressChanged, &autosave, markIntruder);
+    QObject::connect(&intruder, &Nullock::Core::Intruder::runningChanged, &autosave, markIntruder);
+    auto markSession = [&] { sessionDirty = true; };
+    QObject::connect(&repeater, &Nullock::Core::Repeater::tabsChanged, &autosave, markSession);
+    QObject::connect(&repeater, &Nullock::Core::Repeater::targetChanged, &autosave, markSession);
+    QObject::connect(&repeater, &Nullock::Core::Repeater::requestTextChanged, &autosave, markSession);
+    QObject::connect(&repeater, &Nullock::Core::Repeater::responseChanged, &autosave, markSession);
+    QObject::connect(&repeater, &Nullock::Core::Repeater::autoContentLengthChanged, &autosave, markSession);
+    QObject::connect(&repeater, &Nullock::Core::Repeater::followRedirectsChanged, &autosave, markSession);
+    QObject::connect(&sessions, &Nullock::Core::SessionManager::sessionsChanged, &autosave, markSession);
+    QObject::connect(&sequencerCapture, &Nullock::Core::SequencerCapture::progressChanged, &autosave, [&] { sequencerDirty = true; });
+    QObject::connect(&sequencerCapture, &Nullock::Core::SequencerCapture::runningChanged, &autosave, [&] { sequencerDirty = true; });
+    autosave.start();
     // Wire into the proxy pipeline. Run AFTER M&R rules so the variable
     // bag has the latest extracted values when the request goes out,
     // but BEFORE session-manager cookie injection so the bag values
@@ -1595,8 +1623,8 @@ int main(int argc, char *argv[]) {
     // Save only after workers and their queued results are drained. Restoring
     // this document never sends requests; incomplete rows require explicit Resume.
     auto saveWorkspaceOnExit = [&](int rc) {
-        if (projectStore.isOpen() && !projectStore.saveIntruderWorkspace(intruder.saveRun())) {
-            QTextStream(stderr) << "Nullock: " << projectStore.lastError() << '\n';
+        if (!saveWorkspaces(true)) {
+            QTextStream(stderr) << "Nullock: " << projectStore.workspaceSaveError() << '\n';
             return rc == 0 ? 1 : rc;
         }
         return rc;

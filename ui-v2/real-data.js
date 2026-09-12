@@ -14,6 +14,8 @@
   window.NL = window.NL || {};
   NL._cache = NL._cache || { req: {}, resp: {}, fullRow: {} };
 
+  let sequencerWrites = Promise.resolve(), sequencerPending = 0, sequencerEpoch = 0;
+  let sequencerFetching = false;
   function syncFetch(url) {
     try {
       const xhr = new XMLHttpRequest();
@@ -38,11 +40,15 @@
       NL._annotationsLoadedRevision = null;
       NL.annotationError = "";
       NL._annotationsRetryAt = 0;
+      NL.sequencerWorkspace = null;
+      NL.sequencerError = "";
     }
     NL.connected = !!snap.bootInfo;
     NL._instanceId = snap.instanceId || "";
     NL.bootInfo      = boot;
     refreshAnnotations();
+    NL._sequencerRevision = snap.sequencerCapture?.revision;
+    if (snap.sequencerCapture) refreshSequencer(NL._sequencerRevision);
     NL.themes        = snap.themes        || [];
     NL.scope         = snap.scope         || { in: [], out: [], notes: "" };
     NL.rules         = snap.rules         || [];
@@ -234,6 +240,56 @@
       },
       body: text || "",
     });
+  }
+  function sequencerEvent() { window.dispatchEvent(new CustomEvent("nl-sequencer")); }
+  async function refreshSequencer(revision) {
+    if (sequencerFetching || sequencerPending || NL.sequencerError
+        || (NL.sequencerWorkspace && NL.sequencerWorkspace.revision === revision)) return;
+    const generation = NL._generation, epoch = sequencerEpoch;
+    sequencerFetching = true;
+    try {
+      const response = await fetch("/api/sequencer/workspace");
+      if (!response.ok) throw new Error("Could not load Sequencer workspace");
+      const data = await response.json();
+      if (generation === NL._generation && epoch === sequencerEpoch && !sequencerPending
+          && data.historyGeneration === NL.bootInfo.historyGeneration) {
+        NL.sequencerWorkspace = data;
+        sequencerEvent();
+      }
+    } catch (e) { /* Next snapshot retries transient read failures. */ }
+    finally { sequencerFetching = false; }
+  }
+  function writeSequencer(path, payload = {}, optimistic = false) {
+    const generation = NL._generation, historyGeneration = NL.bootInfo.historyGeneration;
+    ++sequencerEpoch; ++sequencerPending;
+    if (optimistic && NL.sequencerWorkspace) {
+      NL.sequencerWorkspace = {...NL.sequencerWorkspace, draft:{...NL.sequencerWorkspace.draft, ...payload.patch}};
+      sequencerEvent();
+    }
+    const write = async () => {
+      if (generation !== NL._generation) throw new Error("Project changed; reopen Sequencer");
+      if (NL.sequencerError) throw new Error(NL.sequencerError);
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await post(path, {...payload, historyGeneration,
+          textRevision:NL.sequencerWorkspace?.textRevision ?? -1}, controller.signal);
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || "Sequencer update failed");
+        if (generation === NL._generation && data.draft) {
+          // Retain later optimistic keystrokes, but advance the revision used by
+          // the next queued write. Other clients cannot replace token text unseen.
+          const draft = sequencerPending > 1 && NL.sequencerWorkspace ? NL.sequencerWorkspace.draft : data.draft;
+          NL.sequencerWorkspace = {...data, draft};
+        }
+        return data;
+      } finally { clearTimeout(timeout); }
+    };
+    const queued = sequencerWrites.then(write).catch(error => {
+      if (generation === NL._generation) NL.sequencerError = error.message || String(error);
+      throw error;
+    });
+    sequencerWrites = queued.catch(() => {});
+    return queued.finally(() => { --sequencerPending; NL._seq = 0; sequencerEvent(); });
   }
   let intruderWrites = Promise.resolve();
   function writeIntruder(path, payload = {}, optimistic = false) {
@@ -529,9 +585,16 @@
     // req = {host,port,tls,request,extract:{from,key},count,throttleMs}.
     // tokens() returns the merged progress snapshot + corpus + analysis in
     // one call -- see sequencer_capture.cpp::snapshot() for the shape.
-    sequencerCaptureStart(req)  { return post("/api/sequencer/capture/start", req).then(r => r.json()); },
-    sequencerCaptureStop()      { return post("/api/sequencer/capture/stop").then(r => r.json()); },
-    sequencerCaptureClear()     { return post("/api/sequencer/capture/clear").then(r => r.json()); },
+    sequencerPatch(patch) { return writeSequencer("/api/sequencer/workspace/patch", {patch}, true); },
+    sequencerAppend(text) { return writeSequencer("/api/sequencer/workspace/append", {text}); },
+    sequencerReload() {
+      if (sequencerPending) return;
+      NL.sequencerError = ""; NL.sequencerWorkspace = null; ++sequencerEpoch;
+      refreshSequencer(); sequencerEvent();
+    },
+    sequencerCaptureStart(req)  { return writeSequencer("/api/sequencer/capture/start", req); },
+    sequencerCaptureStop()      { return writeSequencer("/api/sequencer/capture/stop"); },
+    sequencerCaptureClear()     { return writeSequencer("/api/sequencer/capture/clear"); },
     sequencerCaptureTokens()    { return post("/api/sequencer/capture/tokens").then(r => r.json()); },
     fingerprintUrl(url)         { return post("/api/fingerprint", { url }).then(r => r.json()); },
     auditHeaders(url)           { return post("/api/headers/audit", { url }).then(r => r.json()); },
@@ -879,6 +942,7 @@
   }
   setInterval(function () {
     refreshAnnotations();
+    if (NL._sequencerRevision !== undefined) refreshSequencer(NL._sequencerRevision);
     if (polling) return;
     polling = true;
     const intruderEpoch = NL._intruderWriteEpoch || 0;

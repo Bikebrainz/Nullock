@@ -31,6 +31,30 @@ bool validWorkspace(const QByteArray &bytes) {
     return object.isEmpty() || (object.value("config").isObject() && object.value("rows").isArray());
 }
 
+bool validSequencerWorkspace(const QByteArray &bytes) {
+    if (bytes.size() > kMaxWorkspaceBytes) return false;
+    const auto doc = QJsonDocument::fromJson(bytes);
+    if (!doc.isObject()) return false;
+    const auto o = doc.object();
+    if (o.isEmpty()) return true;
+    if (o.value("version").toInt() != 1 || !o.value("draft").isObject()
+        || !o.value("capture").isObject() || !o.value("tokens").isArray()) return false;
+    const auto tokens = o.value("tokens").toArray();
+    if (tokens.size() > 10000) return false;
+    for (const auto &token : tokens) if (!token.isString()) return false;
+    const auto draft = o.value("draft").toObject();
+    for (auto it = draft.begin(); it != draft.end(); ++it) {
+        if (it.key() == "capTls") { if (!it.value().isBool()) return false; }
+        else if (it.key() == "capPort" || it.key() == "capCount" || it.key() == "capThrottleMs" || it.key() == "sigLevel") {
+            if (!it.value().isDouble()) return false;
+        } else if (it.key() == "text" || it.key() == "capHost" || it.key() == "capRequest" || it.key() == "capExtractFrom"
+                   || it.key() == "capExtractKey" || it.key() == "capDelimStart" || it.key() == "capDelimEnd") {
+            if (!it.value().isString() || it.value().toString().size() > 16 * 1024 * 1024) return false;
+        } else return false;
+    }
+    return true;
+}
+
 constexpr qsizetype kMaxAnnotationsBytes = 1024 * 1024;
 QString annotationError(const QJsonObject &note) {
     static const QSet<QString> colors{"", "red", "orange", "yellow", "green",
@@ -270,11 +294,25 @@ bool ProjectStore::open(const QString &projectDir) {
             return false;
         }
     }
+    QByteArray incomingSequencer = "{}";
+    QFile sequencerFile(projectDir + "/sequencer.json");
+    if (sequencerFile.exists()) {
+        if (!sequencerFile.open(QIODevice::ReadOnly) || sequencerFile.size() > kMaxWorkspaceBytes
+            || !validSequencerWorkspace(incomingSequencer = sequencerFile.readAll())) {
+            m_lastError = "Invalid or unreadable Sequencer workspace; current project retained";
+            emit errorOccurred(m_lastError);
+            return false;
+        }
+    }
+    sequencerFile.close();
     if (isOpen() && m_workspaceSave && !m_workspaceSave()) return false;
     // Reopening the same project must restore the state just saved, rather than
     // the previous file read during preflight above.
     if (isOpen() && QFileInfo(m_dir).canonicalFilePath() == QFileInfo(projectDir).canonicalFilePath())
+    {
         incomingWorkspace = m_intruderWorkspace;
+        incomingSequencer = m_sequencerWorkspace;
+    }
     m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     // Save the OUTGOING project's Repeater tabs (app.cpp handles projectClosing)
     // BEFORE historyShouldClear wipes them -- only when a project is already open,
@@ -289,6 +327,7 @@ bool ProjectStore::open(const QString &projectDir) {
 
     m_dir = projectDir;
     m_intruderWorkspace = incomingWorkspace;
+    m_sequencerWorkspace = incomingSequencer;
     if (!QDir().mkpath(m_dir)) {
         emit errorOccurred("could not create project dir: " + m_dir);
         return false;
@@ -347,6 +386,7 @@ bool ProjectStore::open(const QString &projectDir) {
     // shows this project's staged requests and nothing from the previous engagement.
     emit repeaterStateChanged(m_meta.repeaterState);
     emit intruderWorkspaceChanged(m_intruderWorkspace);
+    emit sequencerWorkspaceChanged(m_sequencerWorkspace);
     emit interceptRulesChanged(m_meta.interceptRules);
     emit interceptAutoContentLengthChanged(m_meta.interceptAutoContentLength);
     emit interceptAutoFixNewlinesChanged(m_meta.interceptAutoFixNewlines);
@@ -570,6 +610,39 @@ bool ProjectStore::saveIntruderWorkspace(const QByteArray &state) {
         return false;
     }
     m_intruderWorkspace = state;
+    m_lastError.clear();
+    return true;
+}
+
+bool ProjectStore::saveSequencerWorkspace(const QByteArray &state) {
+    if (!isOpen() || !validSequencerWorkspace(state)) {
+        m_lastError = "Could not save Sequencer workspace: invalid or oversized state";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    QSaveFile file(m_dir + "/sequencer.json");
+    if (!file.open(QIODevice::WriteOnly) || file.write(state) != state.size() || !file.commit()) {
+        m_lastError = "Could not save Sequencer workspace; keep this project open and retry";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    m_sequencerWorkspace = state;
+    m_lastError.clear();
+    return true;
+}
+
+bool ProjectStore::saveSessionWorkspace(const QJsonObject &repeater, const QJsonArray &cookies) {
+    const auto oldRepeater = m_meta.repeaterState;
+    const auto oldCookies = m_meta.cookieJar;
+    m_meta.repeaterState = repeater;
+    m_meta.cookieJar = cookies;
+    if (!saveMetadata()) {
+        m_meta.repeaterState = oldRepeater;
+        m_meta.cookieJar = oldCookies;
+        m_lastError = "Could not save Repeater tabs and cookies; keep this project open and retry";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
     m_lastError.clear();
     return true;
 }

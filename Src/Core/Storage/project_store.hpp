@@ -102,6 +102,11 @@ public:
     // save aborts the switch with the current editors/history still intact.
     void setWorkspaceSave(std::function<bool()> save) { m_workspaceSave = std::move(save); }
     bool saveIntruderWorkspace(const QByteArray &state);
+    bool saveSequencerWorkspace(const QByteArray &state);
+    QByteArray sequencerWorkspace() const { return m_sequencerWorkspace; }
+    bool saveSessionWorkspace(const QJsonObject &repeater, const QJsonArray &cookies);
+    QString workspaceSaveError() const { return m_workspaceSaveError; }
+    void setWorkspaceSaveError(const QString &error) { m_workspaceSaveError = error; emit workspaceSaveStatusChanged(); }
     QByteArray intruderWorkspace() const { return m_intruderWorkspace; }
     QString lastError() const { return m_lastError; }
     QString historyGeneration() const { return m_historyGeneration; }
@@ -335,6 +340,8 @@ signals:
     void triageChanged();
     void annotationsChanged();
     void intruderWorkspaceChanged(const QByteArray &state);
+    void sequencerWorkspaceChanged(const QByteArray &state);
+    void workspaceSaveStatusChanged();
     // Emitted whenever the advanced scope rules change (setter + open()), so
     // app.cpp re-applies them to the live proxy and the snapshot bumps.
     void advancedScopeChanged(const QJsonArray &rules);
@@ -356,6 +363,8 @@ private:
     std::function<bool()> m_switchGuard;
     std::function<bool()> m_workspaceSave;
     QByteArray m_intruderWorkspace = "{}";
+    QByteArray m_sequencerWorkspace = "{}";
+    QString m_workspaceSaveError;
     QString m_lastError;
     QString m_historyGeneration = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString m_annotationsRevision = QUuid::createUuid().toString(QUuid::WithoutBraces);

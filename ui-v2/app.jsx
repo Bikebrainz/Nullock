@@ -4321,6 +4321,22 @@ function sequencerReportXml(result, tokenCount) {
   return xml;
 }
 
+function useSequencerField(key, fallback) {
+  const [, redraw] = React.useReducer(n => n + 1, 0);
+  React.useEffect(() => {
+    const changed = () => redraw();
+    window.addEventListener("nl-sequencer", changed);
+    return () => window.removeEventListener("nl-sequencer", changed);
+  }, []);
+  const value = NL.sequencerWorkspace?.draft?.[key] ?? fallback;
+  const setValue = next => {
+    if (!NL.sequencerWorkspace) return;
+    const previous = NL.sequencerWorkspace.draft?.[key] ?? fallback;
+    NL.actions.sequencerPatch({[key]: typeof next === "function" ? next(previous) : next}).catch(() => {});
+  };
+  return [value, setValue];
+}
+
 function SequencerTab({ sequencer, dispatch }) {
   // Token randomness analyzer (Burp's Sequencer). Backend
   // (/api/sequencer/analyze, Src/Core/Networking/sequencer_logic.cpp) was
@@ -4328,7 +4344,7 @@ function SequencerTab({ sequencer, dispatch }) {
   // a Manual Load + Analysis pane, plus a Live Capture panel below it that
   // drives the /api/sequencer/capture/* engine (fires the same request N
   // times and harvests one token per response into the corpus above).
-  const [text, setText]   = React.useState("");
+  const [text, setText]   = useSequencerField("text", "");
   const [result, setResult] = React.useState(null);
   const [busy, setBusy]   = React.useState(false);
   const [err, setErr]     = React.useState("");
@@ -4339,40 +4355,32 @@ function SequencerTab({ sequencer, dispatch }) {
   // [1e-6, 0.2] and echoed back as result.significanceLevel. Does NOT
   // re-grade the Shannon entropy estimate (a point estimate, not a
   // hypothesis test) -- Burp's own significance selector covers both.
-  const [sigLevel, setSigLevel] = React.useState(0.01);
+  const [sigLevel, setSigLevel] = useSequencerField("sigLevel", 0.01);
 
   // Live capture -- see control_server.cpp /api/sequencer/capture/{start,
   // stop,clear,tokens}. /tokens returns the progress snapshot AND the
   // harvested corpus in one call, so a single poll covers both.
-  const [capHost, setCapHost]         = React.useState("");
-  const [capPort, setCapPort]         = React.useState(443);
-  const [capTls, setCapTls]           = React.useState(true);
-  const [capRequest, setCapRequest]   = React.useState("GET / HTTP/1.1\nHost: \n\n");
-  const [capExtractFrom, setCapExtractFrom] = React.useState("header");
-  const [capExtractKey, setCapExtractKey]   = React.useState("");
+  const [capHost, setCapHost]         = useSequencerField("capHost", "");
+  const [capPort, setCapPort]         = useSequencerField("capPort", 443);
+  const [capTls, setCapTls]           = useSequencerField("capTls", true);
+  const [capRequest, setCapRequest]   = useSequencerField("capRequest", "GET / HTTP/1.1\nHost: \n\n");
+  const [capExtractFrom, setCapExtractFrom] = useSequencerField("capExtractFrom", "header");
+  const [capExtractKey, setCapExtractKey]   = useSequencerField("capExtractKey", "");
   // "delimiter" mode encodes its key as "<start>\x1f<end>" (matching
   // SequencerCaptureLogic::extractToken's FromDelimiter branch) rather
   // than reusing capExtractKey's single free-text field.
-  const [capDelimStart, setCapDelimStart]   = React.useState("");
-  const [capDelimEnd, setCapDelimEnd]       = React.useState("");
-  const [capCount, setCapCount]       = React.useState(200);
-  const [capThrottleMs, setCapThrottleMs] = React.useState(0);
+  const [capDelimStart, setCapDelimStart]   = useSequencerField("capDelimStart", "");
+  const [capDelimEnd, setCapDelimEnd]       = useSequencerField("capDelimEnd", "");
+  const [capCount, setCapCount]       = useSequencerField("capCount", 200);
+  const [capThrottleMs, setCapThrottleMs] = useSequencerField("capThrottleMs", 0);
   const [capSnapshot, setCapSnapshot] = React.useState(null);
   const [capBusy, setCapBusy]         = React.useState(false);
   const [capErr, setCapErr]           = React.useState("");
-  const capImportedRef = React.useRef(0); // how many harvested tokens already folded into `text`
-
   const capPoll = React.useCallback(async () => {
     try {
       const r = await NL.actions.sequencerCaptureTokens();
       if (!r || r.ok === false) return;
       setCapSnapshot(r);
-      const toks = r.tokens || [];
-      if (toks.length > capImportedRef.current) {
-        const added = toks.slice(capImportedRef.current);
-        setText(prev => (prev ? prev.replace(/\n?$/, "\n") + added.join("\n") : added.join("\n")));
-        capImportedRef.current = toks.length;
-      }
     } catch (e) { /* transient network blip; next tick retries */ }
   }, []);
 
@@ -4407,26 +4415,9 @@ function SequencerTab({ sequencer, dispatch }) {
   async function captureClear() {
     try {
       await NL.actions.sequencerCaptureClear();
-      capImportedRef.current = 0;
       setCapSnapshot(null);
     } catch (e) { setCapErr(String(e && e.message ? e.message : e)); }
   }
-
-  // #167 "Send to Sequencer": Proxy history / Repeater dispatch
-  // sequencer-add-token, appending into the app-level sequencer.tokens
-  // inbox (persists across this tab unmounting). Anything not yet folded
-  // into the local textarea gets appended here -- on first mount that's
-  // the whole inbox; while mounted, only genuinely new arrivals.
-  const seenTokenCountRef = React.useRef(0);
-  React.useEffect(() => {
-    const incoming = sequencer.tokens;
-    const already = seenTokenCountRef.current;
-    if (incoming.length > already) {
-      const added = incoming.slice(already);
-      setText(prev => (prev ? prev.replace(/\n?$/, "\n") + added.join("\n") : added.join("\n")));
-    }
-    seenTokenCountRef.current = incoming.length;
-  }, [sequencer.tokens]);
 
   const tokens = React.useMemo(
     () => text.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
@@ -4624,9 +4615,11 @@ function SequencerTab({ sequencer, dispatch }) {
     );
   };
 
+  if (!NL.sequencerWorkspace) return <div style={{padding:20}}>Loading the project’s Sequencer workspace… <button className="btn" onClick={() => NL.actions.sequencerReload()}>RETRY</button></div>;
   return (
     <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        {NL.sequencerError && <div role="alert" style={{color:"var(--err)"}}>Unsaved edit: {NL.sequencerError} <button className="btn" onClick={() => NL.actions.sequencerReload()}>RELOAD SAVED CORPUS</button></div>}
         <span style={{ fontSize: "11px", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Sequencer</span>
         <span style={{ color: "var(--dim)", fontSize: "11px" }}>manual-load token randomness analysis — Shannon/positional/bit-level tests, sequential-counter detection</span>
       </div>
@@ -4648,7 +4641,6 @@ function SequencerTab({ sequencer, dispatch }) {
           <button className="btn" disabled={!result || result.verdict === "no-data"} onClick={() => exportReport("xml")} title="Download an XML report of the current analysis">EXPORT XML</button>
           <button className="btn" onClick={() => {
             setText(""); setResult(null); setErr("");
-            seenTokenCountRef.current = sequencer.tokens.length; // don't resurrect cleared tokens on remount
             dispatch({ type: "sequencer-clear-tokens" });
           }}>CLEAR</button>
           <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: "11px", color: "var(--text-2)" }}>
@@ -8174,7 +8166,14 @@ function App() {
     },
   }), []);
 
-  const [state, dispatch] = React.useReducer(reducer, initialState);
+  const [state, reduceDispatch] = React.useReducer(reducer, initialState);
+  const dispatch = React.useCallback(action => {
+    if (action.type === "sequencer-add-token" && NL.actions.sequencerAppend) {
+      NL.actions.sequencerAppend(action.text || "").catch(() => {});
+      return;
+    }
+    reduceDispatch(action);
+  }, []);
 
   // Live-sync: real-data.js fires 'nl-update' whenever the snapshot poll
   // brings in a fresh payload from the control server. Push it into the
@@ -8356,6 +8355,7 @@ function App() {
         onToggleTweaks={() => setTweaksOpen(o => !o)}
         onOpenPalette={() => setPaletteOpen(true)}
       />
+      {NL.bootInfo?.workspaceSaveError && <div role="alert" style={{padding:8,color:"var(--err)"}}>Workspace save failed: {NL.bootInfo.workspaceSaveError}. Your work remains in memory; autosave will retry.</div>}
       <Rail
         proxyOn={state.proxyOn}
         port={NL.bootInfo.port || "—"}
@@ -8432,7 +8432,7 @@ function App() {
           <ProbeTab />
         )}
         {tab === "sequencer" && (
-          <SequencerTab sequencer={state.sequencer} dispatch={dispatch} />
+          <SequencerTab key={NL._generation} sequencer={state.sequencer} dispatch={dispatch} />
         )}
         {tab === "tests" && (
           <TestsTab />

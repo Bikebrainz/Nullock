@@ -3120,14 +3120,14 @@
       "state": "present",
       "impact": "high",
       "effort": "days",
-      "gap": "Every captured cookie and every session rule is lost on restart. The one partial mitigation is `nullock session-rules set <file.json>` (bin/nullock:560-565), which lets rules be re-applied from a file the user maintains themselves \u2014 but there is no export of the current rule set beyond scraping `.sessionRules` out of the snapshot, and no cookie import/export at all.",
-      "why": "Confirmed on all three axes: no serializer on either class, both are stack locals in app.cpp, and the project store's only cookie references are redaction lists and deliberately-emptied HAR fields.",
-      "evidence": "session_manager.hpp:65 `QHash<QString, HostSession> m_byHost;` and session_rules.hpp:104 `QList<SessionRule> m_rules;` \u2014 neither header (both read in full) declares save/load. Stack locals: app.cpp:777 `Nullock::Core::SessionManager sessions;` and :846 `Nullock::Core::SessionRules sessionRules;`. Project store: the only cookie/session hits are the redaction header lists at project_store.cpp:234 / ",
+      "gap": "Cookie jars and session rules persist per project. Cookie changes autosave every two seconds and after shutdown workers drain; session-rule edits save when applied. Failed workspace writes remain visible and block project switching. Transient extracted session variables are intentionally cleared when changing projects.",
+      "why": "Cookie jars and session rules persist per project. Cookie changes autosave every two seconds and after shutdown workers drain; session-rule edits save when applied. Failed workspace writes remain visible and block project switching. Transient extracted session variables are intentionally cleared when changing projects.",
+      "evidence": "Src/App/app.cpp saveWorkspaces; Src/Core/Storage/project_store.cpp saveSessionWorkspace; scripts/workspace_recovery_regression.py",
       "audited_state": "absent",
       "reconciled": {
-        "date": "2026-08-18",
-        "commit": "b8503b0",
-        "note": "DONE -- both halves persist across restart. (1) Session RULES (a204e79): session-handling rules persist in project.json under 'sessionRules' + restore on reopen, via a shared sessionRulesToJson/FromJson serializer (single source for /api/session-rules, the snapshot, and the on-disk form) + ProjectStore setSessionRulesJson/sessionRulesJsonChanged + app.cpp wiring. (2) Cookie JAR (this commit): the SessionManager's per-host captured cookies now serialize too -- SessionManager exportJson()/importJson() walk m_byHost (host + autoInject + lastSeen + cookies) through a mutation-proven cookieToJson/cookieFromJson (expiresEpoch stored as a JSON string so a post-2038 lifetime round-trips without double-precision loss) into ProjectMeta.cookieJar, written on projectClosing/aboutToQuit and restored on cookieJarChanged/open. SAFETY: importJson drops any cookie for which SessionLogic::cookieExpired(nowEpoch) holds, so a logged-out/stale token is never resurrected on restore. Verified e2e: capture a cookie -> switch project (fires the save) -> the outgoing project.json holds it; and a seeded jar with one fresh + one expired persistent cookie restores with ONLY the fresh one present. Unit: session_manager_test 79/79 incl. cookie round-trip + expiry-drop, 2 mutations proven. Gauntlet green."
+        "date": "2026-09-11",
+        "commit": "codex/workspace-recovery",
+        "note": "Cookie jars and session rules persist per project. Cookie changes autosave every two seconds and after shutdown workers drain; session-rule edits save when applied. Failed workspace writes remain visible and block project switching. Transient extracted session variables are intentionally cleared when changing projects."
       }
     },
     {
@@ -5523,13 +5523,13 @@
       "effort": "days",
       "audited_state": "present",
       "reconciled": {
-        "date": "2026-08-15",
-        "commit": "bd47e80",
-        "note": "Repeater tabs are saved into project.json (under \"repeater\") on project switch (ProjectStore::projectClosing, before the historyShouldClear wipe) and on quit, and restored on reopen (repeaterStateChanged -> Repeater::importState). Engagement isolation preserved: the OUTGOING project's tabs save to its own file before the wipe, so no staged request or Authorization header crosses projects. Response bodies omitted to keep project.json small. Smoke section 13 (canary auth header: staged=1 leaked=0 restored=1); gauntlet ctest 93/93, probe_smoke 156/156."
+        "date": "2026-09-11",
+        "commit": "codex/workspace-recovery",
+        "note": "Repeater tabs save per project every two seconds when changed, before project switching, and after shutdown workers drain. Failed writes retain the current project and retry. Per-tab request history remains a separate capability."
       },
-      "gap": "None -- Repeater tabs are saved into project.json and restored on reopen, per project. (Per-tab request HISTORY, item B1, is a separate capability and remains open.)",
-      "why": "Confirmed. I re-ran `grep -rn -i repeater Src/Core/Storage/` myself \u2014 zero hits across project_store.cpp, project_logic.cpp and history_index.cpp \u2014 and confirmed a project switch actively wipes the tabs.",
-      "evidence": "D:/dev/Nullock/Src/Core/Networking/repeater.hpp:101 `QList<RepeaterTab> m_tabs;` is the only store. Wipe on project switch: repeater.cpp:107-114 `void Repeater::clearAll() { m_tabs.clear(); m_tabs.append(makeBlankTab()); m_active = 0; emit tabsChanged(); ...}`, wired per repeater.hpp:65-71 to ProjectStore::historyShouldClear. No repeater serializer in Src/Core/Storage/ (files: history_index, histo"
+      "gap": "Repeater tabs save per project every two seconds when changed, before project switching, and after shutdown workers drain. Failed writes retain the current project and retry. Per-tab request history remains a separate capability.",
+      "why": "Repeater tabs save per project every two seconds when changed, before project switching, and after shutdown workers drain. Failed writes retain the current project and retry. Per-tab request history remains a separate capability.",
+      "evidence": "Src/App/app.cpp saveWorkspaces; Src/Core/Storage/project_store.cpp saveSessionWorkspace; scripts/workspace_recovery_regression.py"
     },
     {
       "area": "repeater",
