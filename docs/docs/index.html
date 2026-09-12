@@ -65,9 +65,9 @@
       <h2 class="h2-section">Getting started</h2>
       <p>nullock is a man-in-the-middle proxy. It sits between your client and the network, captures every request and response, and lets you intercept, replay, and rewrite them. Three things to know before you start:</p>
       <ol class="doc-list">
-        <li>It installs a local CA so it can read TLS. You control that CA; it never leaves your machine.</li>
+        <li>It generates a local CA so it can inspect TLS. You choose where to trust its certificate. The private key stays in your Nullock profile.</li>
         <li>History lives in a project directory: the NDJSON archive stores exchanges, SQLite indexes them, and project.json stores settings and note overrides. Close the project before backing up its whole directory.</li>
-        <li>There is no telemetry. The binary makes no network calls except the traffic you point at it.</li>
+        <li>There is no usage telemetry. Automatic release checks are enabled by default; disable them with <code>--no-update-check</code>. Target traffic and configured services such as updates, marketplace, certificate-transparency lookups and workspace sync make their own network requests.</li>
       </ol>
     </section>
 
@@ -81,16 +81,25 @@
 <span class="c-comment">#   Linux     .AppImage · .deb · .rpm</span>
 <span class="c-comment">#   macOS     Nullock-&lt;ver&gt;-Darwin.dmg   (right-click &rarr; Open)</span>
 
-<span class="c-comment"># or build from source — Qt 6.7 + CMake + nghttp2:</span>
+<span class="c-comment"># or build from source — Qt 6.10.3 + CMake + nghttp2 + a C++ compiler:</span>
 <span class="c-purple">cmake</span> -B build -DCMAKE_BUILD_TYPE=Release
 <span class="c-purple">cmake</span> --build build --target NullockApp</pre>
       </div>
-      <p>On first run the app generates a local CA and prints its path. Trust that CA in your OS store so TLS sites stop warning — it's yours, and it never leaves the machine.</p>
+      <p>On first run the app generates a local CA and prints its path. Download its public certificate from Settings → CA &amp; TLS and trust it in a dedicated test browser when you need HTTPS interception. Nullock does not automatically modify the OS trust store.</p>
+      <p>Sections marked <strong>unreleased</strong> describe the current development build and supplied beta packages. They may not be included in the latest public release. See the <a href="https://github.com/Bikebrainz/Nullock#readme">repository build instructions</a> for platform prerequisites.</p>
     </section>
 
     <section id="first-capture" class="doc-sec">
       <h2 class="h2-section">Your first capture</h2>
-      <p>Start the proxy on a port and point your client at it. The desktop app does this with one click; from the CLI:</p>
+      <p>In the development build, a <strong>First capture guide</strong> opens in an empty project’s Proxy tab. You can reopen it from the HTTP History toolbar. Follow the same workflow below:</p>
+      <ol class="doc-list">
+        <li><strong>Project and scope.</strong> Choose or create a project in Settings. Add your authorized target host under Scope. Advanced scope can restrict ports, protocols and URL paths; correct any validation error before sending active traffic.</li>
+        <li><strong>Connect your test browser.</strong> Use the live HTTP proxy address shown by the guide or Settings → Browser setup. Configure both HTTP and HTTPS traffic through that address. Download this profile’s CA certificate and trust it in the test browser for HTTPS interception.</li>
+        <li><strong>Verify a capture.</strong> Browse an in-scope page and inspect its request and response in HTTP History. If nothing appears, check the browser proxy address, scope filters and whether interception is holding the request.</li>
+        <li><strong>Replay and verify authentication.</strong> Use <strong>Stage first request</strong> or send a selected history row to Repeater. Inspect it before pressing Send. Confirm the expected response and login state before launching a scanner. Scanner session rules and login macros are described below.</li>
+        <li><strong>Keep the useful results.</strong> Add comments or highlights to history rows, export a report, and let pending saves finish. Save failures remain visible. Reopening a project restores tool work with active captures idle.</li>
+      </ol>
+      <p>To choose explicit ports from a terminal, start the app below, then run the CLI commands in a second shell. Confirm the actual listening ports in the startup output or Settings; if the requested port is occupied, Nullock can select a fallback.</p>
       <div class="code">
         <div class="code-head"><span>terminal</span><button class="copy" data-copy="NullockApp --proxy-port=8080 --control-port=17777&#10;nullock scope add 'app.local'&#10;nullock status">Copy</button></div>
         <pre><span class="c-purple">NullockApp</span> --proxy-port=8080 --control-port=17777
@@ -127,9 +136,10 @@ nullock history-note 42 --clear</code></pre></div>
     </section>
 
     <section id="workspace-recovery" class="doc-sec">
-      <h2>Workspace recovery <small>(unreleased)</small></h2>
+      <h2 class="h2-section">Workspace recovery <small>(unreleased)</small></h2>
       <p>The development build saves changed Repeater tabs, Intruder work, cookies and Sequencer data every two seconds. It also saves before switching projects and after active workers finish during shutdown. Work entered since the last successful autosave can still be lost if the process is forcibly terminated.</p>
       <p>Sequencer retains its manual corpus, captured samples, extraction settings and significance level across tab changes, browser reloads and project reopening. Captures restore idle: inspect the recovered work and explicitly start another capture when ready. Each new capture appends samples to the manual corpus once. Analysis reports can be regenerated from the saved corpus.</p>
+      <p>Repeater also saves request encoding, automatic Content-Length, redirect policy and redirect cookie processing. A new project starts with its own defaults, so another project’s request settings do not carry over.</p>
       <p>If a project file cannot be saved, a banner identifies the failure, the current project stays open, and autosave retries. Token text edits that conflict with another client or a live capture remain visible as unsaved edits; copy that text before choosing <strong>Reload saved corpus</strong>. Other settings use field updates so changing one setting preserves unrelated fields.</p>
       <p>The manual corpus and captured token collection each have a four-million-character limit, with at most 10,000 samples per capture. Export samples before clearing large corpora. Project files contain raw requests and credentials; keep them in a private location.</p>
     </section>

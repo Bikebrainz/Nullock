@@ -390,7 +390,9 @@ QJsonObject Repeater::exportState() const {
     // responseText is deliberately omitted -- a response body can be megabytes and
     // project.json is a small metadata file rewritten on every change; the request
     // side is what a reopen needs, and re-sending reproduces the response.
-    return QJsonObject{ { "activeTab", m_active }, { "tabs", arr } };
+    return QJsonObject{ { "activeTab", m_active }, { "tabs", arr },
+        { "autoContentLength", m_autoContentLength }, { "followRedirects", m_followPolicy },
+        { "processCookies", m_followCookies } };
 }
 
 void Repeater::importState(const QJsonObject &state) {
@@ -415,6 +417,9 @@ void Repeater::importState(const QJsonObject &state) {
         restored.append(makeBlankTab());
     m_tabs   = restored;
     m_active = qBound(0, state.value("activeTab").toInt(), m_tabs.size() - 1);
+    setAutoContentLength(state.value("autoContentLength").toBool(true));
+    setFollowRedirects(state.value("followRedirects").toInt(0));
+    setProcessCookies(state.value("processCookies").toBool(true));
     emit tabsChanged();
     emitAllSlots();
 }

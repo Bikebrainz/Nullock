@@ -3007,8 +3007,72 @@ function toHexDump(s) {
   return hexDumpBytes(new TextEncoder().encode(s));
 }
 
+function FirstCaptureGuide({state, onSwitchTab}) {
+  const boot = NL.bootInfo || {}, scope = state.scope || {in:[]};
+  const [error, setError] = React.useState("");
+  const [staging, setStaging] = React.useState(false);
+  const responses = state.rows.filter(r => r.status >= 100);
+  const first = responses[0];
+  const scoped = (scope.in || []).length > 0 && !scope.validationError;
+  const proxy = boot.proxyOn && boot.port ? "127.0.0.1:" + boot.port : "Proxy stopped";
+  const card = {padding:12,border:"1px solid var(--line)",background:"var(--bg-deep)",borderRadius:3,minWidth:0};
+  const title = {fontSize:11,color:"var(--accent)",marginBottom:8};
+  async function stage() {
+    if (!first) return;
+    setStaging(true);setError("");
+    try {
+      const response = await NL.actions.repeaterTabAddFromHistoryId(first.id);
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.error || "Could not stage the request");
+      onSwitchTab("repeater");
+    } catch(e) { setError(e.message || String(e)); }
+    finally { setStaging(false); }
+  }
+  return <section aria-label="First capture guide" style={{padding:10,borderBottom:"1px solid var(--line)",maxHeight:330,overflow:"auto",fontSize:11,lineHeight:1.6}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))",gap:8}}>
+      <div style={card}>
+        <div style={title}>01 · PROJECT &amp; SCOPE</div>
+        <div>Project: <strong>{boot.project || "default"}</strong></div>
+        <div>{scoped ? "Scope configured" : "Add the hosts you are authorized to test."}</div>
+        {scope.validationError && <div role="alert" style={{color:"var(--err)"}}>{scope.validationError}</div>}
+        <p style={{color:"var(--dim)"}}>Use advanced scope for port, protocol and path limits.</p>
+        <button className="btn" onClick={()=>onSwitchTab("scope")}>SET SCOPE</button>{" "}
+        <button className="btn" onClick={()=>onSwitchTab("settings")}>PROJECT SETTINGS</button>
+      </div>
+      <div style={card}>
+        <div style={title}>02 · CONNECT YOUR TEST BROWSER</div>
+        <div>HTTP / HTTPS proxy: <strong data-testid="setup-proxy">{proxy}</strong></div>
+        <p style={{color:"var(--dim)"}}>On this computer, configure a test browser with that proxy address. For HTTPS, download and trust this profile’s CA certificate in the test browser.</p>
+        {boot.caPath && <a className="btn" href="/ca.pem" download="nullock-ca.pem">DOWNLOAD CA</a>}{" "}
+        <button className="btn" onClick={()=>onSwitchTab("settings")}>{boot.proxyOn ? "BROWSER SETUP" : "START PROXY IN SETTINGS"}</button>
+      </div>
+      <div style={card}>
+        <div style={title}>03 · VERIFY A CAPTURE</div>
+        <div role="status">{responses.length ? responses.length + (responses.length === 1 ? " response" : " responses") + " in project history" : "Waiting for the first response"}</div>
+        <p style={{color:"var(--dim)"}}>Browse one in-scope page. Confirm its method, host and response in HTTP History. If history stays empty, check proxy settings, scope and paused interception.</p>
+        <button className="btn primary" disabled={!first || staging} onClick={stage}>{staging ? "STAGING…" : "STAGE FIRST REQUEST"}</button>
+      </div>
+      <div style={card}>
+        <div style={title}>04 · REPLAY, REVIEW &amp; SAVE</div>
+        <div>Inspect the staged request in Repeater, then press Send.</div>
+        <p style={{color:"var(--dim)"}}>Verify the response and login state before scanning. Add notes to useful history rows. Changed tool work autosaves every two seconds; check any save-error banner before closing.</p>
+        <button className="btn" onClick={()=>onSwitchTab("reporting")}>REPORTS &amp; EXPORT</button>
+      </div>
+    </div>
+    {error && <div role="alert" style={{color:"var(--err)",marginTop:8}}>{error}</div>}
+  </section>;
+}
+
 function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
   const { rows, selectedRowId, hostFilter, statusClass, methodFilter, search, selectedHost, selectedOrigin, scope } = state;
+  const guideKey = "nullock:first-capture-guide:" + NL._generation;
+  const initialGuide = () => { try { return rows.length === 0 && sessionStorage.getItem(guideKey) !== "closed"; } catch { return rows.length === 0; } };
+  const [guideOpen, setGuideOpen] = React.useState(initialGuide);
+  React.useEffect(() => { setGuideOpen(initialGuide()); }, [guideKey]);
+  function toggleGuide() {
+    const next = !guideOpen; setGuideOpen(next);
+    try { sessionStorage.setItem(guideKey, next ? "open" : "closed"); } catch {}
+  }
   // #372 "Delete host"/"Delete branch": client-side hide-list (see
   // isRowDeleted's comment above) applied before any other view derives from
   // rows, so the site map, history table, and compare-hosts list all agree.
@@ -3367,10 +3431,11 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
         />
       )}
       {showSitemap && <div className="divider-v" />}
-      <div className="pane" style={{ display: "grid", gridTemplateRows: "auto " + (showOosPrompt ? "auto " : "") + "auto 1fr 1fr", minHeight: 0 }}>
+      <div className="pane" style={{ display: "grid", gridTemplateRows: "auto " + (guideOpen ? "auto " : "") + (showOosPrompt ? "auto " : "") + "auto 1fr 1fr", minHeight: 0 }}>
         <div className="pane-head">
           <span className="ph-corner">▸</span>
           <span>HTTP HISTORY</span>
+          <button onClick={toggleGuide} aria-expanded={guideOpen}>{guideOpen ? "CLOSE SETUP GUIDE" : "FIRST CAPTURE GUIDE"}</button>
           <span className="ph-count">{shown} / {visibleRows.length}</span>
           {annotationSaving && <span role="status">Saving notes…</span>}
           {(annotationError || NL.annotationError) && <span role="alert" style={{color:"var(--red)", whiteSpace:"normal"}}>{annotationError || NL.annotationError}</span>}
@@ -3385,6 +3450,7 @@ function ProxyTab({ state, dispatch, showSitemap, onSwitchTab }) {
               ? "Needs at least two distinct hosts in HTTP history to compare"
               : "Diff URL paths and findings between two hosts already in HTTP history"}>⇄ COMPARE HOSTS</button>
         </div>
+        {guideOpen && <FirstCaptureGuide key={guideKey} state={state} onSwitchTab={onSwitchTab} />}
         {showOosPrompt && (
           <div className="oos-prompt-banner" role="alert">
             <span>Out-of-scope items are being added to history. Stop sending out-of-scope items to history?</span>

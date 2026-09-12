@@ -106,7 +106,12 @@ public:
     QByteArray sequencerWorkspace() const { return m_sequencerWorkspace; }
     bool saveSessionWorkspace(const QJsonObject &repeater, const QJsonArray &cookies);
     QString workspaceSaveError() const { return m_workspaceSaveError; }
-    void setWorkspaceSaveError(const QString &error) { m_workspaceSaveError = error; emit workspaceSaveStatusChanged(); }
+    void setWorkspaceSaveError(const QString &error) {
+        m_lastError = error;
+        if (m_workspaceSaveError == error) return;
+        m_workspaceSaveError = error;
+        emit workspaceSaveStatusChanged();
+    }
     QByteArray intruderWorkspace() const { return m_intruderWorkspace; }
     QString lastError() const { return m_lastError; }
     QString historyGeneration() const { return m_historyGeneration; }
