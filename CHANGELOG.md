@@ -79,6 +79,9 @@ developer-facing record.
 - Show actual connection/project state in the app, repair the Scans table and
   companion extension failures, and correct website navigation, download
   handling and unsupported service/payment claims.
+- Preserve captured payload segments in all six active `alg:none` JWT variants,
+  including original JSON whitespace, key order, escapes and numeric spelling.
+  Header-only probes now match the manual forgery path's payload fidelity.
 
 ### Added
 - **Lab 89: Regular expression denial of service (a signup username check

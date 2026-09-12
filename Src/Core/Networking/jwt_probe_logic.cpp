@@ -183,7 +183,12 @@ QString corruptSignature(const QString &token) {
 QStringList algNoneVariants(const JwtTool::Decoded &d) {
     static const char *kAlgs[] = { "none", "None", "NONE", "nOnE" };
     QStringList out;
-    const QByteArray payload = b64url(QJsonDocument(d.payload).toJson(QJsonDocument::Compact)).toUtf8();
+    // These variants mutate only the header/signature. Keep captured claim
+    // bytes intact, matching the manual forge path; serialize only when the
+    // caller constructed a decoded value without an original payload segment.
+    const QString payload = d.rawPayloadB64.isEmpty()
+        ? b64url(QJsonDocument(d.payload).toJson(QJsonDocument::Compact))
+        : d.rawPayloadB64;
     for (const char *a : kAlgs) {
         QJsonObject h = d.header; h["alg"] = QString::fromLatin1(a);
         out << b64url(QJsonDocument(h).toJson(QJsonDocument::Compact)) + "." + payload + ".";

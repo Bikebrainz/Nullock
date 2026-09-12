@@ -101,6 +101,32 @@ int main(int argc, char **argv) {
         chk("algNone: covers the absent-alg header", !headerHasAlg(v[5]));
     }
 
+    // Captured payloads may use different key order, whitespace, escapes, or
+    // numeric spelling from QJsonDocument. Header-only mutations must keep
+    // the original segment, including when the claims parse successfully.
+    for (const QByteArray &payload : QList<QByteArray>{
+             "{ \"sub\" : \"alice\", \"role\" : \"user\" }\n",
+             R"({"sub":"al\u0069ce","path":"a\/b"})",
+             R"({"exp":1.700000000e9,"ratio":1.0000,"negative":-0})"}) {
+        const QString segment = QString::fromLatin1(payload.toBase64(
+            QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+        const JwtTool::Decoded captured = JwtTool::decode(token.split('.').value(0)
+            + "." + segment + "." + token.split('.').value(2));
+        chk("algNone: captured payload fixture decodes", captured.ok && captured.payloadOk);
+        for (const QString &variant : algNoneVariants(captured))
+            chk("algNone: captured payload segment survives every header mutation verbatim",
+                variant.split('.').value(1) == segment);
+    }
+    {
+        JwtTool::Decoded constructed = d;
+        constructed.rawPayloadB64.clear();
+        for (const QString &variant : algNoneVariants(constructed)) {
+            const JwtTool::Decoded decoded = JwtTool::decode(variant);
+            chk("algNone: constructed claims without a raw segment still serialize",
+                decoded.ok && decoded.payloadOk && decoded.payload == d.payload);
+        }
+    }
+
     // ===== buildRequest carriers =========================================
     {
         const QByteArray r = buildRequest(mk(), "TOK");
