@@ -692,6 +692,13 @@ def make(mode):
                 key = self.headers.get('Sec-WebSocket-Key', '')
                 origin = self.headers.get('Origin', '')
                 cookie = self.headers.get('Cookie', '')
+                required = ('Host', 'Connection', 'Upgrade', 'Sec-WebSocket-Key', 'Sec-WebSocket-Version')
+                if any(len(self.headers.get_all(name, [])) != 1 for name in required):
+                    self._send(400, b'duplicate or missing handshake header'); return
+                if self.headers.get('Host') != f'127.0.0.1:{self.server.server_address[1]}':
+                    self._send(400, b'incorrect handshake authority'); return
+                if self.headers.get('Content-Length') or self.headers.get('Transfer-Encoding'):
+                    self._send(400, b'unexpected handshake body framing'); return
                 if up.lower() != 'websocket' or not key:
                     self._send(200, b'<html>not a websocket</html>'); return
                 def ohost(o):
@@ -707,6 +714,14 @@ def make(mode):
                 elif mode == 'cswsh-vuln':
                     if 'session=' not in cookie:                # authenticated socket
                         self._send(401, b'authentication required'); return
+                elif mode in ('cswsh-baseline429', 'cswsh-baseline503'):
+                    # A failed credential-free control is not proof of session gating.
+                    if 'session=' not in cookie:
+                        self._send(int(mode[-3:]), b'temporary refusal'); return
+                elif mode == 'cswsh-bearer':
+                    # Caller-injected auth must not be mistaken for browser cookies.
+                    if not self.headers.get('Authorization', '').startswith('Bearer '):
+                        self._send(401, b'authorization required'); return
                 # cswsh-open: accept any Origin regardless of cookie (fall through).
                 accept = base64.b64encode(
                     hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
@@ -1039,6 +1054,7 @@ MODES=(sspp-vuln sspp-safe sspp-gzip sspp-ctor
        xpath-vuln xpath-safe xpath-waf
        content-found
        cswsh-vuln cswsh-open cswsh-safe cswsh-subdomain
+       cswsh-baseline429 cswsh-baseline503 cswsh-bearer
        jwt-safe jwt-algnone jwt-noverify jwt-weak jwt-algconfusion jwt-rs-safe jwt-cookie-noverify
        jwt-body-noverify
        oast-vuln oast-safe oastlog4-vuln oastlog4-safe
@@ -1252,6 +1268,11 @@ chk "cswsh public, NO credential -> Origin-not-validated LEAD (FP fix)" "$(post 
 chk "cswsh public + cookie, no-cookie baseline ALSO 101s -> downgrade to LEAD (authed-baseline confirm)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-open]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('ok') and not d.get('vulnerable') and d.get('originNotValidated')"
 chk "cswsh endsWith(host) allow-list accepts attacker.<host> subdomain -> still flagged (FN fix)" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-subdomain]} '')\"}")" "d.get('ok') and d.get('originNotValidated') and not d.get('originValidated')"
 chk "cswsh safe -> origin validated"            "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-safe]} '')\"}")" "d.get('ok') and not d.get('vulnerable') and d.get('originValidated')"
+chk "cswsh rate-limited baseline -> inconclusive LEAD" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-baseline429]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('ok') and not d.get('vulnerable') and d.get('controlStatus')==429 and 'inconclusive' in d.get('detail','')"
+chk "cswsh server-error baseline -> inconclusive LEAD" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-baseline503]} '')\",\"headers\":{\"Cookie\":\"session=abc\"}}")" "d.get('ok') and not d.get('vulnerable') and d.get('controlStatus')==503 and 'ALSO upgraded' not in d.get('detail','')"
+chk "cswsh caller Bearer authorization -> LEAD" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-bearer]} '')\",\"headers\":{\"Authorization\":\"Bearer fixture-token\"}}")" "d.get('ok') and d.get('originNotValidated') and not d.get('vulnerable')"
+chk "cswsh mixed Cookie and Bearer authorization -> LEAD" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-bearer]} '')\",\"headers\":{\"Cookie\":\"session=abc\",\"Authorization\":\"Bearer fixture-token\"}}")" "d.get('ok') and d.get('originNotValidated') and not d.get('vulnerable')"
+chk "cswsh captured handshake gets fresh upgrade headers -> CONFIRMED" "$(post /api/cswsh/test "{\"url\":\"$(url ${P[cswsh-vuln]} '')\",\"headers\":{\"Cookie\":\"session=abc\",\"Connection\":\"keep-alive\",\"Upgrade\":\"h2c\",\"Sec-WebSocket-Key\":\"old-key==\",\"Sec-WebSocket-Version\":\"8\",\"Content-Length\":\"99\",\"Transfer-Encoding\":\"chunked\"}}")" "d.get('vulnerable') and d.get('isWebSocket')"
 
 echo "== active JWT attacks =="
 # Mint a valid HS256 token signed with the given secret (matches the mock).

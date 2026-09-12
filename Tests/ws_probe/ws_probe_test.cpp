@@ -85,6 +85,20 @@ int main(int argc, char **argv) {
     }
     chk("build: empty origin -> NO Origin header (the control handshake)",
         !buildHandshake(mk(), QString(), "k==").contains("Origin:"));
+    {
+        Request port = mk(); port.port = 8443;
+        chk("build: nondefault TLS port is preserved in Host",
+            buildHandshake(port, {}, "k==").contains("Host: victim.tld:8443\r\n"));
+        port.tls = false; port.port = 80;
+        chk("build: default cleartext port need not appear in Host",
+            buildHandshake(port, {}, "k==").contains("Host: victim.tld\r\n"));
+        port.host = "::1"; port.port = 8080;
+        chk("build: IPv6 authority is bracketed and retains its port",
+            buildHandshake(port, {}, "k==").contains("Host: [::1]:8080\r\n"));
+        port.host = "[::1]";
+        chk("build: existing IPv6 brackets are not doubled",
+            buildHandshake(port, {}, "k==").contains("Host: [::1]:8080\r\n"));
+    }
 
     // ===== buildHandshake: carried-header handling =======================
     {
@@ -106,6 +120,31 @@ int main(int argc, char **argv) {
         chk("build: a caller Host header is dropped (exactly one Host: victim.tld)",
             !hh.contains("Host: attacker.tld") && hh.count("Host: ") == 1
             && hh.contains("Host: victim.tld\r\n"));
+        Request captured = mk();
+        captured.headers = {{"connection", "keep-alive"}, {"Upgrade", "h2c"},
+                            {"sEc-WeBsOcKeT-kEy", "old-captured-key=="},
+                            {"Sec-WebSocket-Version", "8"}, {"Content-Length", "99"},
+                            {"Transfer-Encoding", "chunked"}, {"Cookie", "session=abc"},
+                            {"Sec-WebSocket-Protocol", "chat"},
+                            {"Sec-WebSocket-Extensions", "permessage-deflate"}};
+        const QByteArray fresh = buildHandshake(captured, "https://evil.example", "fresh-key==");
+        const QByteArray lower = fresh.toLower();
+        chk("build: captured key replaced by exactly one fresh key",
+            lower.count("\r\nsec-websocket-key:") == 1
+            && fresh.contains("Sec-WebSocket-Key: fresh-key==\r\n")
+            && !fresh.contains("old-captured-key"));
+        chk("build: generated connection, upgrade, and version each occur once",
+            lower.count("\r\nconnection:") == 1 && lower.count("\r\nupgrade:") == 1
+            && lower.count("\r\nsec-websocket-version:") == 1
+            && fresh.contains("Connection: Upgrade\r\n")
+            && fresh.contains("Upgrade: websocket\r\n")
+            && fresh.contains("Sec-WebSocket-Version: 13\r\n"));
+        chk("build: bodyless handshake drops captured framing headers",
+            !lower.contains("\r\ncontent-length:") && !lower.contains("\r\ntransfer-encoding:"));
+        chk("build: cookie and optional WebSocket negotiation survive",
+            fresh.contains("Cookie: session=abc\r\n")
+            && fresh.contains("Sec-WebSocket-Protocol: chat\r\n")
+            && fresh.contains("Sec-WebSocket-Extensions: permessage-deflate\r\n"));
         Request r3 = mk();
         r3.headers.append({QStringLiteral("X-T"), QStringLiteral("ok\r\nInjected: 1")});
         chk("build: a CR/LF carried header is dropped",
@@ -126,7 +165,14 @@ int main(int argc, char **argv) {
     {
         using HL = QList<QPair<QString, QString>>;
         chk("hasCredential: Cookie present", hasCredential(HL{{"Cookie", "s=1"}}));
-        chk("hasCredential: Authorization present", hasCredential(HL{{"authorization", "Bearer x"}}));
+        chk("hasCredential: caller Authorization alone cannot confirm a browser hijack",
+            !hasCredential(HL{{"authorization", "Bearer x"}}));
+        chk("hasCredential: mixed Cookie and Authorization remain inconclusive",
+            !hasCredential(HL{{"Cookie", "s=1"}, {"Authorization", "Bearer x"}}));
+        chk("hasCredential: empty cookie is not a session",
+            !hasCredential(HL{{"Cookie", "  "}}));
+        chk("hasCredential: a cookie discarded by the CR/LF guard is not a session",
+            !hasCredential(HL{{"Cookie", "s=1\r\nX-Other: value"}}));
         chk("hasCredential: case-insensitive name", hasCredential(HL{{"COOKIE", "s=1"}}));
         chk("hasCredential: none -> false", !hasCredential(HL{{"X-Other", "v"}, {"Accept", "*/*"}}));
         chk("hasCredential: empty -> false", !hasCredential(HL{}));
@@ -233,13 +279,17 @@ int main(int argc, char **argv) {
     // transient reconnect failure must grade a LEAD, not a hijack. This
     // decision was inline in scan()'s gradeAccepted lambda and untested.
     {
-        // Genuine refusals (baseline responded, did not upgrade) -> CONFIRMED.
+        // Explicit authentication/authorization refusals -> CONFIRMED.
         chk("wsConfirmsHijack: baseline 403 (refused) -> confirmed",
             wsConfirmsHijack(/*ok*/true, 403, /*acceptValid*/false));
-        chk("wsConfirmsHijack: baseline 200 non-upgrade -> confirmed",
-            wsConfirmsHijack(true, 200, false));
-        chk("wsConfirmsHijack: baseline 101 with INVALID accept -> confirmed (not a real upgrade)",
-            wsConfirmsHijack(true, 101, false));
+        chk("wsConfirmsHijack: baseline 401 (unauthenticated) -> confirmed",
+            wsConfirmsHijack(true, 401, false));
+        for (int status : {0, 200, 302, 400, 404, 408, 426, 429, 500, 502, 503, 504}) {
+            const QByteArray label = "wsConfirmsHijack: inconclusive status " + QByteArray::number(status);
+            chk(label.constData(), !wsConfirmsHijack(true, status, false));
+        }
+        chk("wsConfirmsHijack: invalid 101 accept is not an authentication refusal",
+            !wsConfirmsHijack(true, 101, false));
         // Baseline ALSO upgraded without the credential -> socket ignores the
         // session -> LEAD, not a hijack.
         chk("wsConfirmsHijack: baseline 101 + valid accept -> NOT confirmed (LEAD)",

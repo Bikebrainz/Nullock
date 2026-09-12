@@ -36,11 +36,18 @@ QString headerValue(const QByteArray &headerBlock, const char *name) {
 }
 
 bool hasCredential(const QList<QPair<QString, QString>> &headers) {
-    for (const auto &h : headers)
+    bool cookie = false;
+    for (const auto &h : headers) {
+        // A manually supplied Authorization value does not establish which
+        // credentials a cross-site browser would attach. Mixed credentials
+        // therefore remain a lead until tested with cookies alone.
+        if (h.first.compare("Authorization", Qt::CaseInsensitive) == 0) return false;
         if (h.first.compare("Cookie", Qt::CaseInsensitive) == 0
-            || h.first.compare("Authorization", Qt::CaseInsensitive) == 0)
-            return true;
-    return false;
+            && !h.second.trimmed().isEmpty()
+            && !h.second.contains('\r') && !h.second.contains('\n'))
+            cookie = true;
+    }
+    return cookie;
 }
 
 // Crafted Origins that defeat a naive host allow-list. Testing only one foreign
@@ -102,7 +109,12 @@ QByteArray buildHandshake(const Request &req, const QString &origin, const QByte
     if (req.host.contains('\r')     || req.host.contains('\n'))     return {};
     QByteArray r;
     r  = "GET " + req.basePath.toUtf8() + " HTTP/1.1\r\n";
-    r += "Host: " + req.host.toUtf8() + "\r\n";
+    QString authority = req.host;
+    if (authority.contains(':') && !authority.startsWith('['))
+        authority = QStringLiteral("[") + authority + QStringLiteral("]");
+    if (req.port != (req.tls ? 443 : 80))
+        authority += QStringLiteral(":") + QString::number(req.port);
+    r += "Host: " + authority.toUtf8() + "\r\n";
     r += "Upgrade: websocket\r\n";
     r += "Connection: Upgrade\r\n";
     r += "Sec-WebSocket-Key: " + key + "\r\n";
@@ -110,8 +122,14 @@ QByteArray buildHandshake(const Request &req, const QString &origin, const QByte
     if (!origin.isEmpty() && !origin.contains('\r') && !origin.contains('\n'))
         r += "Origin: " + origin.toUtf8() + "\r\n";
     for (const auto &h : req.headers) {
-        if (h.first.compare("Host", Qt::CaseInsensitive) == 0) continue;
-        if (h.first.compare("Origin", Qt::CaseInsensitive) == 0) continue;
+        const QString name = h.first.trimmed().toLower();
+        // The probe owns the fresh handshake and sends no request body. A
+        // captured key/version or framing header must not conflict with it.
+        // Optional subprotocol/extension negotiation and cookies remain intact.
+        if (name == "host" || name == "origin" || name == "upgrade"
+            || name == "connection" || name == "sec-websocket-key"
+            || name == "sec-websocket-version" || name == "content-length"
+            || name == "transfer-encoding") continue;
         if (h.first.contains('\r') || h.first.contains('\n')) continue;
         if (h.second.contains('\r') || h.second.contains('\n')) continue;
         r += h.first.toUtf8() + ": " + h.second.toUtf8() + "\r\n";
@@ -121,13 +139,11 @@ QByteArray buildHandshake(const Request &req, const QString &origin, const QByte
 }
 
 bool wsConfirmsHijack(bool baselineOk, int baselineStatus, bool baselineAcceptValid) {
-    // The baseline must have actually responded. A transient reconnect failure
-    // (baselineOk == false, status 0) tells us nothing about session gating --
-    // treating it as a "refusal" would brand a mere network flake a CONFIRMED
-    // credentialed hijack. Only a real response that did NOT complete the
-    // upgrade proves the socket honors the session cross-site.
-    if (!baselineOk) return false;
-    return !(baselineStatus == 101 && baselineAcceptValid);
+    // Rate limiting, server errors, redirects, and malformed upgrades do not
+    // establish an authentication boundary. Require an explicit denial from
+    // the same handshake after removing its credentials.
+    return baselineOk && !baselineAcceptValid
+        && (baselineStatus == 401 || baselineStatus == 403);
 }
 
 bool wsHandshakeDead(bool ok, int status) {
