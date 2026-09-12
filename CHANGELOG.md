@@ -11,6 +11,9 @@ developer-facing record.
 ## [Unreleased]
 
 ### Repository organization
+- Validate tracked Markdown destinations alongside website links in CI, including
+  case-sensitive paths and links to files missing from Git. Index the maintenance
+  tools and distinguish current regression checks from historical manual scripts.
 - Consolidate usage and deployment guides under `docs/guides/`, architecture
   designs under `docs/design/`, and dated engineering reviews under `docs/reviews/`.
   Add a documentation index and update contributor, packaging, and website links.

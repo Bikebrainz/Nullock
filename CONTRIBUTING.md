@@ -41,6 +41,8 @@ The native window lives in `Src/App/app.qml`; its models and theme manager live
 in `Src/FrontEnd/GUI/`. The browser application is in `ui-v2/`.
 
 See the [documentation index](docs/README.md) for guides, design notes, and reviews.
+The [maintenance tool index](scripts/README.md) distinguishes catalog generators,
+current regression checks, and historical manual scripts.
 
 The control server is the seam: the GUI and the `bin/nullock` CLI are both
 thin clients over `/api/*`. New capability = a backing module in

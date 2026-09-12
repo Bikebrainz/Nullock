@@ -1,12 +1,68 @@
 #!/usr/bin/env python3
-"""Verify served integrity bytes and local website navigation/assets without network."""
+"""Verify served integrity, website assets, and repository documentation offline."""
 import base64
 import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
+import posixpath
+import re
+import subprocess
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def markdown_links(source):
+    """Read inline destinations and reference definitions outside fenced examples.
+
+    Check destination paths, not heading fragments: GitHub renders the Markdown
+    anchors, while Page below checks the actual IDs in committed HTML.
+    """
+    fence = None
+    for line in source.splitlines():
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})', line)
+        if marker:
+            run = marker.group(1)
+            if fence is None:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence):
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        # Remove inline code examples, retaining real links whose labels use code.
+        line = re.sub(r'(`+).*?\1', '', line)
+        pattern = (r'\]\(\s*(?:<([^>]+)>|([^\s)]+))'
+                   r'|^ {0,3}\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))')
+        for match in re.finditer(pattern, line):
+            yield next(value for value in match.groups() if value is not None)
+
+
+def check_markdown(root):
+    # Only inspect versioned documentation, not dependency READMEs or build output.
+    tracked = subprocess.check_output(
+        ['git', 'ls-files', '-z'], cwd=root).decode('utf-8').split('\0')
+    paths = set(filter(None, tracked))
+    directories = {parent.as_posix() for name in paths for parent in Path(name).parents}
+    errors, count = [], 0
+    for name in sorted(paths):
+        if not name.endswith('.md'):
+            continue
+        for href in markdown_links((root / name).read_text(encoding='utf-8')):
+            url = urlsplit(href)
+            if url.scheme or url.netloc or not url.path:
+                continue
+            count += 1
+            relative = posixpath.join(posixpath.dirname(name), unquote(url.path))
+            if url.path.startswith('/'):
+                relative = unquote(url.path).lstrip('/')
+            # Compare Git's spelling, so Windows also catches case-only mistakes
+            # and links to files that exist locally but were never committed.
+            relative = posixpath.normpath(relative)
+            if ((relative not in paths and relative not in directories)
+                    or not (root / relative).exists()):
+                errors.append(f'{name}: missing tracked Markdown target {href}')
+    return count, errors
 
 class Page(HTMLParser):
     def __init__(self, source):
@@ -24,7 +80,7 @@ class Page(HTMLParser):
             self.integrity.append((attrs.get('src', ''), attrs['integrity']))
 
 def main():
-    errors = []
+    markdown_count, errors = check_markdown(ROOT)
     ui = ROOT / 'ui-v2'
     parsed_ui = Page((ui / 'Nullock.html').read_text(encoding='utf-8'))
     for name, expected in parsed_ui.integrity:
@@ -49,7 +105,8 @@ def main():
             elif url.fragment and target in pages and unquote(url.fragment) not in pages[target].ids:
                 errors.append(f'{path.relative_to(ROOT)}: missing fragment {href}')
     for error in errors: print(error)
-    print(f'{len(parsed_ui.integrity)} integrity hashes, {len(pages)} site pages, {len(errors)} errors')
+    print(f'{markdown_count} Markdown targets, {len(parsed_ui.integrity)} integrity hashes, '
+          f'{len(pages)} site pages, {len(errors)} errors')
     return bool(errors)
 
 if __name__ == '__main__': raise SystemExit(main())
