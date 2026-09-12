@@ -15,6 +15,7 @@
 ## Development
 
 - [Contributing and source layout](../CONTRIBUTING.md)
+- [Maintenance tools and validation commands](../scripts/README.md)
 - [Design documents](design/README.md)
 - [Engineering reviews](reviews/README.md)
 - [CLI examples](../examples/README.md)
