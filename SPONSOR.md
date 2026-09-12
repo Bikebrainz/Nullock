@@ -40,7 +40,7 @@ In rough order of priority:
 2. Domain renewal + hosting (~$100/yr) -- nullock.io + hosted OAST sink
 3. Apple Developer + notarization (~$99/yr) -- removes the right-click-Open Gatekeeper dance on macOS
 4. Cloud infrastructure for hosted OAST (~$10-50/mo) -- so the free tier OAST always works
-5. AI triage API budget -- the local-Ollama path stays free; cloud-tier needs Claude API costs covered
+5. AI triage API budget -- the local-Ollama path stays free; a future hosted tier would need inference costs covered
 6. Maintainer time -- after the above, anything left funds the maintainer continuing to work on this instead of getting a normal job
 
 Full breakdown of expenses is posted quarterly in this file.

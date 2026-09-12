@@ -3126,7 +3126,7 @@
       "audited_state": "absent",
       "reconciled": {
         "date": "2026-09-11",
-        "commit": "codex/workspace-recovery",
+        "commit": "17d6c051",
         "note": "Cookie jars and session rules persist per project. Cookie changes autosave every two seconds and after shutdown workers drain; session-rule edits save when applied. Failed workspace writes remain visible and block project switching. Transient extracted session variables are intentionally cleared when changing projects."
       }
     },
@@ -4757,7 +4757,7 @@
       "evidence": "Src/Core/Networking/repeater.cpp sendAsync; ui-v2/real-data.js writeRepeater; scripts/control_responsiveness_regression.py; Tests/ui/repeater_data_test.cjs",
       "reconciled": {
         "date": "2026-09-11",
-        "commit": "codex/control-responsiveness",
+        "commit": "c30a3eae",
         "note": "The GUI/control Repeater runs one request at a time on a worker, preserving UI responsiveness and edits made during a send. Busy/Stop states are exposed; Stop prevents subsequent redirects after the current response. Browser mutations are serialized and stale polls cannot overwrite pending edits. Tabs autosave per project. Independent concurrent sends across multiple tabs remain unavailable."
       }
     },
@@ -5524,7 +5524,7 @@
       "audited_state": "present",
       "reconciled": {
         "date": "2026-09-11",
-        "commit": "codex/workspace-recovery",
+        "commit": "17d6c051",
         "note": "Repeater tabs save per project every two seconds when changed, before project switching, and after shutdown workers drain. Failed writes retain the current project and retry. Per-tab request history remains a separate capability."
       },
       "gap": "Repeater tabs save per project every two seconds when changed, before project switching, and after shutdown workers drain. Failed writes retain the current project and retry. Per-tab request history remains a separate capability.",

@@ -148,6 +148,6 @@ trust the client. Roles are assigned per workspace; SSO group→role mapping is 
 
 1. SQLite-only (simplest self-host) vs Postgres option — affects effort.
 2. How much history to share by default (privacy + storage vs. usefulness).
-3. Self-host only, or also an Anthropic-hosted SaaS tier? (Changes the security
+3. Self-host only, or also a hosted SaaS tier? (Changes the security
    and multi-tenancy model substantially.)
 4. Where the free/paid line sits (this is the first clearly "team/paid" feature).

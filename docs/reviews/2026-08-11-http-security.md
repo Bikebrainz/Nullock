@@ -5,13 +5,13 @@
 
 # Security review — HTTP-header / token cluster (`Src/Core/Networking`)
 
-**Method:** MADS multi-agent evidence debate — three independent external reviewers (Codex `gpt-5.6-sol`, Grok 4.5, Kimi K3) plus a memory-blind reviewer, run in isolated worktrees. Round 1 blind independent review → an orchestrator evidence pass that verified every locus → anonymized cross-examination where reviewers attacked each other's findings → convergence. Every finding below was confirmed by code read at the cited line, and most by two or more independent reviewers. Kimi reached its vendor quota partway through cross-examination, so Round-2 external corroboration is 2-vendor (Codex + Grok) plus the blind reviewer.
+**Method:** Static code review of the HTTP-header and token-handling cluster. Findings were checked against the cited source locations; this review did not exercise live targets.
 
 **Scope:** `header_logic`, `host_header_logic`/`host_header`, `jwt_probe_logic`/`jwt_probe`/`jwt_tool`, `smuggling_logic`, `crlf_logic`, `ws_logic`/`ws_probe`, and the entry points that feed them attacker-controlled bytes. Reviewed at `23937ba` (branch `Nullock`).
 
-**This PR changes no code.** It adds this document only, and is not intended to merge — it is a findings container for triage. Fixes are left to you.
+**Status:** This document records historical findings for triage. The dated status above identifies the fixes recorded at the time; remaining findings require verification against the current source.
 
-**What held up well** (the blind reviewer's negative pass): no memory-corruption defect was found in this cluster — attacker-byte parsing uses bounds-checked `QByteArray`/`QString` APIs throughout; the WebSocket frame path is bounded (16 MiB frame cap, 32 MiB buffer cap, 64 MiB inflate cap, guarded mask/XOR). JWT forge/verify is sound: the tool never locally "accepts" a token, `bruteHmac` refuses non-HS tokens, and `alg:none` / HS↔RS confusion / blank-secret / `kid` are each independently gated. The findings are almost entirely **verdict-correctness** issues — for a scanner, a wrong verdict is the core failure mode: a false **negative** hides a real vulnerability from the user; a false **positive** destroys trust in every other result.
+**What held up well:** no memory-corruption defect was found in this cluster — attacker-byte parsing uses bounds-checked `QByteArray`/`QString` APIs throughout; the WebSocket frame path is bounded (16 MiB frame cap, 32 MiB buffer cap, 64 MiB inflate cap, guarded mask/XOR). JWT forge/verify is sound: the tool never locally "accepts" a token, `bruteHmac` refuses non-HS tokens, and `alg:none` / HS↔RS confusion / blank-secret / `kid` are each independently gated. The findings are almost entirely **verdict-correctness** issues — for a scanner, a wrong verdict is the core failure mode: a false **negative** hides a real vulnerability from the user; a false **positive** destroys trust in every other result.
 
 | # | Sev | Type | One line | Locus |
 |---|-----|------|----------|-------|
@@ -40,7 +40,7 @@ effTls = (next.scheme() == "https");
 cur.port = next.port(effTls ? 443 : 80);
 ```
 
-A response `https://victim/a → Location: http://victim:8080/b` passes the host check, and the follower then re-issues the request over the new scheme/port. `buildRequest` copies `req.headers` and drops only framing headers (`Content-Length`/`Transfer-Encoding`/`Accept-Encoding`/`Connection`) — **`Cookie` and `Authorization` are re-emitted**, now over a plaintext connection (verified through `networking.cpp` opening a plain TCP socket and writing those bytes). Two further consequences: the response's header verdicts are reported against the original URL (`control_server.cpp:8176-8178` binds to the pre-redirect `url`), and the silent `https→http` downgrade skips the `effTls`-gated HSTS / `Secure`-cookie checks entirely. *All three reviewers + blind: SUSTAIN.*
+A response `https://victim/a → Location: http://victim:8080/b` passes the host check, and the follower then re-issues the request over the new scheme/port. `buildRequest` copies `req.headers` and drops only framing headers (`Content-Length`/`Transfer-Encoding`/`Accept-Encoding`/`Connection`) — **`Cookie` and `Authorization` are re-emitted**, now over a plaintext connection (verified through `networking.cpp` opening a plain TCP socket and writing those bytes). Two further consequences: the response's header verdicts are reported against the original URL (`control_server.cpp:8176-8178` binds to the pre-redirect `url`), and the silent `https→http` downgrade skips the `effTls`-gated HSTS / `Secure`-cookie checks entirely.
 **Direction:** require normalized scheme+host+port equality before following, and never carry credentials across an origin/scheme change.
 
 ## 2 — HIGH · JWT probe retains a session cookie on forged shots → false bypass
@@ -51,7 +51,7 @@ The secondary-credential strip is gated on the no-token calibration shot only:
 if (token.isEmpty() && isCredentialHeader(h.first)) continue;   // no-token shot only
 ```
 
-On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=…` is kept, so a cookie-authenticated endpoint that ignores JWTs stays authorized — the differential (no-token denied, forged allowed) is reported as a **signature/algorithm bypass** that does not exist. A unit test (`jwt_probe_test.cpp:132-133`) currently locks the buggy behavior ("WITH a token, the Cookie credential is kept"). *All three reviewers + blind: SUSTAIN.*
+On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=…` is kept, so a cookie-authenticated endpoint that ignores JWTs stays authorized — the differential (no-token denied, forged allowed) is reported as a **signature/algorithm bypass** that does not exist. A unit test (`jwt_probe_test.cpp:132-133`) currently locks the buggy behavior ("WITH a token, the Cookie credential is kept").
 **Direction:** strip every non-target credential from calibration **and** attack requests; replace, don't duplicate, the tested carrier.
 
 ## 3–9 — MEDIUM
@@ -70,7 +70,7 @@ On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=
 
 **9 · Host-header injection into `url()` under-graded.** `bodyHasUrl` matches `://s`, `"//s`, `'//s`, `=//s` but not CSS `url(//host…)`, so a reflection into a stylesheet `url()` sink stays `inUrlContext=false`. *Fix: add the `url(` protocol-relative context.*
 
-## 10–11 — LOW (narrowed in cross-examination)
+## 10–11 — LOW (follow-up assessment)
 
 **10 · `frame-ancestors 'none' https://evil` graded protective.** Narrow but real: the detector credits any non-wildcard `frame-ancestors` list as protective, so the specific footgun where an author writes `'none'` and appends an origin (CSP3 ignores the `'none'`) suppresses `clickjacking-missing`. *Fix: reuse the `effectivelyNone` sole-expression rule.*
 
@@ -78,4 +78,4 @@ On a forged/corrupted-token shot (`token` non-empty) a carried `Cookie: session=
 
 ---
 
-*Generated by a multi-agent review debate; findings are advisory and were verified by code read, not by running the tool against a live target. No source was modified.*
+*Findings are advisory and based on static code inspection. This review did not modify source or validate findings against a live target.*
