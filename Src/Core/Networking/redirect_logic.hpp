@@ -45,7 +45,7 @@ bool redirectPreservesBody(int status, const QString &method = "POST");
 
 // Policy gate. never -> false; always -> true; on-site -> nextHost == originHost
 // (case-insensitive); in-scope -> nextInScope (the caller supplies
-// isInScope(nextHost) since scope lives in the proxy).
+// a full-URL scope check since scope lives in the proxy).
 bool followAllowed(FollowPolicy policy, const QString &originHost,
                    const QString &nextHost, bool nextInScope);
 

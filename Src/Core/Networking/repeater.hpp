@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QUrl>
+
 #include "networking.hpp"
 #include "proxy_server.hpp"
 #include "redirect_logic.hpp"
@@ -140,9 +142,9 @@ public:
     // before each send (see send()). Optional; nullptr = no session handling.
     void setSessionRules(SessionRules *sr) { m_sessionRules = sr; }
     // Scope predicate for the "in-scope" follow policy (Repeater holds no proxy
-    // pointer). app.cpp wires this to ProxyServer::isInScope. Unset -> in-scope
+    // pointer). app.cpp wires this to the full outbound URL policy. Unset -> in-scope
     // policy follows nothing (fail-closed).
-    void setScopeChecker(std::function<bool(const QString &)> fn) { m_inScope = std::move(fn); }
+    void setScopeChecker(std::function<bool(const QUrl &)> fn) { m_inScope = std::move(fn); }
 
     Q_INVOKABLE void loadFromHistory(int row);
     Q_INVOKABLE void send();
@@ -196,7 +198,7 @@ private:
     int                m_followPolicy  = 0;           // RedirectLogic::FollowNever (Burp default: off)
     bool               m_followCookies = true;        // "Process cookies in redirections"
     SessionRules      *m_sessionRules = nullptr;
-    std::function<bool(const QString &)> m_inScope;
+    std::function<bool(const QUrl &)> m_inScope;
 };
 
 } // namespace Nullock::Core

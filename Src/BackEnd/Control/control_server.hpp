@@ -97,6 +97,7 @@ private:
     // ScopeGuard: true if `host` is non-empty and the project marks it out of
     // scope -- so active scans/payloads refuse it. False when no proxy/scope
     // model exists (allow) so headless use is unaffected.
+    // Admission only; outbound_scope enforces each concrete request before connecting.
     bool blocksScope(const QString &host) const;
     QByteArray buildSnapshot() const;
     quint64    snapshotSeq() const { return m_seq; }

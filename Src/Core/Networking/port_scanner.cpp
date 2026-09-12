@@ -1,3 +1,4 @@
+#include "outbound_scope.hpp"
 #include "port_scanner.hpp"
 
 #include <QElapsedTimer>
@@ -22,6 +23,10 @@ PortResult probeOne(const QString &host, quint16 port,
     r.host = host;
     r.port = port;
 
+    if (!OutboundScope::allows({host, port, 0, {}})) {
+        r.status = "scope-blocked";
+        return r;
+    }
     QTcpSocket s;
     QElapsedTimer t; t.start();
     s.connectToHost(host, port);
@@ -43,7 +48,7 @@ PortResult probeOne(const QString &host, quint16 port,
         // prompt with a request first.
         s.waitForReadyRead(800);
         QByteArray b = s.readAll();
-        if (b.isEmpty()) {
+        if (b.isEmpty() && OutboundScope::allowsUrl(host, port, false, "/")) {
             // Try a minimal HTTP request -- works on both 80/443 (mismatched
             // ports here are dropped). Cheap and won't break non-http hosts.
             s.write("GET / HTTP/1.0\r\nHost: " + host.toUtf8() + "\r\n\r\n");

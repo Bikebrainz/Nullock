@@ -1,3 +1,4 @@
+#include "outbound_scope.hpp"
 #include "ExtensionsAPI/extensions_api.hpp"
 #include "Proxy/proxy_filter_model.hpp"
 #include "Proxy/proxy_model.hpp"
@@ -856,6 +857,13 @@ int main(int argc, char *argv[]) {
     QObject::connect(&projectStore, &Nullock::Core::ProjectStore::advancedScopeChanged,
                      &proxy, &Nullock::Proxy::ProxyServer::setAdvancedScope);
 
+    // This registration outlives every active tool; drainWorkers joins their
+    // tasks before stack teardown. Operational downloads opt out explicitly.
+    const Nullock::Core::OutboundScope::Registration outboundScope([&proxy](const Nullock::Core::OutboundScope::Target &t) {
+        return t.path.isNull() ? proxy.isTransportInScope(t.host, t.port, t.protocol)
+            : proxy.isUrlInScope(t.protocol == 2, t.host, t.port, t.path);
+    });
+
     // Accept-invalid-upstream-cert host allow-list: restore the default project's
     // list now (it opened before this wiring) and re-apply on every edit / project
     // switch. The proxy stores a QStringList of "host:port"; the store persists a
@@ -1205,10 +1213,16 @@ int main(int argc, char *argv[]) {
     // when a matching Repeater-scoped rule exists; raw sends stay byte-for-byte.
     repeater.setSessionRules(&sessionRules);
     // Scope predicate for Repeater's "in-scope" redirect-follow policy.
-    repeater.setScopeChecker([&proxy](const QString &h) { return proxy.isInScope(h); });
+    repeater.setScopeChecker([](const QUrl &u) {
+        const bool tls = u.scheme() == "https";
+        return Nullock::Core::OutboundScope::allowsUrl(u.host(), u.port(tls ? 443 : 80), tls, u.path(QUrl::FullyEncoded));
+    });
     intruder.setSessionRules(&sessionRules);
     // Scope predicate for Intruder's "in-scope" redirect-follow policy.
-    intruder.setScopeChecker([&proxy](const QString &h) { return proxy.isInScope(h); });
+    intruder.setScopeChecker([](const QUrl &u) {
+        const bool tls = u.scheme() == "https";
+        return Nullock::Core::OutboundScope::allowsUrl(u.host(), u.port(tls ? 443 : 80), tls, u.path(QUrl::FullyEncoded));
+    });
     // Session login macros persist in project.json: restore the incoming
     // project's macros into the live engine whenever a project (re)opens (they're
     // saved whenever set via /api/session-macros). Same pattern as intercept
@@ -1355,11 +1369,9 @@ int main(int argc, char *argv[]) {
     // seed URL; the rest of the toolchain (passive scanner, repeater,
     // search) sees crawled responses just like normal captures.
     Nullock::Core::Crawler crawler;
-    crawler.setScopeChecker([&proxy](const QString & /*scheme*/, const QString &host, int /*port*/) {
-        // The project scope model is host-glob, so scheme/port are not consulted
-        // here; the crawler's built-in default scope is what uses the port to
-        // refuse cross-service creep when no project checker is injected.
-        return proxy.isInScope(host);
+    crawler.setScopeChecker([](const QString &scheme, const QString &host, int port, const QString &path) {
+        const bool tls = scheme == "https";
+        return Nullock::Core::OutboundScope::allowsUrl(host, port > 0 ? port : (tls ? 443 : 80), tls, path);
     });
     QObject::connect(&crawler, &Nullock::Core::Crawler::entryLoaded,
                      &model, &Nullock::FrontEnd::ProxyModel::addResponse);
@@ -1381,6 +1393,8 @@ int main(int argc, char *argv[]) {
         return !busy();
     });
     wiring.crawler = &crawler;
+    QObject::connect(&projectStore, &Nullock::Core::ProjectStore::historyShouldClear,
+                     &crawler, &Nullock::Core::Crawler::clear);
     wiring.updates = &updateChecker;
 
     // Resolve the UI/asset dir (ui-v2, plus its sibling templates/ and

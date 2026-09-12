@@ -303,7 +303,12 @@
     // Advanced scope rules: whole-list replace of the include/exclude rules
     // (protocol/host-regex/port-range/file-regex), composed on top of the
     // simple glob scope above. See scope_logic.hpp for the exact semantics.
-    scopeSetAdvanced(rules) { return post("/api/scope/advanced",   { rules }).then(r => r.json()); },
+    async scopeSetAdvanced(rules) {
+      const response = await post("/api/scope/advanced", { rules, historyGeneration: NL.bootInfo?.historyGeneration });
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.error || "Could not save scope rules");
+      return result;
+    },
     repeaterSet(payload)    { return post("/api/repeater/set",     payload); },
     repeaterSend()          { return post("/api/repeater/send"); },
     repeaterClear()         { return post("/api/repeater/clear"); },

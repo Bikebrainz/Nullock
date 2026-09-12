@@ -641,7 +641,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                          const IntruderGrep::ExtractSpec &grepExtract,
                          int concurrency, int throttleMs, int retries,
                          int followPolicy, bool followCookies,
-                         std::function<bool(const QString &)> inScope,
+                         std::function<bool(const QUrl &)> inScope,
                          const RecursiveSpec &recursive,
                          const QSet<int> &skipRows) {
     // Defensive re-clamp (the setters clamp, but never trust a raw int here) and
@@ -711,7 +711,7 @@ void Intruder::runWorker(const QList<QStringList> &combos,
                 const QUrl next = RL::resolveRedirect(current, loc);
                 if (next.isEmpty()) break;
                 const QString nextHost = next.host();
-                const bool nextInScope = inScope ? inScope(nextHost) : false;
+                const bool nextInScope = inScope ? inScope(next) : false;
                 if (!RL::followAllowed(RL::FollowPolicy(followPolicy),
                                        current.host(), nextHost, nextInScope))
                     break;

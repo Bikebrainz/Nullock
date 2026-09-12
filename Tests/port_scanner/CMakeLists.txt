@@ -30,6 +30,7 @@ add_test(NAME port_scanner COMMAND port_scanner_test)
 # compile-the-TU-directly pattern Tests/networking uses for networking_logic.
 add_executable(port_scan_live_test
     port_scan_live_test.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/outbound_scope.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/port_scanner.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/port_logic.cpp
 )

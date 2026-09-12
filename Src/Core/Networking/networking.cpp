@@ -1,4 +1,5 @@
 #include "networking.hpp"
+#include "outbound_scope.hpp"
 
 #include "content_decode.hpp"
 #include "networking_logic.hpp"
@@ -117,7 +118,7 @@ TlsProfile::Profile HttpClient::defaultProfile() {
     return g_defaultProfile;
 }
 
-HttpClient::HttpClient(QObject *parent) : QObject(parent),
+HttpClient::HttpClient(QObject *parent, Purpose purpose) : QObject(parent), m_purpose(purpose),
     m_profile(g_defaultProfile) {}
 
 HttpClient::SendResult HttpClient::send(const QString &host,
@@ -125,6 +126,10 @@ HttpClient::SendResult HttpClient::send(const QString &host,
                                         bool useTls,
                                         const QByteArray &requestBytes) {
     SendResult result;
+    if (m_purpose == Purpose::Engagement && !OutboundScope::allowsRequest(host, port, useTls, requestBytes)) {
+        result.errorMessage = OutboundScope::blockedError();
+        return result;
+    }
 
     // The socket is owned by THIS CALL, not by the client. Every HttpClient in the
     // repo is a stack local, but a single one drives a WHOLE scan loop --

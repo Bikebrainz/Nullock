@@ -18,7 +18,8 @@ namespace Nullock::Core {
 class HttpClient : public QObject {
     Q_OBJECT
 public:
-    explicit HttpClient(QObject *parent = nullptr);
+    enum class Purpose { Engagement, ApplicationService };
+    explicit HttpClient(QObject *parent = nullptr, Purpose purpose = Purpose::Engagement);
 
     struct SendResult {
         bool       ok = false;
@@ -46,6 +47,7 @@ public:
     static TlsProfile::Profile defaultProfile();
 
 private:
+    Purpose m_purpose;
     TlsProfile::Profile m_profile = TlsProfile::Profile::None;
 };
 

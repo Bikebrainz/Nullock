@@ -1,3 +1,4 @@
+#include "outbound_scope.hpp"
 #include "ws_probe.hpp"
 
 #include <QByteArray>
@@ -6,6 +7,7 @@
 #include <QSslConfiguration>
 #include <QSslSocket>
 #include <QTcpSocket>
+#include <memory>
 
 namespace Nullock::Core::WsProbe {
 
@@ -28,10 +30,18 @@ struct Shake { int status = 0; bool acceptValid = false; bool ok = false; QStrin
 // One upgrade handshake. `origin` empty -> omit the Origin header (control).
 Shake handshake(const Request &req, const QString &origin) {
     Shake out;
+    const QByteArray key = randomKey();
+    const QByteArray r = buildHandshake(req, origin, key);
+    if (r.isEmpty()) { out.error = "request build aborted (CR/LF in host/path)"; return out; }
+    if (!OutboundScope::allowsRequest(req.host, req.port, req.tls, r)) {
+        out.error = OutboundScope::blockedError(); return out;
+    }
+    std::unique_ptr<QTcpSocket> owner;
     QTcpSocket *sock = nullptr;
     QSslSocket *ssl = nullptr;
     if (req.tls) {
         ssl = new QSslSocket();
+        owner.reset(ssl);
         QSslConfiguration cfg = ssl->sslConfiguration();
         cfg.setPeerVerifyMode(QSslSocket::VerifyPeer);
         ssl->setSslConfiguration(cfg);
@@ -40,24 +50,21 @@ Shake handshake(const Request &req, const QString &origin) {
         ssl->connectToHostEncrypted(req.host, static_cast<quint16>(req.port));
         if (!ssl->waitForEncrypted(kTimeoutMs)) {
             out.error = "TLS handshake failed: " + ssl->errorString();
-            sock->deleteLater(); return out;
+             return out;
         }
     } else {
         sock = new QTcpSocket();
+        owner.reset(sock);
         sock->connectToHost(req.host, static_cast<quint16>(req.port));
         if (!sock->waitForConnected(kTimeoutMs)) {
             out.error = "connect failed: " + sock->errorString();
-            sock->deleteLater(); return out;
+             return out;
         }
     }
 
-    const QByteArray key = randomKey();
-    const QByteArray r = buildHandshake(req, origin, key);
-    if (r.isEmpty()) { out.error = "request build aborted (CR/LF in host/path)"; sock->deleteLater(); return out; }
-
     sock->write(r);
     if (!sock->waitForBytesWritten(kTimeoutMs)) {
-        out.error = "write failed"; sock->deleteLater(); return out;
+        out.error = "write failed";  return out;
     }
 
     QByteArray resp;
@@ -68,7 +75,7 @@ Shake handshake(const Request &req, const QString &origin) {
         if (resp.size() > 64 * 1024) break;   // a handshake response is tiny
     }
     sock->abort();
-    sock->deleteLater();
+
 
     const int sep = resp.indexOf("\r\n\r\n");
     if (sep < 0) { out.error = out.error.isEmpty() ? "no response headers" : out.error; return out; }

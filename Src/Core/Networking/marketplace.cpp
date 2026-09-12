@@ -51,7 +51,7 @@ Fetched fetchTrusted(const QString &url, int maxBytes) {
     req += "Accept-Encoding: identity\r\n";
     req += "Connection: close\r\n\r\n";
 
-    HttpClient client;
+    HttpClient client(nullptr, HttpClient::Purpose::ApplicationService);
     const auto res = client.send(host, 443, true, req);
     if (!res.ok) {
         f.error = QStringLiteral("fetch failed: %1").arg(res.errorMessage);

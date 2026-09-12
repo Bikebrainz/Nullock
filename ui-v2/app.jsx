@@ -8379,6 +8379,7 @@ function App() {
         )}
         {tab === "scope" && (
           <ScopeTab
+            key={NL._generation}
             scope={state.scope}
             dispatch={dispatch}
             bootInfo={NL.bootInfo}

@@ -4,6 +4,7 @@
 # compilation.
 add_executable(scope_logic_test
     scope_logic_test.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/outbound_scope.cpp
     ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy/scope_logic.cpp
 )
 
@@ -13,6 +14,7 @@ target_link_libraries(scope_logic_test PRIVATE
 
 target_include_directories(scope_logic_test PRIVATE
     ${CMAKE_SOURCE_DIR}/Src/BackEnd/Proxy
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking
 )
 
 add_test(NAME scope_logic COMMAND scope_logic_test)

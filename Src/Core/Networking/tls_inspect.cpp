@@ -1,3 +1,4 @@
+#include "outbound_scope.hpp"
 #include "tls_inspect.hpp"
 
 #include <QDateTime>
@@ -44,6 +45,7 @@ QString keyAlgoName(QSsl::KeyAlgorithm a) {
 // negative on a legacy-enabled server. We map the socket error to a category and
 // let the pure legacyProbeVerdict() decide.
 QString probeLegacyProtocol(const QString &host, int port, int timeoutMs, QSsl::SslProtocol proto) {
+    if (!OutboundScope::allows({host, port, 2, {}})) return "inconclusive";
     QSslSocket s;
     QSslConfiguration cfg = QSslConfiguration::defaultConfiguration();
     cfg.setProtocol(proto);
@@ -75,6 +77,7 @@ QString probeLegacyProtocol(const QString &host, int port, int timeoutMs, QSsl::
 Result inspect(const Request &req) {
     Result result;
     if (req.host.isEmpty()) { result.error = "host required"; return result; }
+    if (!OutboundScope::allows({req.host, req.port, 2, {}})) { result.error = OutboundScope::blockedError(); return result; }
     if (!QSslSocket::supportsSsl()) { result.error = "no TLS backend available"; return result; }
 
     QSslSocket sock;

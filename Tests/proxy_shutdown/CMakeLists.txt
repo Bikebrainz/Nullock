@@ -14,6 +14,7 @@
 # own AUTOMOC, which is the same escape hatch port_scan_live uses.
 add_executable(proxy_shutdown_test
     proxy_shutdown_test.cpp
+    ${CMAKE_SOURCE_DIR}/Src/Core/Networking/outbound_scope.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/networking.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/networking_logic.cpp
     ${CMAKE_SOURCE_DIR}/Src/Core/Networking/networking_outcome.cpp
