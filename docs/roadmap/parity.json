@@ -4752,13 +4752,13 @@
       "state": "partial",
       "impact": "medium",
       "effort": "days",
-      "gap": "Tabs are a workspace, not concurrency: one global busy flag serializes every tab and the send blocks the shared control/GUI thread. Also, each keystroke in the request textarea POSTs /api/repeater/set fire-and-forget while a 500 ms snapshot poll merges server state back over local state (real-data.js:99-101 comment 'the snapshot poll picks up resulting state changes within ~500 ms'), so fast typing can be reverted by an in-flight poll. And no tab persists across restart (see B18).",
-      "why": "Re-read repeater.cpp/hpp, tabs.jsx, control_server.cpp snapshot+endpoints against current line numbers. The tab MANAGEMENT is real and fully wired (backend struct, 6 endpoints, UI strip, CLI). But the item says *concurrent*, and concurrency is exactly what does not work: a single m_busy flag gates all tabs, and Repeater::send() calls the blocking HttpClient::send() inline. The control server is a QTcpServer on the same thread.",
-      "evidence": "Src/Core/Networking/repeater.cpp:135 `void Repeater::send() { if (m_busy) return; ... m_busy = true; ...}` (cleared at :284); :373 addTab, :383 addTabFromHistory, :400 addTabFromHistoryById, :421 closeTab, :433 setActiveTab, :455 duplicateTab all verified present and wired. Backing store repeater.hpp:187 `QList<RepeaterTab> m_tabs;`. Snapshot really emits them: control_server.cpp:1627 `for (const auto &t : m_wiring.repeater->tabs())` ... :1650 `repeater[\"tabs\"] = tabs;` (line drift from the original citation, content and conclusion unchanged).",
+      "gap": "The GUI/control Repeater runs one request at a time on a worker, preserving UI responsiveness and edits made during a send. Busy/Stop states are exposed; Stop prevents subsequent redirects after the current response. Browser mutations are serialized and stale polls cannot overwrite pending edits. Tabs autosave per project. Independent concurrent sends across multiple tabs remain unavailable.",
+      "why": "The GUI/control Repeater runs one request at a time on a worker, preserving UI responsiveness and edits made during a send. Busy/Stop states are exposed; Stop prevents subsequent redirects after the current response. Browser mutations are serialized and stale polls cannot overwrite pending edits. Tabs autosave per project. Independent concurrent sends across multiple tabs remain unavailable.",
+      "evidence": "Src/Core/Networking/repeater.cpp sendAsync; ui-v2/real-data.js writeRepeater; scripts/control_responsiveness_regression.py; Tests/ui/repeater_data_test.cjs",
       "reconciled": {
-        "date": "2026-08-31",
-        "commit": "bd03640",
-        "note": "Wave 0 register-accuracy audit: held at partial. Re-verified tab management (addTab/addTabFromHistory/addTabFromHistoryById/closeTab/setActiveTab/duplicateTab, repeater.cpp:373-467) is real and fully wired, but a single m_busy flag (repeater.cpp:136,140,284) still gates ALL tabs and send() (repeater.cpp:135) still calls the blocking HttpClient::send() inline on the control/GUI thread -- concurrency is exactly what the item asks for and still does not exist. No code change this pass."
+        "date": "2026-09-11",
+        "commit": "codex/control-responsiveness",
+        "note": "The GUI/control Repeater runs one request at a time on a worker, preserving UI responsiveness and edits made during a send. Busy/Stop states are exposed; Stop prevents subsequent redirects after the current response. Browser mutations are serialized and stale polls cannot overwrite pending edits. Tabs autosave per project. Independent concurrent sends across multiple tabs remain unavailable."
       }
     },
     {

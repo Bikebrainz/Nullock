@@ -44,6 +44,7 @@
       <div class="ds-label">Reference</div>
       <a href="#cli" class="ds-link">CLI</a>
       <a href="#project-notes" class="ds-link">Project notes (unreleased)</a>
+      <a href="#responsive-repeater" class="ds-link">Background Repeater (unreleased)</a>
       <a href="#workspace-recovery" class="ds-link">Workspace recovery (unreleased)</a>
       <a href="#authenticated-scans" class="ds-link">Authenticated HTTP scans (unreleased)</a>
       <a href="#extensions" class="ds-link">Extensions</a>
@@ -117,6 +118,12 @@ nullock history-note 42 --comment ''
 nullock history-note 42 --clear</code></pre></div>
       <p>The CLI needs jq and a running app. <code>GET /api/history/annotations</code> returns notes, their revision and the history generation. <code>POST /api/history/annotation</code> accepts a row ID, that generation, and a comment and/or colour. Unspecified fields stay unchanged. Stale generations are rejected with HTTP 409; failed saves keep the previous note.</p>
       <p>Comments are limited to 4096 UTF-16 code units and the annotation map to 1 MiB. Colours are red, orange, yellow, green, cyan, blue, purple, pink and gray; an empty string clears a field. Clearing history clears its notes too.</p>
+    </section>
+
+    <section id="responsive-repeater" class="doc-sec">
+      <h2 class="h2-section">Repeater while a request runs (unreleased)</h2>
+      <p>Sending a Repeater request runs in the background. Its busy state remains visible while you inspect other tools or edit the next request. The response and history belong to the request that was actually sent; later edits stay in the request pane. One Repeater request runs at a time, and project switching or closing tabs waits until it finishes.</p>
+      <p><strong>Stop</strong> takes effect after the current response or transport timeout. It prevents any further redirects; it cannot undo a request already sent to the server. A slow client uploading to the control API no longer stalls the UI. Some other synchronous scanner and extension handlers still share the UI thread.</p>
     </section>
 
     <section id="workspace-recovery" class="doc-sec">

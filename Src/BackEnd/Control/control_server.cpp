@@ -1,6 +1,7 @@
 #include "control_server.hpp"
 #include "outbound_scope.hpp"
 #include <QTimer>
+#include <memory>
 #include <QSslSocket>
 
 #include "control_logic.hpp"
@@ -128,17 +129,8 @@ namespace Nullock::Control {
 namespace {
 
 constexpr int     kReadTimeoutMs = 5'000;
-// Absolute wall-clock budget for receiving the full request header block.
-// Defeats slowloris: a client dribbling one byte every 4.9s would refill
-// the per-read kReadTimeoutMs forever, but the elapsed-since-accept clock
-// keeps counting and drops them at this deadline regardless.
-//
-// This read is PRE-AUTH and blocks the main thread (see handle()), so the
-// deadline is kept short: an HTTP request's headers are a single small TCP
-// segment that any honest client -- localhost or a slow link -- delivers in
-// well under a second, so 3s is very generous while bounding how long one slow
-// socket can freeze the main thread before onNewConnection yields (maybefix #12).
-// The larger 30s budget applies only to the POST BODY, read AFTER this point.
+// Absolute request intake deadlines. readyRead/QTimer keep partially received
+// requests from blocking the main thread; the clock never resets per byte.
 constexpr qint64  kHeaderDeadlineMs = 3'000;
 // Similar deadline for receiving the request body once headers have been
 // parsed. A POST body of up to kMaxBodyBytes on localhost completes in
@@ -1002,206 +994,135 @@ bool ControlServer::start(const QHostAddress &address, quint16 port) {
 
 void ControlServer::stop() {
     if (m_server->isListening()) m_server->close();
+    const auto connections = m_connections;
+    for (auto *socket : connections) socket->abort();
 }
 
 bool ControlServer::isRunning() const { return m_server->isListening(); }
 quint16 ControlServer::listeningPort() const { return m_server->serverPort(); }
 
 void ControlServer::onNewConnection() {
-    // Handle ONE pending connection per event-loop pass, then re-post to the
-    // event queue if more are waiting. handle() reads a (pre-auth) request
-    // synchronously and blocks the main thread while doing so; draining the
-    // whole accept backlog inline let a burst of slow / slowloris sockets
-    // serialise into a long cumulative main-thread freeze -- the operator UI
-    // polls /api/snapshot and would stall for that whole time. Yielding between
-    // connections lets the event loop (and those UI polls) run between each, so
-    // the worst case is one short-deadline connection's block, not the sum of a
-    // whole burst. maybefix #12. (A fully event-driven handle() remains the
-    // ideal; this bounds the damage without that rewrite.)
-    if (QTcpSocket *s = m_server->nextPendingConnection()) {
-        connect(s, &QTcpSocket::disconnected, s, &QObject::deleteLater);
-        handle(s);
+    while (QTcpSocket *socket = m_server->nextPendingConnection()) {
+        connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        // Bound idle/partial request memory independently of the OS backlog.
+        if (m_connections.size() >= 32) { socket->abort(); socket->deleteLater(); continue; }
+        m_connections.insert(socket);
+        handle(socket);
     }
-    if (m_server->hasPendingConnections())
-        QMetaObject::invokeMethod(this, "onNewConnection", Qt::QueuedConnection);
+}
+
+QByteArray ControlServer::validateHeaders(const QByteArray &header, QString &method,
+                                         QString &target, qint64 &contentLength) const {
+    const auto lines = header.split('\n');
+    const auto parts = lines.value(0).trimmed().split(' ');
+    if (parts.size() != 3 || (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0")
+        || !parts[1].startsWith('/') || parts[1].contains('#'))
+        return httpResponse(400, "text/plain", "Bad request line");
+    method = QString::fromLatin1(parts[0]); target = QString::fromLatin1(parts[1]);
+    QHash<QByteArray, QByteArray> headers;
+    const QSet<QByteArray> unique{"host", "content-length", "origin", "authorization", "x-nullock-ui"};
+    for (int i = 1; i < lines.size(); ++i) {
+        QByteArray line = lines[i]; if (line.endsWith('\r')) line.chop(1);
+        const int colon = line.indexOf(':');
+        if (colon <= 0 || line.startsWith(' ') || line.startsWith('\t'))
+            return httpResponse(400, "text/plain", "Invalid header");
+        const QByteArray key = line.left(colon).toLower(), value = line.mid(colon + 1).trimmed();
+        for (char c : key) if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || QByteArray("!#$%&'*+-.^_`|~").contains(c)))
+            return httpResponse(400, "text/plain", "Invalid header name");
+        if (value.contains('\r') || value.contains('\0')) return httpResponse(400, "text/plain", "Invalid header value");
+        if (key == "transfer-encoding") return httpResponse(400, "text/plain", "Transfer-Encoding is not supported by the control API");
+        if (unique.contains(key) && headers.contains(key)) return httpResponse(400, "text/plain", "Duplicate control header");
+        headers.insert(key, value);
+    }
+    contentLength = 0;
+    if (headers.contains("content-length")) {
+        const auto value = headers.value("content-length");
+        bool ok = !value.isEmpty();
+        for (char c : value) if (c < '0' || c > '9') ok = false;
+        bool converted = false; contentLength = value.toLongLong(&converted);
+        if (!ok || !converted || contentLength < 0 || contentLength > kMaxBodyBytes)
+            return httpResponse(413, "text/plain", "Content-Length invalid or too large");
+    }
+    const bool tokenValid = ControlLogic::isTokenAuthorized(QString::fromLatin1(headers.value("authorization")), m_apiToken);
+    if (m_tokenMandatory && !tokenValid) return httpResponse(401, "text/plain", "Unauthorized (bearer token required)");
+    if (!tokenValid && !ControlLogic::isHostAllowed(QString::fromLatin1(headers.value("host")), listeningPort()))
+        return httpResponse(421, "text/plain", "Misdirected Host (DNS rebinding defence)");
+    if (!ControlLogic::isMethodAllowed(method)) return httpResponse(405, "text/plain", "Method not allowed");
+    if (!tokenValid && !ControlLogic::isRequestAuthorized(method, QString::fromLatin1(headers.value("origin")),
+            QString::fromLatin1(headers.value("x-nullock-ui")), listeningPort()))
+        return httpResponse(403, "text/plain", "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)");
+    if (headers.contains("expect")) return httpResponse(417, "text/plain", "Expect is not supported by the control API");
+    return {};
 }
 
 void ControlServer::handle(QTcpSocket *socket) {
-    // Slowloris defence. Track an absolute wall-clock since accept(); even
-    // if the client refills the per-read kReadTimeoutMs by dribbling one
-    // byte every 4.9s, the deadline keeps counting and drops them at
-    // kHeaderDeadlineMs. Without this, a single dribbling socket would pin
-    // the main thread's handle() loop forever and freeze the entire API
-    // surface (the UI included, since it polls /api/snapshot).
-    //
-    // AGGREGATE bound (maybefix #12): handle() still runs synchronously on the
-    // main thread and blocks in waitForReadyRead, but two things now cap the
-    // damage from a burst of slow sockets: (1) this pre-auth header deadline is
-    // short (kHeaderDeadlineMs = 3s, not 10s), and (2) onNewConnection processes
-    // ONE connection per event-loop pass and re-posts, so the event loop -- and
-    // the operator UI's /api/snapshot poll -- runs between connections instead of
-    // after the whole backlog drains. The worst case is now one short-deadline
-    // block between UI turns, not kHeaderDeadlineMs * N of uninterrupted freeze.
-    // A fully event-driven handle() (readyRead + a QTimer) remains the ideal.
-    QElapsedTimer deadline;
-    deadline.start();
-
-    // Read until headers complete.
-    QByteArray buf;
-    while (!buf.contains("\r\n\r\n")) {
-        const qint64 remaining = kHeaderDeadlineMs - deadline.elapsed();
-        if (remaining <= 0) {
-            socket->write(httpResponse(408, "text/plain", "Header read timeout"));
-            socket->disconnectFromHost();
-            return;
-        }
-        const int waitMs = static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs));
-        if (socket->bytesAvailable() == 0 && !socket->waitForReadyRead(waitMs)) {
-            socket->disconnectFromHost();
-            return;
-        }
-        buf.append(socket->readAll());
-        const int headerEnd = buf.indexOf("\r\n\r\n");
-        if ((headerEnd < 0 ? buf.size() : headerEnd + 4) > 64 * 1024) {
-            socket->write(httpResponse(431, "text/plain", "Headers too large"));
-            socket->disconnectFromHost();
-            return;
-        }
-    }
-
-    const int sep = buf.indexOf("\r\n\r\n");
-    const QByteArray header = buf.left(sep);
-    QByteArray rest = buf.mid(sep + 4);
-
-    const int firstLineEnd = header.indexOf("\r\n");
-    const QByteArray requestLine = header.left(firstLineEnd);
-    const QList<QByteArray> parts = requestLine.split(' ');
-    if (parts.size() < 3) {
-        socket->write(httpResponse(400, "text/plain", "Bad request"));
-        socket->disconnectFromHost();
-        return;
-    }
-    const QString method = QString::fromLatin1(parts[0]);
-    const QString target = QString::fromLatin1(parts[1]);
-
-    // Read body if Content-Length set (for POSTs). While we're walking
-    // the headers, also capture Origin + the custom token + Host so we
-    // can do a CSRF + DNS-rebinding check before dispatch.
-    qint64 contentLength = 0;
-    QString origin;
-    QString nullockHdr;
-    QString hostHdr;
-    QString authHdr;
-    for (const QByteArray &line : header.split('\n')) {
-        QByteArray l = line; if (l.endsWith('\r')) l.chop(1);
-        const int c = l.indexOf(':');
-        if (c <= 0) continue;
-        const QString key = QString::fromLatin1(l.left(c));
-        if (key.compare("Content-Length", Qt::CaseInsensitive) == 0) {
-            bool ok = false;
-            contentLength = QByteArray(l.mid(c + 1)).trimmed().toLongLong(&ok);
-            if (!ok || contentLength < 0 || contentLength > kMaxBodyBytes) {
-                socket->write(httpResponse(413, "text/plain",
-                    "Content-Length invalid or too large"));
-                socket->waitForBytesWritten(kReadTimeoutMs);
-                socket->disconnectFromHost();
-                return;
+    struct Pending {
+        QByteArray buffer;
+        QString method, target;
+        qint64 length = 0;
+        QElapsedTimer bodyClock;
+        bool headers = false, finished = false, reserved = false;
+    };
+    auto state = std::make_shared<Pending>();
+    auto *timer = new QTimer(socket); timer->setSingleShot(true);
+    socket->setReadBufferSize(64 * 1024);
+    auto release = [this, state] {
+        if (state->reserved) { m_pendingBodyBytes -= state->length; state->reserved = false; }
+    };
+    auto reject = [socket, state, timer, release](const QByteArray &response) {
+        state->finished = true; release(); state->buffer.clear();
+        socket->write(response); socket->disconnectFromHost();
+        // disconnectFromHost flushes asynchronously. Bound slow response readers.
+        timer->start(kReadTimeoutMs);
+    };
+    connect(socket, &QTcpSocket::disconnected, this, [this, socket, timer, state, release] {
+        state->finished = true; release(); timer->stop(); m_connections.remove(socket);
+    });
+    connect(timer, &QTimer::timeout, socket, [socket, state, reject] {
+        if (state->finished) { socket->abort(); return; }
+        reject(httpResponse(408, "text/plain", state->headers ? "Incomplete request body" : "Header read timeout"));
+    });
+    auto read = [this, socket, state, timer, release, reject] {
+        if (state->finished) return;
+        if (!state->headers) {
+            state->buffer.append(socket->read(64 * 1024 + 1 - state->buffer.size()));
+            const qsizetype sep = state->buffer.indexOf("\r\n\r\n");
+            if ((sep < 0 ? state->buffer.size() : sep + 4) > 64 * 1024) {
+                reject(httpResponse(431, "text/plain", "Headers too large")); return;
             }
+            if (sep < 0) return;
+            const auto error = validateHeaders(state->buffer.left(sep), state->method, state->target, state->length);
+            if (!error.isEmpty()) { reject(error); return; }
+            state->buffer.remove(0, sep + 4);
+            if (m_pendingBodyBytes + state->length > 128 * 1024 * 1024) {
+                reject(httpResponse(503, "text/plain", "Control request body budget exhausted; retry later")); return;
+            }
+            state->headers = true; state->reserved = true; m_pendingBodyBytes += state->length;
+            state->bodyClock.start();
+            timer->start(kReadTimeoutMs);
         }
-        else if (key.compare("Origin", Qt::CaseInsensitive) == 0)
-            origin = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
-        else if (key.compare("X-Nullock-UI", Qt::CaseInsensitive) == 0)
-            nullockHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
-        else if (key.compare("Host", Qt::CaseInsensitive) == 0)
-            hostHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
-        else if (key.compare("Authorization", Qt::CaseInsensitive) == 0)
-            authHdr = QString::fromLatin1(QByteArray(l.mid(c + 1)).trimmed());
-    }
-
-    // Bearer-token auth. Two modes, decided at bind time:
-    //   * Off-loopback (m_tokenMandatory): the token is the ONLY boundary --
-    //     SOP/CSRF/Host-rebinding are loopback-browser defences that a remote
-    //     client bypasses -- so EVERY request must present a valid token, and a
-    //     valid token then satisfies those checks (we skip them below).
-    //   * Loopback: the token is additive. A valid token authorizes writes
-    //     (like the X-Nullock-UI header does) so an API client can drive us
-    //     without the Origin dance; no/invalid token simply falls through to the
-    //     existing SOP + CSRF path, so the local browser UI is unaffected.
-    const bool tokenValid = ControlLogic::isTokenAuthorized(authHdr, m_apiToken);
-    if (m_tokenMandatory && !tokenValid) {
-        socket->write(httpResponse(401, "text/plain",
-            "Unauthorized (bearer token required)"));
-        socket->waitForBytesWritten(kReadTimeoutMs);
-        socket->disconnectFromHost();
-        return;
-    }
-
-    // DNS-rebinding defence. The browser's same-origin policy is "scheme +
-    // host + port" -- a malicious page on evil.com whose DNS flips to
-    // resolve to 127.0.0.1 (low-TTL DNS rebinding) will still consider
-    // itself same-origin with the proxy, and SOP will let it read our
-    // responses. The Origin/X-Nullock-UI guard only covers writes; for
-    // reads we have to look at the Host header. A rebinded request still
-    // carries `Host: evil.com` because the browser uses the URL the page
-    // requested. Refuse anything whose Host isn't bound to us.
-    const quint16 myPort = this->listeningPort();
-    if (!tokenValid && !ControlLogic::isHostAllowed(hostHdr, myPort)) {
-        socket->write(httpResponse(421, "text/plain",
-            "Misdirected Host (DNS rebinding defence)"));
-        socket->waitForBytesWritten(kReadTimeoutMs);
-        socket->disconnectFromHost();
-        return;
-    }
-
-    // Method validation: known HTTP verbs only. Closes the GET-to-mutating-
-    // endpoint vector (probe / replay used to accept any method).
-    if (!ControlLogic::isMethodAllowed(method)) {
-        socket->write(httpResponse(405, "text/plain", "Method not allowed"));
-        socket->waitForBytesWritten(kReadTimeoutMs);
-        socket->disconnectFromHost();
-        return;
-    }
-
-    // CSRF guard, hardened. State-mutating endpoints (anything that's
-    // not a GET / HEAD / OPTIONS) require BOTH:
-    //   (a) a matching same-origin Origin header OR a custom X-Nullock-UI
-    //       header that non-browser clients can set freely; and
-    //   (b) explicitly NOT an empty Origin when sent from a browser --
-    //       previously we allowed empty Origin to pass for curl
-    //       compatibility, but a `file://`-loaded HTML page also sends
-    //       empty Origin so this bypassed the guard.
-    // The custom header costs nothing for scripts (curl sets it via -H),
-    // but a malicious cross-origin page can't add it without a CORS
-    // preflight, which we never grant.
-    if (!tokenValid && !ControlLogic::isRequestAuthorized(method, origin, nullockHdr, myPort)) {
-        socket->write(httpResponse(403, "text/plain",
-            "Cross-origin write rejected (need same-origin Origin or X-Nullock-UI: 1)"));
-        socket->waitForBytesWritten(kReadTimeoutMs);
-        socket->disconnectFromHost();
-        return;
-    }
-    // Body-side slowloris defence: same absolute-deadline pattern. A POST
-    // claiming kMaxBodyBytes that dribbles in below ~2 MB/sec is either a
-    // hostile slow-read or a network so broken there's nothing useful we
-    // can do with the result anyway.
-    QElapsedTimer bodyDeadline;
-    bodyDeadline.start();
-    while (rest.size() < contentLength) {
-        const qint64 remaining = kBodyDeadlineMs - bodyDeadline.elapsed();
-        if (remaining <= 0) {
-            socket->disconnectFromHost();
-            return;
+        if (state->buffer.size() < state->length) {
+            const auto chunk = socket->read(state->length - state->buffer.size());
+            state->buffer.append(chunk);
+            const qint64 remaining = kBodyDeadlineMs - state->bodyClock.elapsed();
+            if (remaining <= 0) { reject(httpResponse(408, "text/plain", "Incomplete request body")); return; }
+            if (!chunk.isEmpty()) timer->start(static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs)));
         }
-        const int waitMs = static_cast<int>(std::min<qint64>(remaining, kReadTimeoutMs));
-        if (!socket->waitForReadyRead(waitMs)) {
-            socket->write(httpResponse(408, "text/plain", "Incomplete request body"));
-            socket->disconnectFromHost();
-            return;
-        }
-        rest.append(socket->readAll());
-    }
-    const QByteArray body = rest.left(contentLength);
+        if (state->buffer.size() < state->length) return;
+        if (state->buffer.size() > state->length) { reject(httpResponse(400, "text/plain", "Unexpected request body")); return; }
+        state->finished = true; release();
+        timer->stop();
+        dispatchRequest(socket, state->method, state->target, state->buffer);
+        state->buffer.clear();
+        if (socket->state() != QAbstractSocket::UnconnectedState) timer->start(kReadTimeoutMs);
+    };
+    connect(socket, &QTcpSocket::readyRead, socket, read);
+    timer->start(kHeaderDeadlineMs);
+    read();
+}
 
+void ControlServer::dispatchRequest(QTcpSocket *socket, const QString &method,
+                                    const QString &target, const QByteArray &body) {
     // Route.
     const QUrl url(QStringLiteral("http://x") + target);
     const QString path  = url.path();
@@ -1270,7 +1191,7 @@ void ControlServer::handle(QTcpSocket *socket) {
     }
 
     socket->write(response);
-    socket->waitForBytesWritten(kReadTimeoutMs);
+    socket->flush(); // nonblocking; small quit acknowledgments reach the OS before shutdown aborts sockets
     socket->disconnectFromHost();
 }
 
@@ -1676,6 +1597,7 @@ QByteArray ControlServer::buildSnapshot() const {
         repeater["elapsedMs"]     = m_wiring.repeater->elapsedMs();
         repeater["responseBytes"] = m_wiring.repeater->responseBytes();
         repeater["busy"]       = m_wiring.repeater->busy();
+        repeater["cancelling"] = m_wiring.repeater->cancelling();
         repeater["activeTab"]  = m_wiring.repeater->activeTab();
         repeater["autoContentLength"] = m_wiring.repeater->autoContentLength();
         repeater["followRedirects"] = m_wiring.repeater->followRedirects();
@@ -3341,7 +3263,7 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         return httpJson(200, o);
     };
     const QJsonObject bodyJson = QJsonDocument::fromJson(body).object();
-    if ((path.startsWith("/api/intruder/") || path.startsWith("/api/scope/") || path.startsWith("/api/sequencer/")) && bodyJson.contains("historyGeneration")
+    if ((path.startsWith("/api/intruder/") || path.startsWith("/api/scope/") || path.startsWith("/api/sequencer/") || path.startsWith("/api/repeater/")) && bodyJson.contains("historyGeneration")
         && m_wiring.projectStore
         && bodyJson.value("historyGeneration").toString() != m_wiring.projectStore->historyGeneration())
         return httpJson(409, QJsonObject{{"ok", false},
@@ -3794,16 +3716,19 @@ QByteArray ControlServer::apiResponse(const QString &method, const QString &path
         }
         return okJson();
     }
+    if ((path == "/api/repeater/clear" || path == "/api/repeater/tab/close") && m_wiring.repeater && m_wiring.repeater->busy())
+        return httpJson(409, {{"ok", false}, {"error", "Wait for or stop the active Repeater request before clearing or closing tabs"}});
+    if (path == "/api/repeater/stop") {
+        if (m_wiring.repeater) m_wiring.repeater->cancel();
+        return okJson();
+    }
     if (path == "/api/repeater/send") {
         if (m_wiring.repeater && blocksScope(m_wiring.repeater->host()))
             return okJson({{ "ok", false }, { "scopeBlocked", true },
                 { "error", "repeater target '" + m_wiring.repeater->host() + "' is out of scope" }});
-        // Defer: Repeater::send blocks on network. Run it via singleShot so
-        // the HTTP response returns immediately and the UI's snapshot poll
-        // picks up the result when it's ready.
-        if (m_wiring.repeater) {
-            QMetaObject::invokeMethod(m_wiring.repeater, "send", Qt::QueuedConnection);
-        }
+        if (m_wiring.repeater && m_wiring.repeater->busy())
+            return httpJson(409, {{"ok", false}, {"error", "A Repeater request is already running"}});
+        if (m_wiring.repeater) m_wiring.repeater->sendAsync();
         return okJson();
     }
     if (path == "/api/repeater/clear") {

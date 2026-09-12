@@ -99,7 +99,7 @@ def main():
             assert api('/api/repeater/set', {'host':'127.0.0.1', 'port':port or allowed.server_port,
                 'tls':tls, 'request':raw(path), 'followRedirects':follow})['ok']
             result = api('/api/repeater/send', {})
-            # The send event is queued before the next snapshot connection.
+            wait_for(lambda: not api('/api/snapshot')['repeater']['busy'])
             return result, api('/api/snapshot')['repeater']
         def intrude(template, payloads):
             api('/api/intruder/load', {})
