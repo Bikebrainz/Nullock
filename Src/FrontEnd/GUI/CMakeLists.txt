@@ -1,4 +1,4 @@
-# Define QML module with sources
+# Native models and themes; the application window is in Src/App/app.qml.
 qt_add_qml_module(FrontEndGUI
     URI Nullock.FrontEnd
     VERSION 1.0
@@ -14,30 +14,6 @@ qt_add_qml_module(FrontEndGUI
     Models/Proxy/site_map_model.hpp
     Themes/themes_manager.cpp
     Themes/themes_manager.hpp
-    QML_FILES
-    DevicesHub/devices_hub.qml
-    DevicesHub/Components/devices_console.qml
-    DevicesHub/Components/devices.qml
-    ExtensionsHub/extensions_hub.qml
-    ExtensionsHub/Components/extensions_console.qml
-    ExtensionsHub/Components/extensions.qml
-    IntruderHub/intruder_hub.qml
-    IntruderHub/Components/intruder_console.qml
-    IntruderHub/Components/intruder.qml
-    Overview/overview.qml
-    Overview/Components/scope.qml
-    Overview/Components/sitemap.qml
-    Proxy/proxy.qml
-    Proxy/Components/http_history.qml
-    Proxy/Components/intercept.qml
-    RepeaterHub/repeater_hub.qml
-    RepeaterHub/Components/repeater_console.qml
-    RepeaterHub/Components/repeater.qml
-    Workspace/workspace.qml
-    Workspace/Components/notes.qml
-    Workspace/Components/report_generator.qml
-    Workspace/Components/settings.qml
-    Workspace/Components/themes.qml
 )
 
 # Link Qt libraries and backend modules whose headers the models include

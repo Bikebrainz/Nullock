@@ -10,6 +10,13 @@ developer-facing record.
 
 ## [Unreleased]
 
+### Repository organization
+- Consolidate usage and deployment guides under `docs/guides/`, architecture
+  designs under `docs/design/`, and dated engineering reviews under `docs/reviews/`.
+  Add a documentation index and update contributor, packaging, and website links.
+- Remove empty C++ modules and unused blank QML components from the source tree
+  and build definitions. The native interface remains in `Src/App/app.qml`.
+
 ### Intruder project workspace
 - Save Intruder configuration and result rows in the project's `intruder.json`
   on project switches and after worker shutdown on a clean exit. Restore the

@@ -17,7 +17,8 @@ Src/
   Core/Storage/                        # SQLite history index, project store
   Core/Utils/                          # crash reporter
   Tools/                               # standalone binaries: nullock-oast, nullock-workspace
-  FrontEnd/GUI/                        # QML UI (QtQuick)
+  FrontEnd/GUI/                        # native history models and theme manager
+  FrontEnd/Resources/                  # bundled native resources
 bin/nullock                            # bash CLI -- drives every /api endpoint
 labs/                                  # intentionally-vulnerable teaching apps
 extensions/                            # JS plugin API + marketplace catalog
@@ -29,10 +30,15 @@ docs/                                  # documentation index + GitHub Pages site
 ui-v2/                                 # browser application and vendored runtime
 packaging/                             # installer and container support
 scripts/                               # maintenance, generation, and regression tools
+browser-ext/                           # companion browser extension
+examples/                              # CLI workflow examples
+templates/                             # detection rules and project presets
 ```
 
 Application wiring and shutdown order live in `Src/App/app.cpp`. Only implemented
 modules belong in the build; avoid adding empty source files or placeholder targets.
+The native window lives in `Src/App/app.qml`; its models and theme manager live
+in `Src/FrontEnd/GUI/`. The browser application is in `ui-v2/`.
 
 See the [documentation index](docs/README.md) for guides, design notes, and reviews.
 
