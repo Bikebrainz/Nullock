@@ -382,11 +382,11 @@
     interceptRulesSet(rules) { return post("/api/intercept/rules", { rules }); },
     interceptSetAutoContentLength(autoContentLength) { return post("/api/intercept/autocl", { autoContentLength }); },
     interceptSetAutoFixNewlines(autoFixNewlines) { return post("/api/intercept/autonl", { autoFixNewlines }); },
-    scopeAddIn(glob)        { return post("/api/scope/in/add",     { glob }); },
-    scopeRemoveIn(glob)     { return post("/api/scope/in/remove",  { glob }); },
-    scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob }); },
-    scopeRemoveOut(glob)    { return post("/api/scope/out/remove", { glob }); },
-    scopeSetNotes(notes)    { return post("/api/scope/notes",      { notes }); },
+    scopeAddIn(glob)        { return post("/api/scope/in/add",     { glob, historyGeneration:NL.bootInfo.historyGeneration }); },
+    scopeRemoveIn(glob)     { return post("/api/scope/in/remove",  { glob, historyGeneration:NL.bootInfo.historyGeneration }); },
+    scopeAddOut(glob)       { return post("/api/scope/out/add",    { glob, historyGeneration:NL.bootInfo.historyGeneration }); },
+    scopeRemoveOut(glob)    { return post("/api/scope/out/remove", { glob, historyGeneration:NL.bootInfo.historyGeneration }); },
+    scopeSetNotes(notes)    { return post("/api/scope/notes",      { notes, historyGeneration:NL.bootInfo.historyGeneration }); },
     // Advanced scope rules: whole-list replace of the include/exclude rules
     // (protocol/host-regex/port-range/file-regex), composed on top of the
     // simple glob scope above. See scope_logic.hpp for the exact semantics.

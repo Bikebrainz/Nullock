@@ -75,6 +75,12 @@ def main():
             api('/api/sessions/setCookie', {'host':'recovery.test','name':'session','value':'saved-secret','path':'/'})
             wait_for(lambda: saved().get('draft',{}).get('text')=='manual-one\nmanual-two')
             check('draft and settings autosave without quitting', saved()['draft']['sigLevel']==.05)
+            def repeater_saved(): return json.loads((root/'projects/recovery-a/project.json').read_text())['repeater']
+            api('/api/repeater/set', {'requestEncoding':'latin1'})
+            wait_for(lambda: repeater_saved()['tabs'][0]['requestLatin1'])
+            check('encoding-only edit triggers autosave', True)
+            api('/api/repeater/set', {'autoContentLength':False,'followRedirects':3,'processCookies':False})
+            wait_for(lambda: repeater_saved().get('followRedirects')==3)
             api('/api/scope/in/add', {'glob':'127.0.0.1'})
             api('/api/sequencer/capture/start', {'host':'127.0.0.1', 'port':fixture.server_port,'tls':False,
                 'request':raw,'count':100,'throttleMs':100,'extract':{'from':'header','key':'X-Token'}})
@@ -86,6 +92,7 @@ def main():
             check('recovery is idle and does not resume traffic', not restored['capture']['running'] and len(hits)==hits_before and 'interrupted' in restored['capture']['error'])
             snap = api('/api/snapshot')
             check('Repeater draft survives forced termination', snap['repeater']['host']=='recovery.test' and '/staged' in snap['repeater']['request'])
+            check('Repeater request options survive forced termination', not snap['repeater']['autoContentLength'] and snap['repeater']['followRedirects']==3 and not snap['repeater']['processCookies'] and snap['repeater']['requestEncoding']=='latin1')
             check('Intruder draft survives forced termination', snap['intruder']['host']=='intruder-recovery.test')
             metadata = json.loads((root/'projects/recovery-a/project.json').read_text())
             check('cookie jar is saved before clean shutdown', 'saved-secret' in json.dumps(metadata['cookieJar']))
@@ -97,10 +104,13 @@ def main():
             check('field patches preserve unrelated corpus and settings', workspace()['draft']['sigLevel']==.05 and workspace()['draft']['text'].endswith('peer-token'))
             before = workspace()['draft']; generation = api('/api/snapshot')['bootInfo']['historyGeneration']
             api('/api/project/create', {'name':'recovery-b'})
+            rep=api('/api/snapshot')['repeater']
+            check('new project restores safe default Repeater options', rep['autoContentLength'] and rep['followRedirects']==0 and rep['processCookies'])
             check('new project has no old tokens or credentials in Sequencer', workspace()['draft']=={} and workspace()['tokens']==[])
             api('/api/sequencer/workspace/append', {'text':'old','historyGeneration':generation}, 409)
             check('delayed old-project write is rejected', workspace()['draft']=={})
             api('/api/project/open', {'name':'recovery-a'})
+            check('project reopen restores its own Repeater options', api('/api/snapshot')['repeater']['followRedirects']==3)
             check('project reopening restores its own Sequencer draft', workspace()['draft']==before)
             for filename in ['sequencer.json','project.json']:
                 file = root/'projects/recovery-a'/filename; backup = file.with_suffix('.backup')
@@ -112,6 +122,7 @@ def main():
                     wait_for(lambda: bool(api('/api/snapshot')['bootInfo']['workspaceSaveError']))
                     failed = api('/api/project/open', {'name':'recovery-b'})
                     check(filename+' save failure retains current project', not failed['ok'] and api('/api/snapshot')['bootInfo']['project']=='recovery-a')
+                    check(filename+' switch failure explains the failed save', 'Could not save' in failed.get('error',''))
                     check(filename+' failure keeps previous valid file', bool(json.loads(backup.read_text())))
                 finally: file.rmdir(); backup.rename(file)
                 wait_for(lambda: not api('/api/snapshot')['bootInfo']['workspaceSaveError'])

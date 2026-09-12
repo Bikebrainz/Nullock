@@ -108,7 +108,11 @@ public:
     int     port() const         { return activeTab_().port; }
     bool    useTls() const       { return activeTab_().useTls; }
     void setRequestBytes(const QByteArray &bytes);
-    void setRequestLatin1(bool enabled) { activeTab_().requestLatin1 = enabled; }
+    void setRequestLatin1(bool enabled) {
+        if (activeTab_().requestLatin1 == enabled) return;
+        activeTab_().requestLatin1 = enabled;
+        emit requestTextChanged();
+    }
     bool requestLatin1() const { return activeTab_().requestLatin1; }
     QString requestText() const  { return activeTab_().requestText; }
     QString responseText() const { return activeTab_().responseText; }

@@ -1195,7 +1195,7 @@ int main(int argc, char *argv[]) {
         save(sequencerDirty, [&] { return projectStore.saveSequencerWorkspace(QJsonDocument(sequencerCapture.exportState()).toJson(QJsonDocument::Compact)); });
         save(sessionDirty, [&] { return projectStore.saveSessionWorkspace(repeater.exportState(), sessions.exportJson()); });
         const QString error = errors.join("; ");
-        if (projectStore.workspaceSaveError() != error) projectStore.setWorkspaceSaveError(error);
+        projectStore.setWorkspaceSaveError(error);
         return ok;
     };
     projectStore.setWorkspaceSave([&] { return saveWorkspaces(true); });
